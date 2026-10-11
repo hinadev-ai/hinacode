@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "react-perf", "jsx-a11y", "import", "unicorn"],
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "typescript/no-explicit-any": "error",
+    "no-underscore-dangle": "off",
+    "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }]
+  },
+  "overrides": [
+    {
+      "files": ["src/main/**", "src/preload/**", "src/shared/**"],
+      "rules": { "react/rules-of-hooks": "off" }
+    },
+    {
+      "files": ["src/renderer/components/ui/**"],
+      "rules": { "jsx-a11y/label-has-associated-control": "off", "jsx-a11y/prefer-tag-over-role": "off" }
+    }
+  ],
+  "ignorePatterns": ["out/**", "src/renderer/paraglide/**"]
+}

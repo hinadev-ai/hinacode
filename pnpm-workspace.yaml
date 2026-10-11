@@ -1,0 +1,5 @@
+allowBuilds:
+  electron: true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - effect@4.0.3
