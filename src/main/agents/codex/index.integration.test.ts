@@ -1,9 +1,8 @@
-import assert from "node:assert/strict"
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
-import { beforeEach, describe, test } from "node:test"
+import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
@@ -45,7 +44,7 @@ const waitFor = (description: string, predicate: () => boolean) =>
       if (predicate()) return
       await sleep(20)
     }
-    assert.fail(`timed out waiting for ${description}`)
+    throw new Error(`timed out waiting for ${description}`)
   })
 
 const countOf = (method: string) => received().filter((message) => message.method === method).length
@@ -81,13 +80,14 @@ const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) =>
     ),
   )
 
-const run = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(CodexProvider.layer)))
+/** A fresh app-server per test, torn down with the test scope. */
+const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
+  effect.pipe(Effect.provide(CodexProvider.layer))
 
 describe("Codex Stop during startup", () => {
   for (const phase of ["initialize", "thread/start", "turn/start"]) {
-    test(`ends the run while ${phase} is pending and leaves the thread usable`, () =>
-      run(
+    it.live(`ends the run while ${phase} is pending and leaves the thread usable`, () =>
+      withProvider(
         Effect.gen(function* () {
           const provider = yield* CodexProvider
           setControl({ stall: [phase] })
@@ -96,18 +96,19 @@ describe("Codex Stop during startup", () => {
 
           yield* provider.interrupt("thread-a")
           yield* finishesSoon(stopped.fiber)
-          assert.deepEqual(stopped.events.at(-1), { type: "turn_failed", message: "Turn interrupted" })
+          expect(stopped.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
 
           setControl({})
           const next = yield* startTurn("thread-a")
           yield* finishesSoon(next.fiber)
-          assert.equal(next.events.at(-1)?.type, "turn_completed")
+          expect(next.events.at(-1)?.type).toBe("turn_completed")
         }),
-      ))
+      ),
+    )
   }
 
-  test("interrupts a turn whose turn/start reply arrives after Stop", () =>
-    run(
+  it.live("interrupts a turn whose turn/start reply arrives after Stop", () =>
+    withProvider(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
         setControl({ stall: ["turn/start"], holdTurn: true })
@@ -121,25 +122,28 @@ describe("Codex Stop during startup", () => {
           received().some((message) => message.method === "turn/interrupt" && message.params?.turnId === "turn-1"),
         )
       }),
-    ))
+    ),
+  )
 
-  test("fails with an actionable error when initialize never answers", () =>
-    run(
+  // `it.effect` runs under TestClock, so the provider's startup timeout only fires when the test advances it.
+  it.effect("fails with an actionable error when initialize never answers", () =>
+    withProvider(
       Effect.gen(function* () {
         setControl({ stall: ["initialize"] })
         const { fiber, events } = yield* startTurn("thread-a")
         yield* waitFor("initialize", () => countOf("initialize") === 1)
         yield* TestClock.adjust("5 minutes")
         const error = yield* finishesSoon(fiber).pipe(Effect.flip)
-        assert.match(error.message, /initialize.*did not respond/)
-        assert.equal(events.length, 0)
-      }).pipe(Effect.provide(TestClock.layer())),
-    ))
+        expect(error.message).toMatch(/initialize.*did not respond/)
+        expect(events.length).toBe(0)
+      }),
+    ),
+  )
 })
 
 describe("Codex Stop on a running turn", () => {
-  test("sends turn/interrupt and leaves other threads running", () =>
-    run(
+  it.live("sends turn/interrupt and leaves other threads running", () =>
+    withProvider(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
         setControl({ holdTurn: true })
@@ -151,12 +155,13 @@ describe("Codex Stop on a running turn", () => {
         yield* waitFor("second thread/start", () => countOf("thread/start") === 2)
         yield* provider.interrupt("thread-a")
         yield* finishesSoon(stopped.fiber)
-        assert.equal(running.fiber.pollUnsafe(), undefined)
+        expect(running.fiber.pollUnsafe()).toBe(undefined)
 
         yield* provider.interrupt("thread-b")
         yield* finishesSoon(running.fiber)
-        assert.equal(countOf("turn/interrupt"), 1)
-        assert.deepEqual(running.events.at(-1), { type: "turn_failed", message: "Turn interrupted" })
+        expect(countOf("turn/interrupt")).toBe(1)
+        expect(running.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
       }),
-    ))
+    ),
+  )
 })

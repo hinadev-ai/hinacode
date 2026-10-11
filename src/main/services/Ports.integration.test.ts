@@ -1,17 +1,12 @@
-import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { after, describe, test } from "node:test"
+import { afterAll, beforeAll, describe, expect, it, layer } from "@effect/vitest"
 import { Effect, Layer } from "effect"
-import type { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import { belongsToWorkspace, findListeningPorts, Ports, type ProcFs, layer as portsLayer } from "./Ports.ts"
-
-const run = <A, E>(effect: Effect.Effect<A, E, Ports | SqlClient.SqlClient>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(portsLayer.pipe(Layer.provideMerge(Db.layer(":memory:"))))))
 
 const listenerPids: Array<number> = []
 
@@ -23,53 +18,62 @@ const LISTENER =
  * and exits, so the listener is not a descendant of this process, which Ports treats as kkcode's own.
  */
 const listenIn = (cwd: string) =>
-  new Promise<{ port: number; pid: number }>((resolve, reject) => {
-    const shell = spawn("sh", ["-c", `"$0" -e "$1" &`, process.execPath, LISTENER], {
-      cwd,
-      stdio: ["ignore", "pipe", "inherit"],
-    })
-    shell.once("error", reject)
-    shell.stdout.once("data", (chunk) => {
-      const [pid = -1, port = -1] = String(chunk).trim().split(" ").map(Number)
-      listenerPids.push(pid)
-      resolve({ port, pid })
-    })
-  })
+  Effect.promise(
+    () =>
+      new Promise<{ port: number; pid: number }>((resolve, reject) => {
+        const shell = spawn("sh", ["-c", `"$0" -e "$1" &`, process.execPath, LISTENER], {
+          cwd,
+          stdio: ["ignore", "pipe", "inherit"],
+        })
+        shell.once("error", reject)
+        shell.stdout.once("data", (chunk) => {
+          const [pid = -1, port = -1] = String(chunk).trim().split(" ").map(Number)
+          listenerPids.push(pid)
+          resolve({ port, pid })
+        })
+      }),
+  )
 
-describe("Ports.listForThread", { skip: process.platform !== "linux" }, async () => {
-  const base = await mkdtemp(join(tmpdir(), "kk-ports-"))
-  after(async () => {
+const portsOf = (threadId: string) =>
+  Ports.use((ports) => ports.listForThread(threadId)).pipe(
+    Effect.map((ports) => ports.map(({ port, pid }) => ({ port, pid }))),
+  )
+
+describe.skipIf(process.platform !== "linux")("Ports.listForThread", () => {
+  let base = ""
+  beforeAll(async () => {
+    base = await mkdtemp(join(tmpdir(), "kk-ports-"))
+  })
+  afterAll(async () => {
     for (const pid of listenerPids) process.kill(pid)
     await rm(base, { recursive: true, force: true })
   })
 
-  test("lists a project-root listener after the thread's worktree was removed", async () => {
-    const root = await mkdtemp(join(base, "repo-"))
-    const listener = await listenIn(root)
-    const ports = await run(
-      seedThread({ rootPath: root, worktree: { path: join(base, "gone"), baseRef: "main", status: "removed" } }).pipe(
-        Effect.flatMap(({ threadId }) => Ports.use((p) => p.listForThread(threadId))),
-      ),
+  layer(portsLayer.pipe(Layer.provideMerge(Db.layer(":memory:"))))((shared) => {
+    shared.effect("lists a project-root listener after the thread's worktree was removed", () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
+        const listener = yield* listenIn(root)
+        const { threadId } = yield* seedThread({
+          rootPath: root,
+          worktree: { path: join(base, "gone"), baseRef: "main", status: "removed" },
+        })
+        expect(yield* portsOf(threadId)).toStrictEqual([listener])
+      }),
     )
-    assert.deepEqual(
-      ports.map(({ port, pid }) => ({ port, pid })),
-      [listener],
-    )
-  })
 
-  test("lists the active worktree's listener and not the project root's", async () => {
-    const root = await mkdtemp(join(base, "repo-"))
-    const worktree = await mkdtemp(join(base, "worktree-"))
-    await listenIn(root)
-    const listener = await listenIn(worktree)
-    const ports = await run(
-      seedThread({ rootPath: root, worktree: { path: worktree, baseRef: "main", status: "ready" } }).pipe(
-        Effect.flatMap(({ threadId }) => Ports.use((p) => p.listForThread(threadId))),
-      ),
-    )
-    assert.deepEqual(
-      ports.map(({ port, pid }) => ({ port, pid })),
-      [listener],
+    shared.effect("lists the active worktree's listener and not the project root's", () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
+        const worktree = yield* Effect.promise(() => mkdtemp(join(base, "worktree-")))
+        yield* listenIn(root)
+        const listener = yield* listenIn(worktree)
+        const { threadId } = yield* seedThread({
+          rootPath: root,
+          worktree: { path: worktree, baseRef: "main", status: "ready" },
+        })
+        expect(yield* portsOf(threadId)).toStrictEqual([listener])
+      }),
     )
   })
 })
@@ -135,14 +139,17 @@ describe("findListeningPorts", () => {
     41: { parent: 1, cwd: "/ws-sibling", fds: { 3: "socket:[111]" } },
   })
 
-  test("attributes by cwd and agent ancestry and reads only candidates' descriptors", async () => {
-    const found = await Effect.runPromise(
-      findListeningPorts(fs, belongsToWorkspace({ workspacePath: "/ws", agentPids: new Set([AGENT]), selfPid: SELF })),
-    )
-    assert.deepEqual(found, [
-      { pid: 22, command: "cmd 22", cwd: "/tmp", ancestors: [21, AGENT, SELF], port: 4000 },
-      { pid: 30, command: "cmd 30", cwd: "/ws/app", ancestors: [], port: 8080 },
-    ])
-    assert.deepEqual(fdReads.toSorted(), [21, 22, 30, 31])
-  })
+  it.effect("attributes by cwd and agent ancestry and reads only candidates' descriptors", () =>
+    Effect.gen(function* () {
+      const found = yield* findListeningPorts(
+        fs,
+        belongsToWorkspace({ workspacePath: "/ws", agentPids: new Set([AGENT]), selfPid: SELF }),
+      )
+      expect(found).toStrictEqual([
+        { pid: 22, command: "cmd 22", cwd: "/tmp", ancestors: [21, AGENT, SELF], port: 4000 },
+        { pid: 30, command: "cmd 30", cwd: "/ws/app", ancestors: [], port: 8080 },
+      ])
+      expect(fdReads.toSorted()).toStrictEqual([21, 22, 30, 31])
+    }),
+  )
 })
