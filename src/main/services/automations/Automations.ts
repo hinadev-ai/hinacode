@@ -96,10 +96,14 @@ const RUN_COLUMNS = "id, automation_id, thread_id, event_key, status, error, cre
 
 const isUniqueViolation = (cause: unknown) => SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
 
-const describeCause = (cause: Cause.Cause<unknown>) => {
-  const error = Cause.squash(cause)
-  return error instanceof Error ? error.message : String(error)
+/** The innermost useful message: wrappers such as ServeError carry an empty one and the real error as `cause`. */
+const describeError = (error: unknown): string => {
+  if (!(error instanceof Error)) return String(error)
+  if (error.message === "" && error.cause !== undefined) return describeError(error.cause)
+  return error.message
 }
+
+const describeCause = (cause: Cause.Cause<unknown>) => describeError(Cause.squash(cause))
 
 const REPO = /^[\w.-]+\/[\w.-]+$/
 
