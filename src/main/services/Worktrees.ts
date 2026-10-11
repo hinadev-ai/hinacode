@@ -132,6 +132,13 @@ const make = Effect.gen(function* () {
     execute: (worktreeId) => sql`SELECT id, status FROM thread WHERE worktree_id = ${worktreeId}`,
   })
 
+  // Setup scripts run in this process, so a row still preparing at boot lost its script to a quit or
+  // crash. Rerunning an arbitrary script unasked is not safe, so it ends as failed like any other.
+  yield* sql`
+    UPDATE worktree SET status = 'failed', setup_log = setup_log || ${"\nSetup was interrupted when kkcode quit.\n"}
+    WHERE status = 'preparing'
+  `.pipe(Effect.mapError(persistence("worktrees.failInterrupted")))
+
   const lock = Semaphore.makeUnsafe(1)
   const exclusive = <A, E, R>(effect: Effect.Effect<A, E, R>) => lock.withPermit(effect)
 

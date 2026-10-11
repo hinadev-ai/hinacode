@@ -188,13 +188,13 @@ describe("worktree ownership", () => {
   })
 })
 
-describe("startup", () => {
-  const restart = async () => {
-    await runtime.dispose()
-    runtime = makeRuntime(join(dir, "kkcode.sqlite"))
-    return run(Worktrees.use((worktrees) => worktrees.list))
-  }
+const restart = async () => {
+  await runtime.dispose()
+  runtime = makeRuntime(join(dir, "kkcode.sqlite"))
+  return run(Worktrees.use((worktrees) => worktrees.list))
+}
 
+describe("startup", () => {
   test("fails setup a quit or crash interrupted, the same way on every start", async () => {
     const thread = await run(createThread("interrupted", "kk/interrupted"))
     await waitUntilSetUp(thread.worktreeId)
