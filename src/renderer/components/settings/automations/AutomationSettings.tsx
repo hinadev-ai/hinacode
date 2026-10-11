@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../lib/errorMessage.ts"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
@@ -138,7 +139,7 @@ function ListenerSettings() {
       <FieldDescription>
         {listener.bindHost === ALL_INTERFACES ? m.automations_bind_all_hint() : m.automations_bind_loopback_hint()}
       </FieldDescription>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{errorMessage(error)}</FieldError>}
     </div>
   )
 }
@@ -271,7 +272,7 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
           onConfirm={() => run(() => callPromise("automations.delete", { id: automation.id }))}
         />
       </div>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{errorMessage(error)}</FieldError>}
       {expanded && (
         <div id={detailsId}>
           <AutomationDetails automation={automation} />

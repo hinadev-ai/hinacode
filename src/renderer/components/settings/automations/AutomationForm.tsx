@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../lib/errorMessage.ts"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
@@ -333,7 +334,7 @@ function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormPr
           <Switch id="automation-enabled" checked={draft.enabled} onCheckedChange={(enabled) => patch({ enabled })} />
         </Field>
       </FieldGroup>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{errorMessage(error)}</FieldError>}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={isPending}>

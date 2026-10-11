@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../lib/errorMessage.ts"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
@@ -38,7 +39,7 @@ export function WebhookUrlField({ automationId }: { automationId: string }) {
             {listenError && <FieldError>{m.automations_listen_failed({ message: listenError })}</FieldError>}
           </>
         ))
-        .onError((cause) => <FieldError>{m.common_error({ message: cause.message })}</FieldError>)
+        .onError((cause) => <FieldError>{errorMessage(cause)}</FieldError>)
         .orElse(() => null)}
       <FieldDescription>
         {listener.bindHost === "0.0.0.0" ? m.automations_webhook_url_lan_hint() : m.automations_webhook_url_hint()}
@@ -127,7 +128,7 @@ function RunNowForm({ automation }: { automation: Automation }) {
             {state?.kind === "ran" && <RunOutcome run={state.run} />}
           </p>
         </div>
-        {state?.kind === "error" && <FieldError>{m.common_error({ message: state.message })}</FieldError>}
+        {state?.kind === "error" && <FieldError>{errorMessage(state.message)}</FieldError>}
       </Field>
     </form>
   )
@@ -166,7 +167,7 @@ function RecentRuns({ automationId }: { automationId: string }) {
         )
         .onError((cause) => (
           <div className="flex items-center gap-2">
-            <p className="text-sm text-destructive">{m.common_error({ message: cause.message })}</p>
+            <p className="text-sm text-destructive">{errorMessage(cause)}</p>
             <Button variant="ghost" size="sm" onClick={refresh}>
               {m.common_retry()}
             </Button>
