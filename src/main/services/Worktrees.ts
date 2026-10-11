@@ -14,7 +14,7 @@ import {
 import { nowIso } from "./clock.ts"
 import { NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { type CommandError, Git } from "./Git.ts"
+import { type CommandError, Git, type RunOptions } from "./Git.ts"
 import { Projects } from "./Projects.ts"
 
 export interface CreateWorktree {
@@ -251,15 +251,35 @@ const make = Effect.gen(function* () {
       if (worktree.status === "removed") return { baseRef: worktree.baseRef, files: [], patch: "" }
 
       const cwd = worktree.path
+      // Pin the output format against user config (diff.mnemonicPrefix, color.ui, quoted non-ASCII paths)
+      // so the renderer can find each file's section by its `a/… b/…` header.
+      const diff = (args: ReadonlyArray<string>, options?: RunOptions) =>
+        git.run(
+          cwd,
+          [
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            ...args,
+          ],
+          options,
+        )
+
       const mergeBase = (yield* git.run(cwd, ["merge-base", worktree.baseRef, "HEAD"])).trim()
       // Diffing the merge base against the working tree covers both commits and uncommitted edits.
-      const tracked = parseNameStatus(yield* git.run(cwd, ["diff", "--no-renames", "--name-status", "-z", mergeBase]))
-      const trackedPatch = yield* git.run(cwd, ["diff", "--no-renames", mergeBase])
+      const tracked = parseNameStatus(yield* diff(["--name-status", "-z", mergeBase]))
+      const trackedPatch = yield* diff([mergeBase])
       const untracked = (yield* git.run(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]))
         .split("\0")
         .filter(Boolean)
+      // Exit code 1 means the files differ, which is always true against /dev/null.
       const untrackedPatches = yield* Effect.forEach(untracked, (path) =>
-        git.run(cwd, ["diff", "--no-index", "--", "/dev/null", path], { okExitCodes: [1] }),
+        diff(["--no-index", "--", "/dev/null", path], { okExitCodes: [1] }),
       )
 
       return {
