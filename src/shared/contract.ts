@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { AgentEvent, ModelInfo, ProviderId } from "./agent.ts"
-import { Locale, Project, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
+import { Locale, Project, PullRequestLink, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -77,6 +77,11 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String, event: AgentEvent }),
+  Schema.Struct({
+    type: Schema.Literal("thread.pullRequests"),
+    threadId: Schema.String,
+    links: Schema.Array(PullRequestLink),
+  }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

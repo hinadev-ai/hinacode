@@ -105,3 +105,11 @@ export const defaultSettings: Settings = {
   keybindings: {},
   defaultModel: { claude: null, codex: null },
 }
+
+export const PullRequestLink = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  url: Schema.String,
+  createdAt: Timestamp,
+})
+export type PullRequestLink = typeof PullRequestLink.Type
