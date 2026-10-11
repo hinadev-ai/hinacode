@@ -12,6 +12,7 @@ import {
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Messages } from "./services/Messages.ts"
 import { McpServer } from "./mcp/index.ts"
+import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { Secrets } from "./services/Secrets.ts"
@@ -19,7 +20,17 @@ import { Settings } from "./services/Settings.ts"
 import { Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-type AppServices = Projects | Threads | Worktrees | Settings | Messages | AgentRunner | McpServer | PullRequests | Secrets
+type AppServices =
+  | Projects
+  | Threads
+  | Worktrees
+  | Settings
+  | Messages
+  | AgentRunner
+  | McpServer
+  | PullRequests
+  | Secrets
+  | Ports
 
 interface HandlerError {
   readonly _tag: string
@@ -81,6 +92,8 @@ const handlers: Handlers = {
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
   "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
+  "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
+  "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 }
 
 const RpcCall = Schema.Struct({

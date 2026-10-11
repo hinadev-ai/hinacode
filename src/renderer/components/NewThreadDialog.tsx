@@ -5,6 +5,7 @@ import { type FormEvent, startTransition, useActionState, useState } from "react
 import { ProviderId } from "../../shared/agent.ts"
 import type { Project } from "../../shared/domain.ts"
 import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -58,15 +59,17 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
   const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
   const [title, setTitle] = useState("")
   const [inWorktree, setInWorktree] = useState(false)
+  const { defaultModel } = useSettings()
+  const [provider, setProvider] = useState<ProviderId>("claude")
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
-    const provider = form.get("provider")
-    if (!isProviderId(provider)) return String(provider)
+    const chosen = form.get("provider")
+    if (!isProviderId(chosen)) return String(chosen)
     try {
       const thread = await callPromise("threads.create", {
         projectId,
         title: title.trim(),
-        provider,
+        provider: chosen,
         model: String(form.get("model") ?? "").trim(),
         worktree: inWorktree
           ? { branch: String(form.get("branch") ?? "").trim(), baseRef: String(form.get("baseRef") ?? "").trim() }
@@ -102,15 +105,20 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
         </Field>
         <Field>
           <FieldLabel htmlFor="thread-provider">{m.thread_provider_label()}</FieldLabel>
-          <Select name="provider" items={providers} defaultValue="claude">
+          <Select
+            name="provider"
+            items={providers}
+            value={provider}
+            onValueChange={(next) => isProviderId(next) && setProvider(next)}
+          >
             <SelectTrigger id="thread-provider" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {providers.map((provider) => (
-                <SelectItem key={provider.value} value={provider.value}>
-                  <ProviderIcon provider={provider.value} />
-                  {provider.label}
+              {providers.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  <ProviderIcon provider={item.value} />
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -118,9 +126,12 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
         </Field>
         <Field>
           <FieldLabel htmlFor="thread-model">{m.thread_model_label()}</FieldLabel>
+          {/* Keyed so switching agent swaps in that agent's default model. */}
           <Input
+            key={provider}
             id="thread-model"
             name="model"
+            defaultValue={defaultModel[provider] ?? ""}
             required
             placeholder={m.thread_model_placeholder()}
             spellCheck={false}

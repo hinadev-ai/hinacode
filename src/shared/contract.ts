@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
 import {
-  Locale, Message,
+  Locale, Message, OpenPort,
   Project,
   PullRequestState,
 PullRequestLink,
@@ -107,6 +107,9 @@ export const RpcMethods = {
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
   /** The built-in MCP server URL handed to agents running in this thread. */
   "mcp.url": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
+
+  "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
+  "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
 }
 
 export type RpcMethod = keyof typeof RpcMethods

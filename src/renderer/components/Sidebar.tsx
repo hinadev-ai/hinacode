@@ -2,7 +2,6 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -10,33 +9,55 @@ import {
   RiFolderAddLine,
   RiGitBranchLine,
   RiSettings3Line,
+  RiSideBarFill,
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
+import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { useUi } from "../stores/ui.ts"
 import { AddProjectDialog } from "./AddProjectDialog.tsx"
+import { ChordKeys } from "./ChordKeys.tsx"
 import { NewThreadDialog } from "./NewThreadDialog.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
+/** Stays mounted while hidden so its dialogs, opened by keybindings, still render. */
 export function Sidebar() {
-  const [addProjectOpen, setAddProjectOpen] = useState(false)
+  const sidebarOpen = useUi((state) => state.sidebarOpen)
+  const toggleSidebar = useUi((state) => state.toggleSidebar)
+  const addProjectOpen = useUi((state) => state.addProjectOpen)
+  const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
+  const hideChord = useKeymap()["sidebar.toggle"]
 
   return (
     <nav
       aria-label={m.sidebar_label()}
+      hidden={!sidebarOpen}
       className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
     >
-      <header className="flex h-12 items-center justify-between px-3">
-        <span className="font-heading text-sm font-semibold">{m.app_name()}</span>
+      <header className="flex h-12 items-center gap-0.5 pr-2 pl-3">
+        <span className="mr-auto font-heading text-sm font-semibold">{m.app_name()}</span>
         <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
           <RiSettings3Line aria-hidden />
         </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} onClick={toggleSidebar} />}
+          >
+            <RiSideBarFill aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {m.sidebar_hide()}
+            {hideChord && <ChordKeys chord={hideChord} />}
+          </TooltipContent>
+        </Tooltip>
       </header>
 
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
@@ -97,7 +118,9 @@ function ProjectList({ onAddProject }: { onAddProject: () => void }) {
 
 function ProjectGroup({ project }: { project: Project }) {
   const threads = useThreads(useShallow(selectProjectThreads(project.id)))
-  const [newThreadOpen, setNewThreadOpen] = useState(false)
+  const newThreadOpen = useUi((state) => state.newThreadProjectId === project.id)
+  const setNewThreadProjectId = useUi((state) => state.setNewThreadProjectId)
+  const setNewThreadOpen = (open: boolean) => setNewThreadProjectId(open ? project.id : null)
   const [threadListRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
 
   return (

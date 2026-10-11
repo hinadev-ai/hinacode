@@ -131,3 +131,12 @@ export const PullRequestLink = Schema.Struct({
   createdAt: Timestamp,
 })
 export type PullRequestLink = typeof PullRequestLink.Type
+/** A listening TCP port and the process that owns it. */
+export const OpenPort = Schema.Struct({
+  port: Schema.Number,
+  pid: Schema.Number,
+  command: Schema.String,
+  /** Null when the process belongs to another user. */
+  cwd: Schema.NullOr(Schema.String),
+})
+export type OpenPort = typeof OpenPort.Type

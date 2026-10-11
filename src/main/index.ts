@@ -11,6 +11,7 @@ import * as Messages from "./services/Messages.ts"
 import * as Events from "./services/Events.ts"
 import * as Git from "./services/Git.ts"
 import * as Mcp from "./mcp/index.ts"
+import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -22,20 +23,20 @@ app.setName("kkcode")
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
 
-const makeAppLayer = (dbPath: string) =>
-  AgentRunner.layer.pipe(
-    Layer.provideMerge(
-      Layer.mergeAll(
-        Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-        Settings.layer,
-        Messages.layer,
-        Mcp.layer,
-      ),
-    ),
+const makeAppLayer = (dbPath: string) => {
+  const domain = Layer.mergeAll(
+    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
+    Settings.layer,
+    Messages.layer,
+  )
+  const features = Layer.mergeAll(Mcp.layer, Ports.layer).pipe(Layer.provide(domain))
+  return AgentRunner.layer.pipe(
+    Layer.provideMerge(Layer.mergeAll(domain, features)),
     Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, Events.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
+}
 
 const createWindow = () => {
   const window = new BrowserWindow({
