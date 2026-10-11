@@ -1,8 +1,9 @@
 import { useEffect } from "react"
-import type { Thread, ThreadStatus } from "../../shared/domain.ts"
+import { isThreadBusy, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
@@ -52,9 +53,15 @@ function Transcript({ thread }: { thread: Thread }) {
     // streaming in have something to fold into.
     return () => {
       const status = useThreads.getState().byId[thread.id]?.status
-      if (status !== "running" && status !== "awaiting_approval") unload(thread.id)
+      if (status === undefined || !isThreadBusy(status)) unload(thread.id)
     }
   }, [load, unload, thread.id])
+
+  // The Retry button disappears into the loading state, so focus moves on before it does.
+  const retry = () => {
+    useUi.getState().requestComposerFocus()
+    void load(thread.id)
+  }
 
   if (history === undefined || history.status === "loading") {
     return <p className="m-auto text-sm text-muted-foreground">{m.thread_loading()}</p>
@@ -63,7 +70,7 @@ function Transcript({ thread }: { thread: Thread }) {
     return (
       <div role="alert" className="m-auto flex flex-col items-center gap-2">
         <p className="text-sm text-destructive">{m.thread_load_failed({ message: history.message })}</p>
-        <Button variant="outline" size="sm" onClick={() => void load(thread.id)}>
+        <Button variant="outline" size="sm" onClick={retry}>
           {m.common_retry()}
         </Button>
       </div>

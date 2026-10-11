@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron"
-import { Cause, Effect, type ManagedRuntime, Schema } from "effect"
+import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import {
   PushEvent,
@@ -9,9 +9,11 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
+import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
-import { Messages } from "./services/Messages.ts"
+import { Events } from "./services/Events.ts"
+import { Automations } from "./services/automations/Automations.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
@@ -26,13 +28,13 @@ type AppServices =
   | Threads
   | Worktrees
   | Settings
-  | Messages
   | AgentRunner
   | McpServer
   | PullRequests
   | Secrets
   | Ports
   | Attachments
+  | Automations
 
 interface HandlerError {
   readonly _tag: string
@@ -55,7 +57,7 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": (input) => Threads.use((threads) => threads.create(input)),
   "threads.update": (input) => Threads.use((threads) => threads.update(input)),
-  "threads.delete": ({ id }) => Threads.use((threads) => threads.remove(id)),
+  "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
@@ -80,7 +82,7 @@ const handlers: Handlers = {
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
 
-  "messages.list": ({ threadId }) => Messages.use((messages) => messages.list(threadId)),
+  "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
   "threads.send": ({ threadId, prompt, attachments = [] }) =>
     AgentRunner.use((runner) => runner.send(threadId, prompt, attachments)),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
@@ -88,19 +90,16 @@ const handlers: Handlers = {
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
-  "approvals.pending": ({ threadId }) => AgentRunner.use((runner) => runner.pendingApprovals(threadId)),
 
-  // mcp
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
-  "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
+  "mcp.connection": ({ threadId }) => McpServer.useSync((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 
-  // attachments
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "dialog.pickFiles": (_, sender) =>
     Effect.promise(async () => {
@@ -109,6 +108,14 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? [] : result.filePaths
     }),
+
+  "automations.list": () => Automations.use((automations) => automations.list),
+  "automations.create": (input) => Automations.use((automations) => automations.create(input)),
+  "automations.update": (input) => Automations.use((automations) => automations.update(input)),
+  "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
+  "automations.runNow": ({ id, payload }) => Automations.use((automations) => automations.runNow(id, payload)),
+  "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
+  "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 }
 
 const RpcCall = Schema.Struct({
@@ -137,12 +144,28 @@ const dispatch = (raw: unknown, sender: WebContents): Effect.Effect<RpcEnvelope<
     ),
   )
 
-export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>) => {
-  ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) => runtime.runPromise(dispatch(raw, event.sender)))
+const untrustedSender: RpcEnvelope<never> = {
+  error: { tag: "UntrustedSender", message: "RPC is only available to the kkcode window" },
+}
+
+/** `appUrl` is the renderer document; RPC from any other document or from a subframe is refused. */
+export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
+  ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
+    isTrustedSender(event.senderFrame, appUrl)
+      ? runtime.runPromise(dispatch(raw, event.sender))
+      : Promise.resolve(untrustedSender),
+  )
 }
 
 const encodePushEvent = Schema.encodeSync(PushEvent)
 
-export const pushEvent = (webContents: WebContents, event: PushEvent) => {
-  webContents.send(EVENT_CHANNEL, encodePushEvent(event))
-}
+export const eventsLayer = Layer.succeed(
+  Events,
+  Events.of({
+    publish: (event) =>
+      Effect.sync(() => {
+        const encoded = encodePushEvent(event)
+        for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
+      }),
+  }),
+)

@@ -10,7 +10,7 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree"]),
+  entity: Schema.Literals(["project", "thread", "worktree", "automation"]),
   id: Schema.String,
 }) {
   override get message(): string {
@@ -31,6 +31,32 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
 }) {
   override get message(): string {
     return `${this.rootPath} is not a directory`
+  }
+}
+
+/** A thread asked for a branch whose checkout another thread already owns. */
+export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()("WorktreeTakenError", {
+  branch: Schema.String,
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `Branch ${this.branch} already has a worktree at ${this.path}`
+  }
+}
+
+const busyReasons = {
+  setup: "its setup script is still running",
+  turn: "a thread is still running in it",
+  shared: "another thread still uses it",
+} as const
+
+/** Removing the worktree now would delete files something is still working on. */
+export class WorktreeBusyError extends Schema.TaggedError<WorktreeBusyError>()("WorktreeBusyError", {
+  path: Schema.String,
+  reason: Schema.Literals(["setup", "turn", "shared"]),
+}) {
+  override get message(): string {
+    return `Cannot remove ${this.path}: ${busyReasons[this.reason]}`
   }
 }
 

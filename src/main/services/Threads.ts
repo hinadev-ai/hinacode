@@ -4,7 +4,13 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
 import { Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
-import { NotFoundError, type PersistenceError, persistence } from "./errors.ts"
+import {
+  NotFoundError,
+  type PersistenceError,
+  persistence,
+  type WorktreeBusyError,
+  type WorktreeTakenError,
+} from "./errors.ts"
 import type { CommandError } from "./Git.ts"
 import { Projects } from "./Projects.ts"
 import { Worktrees } from "./Worktrees.ts"
@@ -16,6 +22,8 @@ export interface CreateThread {
   readonly model: string
   /** Creates a worktree for the thread first; the thread points at it while its setup script runs. */
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
+  /** Defaults to `user`. */
+  readonly createdBy?: string | undefined
 }
 
 export interface UpdateThread {
@@ -32,13 +40,19 @@ export class Threads extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    /** The directory a thread's agent runs in: its worktree, or the project root when it has none. */
-    readonly resolveCwd: (id: string) => Effect.Effect<string, PersistenceError | NotFoundError>
-    readonly create: (input: CreateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
+    readonly create: (
+      input: CreateThread,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     /** Marks the thread settled and removes its worktree, deleting the branch only if it is merged. */
-    readonly settle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
-    readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    readonly settle: (
+      id: string,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
+    /** `removeWorktree` first removes the thread's worktree the way settling does. */
+    readonly remove: (
+      id: string,
+      options?: { readonly removeWorktree?: boolean | undefined },
+    ) => Effect.Effect<void, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
     /** Turns do not survive a restart, so threads left mid-turn by a crash go back to idle. */
     readonly resetInterrupted: Effect.Effect<void, PersistenceError>
   }
@@ -77,7 +91,7 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const create = ({ worktree: worktreeInput, ...input }: CreateThread) =>
+  const create = ({ worktree: worktreeInput, createdBy = "user", ...input }: CreateThread) =>
     Effect.gen(function* () {
       yield* projects.get(input.projectId)
       const worktree = worktreeInput
@@ -92,23 +106,12 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         status: "idle",
         sortIndex: next,
+        createdBy,
         createdAt: now,
         updatedAt: now,
       }
       yield* sql`INSERT INTO thread ${sql.insert(thread)}`.pipe(Effect.mapError(persistence("threads.create")))
       return thread
-    })
-
-  // Removing a worktree keeps `thread.worktreeId` pointing at the removed row so the history still
-  // shows where the thread ran. From then on the thread runs in the project root.
-  const resolveCwd = (id: string) =>
-    Effect.gen(function* () {
-      const thread = yield* get(id)
-      if (thread.worktreeId) {
-        const worktree = yield* worktrees.get(thread.worktreeId)
-        if (worktree.status !== "removed") return worktree.path
-      }
-      return (yield* projects.get(thread.projectId)).rootPath
     })
 
   const update = (input: UpdateThread) =>
@@ -133,25 +136,28 @@ const make = Effect.gen(function* () {
       return next
     })
 
+  const removeOwnWorktree = (thread: Thread) =>
+    thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
+
   const settle = (id: string) =>
     Effect.gen(function* () {
-      const thread = yield* get(id)
-      if (thread.worktreeId) {
-        const worktree = yield* worktrees.get(thread.worktreeId)
-        if (worktree.status !== "removed") yield* worktrees.remove(worktree.id, "ifMerged")
-      }
+      yield* removeOwnWorktree(yield* get(id))
       return yield* update({ id, status: "settled" })
+    })
+
+  const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
+    Effect.gen(function* () {
+      if (options?.removeWorktree) yield* removeOwnWorktree(yield* get(id))
+      yield* sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.mapError(persistence("threads.delete")))
     })
 
   return Threads.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("threads.list"))),
     get,
-    resolveCwd,
     create,
     update,
     settle,
-    remove: (id) =>
-      sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.asVoid, Effect.mapError(persistence("threads.delete"))),
+    remove,
     resetInterrupted: sql`
       UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')
     `.pipe(Effect.asVoid, Effect.mapError(persistence("threads.resetInterrupted"))),

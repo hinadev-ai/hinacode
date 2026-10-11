@@ -1,21 +1,32 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useState, useTransition } from "react"
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
 import type { ModelInfo } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import type { Attachment, Thread } from "../../shared/domain.ts"
+import type { Thread } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, modelsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
+import { emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-
-const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -39,26 +50,26 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread }: { thread: Thread }) {
-  const [draft, setDraft] = useState("")
-  const [attachments, setAttachments] = useState<ReadonlyArray<Attachment>>([])
+  const { text, attachments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const canSend = (draft.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
+  const canSend = (text.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
 
   const send = () => {
-    const prompt = draft.trim()
     if (!canSend) return
+    const sent = useDrafts.getState().take(thread.id)
+    const prompt = sent.text.trim()
     setError(null)
     startSending(async () => {
       try {
         await (busy
-          ? callPromise("threads.steer", { threadId: thread.id, text: prompt, attachments })
-          : callPromise("threads.send", { threadId: thread.id, prompt, attachments }))
-        setDraft("")
-        setAttachments([])
+          ? callPromise("threads.steer", { threadId: thread.id, text: prompt, attachments: sent.attachments })
+          : callPromise("threads.send", { threadId: thread.id, prompt, attachments: sent.attachments }))
       } catch (cause) {
+        useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
       }
     })
@@ -72,7 +83,7 @@ export function Composer({ thread }: { thread: Thread }) {
         sources.map(async (source) => callPromise("attachments.stage", { threadId: thread.id, source: await source })),
       )
       const staged = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
-      setAttachments((current) => [...current, ...staged])
+      useDrafts.getState().addAttachments(thread.id, staged)
       const failed = results.find((result) => result.status === "rejected")
       if (failed) setError(errorMessage(failed.reason))
     })
@@ -104,6 +115,19 @@ export function Composer({ thread }: { thread: Thread }) {
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
+  const interruptIfBusy = useEffectEvent(() => {
+    if (busy) stop()
+  })
+
+  useEffect(
+    () =>
+      useUi.subscribe((state, previous) => {
+        if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
+        if (state.interruptRequest !== previous.interruptRequest) interruptIfBusy()
+      }),
+    [],
+  )
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     send()
@@ -125,17 +149,18 @@ export function Composer({ thread }: { thread: Thread }) {
               <li key={attachment.id}>
                 <PendingAttachment
                   attachment={attachment}
-                  onRemove={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                  onRemove={() => useDrafts.getState().removeAttachment(thread.id, attachment.id)}
                 />
               </li>
             ))}
           </ul>
         )}
         <Textarea
+          ref={textareaRef}
           aria-label={m.thread_composer_label()}
           placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          value={text}
+          onChange={(event) => useDrafts.getState().setText(thread.id, event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onDragOver={onDragOver}
@@ -157,7 +182,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </div>
         </div>
       </div>
-      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
     </form>
   )
 }

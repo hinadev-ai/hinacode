@@ -1,9 +1,9 @@
 import { readdir, readFile, readlink } from "node:fs/promises"
 import { sep } from "node:path"
-import { Context, Effect, Layer, Option, Schema } from "effect"
-import { SqlClient, SqlSchema } from "effect/sql"
+import { Context, Effect, Layer, Schema } from "effect"
 import type { OpenPort } from "../../shared/domain.ts"
-import { NotFoundError, type PersistenceError, persistence } from "./errors.ts"
+import type { NotFoundError, PersistenceError } from "./errors.ts"
+import { makeActiveWorkspace } from "./workspace.ts"
 
 export class PortsError extends Schema.TaggedError<PortsError>()("PortsError", {
   message: Schema.String,
@@ -16,9 +16,17 @@ export interface ProcFs {
   readonly readlink: (path: string) => Promise<string>
 }
 
-export interface ListeningProcess extends OpenPort {
+/** A live process before its file descriptors are read. */
+export interface ProcessInfo {
+  readonly pid: number
+  readonly command: string
+  readonly cwd: string | null
   /** Parent pids from the direct parent up to (excluding) init. */
   readonly ancestors: ReadonlyArray<number>
+}
+
+export interface ListeningProcess extends ProcessInfo {
+  readonly port: number
 }
 
 const TCP_LISTEN = "0A"
@@ -36,84 +44,115 @@ export const parseProcNetTcp = (text: string): Array<{ port: number; inode: stri
     }))
     .filter((socket) => Number.isInteger(socket.port))
 
-/** Reads /proc/<pid>/stat. The command name may contain spaces and parens, so split after the last ")". */
-const parentPid = (stat: string): number => Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1])
+// /proc/<pid>/stat is "<pid> (<comm>) <state> <ppid> ...". The command name may contain spaces and
+// parens, so it ends at the last ")".
+const commandOf = (stat: string) => stat.slice(stat.indexOf("(") + 1, stat.lastIndexOf(")"))
+const parentPidOf = (stat: string) => Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1])
 
-const optional = <A>(promise: Promise<A>): Promise<A | null> => promise.catch(() => null)
+const SCAN_CONCURRENCY = 32
+const MAX_ANCESTORS = 64
 
-const readAncestors = async (fs: ProcFs, pid: number): Promise<Array<number>> => {
-  const ancestors: Array<number> = []
-  let current = pid
-  // Bounded so a pid reused mid-walk cannot loop forever.
-  while (ancestors.length < 64) {
-    const stat = await optional(fs.readFile(`/proc/${current}/stat`))
-    if (stat === null) break
-    const parent = parentPid(stat)
-    if (!Number.isInteger(parent) || parent <= 1) break
-    ancestors.push(parent)
-    current = parent
-  }
-  return ancestors
-}
+/** Resolves to null when the file is gone or unreadable: processes exit mid-scan or belong to other users. */
+const optional = <A>(read: () => Promise<A>) => Effect.tryPromise(read).pipe(Effect.orElseSucceed(() => null))
+
+const readProcesses = (fs: ProcFs) =>
+  Effect.gen(function* () {
+    const names = yield* Effect.tryPromise({
+      try: () => fs.readdir("/proc"),
+      catch: (cause) => new PortsError({ message: `Could not read /proc: ${String(cause)}` }),
+    })
+    const pids = names.filter((name) => /^\d+$/.test(name)).map(Number)
+    const stats = yield* Effect.forEach(
+      pids,
+      (pid) =>
+        Effect.all({
+          stat: optional(() => fs.readFile(`/proc/${pid}/stat`)),
+          cwd: optional(() => fs.readlink(`/proc/${pid}/cwd`)),
+        }).pipe(Effect.map((read) => ({ pid, ...read }))),
+      { concurrency: SCAN_CONCURRENCY },
+    )
+    const live = stats.flatMap(({ pid, stat, cwd }) => (stat === null ? [] : [{ pid, stat, cwd }]))
+    const parentOf = new Map(live.map(({ pid, stat }) => [pid, parentPidOf(stat)]))
+    const ancestorsOf = (pid: number) => {
+      const ancestors: Array<number> = []
+      // Bounded so a pid reused between reads cannot form a cycle.
+      for (let parent = parentOf.get(pid); ancestors.length < MAX_ANCESTORS; parent = parentOf.get(parent)) {
+        if (parent === undefined || !Number.isInteger(parent) || parent <= 1) break
+        ancestors.push(parent)
+      }
+      return ancestors
+    }
+    return live.map(({ pid, stat, cwd }): ProcessInfo => ({
+      pid,
+      command: commandOf(stat),
+      cwd,
+      ancestors: ancestorsOf(pid),
+    }))
+  })
 
 /**
- * Every process that owns a listening TCP socket, one entry per (port, pid).
- * Processes this user cannot inspect are skipped.
+ * Every process passing `include` that owns a listening TCP socket, one entry per (port, pid). Only the
+ * included processes' file descriptors are read, so the cost follows the process count, not the host's
+ * descriptor count. Processes this user cannot inspect are skipped.
  */
-export const findListeningPorts = async (fs: ProcFs): Promise<Array<ListeningProcess>> => {
-  const tables = await Promise.all(["/proc/net/tcp", "/proc/net/tcp6"].map((path) => optional(fs.readFile(path))))
-  const portByInode = new Map(
-    tables.flatMap((text) => (text ? parseProcNetTcp(text) : [])).map((s) => [s.inode, s.port]),
-  )
-  if (portByInode.size === 0) return []
+export const findListeningPorts = (fs: ProcFs, include: (process: ProcessInfo) => boolean) =>
+  Effect.gen(function* () {
+    const tables = yield* Effect.forEach(["/proc/net/tcp", "/proc/net/tcp6"], (path) =>
+      optional(() => fs.readFile(path)),
+    )
+    const portByInode = new Map(
+      tables.flatMap((text) => (text ? parseProcNetTcp(text) : [])).map((s) => [s.inode, s.port]),
+    )
+    if (portByInode.size === 0) return []
 
-  const pids = (await fs.readdir("/proc")).filter((name) => /^\d+$/.test(name)).map(Number)
-  const owners = await Promise.all(
-    pids.map(async (pid) => {
-      const fds = (await optional(fs.readdir(`/proc/${pid}/fd`))) ?? []
-      const links = await Promise.all(fds.map((fd) => optional(fs.readlink(`/proc/${pid}/fd/${fd}`))))
-      const ports = new Set(
-        links.flatMap((link) => {
-          const port = portByInode.get(link?.match(/^socket:\[(\d+)\]$/)?.[1] ?? "")
-          return port === undefined ? [] : [port]
-        }),
-      )
-      return { pid, ports }
-    }),
-  )
-
-  const result = await Promise.all(
-    owners
-      .filter((owner) => owner.ports.size > 0)
-      .map(async ({ pid, ports }) => {
-        const [comm, cwd, ancestors] = await Promise.all([
-          optional(fs.readFile(`/proc/${pid}/comm`)),
-          optional(fs.readlink(`/proc/${pid}/cwd`)),
-          readAncestors(fs, pid),
-        ])
-        const command = comm?.trim() ?? ""
-        return [...ports].map((port) => ({ port, pid, command, cwd, ancestors }))
-      }),
-  )
-  return result.flat().toSorted((a, b) => a.port - b.port || a.pid - b.pid)
-}
+    const candidates = (yield* readProcesses(fs)).filter(include)
+    const descriptors = yield* Effect.forEach(
+      candidates,
+      (proc) =>
+        optional(() => fs.readdir(`/proc/${proc.pid}/fd`)).pipe(
+          Effect.map((fds) => (fds ?? []).map((fd) => ({ proc, fd }))),
+        ),
+      { concurrency: SCAN_CONCURRENCY },
+    )
+    const sockets = yield* Effect.forEach(
+      descriptors.flat(),
+      ({ proc, fd }) =>
+        optional(() => fs.readlink(`/proc/${proc.pid}/fd/${fd}`)).pipe(
+          Effect.map((link) => {
+            const port = portByInode.get(link?.match(/^socket:\[(\d+)\]$/)?.[1] ?? "")
+            return port === undefined ? [] : [{ ...proc, port }]
+          }),
+        ),
+      { concurrency: SCAN_CONCURRENCY },
+    )
+    const unique = new Map(sockets.flat().map((entry) => [`${entry.port}:${entry.pid}`, entry]))
+    return [...unique.values()].toSorted((a, b) => a.port - b.port || a.pid - b.pid)
+  })
 
 const isInside = (path: string, root: string) =>
   path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
-/** Keeps processes running in `workspacePath` or descending from one of `agentPids`. */
-export const attributeToWorkspace = (
-  processes: ReadonlyArray<ListeningProcess>,
-  { workspacePath, agentPids }: { readonly workspacePath: string; readonly agentPids: ReadonlySet<number> },
-): Array<OpenPort> =>
-  processes
-    .filter(
-      (proc) =>
-        (proc.cwd !== null && isInside(proc.cwd, workspacePath)) ||
-        agentPids.has(proc.pid) ||
-        proc.ancestors.some((pid) => agentPids.has(pid)),
-    )
-    .map(({ port, pid, command, cwd }) => ({ port, pid, command, cwd }))
+/**
+ * Whether a process runs in `workspacePath` or descends from one of `agentPids`. The agent CLIs and
+ * kkcode's own process tree (Electron helpers, the DevTools port) are never the user's servers, so they
+ * are left out even when their cwd is the workspace.
+ */
+export const belongsToWorkspace =
+  ({
+    workspacePath,
+    agentPids,
+    selfPid,
+  }: {
+    readonly workspacePath: string
+    readonly agentPids: ReadonlySet<number>
+    readonly selfPid: number
+  }) =>
+  (proc: ProcessInfo): boolean => {
+    if (proc.pid === selfPid || agentPids.has(proc.pid)) return false
+    if (proc.ancestors.some((pid) => agentPids.has(pid))) return true
+    if (proc.ancestors.includes(selfPid)) return false
+    return proc.cwd !== null && isInside(proc.cwd, workspacePath)
+  }
 
 const agentPidsByThread = new Map<string, Set<number>>()
 
@@ -160,57 +199,36 @@ export class Ports extends Context.Service<
   }
 >()("kkcode/Ports") {}
 
+const kill = (pid: number) =>
+  Effect.gen(function* () {
+    // Only processes that own a listening socket, so the renderer cannot signal arbitrary pids.
+    const listening = yield* findListeningPorts(procFs, (proc) => proc.pid === pid)
+    if (listening.length === 0) {
+      return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
+    }
+    if (!signal(pid, "SIGTERM")) return yield* new PortsError({ message: `Could not stop process ${pid}` })
+    yield* Effect.sleep(KILL_GRACE).pipe(
+      Effect.andThen(Effect.sync(() => signal(pid, 0) && signal(pid, "SIGKILL"))),
+      Effect.forkDetach,
+    )
+  })
+
 const make = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient
-
-  const findWorkspace = SqlSchema.findOneOption({
-    Request: Schema.String,
-    Result: Schema.Struct({ rootPath: Schema.String, worktreePath: Schema.NullOr(Schema.String) }),
-    execute: (threadId) => sql`
-      SELECT project.root_path, worktree.path AS worktree_path
-      FROM thread
-      JOIN project ON project.id = thread.project_id
-      LEFT JOIN worktree ON worktree.id = thread.worktree_id
-      WHERE thread.id = ${threadId}
-    `,
-  })
-
-  const scan = Effect.tryPromise({
-    try: () => findListeningPorts(procFs),
-    catch: (cause) => new PortsError({ message: `Could not read /proc: ${String(cause)}` }),
-  })
+  const activeWorkspace = yield* makeActiveWorkspace
 
   const listForThread = (threadId: string) =>
     Effect.gen(function* () {
       if (process.platform !== "linux") return []
-      const workspace = yield* findWorkspace(threadId).pipe(
-        Effect.mapError(persistence("ports.list")),
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new NotFoundError({ entity: "thread", id: threadId })),
-            onSome: Effect.succeed,
-          }),
-        ),
+      const workspace = yield* activeWorkspace(threadId)
+      const listening = yield* findListeningPorts(
+        procFs,
+        belongsToWorkspace({
+          workspacePath: workspace.cwd,
+          agentPids: agentPidsByThread.get(threadId) ?? new Set(),
+          selfPid: process.pid,
+        }),
       )
-      const processes = yield* scan
-      return attributeToWorkspace(processes, {
-        workspacePath: workspace.worktreePath ?? workspace.rootPath,
-        agentPids: agentPidsByThread.get(threadId) ?? new Set(),
-      })
-    })
-
-  const kill = (pid: number) =>
-    Effect.gen(function* () {
-      // Only processes that own a listening socket, so the renderer cannot signal arbitrary pids.
-      const processes = yield* scan
-      if (!processes.some((proc) => proc.pid === pid)) {
-        return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
-      }
-      if (!signal(pid, "SIGTERM")) return yield* new PortsError({ message: `Could not stop process ${pid}` })
-      yield* Effect.sleep(KILL_GRACE).pipe(
-        Effect.andThen(Effect.sync(() => signal(pid, 0) && signal(pid, "SIGKILL"))),
-        Effect.forkDetach,
-      )
+      return listening.map(({ port, pid, command, cwd }): OpenPort => ({ port, pid, command, cwd }))
     })
 
   return Ports.of({ listForThread, kill })
