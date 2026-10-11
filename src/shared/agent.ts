@@ -1,0 +1,74 @@
+import { Schema } from "effect"
+
+export const ProviderId = Schema.Literals(["claude", "codex"])
+export type ProviderId = typeof ProviderId.Type
+
+export const ModelInfo = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  provider: ProviderId,
+})
+export type ModelInfo = typeof ModelInfo.Type
+
+export const ApprovalKind = Schema.Literals(["tool", "command", "patch"])
+export type ApprovalKind = typeof ApprovalKind.Type
+
+export const ApprovalRequest = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  provider: ProviderId,
+  kind: ApprovalKind,
+  title: Schema.String,
+  detail: Schema.String,
+  input: Schema.optional(Schema.Unknown),
+})
+export type ApprovalRequest = typeof ApprovalRequest.Type
+
+export const ApprovalDecision = Schema.Literals(["allow", "allow_for_session", "deny"])
+export type ApprovalDecision = typeof ApprovalDecision.Type
+
+export const TokenUsage = Schema.Struct({
+  inputTokens: Schema.Number,
+  outputTokens: Schema.Number,
+  costUsd: Schema.optional(Schema.Number),
+})
+export type TokenUsage = typeof TokenUsage.Type
+
+export const AgentEvent = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("session_bound"), providerSessionId: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("text_delta"), text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("reasoning_delta"), text: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("tool_call_started"),
+    callId: Schema.String,
+    name: Schema.String,
+    input: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("tool_call_finished"),
+    callId: Schema.String,
+    output: Schema.Unknown,
+    isError: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("file_changed"),
+    path: Schema.String,
+    diff: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ type: Schema.Literal("approval_requested"), request: ApprovalRequest }),
+  Schema.Struct({ type: Schema.Literal("approval_resolved"), requestId: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
+  Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+])
+export type AgentEvent = typeof AgentEvent.Type
+
+export interface RunTurnInput {
+  readonly threadId: string
+  readonly prompt: string
+  readonly cwd: string
+  readonly model: string
+  /** Provider session or thread id from a previous turn, for resume. */
+  readonly resumeSessionId: string | null
+  /** Streamable HTTP URL of the built-in kkcode MCP server, scoped to this thread. */
+  readonly mcpServerUrl: string
+}
