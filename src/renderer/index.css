@@ -5,6 +5,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* A faster turn makes the same wait feel shorter. */
+  --animate-spin: spin 0.6s linear infinite;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
@@ -101,7 +118,8 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Focus rings draw this at 50% opacity, which still clears 3:1 against the background. */
+  --ring: oklch(0.8 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -114,7 +132,7 @@
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.8 0 0);
 }
 
 @layer base {
@@ -126,5 +144,25 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Press feedback for buttons and clickable rows. Menu triggers are left still so their popup anchors to a stable rect. */
+@utility pressable {
+  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out);
+  @media (prefers-reduced-motion: no-preference) {
+    &:active:not([aria-haspopup], :disabled) {
+      scale: 0.97;
+    }
+  }
+}
+
+/* Base UI popups enter and exit by scale and opacity. Reduced motion keeps the fade and drops the scale. */
+@media (prefers-reduced-motion: reduce) {
+  [data-starting-style],
+  [data-ending-style] {
+    scale: none !important;
   }
 }
