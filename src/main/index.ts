@@ -7,6 +7,7 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
+import { externalUrl, isAppDocument } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
@@ -58,6 +59,9 @@ const makeAppLayer = (dbPath: string) => {
 
 const QUIT_TIMEOUT_MS = 5000
 
+const appUrl =
+  process.env["ELECTRON_RENDERER_URL"] ?? pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href
+
 const createWindow = () => {
   const window = new BrowserWindow({
     width: 1280,
@@ -75,20 +79,24 @@ const createWindow = () => {
   })
   window.once("ready-to-show", () => window.show())
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    const external = externalUrl(url)
+    if (external) void shell.openExternal(external)
     return { action: "deny" }
   })
+  const stayInApp = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
+    if (!event.isMainFrame || !isAppDocument(event.url, appUrl)) event.preventDefault()
+  }
+  window.webContents.on("will-frame-navigate", stayInApp)
+  window.webContents.on("will-redirect", stayInApp)
 
-  const devServerUrl = process.env["ELECTRON_RENDERER_URL"]
-  if (devServerUrl) void window.loadURL(devServerUrl)
-  else void window.loadFile(join(import.meta.dirname, "../renderer/index.html"))
+  void window.loadURL(appUrl)
 }
 
 app.whenReady().then(async () => {
   const runtime = ManagedRuntime.make(makeAppLayer(join(app.getPath("userData"), "kkcode.sqlite")))
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
-  registerIpc(runtime)
+  registerIpc(runtime, appUrl)
   serveAttachments()
   let disposed = false
   app.on("before-quit", (event) => {

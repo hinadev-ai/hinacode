@@ -15,6 +15,7 @@ export interface CreateProject {
   readonly name: string
   readonly rootPath: string
   readonly setupScript: string | null
+  readonly trusted?: boolean | undefined
 }
 
 export interface UpdateProject {
@@ -22,6 +23,7 @@ export interface UpdateProject {
   readonly name?: string | undefined
   readonly rootPath?: string | undefined
   readonly setupScript?: string | null | undefined
+  readonly trusted?: boolean | undefined
 }
 
 type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError
@@ -37,6 +39,9 @@ export class Projects extends Context.Service<
   }
 >()("kkcode/Projects") {}
 
+const ProjectRow = Schema.Struct({ ...Project.fields, trusted: Schema.BooleanFromBit })
+const encodeRow = Schema.encodeEffect(ProjectRow)
+
 const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) =>
   SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
     ? new ProjectPathTakenError({ rootPath })
@@ -48,12 +53,12 @@ const make = Effect.gen(function* () {
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
-    Result: Project,
+    Result: ProjectRow,
     execute: () => sql`SELECT * FROM project ORDER BY created_at`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,
-    Result: Project,
+    Result: ProjectRow,
     execute: (id) => sql`SELECT * FROM project WHERE id = ${id}`,
   })
 
@@ -81,8 +86,15 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* ensureDirectory(input.rootPath)
       const now = yield* nowIso
-      const project: Project = { id: randomUUID(), ...input, createdAt: now, updatedAt: now }
-      yield* sql`INSERT INTO project ${sql.insert(project)}`.pipe(
+      const project: Project = {
+        id: randomUUID(),
+        ...input,
+        trusted: input.trusted ?? false,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const row = yield* encodeRow(project).pipe(Effect.mapError(persistence("projects.create")))
+      yield* sql`INSERT INTO project ${sql.insert(row)}`.pipe(
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
       return project
@@ -99,12 +111,15 @@ const make = Effect.gen(function* () {
         name: input.name ?? current.name,
         rootPath: input.rootPath ?? current.rootPath,
         setupScript: input.setupScript === undefined ? current.setupScript : input.setupScript,
+        trusted: input.trusted ?? current.trusted,
         updatedAt: yield* nowIso,
       }
+      const row = yield* encodeRow(next).pipe(Effect.mapError(persistence("projects.update")))
       yield* sql`
         UPDATE project
-        SET name = ${next.name}, root_path = ${next.rootPath}, setup_script = ${next.setupScript}, updated_at = ${next.updatedAt}
-        WHERE id = ${next.id}
+        SET name = ${row.name}, root_path = ${row.rootPath}, setup_script = ${row.setupScript},
+            trusted = ${row.trusted}, updated_at = ${row.updatedAt}
+        WHERE id = ${row.id}
       `.pipe(Effect.mapError(mapWriteError("projects.update", next.rootPath)))
       return next
     })

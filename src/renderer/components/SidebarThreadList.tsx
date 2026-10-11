@@ -41,6 +41,7 @@ import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
+import { useDrafts } from "../stores/drafts.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -394,6 +395,7 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
     }
     if (openThreadId === thread.id) await navigate({ to: "/" })
     useThreads.getState().remove(thread.id)
+    useDrafts.getState().discard(thread.id)
     return null
   }, null)
 

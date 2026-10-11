@@ -9,11 +9,11 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
+import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Events } from "./services/Events.ts"
 import { Automations } from "./services/automations/Automations.ts"
-import { Messages } from "./services/Messages.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
@@ -28,7 +28,6 @@ type AppServices =
   | Threads
   | Worktrees
   | Settings
-  | Messages
   | AgentRunner
   | McpServer
   | PullRequests
@@ -83,7 +82,7 @@ const handlers: Handlers = {
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
 
-  "messages.list": ({ threadId }) => Messages.use((messages) => messages.list(threadId)),
+  "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
   "threads.send": ({ threadId, prompt, attachments = [] }) =>
     AgentRunner.use((runner) => runner.send(threadId, prompt, attachments)),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
@@ -91,14 +90,13 @@ const handlers: Handlers = {
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
-  "approvals.pending": ({ threadId }) => AgentRunner.use((runner) => runner.pendingApprovals(threadId)),
 
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
-  "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
+  "mcp.connection": ({ threadId }) => McpServer.useSync((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 
@@ -146,8 +144,17 @@ const dispatch = (raw: unknown, sender: WebContents): Effect.Effect<RpcEnvelope<
     ),
   )
 
-export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>) => {
-  ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) => runtime.runPromise(dispatch(raw, event.sender)))
+const untrustedSender: RpcEnvelope<never> = {
+  error: { tag: "UntrustedSender", message: "RPC is only available to the kkcode window" },
+}
+
+/** `appUrl` is the renderer document; RPC from any other document or from a subframe is refused. */
+export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
+  ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
+    isTrustedSender(event.senderFrame, appUrl)
+      ? runtime.runPromise(dispatch(raw, event.sender))
+      : Promise.resolve(untrustedSender),
+  )
 }
 
 const encodePushEvent = Schema.encodeSync(PushEvent)

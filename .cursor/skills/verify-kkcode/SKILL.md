@@ -80,15 +80,15 @@ The renderer exposes `window.kkcode.rpc(method, payload)`. The method map with r
 $S/seed-repo.sh $DATA/repo                          # git repo on main + a gitignored .env
 $S/rpc.mjs $PORT projects.create "{\"name\":\"demo\",\"rootPath\":\"$DATA/repo\",\"setupScript\":null}"
 $S/rpc.mjs $PORT threads.create '{"projectId":"<id>","title":"t1","provider":"claude","model":"claude-sonnet-5-5"}'
-$S/rpc.mjs $PORT messages.list '{"threadId":"<id>"}'
-$S/rpc.mjs $PORT mcp.url '{"threadId":"<id>"}'
+$S/rpc.mjs $PORT threads.transcript '{"threadId":"<id>"}'
+$S/rpc.mjs $PORT mcp.connection '{"threadId":"<id>"}'
 ```
 
 Use rpc to seed preconditions and to read back side effects. Drive the behavior under test through the UI. Data created by rpc does not show up in an open window until `$AB reload`, because the renderer only refreshes its stores for its own calls and push events.
 
 Other helpers:
 
-- `$S/mcp-call.mjs <mcp-url> [tool] ['<json args>']` speaks MCP to the built-in server the way an agent does. Without a tool it lists them.
+- `$S/mcp-call.mjs '<connection json>' [tool] ['<json args>']` speaks MCP to the built-in server the way an agent does. Without a tool it lists them.
 - `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` posts a body signed with `X-KKCODE-Signature: sha256=<hmac>` and prints the response and status.
 
 ### Things CDP cannot do
@@ -108,7 +108,7 @@ Proof standards:
 
 - Exercise the real user path: clicks, typing and keyboard in the window, or the MCP and webhook endpoints that agents and senders use. rpc is for seeding and reading back, not for doing the thing under test.
 - Capture the action and the resulting state, not only the final screen: one shot before or during the action, one after.
-- Verify side effects next to what is visible: rows via `rpc.mjs` (`threads.list`, `messages.list`, `pullRequests.list`, `automations.runs`), files and branches with `git -C` and `ls`, processes with `ss -ltnp`.
+- Verify side effects next to what is visible: rows via `rpc.mjs` (`threads.list`, `threads.transcript`, `pullRequests.list`, `automations.runs`), files and branches with `git -C` and `ls`, processes with `ss -ltnp`.
 - Persistence claims need a second view: `stop.sh` plus `launch.sh --no-build`, then look again.
 - No mocks except where a boundary already isolates the outside world, such as a `gh` shim on `PATH` for GitHub.
 - Report every sub-feature you skipped and why. Do not count a different entry point as the one you skipped.
@@ -131,7 +131,7 @@ Agent CLIs keep their own transcripts (`~/.claude/projects/`, `~/.codex/sessions
 | `doctor.sh` | `$S/doctor.sh <port> <data>` | Read-only health check, exit 1 on any FAIL |
 | `rpc.mjs` | `$S/rpc.mjs <port> <method> ['<json>']` | Call `window.kkcode.rpc` over CDP |
 | `seed-repo.sh` | `$S/seed-repo.sh <dir>` | Throwaway git repo with a gitignored `.env` |
-| `mcp-call.mjs` | `$S/mcp-call.mjs <mcp-url> [tool] ['<json>']` | Act as an agent against the built-in MCP server |
+| `mcp-call.mjs` | `$S/mcp-call.mjs '<connection json>' [tool] ['<json>']` | Act as an agent against the built-in MCP server |
 | `webhook.sh` | `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` | Signed webhook delivery |
 | `stop.sh` | `$S/stop.sh <data>` | Stop the instance and keep its data for a relaunch |
 | `cleanup.sh` | `$S/cleanup.sh <port> <data> [ab-session]` | Stop, close the browser session, delete `<data>` |
