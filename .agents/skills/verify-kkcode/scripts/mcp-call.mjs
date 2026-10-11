@@ -28,13 +28,21 @@ const post = async (method, params, notification = false) => {
   if (!response.ok) throw new Error(`${method}: HTTP ${response.status} ${text}`)
   if (notification || text.trim() === "") return undefined
   const json = response.headers.get("content-type")?.includes("text/event-stream")
-    ? text.split("\n").filter((line) => line.startsWith("data:")).map((line) => JSON.parse(line.slice(5))).find((m) => m.id === message.id)
+    ? text
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => JSON.parse(line.slice(5)))
+        .find((m) => m.id === message.id)
     : JSON.parse(text)
   if (json.error) throw new Error(`${method}: ${JSON.stringify(json.error)}`)
   return json.result
 }
 
-await post("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "verify-kkcode", version: "0" } })
+await post("initialize", {
+  protocolVersion: "2025-06-18",
+  capabilities: {},
+  clientInfo: { name: "verify-kkcode", version: "0" },
+})
 await post("notifications/initialized", {}, true)
 if (!tool) {
   const { tools } = await post("tools/list", {})
