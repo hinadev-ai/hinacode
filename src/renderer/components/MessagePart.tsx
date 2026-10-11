@@ -87,6 +87,21 @@ function summarizeInput(input: unknown): string {
   return JSON.stringify(input)
 }
 
+/**
+ * Codex MCP calls carry the whole `mcpToolCall` item as input and only the bare tool as name, so
+ * name them `server/tool` and summarize their arguments rather than the item.
+ */
+function describeToolCall(part: Extract<MessagePart, { type: "tool_call" }>): { name: string; summary: string } {
+  const { input } = part
+  if (typeof input === "object" && input !== null && Reflect.get(input, "type") === "mcpToolCall") {
+    return {
+      name: `${String(Reflect.get(input, "server"))}/${String(Reflect.get(input, "tool"))}`,
+      summary: summarizeInput(Reflect.get(input, "arguments")),
+    }
+  }
+  return { name: part.name, summary: summarizeInput(input) }
+}
+
 /** Tool results are a string or a list of content blocks; only the text blocks are worth showing. */
 function formatOutput(output: unknown): string {
   if (typeof output === "string") return output
@@ -115,14 +130,14 @@ const statusLabel = {
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const Icon = toolIcons[part.name] ?? RiToolsLine
-  const summary = summarizeInput(part.input)
+  const { name, summary } = describeToolCall(part)
 
   return (
     <Collapsible className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">{part.name}</span>
+        <span className="shrink-0 font-medium text-foreground">{name}</span>
         <span className="min-w-0 flex-1 truncate font-mono" title={summary}>
           {summary}
         </span>

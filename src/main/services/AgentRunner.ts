@@ -93,7 +93,9 @@ const make = Effect.gen(function* () {
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
 
+  // Nothing runs at boot, so whatever a killed app left running is over.
   yield* threads.resetInterrupted
+  yield* messages.closeInterrupted
 
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 

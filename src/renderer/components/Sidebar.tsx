@@ -2,6 +2,7 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
+import { useRef } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -116,6 +117,7 @@ function ProjectGroup({ project }: { project: Project }) {
   const newThreadOpen = useUi((state) => state.newThreadProjectId === project.id)
   const setNewThreadProjectId = useUi((state) => state.setNewThreadProjectId)
   const setNewThreadOpen = (open: boolean) => setNewThreadProjectId(open ? project.id : null)
+  const newThreadButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
     <li>
@@ -135,9 +137,10 @@ function ProjectGroup({ project }: { project: Project }) {
             </span>
           </CollapsibleTrigger>
           <Button
+            ref={newThreadButtonRef}
             variant="ghost"
             size="icon-xs"
-            className="opacity-0 group-hover/project:opacity-100 focus-visible:opacity-100"
+            className="opacity-0 group-hover/project:opacity-100 focus:opacity-100"
             aria-label={m.sidebar_new_thread_in({ project: project.name })}
             onClick={() => setNewThreadOpen(true)}
           >
@@ -145,7 +148,7 @@ function ProjectGroup({ project }: { project: Project }) {
           </Button>
         </div>
         <CollapsibleContent>
-          <SidebarThreadList projectId={project.id} />
+          <SidebarThreadList projectId={project.id} newThreadButtonRef={newThreadButtonRef} />
         </CollapsibleContent>
       </Collapsible>
       <NewThreadDialog project={project} open={newThreadOpen} onOpenChange={setNewThreadOpen} />
