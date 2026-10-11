@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { NodeFileSystem } from "@effect/platform-node"
+import { NodeServices } from "@effect/platform-node"
 import { app, BrowserWindow, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
@@ -9,6 +9,8 @@ import { registerIpc } from "./ipc.ts"
 import * as Push from "./push.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Messages from "./services/Messages.ts"
+import * as Events from "./services/Events.ts"
+import * as Git from "./services/Git.ts"
 import * as Projects from "./services/Projects.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -24,15 +26,14 @@ const makeAppLayer = (dbPath: string) =>
   AgentRunner.layer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
-        Threads.layer.pipe(Layer.provideMerge(Projects.layer)),
-        Worktrees.layer,
+        Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
         Settings.layer,
         Messages.layer,
       ),
     ),
-    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Push.layer)),
+    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Push.layer, Git.layer, Events.layer)),
     Layer.provide(Db.layer(dbPath)),
-    Layer.provide(NodeFileSystem.layer),
+    Layer.provide(NodeServices.layer),
   )
 
 const createWindow = () => {

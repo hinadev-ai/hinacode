@@ -44,8 +44,9 @@ const resolveCodexBinary = (): string => {
 
 const toolName = (item: ThreadItem): string | undefined => {
   switch (item.type) {
+    // "Bash" matches Claude's tool name, so the row gets the terminal icon and summarizes `command`.
     case "commandExecution":
-      return item.command
+      return "Bash"
     case "mcpToolCall":
       return item.tool
     case "fileChange":
@@ -147,6 +148,7 @@ const make = Effect.gen(function* () {
 
         const commandOutput = new Map<string, string>()
         const startedTools = new Set<string>()
+        const openTools = new Set<string>()
         const approvalIdByRpcId = new Map<string | number, string>()
         let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
         let lastError: string | undefined
@@ -170,6 +172,7 @@ const make = Effect.gen(function* () {
           const name = toolName(item)
           if (name === undefined || startedTools.has(item.id)) return Effect.void
           startedTools.add(item.id)
+          openTools.add(item.id)
           return emit({ type: "tool_call_started", callId: item.id, name, input: item })
         }
 
@@ -179,6 +182,7 @@ const make = Effect.gen(function* () {
             yield* startTool(item)
             const result = toolResult(item, commandOutput.get(item.id))
             commandOutput.delete(item.id)
+            openTools.delete(item.id)
             yield* emit({ type: "tool_call_finished", callId: item.id, ...result })
             if (item.type === "fileChange" && item.status === "completed") {
               for (const change of item.changes)
@@ -295,6 +299,12 @@ const make = Effect.gen(function* () {
               case "turn/completed": {
                 const params = message.params as ServerNotificationParams[typeof method]
                 const { status, error } = params.turn
+                // An interrupted turn completes without item/completed for the tools it cut off.
+                for (const callId of openTools) {
+                  const output = commandOutput.get(callId) ?? `Turn ${status}`
+                  yield* emit({ type: "tool_call_finished", callId, output, isError: true })
+                }
+                openTools.clear()
                 yield* emit(
                   status === "completed"
                     ? { type: "turn_completed", usage }

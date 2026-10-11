@@ -1,8 +1,10 @@
+import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
-import { type FormEvent, startTransition, useActionState } from "react"
+import { AsyncResult } from "effect/reactivity"
+import { type FormEvent, startTransition, useActionState, useState } from "react"
 import { ProviderId } from "../../shared/agent.ts"
 import type { Project } from "../../shared/domain.ts"
-import { callPromise } from "../lib/rpc.ts"
+import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -16,9 +18,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx"
-import { Field, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import { Switch } from "./ui/switch.tsx"
 
 interface NewThreadDialogProps {
   readonly project: Project
@@ -43,9 +46,18 @@ export function NewThreadDialog({ project, open, onOpenChange }: NewThreadDialog
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 const isProviderId = (value: unknown): value is ProviderId => ProviderId.literals.some((id) => id === value)
 
+const slugify = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 40)
+    .replace(/^-+|-+$/g, "")
+
 function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated: () => void }) {
   const navigate = useNavigate()
   const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
+  const [title, setTitle] = useState("")
+  const [inWorktree, setInWorktree] = useState(false)
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const provider = form.get("provider")
@@ -53,9 +65,12 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
     try {
       const thread = await callPromise("threads.create", {
         projectId,
-        title: String(form.get("title") ?? "").trim(),
+        title: title.trim(),
         provider,
         model: String(form.get("model") ?? "").trim(),
+        worktree: inWorktree
+          ? { branch: String(form.get("branch") ?? "").trim(), baseRef: String(form.get("baseRef") ?? "").trim() }
+          : undefined,
       })
       useThreads.getState().upsert(thread)
       onCreated()
@@ -77,7 +92,13 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="thread-title">{m.thread_title_label()}</FieldLabel>
-          <Input id="thread-title" name="title" required placeholder={m.thread_title_placeholder()} />
+          <Input
+            id="thread-title"
+            required
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={m.thread_title_placeholder()}
+          />
         </Field>
         <Field>
           <FieldLabel htmlFor="thread-provider">{m.thread_provider_label()}</FieldLabel>
@@ -106,6 +127,14 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
             className="font-mono"
           />
         </Field>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor="thread-worktree">{m.thread_worktree_label()}</FieldLabel>
+            <FieldDescription>{m.thread_worktree_hint()}</FieldDescription>
+          </FieldContent>
+          <Switch id="thread-worktree" checked={inWorktree} onCheckedChange={setInWorktree} />
+        </Field>
+        {inWorktree && <WorktreeFields projectId={projectId} title={title} />}
       </FieldGroup>
       {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
       <DialogFooter>
@@ -115,5 +144,47 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+/** Branch and base ref inputs. Both follow their defaults until the user edits them. */
+function WorktreeFields({ projectId, title }: { projectId: string; title: string }) {
+  const currentBranch = useAtomValue(currentBranchAtom(projectId))
+  // Keeps titles without ASCII letters, such as Chinese ones, from all landing on the same branch.
+  const [fallbackSlug] = useState(() => `thread-${Math.random().toString(36).slice(2, 7)}`)
+  const [branch, setBranch] = useState<string | null>(null)
+  const [baseRef, setBaseRef] = useState<string | null>(null)
+
+  const defaultBranch = `kk/${slugify(title) || fallbackSlug}`
+  const defaultBaseRef = AsyncResult.getOrElse(currentBranch, () => "")
+
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor="thread-branch">{m.thread_branch_label()}</FieldLabel>
+        <Input
+          id="thread-branch"
+          name="branch"
+          required
+          value={branch ?? defaultBranch}
+          onChange={(event) => setBranch(event.target.value)}
+          spellCheck={false}
+          className="font-mono"
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="thread-base-ref">{m.thread_base_ref_label()}</FieldLabel>
+        <Input
+          id="thread-base-ref"
+          name="baseRef"
+          required
+          value={baseRef ?? defaultBaseRef}
+          onChange={(event) => setBaseRef(event.target.value)}
+          placeholder={m.thread_base_ref_placeholder()}
+          spellCheck={false}
+          className="font-mono"
+        />
+      </Field>
+    </>
   )
 }

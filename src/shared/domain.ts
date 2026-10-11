@@ -30,6 +30,24 @@ export const Worktree = Schema.Struct({
 })
 export type Worktree = typeof Worktree.Type
 
+export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted", "untracked"])
+export type ChangedFileStatus = typeof ChangedFileStatus.Type
+
+/** What a worktree changed since it forked from its base ref, committed or not. */
+export const WorktreeChanges = Schema.Struct({
+  baseRef: Schema.String,
+  files: Schema.Array(Schema.Struct({ path: Schema.String, status: ChangedFileStatus })),
+  /** One unified diff covering every file in `files`. */
+  patch: Schema.String,
+})
+export type WorktreeChanges = typeof WorktreeChanges.Type
+
+export const PullRequestState = Schema.Struct({
+  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+  url: Schema.String,
+})
+export type PullRequestState = typeof PullRequestState.Type
+
 export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "settled", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 

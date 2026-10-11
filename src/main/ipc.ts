@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, type WebContents } from "electron"
+import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron"
 import { Cause, Effect, type ManagedRuntime, Schema } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import {
@@ -42,6 +42,14 @@ const handlers: Handlers = {
   "threads.delete": ({ id }) => Threads.use((threads) => threads.remove(id)),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
+  "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
+  "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
+  "worktrees.changes": ({ id }) => Worktrees.use((worktrees) => worktrees.changes(id)),
+  "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
+  "worktrees.mergedState": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
+  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
+  "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
