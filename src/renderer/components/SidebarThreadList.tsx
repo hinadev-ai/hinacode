@@ -229,7 +229,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
             event.preventDefault()
             setMenuOpen(true)
           }}
-          className="flex items-center gap-2 rounded-md py-1 pr-2 pl-2 text-sm text-sidebar-foreground/80 outline-none group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+          className="flex cursor-grab items-center gap-2 rounded-md py-1 pr-2 pl-2 text-sm text-sidebar-foreground/80 outline-none group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
         >
           <ProviderIcon provider={thread.provider} />
           <span className="flex min-w-0 flex-1 flex-col">
@@ -332,20 +332,27 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
     }
   }
 
+  // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
-    <div className="flex flex-col gap-1 py-0.5">
-      <Input
-        ref={focusOnMount}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onFocus={(event) => event.target.select()}
-        onKeyDown={onKeyDown}
-        onBlur={() => void commit()}
-        aria-label={m.sidebar_thread_rename_label({ title: thread.title })}
-        aria-invalid={error !== null}
-        aria-describedby={error ? errorId : undefined}
-        className="h-7 text-sm"
-      />
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 py-1 pr-2 pl-2">
+        <ProviderIcon provider={thread.provider} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <Input
+            ref={focusOnMount}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onFocus={(event) => event.target.select()}
+            onKeyDown={onKeyDown}
+            onBlur={() => void commit()}
+            aria-label={m.sidebar_thread_rename_label({ title: thread.title })}
+            aria-invalid={error !== null}
+            aria-describedby={error ? errorId : undefined}
+            className="-ml-1.5 h-5 rounded-sm px-1.5 py-0 text-sm"
+          />
+          {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
+        </span>
+      </div>
       {error && (
         <p id={errorId} role="alert" className="px-1 text-xs text-destructive">
           {m.sidebar_rename_failed({ message: error })}
