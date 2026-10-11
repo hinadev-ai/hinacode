@@ -5,23 +5,44 @@ import { RiCheckboxCircleFill } from "react-icons/ri"
 import { callPromise, secretStoredAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
-
-const LINEAR_KEY = "linear.apiKey"
 
 export function IntegrationSettings() {
   return (
     <SettingsSection title={m.settings_integrations()}>
-      <LinearKeyField />
+      <FieldGroup>
+        <SecretField
+          name="linear.apiKey"
+          label={m.settings_linear_label()}
+          placeholder={m.settings_linear_placeholder()}
+          hint={m.settings_linear_hint()}
+        />
+        <SecretField
+          name="slack.token"
+          label={m.settings_slack_label()}
+          placeholder="xoxp-…"
+          hint={m.settings_slack_hint()}
+        />
+      </FieldGroup>
     </SettingsSection>
   )
 }
 
-function LinearKeyField() {
-  const stored = useAtomValue(secretStoredAtom(LINEAR_KEY))
-  const refreshStored = useAtomRefresh(secretStoredAtom(LINEAR_KEY))
+interface SecretFieldProps {
+  /** The Secrets name the main process reads. */
+  readonly name: string
+  readonly label: string
+  readonly placeholder: string
+  readonly hint: string
+}
+
+/** A write-only secret: it can be set, replaced or cleared, never read back. */
+function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
+  const inputId = `secret-${name.replace(/\W/g, "-")}`
+  const stored = useAtomValue(secretStoredAtom(name))
+  const refreshStored = useAtomRefresh(secretStoredAtom(name))
   const [draft, setDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -41,14 +62,14 @@ function LinearKeyField() {
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     run(async () => {
-      await callPromise("secrets.set", { name: LINEAR_KEY, value: draft.trim() })
+      await callPromise("secrets.set", { name, value: draft.trim() })
       setDraft("")
     })
   }
 
   return (
     <Field>
-      <FieldLabel htmlFor="linear-api-key">{m.settings_linear_label()}</FieldLabel>
+      <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
       <p aria-live="polite" className="flex items-center gap-1.5 text-sm">
         {AsyncResult.builder(stored)
           .onInitial(() => <span className="text-muted-foreground">{m.settings_linear_checking()}</span>)
@@ -67,11 +88,11 @@ function LinearKeyField() {
       </p>
       <form onSubmit={onSubmit} className="flex items-center gap-2">
         <Input
-          id="linear-api-key"
+          id={inputId}
           type="password"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder={m.settings_linear_placeholder()}
+          placeholder={placeholder}
           autoComplete="off"
           spellCheck={false}
           className="w-72 font-mono"
@@ -84,13 +105,13 @@ function LinearKeyField() {
             type="button"
             variant="ghost"
             disabled={pending}
-            onClick={() => run(() => callPromise("secrets.clear", { name: LINEAR_KEY }))}
+            onClick={() => run(() => callPromise("secrets.clear", { name }))}
           >
             {m.settings_linear_clear()}
           </Button>
         )}
       </form>
-      <FieldDescription>{m.settings_linear_hint()}</FieldDescription>
+      <FieldDescription>{hint}</FieldDescription>
       {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
     </Field>
   )

@@ -68,3 +68,27 @@ export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("se
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
 )
+
+const onAutomationRun = (listener: (automationId: string) => void) =>
+  onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
+
+/** Re-lists every 15s while subscribed so poll times stay current; a recorded run refreshes it at once. */
+export const automationsAtom = Atom.make((get) => {
+  get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
+  return Stream.fromEffectSchedule(call("automations.list", undefined), Schedule.spaced("15 seconds"))
+})
+
+export const automationRunsAtom = Atom.family((automationId: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(onAutomationRun((id) => id === automationId && get.refreshSelf()))
+    return call("automations.runs", { id: automationId, limit: 20 })
+  }),
+)
+
+/** Recomputed when settings change, since the URL follows the listener's bind host and port. */
+export const webhookUrlAtom = Atom.family((automationId: string) =>
+  Atom.make((get) => {
+    get(settingsAtom)
+    return call("automations.webhookUrl", { id: automationId })
+  }),
+)
