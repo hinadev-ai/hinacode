@@ -41,7 +41,7 @@ export function SettingsRoute() {
                   type="button"
                   aria-current={item.id === page?.id ? "page" : undefined}
                   onClick={() => setPageId(item.id)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-muted aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+                  className="pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-muted aria-[current=page]:font-medium aria-[current=page]:text-foreground"
                 >
                   <item.icon aria-hidden className="size-4 shrink-0" />
                   {item.label()}

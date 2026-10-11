@@ -1,4 +1,5 @@
 import { errorMessage } from "../../../lib/errorMessage.ts"
+import { cn } from "cn"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
@@ -29,6 +30,7 @@ import { SettingsSection } from "../SettingsSection.tsx"
 import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
+import { SkeletonList } from "../../ui/skeleton.tsx"
 
 const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
@@ -154,7 +156,9 @@ function AutomationList({ projects, onEdit }: AutomationListProps) {
   const refresh = useAtomRefresh(automationsAtom)
 
   return AsyncResult.builder(automations)
-    .onInitial(() => <p className="text-sm text-muted-foreground">{m.automations_loading()}</p>)
+    .onInitial(() => (
+      <SkeletonList label={m.automations_loading()} rows={2} rowClassName="h-24 rounded-lg" className="gap-3" />
+    ))
     .onSuccess((list) =>
       list.length === 0 ? (
         <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border px-6 py-10 text-center">
@@ -258,7 +262,10 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
         >
           <RiArrowDownSLine
             aria-hidden
-            className={expanded ? "rotate-180 transition-transform" : "transition-transform"}
+            className={cn(
+              "transition-transform duration-200 ease-out motion-reduce:transition-none",
+              expanded && "rotate-180",
+            )}
           />
           {m.automations_details()}
         </Button>
