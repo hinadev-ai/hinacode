@@ -201,8 +201,6 @@ const make = Effect.gen(function* () {
     return rows.map((row) => withLastRun(row, latest))
   }).pipe(Effect.mapError(persistence("automations.list")))
 
-  // Runs
-
   const publishRun = (runId: string) =>
     findRun(runId).pipe(
       Effect.flatMap((run) => Effect.as(events.publish({ type: "automation.run", run }), run)),
@@ -287,8 +285,6 @@ const make = Effect.gen(function* () {
       return yield* publishRun(runId)
     }).pipe(Effect.mapError(persistence("automations.trigger")))
 
-  // Polling
-
   const pollSource = (automation: AutomationRow, cursor: string): Effect.Effect<PollResult, PollError | Failure> => {
     const { trigger } = automation
     switch (trigger.type) {
@@ -370,8 +366,6 @@ const make = Effect.gen(function* () {
       ? Effect.asVoid(FiberMap.run(pollers, automation.id, pollLoop(automation.id)))
       : FiberMap.remove(pollers, automation.id)
 
-  // Webhook listener
-
   const listener = yield* FiberHandle.make()
   let listenError: string | null = null
 
@@ -413,8 +407,6 @@ const make = Effect.gen(function* () {
       )
     })
 
-  // Startup: converge the poll fibers and the listener on what the database and settings say.
-
   const initial = yield* settings.get
   let address = initial.automations
   yield* listen(address)
@@ -431,8 +423,6 @@ const make = Effect.gen(function* () {
   yield* Effect.flatMap(findRows(undefined), (rows) => Effect.forEach(rows, supervise, { discard: true })).pipe(
     Effect.catch((error) => Effect.logError("could not start automation pollers", error)),
   )
-
-  // Commands
 
   const create = (input: AutomationInput) =>
     Effect.gen(function* () {

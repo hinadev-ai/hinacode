@@ -74,9 +74,7 @@ function resolveClaudeExecutable(): string | undefined {
     try {
       const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim()
       if (path !== "") return path
-    } catch {
-      // try the next strategy
-    }
+    } catch {}
   }
   return undefined
 }
