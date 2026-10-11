@@ -9,6 +9,7 @@ import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
+import { useMessages } from "./stores/messages.ts"
 import { useThreads } from "./stores/threads.ts"
 
 const registry = AtomRegistry.make()
@@ -30,7 +31,14 @@ const [settings, threads] = await Promise.all([
 useLocale.getState().apply(settings.locale)
 useThreads.getState().replaceAll(threads)
 onPushEvent((event) => {
-  if (event.type === "thread.updated") useThreads.getState().upsert(event.thread)
+  switch (event.type) {
+    case "thread.updated":
+      return useThreads.getState().upsert(event.thread)
+    case "message.created":
+      return useMessages.getState().addMessage(event.message)
+    case "thread.event":
+      return useMessages.getState().applyEvent(event.threadId, event.event)
+  }
 })
 
 const root = document.getElementById("root")

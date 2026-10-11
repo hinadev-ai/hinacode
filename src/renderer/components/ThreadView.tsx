@@ -1,9 +1,12 @@
-import { RiSendPlaneLine } from "react-icons/ri"
+import { useEffect } from "react"
 import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
+import { useMessages } from "../stores/messages.ts"
+import { ApprovalCard } from "./ApprovalCard.tsx"
+import { Composer } from "./Composer.tsx"
+import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { Button } from "./ui/button.tsx"
-import { Textarea } from "./ui/textarea.tsx"
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex }
 
@@ -15,7 +18,6 @@ const statusLabel = {
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 
-/** Placeholder until the message list and agent runner land: header plus a disabled composer. */
 export function ThreadView({ thread }: { thread: Thread }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -26,30 +28,51 @@ export function ThreadView({ thread }: { thread: Thread }) {
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ProviderIcon provider={thread.provider} />
           {providerLabel[thread.provider]()}
-          <span aria-hidden>·</span>
-          <span className="font-mono">{thread.model}</span>
         </span>
         <span className="ml-auto rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
           {statusLabel[thread.status]()}
         </span>
       </header>
-
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{m.thread_empty()}</div>
-
-      <form className="shrink-0 border-t border-border p-3">
-        <div className="flex items-end gap-2 rounded-xl border border-input bg-input/30 p-2">
-          <Textarea
-            aria-label={m.thread_composer_label()}
-            placeholder={m.thread_composer_placeholder()}
-            disabled
-            rows={2}
-            className="min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 disabled:bg-transparent dark:bg-transparent dark:disabled:bg-transparent"
-          />
-          <Button type="submit" size="icon" disabled aria-label={m.thread_composer_send()}>
-            <RiSendPlaneLine aria-hidden />
-          </Button>
-        </div>
-      </form>
+      <Transcript thread={thread} />
+      <Composer thread={thread} />
     </div>
+  )
+}
+
+function Transcript({ thread }: { thread: Thread }) {
+  const history = useMessages((state) => state.byThread[thread.id])
+  const load = useMessages((state) => state.load)
+  const label = providerLabel[thread.provider]()
+
+  useEffect(() => {
+    void load(thread.id)
+  }, [load, thread.id])
+
+  if (history === undefined || history.status === "loading") {
+    return <p className="m-auto text-sm text-muted-foreground">{m.thread_loading()}</p>
+  }
+  if (history.status === "error") {
+    return (
+      <div role="alert" className="m-auto flex flex-col items-center gap-2">
+        <p className="text-sm text-destructive">{m.thread_load_failed({ message: history.message })}</p>
+        <Button variant="outline" size="sm" onClick={() => void load(thread.id)}>
+          {m.common_retry()}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <>
+      {history.messages.length === 0 ? (
+        <EmptyThread providerLabel={label} />
+      ) : (
+        <MessageList messages={history.messages} />
+      )}
+      <div className="px-4">
+        {history.approvals.map((request) => (
+          <ApprovalCard key={request.id} request={request} providerLabel={label} />
+        ))}
+      </div>
+    </>
   )
 }
