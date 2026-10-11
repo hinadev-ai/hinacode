@@ -3,12 +3,20 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
-import { RiAddLine, RiArrowRightSLine, RiFolder3Line, RiFolderAddLine, RiSettings3Line } from "react-icons/ri"
+import {
+  RiAddLine,
+  RiArrowRightSLine,
+  RiFolder3Line,
+  RiFolderAddLine,
+  RiGitBranchLine,
+  RiSettings3Line,
+} from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
+import { useWorktrees } from "../stores/worktrees.ts"
 import { AddProjectDialog } from "./AddProjectDialog.tsx"
 import { NewThreadDialog } from "./NewThreadDialog.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -132,8 +140,11 @@ function ProjectGroup({ project }: { project: Project }) {
                   className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-sidebar-foreground/80 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
                 >
                   <ProviderIcon provider={thread.provider} />
-                  <span className="truncate" title={thread.title}>
-                    {thread.title}
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate" title={thread.title}>
+                      {thread.title}
+                    </span>
+                    {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
                   </span>
                 </Link>
               </li>
@@ -143,5 +154,20 @@ function ProjectGroup({ project }: { project: Project }) {
       </Collapsible>
       <NewThreadDialog project={project} open={newThreadOpen} onOpenChange={setNewThreadOpen} />
     </li>
+  )
+}
+
+function WorktreeBranch({ worktreeId }: { worktreeId: string }) {
+  const worktree = useWorktrees((state) => state.byId[worktreeId])
+  if (!worktree) return null
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground data-[removed=true]:line-through"
+      data-removed={worktree.status === "removed"}
+      title={m.sidebar_worktree_branch({ branch: worktree.branch })}
+    >
+      <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
+      <span className="truncate font-mono">{worktree.branch}</span>
+    </span>
   )
 }
