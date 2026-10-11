@@ -1,9 +1,11 @@
 import { join } from "node:path"
-import { NodeFileSystem } from "@effect/platform-node"
+import { NodeServices } from "@effect/platform-node"
 import { app, BrowserWindow, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as Db from "./db/client.ts"
 import { registerIpc } from "./ipc.ts"
+import * as Events from "./services/Events.ts"
+import * as Git from "./services/Git.ts"
 import * as Projects from "./services/Projects.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -16,10 +18,10 @@ const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
 
 const makeAppLayer = (dbPath: string) =>
-  Layer.mergeAll(Threads.layer.pipe(Layer.provideMerge(Projects.layer)), Worktrees.layer, Settings.layer).pipe(
-    Layer.provide(Db.layer(dbPath)),
-    Layer.provide(NodeFileSystem.layer),
-  )
+  Layer.mergeAll(
+    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
+    Settings.layer,
+  ).pipe(Layer.provide([Git.layer, Events.layer]), Layer.provide(Db.layer(dbPath)), Layer.provide(NodeServices.layer))
 
 const createWindow = () => {
   const window = new BrowserWindow({

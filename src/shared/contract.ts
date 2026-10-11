@@ -1,6 +1,15 @@
 import { Schema } from "effect"
 import { AgentEvent, ModelInfo, ProviderId } from "./agent.ts"
-import { Locale, Project, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
+import {
+  Locale,
+  Project,
+  PullRequestState,
+  Settings,
+  Thread,
+  ThreadStatus,
+  Worktree,
+  WorktreeChanges,
+} from "./domain.ts"
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -24,7 +33,14 @@ export const RpcMethods = {
 
   "threads.list": rpc(Schema.Void, Schema.Array(Thread)),
   "threads.create": rpc(
-    Schema.Struct({ projectId: Schema.String, title: Schema.String, provider: ProviderId, model: Schema.String }),
+    Schema.Struct({
+      projectId: Schema.String,
+      title: Schema.String,
+      provider: ProviderId,
+      model: Schema.String,
+      /** Run the thread in a new worktree on `branch`, forked from `baseRef`. */
+      worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
+    }),
     Thread,
   ),
   "threads.update": rpc(
@@ -40,6 +56,24 @@ export const RpcMethods = {
   "threads.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "worktrees.list": rpc(Schema.Void, Schema.Array(Worktree)),
+  "worktrees.create": rpc(
+    Schema.Struct({ projectId: Schema.String, branch: Schema.String, baseRef: Schema.String }),
+    Worktree,
+  ),
+  /** `ifMerged` deletes the branch only when it is merged into the base ref; `force` always does. */
+  "worktrees.remove": rpc(
+    Schema.Struct({ id: Schema.String, deleteBranch: Schema.Literals(["keep", "ifMerged", "force"]) }),
+    Worktree,
+  ),
+  "worktrees.changes": rpc(Schema.Struct({ id: Schema.String }), WorktreeChanges),
+  "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** The branch's GitHub pull request via `gh`, or null when there is none. */
+  "worktrees.mergedState": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequestState)),
+  /** Marks the thread settled and removes its worktree. */
+  "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** Shows the path in the OS file manager. */
+  "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
   "settings.set": rpc(
