@@ -1,7 +1,8 @@
 import { useAtomSet } from "@effect/atom-react"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
 import { RiFolderOpenLine } from "react-icons/ri"
-import { callPromise, createProjectAtom } from "../lib/rpc.ts"
+import type { Project } from "../../shared/domain.ts"
+import { callPromise, createProjectAtom, updateProjectAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import {
@@ -18,21 +19,25 @@ import { Input } from "./ui/input.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 
-interface AddProjectDialogProps {
+interface ProjectDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
+  /** The project to edit. Without one the dialog adds a new project. */
+  readonly project?: Project
 }
 
-export function AddProjectDialog({ open, onOpenChange }: AddProjectDialogProps) {
+export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{m.project_dialog_title()}</DialogTitle>
-          <DialogDescription>{m.project_dialog_description()}</DialogDescription>
+          <DialogTitle>{project ? m.project_edit_title() : m.project_dialog_title()}</DialogTitle>
+          <DialogDescription>
+            {project ? m.project_edit_description({ project: project.name }) : m.project_dialog_description()}
+          </DialogDescription>
         </DialogHeader>
         {/* Inside the popup so the form state resets every time the dialog opens. */}
-        <AddProjectForm onCreated={() => onOpenChange(false)} />
+        <ProjectForm project={project} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
@@ -40,19 +45,24 @@ export function AddProjectDialog({ open, onOpenChange }: AddProjectDialogProps) 
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? ""
 
-function AddProjectForm({ onCreated }: { onCreated: () => void }) {
+function ProjectForm({ project, onSaved }: { project: Project | undefined; onSaved: () => void }) {
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
-  const [name, setName] = useState("")
-  const [rootPath, setRootPath] = useState("")
+  const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
+  const [name, setName] = useState(project?.name ?? "")
+  const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
-    const setupScript = String(form.get("setupScript") ?? "").trim()
+    const fields = {
+      name: name.trim(),
+      rootPath: rootPath.trim(),
+      setupScript: String(form.get("setupScript") ?? "").trim() || null,
+    }
     try {
-      await createProject({ name: name.trim(), rootPath: rootPath.trim(), setupScript: setupScript || null })
+      await (project ? updateProject({ id: project.id, ...fields }) : createProject(fields))
     } catch (cause) {
       return errorMessage(cause)
     }
-    onCreated()
+    onSaved()
     return null
   }, null)
 
@@ -108,6 +118,7 @@ function AddProjectForm({ onCreated }: { onCreated: () => void }) {
             id="project-setup"
             name="setupScript"
             rows={4}
+            defaultValue={project?.setupScript ?? ""}
             className="font-mono text-xs"
             placeholder={m.project_setup_placeholder()}
             spellCheck={false}
@@ -130,7 +141,7 @@ function AddProjectForm({ onCreated }: { onCreated: () => void }) {
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={isPending}>
-          {m.project_submit()}
+          {project ? m.project_save() : m.project_submit()}
         </Button>
       </DialogFooter>
     </form>

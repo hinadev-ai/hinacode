@@ -2,7 +2,7 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useRef } from "react"
+import { type RefObject, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -16,9 +16,10 @@ import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { useUi } from "../stores/ui.ts"
-import { AddProjectDialog } from "./AddProjectDialog.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { NewThreadDialog } from "./NewThreadDialog.tsx"
+import { ProjectDialog } from "./ProjectDialog.tsx"
+import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
@@ -32,6 +33,7 @@ export function Sidebar() {
   const addProjectOpen = useUi((state) => state.addProjectOpen)
   const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
   const hideChord = useKeymap()["sidebar.toggle"]
+  const addProjectButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
     <nav
@@ -60,6 +62,7 @@ export function Sidebar() {
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <h2 className="text-xs font-medium text-muted-foreground">{m.sidebar_projects()}</h2>
         <Button
+          ref={addProjectButtonRef}
           variant="ghost"
           size="icon-xs"
           aria-label={m.sidebar_add_project()}
@@ -70,15 +73,21 @@ export function Sidebar() {
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <ProjectList onAddProject={() => setAddProjectOpen(true)} />
+        <ProjectList onAddProject={() => setAddProjectOpen(true)} focusAfterDelete={addProjectButtonRef} />
       </ScrollArea>
 
-      <AddProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
+      <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
     </nav>
   )
 }
 
-function ProjectList({ onAddProject }: { onAddProject: () => void }) {
+interface ProjectListProps {
+  readonly onAddProject: () => void
+  /** Takes focus after a project is deleted. */
+  readonly focusAfterDelete: RefObject<HTMLElement | null>
+}
+
+function ProjectList({ onAddProject, focusAfterDelete }: ProjectListProps) {
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
@@ -98,7 +107,7 @@ function ProjectList({ onAddProject }: { onAddProject: () => void }) {
       ) : (
         <ul ref={listRef} className="flex flex-col gap-0.5 px-1.5 pb-3">
           {list.map((project) => (
-            <ProjectGroup key={project.id} project={project} />
+            <ProjectGroup key={project.id} project={project} focusAfterDelete={focusAfterDelete} />
           ))}
         </ul>
       ),
@@ -113,16 +122,29 @@ function ProjectList({ onAddProject }: { onAddProject: () => void }) {
     ))
 }
 
-function ProjectGroup({ project }: { project: Project }) {
+interface ProjectGroupProps {
+  readonly project: Project
+  readonly focusAfterDelete: RefObject<HTMLElement | null>
+}
+
+function ProjectGroup({ project, focusAfterDelete }: ProjectGroupProps) {
   const newThreadOpen = useUi((state) => state.newThreadProjectId === project.id)
   const setNewThreadProjectId = useUi((state) => state.setNewThreadProjectId)
   const setNewThreadOpen = (open: boolean) => setNewThreadProjectId(open ? project.id : null)
   const newThreadButtonRef = useRef<HTMLButtonElement>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <li>
       <Collapsible defaultOpen>
-        <div className="group/project flex items-center gap-0.5 rounded-md hover:bg-sidebar-accent">
+        <div
+          data-menu-open={menuOpen}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setMenuOpen(true)
+          }}
+          className="group/project flex items-center gap-0.5 rounded-md hover:bg-sidebar-accent data-[menu-open=true]:bg-sidebar-accent"
+        >
           <CollapsibleTrigger
             className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             aria-label={m.sidebar_toggle_project({ project: project.name })}
@@ -140,12 +162,19 @@ function ProjectGroup({ project }: { project: Project }) {
             ref={newThreadButtonRef}
             variant="ghost"
             size="icon-xs"
-            className="opacity-0 group-hover/project:opacity-100 focus:opacity-100"
+            className="opacity-0 group-hover/project:opacity-100 group-data-[menu-open=true]/project:opacity-100 focus:opacity-100"
             aria-label={m.sidebar_new_thread_in({ project: project.name })}
             onClick={() => setNewThreadOpen(true)}
           >
             <RiAddLine aria-hidden />
           </Button>
+          <ProjectMenu
+            project={project}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+            onNewThread={() => setNewThreadOpen(true)}
+            focusAfterDelete={focusAfterDelete}
+          />
         </div>
         <CollapsibleContent>
           <SidebarThreadList projectId={project.id} newThreadButtonRef={newThreadButtonRef} />
