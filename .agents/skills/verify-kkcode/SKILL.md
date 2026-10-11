@@ -10,7 +10,7 @@ kkcode is an Electron 44 app built with electron-vite. The surface a user touche
 All helpers live in `scripts/` next to this file. Run from the repo root and set these once per run:
 
 ```sh
-S=.cursor/skills/verify-kkcode/scripts
+S=.agents/skills/verify-kkcode/scripts
 PORT=9235                                   # CDP port, unique per instance
 DATA=/tmp/kk-verify-userdata                # KKCODE_USER_DATA, unique per instance, must start with /tmp/kk-
 SHOTS="$(git rev-parse --show-toplevel)/.context/shots"; mkdir -p "$SHOTS"
