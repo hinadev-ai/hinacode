@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Effect, Schedule, Schema, Stream } from "effect"
 import { Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
@@ -49,3 +49,8 @@ export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
 export const modelsAtom = Atom.family((provider: ProviderId) => Atom.make(call("models.list", { provider })))
 
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
+
+/** Re-lists the thread's open ports every 2s while something subscribes. */
+export const threadPortsAtom = Atom.family((threadId: string) =>
+  Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
+)
