@@ -6,6 +6,7 @@ import {
   type Options,
   type PermissionResult,
   type Query,
+  type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Deferred, Duration, Effect, Layer, Queue, Stream } from "effect"
@@ -37,6 +38,8 @@ interface Session extends MapState {
   sessionId: string | null
   turn: TurnQueue | null
   interrupted: boolean
+  /** Steer prompts sent during the current turn; each makes the CLI end its in-flight response with an aborted result. */
+  pendingSteers: number
   /** Turns whose consumer left before their result; their remaining messages must not reach the next turn. */
   abandonedTurns: number
 }
@@ -84,11 +87,17 @@ function approvalDetail(input: Record<string, unknown>): string {
   return typeof summary === "string" ? summary : JSON.stringify(input)
 }
 
-const userMessage = (prompt: string): SDKUserMessage => ({
+const userMessage = (prompt: string, priority?: SDKUserMessage["priority"]): SDKUserMessage => ({
   type: "user",
   message: { role: "user", content: prompt },
   parent_tool_use_id: null,
+  ...(priority === undefined ? {} : { priority }),
 })
+
+/** The CLI cuts the response short to pick up a `priority: "now"` prompt, then answers it under a new result. */
+const isSteerAbort = (message: SDKMessage) =>
+  message.type === "result" &&
+  (message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools")
 
 export const layer = Layer.effect(
   ClaudeProvider,
@@ -174,6 +183,11 @@ export const layer = Layer.effect(
               if (message.type === "result") session.abandonedTurns--
               return
             }
+            if (session.pendingSteers > 0 && !session.interrupted && isSteerAbort(message)) {
+              session.pendingSteers--
+              return
+            }
+            if (message.type === "result") session.pendingSteers = 0
             if (message.type === "system" && message.subtype === "init") {
               session.sessionId = message.session_id
               lastSessionIds.set(session.threadId, message.session_id)
@@ -235,6 +249,7 @@ export const layer = Layer.effect(
           sessionId: resume ?? null,
           turn: null,
           interrupted: false,
+          pendingSteers: 0,
           abandonedTurns: 0,
         }
         sessions.set(input.threadId, session)
@@ -279,6 +294,7 @@ export const layer = Layer.effect(
           }
           session.turn = turn
           session.interrupted = false
+          session.pendingSteers = 0
           // A consumer that stops reading mid-turn means the turn should stop too.
           yield* Effect.addFinalizer(() =>
             session.turn === turn
@@ -291,6 +307,16 @@ export const layer = Layer.effect(
           yield* Queue.offer(session.prompts, userMessage(input.prompt))
         }),
       )
+
+    const steer = (threadId: string, text: string) =>
+      Effect.suspend(() => {
+        const session = sessions.get(threadId)
+        if (session?.turn == null) {
+          return Effect.fail(new AgentError({ provider: "claude", message: "No turn is running on this thread" }))
+        }
+        session.pendingSteers++
+        return Queue.offer(session.prompts, userMessage(text, "now"))
+      }).pipe(Effect.asVoid)
 
     const fetchModels = Effect.gen(function* () {
       const prompts = yield* Queue.unbounded<SDKUserMessage>()
@@ -319,6 +345,7 @@ export const layer = Layer.effect(
       id: "claude",
       listModels,
       runTurn,
+      steer,
       interrupt: (threadId) => {
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
