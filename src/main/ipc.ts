@@ -9,12 +9,14 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
+import { AgentRunner } from "./services/AgentRunner.ts"
+import { Messages } from "./services/Messages.ts"
 import { Projects } from "./services/Projects.ts"
 import { Settings } from "./services/Settings.ts"
 import { Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-type AppServices = Projects | Threads | Worktrees | Settings
+type AppServices = Projects | Threads | Worktrees | Settings | Messages | AgentRunner
 
 interface HandlerError {
   readonly _tag: string
@@ -44,8 +46,7 @@ const handlers: Handlers = {
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
 
-  // Filled in by the provider layer; the UI already calls it.
-  "models.list": () => Effect.succeed([]),
+  "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
 
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {
@@ -54,6 +55,13 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
+
+  "messages.list": ({ threadId }) => Messages.use((messages) => messages.list(threadId)),
+  "threads.send": ({ threadId, prompt }) => AgentRunner.use((runner) => runner.send(threadId, prompt)),
+  "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
+  "approvals.respond": ({ requestId, decision }) =>
+    AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
+  "approvals.pending": ({ threadId }) => AgentRunner.use((runner) => runner.pendingApprovals(threadId)),
 }
 
 const RpcCall = Schema.Struct({
