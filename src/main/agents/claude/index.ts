@@ -35,6 +35,8 @@ interface Session extends MapState {
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly sessionAllowedTools: Set<string>
+  /** Attachments live outside the cwd; reading them is what the user asked for, so it needs no approval. */
+  readonly attachmentPaths: Set<string>
   readonly query: Query
   model: string
   sessionId: string | null
@@ -180,6 +182,9 @@ export const layer = Layer.effect(
       options: Parameters<CanUseTool>[2],
     ): Promise<PermissionResult> => {
       if (session.sessionAllowedTools.has(toolName)) return { behavior: "allow", updatedInput: input }
+      if (toolName === "Read" && typeof input.file_path === "string" && session.attachmentPaths.has(input.file_path)) {
+        return { behavior: "allow", updatedInput: input }
+      }
       if (session.turn === null) return { behavior: "deny", message: "No active turn to approve this tool call" }
 
       const requestId = randomUUID()
@@ -285,6 +290,7 @@ export const layer = Layer.effect(
           abort,
           query: handle,
           sessionAllowedTools: new Set(),
+          attachmentPaths: new Set(),
           pendingEdits: new Map(),
           sessionId: resume ?? null,
           turn: null,
@@ -344,6 +350,7 @@ export const layer = Layer.effect(
                 }).pipe(Effect.andThen(interruptQuery(session)))
               : Effect.void,
           )
+          for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
           yield* Queue.offer(session.prompts, yield* userMessage(input.prompt, input.attachments))
         }),
       )
@@ -356,6 +363,7 @@ export const layer = Layer.effect(
           return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })
         }
         session.pendingSteers++
+        for (const attachment of attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
       })
 
