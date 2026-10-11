@@ -1,0 +1,340 @@
+import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
+import { Context, Deferred, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect"
+import type { AgentEvent, ApprovalDecision, ModelInfo, RunTurnInput, TokenUsage } from "../../../shared/agent.ts"
+import type { AgentError, AgentProvider } from "../provider.ts"
+import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
+import type {
+  ApprovalDecisionWire,
+  ModelListParams,
+  ModelListResponse,
+  ServerNotificationParams,
+  ServerRequestParams,
+  ThreadItem,
+  ThreadResumeParams,
+  ThreadStartParams,
+  ThreadStartResponse,
+  TurnInterruptParams,
+  TurnStartParams,
+  TurnStartResponse,
+} from "./protocol.ts"
+
+const CLIENT_VERSION = "0.1.0"
+
+const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
+  allow: "accept",
+  allow_for_session: "acceptForSession",
+  deny: "decline",
+}
+
+/** A packaged Electron app may not inherit the shell PATH (mise, Homebrew), so fall back to a login shell. */
+const resolveCodexBinary = (): string => {
+  const attempts: Array<[string, Array<string>]> = [
+    ["which", ["codex"]],
+    [process.env.SHELL ?? "/bin/sh", ["-ilc", "command -v codex"]],
+  ]
+  for (const [command, args] of attempts) {
+    try {
+      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim().split("\n").at(-1)
+      if (path) return path
+    } catch {}
+  }
+  return "codex"
+}
+
+const toolName = (item: ThreadItem): string | undefined => {
+  switch (item.type) {
+    case "commandExecution":
+      return item.command
+    case "mcpToolCall":
+      return item.tool
+    case "fileChange":
+      return "fileChange"
+    default:
+      return undefined
+  }
+}
+
+const toolResult = (item: ThreadItem, bufferedOutput: string | undefined): { output: unknown; isError: boolean } => {
+  switch (item.type) {
+    case "commandExecution":
+      return {
+        output: item.aggregatedOutput ?? bufferedOutput ?? item.status,
+        isError: item.status !== "completed" || (item.exitCode !== null && item.exitCode !== 0),
+      }
+    case "mcpToolCall":
+      return { output: item.error ?? item.result, isError: item.status !== "completed" }
+    case "fileChange":
+      return { output: item.status, isError: item.status !== "completed" }
+    default:
+      return { output: null, isError: false }
+  }
+}
+
+const make = Effect.gen(function* () {
+  const binaryPath = resolveCodexBinary()
+  const clientLock = yield* Semaphore.make(1)
+  let current: { readonly client: CodexClient; readonly scope: Scope.Closeable } | undefined
+
+  /** One app-server for the whole provider, spawned on first use and respawned after it dies. */
+  const getClient = Semaphore.withPermit(
+    clientLock,
+    Effect.gen(function* () {
+      if (current?.client.isAlive()) return current.client
+      if (current) yield* Scope.close(current.scope, Exit.void)
+      const scope = yield* Scope.make()
+      const client = yield* makeCodexClient({ binaryPath, clientVersion: CLIENT_VERSION }).pipe(
+        Scope.provide(scope),
+        Effect.onError(() => Scope.close(scope, Exit.void)),
+      )
+      current = { client, scope }
+      return client
+    }),
+  )
+  yield* Effect.addFinalizer(() => (current ? Scope.close(current.scope, Exit.void) : Effect.void))
+
+  /** Pending approvals keyed by the kkcode approval id handed to the UI. */
+  const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
+  /** In-flight turns keyed by kkcode threadId, for interrupt. */
+  const activeTurns = new Map<string, { readonly threadId: string; readonly turnId: string }>()
+
+  const listModels = Effect.gen(function* () {
+    const client = yield* getClient
+    const models: Array<ModelInfo> = []
+    let cursor: string | null = null
+    do {
+      const params: ModelListParams = { cursor, limit: 100, includeHidden: false }
+      const page: ModelListResponse = yield* client.request<ModelListResponse>("model/list", params)
+      for (const model of page.data) models.push({ id: model.id, label: model.displayName, provider: "codex" })
+      cursor = page.nextCursor
+    } while (cursor)
+    return models
+  })
+
+  const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
+    Stream.callback<AgentEvent, AgentError>((out) =>
+      Effect.gen(function* () {
+        const emit = (event: AgentEvent) => Queue.offer(out, event)
+        const client = yield* getClient
+
+        // Subscribe before starting so no notification is missed; they wait here until the turn id is known.
+        const inbox = yield* Queue.unbounded<Incoming>()
+        yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
+
+        const overrides = {
+          cwd: input.cwd,
+          model: input.model,
+          approvalPolicy: "on-request",
+          sandbox: "workspace-write",
+          config: { mcp_servers: { kkcode: { url: input.mcpServerUrl } } },
+        } satisfies ThreadStartParams
+        const { thread } = input.resumeSessionId
+          ? yield* client.request<ThreadStartResponse>("thread/resume", {
+              ...overrides,
+              threadId: input.resumeSessionId,
+              excludeTurns: true,
+            } satisfies ThreadResumeParams)
+          : yield* client.request<ThreadStartResponse>("thread/start", overrides)
+        yield* emit({ type: "session_bound", providerSessionId: thread.id })
+
+        const turnStart: TurnStartParams = {
+          threadId: thread.id,
+          input: [{ type: "text", text: input.prompt, text_elements: [] }],
+          cwd: input.cwd,
+        }
+        const { turn } = yield* client.request<TurnStartResponse>("turn/start", turnStart)
+        activeTurns.set(input.threadId, { threadId: thread.id, turnId: turn.id })
+
+        const commandOutput = new Map<string, string>()
+        const startedTools = new Set<string>()
+        const approvalIdByRpcId = new Map<string | number, string>()
+        let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
+        let lastError: string | undefined
+
+        yield* Effect.addFinalizer(() =>
+          Effect.gen(function* () {
+            activeTurns.delete(input.threadId)
+            // The consumer went away mid-approval: unblock Codex instead of leaving the request hanging.
+            for (const [rpcId, approvalId] of approvalIdByRpcId) {
+              if (approvals.delete(approvalId)) yield* client.respond(rpcId, { decision: "cancel" })
+            }
+          }),
+        )
+
+        const resolveApproval = (approvalId: string) =>
+          Effect.suspend(() =>
+            approvals.delete(approvalId) ? emit({ type: "approval_resolved", requestId: approvalId }) : Effect.void,
+          )
+
+        const startTool = (item: ThreadItem) => {
+          const name = toolName(item)
+          if (name === undefined || startedTools.has(item.id)) return Effect.void
+          startedTools.add(item.id)
+          return emit({ type: "tool_call_started", callId: item.id, name, input: item })
+        }
+
+        const finishTool = (item: ThreadItem) =>
+          Effect.gen(function* () {
+            if (toolName(item) === undefined) return
+            yield* startTool(item)
+            const result = toolResult(item, commandOutput.get(item.id))
+            commandOutput.delete(item.id)
+            yield* emit({ type: "tool_call_finished", callId: item.id, ...result })
+            if (item.type === "fileChange" && item.status === "completed") {
+              for (const change of item.changes)
+                yield* emit({ type: "file_changed", path: change.path, diff: change.diff })
+            }
+          })
+
+        const requestApproval = <M extends keyof ServerRequestParams>(
+          rpcId: string | number,
+          method: M,
+          params: ServerRequestParams[M],
+        ) =>
+          Effect.gen(function* () {
+            const approvalId = randomUUID()
+            const decision = yield* Deferred.make<ApprovalDecision>()
+            approvals.set(approvalId, decision)
+            approvalIdByRpcId.set(rpcId, approvalId)
+            const isCommand = method === "item/commandExecution/requestApproval"
+            const command = isCommand
+              ? (params as ServerRequestParams["item/commandExecution/requestApproval"])
+              : undefined
+            const patch = isCommand ? undefined : (params as ServerRequestParams["item/fileChange/requestApproval"])
+            yield* emit({
+              type: "approval_requested",
+              request: {
+                id: approvalId,
+                threadId: input.threadId,
+                provider: "codex",
+                kind: isCommand ? "command" : "patch",
+                title: command ? (command.command ?? "Run command") : "Apply file changes",
+                detail:
+                  params.reason ??
+                  (command?.cwd ? `in ${command.cwd}` : patch?.grantRoot ? `write access to ${patch.grantRoot}` : ""),
+                input: params,
+              },
+            })
+            yield* Deferred.await(decision).pipe(
+              Effect.flatMap((choice) => client.respond(rpcId, { decision: decisionToWire[choice] })),
+              Effect.andThen(resolveApproval(approvalId)),
+              Effect.forkScoped,
+            )
+          })
+
+        const belongsToTurn = (params: unknown) => {
+          const scope = params as { threadId?: string; turnId?: string; turn?: { id: string } } | undefined
+          return scope?.threadId === thread.id && (scope.turnId ?? scope.turn?.id ?? turn.id) === turn.id
+        }
+
+        /** Returns true once the turn is over. */
+        const handle = (message: Incoming): Effect.Effect<boolean, AgentError, Scope.Scope> =>
+          Effect.gen(function* () {
+            if (message.kind === "exit") return yield* Effect.fail(message.error)
+            if (!belongsToTurn(message.params)) return false
+
+            if (message.kind === "request") {
+              if (
+                message.method === "item/commandExecution/requestApproval" ||
+                message.method === "item/fileChange/requestApproval"
+              ) {
+                yield* requestApproval(
+                  message.id,
+                  message.method,
+                  message.params as ServerRequestParams[typeof message.method],
+                )
+              } else {
+                yield* client.respondError(message.id, -32601, `kkcode does not support ${message.method}`)
+              }
+              return false
+            }
+
+            const method = message.method as keyof ServerNotificationParams
+            switch (method) {
+              case "item/agentMessage/delta": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                yield* emit({ type: "text_delta", text: params.delta })
+                return false
+              }
+              case "item/reasoning/summaryTextDelta":
+              case "item/reasoning/textDelta": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                yield* emit({ type: "reasoning_delta", text: params.delta })
+                return false
+              }
+              case "item/commandExecution/outputDelta": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                commandOutput.set(params.itemId, (commandOutput.get(params.itemId) ?? "") + params.delta)
+                return false
+              }
+              case "item/started": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                yield* startTool(params.item)
+                return false
+              }
+              case "item/completed": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                yield* finishTool(params.item)
+                return false
+              }
+              case "thread/tokenUsage/updated": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                // `last` is one model request; a turn makes several, so their sum is the turn's usage.
+                usage = {
+                  inputTokens: usage.inputTokens + params.tokenUsage.last.inputTokens,
+                  outputTokens: usage.outputTokens + params.tokenUsage.last.outputTokens,
+                }
+                return false
+              }
+              case "error": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                // A fatal error is always followed by turn/completed with status "failed", which ends the stream.
+                if (!params.willRetry) lastError = params.error.message
+                return false
+              }
+              case "turn/completed": {
+                const params = message.params as ServerNotificationParams[typeof method]
+                const { status, error } = params.turn
+                yield* emit(
+                  status === "completed"
+                    ? { type: "turn_completed", usage }
+                    : { type: "turn_failed", message: error?.message ?? lastError ?? `Turn ${status}` },
+                )
+                return true
+              }
+              default: {
+                if (message.method === "serverRequest/resolved") {
+                  const { requestId } = message.params as { requestId: string | number }
+                  const approvalId = approvalIdByRpcId.get(requestId)
+                  if (approvalId) yield* resolveApproval(approvalId)
+                }
+                return false
+              }
+            }
+          })
+
+        while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
+        yield* Queue.end(out)
+      }),
+    )
+
+  const interrupt = (threadId: string) =>
+    Effect.gen(function* () {
+      const active = activeTurns.get(threadId)
+      if (!active || !current?.client.isAlive()) return
+      const params: TurnInterruptParams = { threadId: active.threadId, turnId: active.turnId }
+      yield* current.client.request("turn/interrupt", params)
+    }).pipe(Effect.ignore)
+
+  const respondApproval = (requestId: string, decision: ApprovalDecision) =>
+    Effect.suspend(() => {
+      const deferred = approvals.get(requestId)
+      return deferred ? Deferred.succeed(deferred, decision) : Effect.void
+    }).pipe(Effect.asVoid)
+
+  return { id: "codex", listModels, runTurn, interrupt, respondApproval } satisfies AgentProvider
+})
+
+export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {
+  static readonly layer = Layer.effect(CodexProvider, make)
+}
