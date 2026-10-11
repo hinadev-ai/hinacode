@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { Context, Deferred, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ModelInfo, RunTurnInput, TokenUsage } from "../../../shared/agent.ts"
+import type { Attachment } from "../../../shared/domain.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import type {
@@ -20,6 +21,7 @@ import type {
   TurnStartParams,
   TurnStartResponse,
   TurnSteerParams,
+  UserInput,
 } from "./protocol.ts"
 
 const CLIENT_VERSION = "0.1.0"
@@ -44,6 +46,18 @@ const resolveCodexBinary = (): string => {
   }
   return "codex"
 }
+
+const textInput = (text: string): UserInput => ({ type: "text", text, text_elements: [] })
+
+/** Images go in as local paths; other files are named by path so the agent reads them with its own tools. */
+const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<UserInput> => [
+  ...(text === "" ? [] : [textInput(text)]),
+  ...attachments.map((attachment) =>
+    attachment.kind === "image"
+      ? { type: "localImage" as const, path: attachment.path }
+      : textInput(`Attached file: ${attachment.path}`),
+  ),
+]
 
 const toolName = (item: ThreadItem): string | undefined => {
   switch (item.type) {
@@ -147,7 +161,7 @@ const make = Effect.gen(function* () {
 
         const turnStart: TurnStartParams = {
           threadId: thread.id,
-          input: [{ type: "text", text: input.prompt, text_elements: [] }],
+          input: userInput(input.prompt, input.attachments),
           cwd: input.cwd,
         }
         const { turn } = yield* client.request<TurnStartResponse>("turn/start", turnStart)
@@ -378,7 +392,7 @@ const make = Effect.gen(function* () {
       yield* current.client.request("turn/interrupt", params)
     }).pipe(Effect.ignore)
 
-  const steer = (threadId: string, text: string) =>
+  const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const active = activeTurns.get(threadId)
       if (!active || !current?.client.isAlive()) {
@@ -386,7 +400,7 @@ const make = Effect.gen(function* () {
       }
       const params: TurnSteerParams = {
         threadId: active.threadId,
-        input: [{ type: "text", text, text_elements: [] }],
+        input: userInput(text, attachments),
         expectedTurnId: active.turnId,
       }
       yield* current.client.request("turn/steer", params)

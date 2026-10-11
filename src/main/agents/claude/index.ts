@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { readFile } from "node:fs/promises"
 import {
   query,
   type CanUseTool,
@@ -11,6 +12,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Deferred, Duration, Effect, Layer, Queue, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalKind, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import type { Attachment } from "../../../shared/domain.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
 
@@ -87,12 +89,50 @@ function approvalDetail(input: Record<string, unknown>): string {
   return typeof summary === "string" ? summary : JSON.stringify(input)
 }
 
-const userMessage = (prompt: string, priority?: SDKUserMessage["priority"]): SDKUserMessage => ({
-  type: "user",
-  message: { role: "user", content: prompt },
-  parent_tool_use_id: null,
-  ...(priority === undefined ? {} : { priority }),
-})
+/** The Messages API rejects base64 images above 5 MB. */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+type ContentBlock = Exclude<SDKUserMessage["message"]["content"], string>[number]
+type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"], { type: "base64" }>["media_type"]
+
+const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
+
+/** Images go inline as base64; other files are named by path so the agent reads them with its own tools. */
+const attachmentBlock = (attachment: Attachment) =>
+  Effect.gen(function* () {
+    const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
+    if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return fileBlock
+    if (attachment.bytes > MAX_IMAGE_BYTES) {
+      return yield* new AgentError({
+        provider: "claude",
+        message: `${attachment.name} is larger than 5 MB, the limit for images sent to Claude`,
+      })
+    }
+    const data = yield* Effect.tryPromise({
+      try: () => readFile(attachment.path, "base64"),
+      catch: agentError(`Cannot read ${attachment.name}`),
+    })
+    const block: ContentBlock = {
+      type: "image",
+      source: { type: "base64", media_type: attachment.mime, data },
+    }
+    return block
+  })
+
+const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, priority?: SDKUserMessage["priority"]) =>
+  Effect.gen(function* () {
+    const blocks = yield* Effect.forEach(attachments, attachmentBlock)
+    const content: SDKUserMessage["message"]["content"] =
+      blocks.length === 0 ? prompt : [...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]), ...blocks]
+    const message: SDKUserMessage = {
+      type: "user",
+      message: { role: "user", content },
+      parent_tool_use_id: null,
+      ...(priority === undefined ? {} : { priority }),
+    }
+    return message
+  })
 
 /** The CLI cuts the response short to pick up a `priority: "now"` prompt, then answers it under a new result. */
 const isSteerAbort = (message: SDKMessage) =>
@@ -304,19 +344,20 @@ export const layer = Layer.effect(
                 }).pipe(Effect.andThen(interruptQuery(session)))
               : Effect.void,
           )
-          yield* Queue.offer(session.prompts, userMessage(input.prompt))
+          yield* Queue.offer(session.prompts, yield* userMessage(input.prompt, input.attachments))
         }),
       )
 
-    const steer = (threadId: string, text: string) =>
-      Effect.suspend(() => {
+    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+      Effect.gen(function* () {
+        const message = yield* userMessage(text, attachments, "now")
         const session = sessions.get(threadId)
         if (session?.turn == null) {
-          return Effect.fail(new AgentError({ provider: "claude", message: "No turn is running on this thread" }))
+          return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })
         }
         session.pendingSteers++
-        return Queue.offer(session.prompts, userMessage(text, "now"))
-      }).pipe(Effect.asVoid)
+        yield* Queue.offer(session.prompts, message)
+      })
 
     const fetchModels = Effect.gen(function* () {
       const prompts = yield* Queue.unbounded<SDKUserMessage>()

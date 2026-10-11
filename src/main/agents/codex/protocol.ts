@@ -31,7 +31,9 @@ export type Thread = { id: string; sessionId: string }
 export type ThreadStartResponse = { thread: Thread }
 export type ThreadResumeResponse = { thread: Thread }
 
-export type UserInput = { type: "text"; text: string; text_elements: Array<unknown> }
+export type UserInput =
+  | { type: "text"; text: string; text_elements: Array<unknown> }
+  | { type: "localImage"; path: string }
 
 export type TurnStartParams = {
   threadId: string
