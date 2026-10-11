@@ -27,7 +27,8 @@ const buttonVariants = cva(
         // The ::after pads the hit area to 32px without changing the visual size.
         "icon-xs":
           "relative size-6 after:absolute after:-inset-1 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "relative size-7 after:absolute after:-inset-0.5 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
+        "icon-sm":
+          "relative size-7 after:absolute after:-inset-0.5 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
       },
     },
