@@ -1,7 +1,8 @@
 import { useEffect } from "react"
-import type { Thread, ThreadStatus } from "../../shared/domain.ts"
+import { isThreadBusy, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
+import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
@@ -43,11 +44,18 @@ export function ThreadView({ thread }: { thread: Thread }) {
 function Transcript({ thread }: { thread: Thread }) {
   const history = useMessages((state) => state.byThread[thread.id])
   const load = useMessages((state) => state.load)
+  const unload = useMessages((state) => state.unload)
   const label = providerLabel[thread.provider]()
 
   useEffect(() => {
     void load(thread.id)
-  }, [load, thread.id])
+    // Leaving a thread frees its transcript. A thread mid-turn keeps its copy so the events still
+    // streaming in have something to fold into.
+    return () => {
+      const status = useThreads.getState().byId[thread.id]?.status
+      if (status === undefined || !isThreadBusy(status)) unload(thread.id)
+    }
+  }, [load, unload, thread.id])
 
   // The Retry button disappears into the loading state, so focus moves on before it does.
   const retry = () => {

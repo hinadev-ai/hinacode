@@ -49,6 +49,16 @@ const waitUntilSetUp = (worktreeId: string | null) =>
     throw new Error("setup never finished")
   })
 
+/** Removal deletes the checkout in the background after marking the row removed. */
+const waitUntilDeleted = (path: string) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (!existsSync(path)) return
+      yield* Effect.sleep("20 millis")
+    }
+    throw new Error("checkout never deleted")
+  })
+
 const waitForAllSetups = Worktrees.use((worktrees) => worktrees.list).pipe(
   Effect.flatMap(Effect.forEach((worktree) => waitUntilSetUp(worktree.id))),
   Effect.orDie,
@@ -187,7 +197,7 @@ describe("worktree ownership", () => {
         expect(settled.status).toBe("settled")
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.status).toBe("removed")
-        expect(existsSync(worktree.path)).toBe(false)
+        yield* waitUntilDeleted(worktree.path)
       }),
     ),
   )
