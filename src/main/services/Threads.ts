@@ -16,6 +16,8 @@ export interface CreateThread {
   readonly model: string
   /** Creates a worktree for the thread first; the thread points at it while its setup script runs. */
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
+  /** Defaults to `user`. */
+  readonly createdBy?: string | undefined
 }
 
 export interface UpdateThread {
@@ -77,7 +79,7 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const create = ({ worktree: worktreeInput, ...input }: CreateThread) =>
+  const create = ({ worktree: worktreeInput, createdBy = "user", ...input }: CreateThread) =>
     Effect.gen(function* () {
       yield* projects.get(input.projectId)
       const worktree = worktreeInput
@@ -92,6 +94,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         status: "idle",
         sortIndex: next,
+        createdBy,
         createdAt: now,
         updatedAt: now,
       }

@@ -1,6 +1,7 @@
 import { type ComponentType, useState } from "react"
 import type { IconType } from "react-icons"
-import { RiCpuLine, RiKeyboardLine, RiPlugLine, RiSettings3Line } from "react-icons/ri"
+import { RiCpuLine, RiFlashlightLine, RiKeyboardLine, RiPlugLine, RiSettings3Line } from "react-icons/ri"
+import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
 import { GeneralSettings } from "../components/settings/GeneralSettings.tsx"
 import { IntegrationSettings } from "../components/settings/IntegrationSettings.tsx"
 import { KeybindingSettings } from "../components/settings/KeybindingSettings.tsx"
@@ -19,6 +20,7 @@ const pages: ReadonlyArray<SettingsPage> = [
   { id: "models", label: m.settings_models, icon: RiCpuLine, component: ModelSettings },
   { id: "keybindings", label: m.settings_keybindings, icon: RiKeyboardLine, component: KeybindingSettings },
   { id: "integrations", label: m.settings_integrations, icon: RiPlugLine, component: IntegrationSettings },
+  { id: "automations", label: m.settings_automations, icon: RiFlashlightLine, component: AutomationSettings },
 ]
 
 export function SettingsRoute() {
