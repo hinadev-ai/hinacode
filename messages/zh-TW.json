@@ -302,5 +302,18 @@
   "automations_secret_label": "簽章密鑰",
   "automations_secret_hint": "請立即存到傳送端。若需要新的密鑰，請建立新的自動化。",
   "automations_secret_done": "完成",
-  "sidebar_thread_settled": "已結案"
+  "sidebar_project_actions": "「{project}」的操作",
+  "sidebar_project_edit": "編輯…",
+  "sidebar_project_new_thread": "新討論串",
+  "sidebar_project_reveal": "在資料夾中顯示",
+  "sidebar_project_delete": "刪除…",
+  "sidebar_thread_settled": "已結案",
+  "project_edit_title": "編輯專案",
+  "project_edit_description": "修改「{project}」的名稱、資料夾與設定腳本。",
+  "project_save": "儲存",
+  "project_delete_title": "要刪除「{project}」嗎？",
+  "project_delete_body": "它的 {count} 個討論串及其訊息與連結的 pull request 都會被刪除，磁碟上的資料夾會保留。此操作無法復原。",
+  "project_delete_worktrees": "它有 {count} 個 worktree。",
+  "project_delete_remove_worktrees": "同時移除它的 worktree（分支已合併時一併刪除）",
+  "project_delete_confirm": "刪除專案"
 }

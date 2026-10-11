@@ -302,5 +302,36 @@
   "automations_secret_label": "Signing secret",
   "automations_secret_hint": "Store it in the sender now. To get a new one, create a new automation.",
   "automations_secret_done": "Done",
-  "sidebar_thread_settled": "Settled"
+  "sidebar_project_actions": "Actions for {project}",
+  "sidebar_project_edit": "Edit…",
+  "sidebar_project_new_thread": "New thread",
+  "sidebar_project_reveal": "Reveal in folder",
+  "sidebar_project_delete": "Delete…",
+  "sidebar_thread_settled": "Settled",
+  "project_edit_title": "Edit project",
+  "project_edit_description": "Change the name, folder and setup script of {project}.",
+  "project_save": "Save",
+  "project_delete_title": "Delete {project}?",
+  "project_delete_body": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Its {count} thread, with its messages and linked pull requests, is deleted. The folder on disk stays. This cannot be undone.",
+        "countPlural=other": "Its {count} threads, with their messages and linked pull requests, are deleted. The folder on disk stays. This cannot be undone."
+      }
+    }
+  ],
+  "project_delete_worktrees": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "It has {count} worktree.",
+        "countPlural=other": "It has {count} worktrees."
+      }
+    }
+  ],
+  "project_delete_remove_worktrees": "Also remove its worktrees (and branches if merged)",
+  "project_delete_confirm": "Delete project"
 }

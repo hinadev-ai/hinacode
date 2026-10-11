@@ -40,6 +40,10 @@ export const createProjectAtom = Atom.fn((input: RpcRequest<"projects.create">) 
   call("projects.create", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
+export const updateProjectAtom = Atom.fn((input: RpcRequest<"projects.update">) =>
+  call("projects.update", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
+)
+
 export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom.keepAlive)
 
 export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
