@@ -32,7 +32,7 @@ Preconditions:
 - **Paste an image.** Focus `Message` and dispatch a paste with a real `File`: `$AB eval "(async()=>{const b=await (await fetch('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==')).blob();const dt=new DataTransfer();dt.items.add(new File([b],'red.png',{type:'image/png'}));document.querySelector('textarea[aria-label=Message]').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}))})()"`. A chip `red.png` appears in `Attachments to send`. Screenshot `steering-and-attachments-05-pending.png`.
 - **Send with the image.** Fill `Message` with `What color is the attached image? One word.` and press `Enter`. The user message shows the image (`Open red.png`); the reply says red. Screenshot `steering-and-attachments-06-image-reply.png`.
 - **Drop a file.** Dispatch a `drop` event the same way with `new File(["hello from a file"], "note.txt", {type: "text/plain"})` on the textarea (`new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true})`). A chip `note.txt` appears; `Remove note.txt` removes it (`attach-remove`); drop it again and send `Read the attached file and quote it.` The reply quotes `hello from a file`.
-- **Side effects.** `ls $DATA/attachments/<threadId>/` lists `<id>-red.png` and `<id>-note.txt`; `messages.list` shows `attachment` parts on the user messages.
+- **Side effects.** `ls $DATA/attachments/<threadId>/` lists `<id>-red.png` and `<id>-note.txt`; `threads.transcript` shows `attachment` parts on the user messages.
 
 ## Gotchas
 

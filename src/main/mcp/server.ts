@@ -4,10 +4,11 @@ import { NodeHttpServer } from "@effect/platform-node"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { McpProtocol, McpSchema, McpServer as AiMcpServer, Tool } from "effect/ai"
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
-import { SqlClient, SqlSchema } from "effect/sql"
+import { SqlClient } from "effect/sql"
 import type { McpConnection } from "../../shared/agent.ts"
 import { PullRequests } from "../services/PullRequests.ts"
 import { Secrets } from "../services/Secrets.ts"
+import { makeActiveWorkspace } from "../services/workspace.ts"
 import { makeLinear } from "./linear.ts"
 import { reviewChanges } from "./reviewChanges.ts"
 
@@ -89,22 +90,11 @@ const callingThreadId = (credentials: CredentialStore) =>
 const registerTools = Layer.effectDiscard(
   Effect.gen(function* () {
     const server = yield* AiMcpServer.McpServer
-    const sql = yield* SqlClient.SqlClient
     const pullRequests = yield* PullRequests
     const secrets = yield* Secrets
     const credentials = yield* Credentials
 
-    const findWorkspace = SqlSchema.findOneOption({
-      Request: Schema.String,
-      Result: Schema.Struct({ cwd: Schema.String, baseRef: Schema.NullOr(Schema.String) }),
-      execute: (threadId) => sql`
-        SELECT COALESCE(w.path, p.root_path) AS cwd, w.base_ref
-        FROM thread t
-        JOIN project p ON p.id = t.project_id
-        LEFT JOIN worktree w ON w.id = t.worktree_id
-        WHERE t.id = ${threadId}
-      `,
-    })
+    const activeWorkspace = yield* makeActiveWorkspace
 
     const withLinear = <A>(use: (linear: ReturnType<typeof makeLinear>) => Effect.Effect<A, ToolFailure>) =>
       Effect.flatMap(
@@ -131,13 +121,9 @@ const registerTools = Layer.effectDiscard(
           "Review this thread's uncommitted and branch changes: git status plus the unified diff against HEAD and, in a worktree, against the merge-base with its base branch.",
         parameters: NoParams,
         run: (_, threadId) =>
-          findWorkspace(threadId).pipe(
-            Effect.flatMap(
-              Option.match({
-                onNone: () => Effect.fail({ message: `Thread ${threadId} no longer exists.` }),
-                onSome: reviewChanges,
-              }),
-            ),
+          activeWorkspace(threadId).pipe(
+            Effect.catchTag("NotFoundError", () => Effect.fail({ message: `Thread ${threadId} no longer exists.` })),
+            Effect.flatMap(reviewChanges),
           ),
       }),
       tool({
