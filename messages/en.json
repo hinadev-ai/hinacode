@@ -56,7 +56,6 @@
   "locale_en": "English",
   "locale_zh_tw": "繁體中文",
   "common_cancel": "Cancel",
-  "common_error": "Something went wrong: {message}",
   "common_close": "Close",
   "thread_empty_title": "Start the conversation",
   "thread_empty_hint": "Ask {provider} to read, change or explain code in this project.",

@@ -15,6 +15,7 @@ import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "rea
 import type { ModelInfo } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Attachment, Thread } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, modelsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
@@ -25,8 +26,6 @@ import { FieldError } from "./ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-
-const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -183,7 +182,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </div>
         </div>
       </div>
-      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
     </form>
   )
 }

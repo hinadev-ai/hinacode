@@ -56,7 +56,6 @@
   "locale_en": "English",
   "locale_zh_tw": "繁體中文",
   "common_cancel": "取消",
-  "common_error": "發生錯誤：{message}",
   "common_close": "關閉",
   "thread_empty_title": "開始對話",
   "thread_empty_hint": "請 {provider} 閱讀、修改或解釋這個專案的程式碼。",
