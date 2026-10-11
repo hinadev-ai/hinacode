@@ -14,7 +14,7 @@ function Kbd({ className, ...props }: ComponentProps<"kbd">) {
   )
 }
 
-function KbdGroup({ className, ...props }: ComponentProps<"div">) {
+function KbdGroup({ className, ...props }: ComponentProps<"kbd">) {
   return <kbd data-slot="kbd-group" className={cn("inline-flex items-center gap-1", className)} {...props} />
 }
 

@@ -1,9 +1,9 @@
 import { readdir, readFile, readlink } from "node:fs/promises"
 import { sep } from "node:path"
-import { Context, Effect, Layer, Option, Schema } from "effect"
-import { SqlClient, SqlSchema } from "effect/sql"
+import { Context, Effect, Layer, Schema } from "effect"
 import type { OpenPort } from "../../shared/domain.ts"
-import { NotFoundError, type PersistenceError, persistence } from "./errors.ts"
+import type { NotFoundError, PersistenceError } from "./errors.ts"
+import { makeActiveWorkspace } from "./workspace.ts"
 
 export class PortsError extends Schema.TaggedError<PortsError>()("PortsError", {
   message: Schema.String,
@@ -170,19 +170,7 @@ export class Ports extends Context.Service<
 >()("kkcode/Ports") {}
 
 const make = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient
-
-  const findWorkspace = SqlSchema.findOneOption({
-    Request: Schema.String,
-    Result: Schema.Struct({ rootPath: Schema.String, worktreePath: Schema.NullOr(Schema.String) }),
-    execute: (threadId) => sql`
-      SELECT project.root_path, worktree.path AS worktree_path
-      FROM thread
-      JOIN project ON project.id = thread.project_id
-      LEFT JOIN worktree ON worktree.id = thread.worktree_id
-      WHERE thread.id = ${threadId}
-    `,
-  })
+  const activeWorkspace = yield* makeActiveWorkspace
 
   const scan = Effect.tryPromise({
     try: () => findListeningPorts(procFs),
@@ -192,18 +180,10 @@ const make = Effect.gen(function* () {
   const listForThread = (threadId: string) =>
     Effect.gen(function* () {
       if (process.platform !== "linux") return []
-      const workspace = yield* findWorkspace(threadId).pipe(
-        Effect.mapError(persistence("ports.list")),
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new NotFoundError({ entity: "thread", id: threadId })),
-            onSome: Effect.succeed,
-          }),
-        ),
-      )
+      const workspace = yield* activeWorkspace(threadId)
       const processes = yield* scan
       return attributeToWorkspace(processes, {
-        workspacePath: workspace.worktreePath ?? workspace.rootPath,
+        workspacePath: workspace.cwd,
         agentPids: agentPidsByThread.get(threadId) ?? new Set(),
         selfPid: process.pid,
       })

@@ -117,7 +117,14 @@ export const RpcMethods = {
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
-  "messages.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Message)),
+  /**
+   * The thread's live transcript and pending approvals as of push `seq`: it reflects every
+   * transcript push up to and including `seq`, and none after.
+   */
+  "threads.transcript": rpc(
+    Schema.Struct({ threadId: Schema.String }),
+    Schema.Struct({ messages: Schema.Array(Message), approvals: Schema.Array(ApprovalRequest), seq: Schema.Number }),
+  ),
   /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
   "threads.send": rpc(
     Schema.Struct({
@@ -129,7 +136,6 @@ export const RpcMethods = {
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
-  "approvals.pending": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(ApprovalRequest)),
   /** Secrets never cross back to the renderer; it can only ask whether one is set. */
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
@@ -216,20 +222,34 @@ export interface RpcFailure {
 
 export type RpcEnvelope<A> = { readonly result: A } | { readonly error: RpcFailure }
 
+/**
+ * Pushes that change a thread's transcript. `seq` increases with every one of them, across threads,
+ * so a renderer can tell which ones a `threads.transcript` snapshot already contains.
+ */
+export const TranscriptPush = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("thread.event"),
+    seq: Schema.Number,
+    threadId: Schema.String,
+    event: AgentEvent,
+  }),
+  Schema.Struct({ type: Schema.Literal("message.created"), seq: Schema.Number, message: Message }),
+  /** A message replaced outside the event fold, e.g. an assistant message closed by a steer. */
+  Schema.Struct({ type: Schema.Literal("message.updated"), seq: Schema.Number, message: Message }),
+])
+export type TranscriptPush = typeof TranscriptPush.Type
+
 /** Main -> renderer pushes on the `event` channel. */
 export const PushEvent = Schema.Union([
+  ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String, event: AgentEvent }),
-  Schema.Struct({ type: Schema.Literal("message.created"), message: Message }),
   Schema.Struct({
     type: Schema.Literal("thread.pullRequests"),
     threadId: Schema.String,
     links: Schema.Array(PullRequestLink),
   }),
-  /** A message replaced outside the event fold, e.g. an assistant message closed by a steer. */
-  Schema.Struct({ type: Schema.Literal("message.updated"), message: Message }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
 ])

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { createInterface } from "node:readline"
-import { Deferred, Effect, Scope } from "effect"
+import { Deferred, Duration, Effect, Scope } from "effect"
 import { AgentError } from "../provider.ts"
 import type { InitializeParams, RequestId } from "./protocol.ts"
 
@@ -19,6 +19,7 @@ type WireMessage = {
 
 export interface CodexClient {
   readonly isAlive: () => boolean
+  /** Fails if the app-server does not answer in time. Only control calls are requests; turn output arrives as notifications. */
   readonly request: <A = unknown>(method: string, params: unknown) => Effect.Effect<A, AgentError>
   readonly respond: (id: RequestId, result: unknown) => Effect.Effect<void>
   readonly respondError: (id: RequestId, code: number, message: string) => Effect.Effect<void>
@@ -27,6 +28,9 @@ export interface CodexClient {
 }
 
 const codexError = (message: string) => new AgentError({ provider: "codex", message })
+
+const REQUEST_TIMEOUT = Duration.seconds(60)
+const INITIALIZE_TIMEOUT = Duration.seconds(30)
 
 /**
  * Spawns `codex app-server` and performs the initialize handshake.
@@ -93,7 +97,11 @@ export const makeCodexClient = (options: { readonly binaryPath: string; readonly
       )
     })
 
-    const request = <A>(method: string, params: unknown): Effect.Effect<A, AgentError> =>
+    const request = <A>(
+      method: string,
+      params: unknown,
+      timeout: Duration.Duration = REQUEST_TIMEOUT,
+    ): Effect.Effect<A, AgentError> =>
       Effect.suspend(() => {
         if (exitError !== undefined) return Effect.fail(exitError)
         const id = nextId++
@@ -101,8 +109,13 @@ export const makeCodexClient = (options: { readonly binaryPath: string; readonly
         pending.set(id, deferred)
         write({ method, id, params })
         return Deferred.await(deferred).pipe(
-          Effect.mapError((error) => codexError(`${method}: ${error.message}`)),
           Effect.onInterrupt(() => Effect.sync(() => pending.delete(id))),
+          Effect.timeoutOrElse({
+            duration: timeout,
+            orElse: () =>
+              Effect.fail(codexError(`codex app-server did not respond within ${Duration.format(timeout)}.`)),
+          }),
+          Effect.mapError((error) => codexError(`${method}: ${error.message}`)),
         ) as Effect.Effect<A, AgentError>
       })
 
@@ -125,7 +138,13 @@ export const makeCodexClient = (options: { readonly binaryPath: string; readonly
       clientInfo: { name: "kkcode", title: "kkcode", version: options.clientVersion },
       capabilities: { experimentalApi: true },
     }
-    yield* request("initialize", initializeParams)
+    yield* request("initialize", initializeParams, INITIALIZE_TIMEOUT).pipe(
+      Effect.mapError((error) =>
+        codexError(
+          `${error.message} Run \`${options.binaryPath} app-server\` in a terminal to see why it does not start.`,
+        ),
+      ),
+    )
     write({ method: "initialized" })
 
     return client
