@@ -11,6 +11,7 @@ import {
 } from "../shared/contract.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { Automations } from "./services/automations/Automations.ts"
 import { Messages } from "./services/Messages.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
@@ -33,6 +34,7 @@ type AppServices =
   | Secrets
   | Ports
   | Attachments
+  | Automations
 
 interface HandlerError {
   readonly _tag: string
@@ -109,6 +111,15 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? [] : result.filePaths
     }),
+
+  // automations
+  "automations.list": () => Automations.use((automations) => automations.list),
+  "automations.create": (input) => Automations.use((automations) => automations.create(input)),
+  "automations.update": (input) => Automations.use((automations) => automations.update(input)),
+  "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
+  "automations.runNow": ({ id, payload }) => Automations.use((automations) => automations.runNow(id, payload)),
+  "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
+  "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 }
 
 const RpcCall = Schema.Struct({
