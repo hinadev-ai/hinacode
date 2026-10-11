@@ -7,6 +7,7 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { registerIpc } from "./ipc.ts"
+import { externalUrl } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
@@ -74,7 +75,8 @@ const createWindow = () => {
   })
   window.once("ready-to-show", () => window.show())
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    const external = externalUrl(url)
+    if (external) void shell.openExternal(external)
     return { action: "deny" }
   })
 
