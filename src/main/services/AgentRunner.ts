@@ -7,13 +7,12 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { McpServerUrl } from "../agents/mcp.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
-import { Push } from "../push.ts"
+import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
 import { Projects } from "./Projects.ts"
 import { Threads } from "./Threads.ts"
-import { Worktrees } from "./Worktrees.ts"
 
 const PERSIST_INTERVAL_MS = 500
 
@@ -50,9 +49,8 @@ const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
 const make = Effect.gen(function* () {
   const threads = yield* Threads
   const projects = yield* Projects
-  const worktrees = yield* Worktrees
   const messages = yield* Messages
-  const push = yield* Push
+  const push = yield* Events
   const mcpServerUrl = yield* McpServerUrl
 
   const providers: Record<ProviderId, AgentProvider> = {
@@ -68,16 +66,6 @@ const make = Effect.gen(function* () {
   yield* threads.resetInterrupted
 
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
-
-  const resolveCwd = (thread: Thread) =>
-    Effect.gen(function* () {
-      if (thread.worktreeId === null) return (yield* projects.get(thread.projectId)).rootPath
-      const worktree = (yield* worktrees.list).find((candidate) => candidate.id === thread.worktreeId)
-      if (worktree === undefined) {
-        return yield* new AgentError({ provider: thread.provider, message: `Worktree ${thread.worktreeId} is gone` })
-      }
-      return worktree.path
-    })
 
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.flatMap((thread) => push.publish({ type: "thread.updated", thread })))
@@ -154,7 +142,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = yield* providerFor(thread.provider)
-      const cwd = yield* resolveCwd(thread)
+      const cwd = yield* threads.resolveCwd(thread.id)
       const now = yield* nowIso
       const user: Message = {
         id: randomUUID(),
@@ -175,13 +163,13 @@ const make = Effect.gen(function* () {
     })
 
   const send = (threadId: string, prompt: string) =>
-    Effect.suspend(() => {
+    Effect.gen(function* () {
       if (busyThreads.has(threadId)) {
-        return Effect.fail(new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" }))
+        return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
       }
       // Claimed before the first await so two quick sends cannot both start a turn.
       busyThreads.add(threadId)
-      return startTurn(threadId, prompt).pipe(Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))))
+      yield* startTurn(threadId, prompt).pipe(Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))))
     })
 
   return AgentRunner.of({

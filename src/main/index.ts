@@ -6,7 +6,6 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { registerIpc } from "./ipc.ts"
-import * as Push from "./push.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Events from "./services/Events.ts"
@@ -31,7 +30,7 @@ const makeAppLayer = (dbPath: string) =>
         Messages.layer,
       ),
     ),
-    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Push.layer, Git.layer, Events.layer)),
+    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, Events.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )

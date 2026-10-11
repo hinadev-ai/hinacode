@@ -32,6 +32,8 @@ export class Threads extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    /** The directory a thread's agent runs in: its worktree, or the project root when it has none. */
+    readonly resolveCwd: (id: string) => Effect.Effect<string, PersistenceError | NotFoundError>
     readonly create: (input: CreateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     /** Marks the thread settled and removes its worktree, deleting the branch only if it is merged. */
@@ -97,6 +99,18 @@ const make = Effect.gen(function* () {
       return thread
     })
 
+  // Removing a worktree keeps `thread.worktreeId` pointing at the removed row so the history still
+  // shows where the thread ran. From then on the thread runs in the project root.
+  const resolveCwd = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (thread.worktreeId) {
+        const worktree = yield* worktrees.get(thread.worktreeId)
+        if (worktree.status !== "removed") return worktree.path
+      }
+      return (yield* projects.get(thread.projectId)).rootPath
+    })
+
   const update = (input: UpdateThread) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
@@ -132,6 +146,7 @@ const make = Effect.gen(function* () {
   return Threads.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("threads.list"))),
     get,
+    resolveCwd,
     create,
     update,
     settle,
