@@ -6,14 +6,13 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
-import { registerIpc } from "./ipc.ts"
+import { eventsLayer, registerIpc } from "./ipc.ts"
 import { externalUrl, isAppDocument } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as Messages from "./services/Messages.ts"
-import * as Events from "./services/Events.ts"
 import * as Git from "./services/Git.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
@@ -52,7 +51,7 @@ const makeAppLayer = (dbPath: string) => {
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   return Automations.layer.pipe(
     Layer.provideMerge(agents),
-    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, Events.layer)),
+    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, eventsLayer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )

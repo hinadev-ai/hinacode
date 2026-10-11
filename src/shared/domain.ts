@@ -53,6 +53,9 @@ export type PullRequestState = typeof PullRequestState.Type
 export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "settled", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
+/** A turn is in flight: the agent may be writing to the thread's working directory. */
+export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
+
 export const Thread = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,

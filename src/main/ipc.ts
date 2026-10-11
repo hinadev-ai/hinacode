@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron"
-import { Cause, Effect, type ManagedRuntime, Schema } from "effect"
+import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import {
   PushEvent,
@@ -12,6 +12,7 @@ import {
 import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { Events } from "./services/Events.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
@@ -56,7 +57,7 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": (input) => Threads.use((threads) => threads.create(input)),
   "threads.update": (input) => Threads.use((threads) => threads.update(input)),
-  "threads.delete": ({ id }) => Threads.use((threads) => threads.remove(id)),
+  "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
@@ -158,6 +159,13 @@ export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, 
 
 const encodePushEvent = Schema.encodeSync(PushEvent)
 
-export const pushEvent = (webContents: WebContents, event: PushEvent) => {
-  webContents.send(EVENT_CHANNEL, encodePushEvent(event))
-}
+export const eventsLayer = Layer.succeed(
+  Events,
+  Events.of({
+    publish: (event) =>
+      Effect.sync(() => {
+        const encoded = encodePushEvent(event)
+        for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
+      }),
+  }),
+)

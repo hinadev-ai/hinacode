@@ -1,5 +1,5 @@
 import { type ReactNode, startTransition, useActionState } from "react"
-import type { Thread } from "../../shared/domain.ts"
+import { isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -69,7 +69,7 @@ export function SettleDialog({ thread, open, onOpenChange, children }: SettleDia
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
           <AlertDialogAction
             variant={worktree ? "destructive" : "default"}
-            disabled={isPending}
+            disabled={isPending || isThreadBusy(thread.status)}
             onClick={() => startTransition(settle)}
           >
             {worktree ? m.settle_dialog_confirm_worktree() : m.settle_dialog_confirm_root()}

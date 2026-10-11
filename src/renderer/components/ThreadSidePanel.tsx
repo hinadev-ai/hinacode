@@ -4,7 +4,14 @@ import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { type ReactNode, useId, useState } from "react"
 import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
-import type { ChangedFileStatus, PullRequestState, Thread, Worktree, WorktreeStatus } from "../../shared/domain.ts"
+import {
+  type ChangedFileStatus,
+  isThreadBusy,
+  type PullRequestState,
+  type Thread,
+  type Worktree,
+  type WorktreeStatus,
+} from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, projectsAtom, pullRequestAtom, worktreeChangesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -325,7 +332,9 @@ function SettleControl({ thread }: { thread: Thread }) {
   const variant = !worktree ? "outline" : merged ? "default" : "destructive"
   return (
     <SettleDialog thread={thread} open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger render={<Button variant={variant} className="w-full" />}>
+      <AlertDialogTrigger
+        render={<Button variant={variant} className="w-full" disabled={isThreadBusy(thread.status)} />}
+      >
         {worktree ? m.panel_settle_cleanup() : m.panel_settle()}
       </AlertDialogTrigger>
     </SettleDialog>
