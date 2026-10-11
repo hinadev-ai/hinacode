@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
+import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "../../shared/agent.ts"
 import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
@@ -12,6 +13,7 @@ import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
 import { Threads } from "./Threads.ts"
+import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
 
@@ -32,7 +34,7 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
-    readonly pendingApprovals: (threadId: string) => Effect.Effect<ReadonlyArray<ApprovalRequest>>
+    readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
   }
 >()("kkcode/AgentRunner") {}
@@ -75,6 +77,8 @@ const openAssistantMessage = (threadId: string, now: string): Message => ({
   usage: null,
 })
 
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
 const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...messages.slice(0, -1), message]
 
 const make = Effect.gen(function* () {
@@ -82,6 +86,7 @@ const make = Effect.gen(function* () {
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpServer
+  const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
@@ -92,6 +97,8 @@ const make = Effect.gen(function* () {
   const busyThreads = new Set<string>()
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
+  const threadLocks = new Map<string, Semaphore.Semaphore>()
+  let seq = 0
 
   // Nothing runs at boot, so whatever a killed app left running is over.
   yield* threads.resetInterrupted
@@ -102,8 +109,22 @@ const make = Effect.gen(function* () {
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.flatMap((thread) => push.publish({ type: "thread.updated", thread })))
 
+  /**
+   * Runs `effect` exclusively for the thread. Everything that changes a thread's transcript runs
+   * under it, so `transcript` never observes a change without the push that announced it.
+   */
+  const exclusive =
+    (threadId: string) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+      let lock = threadLocks.get(threadId)
+      if (lock === undefined) threadLocks.set(threadId, (lock = Semaphore.makeUnsafe(1)))
+      return Semaphore.withPermit(lock, effect)
+    }
+
+  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
+
   const insertMessage = (message: Message) =>
-    messages.insert(message).pipe(Effect.andThen(push.publish({ type: "message.created", message })))
+    messages.insert(message).pipe(Effect.andThen(publishTranscript({ type: "message.created", message })))
 
   /**
    * One turn streaming into its assistant messages. A turn starts with one assistant message; each
@@ -115,8 +136,6 @@ const make = Effect.gen(function* () {
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
     const dirty = new Set<string>()
-    // Serializes event folding with steers, so no event lands in a message the steer just closed.
-    const lock = Semaphore.makeUnsafe(1)
 
     const persist = Effect.suspend(() => {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
@@ -132,7 +151,7 @@ const make = Effect.gen(function* () {
 
     const handle = (event: AgentEvent) =>
       Effect.gen(function* () {
-        yield* push.publish({ type: "thread.event", threadId: thread.id, event })
+        yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
         if (event.type === "approval_requested") approvals.set(event.request.id, event.request)
@@ -146,7 +165,7 @@ const make = Effect.gen(function* () {
           yield* updateThread({ id: thread.id, status })
         }
         if (dirty.size > 0 && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
-      }).pipe(Semaphore.withPermit(lock))
+      }).pipe(exclusive(thread.id))
 
     const steer = (text: string, attachments: ReadonlyArray<Attachment>) =>
       Effect.gen(function* () {
@@ -156,13 +175,13 @@ const make = Effect.gen(function* () {
         const closed: Message = { ...current, completedAt: now }
         setTurnMessages(replaceLast(turnMessages, closed))
         yield* persist
-        yield* push.publish({ type: "message.updated", message: closed })
+        yield* publishTranscript({ type: "message.updated", message: closed })
 
         const next = openAssistantMessage(thread.id, now)
         yield* insertMessage(userMessage(thread.id, text, attachments, now))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
-      }).pipe(Semaphore.withPermit(lock))
+      }).pipe(exclusive(thread.id))
 
     const finish = Effect.gen(function* () {
       for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
@@ -178,6 +197,7 @@ const make = Effect.gen(function* () {
           activeTurns.delete(thread.id)
         }),
       ),
+      exclusive(thread.id),
     )
 
     /** Never fails: provider errors become turn_failed. */
@@ -199,14 +219,14 @@ const make = Effect.gen(function* () {
           Effect.ensuring(finish),
         )
 
-    return { provider, steer, run }
+    return { provider, steer, run, messages: () => turnMessages }
   }
 
   const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = yield* providerFor(thread.provider)
-      const cwd = yield* threads.resolveCwd(thread.id)
+      const { cwd } = yield* activeWorkspace(thread.id)
       const now = yield* nowIso
       const assistant = openAssistantMessage(threadId, now)
       yield* insertMessage(userMessage(threadId, prompt, attachments, now))
@@ -216,7 +236,7 @@ const make = Effect.gen(function* () {
       const turn = makeTurn(thread, provider, cwd, assistant)
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
-    })
+    }).pipe(exclusive(threadId))
 
   const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
@@ -242,8 +262,22 @@ const make = Effect.gen(function* () {
         if (request === undefined) return Effect.void
         return providers[request.provider]?.respondApproval(requestId, decision) ?? Effect.void
       }),
-    pendingApprovals: (threadId) =>
-      Effect.sync(() => [...approvals.values()].filter((request) => request.threadId === threadId)),
+    // The database lags a running turn by up to PERSIST_INTERVAL_MS, so its messages come from memory.
+    transcript: (threadId) =>
+      Effect.gen(function* () {
+        const persisted = yield* messages.list(threadId)
+        const live = new Map(
+          activeTurns
+            .get(threadId)
+            ?.messages()
+            .map((message) => [message.id, message]),
+        )
+        return {
+          messages: persisted.map((message) => live.get(message.id) ?? message),
+          approvals: [...approvals.values()].filter((request) => request.threadId === threadId),
+          seq,
+        }
+      }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
   })
 })
