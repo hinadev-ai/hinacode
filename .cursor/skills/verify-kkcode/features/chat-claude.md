@@ -7,7 +7,7 @@ A user sends a prompt in a Claude Code thread and watches the reply stream in, w
 - `send` sends a prompt with `Enter` or the `Send` button.
 - `stream` renders `Thinking…` and assistant text incrementally while the header status reads `Running`.
 - `tool-rows` shows each tool call with its status (`Running`, `Done`, `Failed`) and expandable `Input` / `Output`.
-- `approval` shows `Claude Code wants to continue` with `Allow`, `Allow for session`, `Deny` for Bash and edits, and the thread status `Awaiting approval`.
+- `approval` shows `Claude Code needs your approval` with `Allow`, `Allow for session`, `Deny` for Bash and edits, and the thread status `Awaiting approval`.
 - `interrupt` stops a running turn from `Stop` or `Ctrl+Shift+C`.
 - `model-switch` changes the model for the next turn from the composer `Model` select.
 - `restore` shows the full history after a relaunch.
@@ -29,7 +29,7 @@ Preconditions:
 - `AB="agent-browser --session kkv-$PORT-chat-claude"`, connected, thread open.
 
 - **Send and stream.** Run `$AB find role textbox fill --name "Message" "Reply with the single word: pong"` and `$AB press Enter`. Take `chat-claude-01-streaming.png` immediately: the header status reads `Running` and a `Thinking…` or partial reply is visible. `$AB wait --text "pong"`, then the header returns to `Idle`. Screenshot `chat-claude-02-reply.png`.
-- **Approval.** Send `Use the Bash tool to run: echo approved > approved.txt`. `$AB wait --text "Claude Code wants to continue"`. The card shows the command; the header reads `Awaiting approval`. Screenshot `chat-claude-03-approval.png`. Run `$AB find role button click --name "Allow" --exact`. The Bash tool row turns `Done`, and `cat $DATA/repo/approved.txt` prints `approved`.
+- **Approval.** Send `Use the Bash tool to run: echo approved > approved.txt`. `$AB wait --text "Claude Code needs your approval"`. The card shows the command; the header reads `Awaiting approval`. Screenshot `chat-claude-03-approval.png`. Run `$AB find role button click --name "Allow" --exact`. The Bash tool row turns `Done`, and `cat $DATA/repo/approved.txt` prints `approved`.
 - **Deny.** Send `Use the Bash tool to run: rm README.md`, wait for the card, click `Deny`. The row ends `Failed` or the reply says it was denied, and `$DATA/repo/README.md` still exists.
 - **Interrupt.** Send `Use the Bash tool to run: sleep 60`, `Allow` it, wait until the tool row reads `Running`, then `$AB find role button click --name "Stop" --exact` (or `$AB press Control+Shift+C`). Within a few seconds the header returns to `Idle` and the cut-off Bash row ends `Failed`. Screenshot `chat-claude-04-interrupted.png`.
 - **Side effects.** `$S/rpc.mjs $PORT messages.list '{"threadId":"<id>"}' > "$SHOTS/chat-claude-05-messages.txt"` contains the user prompts, the assistant text `pong`, and tool parts for the Bash calls.

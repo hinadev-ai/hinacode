@@ -14,7 +14,7 @@ A local desktop app for running Claude Code and Codex against your repositories.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.
 - Built-in MCP server exposed to both agents: `review_changes`, `link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, and Linear issue tools backed by an API key stored with Electron's safeStorage.
 - Thread panel shows the workspace, setup log, changes with diffs, pull request links with merge state, and TCP ports opened by processes the thread spawned, each with a kill button.
-- Automations: a signed webhook endpoint and pollers for new GitHub issues, Linear issues and Slack mentions, each starting a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree.
+- Automations start a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree. Triggers are a signed webhook and pollers for new GitHub issues, Linear issues and Slack mentions.
 - English and 繁體中文, switchable in settings.
 - Rebindable keyboard shortcuts with chord recording and conflict detection.
 - SQLite persistence through Node's built-in `node:sqlite`, so there is nothing native to rebuild.
@@ -33,7 +33,7 @@ pnpm build        # bundles main, preload and renderer into out/
 pnpm typecheck
 pnpm lint
 pnpm format
-pnpm test        # node --test for the pure logic (pollers, templates, signatures)
+pnpm test         # node --test for the pure logic (pollers, templates, signatures)
 ```
 
 Run a built app with its own data directory, for example to keep a test profile apart from your real one:

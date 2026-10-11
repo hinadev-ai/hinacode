@@ -12,7 +12,7 @@ An automation starts a new thread from a prompt template when an event arrives: 
 - `run-now` `Run now` with a `Sample payload` starts a run immediately, bypassing dedup; the payload is the template context as is.
 - `worktree-run` with `Run in a new worktree`, each run gets a branch from `Branch template`.
 - `pollers` GitHub, Linear and Slack triggers poll every 60 seconds and only start threads for items created after the automation was enabled; poll errors show as `Failed` runs.
-- `listener` the webhook listener's bind host (`This device only` / `All interfaces`) and `Port`; a taken port shows `The listener is not running: <message>` in a webhook automation's `Runs and details`.
+- `listener` the webhook listener's bind host (`This machine only` / `All interfaces`) and `Port`; a taken port shows `The listener is not running: <message>` in a webhook automation's `Runs and details`.
 - `toggle-delete` `Enable <name>` switch and `Delete` with confirmation.
 
 ## How to get to it (user POV)

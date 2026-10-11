@@ -93,7 +93,7 @@ Other helpers:
 ### Things CDP cannot do
 
 - The native folder and file pickers (`Browse…`, `Attach files`) open GTK dialogs on Xvfb that CDP cannot reach. Type the path into `Root path`. For attachments, paste or drop a `File` through `$AB eval`, or stage with `attachments.stage`.
-- `Open in folder` and PR links open outside the app. Assert the link `href`, do not click.
+- `Show in folder` and PR links open outside the app. Assert the link `href`, do not click.
 
 ### Agents cost money
 
