@@ -22,25 +22,25 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
   return (
     <section
       aria-labelledby={`approval-${request.id}`}
-      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3"
+      className="mx-auto mb-3 flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-warning/25 bg-warning/[0.04] p-4"
     >
-      <h2 id={`approval-${request.id}`} className="flex items-center gap-2 text-sm font-semibold">
-        <RiShieldCheckLine aria-hidden className="size-4 text-amber-500" />
+      <h2 id={`approval-${request.id}`} className="flex items-center gap-2 text-sm font-medium">
+        <RiShieldCheckLine aria-hidden className="size-4 text-warning" />
         {m.approval_title({ provider: providerLabel })}
       </h2>
-      <p className="text-sm">{request.title}</p>
-      <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono text-xs whitespace-pre-wrap">
+      <p className="text-prose">{request.title}</p>
+      <pre className="max-h-40 overflow-auto rounded-md bg-canvas/60 p-2.5 font-mono text-[11px]/relaxed whitespace-pre-wrap">
         {request.detail}
       </pre>
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" disabled={isPending} onClick={choose("allow")}>
-          {m.approval_allow()}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button size="sm" variant="ghost" disabled={isPending} onClick={choose("deny")}>
+          {m.approval_deny()}
         </Button>
         <Button size="sm" variant="outline" disabled={isPending} onClick={choose("allow_for_session")}>
           {m.approval_allow_session()}
         </Button>
-        <Button size="sm" variant="destructive" disabled={isPending} onClick={choose("deny")}>
-          {m.approval_deny()}
+        <Button size="sm" disabled={isPending} onClick={choose("allow")}>
+          {m.approval_allow()}
         </Button>
       </div>
       {error && <FieldError>{error}</FieldError>}

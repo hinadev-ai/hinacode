@@ -38,7 +38,7 @@ export function WorktreeSetupLog({ worktree }: { worktree: Worktree }) {
           onScroll={onScroll}
           role="log"
           aria-label={m.panel_setup_log()}
-          className="max-h-64 overflow-auto rounded-md bg-muted/50 p-2.5 font-mono text-xs/relaxed whitespace-pre-wrap wrap-break-word"
+          className="max-h-64 overflow-auto rounded-md bg-canvas/60 p-2.5 font-mono text-[11px]/relaxed whitespace-pre-wrap wrap-break-word text-foreground/85"
         >
           {setupLog}
         </pre>

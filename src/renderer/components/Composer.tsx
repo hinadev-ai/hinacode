@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useState, useTransition } from "react"
-import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
+import { RiArrowUpLine, RiAttachment2, RiSteering2Line, RiStopFill } from "react-icons/ri"
 import type { ModelInfo } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Attachment, Thread } from "../../shared/domain.ts"
@@ -117,8 +117,8 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
+    <form onSubmit={onSubmit} className="shrink-0 px-6 pt-2 pb-5">
+      <div className="mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-card p-2 shadow-[0_12px_32px_-16px_oklch(0_0_0/70%)] transition-colors duration-150 focus-within:border-foreground/20">
         {attachments.length > 0 && (
           <ul aria-label={m.attachment_pending_label()} className="flex flex-wrap gap-2 px-1 pt-1.5">
             {attachments.map((attachment) => (
@@ -141,14 +141,14 @@ export function Composer({ thread }: { thread: Thread }) {
           onDragOver={onDragOver}
           onDrop={onDrop}
           rows={2}
-          className="max-h-60 min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="max-h-60 min-h-0 resize-none border-0 bg-transparent px-2 pt-1.5 text-prose shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0 md:text-prose dark:bg-transparent"
         />
         <div className="flex items-center gap-2">
           <AttachButton onClick={pickFiles} disabled={isStaging} />
           <ModelPicker thread={thread} onError={setError} />
           <div className="ml-auto flex items-center gap-2">
             {busy && (
-              <Button type="button" size="sm" variant="secondary" onClick={stop}>
+              <Button type="button" size="sm" variant="secondary" className="rounded-full px-3" onClick={stop}>
                 <RiStopFill aria-hidden />
                 {m.thread_composer_stop()}
               </Button>
@@ -174,6 +174,7 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
             onClick={onClick}
             disabled={disabled}
             aria-label={m.attachment_add()}
+            className="text-muted-foreground"
           >
             <RiAttachment2 aria-hidden />
           </Button>
@@ -190,8 +191,14 @@ function SendButton({ steer, disabled }: { steer: boolean; disabled: boolean }) 
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button type="submit" size="icon-sm" disabled={disabled} aria-label={label}>
-            {steer ? <RiSteering2Line aria-hidden /> : <RiSendPlaneLine aria-hidden />}
+          <Button
+            type="submit"
+            size="icon-sm"
+            disabled={disabled}
+            aria-label={label}
+            className="rounded-full disabled:bg-foreground/15 disabled:text-foreground disabled:opacity-60"
+          >
+            {steer ? <RiSteering2Line aria-hidden /> : <RiArrowUpLine aria-hidden />}
           </Button>
         }
       />
@@ -220,7 +227,11 @@ function ModelPicker({ thread, onError }: { thread: Thread; onError: (message: s
 
   return (
     <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className="border-0 text-xs">
+      <SelectTrigger
+        size="sm"
+        aria-label={m.thread_model_picker()}
+        className="border-0 bg-transparent text-xs text-muted-foreground shadow-none hover:bg-muted hover:text-foreground dark:bg-transparent dark:hover:bg-muted"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

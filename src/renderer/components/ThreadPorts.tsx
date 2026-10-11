@@ -91,8 +91,8 @@ function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
     : m.ports_kill({ command: port.command, port: String(port.port) })
 
   return (
-    <li className="flex items-center gap-2 py-0.5 text-xs">
-      <span className="w-14 shrink-0 font-mono tabular-nums">:{port.port}</span>
+    <li className="group/port flex h-7 items-center gap-2 text-xs">
+      <span className="w-12 shrink-0 font-mono text-[11px] tabular-nums">:{port.port}</span>
       <span
         className="min-w-0 flex-1 truncate text-muted-foreground"
         title={[process, port.cwd].filter(Boolean).join("\n")}
@@ -105,6 +105,11 @@ function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
             <Button
               variant={armed ? "destructive" : "ghost"}
               size="icon-xs"
+              className={
+                armed
+                  ? undefined
+                  : "text-muted-foreground opacity-0 group-hover/port:opacity-100 focus-visible:opacity-100"
+              }
               aria-label={label}
               disabled={pending}
               onClick={onClick}

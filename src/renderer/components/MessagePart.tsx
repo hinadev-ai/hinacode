@@ -2,7 +2,6 @@ import type { ReactNode } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
-  RiCheckLine,
   RiEditLine,
   RiErrorWarningLine,
   RiFileEditLine,
@@ -23,7 +22,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 export function MessagePartView({ part }: { part: MessagePart }) {
   switch (part.type) {
     case "text":
-      return <Markdown text={part.text} />
+      return (
+        <div className="my-3 first:mt-0 last:mb-0">
+          <Markdown text={part.text} />
+        </div>
+      )
     case "reasoning":
       return <ReasoningPart text={part.text} />
     case "tool_call":
@@ -36,26 +39,28 @@ export function MessagePartView({ part }: { part: MessagePart }) {
 }
 
 const disclosureTrigger =
-  "group/trigger flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+  "group/trigger -mx-2 flex h-7 w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground outline-none transition-colors duration-100 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 
-function Chevron() {
+const disclosureContent = "mt-1 mb-2 ml-[7px] border-l border-border pl-[15px]"
+
+/** The row's icon gives way to a chevron on hover and while open, so the row reads as expandable only when it matters. */
+function RowIcon({ icon: Icon }: { icon: IconType }) {
   return (
-    <RiArrowRightSLine
-      aria-hidden
-      className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
-    />
+    <span aria-hidden className="relative size-3.5 shrink-0">
+      <Icon className="absolute inset-0 size-3.5 transition-opacity duration-100 group-hover/trigger:opacity-0 group-focus-visible/trigger:opacity-0 group-data-panel-open/trigger:opacity-0" />
+      <RiArrowRightSLine className="absolute inset-0 size-3.5 opacity-0 transition-[opacity,rotate] duration-150 group-hover/trigger:opacity-100 group-focus-visible/trigger:opacity-100 group-data-panel-open/trigger:rotate-90 group-data-panel-open/trigger:opacity-100 motion-reduce:transition-none" />
+    </span>
   )
 }
 
 function ReasoningPart({ text }: { text: string }) {
   return (
-    <Collapsible className="my-1">
+    <Collapsible>
       <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
-        <RiSparkling2Line aria-hidden className="size-3.5 shrink-0" />
+        <RowIcon icon={RiSparkling2Line} />
         {m.message_reasoning()}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
+      <CollapsibleContent className={`${disclosureContent} text-xs/relaxed whitespace-pre-wrap text-muted-foreground`}>
         {text}
       </CollapsibleContent>
     </Collapsible>
@@ -103,7 +108,7 @@ function formatOutput(output: unknown): string {
 
 const statusIcon = {
   running: <RiLoader4Line aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />,
-  done: <RiCheckLine aria-hidden className="size-3.5 text-emerald-500" />,
+  done: null,
   error: <RiErrorWarningLine aria-hidden className="size-3.5 text-destructive" />,
 } satisfies Record<ToolCallStatus, ReactNode>
 
@@ -114,16 +119,14 @@ const statusLabel = {
 } satisfies Record<ToolCallStatus, () => string>
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
-  const Icon = toolIcons[part.name] ?? RiToolsLine
   const summary = summarizeInput(part.input)
 
   return (
-    <Collapsible className="my-1">
+    <Collapsible>
       <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
-        <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">{part.name}</span>
-        <span className="min-w-0 flex-1 truncate font-mono" title={summary}>
+        <RowIcon icon={toolIcons[part.name] ?? RiToolsLine} />
+        <span className="shrink-0 font-medium text-foreground/90">{part.name}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={summary}>
           {summary}
         </span>
         <span className="shrink-0" title={statusLabel[part.status]()}>
@@ -131,7 +134,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
           <span className="sr-only">{statusLabel[part.status]()}</span>
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 flex flex-col gap-2 pl-7 text-xs">
+      <CollapsibleContent className={`${disclosureContent} flex flex-col gap-3 text-xs`}>
         <ToolSection label={m.tool_input()} text={JSON.stringify(part.input, null, 2)} />
         <ToolSection
           label={m.tool_output()}
@@ -145,35 +148,71 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
 function ToolSection({ label, text }: { label: string; text: string }) {
   return (
     <section>
-      <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
-      <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono whitespace-pre-wrap">
+      <h4 className="mb-1.5 text-[11px] font-medium text-muted-foreground">{label}</h4>
+      <pre className="max-h-64 overflow-auto rounded-md bg-canvas/60 p-2.5 font-mono text-[11px]/relaxed whitespace-pre-wrap text-foreground/85">
         {text}
       </pre>
     </section>
   )
 }
 
+/** Added and removed line counts of a unified diff, ignoring the `+++`/`---` file headers. */
+const countLines = (diff: string) => {
+  let added = 0
+  let removed = 0
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+") && !line.startsWith("+++")) added++
+    else if (line.startsWith("-") && !line.startsWith("---")) removed++
+  }
+  return { added, removed }
+}
+
+const diffLineTone = (line: string) => {
+  if (line.startsWith("+") && !line.startsWith("+++")) return "bg-success/10 text-success"
+  if (line.startsWith("-") && !line.startsWith("---")) return "bg-destructive/10 text-destructive"
+  if (line.startsWith("@@")) return "text-muted-foreground"
+  return "text-foreground/80"
+}
+
 function FileChangePart({ path, diff }: { path: string; diff: string }) {
+  const { added, removed } = countLines(diff)
   const row = (
     <>
-      <RiFileEditLine aria-hidden className="size-3.5 shrink-0 text-emerald-500" />
       <span className="shrink-0">{m.file_change_label()}</span>
-      <span className="min-w-0 truncate font-mono text-foreground" title={path}>
+      <span className="min-w-0 truncate font-mono text-[11px] text-foreground/90" title={path}>
         {path}
       </span>
+      {diff !== "" && (
+        <span className="ml-auto flex shrink-0 gap-1.5 font-mono text-[11px] tabular-nums">
+          <span className="text-success">+{added}</span>
+          <span className="text-destructive">−{removed}</span>
+        </span>
+      )}
     </>
   )
   if (diff === "")
-    return <div className="my-1 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    return (
+      <div className="flex h-7 items-center gap-2 text-xs text-muted-foreground">
+        <RiFileEditLine aria-hidden className="size-3.5 shrink-0" />
+        {row}
+      </div>
+    )
   return (
-    <Collapsible className="my-1">
+    <Collapsible>
       <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
+        <RowIcon icon={RiFileEditLine} />
         {row}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 pl-7">
-        <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono text-xs">
-          {diff}
+      <CollapsibleContent className={disclosureContent}>
+        <pre className="max-h-80 overflow-auto rounded-md bg-canvas/60 py-2 font-mono text-[11px]/relaxed">
+          <div className="w-max min-w-full">
+            {diff.trimEnd().split("\n").map((line, index) => (
+              // Lines of a finished diff never move, so the index is a stable key.
+              <div key={index} className={`px-2.5 ${diffLineTone(line)}`}>
+                {line || " "}
+              </div>
+            ))}
+          </div>
         </pre>
       </CollapsibleContent>
     </Collapsible>

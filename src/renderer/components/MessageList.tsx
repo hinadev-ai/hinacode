@@ -39,7 +39,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
     return (
       <article
         aria-label={m.message_you()}
-        className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+        className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-6 pt-6 pb-2"
       >
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
@@ -49,7 +49,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
+          <div className="max-w-[85%] rounded-xl border border-border bg-secondary px-3.5 py-2 text-prose whitespace-pre-wrap text-secondary-foreground">
             {text}
           </div>
         )}
@@ -60,13 +60,13 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && message.parts.length === 0) return null
   return (
-    <article aria-busy={streaming} className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed">
+    <article aria-busy={streaming} className="mx-auto flex w-full max-w-3xl flex-col px-6 py-2 text-prose">
       {message.parts.map((part, index) => (
         // Parts only ever get appended or updated in place, so the index is a stable key.
         <MessagePartView key={index} part={part} />
       ))}
       {streaming && message.parts.length === 0 && (
-        <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">{m.message_thinking()}</p>
+        <p className="animate-pulse text-sm text-muted-foreground motion-reduce:animate-none">{m.message_thinking()}</p>
       )}
     </article>
   )
@@ -74,9 +74,9 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
 
 export function EmptyThread({ providerLabel }: { providerLabel: string }) {
   return (
-    <div className="m-auto flex max-w-sm flex-col items-center gap-1 px-4 text-center">
-      <h2 className="text-sm font-semibold">{m.thread_empty_title()}</h2>
-      <p className="text-sm text-muted-foreground">{m.thread_empty_hint({ provider: providerLabel })}</p>
+    <div className="m-auto flex max-w-sm flex-col items-center gap-1 px-6 text-center">
+      <h2 className="text-sm font-medium">{m.thread_empty_title()}</h2>
+      <p className="text-sm text-pretty text-muted-foreground">{m.thread_empty_hint({ provider: providerLabel })}</p>
     </div>
   )
 }

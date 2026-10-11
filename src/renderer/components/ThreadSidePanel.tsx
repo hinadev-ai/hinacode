@@ -3,12 +3,11 @@ import { PatchDiff } from "@pierre/diffs/react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { type ReactNode, useId, useState } from "react"
-import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
+import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarLine } from "react-icons/ri"
 import type { ChangedFileStatus, PullRequestState, Thread, Worktree, WorktreeStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, projectsAtom, pullRequestAtom, worktreeChangesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { SettleDialog, useActiveWorktree } from "./SettleDialog.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
@@ -22,17 +21,12 @@ import { ScrollArea } from "./ui/scroll-area.tsx"
 /** Right-hand panel of the thread route: where the thread runs, its setup log, changes, ports, pull requests, and settling. */
 export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
-  const toggleSidePanel = useUi((state) => state.toggleSidePanel)
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
 
   return (
-    <aside aria-label={m.panel_label()} className="flex w-96 shrink-0 flex-col border-l border-border">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
-        <h2 className="text-sm font-semibold">{m.panel_label()}</h2>
-        <PanelToggle expanded onToggle={toggleSidePanel} />
-      </header>
+    <aside aria-label={m.panel_label()} className="flex w-80 shrink-0 flex-col border-l border-border">
       <ScrollArea className="min-h-0 flex-1">
-        <div ref={sectionsRef} className="flex flex-col gap-6 p-4">
+        <div ref={sectionsRef} className="flex flex-col gap-7 px-5 py-5">
           <Section title={m.panel_workspace()}>
             {worktree ? <WorktreeWorkspace worktree={worktree} /> : <RootWorkspace projectId={thread.projectId} />}
           </Section>
@@ -50,7 +44,7 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
           </Section>
         </div>
       </ScrollArea>
-      <footer className="shrink-0 border-t border-border p-3">
+      <footer className="shrink-0 px-5 pt-2 pb-5">
         <SettleControl thread={thread} />
       </footer>
     </aside>
@@ -60,19 +54,37 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
 export function PanelToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const label = expanded ? m.panel_hide() : m.panel_show()
   return (
-    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} aria-expanded={expanded} onClick={onToggle}>
-      <RiSideBarFill aria-hidden className="-scale-x-100" />
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      title={label}
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className="text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground aria-expanded:hover:bg-muted aria-expanded:hover:text-foreground"
+    >
+      <RiSideBarLine aria-hidden className="-scale-x-100" />
     </Button>
   )
 }
 
-function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+interface SectionProps {
+  readonly title: string
+  readonly count?: number
+  readonly action?: ReactNode
+  readonly children: ReactNode
+}
+
+function Section({ title, count, action, children }: SectionProps) {
   const headingId = useId()
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-2">
       <div className="flex min-h-6 items-center justify-between gap-2">
-        <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
+        <h3 id={headingId} className="flex items-baseline gap-1.5 text-xs font-medium text-muted-foreground">
           {title}
+          {count !== undefined && count > 0 && (
+            <span className="font-normal text-muted-foreground/70 tabular-nums">{count}</span>
+          )}
         </h3>
         {action}
       </div>
@@ -81,12 +93,21 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
   )
 }
 
+/** Long paths keep their informative end: the ellipsis eats the start. `bdi` stops the RTL trick from reordering slashes. */
+function PathLine({ path }: { path: string }) {
+  return (
+    <p className="truncate text-left font-mono text-[11px] text-muted-foreground [direction:rtl]" title={path}>
+      <bdi>{path}</bdi>
+    </p>
+  )
+}
+
 function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) {
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="xs"
-      className="self-start"
+      className="-ml-2 self-start text-muted-foreground"
       disabled={disabled}
       onClick={() => void callPromise("shell.reveal", { path })}
     >
@@ -101,11 +122,11 @@ function RootWorkspace({ projectId }: { projectId: string }) {
   const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === projectId)
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1">
       <p className="text-sm">{m.panel_workspace_root()}</p>
       {project && (
         <>
-          <p className="font-mono text-xs break-all text-muted-foreground">{project.rootPath}</p>
+          <PathLine path={project.rootPath} />
           <RevealButton path={project.rootPath} />
         </>
       )}
@@ -122,7 +143,7 @@ const statusLabel = {
 
 const statusVariant = {
   preparing: "outline",
-  ready: "secondary",
+  ready: "outline",
   failed: "destructive",
   removed: "ghost",
 } as const satisfies Record<WorktreeStatus, string>
@@ -131,10 +152,10 @@ function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
   const removed = worktree.status === "removed"
   const pullRequest = useBranchPullRequest(removed ? undefined : worktree.id)
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1">
       <div className="flex min-w-0 items-center gap-2">
-        <RiGitBranchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate font-mono text-sm" title={worktree.branch}>
+        <RiGitBranchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate font-mono text-xs" title={worktree.branch}>
           {worktree.branch}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -142,7 +163,7 @@ function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
           <Badge variant={statusVariant[worktree.status]}>{statusLabel[worktree.status]()}</Badge>
         </span>
       </div>
-      <p className="font-mono text-xs break-all text-muted-foreground">{worktree.path}</p>
+      <PathLine path={worktree.path} />
       {removed && <p className="text-xs text-muted-foreground">{m.panel_removed_hint()}</p>}
       {pullRequest?.state === "MERGED" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
       <RevealButton path={worktree.path} disabled={removed} />
@@ -199,10 +220,10 @@ const fileStatusLabel = {
 } satisfies Record<ChangedFileStatus, () => string>
 
 const fileStatusMark = {
-  added: { letter: "A", className: "text-emerald-500" },
-  modified: { letter: "M", className: "text-amber-500" },
+  added: { letter: "A", className: "text-success" },
+  modified: { letter: "M", className: "text-muted-foreground" },
   deleted: { letter: "D", className: "text-destructive" },
-  untracked: { letter: "U", className: "text-sky-500" },
+  untracked: { letter: "U", className: "text-success" },
 } satisfies Record<ChangedFileStatus, { letter: string; className: string }>
 
 /** The single-file section of a combined `git diff`, found by its `diff --git a/… b/<path>` header. */
@@ -228,7 +249,11 @@ function WorktreeChanges({ worktreeId }: { worktreeId: string }) {
   )
 
   return (
-    <Section title={m.panel_changes()} action={refreshButton}>
+    <Section
+      title={m.panel_changes()}
+      count={AsyncResult.getOrElse(changes, () => undefined)?.files.length}
+      action={refreshButton}
+    >
       {AsyncResult.builder(changes)
         .onInitial(() => <p className="text-xs text-muted-foreground">{m.panel_changes_loading()}</p>)
         .onSuccess(({ baseRef, files, patch }) => (
@@ -273,6 +298,9 @@ interface ChangedFileRowProps {
 function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowProps) {
   const diffId = useId()
   const mark = fileStatusMark[status]
+  const slash = path.lastIndexOf("/")
+  const name = path.slice(slash + 1)
+  const dir = path.slice(0, Math.max(slash, 0))
   const filePatch = open ? patchForFile(patch, path) : undefined
 
   return (
@@ -282,17 +310,20 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
         aria-expanded={open}
         aria-controls={diffId}
         onClick={onToggle}
-        className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
+        title={path}
+        className="-mx-2 flex h-7 min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
       >
-        <abbr title={fileStatusLabel[status]()} className={`w-3 shrink-0 font-mono no-underline ${mark.className}`}>
+        <abbr
+          title={fileStatusLabel[status]()}
+          className={`w-2.5 shrink-0 font-mono text-[11px] no-underline ${mark.className}`}
+        >
           {mark.letter}
         </abbr>
-        <span className="truncate font-mono" title={path}>
-          {path}
-        </span>
+        <span className="shrink-0 truncate">{name}</span>
+        <span className="min-w-0 truncate text-muted-foreground/80">{dir}</span>
       </button>
       {open && (
-        <div id={diffId} className="overflow-hidden rounded-md border border-border text-xs">
+        <div id={diffId} className="mb-1 overflow-hidden rounded-md border border-border text-xs">
           {filePatch ? (
             <PatchDiff
               patch={filePatch}
@@ -317,10 +348,17 @@ function SettleControl({ thread }: { thread: Thread }) {
   }
 
   // Once the branch is merged, deleting the worktree loses nothing, so cleanup becomes the primary action.
-  const variant = !worktree ? "outline" : merged ? "default" : "destructive"
+  const variant = worktree && merged ? "default" : "outline"
   return (
     <SettleDialog thread={thread} open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger render={<Button variant={variant} className="w-full" />}>
+      <AlertDialogTrigger
+        render={
+          <Button
+            variant={variant}
+            className={worktree && !merged ? "w-full text-destructive hover:text-destructive" : "w-full"}
+          />
+        }
+      >
         {worktree ? m.panel_settle_cleanup() : m.panel_settle()}
       </AlertDialogTrigger>
     </SettleDialog>

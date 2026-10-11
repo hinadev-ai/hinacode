@@ -79,14 +79,14 @@ function PullRequestRow({ link, onUnlinkFailed }: PullRequestRowProps) {
     })
 
   return (
-    <li className="flex items-center gap-2 py-0.5 text-xs">
+    <li className="group/pr flex h-7 items-center gap-2 text-xs">
       <RiGitPullRequestLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       <a
         href={link.url}
         target="_blank"
         rel="noreferrer"
         title={link.url}
-        className="flex min-w-0 flex-1 items-center gap-1 rounded-sm font-mono underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-1 rounded-sm font-mono text-[11px] underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="truncate">{name}</span>
         <RiExternalLinkLine aria-hidden className="size-3 shrink-0 text-muted-foreground" />
@@ -94,6 +94,7 @@ function PullRequestRow({ link, onUnlinkFailed }: PullRequestRowProps) {
       <Button
         variant="ghost"
         size="icon-xs"
+        className="text-muted-foreground opacity-0 group-hover/pr:opacity-100 focus-visible:opacity-100"
         aria-label={m.pr_links_unlink({ name })}
         title={m.pr_links_unlink({ name })}
         disabled={pending}
