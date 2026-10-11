@@ -11,6 +11,9 @@ import * as Worktrees from "./services/Worktrees.ts"
 
 // Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves.
 app.setName("kkcode")
+// Lets several instances run side by side during development and testing.
+const userDataOverride = process.env["KKCODE_USER_DATA"]
+if (userDataOverride) app.setPath("userData", userDataOverride)
 
 const makeAppLayer = (dbPath: string) =>
   Layer.mergeAll(Threads.layer.pipe(Layer.provideMerge(Projects.layer)), Worktrees.layer, Settings.layer).pipe(
