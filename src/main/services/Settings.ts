@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { defaultSettings, Settings as SettingsSchema } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
@@ -14,11 +14,14 @@ export class Settings extends Context.Service<
   {
     readonly get: Effect.Effect<SettingsValue, PersistenceError>
     readonly set: (patch: Partial<SettingsValue>) => Effect.Effect<SettingsValue, PersistenceError>
+    /** Every value `set` writes, from subscription time on. */
+    readonly changes: Stream.Stream<SettingsValue>
   }
 >()("kkcode/Settings") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
+  const written = yield* PubSub.unbounded<SettingsValue>()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -47,10 +50,12 @@ const make = Effect.gen(function* () {
           `,
         ),
       ).pipe(sql.withTransaction, Effect.mapError(persistence("settings.set")))
-      return yield* get
+      const next = yield* get
+      yield* PubSub.publish(written, next)
+      return next
     })
 
-  return Settings.of({ get, set })
+  return Settings.of({ get, set, changes: Stream.fromPubSub(written) })
 })
 
 export const layer = Layer.effect(Settings, make)
