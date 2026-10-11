@@ -35,16 +35,22 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         parts: [...message.parts, { type: "file_change", path: event.path, diff: event.diff ?? "" }],
       }
     case "turn_completed":
-      return { ...message, completedAt: now, usage: event.usage ?? null }
+      return { ...message, parts: failRunningTools(message.parts), completedAt: now, usage: event.usage ?? null }
     case "turn_failed":
       return {
         ...message,
-        parts: [...message.parts, { type: "text", text: `**Error:** ${event.message}` }],
+        parts: [...failRunningTools(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
         completedAt: now,
       }
     default:
       return message
   }
+}
+
+/** A turn that ended (interrupted, failed) while tools ran will never report their results. */
+function failRunningTools(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
+  if (!parts.some((part) => part.type === "tool_call" && part.status === "running")) return parts
+  return parts.map((part) => (part.type === "tool_call" && part.status === "running" ? { ...part, status: "error" } : part))
 }
 
 /** Deltas extend the trailing part of the same kind, so one streamed paragraph stays one part. */
