@@ -388,12 +388,7 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
 
   const [error, remove, isPending] = useActionState(async () => {
     try {
-      if (worktree && removeWorktree) {
-        useWorktrees
-          .getState()
-          .upsert(await callPromise("worktrees.remove", { id: worktree.id, deleteBranch: "ifMerged" }))
-      }
-      await callPromise("threads.delete", { id: thread.id })
+      await callPromise("threads.delete", { id: thread.id, removeWorktree: worktree !== undefined && removeWorktree })
     } catch (cause) {
       return errorMessage(cause)
     }

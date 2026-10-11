@@ -90,9 +90,9 @@ describe("worktree ownership", () => {
     const first = await run(createThread("first", "kk/shared"))
     const error = await runFailure(createThread("second", "kk/shared"))
     assert.equal(error._tag, "WorktreeTakenError")
-    const threads = await run(Threads.use((threads) => threads.list))
+    const all = await run(Threads.use((threads) => threads.list))
     assert.deepEqual(
-      threads.map((thread) => thread.id),
+      all.map((thread) => thread.id),
       [first.id],
     )
   })

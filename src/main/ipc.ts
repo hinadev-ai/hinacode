@@ -58,7 +58,7 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": (input) => Threads.use((threads) => threads.create(input)),
   "threads.update": (input) => Threads.use((threads) => threads.update(input)),
-  "threads.delete": ({ id }) => Threads.use((threads) => threads.remove(id)),
+  "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),

@@ -12,6 +12,7 @@ import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
 import { Threads } from "./Threads.ts"
+import { Worktrees } from "./Worktrees.ts"
 
 const PERSIST_INTERVAL_MS = 500
 
@@ -79,6 +80,7 @@ const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...
 
 const make = Effect.gen(function* () {
   const threads = yield* Threads
+  const worktrees = yield* Worktrees
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpServer
@@ -206,14 +208,19 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = yield* providerFor(thread.provider)
-      const cwd = yield* threads.resolveCwd(thread.id)
-      const now = yield* nowIso
-      const assistant = openAssistantMessage(threadId, now)
-      yield* insertMessage(userMessage(threadId, prompt, attachments, now))
-      yield* insertMessage(assistant)
-      yield* updateThread({ id: threadId, status: "running" })
-
-      const turn = makeTurn(thread, provider, cwd, assistant)
+      // Marking the thread running in the same critical section as resolving its cwd stops a
+      // worktree removal from deleting the directory this turn is about to run in.
+      const turn = yield* worktrees.exclusive(
+        Effect.gen(function* () {
+          const cwd = yield* threads.resolveCwd(thread.id)
+          const now = yield* nowIso
+          const assistant = openAssistantMessage(threadId, now)
+          yield* insertMessage(userMessage(threadId, prompt, attachments, now))
+          yield* insertMessage(assistant)
+          yield* updateThread({ id: threadId, status: "running" })
+          return makeTurn(thread, provider, cwd, assistant)
+        }),
+      )
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
     })

@@ -73,7 +73,10 @@ export const RpcMethods = {
     }),
     Thread,
   ),
-  "threads.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "threads.delete": rpc(
+    Schema.Struct({ id: Schema.String, removeWorktree: Schema.optional(Schema.Boolean) }),
+    Schema.Void,
+  ),
 
   "worktrees.list": rpc(Schema.Void, Schema.Array(Worktree)),
   "worktrees.create": rpc(
