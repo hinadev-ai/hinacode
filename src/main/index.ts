@@ -62,7 +62,7 @@ const createWindow = () => {
     minWidth: 720,
     minHeight: 480,
     show: false,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: "#0d0e10",
     title: "kkcode",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),

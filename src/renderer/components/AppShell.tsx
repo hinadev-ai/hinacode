@@ -13,10 +13,10 @@ export function AppShell() {
   const sidebarOpen = useUi((state) => state.sidebarOpen)
 
   return (
-    <div className="flex h-dvh bg-background text-foreground">
+    <div className="flex h-dvh bg-canvas text-foreground">
       <Sidebar />
       {!sidebarOpen && <SidebarRail />}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="my-1.5 mr-1.5 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-[0_1px_2px_oklch(0_0_0/40%),0_8px_24px_-12px_oklch(0_0_0/60%)]">
         <Outlet />
       </main>
     </div>
@@ -29,7 +29,7 @@ function SidebarRail() {
   const chord = useKeymap()["sidebar.toggle"]
 
   return (
-    <div className="flex w-11 shrink-0 flex-col items-center border-r border-sidebar-border bg-sidebar py-2.5">
+    <div className="flex w-11 shrink-0 flex-col items-center pt-[15px]">
       <Tooltip>
         <TooltipTrigger
           render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_show()} onClick={toggleSidebar} />}
