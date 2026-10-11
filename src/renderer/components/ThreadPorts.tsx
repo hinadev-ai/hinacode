@@ -1,23 +1,25 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { useId, useState, useTransition } from "react"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { useState, useTransition } from "react"
 import { RiCloseCircleLine } from "react-icons/ri"
 import type { OpenPort } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, threadPortsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
-/** Listening TCP ports opened from the thread's workspace or by its agent, refreshed every 2s. */
+/** Listening TCP ports, as the body of a panel section: opened from the thread's workspace or by its agent, refreshed every 2s. */
 export function ThreadPorts({ threadId }: { threadId: string }) {
   const ports = useAtomValue(threadPortsAtom(threadId))
   const refresh = useAtomRefresh(threadPortsAtom(threadId))
   const [killError, setKillError] = useState<string | null>(null)
-  const headingId = useId()
+  const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
 
   const failed = (message: string) => (
     <div role="alert" className="flex items-center gap-2">
-      <p className="text-sm text-destructive">{m.ports_failed({ message })}</p>
+      <p className="text-xs text-destructive">{m.ports_failed({ message })}</p>
       <Button variant="outline" size="xs" onClick={refresh}>
         {m.sidebar_retry()}
       </Button>
@@ -25,17 +27,14 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
   )
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
-      <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
-        {m.ports_title()}
-      </h3>
+    <div className="flex flex-col gap-1.5">
       {AsyncResult.builder(ports)
-        .onInitial(() => <p className="text-sm text-muted-foreground">{m.ports_loading()}</p>)
+        .onInitial(() => <p className="text-xs text-muted-foreground">{m.ports_loading()}</p>)
         .onSuccess((list) =>
           list.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{m.ports_empty()}</p>
+            <p className="text-xs text-muted-foreground">{m.ports_empty()}</p>
           ) : (
-            <ul className="flex flex-col">
+            <ul ref={listRef} className="flex flex-col">
               {list.map((port) => (
                 <PortRow
                   key={`${port.port}:${port.pid}`}
@@ -50,14 +49,14 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
             </ul>
           ),
         )
-        .onError((error) => failed(error.message))
+        .onError((error) => failed(errorMessage(error)))
         .orElse(() => failed(""))}
       {killError && (
         <p role="alert" className="text-xs text-destructive">
-          {m.ports_kill_failed({ message: killError })}
+          {killError}
         </p>
       )}
-    </section>
+    </div>
   )
 }
 
@@ -81,16 +80,24 @@ function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
         await callPromise("ports.kill", { pid: port.pid })
         onKilled()
       } catch (cause) {
-        onKillFailed(cause instanceof Error ? cause.message : String(cause))
+        onKillFailed(errorMessage(cause))
       }
     })
   }
 
+  const process = m.ports_process({ command: port.command, pid: String(port.pid) })
+  const label = armed
+    ? m.ports_kill_confirm({ command: port.command })
+    : m.ports_kill({ command: port.command, port: String(port.port) })
+
   return (
-    <li className="flex items-center gap-2 py-0.5 text-sm">
+    <li className="flex items-center gap-2 py-0.5 text-xs">
       <span className="w-14 shrink-0 font-mono tabular-nums">:{port.port}</span>
-      <span className="min-w-0 flex-1 truncate text-muted-foreground" title={port.cwd ?? undefined}>
-        {m.ports_process({ command: port.command, pid: String(port.pid) })}
+      <span
+        className="min-w-0 flex-1 truncate text-muted-foreground"
+        title={[process, port.cwd].filter(Boolean).join("\n")}
+      >
+        {process}
       </span>
       <Tooltip open={armed || hovered} onOpenChange={setHovered}>
         <TooltipTrigger
@@ -98,7 +105,7 @@ function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
             <Button
               variant={armed ? "destructive" : "ghost"}
               size="icon-xs"
-              aria-label={m.ports_kill({ command: port.command, port: String(port.port) })}
+              aria-label={label}
               disabled={pending}
               onClick={onClick}
               onBlur={() => setArmed(false)}
@@ -107,11 +114,7 @@ function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
         >
           <RiCloseCircleLine aria-hidden />
         </TooltipTrigger>
-        <TooltipContent side="top">
-          {armed
-            ? m.ports_kill_confirm({ command: port.command })
-            : m.ports_kill({ command: port.command, port: String(port.port) })}
-        </TooltipContent>
+        <TooltipContent side="top">{label}</TooltipContent>
       </Tooltip>
     </li>
   )

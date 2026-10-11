@@ -95,11 +95,10 @@
   "worktree_status_failed": "Setup failed",
   "worktree_status_removed": "Removed",
   "panel_removed_hint": "The worktree was removed. New runs use the project root.",
-  "panel_pr": "Pull request: {state}",
   "pr_state_open": "open",
   "pr_state_closed": "closed",
   "pr_state_merged": "merged",
-  "panel_pr_merged_hint": "The pull request is merged, so this worktree can be cleaned up.",
+  "panel_pr_merged_hint": "The pull request is merged. Settle the thread to delete this worktree.",
   "panel_setup_log": "Setup log",
   "panel_setup_waiting": "Waiting for output…",
   "panel_setup_none": "No output.",
@@ -178,7 +177,6 @@
   "ports_process": "{command} (pid {pid})",
   "ports_kill": "Stop {command} on port {port}",
   "ports_kill_confirm": "Click again to stop {command}",
-  "ports_kill_failed": "Could not stop the process: {message}",
   "error_not_found": "This item no longer exists. It may have been deleted.",
   "error_persistence": "Could not read or write the local database. Try again, and restart kkcode if it keeps failing.",
   "error_project_path_taken": "Another project already uses this folder.",
@@ -189,5 +187,11 @@
   "error_agent": "The agent failed: {detail}",
   "error_command": "A command failed: {detail}",
   "error_ports": "Could not inspect or stop the process: {detail}",
-  "error_unexpected": "Unexpected error: {detail}"
+  "error_unexpected": "Unexpected error: {detail}",
+  "panel_pr_badge": "PR {state}",
+  "pr_links_title": "Pull requests",
+  "pr_links_loading": "Loading pull requests…",
+  "pr_links_empty": "None linked yet. Agents add them with the link_pull_request tool.",
+  "pr_links_failed": "Could not load pull requests: {message}",
+  "pr_links_unlink": "Unlink {name}"
 }

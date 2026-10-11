@@ -1,0 +1,27 @@
+import { Effect } from "effect"
+import { Atom } from "effect/reactivity"
+import { create } from "zustand"
+import type { PullRequestLink } from "../../shared/domain.ts"
+import { call } from "../lib/rpc.ts"
+
+interface PullRequestsState {
+  /** Links per thread id. A thread is absent until its links are loaded or pushed. */
+  readonly byThreadId: Readonly<Record<string, ReadonlyArray<PullRequestLink>>>
+  readonly replace: (threadId: string, links: ReadonlyArray<PullRequestLink>) => void
+}
+
+/** Pull requests agents linked to threads, kept current by `thread.pullRequests` pushes. */
+export const usePullRequests = create<PullRequestsState>()((set) => ({
+  byThreadId: {},
+  replace: (threadId, links) => set((state) => ({ byThreadId: { ...state.byThreadId, [threadId]: links } })),
+}))
+
+/** Loads a thread's links into the store. Subscribe for the loading and error state; read links from the store. */
+export const loadPullRequestsAtom = Atom.family((threadId: string) =>
+  Atom.make(
+    call("pullRequests.list", { threadId }).pipe(
+      Effect.tap((links) => Effect.sync(() => usePullRequests.getState().replace(threadId, links))),
+      Effect.asVoid,
+    ),
+  ),
+)

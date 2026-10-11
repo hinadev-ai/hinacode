@@ -10,6 +10,7 @@ import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
+import { usePullRequests } from "./stores/pullRequests.ts"
 import { useThreads } from "./stores/threads.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
@@ -45,6 +46,8 @@ onPushEvent((event) => {
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":
       return useWorktrees.getState().appendSetupLog(event.id, event.chunk)
+    case "thread.pullRequests":
+      return usePullRequests.getState().replace(event.threadId, event.links)
   }
 })
 
