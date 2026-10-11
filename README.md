@@ -63,3 +63,14 @@ messages/     Paraglide catalogs, en.json and zh-TW.json. Every UI string lives 
 Renderer and main talk over a single `rpc` IPC channel. Each method in `src/shared/contract.ts` has a request and response schema that both sides decode. Main pushes live updates on the `event` channel.
 
 Adding an agent backend means one implementation of `AgentProvider` in `src/main/agents/` and one line in the runner's provider registry.
+
+## Testing
+
+| Command                 | What runs                                                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test:unit`        | Vitest, in-process: pure helpers, stores, event mapping. Files named `*.test.ts`.                                                                              |
+| `pnpm test:integration` | Vitest against real SQLite files, git, child processes and the MCP HTTP server. Files named `*.integration.test.ts`.                                           |
+| `pnpm test`             | Both Vitest projects.                                                                                                                                          |
+| `pnpm test:e2e`         | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
+
+Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own kkcode on a throwaway `KKCODE_USER_DATA`, seeds preconditions through `window.kkcode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
