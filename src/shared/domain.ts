@@ -105,3 +105,13 @@ export const defaultSettings: Settings = {
   keybindings: {},
   defaultModel: { claude: null, codex: null },
 }
+
+/** A listening TCP port and the process that owns it. */
+export const OpenPort = Schema.Struct({
+  port: Schema.Number,
+  pid: Schema.Number,
+  command: Schema.String,
+  /** Null when the process belongs to another user. */
+  cwd: Schema.NullOr(Schema.String),
+})
+export type OpenPort = typeof OpenPort.Type

@@ -4,7 +4,9 @@ import { app, BrowserWindow, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as Db from "./db/client.ts"
 import { registerIpc } from "./ipc.ts"
+import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -17,6 +19,7 @@ if (userDataOverride) app.setPath("userData", userDataOverride)
 
 const makeAppLayer = (dbPath: string) =>
   Layer.mergeAll(Threads.layer.pipe(Layer.provideMerge(Projects.layer)), Worktrees.layer, Settings.layer).pipe(
+    Layer.merge(Layer.mergeAll(Secrets.layer, Ports.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeFileSystem.layer),
   )

@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { AgentEvent, ModelInfo, ProviderId } from "./agent.ts"
-import { Locale, Project, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
+import { Locale, OpenPort, Project, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -55,6 +55,14 @@ export const RpcMethods = {
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
+
+  // settings
+  /** Secrets are write-only from the renderer: it can learn whether one is stored, never its value. */
+  "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
+  "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
+  "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
+  "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
+  "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
 }
 
 export type RpcMethod = keyof typeof RpcMethods

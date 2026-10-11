@@ -9,12 +9,14 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
+import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
+import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-type AppServices = Projects | Threads | Worktrees | Settings
+type AppServices = Projects | Threads | Worktrees | Settings | Secrets | Ports
 
 interface HandlerError {
   readonly _tag: string
@@ -54,6 +56,12 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
+
+  "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
+  "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
+  "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
+  "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
+  "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 }
 
 const RpcCall = Schema.Struct({
