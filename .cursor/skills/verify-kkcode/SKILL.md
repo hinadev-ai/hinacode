@@ -67,7 +67,8 @@ Rules that came out of real runs:
 - Pass `--exact` to `find`. The open thread's sidebar row is itself a `button` whose name contains `Actions for <title>` and `Reorder <title>`, so a substring match clicks the row instead.
 - `find` searches the whole page, including what sits behind a dialog. In a thread view the composer has a `Model` combobox too, so scope dialog controls with CSS: `$AB click '[role=dialog] #thread-model'`.
 - Selects are base-ui popups: click the combobox, `$AB wait '[role=option]'`, then `$AB find role option click --name "<label>" --exact`.
-- `find` does not wait, and menus, select popups (`[role=option]`), inline inputs and dialogs render a beat after the click. After opening wait for `[role=menu]`, `[role=option]`, `[role=dialog]`, `[role=alertdialog]` or the input; after closing wait with `$AB wait --fn '!document.querySelector("[role=dialog]")'`. `snapshot` can lag an animation, so trust the wait, not one snapshot.
+- `find` does not wait, and menus, select popups (`[role=option]`), inline inputs and dialogs render a beat after the click. After opening wait for `[role=menu]`, `[role=option]`, `[role=dialog]`, `[role=alertdialog]` or the input; after closing a dialog wait with `$AB wait --fn '!document.querySelector("[role=dialog]")'`. A closed select keeps its options in the page, so wait on the combobox's `aria-expanded="false"` instead of on `[role=option]` disappearing. `snapshot` can lag an animation, so trust the wait, not one snapshot.
+- After `stop.sh` and a relaunch the agent-browser session loses its CDP attachment and opens a blank browser. Pass `--cdp $PORT` on every command after a relaunch (or on every command, which is simplest).
 - `find` supports `click`, `fill`, `check`, `hover`, `text`. For focus or keyboard work use `$AB focus '<css>'` and `$AB press <Key>`.
 - Routing uses memory history, so there is no URL to open. Navigate by clicking sidebar links. `$AB reload` returns to the home route.
 
