@@ -12,6 +12,7 @@ import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
 import { Threads } from "./Threads.ts"
+import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
 
@@ -82,6 +83,7 @@ const make = Effect.gen(function* () {
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpServer
+  const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
@@ -206,7 +208,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = yield* providerFor(thread.provider)
-      const cwd = yield* threads.resolveCwd(thread.id)
+      const { cwd } = yield* activeWorkspace(thread.id)
       const now = yield* nowIso
       const assistant = openAssistantMessage(threadId, now)
       yield* insertMessage(userMessage(threadId, prompt, attachments, now))
