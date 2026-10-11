@@ -20,7 +20,10 @@ export const useThreads = create<ThreadsState>()((set) => ({
     }),
 }))
 
+const settledLast = (thread: Thread) => (thread.status === "settled" ? 1 : 0)
+
+/** A project's threads in sidebar order: saved order, with settled threads moved below the rest. */
 export const selectProjectThreads = (projectId: string) => (state: ThreadsState) =>
   Object.values(state.byId)
     .filter((thread) => thread.projectId === projectId)
-    .toSorted((a, b) => a.sortIndex - b.sortIndex)
+    .toSorted((a, b) => settledLast(a) - settledLast(b) || a.sortIndex - b.sortIndex)

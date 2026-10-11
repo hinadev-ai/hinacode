@@ -301,5 +301,6 @@
   "automations_secret_description": "Configure the sender with this URL and secret. The secret is shown only now.",
   "automations_secret_label": "Signing secret",
   "automations_secret_hint": "Store it in the sender now. To get a new one, create a new automation.",
-  "automations_secret_done": "Done"
+  "automations_secret_done": "Done",
+  "sidebar_thread_settled": "Settled"
 }

@@ -29,6 +29,7 @@ import {
 import { flushSync } from "react-dom"
 import {
   RiCheckboxCircleLine,
+  RiCheckLine,
   RiDeleteBinLine,
   RiDraggable,
   RiGitBranchLine,
@@ -59,6 +60,7 @@ import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -233,12 +235,16 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
         >
           <ProviderIcon provider={thread.provider} />
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate" title={thread.title}>
+            <span
+              className="truncate data-[settled=true]:text-muted-foreground"
+              data-settled={thread.status === "settled"}
+              title={thread.title}
+            >
               {thread.title}
             </span>
             {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
           </span>
-          <StatusDot status={thread.status} />
+          {thread.status === "settled" ? <SettledMark /> : <StatusDot status={thread.status} />}
         </Link>
       )}
 
@@ -439,6 +445,18 @@ function StatusDot({ status }: { status: ThreadStatus }): ReactNode {
       <span aria-hidden className={`size-2 rounded-full ${dot.className}`} />
       <span className="sr-only">{dot.label()}</span>
     </span>
+  )
+}
+
+function SettledMark() {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="flex shrink-0 items-center text-muted-foreground" />}>
+        <RiCheckLine aria-hidden className="size-3.5" />
+        <span className="sr-only">{m.sidebar_thread_settled()}</span>
+      </TooltipTrigger>
+      <TooltipContent>{m.sidebar_thread_settled()}</TooltipContent>
+    </Tooltip>
   )
 }
 

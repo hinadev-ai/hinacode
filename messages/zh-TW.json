@@ -301,5 +301,6 @@
   "automations_secret_description": "請用這個 URL 與密鑰設定傳送端。密鑰只會在此時顯示。",
   "automations_secret_label": "簽章密鑰",
   "automations_secret_hint": "請立即存到傳送端。若需要新的密鑰，請建立新的自動化。",
-  "automations_secret_done": "完成"
+  "automations_secret_done": "完成",
+  "sidebar_thread_settled": "已結案"
 }
