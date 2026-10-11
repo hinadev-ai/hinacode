@@ -21,6 +21,7 @@ import {
   type RefObject,
   startTransition,
   useActionState,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -54,7 +55,9 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx"
 import { Button } from "./ui/button.tsx"
+import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
+import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
@@ -364,9 +367,16 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
   const worktree = useActiveWorktree(thread)
   const navigate = useNavigate()
   const { threadId: openThreadId } = useParams({ strict: false })
+  const [removeWorktree, setRemoveWorktree] = useState(true)
+  const removeWorktreeId = useId()
 
   const [error, remove, isPending] = useActionState(async () => {
     try {
+      if (worktree && removeWorktree) {
+        useWorktrees
+          .getState()
+          .upsert(await callPromise("worktrees.remove", { id: worktree.id, deleteBranch: "ifMerged" }))
+      }
       await callPromise("threads.delete", { id: thread.id })
     } catch (cause) {
       return errorMessage(cause)
@@ -386,6 +396,12 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
             <AlertDialogDescription>{m.delete_dialog_worktree({ path: worktree.path })}</AlertDialogDescription>
           )}
         </AlertDialogHeader>
+        {worktree && (
+          <Field orientation="horizontal">
+            <Checkbox id={removeWorktreeId} checked={removeWorktree} onCheckedChange={setRemoveWorktree} />
+            <FieldLabel htmlFor={removeWorktreeId}>{m.delete_dialog_remove_worktree()}</FieldLabel>
+          </Field>
+        )}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
