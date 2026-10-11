@@ -124,4 +124,16 @@ export type ApprovalDecisionWire = "accept" | "acceptForSession" | "decline" | "
 export type ServerRequestParams = {
   "item/commandExecution/requestApproval": CommandExecutionRequestApprovalParams
   "item/fileChange/requestApproval": FileChangeRequestApprovalParams
+  "mcpServer/elicitation/request": McpServerElicitationRequestParams
 }
+
+/** Codex asks before every MCP tool call through an elicitation tagged `codex_approval_kind: "mcp_tool_call"`. */
+export interface McpServerElicitationRequestParams {
+  threadId: string
+  turnId: string | null
+  serverName: string
+  message: string
+  _meta: { codex_approval_kind?: string; [key: string]: unknown } | null
+}
+
+export type ElicitationActionWire = "accept" | "decline" | "cancel"

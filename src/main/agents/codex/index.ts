@@ -6,6 +6,8 @@ import type { AgentError, AgentProvider } from "../provider.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import type {
   ApprovalDecisionWire,
+  ElicitationActionWire,
+  McpServerElicitationRequestParams,
   ModelListParams,
   ModelListResponse,
   ServerNotificationParams,
@@ -194,7 +196,35 @@ const make = Effect.gen(function* () {
             }
           })
 
-        const requestApproval = <M extends keyof ServerRequestParams>(
+        const requestMcpToolApproval = (rpcId: string | number, params: McpServerElicitationRequestParams) =>
+          Effect.gen(function* () {
+            const approvalId = randomUUID()
+            const decision = yield* Deferred.make<ApprovalDecision>()
+            approvals.set(approvalId, decision)
+            approvalIdByRpcId.set(rpcId, approvalId)
+            yield* emit({
+              type: "approval_requested",
+              request: {
+                id: approvalId,
+                threadId: input.threadId,
+                provider: "codex",
+                kind: "tool",
+                title: params.message,
+                detail: `MCP server ${params.serverName}`,
+                input: params,
+              },
+            })
+            yield* Deferred.await(decision).pipe(
+              Effect.flatMap((choice) => {
+                const action: ElicitationActionWire = choice === "deny" ? "decline" : "accept"
+                return client.respond(rpcId, { action, content: null, _meta: null })
+              }),
+              Effect.andThen(resolveApproval(approvalId)),
+              Effect.forkScoped,
+            )
+          })
+
+        const requestApproval = <M extends "item/commandExecution/requestApproval" | "item/fileChange/requestApproval">(
           rpcId: string | number,
           method: M,
           params: ServerRequestParams[M],
@@ -251,6 +281,13 @@ const make = Effect.gen(function* () {
                   message.method,
                   message.params as ServerRequestParams[typeof message.method],
                 )
+              } else if (message.method === "mcpServer/elicitation/request") {
+                const params = message.params as McpServerElicitationRequestParams
+                if (params._meta?.codex_approval_kind === "mcp_tool_call") {
+                  yield* requestMcpToolApproval(message.id, params)
+                } else {
+                  yield* client.respond(message.id, { action: "decline", content: null, _meta: null })
+                }
               } else {
                 yield* client.respondError(message.id, -32601, `kkcode does not support ${message.method}`)
               }
