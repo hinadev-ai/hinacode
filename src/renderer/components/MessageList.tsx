@@ -2,6 +2,7 @@ import { LegendList } from "@legendapp/list/react"
 import { memo } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
+import { AttachmentView } from "./AttachmentView.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
 
 const keyExtractor = (message: Message) => message.id
@@ -33,11 +34,25 @@ export function MessageList({ messages }: { messages: ReadonlyArray<Message> }) 
 
 const MessageItem = memo(function MessageItem({ message }: { message: Message }) {
   if (message.role === "user") {
+    const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
+    const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
     return (
-      <article aria-label={m.message_you()} className="mx-auto flex w-full max-w-3xl justify-end px-4 py-2">
-        <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
-          {message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")}
-        </div>
+      <article
+        aria-label={m.message_you()}
+        className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+      >
+        {attachments.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
+            {attachments.map((attachment) => (
+              <AttachmentView key={attachment.id} attachment={attachment} />
+            ))}
+          </div>
+        )}
+        {text !== "" && (
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
+            {text}
+          </div>
+        )}
       </article>
     )
   }

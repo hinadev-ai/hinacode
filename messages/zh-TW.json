@@ -180,5 +180,11 @@
   "ports_process": "{command}（pid {pid}）",
   "ports_kill": "停止連接埠 {port} 上的 {command}",
   "ports_kill_confirm": "再按一次以停止 {command}",
-  "ports_kill_failed": "無法停止程序：{message}"
+  "ports_kill_failed": "無法停止程序：{message}",
+  "attachment_add": "附加檔案",
+  "attachment_add_hint": "附加檔案。也可以貼上圖片，或把檔案拖曳到這裡。",
+  "attachment_pending_label": "待傳送的附件",
+  "attachment_remove": "移除 {name}",
+  "attachment_open_image": "開啟 {name}",
+  "attachment_reveal": "在資料夾中顯示 {name}"
 }

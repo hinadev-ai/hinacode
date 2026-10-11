@@ -1,12 +1,14 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, type KeyboardEvent, useState, useTransition } from "react"
-import { RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
+import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useState, useTransition } from "react"
+import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
 import type { ModelInfo } from "../../shared/agent.ts"
-import type { Thread } from "../../shared/domain.ts"
+import type { RpcRequest } from "../../shared/contract.ts"
+import type { Attachment, Thread } from "../../shared/domain.ts"
 import { callPromise, modelsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
+import { PendingAttachment } from "./AttachmentView.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
@@ -15,12 +17,35 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
+const readAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener("load", () => resolve(String(reader.result)))
+    reader.addEventListener("error", () => reject(reader.error))
+    reader.readAsDataURL(file)
+  })
+
+const onDragOver = (event: DragEvent<HTMLTextAreaElement>) => {
+  if (event.dataTransfer.types.includes("Files")) event.preventDefault()
+}
+
+type StageSource = RpcRequest<"attachments.stage">["source"]
+
+/** Files from disk are copied by path; pasted images and other path-less files are sent as data URLs. */
+const sourceOf = async (file: File): Promise<StageSource> => {
+  const path = window.kkcode.pathForFile(file)
+  if (path !== "") return { path }
+  return { dataUrl: await readAsDataUrl(file), name: file.name || "pasted.png" }
+}
+
 export function Composer({ thread }: { thread: Thread }) {
   const [draft, setDraft] = useState("")
+  const [attachments, setAttachments] = useState<ReadonlyArray<Attachment>>([])
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
+  const [isStaging, startStaging] = useTransition()
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const canSend = draft.trim() !== "" && !isSending
+  const canSend = (draft.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
 
   const send = () => {
     const prompt = draft.trim()
@@ -29,13 +54,50 @@ export function Composer({ thread }: { thread: Thread }) {
     startSending(async () => {
       try {
         await (busy
-          ? callPromise("threads.steer", { threadId: thread.id, text: prompt })
-          : callPromise("threads.send", { threadId: thread.id, prompt }))
+          ? callPromise("threads.steer", { threadId: thread.id, text: prompt, attachments })
+          : callPromise("threads.send", { threadId: thread.id, prompt, attachments }))
         setDraft("")
+        setAttachments([])
       } catch (cause) {
         setError(errorMessage(cause))
       }
     })
+  }
+
+  const stage = (sources: ReadonlyArray<Promise<StageSource> | StageSource>) => {
+    if (sources.length === 0) return
+    setError(null)
+    startStaging(async () => {
+      const results = await Promise.allSettled(
+        sources.map(async (source) => callPromise("attachments.stage", { threadId: thread.id, source: await source })),
+      )
+      const staged = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+      setAttachments((current) => [...current, ...staged])
+      const failed = results.find((result) => result.status === "rejected")
+      if (failed) setError(errorMessage(failed.reason))
+    })
+  }
+
+  const pickFiles = async () => {
+    try {
+      const paths = await callPromise("dialog.pickFiles", undefined)
+      stage(paths.map((path) => ({ path })))
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"))
+    if (images.length === 0) return
+    event.preventDefault()
+    stage(images.map(sourceOf))
+  }
+
+  const onDrop = (event: DragEvent<HTMLTextAreaElement>) => {
+    if (event.dataTransfer.files.length === 0) return
+    event.preventDefault()
+    stage([...event.dataTransfer.files].map(sourceOf))
   }
 
   const stop = () => {
@@ -57,16 +119,32 @@ export function Composer({ thread }: { thread: Thread }) {
   return (
     <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
       <div className="mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
+        {attachments.length > 0 && (
+          <ul aria-label={m.attachment_pending_label()} className="flex flex-wrap gap-2 px-1 pt-1.5">
+            {attachments.map((attachment) => (
+              <li key={attachment.id}>
+                <PendingAttachment
+                  attachment={attachment}
+                  onRemove={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
         <Textarea
           aria-label={m.thread_composer_label()}
           placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
           rows={2}
           className="max-h-60 min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
         <div className="flex items-center gap-2">
+          <AttachButton onClick={pickFiles} disabled={isStaging} />
           <ModelPicker thread={thread} onError={setError} />
           <div className="ml-auto flex items-center gap-2">
             {busy && (
@@ -81,6 +159,28 @@ export function Composer({ thread }: { thread: Thread }) {
       </div>
       {error && <FieldError className="mx-auto mt-1 max-w-3xl">{m.common_error({ message: error })}</FieldError>}
     </form>
+  )
+}
+
+function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={m.attachment_add()}
+          >
+            <RiAttachment2 aria-hidden />
+          </Button>
+        }
+      />
+      <TooltipContent>{m.attachment_add_hint()}</TooltipContent>
+    </Tooltip>
   )
 }
 

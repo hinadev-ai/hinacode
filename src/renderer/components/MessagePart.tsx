@@ -16,6 +16,7 @@ import {
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
+import { AttachmentView } from "./AttachmentView.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
@@ -29,6 +30,8 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <ToolCallPart part={part} />
     case "file_change":
       return <FileChangePart path={part.path} diff={part.diff} />
+    case "attachment":
+      return <AttachmentView attachment={part.attachment} />
   }
 }
 
