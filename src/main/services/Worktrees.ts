@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { SqlClient, SqlSchema } from "effect/sql"
 import {
@@ -39,6 +39,10 @@ export class Worktrees extends Context.Service<
      * Creating the same branch twice returns the existing worktree.
      */
     readonly create: (input: CreateWorktree) => Effect.Effect<Worktree, Failure>
+    /**
+     * Marks the worktree removed and returns at once; the checkout and (per `deleteBranch`) the
+     * branch are deleted in the background, so a large tree does not hold up the caller.
+     */
     readonly remove: (id: string, deleteBranch: DeleteBranch) => Effect.Effect<Worktree, Failure>
     readonly changes: (id: string) => Effect.Effect<WorktreeChanges, Failure>
     /** The branch's GitHub pull request, or null when there is none or `gh` is unavailable. */
@@ -183,10 +187,15 @@ const make = Effect.gen(function* () {
       ),
     )
 
+  /** Deletions still running, by worktree path, so a create of the same path waits for them. */
+  const removals = new Map<string, Fiber.Fiber<void>>()
+
   const create = (input: CreateWorktree) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
       const path = worktreePath(project.rootPath, input.branch)
+      const removal = removals.get(path)
+      if (removal) yield* Fiber.await(removal)
       const existing = yield* findByPath(path).pipe(Effect.mapError(persistence("worktrees.create")))
       if (Option.isSome(existing) && existing.value.status !== "removed") return existing.value
 
@@ -226,11 +235,8 @@ const make = Effect.gen(function* () {
       return worktree
     })
 
-  const remove = (id: string, deleteBranch: DeleteBranch) =>
+  const deleteFiles = (rootPath: string, worktree: Worktree, deleteBranch: DeleteBranch) =>
     Effect.gen(function* () {
-      const worktree = yield* get(id)
-      const { rootPath } = yield* projects.get(worktree.projectId)
-
       if ((yield* registeredPaths(rootPath)).has(worktree.path)) {
         yield* git.run(rootPath, ["worktree", "remove", "--force", worktree.path])
       }
@@ -241,8 +247,23 @@ const make = Effect.gen(function* () {
         const shouldDelete = deleteBranch === "force" || (yield* isMerged(rootPath, worktree.branch, worktree.baseRef))
         if (shouldDelete) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
       }
+    }).pipe(
+      // The row already says removed; put it back so the user can retry instead of losing the checkout.
+      Effect.catchCause((cause) =>
+        Effect.logError("worktree removal failed", cause).pipe(Effect.andThen(setStatus(worktree.id, worktree.status))),
+      ),
+      Effect.ignore,
+      Effect.ensuring(Effect.sync(() => removals.delete(worktree.path))),
+    )
 
-      return yield* setStatus(id, "removed")
+  const remove = (id: string, deleteBranch: DeleteBranch) =>
+    Effect.gen(function* () {
+      const worktree = yield* get(id)
+      if (worktree.status === "removed") return worktree
+      const { rootPath } = yield* projects.get(worktree.projectId)
+      const removed = yield* setStatus(id, "removed")
+      removals.set(worktree.path, yield* Effect.forkDetach(deleteFiles(rootPath, worktree, deleteBranch)))
+      return removed
     })
 
   const changes = (id: string) =>
