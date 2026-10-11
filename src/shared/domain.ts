@@ -10,8 +10,6 @@ export const Project = Schema.Struct({
   name: Schema.String,
   rootPath: Schema.String,
   setupScript: Schema.NullOr(Schema.String),
-  /** The user allowed the repository's own Claude settings (hooks, permission rules, CLAUDE.md) to load. */
-  trusted: Schema.Boolean,
   createdAt: Timestamp,
   updatedAt: Timestamp,
 })
