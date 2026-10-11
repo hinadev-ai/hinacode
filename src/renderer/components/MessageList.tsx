@@ -6,6 +6,8 @@ import { MessagePartView } from "./MessagePart.tsx"
 
 const keyExtractor = (message: Message) => message.id
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
+// Spacers instead of container padding: the list measures header and footer, but not padding.
+const edgeSpacer = <div className="h-4" />
 
 /**
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
@@ -22,8 +24,9 @@ export function MessageList({ messages }: { messages: ReadonlyArray<Message> }) 
       initialScrollAtEnd
       maintainScrollAtEnd
       maintainVisibleContentPosition
+      ListHeaderComponent={edgeSpacer}
+      ListFooterComponent={edgeSpacer}
       className="min-h-0 flex-1"
-      contentContainerStyle={{ paddingBlock: 16 }}
     />
   )
 }
