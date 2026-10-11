@@ -13,7 +13,6 @@ import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
-import { Messages } from "./services/Messages.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
@@ -28,7 +27,6 @@ type AppServices =
   | Threads
   | Worktrees
   | Settings
-  | Messages
   | AgentRunner
   | McpServer
   | PullRequests
@@ -83,7 +81,7 @@ const handlers: Handlers = {
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
 
-  "messages.list": ({ threadId }) => Messages.use((messages) => messages.list(threadId)),
+  "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
   "threads.send": ({ threadId, prompt, attachments = [] }) =>
     AgentRunner.use((runner) => runner.send(threadId, prompt, attachments)),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
@@ -91,7 +89,6 @@ const handlers: Handlers = {
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
-  "approvals.pending": ({ threadId }) => AgentRunner.use((runner) => runner.pendingApprovals(threadId)),
 
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
