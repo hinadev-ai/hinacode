@@ -5,3 +5,7 @@ export const externalUrl = (url: string): string | null => {
   const parsed = URL.parse(url)
   return parsed && EXTERNAL_PROTOCOLS.has(parsed.protocol) ? parsed.href : null
 }
+
+export const isAppDocument = (_url: string, _appUrl: string): boolean => true
+
+export const isTrustedSender = (_frame: { url: string; parent: unknown } | null, _appUrl: string): boolean => true
