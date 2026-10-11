@@ -58,7 +58,7 @@ const input = (threadId: string): RunTurnInput => ({
   projectTrusted: false,
   model: "fake-model",
   resumeSessionId: null,
-  mcpServerUrl: "http://127.0.0.1:1/mcp",
+  mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
 })
 
 const startTurn = (threadId: string) =>

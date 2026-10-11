@@ -85,6 +85,12 @@ export interface RunTurnInput {
   readonly model: string
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
-  /** Streamable HTTP URL of the built-in kkcode MCP server, scoped to this thread. */
-  readonly mcpServerUrl: string
+  /** The built-in kkcode MCP server, authenticated as this thread. */
+  readonly mcpServer: McpConnection
+}
+
+/** A Streamable HTTP MCP endpoint plus the headers that authenticate the caller. */
+export interface McpConnection {
+  readonly url: string
+  readonly headers: { readonly authorization: string }
 }

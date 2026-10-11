@@ -219,7 +219,7 @@ const make = Effect.gen(function* () {
           projectTrusted,
           model: thread.model,
           resumeSessionId: thread.providerSessionId,
-          mcpServerUrl: mcp.urlForThread(thread.id),
+          mcpServer: mcp.connectionFor(thread.id),
         })
         .pipe(
           Stream.runForEach(handle),

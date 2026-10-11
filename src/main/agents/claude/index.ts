@@ -8,6 +8,7 @@ import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
+import { kkcodeMcpServer } from "./mcp.ts"
 import { settingSources } from "./settingSources.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
@@ -25,7 +26,6 @@ type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
-  readonly mcpServerUrl: string
   readonly projectTrusted: boolean
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
@@ -210,7 +210,7 @@ export const layer = Layer.effect(
                 thinking: { type: "adaptive", display: "summarized" },
                 // Only invoked after the first prompt, by which time `session` is assigned.
                 canUseTool: (toolName, toolInput, options) => approvals.ask(session, toolName, toolInput, options),
-                mcpServers: { kkcode: { type: "http", url: input.mcpServerUrl } },
+                mcpServers: { kkcode: kkcodeMcpServer(input.mcpServer) },
                 abortController: abort,
                 // Same as the SDK's default spawn, plus the pid so the thread's open ports can be found.
                 // The SDK does not read stderr from a custom spawn, so it is not piped (an unread pipe
@@ -227,7 +227,6 @@ export const layer = Layer.effect(
         const session: Session = {
           threadId: input.threadId,
           cwd: input.cwd,
-          mcpServerUrl: input.mcpServerUrl,
           projectTrusted: input.projectTrusted,
           model: input.model,
           prompts,
@@ -251,11 +250,7 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (
-            existing.cwd === input.cwd &&
-            existing.mcpServerUrl === input.mcpServerUrl &&
-            existing.projectTrusted === input.projectTrusted
-          ) {
+          if (existing.cwd === input.cwd && existing.projectTrusted === input.projectTrusted) {
             return existing
           }
           yield* closeSession(existing)

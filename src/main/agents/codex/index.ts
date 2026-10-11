@@ -176,7 +176,7 @@ const make = Effect.gen(function* () {
             model: input.model,
             approvalPolicy: "on-request",
             sandbox: "workspace-write",
-            config: { mcp_servers: { kkcode: { url: input.mcpServerUrl } } },
+            config: { mcp_servers: { kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers } } },
           } satisfies ThreadStartParams
           const { thread } = input.resumeSessionId
             ? yield* client.request<ThreadStartResponse>("thread/resume", {
