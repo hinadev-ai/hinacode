@@ -75,7 +75,9 @@ const startTurn = (threadId: string) =>
 const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) =>
   Effect.raceFirst(
     Fiber.join(fiber),
-    Effect.promise(() => sleep(3000)).pipe(Effect.andThen(Effect.die("run fiber is still running"))),
+    Effect.promise((signal) => sleep(3000, undefined, { signal })).pipe(
+      Effect.andThen(Effect.die("run fiber is still running")),
+    ),
   )
 
 const run = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
