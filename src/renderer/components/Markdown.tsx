@@ -1,11 +1,9 @@
-import { cn } from "cn"
 import type { Mermaid } from "mermaid"
 import { isValidElement, memo, type ReactNode, useEffect, useId, useState } from "react"
-import { RiCheckLine, RiFileCopyLine } from "react-icons/ri"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { m } from "../paraglide/messages.js"
-import { Button } from "./ui/button.tsx"
+import { CopyButton } from "./CopyButton.tsx"
 
 const remarkPlugins = [remarkGfm]
 
@@ -68,7 +66,7 @@ function CodeFigure({ label, code, children }: { label?: string; code: string; c
     <figure className="my-2 overflow-hidden rounded-lg border border-border bg-muted/50">
       <figcaption className="flex h-9 items-center justify-between border-b border-border pr-1 pl-3">
         <span className="truncate font-mono text-xs text-muted-foreground">{label}</span>
-        <CopyButton text={code} />
+        <CopyButton value={code} label={m.markdown_copy_code()} />
       </figcaption>
       {children}
     </figure>
@@ -82,38 +80,6 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
         <code>{code}</code>
       </pre>
     </CodeFigure>
-  )
-}
-
-const iconSwap = "absolute inset-0 transition-[opacity,scale,filter] duration-200 ease-swap"
-const iconShown = "opacity-100"
-const iconHidden = "opacity-0 motion-safe:scale-25 motion-safe:blur-xs"
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  const label = copied ? m.markdown_copied() : m.markdown_copy_code()
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={label}
-      title={label}
-      onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
-      className="text-muted-foreground"
-    >
-      <span aria-hidden className="relative size-4">
-        <RiFileCopyLine className={cn(iconSwap, copied ? iconHidden : iconShown)} />
-        <RiCheckLine className={cn(iconSwap, copied ? iconShown : iconHidden)} />
-      </span>
-      <output className="sr-only">{copied ? m.markdown_copied() : ""}</output>
-    </Button>
   )
 }
 
