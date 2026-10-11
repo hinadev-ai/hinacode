@@ -57,6 +57,8 @@ const makeAppLayer = (dbPath: string) => {
   )
 }
 
+const QUIT_TIMEOUT_MS = 5000
+
 const appUrl =
   process.env["ELECTRON_RENDERER_URL"] ?? pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href
 
@@ -96,7 +98,16 @@ app.whenReady().then(async () => {
   await runtime.runPromise(Effect.void)
   registerIpc(runtime, appUrl)
   serveAttachments()
-  app.on("before-quit", () => void runtime.dispose())
+  let disposed = false
+  app.on("before-quit", (event) => {
+    if (disposed) return
+    // Holds the quit until running turns persist their messages and status, but not forever.
+    event.preventDefault()
+    disposed = true
+    const disposal = runtime.dispose().catch((cause: unknown) => console.error("runtime dispose failed", cause))
+    const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
+    void Promise.race([disposal, timeout]).then(() => app.quit())
+  })
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

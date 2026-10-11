@@ -187,3 +187,29 @@ describe("worktree ownership", () => {
     assert.ok(existsSync(join(orphan, "sentinel")))
   })
 })
+
+const restart = async () => {
+  await runtime.dispose()
+  runtime = makeRuntime(join(dir, "kkcode.sqlite"))
+  return run(Worktrees.use((worktrees) => worktrees.list))
+}
+
+describe("startup", () => {
+  test("fails setup a quit or crash interrupted, the same way on every start", async () => {
+    const thread = await run(createThread("interrupted", "kk/interrupted"))
+    await waitUntilSetUp(thread.worktreeId)
+    await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        yield* sql`UPDATE worktree SET status = 'preparing', setup_log = 'installing' WHERE id = ${thread.worktreeId}`
+      }),
+    )
+
+    const [first] = await restart()
+    assert.equal(first?.status, "failed")
+    assert.match(first?.setupLog ?? "", /^installing\n.*interrupted/)
+
+    const [second] = await restart()
+    assert.deepEqual(second, first)
+  })
+})
