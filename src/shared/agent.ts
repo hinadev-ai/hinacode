@@ -14,6 +14,17 @@ export type ModelInfo = typeof ModelInfo.Type
 export const ApprovalKind = Schema.Literals(["tool", "command", "patch"])
 export type ApprovalKind = typeof ApprovalKind.Type
 
+/**
+ * What "Allow for session" approves: later calls of `tool` with this exact command, this exact path,
+ * any URL on this domain, or (`kind: "tool"`) every call of the tool.
+ */
+export const SessionScope = Schema.Struct({
+  tool: Schema.String,
+  kind: Schema.Literals(["command", "path", "domain", "tool"]),
+  value: Schema.String,
+})
+export type SessionScope = typeof SessionScope.Type
+
 export const ApprovalRequest = Schema.Struct({
   id: Schema.String,
   threadId: Schema.String,
@@ -22,6 +33,7 @@ export const ApprovalRequest = Schema.Struct({
   title: Schema.String,
   detail: Schema.String,
   input: Schema.optional(Schema.Unknown),
+  sessionScope: Schema.optional(SessionScope),
 })
 export type ApprovalRequest = typeof ApprovalRequest.Type
 
@@ -68,6 +80,8 @@ export interface RunTurnInput {
   readonly prompt: string
   readonly attachments: ReadonlyArray<Attachment>
   readonly cwd: string
+  /** Whether the user trusts the project's own agent configuration, such as Claude hooks and permission rules. */
+  readonly projectTrusted: boolean
   readonly model: string
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null

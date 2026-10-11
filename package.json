@@ -9,7 +9,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start:xvfb": "DISPLAY=:99 electron-vite preview -- --no-sandbox --disable-gpu --remote-debugging-port=9222",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json",
     "lint": "oxlint",
     "format": "oxfmt",
     "test": "node --test \"src/**/*.test.ts\""
