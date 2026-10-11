@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { Context, Deferred, Effect, Exit, Layer, Queue, Scope, Semaphore, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ModelInfo, RunTurnInput, TokenUsage } from "../../../shared/agent.ts"
-import type { AgentError, AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider } from "../provider.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import type {
   ApprovalDecisionWire,
@@ -19,6 +19,7 @@ import type {
   TurnInterruptParams,
   TurnStartParams,
   TurnStartResponse,
+  TurnSteerParams,
 } from "./protocol.ts"
 
 const CLIENT_VERSION = "0.1.0"
@@ -102,7 +103,7 @@ const make = Effect.gen(function* () {
 
   /** Pending approvals keyed by the kkcode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
-  /** In-flight turns keyed by kkcode threadId, for interrupt. */
+  /** In-flight turns keyed by kkcode threadId, for steer and interrupt. */
   const activeTurns = new Map<string, { readonly threadId: string; readonly turnId: string }>()
 
   const listModels = Effect.gen(function* () {
@@ -377,13 +378,27 @@ const make = Effect.gen(function* () {
       yield* current.client.request("turn/interrupt", params)
     }).pipe(Effect.ignore)
 
+  const steer = (threadId: string, text: string) =>
+    Effect.gen(function* () {
+      const active = activeTurns.get(threadId)
+      if (!active || !current?.client.isAlive()) {
+        return yield* new AgentError({ provider: "codex", message: "No turn is running on this thread" })
+      }
+      const params: TurnSteerParams = {
+        threadId: active.threadId,
+        input: [{ type: "text", text, text_elements: [] }],
+        expectedTurnId: active.turnId,
+      }
+      yield* current.client.request("turn/steer", params)
+    })
+
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>
     Effect.suspend(() => {
       const deferred = approvals.get(requestId)
       return deferred ? Deferred.succeed(deferred, decision) : Effect.void
     }).pipe(Effect.asVoid)
 
-  return { id: "codex", listModels, runTurn, interrupt, respondApproval } satisfies AgentProvider
+  return { id: "codex", listModels, runTurn, steer, interrupt, respondApproval } satisfies AgentProvider
 })
 
 export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {

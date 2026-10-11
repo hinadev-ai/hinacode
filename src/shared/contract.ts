@@ -1,10 +1,12 @@
 import { Schema } from "effect"
 import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
 import {
-  Locale, Message, OpenPort,
+  Locale,
+  Message,
+  OpenPort,
   Project,
   PullRequestState,
-PullRequestLink,
+  PullRequestLink,
   Settings,
   Thread,
   ThreadStatus,
@@ -110,6 +112,10 @@ export const RpcMethods = {
 
   "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
+
+  // steering
+  /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
+  "threads.steer": rpc(Schema.Struct({ threadId: Schema.String, text: Schema.String }), Schema.Void),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -138,6 +144,8 @@ export const PushEvent = Schema.Union([
     threadId: Schema.String,
     links: Schema.Array(PullRequestLink),
   }),
+  /** A message replaced outside the event fold, e.g. an assistant message closed by a steer. */
+  Schema.Struct({ type: Schema.Literal("message.updated"), message: Message }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

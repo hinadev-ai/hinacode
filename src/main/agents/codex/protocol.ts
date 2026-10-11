@@ -45,6 +45,8 @@ export type TurnError = { message: string; additionalDetails: string | null }
 export type Turn = { id: string; status: TurnStatus; error: TurnError | null }
 export type TurnStartResponse = { turn: Turn }
 export type TurnInterruptParams = { threadId: string; turnId: string }
+/** Fails unless `expectedTurnId` is the thread's active turn. */
+export type TurnSteerParams = { threadId: string; input: Array<UserInput>; expectedTurnId: string }
 
 export type ModelListParams = { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }
 export type Model = { id: string; model: string; displayName: string; hidden: boolean; isDefault: boolean }

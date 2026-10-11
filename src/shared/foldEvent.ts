@@ -35,16 +35,58 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         parts: [...message.parts, { type: "file_change", path: event.path, diff: event.diff ?? "" }],
       }
     case "turn_completed":
-      return { ...message, completedAt: now, usage: event.usage ?? null }
+      return { ...message, parts: failRunningTools(message.parts), completedAt: now, usage: event.usage ?? null }
     case "turn_failed":
       return {
         ...message,
-        parts: [...message.parts, { type: "text", text: `**Error:** ${event.message}` }],
+        parts: [...failRunningTools(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
         completedAt: now,
       }
     default:
       return message
   }
+}
+
+/**
+ * Applies one agent event to a transcript whose running turn may span several assistant messages
+ * (a steer closes the current one and opens another). Tool results go to the message holding the
+ * call; everything else goes to the latest assistant message. When the turn ends, tool calls left
+ * running in earlier messages fail too.
+ */
+export function foldTranscript(
+  messages: ReadonlyArray<Message>,
+  event: AgentEvent,
+  now: string,
+): ReadonlyArray<Message> {
+  const latest = messages.findLastIndex((message) => message.role === "assistant")
+  if (latest === -1) return messages
+  const target =
+    event.type === "tool_call_finished"
+      ? messages.findLastIndex((message) => message.parts.some((part) => isToolCall(part, event.callId)))
+      : latest
+  if (target === -1) return messages
+
+  let next = messages
+  const folded = foldEvent(messages[target]!, event, now)
+  if (folded !== messages[target]) next = next.with(target, folded)
+  if (event.type === "turn_completed" || event.type === "turn_failed") {
+    next = next.map((message, index) => {
+      if (index === target) return message
+      const parts = failRunningTools(message.parts)
+      return parts === message.parts ? message : { ...message, parts }
+    })
+  }
+  return next
+}
+
+const isToolCall = (part: MessagePart, callId: string) => part.type === "tool_call" && part.callId === callId
+
+/** A turn that ended (interrupted, failed) while tools ran will never report their results. */
+function failRunningTools(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
+  if (!parts.some((part) => part.type === "tool_call" && part.status === "running")) return parts
+  return parts.map((part) =>
+    part.type === "tool_call" && part.status === "running" ? { ...part, status: "error" } : part,
+  )
 }
 
 /** Deltas extend the trailing part of the same kind, so one streamed paragraph stays one part. */

@@ -80,6 +80,7 @@ const handlers: Handlers = {
 
   "messages.list": ({ threadId }) => Messages.use((messages) => messages.list(threadId)),
   "threads.send": ({ threadId, prompt }) => AgentRunner.use((runner) => runner.send(threadId, prompt)),
+  "threads.steer": ({ threadId, text }) => AgentRunner.use((runner) => runner.steer(threadId, text)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),

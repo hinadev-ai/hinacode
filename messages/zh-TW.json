@@ -46,6 +46,8 @@
   "thread_composer_label": "訊息",
   "thread_composer_placeholder": "輸入任何問題。Enter 傳送，Shift+Enter 換行。",
   "thread_composer_send": "傳送",
+  "thread_composer_steer": "引導",
+  "thread_composer_steer_placeholder": "引導 agent 調整方向…它執行時按 Enter 即可傳送。",
   "home_title": "選擇討論串",
   "home_hint": "從側邊欄選擇討論串，或在專案中建立新的討論串。",
   "settings_title": "設定",

@@ -42,6 +42,8 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
     )
   }
   const streaming = message.completedAt === null
+  // A steer sent before the agent said anything closes an empty assistant message.
+  if (!streaming && message.parts.length === 0) return null
   return (
     <article aria-busy={streaming} className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed">
       {message.parts.map((part, index) => (

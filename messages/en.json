@@ -46,6 +46,8 @@
   "thread_composer_label": "Message",
   "thread_composer_placeholder": "Ask anything. Enter sends, Shift+Enter adds a line.",
   "thread_composer_send": "Send",
+  "thread_composer_steer": "Steer",
+  "thread_composer_steer_placeholder": "Steer the agent… Enter sends while it works.",
   "home_title": "Pick a thread",
   "home_hint": "Choose a thread in the sidebar, or create one inside a project.",
   "settings_title": "Settings",
