@@ -14,6 +14,7 @@ import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Git from "./services/Git.ts"
+import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
@@ -52,6 +53,7 @@ const makeAppLayer = (dbPath: string) => {
   return Automations.layer.pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, eventsLayer)),
+    Layer.provideMerge(GitHub.layer),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )

@@ -81,17 +81,28 @@ const windowReturnSignal = Atom.readable((get) => {
 })
 
 /**
- * The pull request for a worktree's branch, re-asked every minute while shown and when the window
- * comes back, so a merge on GitHub shows up. A null worktree id resolves to null without asking `gh`.
+ * The pull request for a worktree's branch, or null when there is none. Re-asked every minute while
+ * shown and when the window comes back, so a merge on GitHub shows up. A null worktree id resolves
+ * to null without asking `gh`.
  */
-export const pullRequestAtom = Atom.family((worktreeId: string | null) =>
+export const branchPullRequestAtom = Atom.family((worktreeId: string | null) =>
   worktreeId
-    ? Atom.make(call("worktrees.mergedState", { id: worktreeId })).pipe(
+    ? Atom.make(call("worktrees.pullRequest", { id: worktreeId })).pipe(
         Atom.withRefresh("60 seconds"),
         Atom.makeRefreshOnSignal(windowReturnSignal),
       )
     : Atom.make(Effect.succeed(null)),
 )
+
+/** A linked pull request's status, refreshed like `branchPullRequestAtom`. */
+export const pullRequestStatusAtom = Atom.family((url: string) =>
+  Atom.make(call("github.pullRequest", { url })).pipe(
+    Atom.withRefresh("60 seconds"),
+    Atom.makeRefreshOnSignal(windowReturnSignal),
+  ),
+)
+
+export const gitHubAuthAtom = Atom.make(call("github.auth", undefined))
 
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
 

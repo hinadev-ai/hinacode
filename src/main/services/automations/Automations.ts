@@ -18,7 +18,7 @@ import { AgentRunner } from "../AgentRunner.ts"
 import { nowIso } from "../clock.ts"
 import { NotFoundError, type PersistenceError, persistence } from "../errors.ts"
 import { Events } from "../Events.ts"
-import { Git } from "../Git.ts"
+import { GitHub } from "../GitHub.ts"
 import { Projects } from "../Projects.ts"
 import { Secrets } from "../Secrets.ts"
 import { Settings } from "../Settings.ts"
@@ -135,7 +135,7 @@ const make = Effect.gen(function* () {
   const secrets = yield* Secrets
   const runner = yield* AgentRunner
   const events = yield* Events
-  const git = yield* Git
+  const github = yield* GitHub
 
   const encodeRow = Schema.encodeEffect(AutomationRow)
   const encodePayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))
@@ -292,7 +292,7 @@ const make = Effect.gen(function* () {
         return Effect.fail(new PollError({ reason: "Webhook automations are not polled" }))
       case "github.issue":
         return Effect.flatMap(projects.get(automation.projectId), (project) =>
-          pollGithubIssues((args) => git.gh(project.rootPath, args), trigger, cursor),
+          pollGithubIssues((args) => github.run(project.rootPath, args), trigger, cursor),
         )
       case "linear.issue":
         return Effect.flatMap(secrets.get(LINEAR_API_KEY_SECRET), (apiKey) => {
