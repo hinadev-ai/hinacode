@@ -97,7 +97,7 @@ const handlers: Handlers = {
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
-  "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
+  "mcp.connection": ({ threadId }) => McpServer.useSync((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 

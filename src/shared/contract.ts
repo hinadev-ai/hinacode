@@ -130,8 +130,11 @@ export const RpcMethods = {
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
-  /** The built-in MCP server URL handed to agents running in this thread. */
-  "mcp.url": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
+  /** The built-in MCP server connection handed to agents running in this thread. */
+  "mcp.connection": rpc(
+    Schema.Struct({ threadId: Schema.String }),
+    Schema.Struct({ url: Schema.String, headers: Schema.Struct({ authorization: Schema.String }) }),
+  ),
 
   "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),

@@ -81,14 +81,14 @@ $S/seed-repo.sh $DATA/repo                          # git repo on main + a gitig
 $S/rpc.mjs $PORT projects.create "{\"name\":\"demo\",\"rootPath\":\"$DATA/repo\",\"setupScript\":null}"
 $S/rpc.mjs $PORT threads.create '{"projectId":"<id>","title":"t1","provider":"claude","model":"claude-sonnet-5-5"}'
 $S/rpc.mjs $PORT messages.list '{"threadId":"<id>"}'
-$S/rpc.mjs $PORT mcp.url '{"threadId":"<id>"}'
+$S/rpc.mjs $PORT mcp.connection '{"threadId":"<id>"}'
 ```
 
 Use rpc to seed preconditions and to read back side effects. Drive the behavior under test through the UI. Data created by rpc does not show up in an open window until `$AB reload`, because the renderer only refreshes its stores for its own calls and push events.
 
 Other helpers:
 
-- `$S/mcp-call.mjs <mcp-url> [tool] ['<json args>']` speaks MCP to the built-in server the way an agent does. Without a tool it lists them.
+- `$S/mcp-call.mjs '<connection json>' [tool] ['<json args>']` speaks MCP to the built-in server the way an agent does. Without a tool it lists them.
 - `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` posts a body signed with `X-KKCODE-Signature: sha256=<hmac>` and prints the response and status.
 
 ### Things CDP cannot do
@@ -131,7 +131,7 @@ Agent CLIs keep their own transcripts (`~/.claude/projects/`, `~/.codex/sessions
 | `doctor.sh` | `$S/doctor.sh <port> <data>` | Read-only health check, exit 1 on any FAIL |
 | `rpc.mjs` | `$S/rpc.mjs <port> <method> ['<json>']` | Call `window.kkcode.rpc` over CDP |
 | `seed-repo.sh` | `$S/seed-repo.sh <dir>` | Throwaway git repo with a gitignored `.env` |
-| `mcp-call.mjs` | `$S/mcp-call.mjs <mcp-url> [tool] ['<json>']` | Act as an agent against the built-in MCP server |
+| `mcp-call.mjs` | `$S/mcp-call.mjs '<connection json>' [tool] ['<json>']` | Act as an agent against the built-in MCP server |
 | `webhook.sh` | `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` | Signed webhook delivery |
 | `stop.sh` | `$S/stop.sh <data>` | Stop the instance and keep its data for a relaunch |
 | `cleanup.sh` | `$S/cleanup.sh <port> <data> [ab-session]` | Stop, close the browser session, delete `<data>` |

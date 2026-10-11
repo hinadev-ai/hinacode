@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-// Usage: mcp-call.mjs <mcp-url> [tool] ['<json args>']
+// Usage: mcp-call.mjs '<connection json>' [tool] ['<json args>']
 // Talks to kkcode's built-in MCP server as an agent would (streamable HTTP, JSON-RPC).
-// Without a tool it lists tools. <mcp-url> comes from `rpc.mjs <port> mcp.url '{"threadId":"..."}'`
-// and already carries the thread and the per-process token.
-const [url, tool, args = "{}"] = process.argv.slice(2)
-if (!url) {
-  console.error("usage: mcp-call.mjs <mcp-url> [tool] ['<json args>']")
+// Without a tool it lists tools. The connection is `{"url","headers"}` from
+// `rpc.mjs <port> mcp.connection '{"threadId":"..."}'`; its bearer credential decides the thread.
+const [connection, tool, args = "{}"] = process.argv.slice(2)
+if (!connection) {
+  console.error("usage: mcp-call.mjs '<connection json>' [tool] ['<json args>']")
   process.exit(2)
 }
+const { url, headers } = JSON.parse(connection)
 let session
 let nextId = 1
 const post = async (method, params, notification = false) => {
@@ -15,6 +16,7 @@ const post = async (method, params, notification = false) => {
   const response = await fetch(url, {
     method: "POST",
     headers: {
+      ...headers,
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
       ...(session ? { "mcp-session-id": session } : {}),
