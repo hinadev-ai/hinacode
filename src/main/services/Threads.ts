@@ -20,15 +20,19 @@ export interface UpdateThread {
   readonly model?: string | undefined
   readonly status?: ThreadStatus | undefined
   readonly sortIndex?: number | undefined
+  readonly providerSessionId?: string | undefined
 }
 
 export class Threads extends Context.Service<
   Threads,
   {
     readonly list: Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
+    readonly get: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly create: (input: CreateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    /** Turns do not survive a restart, so threads left mid-turn by a crash go back to idle. */
+    readonly resetInterrupted: Effect.Effect<void, PersistenceError>
   }
 >()("kkcode/Threads") {}
 
@@ -72,29 +76,34 @@ const make = Effect.gen(function* () {
       return thread
     })
 
+  const get = (id: string) =>
+    findById(id).pipe(
+      Effect.mapError(persistence("threads.get")),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.fail(new NotFoundError({ entity: "thread", id })),
+          onSome: Effect.succeed,
+        }),
+      ),
+    )
+
   const update = (input: UpdateThread) =>
     Effect.gen(function* () {
-      const current = yield* findById(input.id).pipe(
-        Effect.mapError(persistence("threads.update")),
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(new NotFoundError({ entity: "thread", id: input.id })),
-            onSome: Effect.succeed,
-          }),
-        ),
-      )
+      const current = yield* get(input.id)
       const next: Thread = {
         ...current,
         title: input.title ?? current.title,
         model: input.model ?? current.model,
         status: input.status ?? current.status,
         sortIndex: input.sortIndex ?? current.sortIndex,
+        providerSessionId: input.providerSessionId ?? current.providerSessionId,
         updatedAt: yield* nowIso,
       }
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, model = ${next.model}, status = ${next.status},
-            sort_index = ${next.sortIndex}, updated_at = ${next.updatedAt}
+            sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
+            updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
       return next
@@ -102,10 +111,14 @@ const make = Effect.gen(function* () {
 
   return Threads.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("threads.list"))),
+    get,
     create,
     update,
     remove: (id) =>
       sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.asVoid, Effect.mapError(persistence("threads.delete"))),
+    resetInterrupted: sql`
+      UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')
+    `.pipe(Effect.asVoid, Effect.mapError(persistence("threads.resetInterrupted"))),
   })
 })
 
