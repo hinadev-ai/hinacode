@@ -18,8 +18,10 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
   startTransition,
   useActionState,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -27,6 +29,7 @@ import {
 import { flushSync } from "react-dom"
 import {
   RiCheckboxCircleLine,
+  RiCheckLine,
   RiDeleteBinLine,
   RiDraggable,
   RiGitBranchLine,
@@ -53,8 +56,11 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx"
 import { Button } from "./ui/button.tsx"
+import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
+import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -101,14 +107,24 @@ const sensors = [
   KeyboardSensor,
 ]
 
+interface SidebarThreadListProps {
+  readonly projectId: string
+  /** Takes focus after a delete leaves the project without threads. */
+  readonly newThreadButtonRef: RefObject<HTMLButtonElement | null>
+}
+
 /** Threads of one project in their saved order, reorderable by drag. */
-export function SidebarThreadList({ projectId }: { projectId: string }) {
+export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThreadListProps) {
   const threads = useThreads(useShallow(selectProjectThreads(projectId)))
+  const firstRowRef = useRef<HTMLAnchorElement>(null)
+  // The deleted row takes the focused element with it; keep focus in the list instead of on <body>.
+  const focusAfterDelete = () => firstRowRef.current ?? newThreadButtonRef.current
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
     () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(projectId)],
     [projectId],
   )
+  const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 
   const save = async (ordered: ReadonlyArray<Thread>) => {
@@ -138,7 +154,9 @@ export function SidebarThreadList({ projectId }: { projectId: string }) {
         onDragStart={() => setAnimate(false)}
         onDragEnd={(event) => {
           if (!event.canceled) void save(move(threads, event))
-          setAnimate(true)
+          // dnd-kit is still playing its drop animation here; resuming auto-animate now makes both
+          // libraries move the same rows and the dropped row slides twice.
+          setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
         <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5 pl-5">
@@ -146,7 +164,14 @@ export function SidebarThreadList({ projectId }: { projectId: string }) {
             <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
-            <ThreadRow key={thread.id} thread={thread} index={index} group={projectId} />
+            <ThreadRow
+              key={thread.id}
+              thread={thread}
+              index={index}
+              group={projectId}
+              linkRef={index === 0 ? firstRowRef : undefined}
+              focusAfterDelete={focusAfterDelete}
+            />
           ))}
         </ul>
       </DragDropProvider>
@@ -165,9 +190,11 @@ interface ThreadRowProps {
   readonly thread: Thread
   readonly index: number
   readonly group: string
+  readonly linkRef: RefObject<HTMLAnchorElement | null> | undefined
+  readonly focusAfterDelete: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group }: ThreadRowProps) {
+function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -199,6 +226,7 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
         <RenameInput thread={thread} onDone={finishRename} />
       ) : (
         <Link
+          ref={linkRef}
           to="/thread/$threadId"
           params={{ threadId: thread.id }}
           draggable={false}
@@ -206,16 +234,20 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
             event.preventDefault()
             setMenuOpen(true)
           }}
-          className="flex items-center gap-2 rounded-md py-1 pr-2 pl-2 text-sm text-sidebar-foreground/80 outline-none group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+          className="flex cursor-grab items-center gap-2 rounded-md py-1 pr-2 pl-2 text-sm text-sidebar-foreground/80 outline-none group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
         >
           <ProviderIcon provider={thread.provider} />
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate" title={thread.title}>
+            <span
+              className="truncate data-[settled=true]:text-muted-foreground"
+              data-settled={thread.status === "settled"}
+              title={thread.title}
+            >
               {thread.title}
             </span>
             {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
           </span>
-          <StatusDot status={thread.status} />
+          {thread.status === "settled" ? <SettledMark /> : <StatusDot status={thread.status} />}
         </Link>
       )}
 
@@ -269,7 +301,12 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
       )}
 
       <SettleDialog thread={thread} open={mode === "settle"} onOpenChange={closeDialog} />
-      <DeleteThreadDialog thread={thread} open={mode === "delete"} onOpenChange={closeDialog} />
+      <DeleteThreadDialog
+        thread={thread}
+        open={mode === "delete"}
+        onOpenChange={closeDialog}
+        focusAfterDelete={focusAfterDelete}
+      />
     </li>
   )
 }
@@ -304,20 +341,27 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
     }
   }
 
+  // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
-    <div className="flex flex-col gap-1 py-0.5">
-      <Input
-        ref={focusOnMount}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onFocus={(event) => event.target.select()}
-        onKeyDown={onKeyDown}
-        onBlur={() => void commit()}
-        aria-label={m.sidebar_thread_rename_label({ title: thread.title })}
-        aria-invalid={error !== null}
-        aria-describedby={error ? errorId : undefined}
-        className="h-7 text-sm"
-      />
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 py-1 pr-2 pl-2">
+        <ProviderIcon provider={thread.provider} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <Input
+            ref={focusOnMount}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onFocus={(event) => event.target.select()}
+            onKeyDown={onKeyDown}
+            onBlur={() => void commit()}
+            aria-label={m.sidebar_thread_rename_label({ title: thread.title })}
+            aria-invalid={error !== null}
+            aria-describedby={error ? errorId : undefined}
+            className="-ml-1.5 h-5 rounded-sm px-1.5 py-0 text-sm"
+          />
+          {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
+        </span>
+      </div>
       {error && (
         <p id={errorId} role="alert" className="px-1 text-xs text-destructive">
           {m.sidebar_rename_failed({ message: error })}
@@ -331,20 +375,28 @@ interface DeleteThreadDialogProps {
   readonly thread: Thread
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
+  /** Where focus goes once the thread is gone, since the row that opened the dialog is gone too. */
+  readonly focusAfterDelete: () => HTMLElement | null
 }
 
-function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogProps) {
+function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
   const worktree = useActiveWorktree(thread)
   const navigate = useNavigate()
   const { threadId: openThreadId } = useParams({ strict: false })
+  const [removeWorktree, setRemoveWorktree] = useState(true)
+  const removeWorktreeId = useId()
 
   const [error, remove, isPending] = useActionState(async () => {
     try {
+      if (worktree && removeWorktree) {
+        useWorktrees
+          .getState()
+          .upsert(await callPromise("worktrees.remove", { id: worktree.id, deleteBranch: "ifMerged" }))
+      }
       await callPromise("threads.delete", { id: thread.id })
     } catch (cause) {
       return errorMessage(cause)
     }
-    onOpenChange(false)
     if (openThreadId === thread.id) await navigate({ to: "/" })
     useThreads.getState().remove(thread.id)
     return null
@@ -352,7 +404,7 @@ function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogPr
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent finalFocus={() => (useThreads.getState().byId[thread.id] ? true : focusAfterDelete())}>
         <AlertDialogHeader>
           <AlertDialogTitle>{m.delete_dialog_title()}</AlertDialogTitle>
           <AlertDialogDescription>{m.delete_dialog_body({ title: thread.title })}</AlertDialogDescription>
@@ -360,6 +412,12 @@ function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogPr
             <AlertDialogDescription>{m.delete_dialog_worktree({ path: worktree.path })}</AlertDialogDescription>
           )}
         </AlertDialogHeader>
+        {worktree && (
+          <Field orientation="horizontal">
+            <Checkbox id={removeWorktreeId} checked={removeWorktree} onCheckedChange={setRemoveWorktree} />
+            <FieldLabel htmlFor={removeWorktreeId}>{m.delete_dialog_remove_worktree()}</FieldLabel>
+          </Field>
+        )}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -390,6 +448,18 @@ function StatusDot({ status }: { status: ThreadStatus }): ReactNode {
       <span aria-hidden className={`size-2 rounded-full ${dot.className}`} />
       <span className="sr-only">{dot.label()}</span>
     </span>
+  )
+}
+
+function SettledMark() {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="flex shrink-0 items-center text-muted-foreground" />}>
+        <RiCheckLine aria-hidden className="size-3.5" />
+        <span className="sr-only">{m.sidebar_thread_settled()}</span>
+      </TooltipTrigger>
+      <TooltipContent>{m.sidebar_thread_settled()}</TooltipContent>
+    </Tooltip>
   )
 }
 

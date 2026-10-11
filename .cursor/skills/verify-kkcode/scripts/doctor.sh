@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Usage: doctor.sh <cdp-port> <user-data-dir>
+# Read-only. Exits 0 only when the instance on <cdp-port> was started by launch.sh with <user-data-dir>,
+# runs this checkout's build, and answers rpc.
+set -uo pipefail
+
+port=${1:?cdp port}
+data=${2:?user data dir}
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(git -C "$here" rev-parse --show-toplevel)
+fail=0
+ok() { echo "ok    $*"; }
+bad() { echo "FAIL  $*"; fail=1; }
+warn() { echo "warn  $*"; }
+
+sid=$(cat "$data/kk-verify.sid" 2>/dev/null || true)
+if [[ -n "$sid" ]] && pgrep -s "$sid" >/dev/null; then ok "session $sid alive"; else bad "no live session recorded in $data/kk-verify.sid"; fi
+# Chromium overwrites its own /proc/<pid>/environ, so read the env from the session leader (pnpm).
+env_data=$(tr '\0' '\n' <"/proc/$sid/environ" 2>/dev/null | sed -n 's/^KKCODE_USER_DATA=//p')
+[[ "$env_data" == "$data" ]] && ok "KKCODE_USER_DATA=$env_data" || bad "instance uses KKCODE_USER_DATA='$env_data', expected '$data'"
+
+owner=$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+if [[ -z "$owner" ]]; then
+  bad "nothing listens on CDP port $port"
+else
+  owner_sid=$(ps -o sid= -p "$owner" | tr -d ' ')
+  [[ "$owner_sid" == "$sid" ]] && ok "CDP port $port owned by pid $owner in our session" || bad "CDP port $port belongs to session $owner_sid, not ours ($sid). Do not drive it."
+fi
+
+page_url=$(curl -fs "http://127.0.0.1:$port/json" 2>/dev/null | grep -o '"url": *"file://[^"]*renderer/index.html"' | head -1)
+[[ "$page_url" == *"$repo/out/renderer/index.html"* ]] && ok "renderer from $repo/out" || bad "renderer page is '${page_url:-missing}', expected this checkout's out/renderer"
+
+if settings=$(node "$here/rpc.mjs" "$port" settings.get 2>&1); then
+  ok "rpc answers: $(echo "$settings" | tr -d ' \n' | cut -c1-160)"
+  hook_port=$(echo "$settings" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).automations.port))')
+  hook_owner=$(ss -ltnpH "sport = :$hook_port" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+  if [[ -n "$hook_owner" && "$(ps -o sid= -p "$hook_owner" | tr -d ' ')" == "$sid" ]]; then
+    ok "webhook listener on $hook_port is ours"
+  else
+    warn "webhook port $hook_port is not held by this instance (automations will report listenError)"
+  fi
+else
+  bad "rpc settings.get failed: $settings"
+fi
+
+newest_src=$(find "$repo/src" "$repo/messages" -type f -newer "$repo/out/main/index.js" -not -path '*/paraglide/*' 2>/dev/null | head -1)
+[[ -z "$newest_src" ]] && ok "build is newer than src/ and messages/" || warn "stale build: $newest_src changed after out/ was built; relaunch without --no-build"
+
+exit $fail

@@ -11,6 +11,7 @@ import {
 } from "../shared/contract.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { Automations } from "./services/automations/Automations.ts"
 import { Messages } from "./services/Messages.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
@@ -33,6 +34,7 @@ type AppServices =
   | Secrets
   | Ports
   | Attachments
+  | Automations
 
 interface HandlerError {
   readonly _tag: string
@@ -90,7 +92,6 @@ const handlers: Handlers = {
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
   "approvals.pending": ({ threadId }) => AgentRunner.use((runner) => runner.pendingApprovals(threadId)),
 
-  // mcp
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
@@ -100,7 +101,6 @@ const handlers: Handlers = {
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 
-  // attachments
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "dialog.pickFiles": (_, sender) =>
     Effect.promise(async () => {
@@ -109,6 +109,14 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? [] : result.filePaths
     }),
+
+  "automations.list": () => Automations.use((automations) => automations.list),
+  "automations.create": (input) => Automations.use((automations) => automations.create(input)),
+  "automations.update": (input) => Automations.use((automations) => automations.update(input)),
+  "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
+  "automations.runNow": ({ id, payload }) => Automations.use((automations) => automations.runNow(id, payload)),
+  "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
+  "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 }
 
 const RpcCall = Schema.Struct({

@@ -82,7 +82,7 @@ export function foldTranscript(
 const isToolCall = (part: MessagePart, callId: string) => part.type === "tool_call" && part.callId === callId
 
 /** A turn that ended (interrupted, failed) while tools ran will never report their results. */
-function failRunningTools(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
+export function failRunningTools(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
   if (!parts.some((part) => part.type === "tool_call" && part.status === "running")) return parts
   return parts.map((part) =>
     part.type === "tool_call" && part.status === "running" ? { ...part, status: "error" } : part,

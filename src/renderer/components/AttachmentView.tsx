@@ -24,7 +24,7 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
       type="button"
       onClick={() => void callPromise("shell.reveal", { path: attachment.path })}
       title={m.attachment_reveal({ name: attachment.name })}
-      className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <FileChip attachment={attachment} />
     </button>
@@ -36,7 +36,7 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
     <Dialog>
       <DialogTrigger
         title={m.attachment_open_image({ name: attachment.name })}
-        className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Thumbnail attachment={attachment} />
       </DialogTrigger>

@@ -19,6 +19,11 @@ import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 
+/** Hiding the panel (mod+.) takes the focused element with it; hand focus to the composer instead of <body>. */
+const returnFocusToComposer = (panel: HTMLElement | null) => () => {
+  if (panel?.contains(document.activeElement)) useUi.getState().requestComposerFocus()
+}
+
 /** Right-hand panel of the thread route: where the thread runs, its setup log, changes, ports, pull requests, and settling. */
 export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
@@ -26,7 +31,7 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
 
   return (
-    <aside aria-label={m.panel_label()} className="flex w-96 shrink-0 flex-col border-l border-border">
+    <aside ref={returnFocusToComposer} aria-label={m.panel_label()} className="flex w-96 shrink-0 flex-col border-l border-border">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <h2 className="text-sm font-semibold">{m.panel_label()}</h2>
         <PanelToggle expanded onToggle={toggleSidePanel} />

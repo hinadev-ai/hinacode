@@ -9,6 +9,7 @@ import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { Button } from "./ui/button.tsx"
+import { SkeletonList } from "./ui/skeleton.tsx"
 
 /** "owner/repo#123" for a canonical GitHub pull request URL. */
 const shortName = (url: string) => {
@@ -35,7 +36,7 @@ export function ThreadPullRequests({ threadId }: { threadId: string }) {
           </Button>
         </div>
       ))
-      .orElse(() => <p className="text-xs text-muted-foreground">{m.pr_links_loading()}</p>)
+      .orElse(() => <SkeletonList label={m.pr_links_loading()} rows={1} rowClassName="h-4" />)
   }
 
   return (

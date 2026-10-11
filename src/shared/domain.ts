@@ -63,6 +63,8 @@ export const Thread = Schema.Struct({
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
   sortIndex: Schema.Number,
+  /** `user`, or `automation:<automationId>` for threads an automation started. */
+  createdBy: Schema.String,
   createdAt: Timestamp,
   updatedAt: Timestamp,
 })
@@ -128,6 +130,11 @@ export const Settings = Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
   }),
+  /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
+  automations: Schema.Struct({
+    bindHost: Schema.String,
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  }),
 })
 export type Settings = typeof Settings.Type
 
@@ -135,6 +142,7 @@ export const defaultSettings: Settings = {
   locale: "en",
   keybindings: {},
   defaultModel: { claude: null, codex: null },
+  automations: { bindHost: "127.0.0.1", port: 48080 },
 }
 
 export const PullRequestLink = Schema.Struct({
@@ -153,3 +161,69 @@ export const OpenPort = Schema.Struct({
   cwd: Schema.NullOr(Schema.String),
 })
 export type OpenPort = typeof OpenPort.Type
+
+/**
+ * What starts an automation. A webhook's HMAC secret lives in Secrets, never in this shape,
+ * so the renderer only ever sees it once, in the `automations.create` response.
+ */
+export const AutomationTrigger = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("webhook") }),
+  Schema.Struct({
+    type: Schema.Literal("github.issue"),
+    /** `owner/name` */
+    repo: Schema.String,
+    labels: Schema.optionalKey(Schema.Array(Schema.String)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("linear.issue"),
+    teamKey: Schema.String,
+    stateName: Schema.optionalKey(Schema.String),
+    label: Schema.optionalKey(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("slack.mention"),
+    /** A Slack search modifier target such as `#general`. Omitted searches every channel. */
+    channel: Schema.optionalKey(Schema.String),
+    botUserId: Schema.String,
+  }),
+])
+export type AutomationTrigger = typeof AutomationTrigger.Type
+export type AutomationTriggerType = AutomationTrigger["type"]
+
+export const AutomationRunStatus = Schema.Literals(["started", "skipped", "failed"])
+export type AutomationRunStatus = typeof AutomationRunStatus.Type
+
+export const AutomationRun = Schema.Struct({
+  id: Schema.String,
+  automationId: Schema.String,
+  /** Null when the run was skipped or failed before its thread existed. */
+  threadId: Schema.NullOr(Schema.String),
+  /** Delivery id, issue id or message ts. Null for poll failures, which belong to no event. */
+  eventKey: Schema.NullOr(Schema.String),
+  status: AutomationRunStatus,
+  error: Schema.NullOr(Schema.String),
+  createdAt: Timestamp,
+})
+export type AutomationRun = typeof AutomationRun.Type
+
+export const Automation = Schema.Struct({
+  id: Schema.String,
+  projectId: Schema.String,
+  name: Schema.String,
+  enabled: Schema.Boolean,
+  trigger: AutomationTrigger,
+  /** `{{path.to.field}}` placeholders are filled from the event payload. */
+  promptTemplate: Schema.String,
+  provider: ProviderId,
+  model: Schema.String,
+  runInWorktree: Schema.Boolean,
+  /** Rendered like the prompt, then slugified. Null picks a branch from the automation name. */
+  branchTemplate: Schema.NullOr(Schema.String),
+  /** Poll position: an ISO timestamp, or a Slack message ts. Null until the first poll. */
+  cursor: Schema.NullOr(Schema.String),
+  polledAt: Schema.NullOr(Timestamp),
+  lastRun: Schema.NullOr(AutomationRun),
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+})
+export type Automation = typeof Automation.Type

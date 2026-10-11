@@ -1,21 +1,31 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useState, useTransition } from "react"
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
 import type { ModelInfo } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Attachment, Thread } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, modelsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-
-const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -44,6 +54,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const canSend = (draft.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
 
@@ -104,6 +115,19 @@ export function Composer({ thread }: { thread: Thread }) {
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
+  const interruptIfBusy = useEffectEvent(() => {
+    if (busy) stop()
+  })
+
+  useEffect(
+    () =>
+      useUi.subscribe((state, previous) => {
+        if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
+        if (state.interruptRequest !== previous.interruptRequest) interruptIfBusy()
+      }),
+    [],
+  )
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     send()
@@ -132,6 +156,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </ul>
         )}
         <Textarea
+          ref={textareaRef}
           aria-label={m.thread_composer_label()}
           placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
           value={draft}
@@ -157,7 +182,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </div>
         </div>
       </div>
-      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
     </form>
   )
 }

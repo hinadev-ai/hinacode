@@ -2,6 +2,9 @@ import { Schema } from "effect"
 import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
 import {
   Attachment,
+  Automation,
+  AutomationRun,
+  AutomationTrigger,
   Locale,
   Message,
   OpenPort,
@@ -14,6 +17,19 @@ import {
   Worktree,
   WorktreeChanges,
 } from "./domain.ts"
+
+const AutomationInput = Schema.Struct({
+  projectId: Schema.String,
+  name: Schema.String,
+  enabled: Schema.Boolean,
+  trigger: AutomationTrigger,
+  promptTemplate: Schema.String,
+  provider: ProviderId,
+  model: Schema.String,
+  runInWorktree: Schema.Boolean,
+  branchTemplate: Schema.NullOr(Schema.String),
+})
+export type AutomationInput = typeof AutomationInput.Type
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -85,6 +101,7 @@ export const RpcMethods = {
       locale: Schema.optional(Locale),
       keybindings: Schema.optional(Settings.fields.keybindings),
       defaultModel: Schema.optional(Settings.fields.defaultModel),
+      automations: Schema.optional(Settings.fields.automations),
     }),
     Settings,
   ),
@@ -94,7 +111,6 @@ export const RpcMethods = {
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
-  // chat
   "messages.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Message)),
   /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
   "threads.send": rpc(
@@ -108,7 +124,6 @@ export const RpcMethods = {
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
   "approvals.pending": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(ApprovalRequest)),
-  // mcp
   /** Secrets never cross back to the renderer; it can only ask whether one is set. */
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
@@ -121,7 +136,6 @@ export const RpcMethods = {
   "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
 
-  // steering
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
     Schema.Struct({
@@ -132,7 +146,6 @@ export const RpcMethods = {
     Schema.Void,
   ),
 
-  // attachments
   /** Copies a file (`path`) or decodes a pasted image (`dataUrl`) into the thread's attachments dir. */
   "attachments.stage": rpc(
     Schema.Struct({
@@ -146,6 +159,41 @@ export const RpcMethods = {
   ),
   /** Opens the native multi-file picker. Empty when the user cancels. */
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
+
+  "automations.list": rpc(Schema.Void, Schema.Array(Automation)),
+  /** `secret` is the webhook HMAC secret, returned only here; null for polling triggers. */
+  "automations.create": rpc(
+    AutomationInput,
+    Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
+  ),
+  /** The trigger type is fixed at creation; its other fields can change. */
+  "automations.update": rpc(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.optional(Schema.String),
+      enabled: Schema.optional(Schema.Boolean),
+      trigger: Schema.optional(AutomationTrigger),
+      promptTemplate: Schema.optional(Schema.String),
+      provider: Schema.optional(ProviderId),
+      model: Schema.optional(Schema.String),
+      runInWorktree: Schema.optional(Schema.Boolean),
+      branchTemplate: Schema.optional(Schema.NullOr(Schema.String)),
+    }),
+    Automation,
+  ),
+  "automations.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  /** Runs the automation as if `payload` had arrived, bypassing dedup. */
+  "automations.runNow": rpc(Schema.Struct({ id: Schema.String, payload: Schema.Unknown }), AutomationRun),
+  /** Newest first. */
+  "automations.runs": rpc(
+    Schema.Struct({ id: Schema.String, limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 })) }),
+    Schema.Array(AutomationRun),
+  ),
+  /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
+  "automations.webhookUrl": rpc(
+    Schema.Struct({ id: Schema.String }),
+    Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
+  ),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -176,6 +224,8 @@ export const PushEvent = Schema.Union([
   }),
   /** A message replaced outside the event fold, e.g. an assistant message closed by a steer. */
   Schema.Struct({ type: Schema.Literal("message.updated"), message: Message }),
+  /** An automation run was recorded or changed status. */
+  Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

@@ -9,6 +9,7 @@ import { callPromise, threadPortsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { SkeletonList } from "./ui/skeleton.tsx"
 
 /** Listening TCP ports, as the body of a panel section: opened from the thread's workspace or by its agent, refreshed every 2s. */
 export function ThreadPorts({ threadId }: { threadId: string }) {
@@ -29,7 +30,7 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
   return (
     <div className="flex flex-col gap-1.5">
       {AsyncResult.builder(ports)
-        .onInitial(() => <p className="text-xs text-muted-foreground">{m.ports_loading()}</p>)
+        .onInitial(() => <SkeletonList label={m.ports_loading()} rows={2} rowClassName="h-4" className="gap-1.5" />)
         .onSuccess((list) =>
           list.length === 0 ? (
             <p className="text-xs text-muted-foreground">{m.ports_empty()}</p>

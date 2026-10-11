@@ -40,6 +40,10 @@ export const createProjectAtom = Atom.fn((input: RpcRequest<"projects.create">) 
   call("projects.create", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
+export const updateProjectAtom = Atom.fn((input: RpcRequest<"projects.update">) =>
+  call("projects.update", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
+)
+
 export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom.keepAlive)
 
 export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
@@ -58,9 +62,35 @@ export const worktreeChangesAtom = Atom.family((worktreeId: string) =>
   Atom.make(call("worktrees.changes", { id: worktreeId })),
 )
 
-/** The pull request for a worktree's branch. A null worktree id resolves to null without asking `gh`. */
+/**
+ * Bumps when the window comes back into view or regains focus. Effect's `windowFocusSignal` only
+ * listens for `visibilitychange`, which never fires when switching between visible desktop windows.
+ */
+const windowReturnSignal = Atom.readable((get) => {
+  let count = 0
+  const bump = () => {
+    if (document.visibilityState === "visible") get.setSelf(++count)
+  }
+  window.addEventListener("focus", bump)
+  document.addEventListener("visibilitychange", bump)
+  get.addFinalizer(() => {
+    window.removeEventListener("focus", bump)
+    document.removeEventListener("visibilitychange", bump)
+  })
+  return count
+})
+
+/**
+ * The pull request for a worktree's branch, re-asked every minute while shown and when the window
+ * comes back, so a merge on GitHub shows up. A null worktree id resolves to null without asking `gh`.
+ */
 export const pullRequestAtom = Atom.family((worktreeId: string | null) =>
-  Atom.make(worktreeId ? call("worktrees.mergedState", { id: worktreeId }) : Effect.succeed(null)),
+  worktreeId
+    ? Atom.make(call("worktrees.mergedState", { id: worktreeId })).pipe(
+        Atom.withRefresh("60 seconds"),
+        Atom.makeRefreshOnSignal(windowReturnSignal),
+      )
+    : Atom.make(Effect.succeed(null)),
 )
 
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
@@ -68,4 +98,28 @@ export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("se
 /** Re-lists the thread's open ports every 2s while something subscribes. */
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
+)
+
+const onAutomationRun = (listener: (automationId: string) => void) =>
+  onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
+
+/** Re-lists every 15s while subscribed so poll times stay current; a recorded run refreshes it at once. */
+export const automationsAtom = Atom.make((get) => {
+  get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
+  return Stream.fromEffectSchedule(call("automations.list", undefined), Schedule.spaced("15 seconds"))
+})
+
+export const automationRunsAtom = Atom.family((automationId: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(onAutomationRun((id) => id === automationId && get.refreshSelf()))
+    return call("automations.runs", { id: automationId, limit: 20 })
+  }),
+)
+
+/** Recomputed when settings change, since the URL follows the listener's bind host and port. */
+export const webhookUrlAtom = Atom.family((automationId: string) =>
+  Atom.make((get) => {
+    get(settingsAtom)
+    return call("automations.webhookUrl", { id: automationId })
+  }),
 )
