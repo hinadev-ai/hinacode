@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import {
@@ -13,6 +13,7 @@ import {
 import { Cause, Context, Deferred, Duration, Effect, Layer, Queue, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalKind, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
+import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
 
@@ -277,6 +278,14 @@ export const layer = Layer.effect(
                 canUseTool: (toolName, toolInput, options) => askApproval(session, toolName, toolInput, options),
                 mcpServers: { kkcode: { type: "http", url: input.mcpServerUrl } },
                 abortController: abort,
+                // Same as the SDK's default spawn, plus the pid so the thread's open ports can be found.
+                // The SDK does not read stderr from a custom spawn, so it is not piped (an unread pipe
+                // would eventually block the CLI).
+                spawnClaudeCodeProcess: ({ command, args, cwd, env, signal }) => {
+                  const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "ignore"] })
+                  if (child.pid !== undefined) child.once("exit", registerAgentPid(input.threadId, child.pid))
+                  return child
+                },
               },
             }),
           catch: agentError("Failed to start Claude Code"),

@@ -101,18 +101,27 @@ export const findListeningPorts = async (fs: ProcFs): Promise<Array<ListeningPro
 const isInside = (path: string, root: string) =>
   path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
-/** Keeps processes running in `workspacePath` or descending from one of `agentPids`. */
+/**
+ * Keeps processes running in `workspacePath` or descending from one of `agentPids`. The agent CLIs
+ * and kkcode's own process tree (Electron helpers, the DevTools port) are never the user's servers,
+ * so they are left out even when their cwd is the workspace.
+ */
 export const attributeToWorkspace = (
   processes: ReadonlyArray<ListeningProcess>,
-  { workspacePath, agentPids }: { readonly workspacePath: string; readonly agentPids: ReadonlySet<number> },
+  {
+    workspacePath,
+    agentPids,
+    selfPid,
+  }: { readonly workspacePath: string; readonly agentPids: ReadonlySet<number>; readonly selfPid: number },
 ): Array<OpenPort> =>
   processes
-    .filter(
-      (proc) =>
-        (proc.cwd !== null && isInside(proc.cwd, workspacePath)) ||
-        agentPids.has(proc.pid) ||
-        proc.ancestors.some((pid) => agentPids.has(pid)),
-    )
+    .filter((proc) => {
+      if (proc.pid === selfPid || agentPids.has(proc.pid)) return false
+      const underAgent = proc.ancestors.some((pid) => agentPids.has(pid))
+      if (underAgent) return true
+      if (proc.ancestors.includes(selfPid)) return false
+      return proc.cwd !== null && isInside(proc.cwd, workspacePath)
+    })
     .map(({ port, pid, command, cwd }) => ({ port, pid, command, cwd }))
 
 const agentPidsByThread = new Map<string, Set<number>>()
@@ -196,6 +205,7 @@ const make = Effect.gen(function* () {
       return attributeToWorkspace(processes, {
         workspacePath: workspace.worktreePath ?? workspace.rootPath,
         agentPids: agentPidsByThread.get(threadId) ?? new Set(),
+        selfPid: process.pid,
       })
     })
 
