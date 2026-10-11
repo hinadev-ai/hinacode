@@ -1,20 +1,12 @@
 import { execFileSync, spawn } from "node:child_process"
-import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import {
-  query,
-  type CanUseTool,
-  type Options,
-  type PermissionResult,
-  type Query,
-  type SDKMessage,
-  type SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Context, Deferred, Duration, Effect, Layer, Queue, Stream } from "effect"
-import type { AgentEvent, ApprovalDecision, ApprovalKind, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import { query, type Options, type Query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import { Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
+import type { AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
+import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
@@ -29,15 +21,12 @@ const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
 /** One long-lived `query()` per thread; follow-up prompts are fed into the same CLI process. */
-interface Session extends MapState {
+interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
   readonly mcpServerUrl: string
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
-  readonly sessionAllowedTools: Set<string>
-  /** Attachments live outside the cwd; reading them is what the user asked for, so it needs no approval. */
-  readonly attachmentPaths: Set<string>
   readonly query: Query
   model: string
   sessionId: string | null
@@ -47,12 +36,6 @@ interface Session extends MapState {
   pendingSteers: number
   /** Turns whose consumer left before their result; their remaining messages must not reach the next turn. */
   abandonedTurns: number
-}
-
-interface PendingApproval {
-  readonly session: Session
-  readonly toolName: string
-  readonly deferred: Deferred.Deferred<ApprovalDecision>
 }
 
 const agentError = (message: string) => (cause: unknown) =>
@@ -77,17 +60,6 @@ function resolveClaudeExecutable(): string | undefined {
     } catch {}
   }
   return undefined
-}
-
-function approvalKind(toolName: string): ApprovalKind {
-  if (toolName === "Bash") return "command"
-  if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(toolName)) return "patch"
-  return "tool"
-}
-
-function approvalDetail(input: Record<string, unknown>): string {
-  const summary = input.command ?? input.file_path ?? input.notebook_path ?? input.url
-  return typeof summary === "string" ? summary : JSON.stringify(input)
 }
 
 /** The Messages API rejects base64 images above 5 MB. */
@@ -148,7 +120,6 @@ export const layer = Layer.effect(
     const sessions = new Map<string, Session>()
     /** Last provider session id per thread, so a crashed CLI can be resumed without the caller's help. */
     const lastSessionIds = new Map<string, string>()
-    const approvals = new Map<string, PendingApproval>()
 
     const baseOptions = (): Options => ({
       // The SDK replaces the child env instead of merging it.
@@ -166,6 +137,8 @@ export const layer = Layer.effect(
       }
     }
 
+    const approvals = makeApprovals(emit)
+
     const closeSession = (session: Session) =>
       Effect.sync(() => {
         if (sessions.get(session.threadId) === session) sessions.delete(session.threadId)
@@ -173,45 +146,6 @@ export const layer = Layer.effect(
         session.abort.abort()
         session.query.close()
       })
-
-    const askApproval = async (
-      session: Session,
-      toolName: string,
-      input: Record<string, unknown>,
-      options: Parameters<CanUseTool>[2],
-    ): Promise<PermissionResult> => {
-      if (session.sessionAllowedTools.has(toolName)) return { behavior: "allow", updatedInput: input }
-      if (toolName === "Read" && typeof input.file_path === "string" && session.attachmentPaths.has(input.file_path)) {
-        return { behavior: "allow", updatedInput: input }
-      }
-      if (session.turn === null) return { behavior: "deny", message: "No active turn to approve this tool call" }
-
-      const requestId = randomUUID()
-      const deferred = Deferred.makeUnsafe<ApprovalDecision>()
-      approvals.set(requestId, { session, toolName, deferred })
-      const onAbort = () => Deferred.doneUnsafe(deferred, Effect.succeed("deny"))
-      options.signal.addEventListener("abort", onAbort, { once: true })
-      emit(session, {
-        type: "approval_requested",
-        request: {
-          id: requestId,
-          threadId: session.threadId,
-          provider: "claude",
-          kind: approvalKind(toolName),
-          title: options.title ?? options.displayName ?? toolName,
-          detail: options.description ?? approvalDetail(input),
-          input,
-        },
-      })
-
-      const decision = await Effect.runPromise(Deferred.await(deferred))
-      options.signal.removeEventListener("abort", onAbort)
-      approvals.delete(requestId)
-      emit(session, { type: "approval_resolved", requestId })
-      return decision === "deny"
-        ? { behavior: "deny", message: "The user denied this tool call" }
-        : { behavior: "allow", updatedInput: input }
-    }
 
     /** Reads every SDK message of the session for its lifetime and routes it to the active turn. */
     const pump = (session: Session) =>
@@ -273,7 +207,7 @@ export const layer = Layer.effect(
                 permissionMode: "default",
                 thinking: { type: "adaptive", display: "summarized" },
                 // Only invoked after the first prompt, by which time `session` is assigned.
-                canUseTool: (toolName, toolInput, options) => askApproval(session, toolName, toolInput, options),
+                canUseTool: (toolName, toolInput, options) => approvals.ask(session, toolName, toolInput, options),
                 mcpServers: { kkcode: { type: "http", url: input.mcpServerUrl } },
                 abortController: abort,
                 // Same as the SDK's default spawn, plus the pid so the thread's open ports can be found.
@@ -296,7 +230,7 @@ export const layer = Layer.effect(
           prompts,
           abort,
           query: handle,
-          sessionAllowedTools: new Set(),
+          sessionGrants: new Set(),
           attachmentPaths: new Set(),
           pendingEdits: new Map(),
           sessionId: resume ?? null,
@@ -406,13 +340,7 @@ export const layer = Layer.effect(
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
-      respondApproval: (requestId, decision) =>
-        Effect.suspend(() => {
-          const pending = approvals.get(requestId)
-          if (pending === undefined) return Effect.void
-          if (decision === "allow_for_session") pending.session.sessionAllowedTools.add(pending.toolName)
-          return Deferred.succeed(pending.deferred, decision)
-        }),
+      respondApproval: approvals.respond,
     })
   }),
 )
