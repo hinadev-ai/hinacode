@@ -1,6 +1,6 @@
 import { startTransition, useActionState } from "react"
 import { RiShieldCheckLine } from "react-icons/ri"
-import type { ApprovalDecision, ApprovalRequest } from "../../shared/agent.ts"
+import type { ApprovalDecision, ApprovalRequest, SessionScope } from "../../shared/agent.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
@@ -32,6 +32,7 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
       <pre className="max-h-40 overflow-auto rounded-sm border border-border bg-muted/50 p-2 font-mono text-xs whitespace-pre-wrap">
         {request.detail}
       </pre>
+      {request.sessionScope && <SessionScopeNote scope={request.sessionScope} />}
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={isPending} onClick={choose("allow")}>
           {m.approval_allow()}
@@ -45,5 +46,21 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
       </div>
       {error && <FieldError>{error}</FieldError>}
     </section>
+  )
+}
+
+function SessionScopeNote({ scope }: { scope: SessionScope }) {
+  if (scope.kind === "tool") {
+    return <p className="text-xs text-amber-600 dark:text-amber-400">{m.approval_scope_tool({ tool: scope.tool })}</p>
+  }
+  const label = {
+    command: m.approval_scope_command(),
+    path: m.approval_scope_path({ tool: scope.tool }),
+    domain: m.approval_scope_domain({ tool: scope.tool }),
+  }[scope.kind]
+  return (
+    <p className="text-xs text-muted-foreground">
+      {label} <code className="font-mono break-all text-foreground">{scope.value}</code>
+    </p>
   )
 }

@@ -14,7 +14,7 @@ function setup() {
   })
   const session = {
     threadId: "thread",
-    sessionAllowedTools: new Set<string>(),
+    sessionGrants: new Set<string>(),
     attachmentPaths: new Set<string>(),
     turn: {},
   }
@@ -66,6 +66,26 @@ describe("Claude session approvals", () => {
 
     assert.equal((await call("Read", { file_path: "/outside/notes.md" })).prompted, false)
     assert.equal((await call("Read", { file_path: "/home/me/.ssh/id_ed25519" })).prompted, true)
+  })
+
+  test("the approval card is told what allow for session covers", async () => {
+    const { call } = setup()
+    const scopeOf = async (toolName: string, input: Record<string, unknown>) =>
+      (await call(toolName, input)).request?.sessionScope
+    assert.deepEqual(
+      [
+        await scopeOf("Bash", { command: "npm test" }),
+        await scopeOf("Write", { file_path: "/repo/a.ts", content: "" }),
+        await scopeOf("WebFetch", { url: "https://docs.example.com/page", prompt: "summarize" }),
+        await scopeOf("WebSearch", { query: "effect" }),
+      ],
+      [
+        { tool: "Bash", kind: "command", value: "npm test" },
+        { tool: "Write", kind: "path", value: "/repo/a.ts" },
+        { tool: "WebFetch", kind: "domain", value: "docs.example.com" },
+        { tool: "WebSearch", kind: "tool", value: "WebSearch" },
+      ],
+    )
   })
 
   test("grants do not carry over to a new session", async () => {

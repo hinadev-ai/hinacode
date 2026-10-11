@@ -230,7 +230,7 @@ export const layer = Layer.effect(
           prompts,
           abort,
           query: handle,
-          sessionAllowedTools: new Set(),
+          sessionGrants: new Set(),
           attachmentPaths: new Set(),
           pendingEdits: new Map(),
           sessionId: resume ?? null,
