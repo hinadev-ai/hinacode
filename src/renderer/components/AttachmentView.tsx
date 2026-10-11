@@ -7,9 +7,13 @@ import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
 
+const format = (value: number, unit: string) =>
+  new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
+
 const formatBytes = (bytes: number) => {
-  const [value, unit] = bytes >= 1024 * 1024 ? [bytes / 1024 / 1024, "megabyte"] : [bytes / 1024, "kilobyte"]
-  return new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
+  if (bytes >= 1024 * 1024) return format(bytes / 1024 / 1024, "megabyte")
+  if (bytes >= 1024) return format(bytes / 1024, "kilobyte")
+  return format(bytes, "byte")
 }
 
 /** A sent attachment: an image opens full size, a file reveals in the file manager. */
