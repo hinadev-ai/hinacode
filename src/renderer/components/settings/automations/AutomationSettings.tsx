@@ -1,3 +1,4 @@
+import { cn } from "cn"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
@@ -260,7 +261,10 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
         >
           <RiArrowDownSLine
             aria-hidden
-            className={expanded ? "rotate-180 transition-transform" : "transition-transform"}
+            className={cn(
+              "transition-transform duration-200 ease-out motion-reduce:transition-none",
+              expanded && "rotate-180",
+            )}
           />
           {m.automations_details()}
         </Button>
