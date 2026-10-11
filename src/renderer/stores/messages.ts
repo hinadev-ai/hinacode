@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import type { AgentEvent, ApprovalRequest } from "../../shared/agent.ts"
 import type { Message } from "../../shared/domain.ts"
-import { foldEvent } from "../../shared/foldEvent.ts"
+import { foldTranscript } from "../../shared/foldEvent.ts"
 import { callPromise } from "../lib/rpc.ts"
 
 export type ThreadHistory =
@@ -18,6 +18,7 @@ interface MessagesState {
   /** Loads a thread's history once; later changes arrive through `addMessage` and `applyEvent`. */
   readonly load: (threadId: string) => Promise<void>
   readonly addMessage: (message: Message) => void
+  readonly updateMessage: (message: Message) => void
   readonly applyEvent: (threadId: string, event: AgentEvent) => void
 }
 
@@ -60,13 +61,16 @@ export const useMessages = create<MessagesState>()((set, get) => {
     addMessage: (message) =>
       updateReady(message.threadId, (history) => ({ ...history, messages: [...history.messages, message] })),
 
+    updateMessage: (message) =>
+      updateReady(message.threadId, (history) => {
+        const index = history.messages.findIndex((existing) => existing.id === message.id)
+        return index === -1 ? history : { ...history, messages: history.messages.with(index, message) }
+      }),
+
     applyEvent: (threadId, event) =>
       updateReady(threadId, (history) => {
         const approvals = foldApprovals(history.approvals, event)
-        const index = history.messages.findLastIndex((message) => message.role === "assistant")
-        const assistant = history.messages[index]
-        const folded = assistant && foldEvent(assistant, event, new Date().toISOString())
-        const messages = folded === assistant || !folded ? history.messages : history.messages.with(index, folded)
+        const messages = foldTranscript(history.messages, event, new Date().toISOString())
         if (approvals === history.approvals && messages === history.messages) return history
         return { ...history, approvals, messages }
       }),

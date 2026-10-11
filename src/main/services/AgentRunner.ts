@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, FiberMap, Layer, Stream } from "effect"
+import { Context, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "../../shared/agent.ts"
 import type { Message, Thread, ThreadStatus } from "../../shared/domain.ts"
-import { foldEvent } from "../../shared/foldEvent.ts"
+import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { McpServerUrl } from "../agents/mcp.ts"
@@ -22,6 +22,11 @@ export class AgentRunner extends Context.Service<
     readonly send: (
       threadId: string,
       prompt: string,
+    ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+    /** Adds input to the thread's running turn, or starts a turn when none is running. */
+    readonly steer: (
+      threadId: string,
+      text: string,
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
@@ -45,6 +50,28 @@ const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
   }
 }
 
+const userMessage = (threadId: string, text: string, now: string): Message => ({
+  id: randomUUID(),
+  threadId,
+  role: "user",
+  parts: [{ type: "text", text }],
+  createdAt: now,
+  completedAt: now,
+  usage: null,
+})
+
+const openAssistantMessage = (threadId: string, now: string): Message => ({
+  id: randomUUID(),
+  threadId,
+  role: "assistant",
+  parts: [],
+  createdAt: now,
+  completedAt: null,
+  usage: null,
+})
+
+const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...messages.slice(0, -1), message]
+
 const make = Effect.gen(function* () {
   const threads = yield* Threads
   const messages = yield* Messages
@@ -58,7 +85,7 @@ const make = Effect.gen(function* () {
 
   const turns = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
-  const activeProviders = new Map<string, AgentProvider>()
+  const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
 
   yield* threads.resetInterrupted
@@ -71,25 +98,35 @@ const make = Effect.gen(function* () {
   const insertMessage = (message: Message) =>
     messages.insert(message).pipe(Effect.andThen(push.publish({ type: "message.created", message })))
 
-  /** Streams one turn into the assistant message. Never fails: provider errors become turn_failed. */
-  const runTurn = (thread: Thread, provider: AgentProvider, prompt: string, cwd: string, initial: Message) => {
-    let assistant = initial
+  /**
+   * One turn streaming into its assistant messages. A turn starts with one assistant message; each
+   * steer closes it and opens another after the steer's user message, so ordering by createdAt keeps
+   * the transcript in the order things happened.
+   */
+  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, initial: Message) => {
+    let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
-    let dirty = false
+    const dirty = new Set<string>()
+    // Serializes event folding with steers, so no event lands in a message the steer just closed.
+    const lock = Semaphore.makeUnsafe(1)
 
     const persist = Effect.suspend(() => {
-      dirty = false
+      const changed = turnMessages.filter((message) => dirty.has(message.id))
+      dirty.clear()
       persistedAt = Date.now()
-      return messages.update(assistant)
+      return Effect.forEach(changed, messages.update, { discard: true })
     })
+
+    const setTurnMessages = (next: ReadonlyArray<Message>) => {
+      next.forEach((message, index) => message !== turnMessages[index] && dirty.add(message.id))
+      turnMessages = next
+    }
 
     const handle = (event: AgentEvent) =>
       Effect.gen(function* () {
         yield* push.publish({ type: "thread.event", threadId: thread.id, event })
-        const next = foldEvent(assistant, event, yield* nowIso)
-        if (next !== assistant) dirty = true
-        assistant = next
+        setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
         if (event.type === "approval_requested") approvals.set(event.request.id, event.request)
         if (event.type === "approval_resolved") approvals.delete(event.requestId)
@@ -101,12 +138,29 @@ const make = Effect.gen(function* () {
           status = nextStatus
           yield* updateThread({ id: thread.id, status })
         }
-        if (dirty && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
-      })
+        if (dirty.size > 0 && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
+      }).pipe(Semaphore.withPermit(lock))
+
+    const steer = (text: string) =>
+      Effect.gen(function* () {
+        yield* provider.steer(thread.id, text)
+        const now = yield* nowIso
+        const current = turnMessages.at(-1)!
+        const closed: Message = { ...current, completedAt: now }
+        setTurnMessages(replaceLast(turnMessages, closed))
+        yield* persist
+        yield* push.publish({ type: "message.updated", message: closed })
+
+        const next = openAssistantMessage(thread.id, now)
+        yield* insertMessage(userMessage(thread.id, text, now))
+        yield* insertMessage(next)
+        turnMessages = [...turnMessages, next]
+      }).pipe(Semaphore.withPermit(lock))
 
     const finish = Effect.gen(function* () {
       for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
-      if (assistant.completedAt === null) assistant = { ...assistant, completedAt: yield* nowIso }
+      const last = turnMessages.at(-1)!
+      if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
       yield* persist
       if (status !== "idle") yield* updateThread({ id: thread.id, status: "idle" })
     }).pipe(
@@ -114,26 +168,30 @@ const make = Effect.gen(function* () {
       Effect.ensuring(
         Effect.sync(() => {
           busyThreads.delete(thread.id)
-          activeProviders.delete(thread.id)
+          activeTurns.delete(thread.id)
         }),
       ),
     )
 
-    return provider
-      .runTurn({
-        threadId: thread.id,
-        prompt,
-        cwd,
-        model: thread.model,
-        resumeSessionId: thread.providerSessionId,
-        mcpServerUrl,
-      })
-      .pipe(
-        Stream.runForEach(handle),
-        Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
-        Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
-        Effect.ensuring(finish),
-      )
+    /** Never fails: provider errors become turn_failed. */
+    const run = (prompt: string) =>
+      provider
+        .runTurn({
+          threadId: thread.id,
+          prompt,
+          cwd,
+          model: thread.model,
+          resumeSessionId: thread.providerSessionId,
+          mcpServerUrl,
+        })
+        .pipe(
+          Stream.runForEach(handle),
+          Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
+          Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
+          Effect.ensuring(finish),
+        )
+
+    return { provider, steer, run }
   }
 
   const startTurn = (threadId: string, prompt: string) =>
@@ -142,22 +200,14 @@ const make = Effect.gen(function* () {
       const provider = yield* providerFor(thread.provider)
       const cwd = yield* threads.resolveCwd(thread.id)
       const now = yield* nowIso
-      const user: Message = {
-        id: randomUUID(),
-        threadId,
-        role: "user",
-        parts: [{ type: "text", text: prompt }],
-        createdAt: now,
-        completedAt: now,
-        usage: null,
-      }
-      const assistant: Message = { ...user, id: randomUUID(), role: "assistant", parts: [], completedAt: null }
-      yield* insertMessage(user)
+      const assistant = openAssistantMessage(threadId, now)
+      yield* insertMessage(userMessage(threadId, prompt, now))
       yield* insertMessage(assistant)
       yield* updateThread({ id: threadId, status: "running" })
 
-      activeProviders.set(threadId, provider)
-      yield* FiberMap.run(turns, threadId, runTurn(thread, provider, prompt, cwd, assistant))
+      const turn = makeTurn(thread, provider, cwd, assistant)
+      activeTurns.set(threadId, turn)
+      yield* FiberMap.run(turns, threadId, turn.run(prompt))
     })
 
   const send = (threadId: string, prompt: string) =>
@@ -172,7 +222,9 @@ const make = Effect.gen(function* () {
 
   return AgentRunner.of({
     send,
-    interrupt: (threadId) => Effect.suspend(() => activeProviders.get(threadId)?.interrupt(threadId) ?? Effect.void),
+    steer: (threadId, text) => Effect.suspend(() => activeTurns.get(threadId)?.steer(text) ?? send(threadId, text)),
+    interrupt: (threadId) =>
+      Effect.suspend(() => activeTurns.get(threadId)?.provider.interrupt(threadId) ?? Effect.void),
     respondApproval: (requestId, decision) =>
       Effect.suspend(() => {
         const request = approvals.get(requestId)

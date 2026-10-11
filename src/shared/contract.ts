@@ -97,6 +97,10 @@ export const RpcMethods = {
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
   "approvals.pending": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(ApprovalRequest)),
+
+  // steering
+  /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
+  "threads.steer": rpc(Schema.Struct({ threadId: Schema.String, text: Schema.String }), Schema.Void),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -120,6 +124,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String, event: AgentEvent }),
   Schema.Struct({ type: Schema.Literal("message.created"), message: Message }),
+  /** A message replaced outside the event fold, e.g. an assistant message closed by a steer. */
+  Schema.Struct({ type: Schema.Literal("message.updated"), message: Message }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

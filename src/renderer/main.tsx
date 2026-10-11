@@ -39,6 +39,8 @@ onPushEvent((event) => {
       return useThreads.getState().upsert(event.thread)
     case "message.created":
       return useMessages.getState().addMessage(event.message)
+    case "message.updated":
+      return useMessages.getState().updateMessage(event.message)
     case "thread.event":
       return useMessages.getState().applyEvent(event.threadId, event.event)
     case "worktree.updated":
