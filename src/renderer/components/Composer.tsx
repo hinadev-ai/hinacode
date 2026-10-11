@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type KeyboardEvent, useState, useTransition } from "react"
-import { RiSendPlaneLine, RiStopFill } from "react-icons/ri"
+import { RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
 import type { ModelInfo } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { callPromise, modelsAtom } from "../lib/rpc.ts"
@@ -11,6 +11,7 @@ import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Textarea } from "./ui/textarea.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
@@ -19,7 +20,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const canSend = draft.trim() !== "" && !busy && !isSending
+  const canSend = draft.trim() !== "" && !isSending
 
   const send = () => {
     const prompt = draft.trim()
@@ -27,7 +28,9 @@ export function Composer({ thread }: { thread: Thread }) {
     setError(null)
     startSending(async () => {
       try {
-        await callPromise("threads.send", { threadId: thread.id, prompt })
+        await (busy
+          ? callPromise("threads.steer", { threadId: thread.id, text: prompt })
+          : callPromise("threads.send", { threadId: thread.id, prompt }))
         setDraft("")
       } catch (cause) {
         setError(errorMessage(cause))
@@ -56,7 +59,7 @@ export function Composer({ thread }: { thread: Thread }) {
       <div className="mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
         <Textarea
           aria-label={m.thread_composer_label()}
-          placeholder={m.thread_composer_placeholder()}
+          placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
@@ -65,22 +68,35 @@ export function Composer({ thread }: { thread: Thread }) {
         />
         <div className="flex items-center gap-2">
           <ModelPicker thread={thread} onError={setError} />
-          <div className="ml-auto">
-            {busy ? (
+          <div className="ml-auto flex items-center gap-2">
+            {busy && (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>
                 <RiStopFill aria-hidden />
                 {m.thread_composer_stop()}
               </Button>
-            ) : (
-              <Button type="submit" size="icon-sm" disabled={!canSend} aria-label={m.thread_composer_send()}>
-                <RiSendPlaneLine aria-hidden />
-              </Button>
             )}
+            <SendButton steer={busy} disabled={!canSend} />
           </div>
         </div>
       </div>
       {error && <FieldError className="mx-auto mt-1 max-w-3xl">{m.common_error({ message: error })}</FieldError>}
     </form>
+  )
+}
+
+function SendButton({ steer, disabled }: { steer: boolean; disabled: boolean }) {
+  const label = steer ? m.thread_composer_steer() : m.thread_composer_send()
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button type="submit" size="icon-sm" disabled={disabled} aria-label={label}>
+            {steer ? <RiSteering2Line aria-hidden /> : <RiSendPlaneLine aria-hidden />}
+          </Button>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
