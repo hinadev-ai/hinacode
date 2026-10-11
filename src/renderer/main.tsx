@@ -10,6 +10,7 @@ import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useThreads } from "./stores/threads.ts"
+import { useWorktrees } from "./stores/worktrees.ts"
 
 const registry = AtomRegistry.make()
 
@@ -23,14 +24,18 @@ function App() {
   )
 }
 
-const [settings, threads] = await Promise.all([
+const [settings, threads, worktrees] = await Promise.all([
   Effect.runPromise(AtomRegistry.getResult(registry, settingsAtom)),
   callPromise("threads.list", undefined),
+  callPromise("worktrees.list", undefined),
 ])
 useLocale.getState().apply(settings.locale)
 useThreads.getState().replaceAll(threads)
+useWorktrees.getState().replaceAll(worktrees)
 onPushEvent((event) => {
   if (event.type === "thread.updated") useThreads.getState().upsert(event.thread)
+  if (event.type === "worktree.updated") useWorktrees.getState().upsert(event.worktree)
+  if (event.type === "worktree.setupLog") useWorktrees.getState().appendSetupLog(event.id, event.chunk)
 })
 
 const root = document.getElementById("root")

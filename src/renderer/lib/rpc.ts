@@ -44,3 +44,15 @@ export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom
 export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
   call("settings.set", patch).pipe(Effect.tap(() => Atom.refresh(settingsAtom))),
 )
+
+export const currentBranchAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.currentBranch", { id: projectId })),
+)
+
+export const worktreeChangesAtom = Atom.family((worktreeId: string) =>
+  Atom.make(call("worktrees.changes", { id: worktreeId })),
+)
+
+export const pullRequestAtom = Atom.family((worktreeId: string) =>
+  Atom.make(call("worktrees.mergedState", { id: worktreeId })),
+)
