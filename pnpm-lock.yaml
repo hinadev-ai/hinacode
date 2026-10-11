@@ -44,6 +44,9 @@ importers:
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.1
+        version: 1.32.1(zod@4.6.5)
       '@pierre/diffs':
         specifier: 1.5.2
         version: 1.5.2(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
