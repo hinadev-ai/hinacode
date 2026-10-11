@@ -4,6 +4,7 @@ import type { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, Provider
 import type { Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldEvent } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
+import { CodexProvider } from "../agents/codex/index.ts"
 import { McpServerUrl } from "../agents/mcp.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Push } from "../push.ts"
@@ -54,9 +55,9 @@ const make = Effect.gen(function* () {
   const push = yield* Push
   const mcpServerUrl = yield* McpServerUrl
 
-  // Codex slots in here as one more entry once its provider exists.
-  const providers: Partial<Record<ProviderId, AgentProvider>> = {
+  const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
+    codex: yield* CodexProvider,
   }
 
   const turns = yield* FiberMap.make<string>()
@@ -66,12 +67,7 @@ const make = Effect.gen(function* () {
 
   yield* threads.resetInterrupted
 
-  const providerFor = (id: ProviderId) => {
-    const provider = providers[id]
-    return provider === undefined
-      ? Effect.fail(new AgentError({ provider: id, message: `${id} provider not wired yet` }))
-      : Effect.succeed(provider)
-  }
+  const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 
   const resolveCwd = (thread: Thread) =>
     Effect.gen(function* () {

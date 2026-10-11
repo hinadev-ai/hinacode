@@ -3,6 +3,7 @@ import { NodeFileSystem } from "@effect/platform-node"
 import { app, BrowserWindow, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
+import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { registerIpc } from "./ipc.ts"
 import * as Push from "./push.ts"
@@ -29,7 +30,7 @@ const makeAppLayer = (dbPath: string) =>
         Messages.layer,
       ),
     ),
-    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, Push.layer)),
+    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Push.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeFileSystem.layer),
   )
