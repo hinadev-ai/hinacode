@@ -68,6 +68,15 @@ const waitUntilSetUp = async (worktreeId: string | null) => {
   throw new Error("setup never finished")
 }
 
+/** Removal deletes the checkout in the background after marking the row removed. */
+const waitUntilDeleted = async (path: string) => {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (!existsSync(path)) return
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error("checkout never deleted")
+}
+
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))
   root = join(dir, "repo")
@@ -153,7 +162,7 @@ describe("worktree ownership", () => {
     assert.equal(settled.status, "settled")
     const worktree = await run(worktreeOf(thread.worktreeId))
     assert.equal(worktree.status, "removed")
-    assert.ok(!existsSync(worktree.path))
+    await waitUntilDeleted(worktree.path)
   })
 
   test("a settled branch can start a new thread without reviving the old one's worktree", async () => {

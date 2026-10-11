@@ -9,7 +9,7 @@ import type { McpConnection } from "../../shared/agent.ts"
 import { PullRequests } from "../services/PullRequests.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { makeActiveWorkspace } from "../services/workspace.ts"
-import { makeLinear } from "./linear.ts"
+import { type Linear, makeLinear } from "./linear.ts"
 import { reviewChanges } from "./reviewChanges.ts"
 
 const MCP_PATH = "/mcp"
@@ -96,7 +96,7 @@ const registerTools = Layer.effectDiscard(
 
     const activeWorkspace = yield* makeActiveWorkspace
 
-    const withLinear = <A>(use: (linear: ReturnType<typeof makeLinear>) => Effect.Effect<A, ToolFailure>) =>
+    const withLinear = <A>(use: (linear: Linear) => Effect.Effect<A, ToolFailure>) =>
       Effect.flatMap(
         secrets.get(LINEAR_API_KEY_SECRET),
         Option.match({
@@ -105,7 +105,7 @@ const registerTools = Layer.effectDiscard(
               message:
                 "No Linear API key is configured. Ask the user to add one in kkcode Settings > Integrations, then retry.",
             }),
-          onSome: (apiKey) => use(makeLinear(apiKey)),
+          onSome: (apiKey) => Effect.flatMap(makeLinear(apiKey), use),
         }),
       )
 

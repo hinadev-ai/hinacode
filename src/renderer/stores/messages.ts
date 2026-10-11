@@ -21,6 +21,8 @@ interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
   /** Loads a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
+  /** Drops a thread's history so the next `load` reads the persisted copy again. */
+  readonly unload: (threadId: string) => void
   readonly receive: (push: TranscriptPush) => void
 }
 
@@ -43,21 +45,24 @@ export const useMessages = create<MessagesState>()((set, get) => {
       const current = get().byThread[threadId]
       if (current !== undefined && current.status !== "error") return
       setHistory(threadId, () => ({ status: "loading", pending: [] }))
+      // An `unload` while the request was in flight wins: the result would only leak.
+      const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
+        setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
       try {
         const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
-        setHistory(threadId, (history) => {
-          const pending = history?.status === "loading" ? history.pending : []
-          return pending
-            .filter((push) => push.seq > seq)
-            .reduce<ReadyHistory>(applyPush, { status: "ready", ...snapshot })
-        })
+        settle((pending) =>
+          pending.filter((push) => push.seq > seq).reduce<ReadyHistory>(applyPush, { status: "ready", ...snapshot }),
+        )
       } catch (cause) {
-        setHistory(threadId, () => ({
-          status: "error",
-          message: cause instanceof Error ? cause.message : String(cause),
-        }))
+        settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
       }
     },
+
+    unload: (threadId) =>
+      set((state) => {
+        const { [threadId]: _dropped, ...byThread } = state.byThread
+        return { byThread }
+      }),
 
     receive: (push) =>
       setHistory(pushThreadId(push), (history) => {
