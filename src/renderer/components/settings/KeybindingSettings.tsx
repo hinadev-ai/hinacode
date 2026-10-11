@@ -119,8 +119,8 @@ function KeybindingRow(props: KeybindingRowProps) {
   }
 
   return (
-    <TableRow data-recording={recording || undefined} className="data-recording:bg-muted/50">
-      <TableCell className="font-medium whitespace-normal">{title}</TableCell>
+    <TableRow data-recording={recording || undefined} className="group/row data-recording:bg-muted">
+      <TableCell className="whitespace-normal">{title}</TableCell>
       <TableCell>
         <div className="flex flex-col gap-1">
           {recording ? (
@@ -139,7 +139,7 @@ function KeybindingRow(props: KeybindingRowProps) {
         </div>
       </TableCell>
       <TableCell>
-        <div className="flex justify-end gap-1">
+        <div className="flex justify-end gap-1 opacity-0 transition-opacity duration-100 group-focus-within/row:opacity-100 group-hover/row:opacity-100 group-data-recording/row:opacity-100">
           <Button
             variant={recording ? "secondary" : "outline"}
             size="xs"

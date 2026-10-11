@@ -26,20 +26,18 @@ export function SettingsRoute() {
   const page = pages.find((candidate) => candidate.id === pageId) ?? pages[0]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center border-b border-border px-6">
-        <h1 className="text-sm font-semibold">{m.settings_title()}</h1>
-      </header>
-      <div className="flex min-h-0 flex-1">
-        <nav aria-label={m.settings_sections()} className="w-52 shrink-0 border-r border-border p-2">
-          <ul className="flex flex-col gap-0.5">
+    <div className="flex min-h-0 flex-1">
+      <div className="flex w-52 shrink-0 flex-col gap-3 border-r border-border px-3 pt-2 pb-4">
+        <h1 className="flex h-8 items-center px-2 text-sm font-medium">{m.settings_title()}</h1>
+        <nav aria-label={m.settings_sections()}>
+          <ul className="flex flex-col gap-px">
             {pages.map((item) => (
               <li key={item.id}>
                 <button
                   type="button"
                   aria-current={item.id === page?.id ? "page" : undefined}
                   onClick={() => setPageId(item.id)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-muted aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+                  className="flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-sm text-muted-foreground outline-none transition-colors duration-100 hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-accent aria-[current=page]:text-foreground"
                 >
                   <item.icon aria-hidden className="size-4 shrink-0" />
                   {item.label()}
@@ -48,9 +46,9 @@ export function SettingsRoute() {
             ))}
           </ul>
         </nav>
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="w-full max-w-2xl px-8 py-6">{page && <page.component />}</div>
-        </div>
+      </div>
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-2xl px-10 py-10">{page && <page.component />}</div>
       </div>
     </div>
   )

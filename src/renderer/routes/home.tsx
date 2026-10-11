@@ -1,54 +1,67 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
+import type { IconType } from "react-icons"
 import { RiAddLine, RiFolderAddLine } from "react-icons/ri"
+import { AppMark } from "../components/AppMark.tsx"
 import { ChordKeys } from "../components/ChordKeys.tsx"
-import { Button } from "../components/ui/button.tsx"
-import { commands } from "../keybindings/commands.ts"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
-
-const commandTitle = (id: "thread.new" | "project.add") => commands.find((command) => command.id === id)?.title() ?? ""
 
 export function HomeRoute() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const keymap = useKeymap()
   const firstProject = projects[0]
 
-  const addProject = (
-    <Button
-      size="lg"
-      variant={firstProject ? "outline" : "default"}
-      onClick={() => useUi.getState().setAddProjectOpen(true)}
-    >
-      <RiFolderAddLine aria-hidden />
-      {commandTitle("project.add")}
-      {keymap["project.add"] && <ChordKeys chord={keymap["project.add"]} />}
-    </Button>
-  )
-
   return (
-    <div className="m-auto flex max-w-lg flex-col items-center gap-6 px-6 text-center">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-2xl font-semibold">{m.app_name()}</h1>
-        <p className="text-sm text-balance text-muted-foreground">{m.home_description()}</p>
+    <div className="m-auto flex w-full max-w-sm flex-col gap-8 px-6">
+      <div className="flex flex-col gap-3">
+        <AppMark className="size-9 rounded-[9px] text-lg" />
+        <h1 className="text-xl font-semibold tracking-tight">{m.app_name()}</h1>
+        <p className="text-sm text-pretty text-muted-foreground">{m.home_description()}</p>
       </div>
-      <div className="flex flex-wrap justify-center gap-2">
+      <ul className="flex flex-col gap-px">
         {firstProject && (
-          <Button size="lg" onClick={() => useUi.getState().setNewThreadProjectId(firstProject.id)}>
-            <RiAddLine aria-hidden />
-            {commandTitle("thread.new")}
-            {keymap["thread.new"] && <ChordKeys chord={keymap["thread.new"]} />}
-          </Button>
+          <li>
+            <StartAction
+              icon={RiAddLine}
+              label={m.sidebar_new_thread_in({ project: firstProject.name })}
+              chord={keymap["thread.new"]}
+              onClick={() => useUi.getState().setNewThreadProjectId(firstProject.id)}
+            />
+          </li>
         )}
-        {addProject}
-      </div>
-      {firstProject && (
-        <p className="text-xs text-balance text-muted-foreground">
-          {m.home_hint_ready({ project: firstProject.name })}
-        </p>
-      )}
+        <li>
+          <StartAction
+            icon={RiFolderAddLine}
+            label={m.sidebar_add_project()}
+            chord={keymap["project.add"]}
+            onClick={() => useUi.getState().setAddProjectOpen(true)}
+          />
+        </li>
+      </ul>
     </div>
+  )
+}
+
+interface StartActionProps {
+  readonly icon: IconType
+  readonly label: string
+  readonly chord: string | undefined
+  readonly onClick: () => void
+}
+
+function StartAction({ icon: Icon, label, chord, onClick }: StartActionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="-mx-3 flex h-10 w-[calc(100%+1.5rem)] items-center gap-3 rounded-lg px-3 text-left text-sm outline-none transition-colors duration-100 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {chord && <ChordKeys chord={chord} />}
+    </button>
   )
 }

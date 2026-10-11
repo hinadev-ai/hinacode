@@ -2,7 +2,6 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_name": "kkcode",
   "sidebar_label": "專案與討論串",
-  "sidebar_projects": "專案",
   "sidebar_add_project": "新增專案",
   "sidebar_settings": "設定",
   "sidebar_loading": "正在載入專案…",
@@ -44,10 +43,10 @@
   "thread_status_archived": "已封存",
   "thread_not_found": "這個討論串已不存在。",
   "thread_composer_label": "訊息",
-  "thread_composer_placeholder": "輸入任何問題。Enter 傳送，Shift+Enter 換行。",
+  "thread_composer_placeholder": "輸入任何問題",
   "thread_composer_send": "傳送",
   "thread_composer_steer": "引導",
-  "thread_composer_steer_placeholder": "引導 agent 調整方向…它執行時按 Enter 即可傳送。",
+  "thread_composer_steer_placeholder": "在 agent 執行時引導它",
   "settings_title": "設定",
   "settings_general": "一般",
   "settings_language": "語言",
@@ -218,6 +217,5 @@
   "delete_dialog_body": "「{title}」及其訊息與連結的 pull request 都會被刪除，且無法復原。",
   "delete_dialog_worktree": "worktree 資料夾 {path} 會保留在磁碟上。若要一併移除，請改為將討論串標記為完成。",
   "delete_dialog_confirm": "刪除討論串",
-  "home_description": "在本機儲存庫上執行 Claude Code 與 Codex。每個討論串都能有自己的 git worktree，並由你的設定腳本準備好。",
-  "home_hint_ready": "新討論串會建立在 {project}。要用其他專案，請按側邊欄專案旁的 +。"
+  "home_description": "在本機儲存庫上執行 Claude Code 與 Codex。每個討論串都能有自己的 git worktree，並由你的設定腳本準備好。"
 }

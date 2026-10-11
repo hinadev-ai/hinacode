@@ -2,7 +2,6 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_name": "kkcode",
   "sidebar_label": "Projects and threads",
-  "sidebar_projects": "Projects",
   "sidebar_add_project": "Add project",
   "sidebar_settings": "Settings",
   "sidebar_loading": "Loading projects…",
@@ -44,10 +43,10 @@
   "thread_status_archived": "Archived",
   "thread_not_found": "This thread no longer exists.",
   "thread_composer_label": "Message",
-  "thread_composer_placeholder": "Ask anything. Enter sends, Shift+Enter adds a line.",
+  "thread_composer_placeholder": "Ask anything",
   "thread_composer_send": "Send",
   "thread_composer_steer": "Steer",
-  "thread_composer_steer_placeholder": "Steer the agent… Enter sends while it works.",
+  "thread_composer_steer_placeholder": "Steer the agent while it works",
   "settings_title": "Settings",
   "settings_general": "General",
   "settings_language": "Language",
@@ -218,6 +217,5 @@
   "delete_dialog_body": "“{title}”, its messages and its linked pull requests are deleted. This cannot be undone.",
   "delete_dialog_worktree": "The worktree folder {path} stays on disk. To remove it too, settle the thread instead.",
   "delete_dialog_confirm": "Delete thread",
-  "home_description": "Run Claude Code and Codex on your local repositories. Each thread can get its own git worktree, prepared by your setup script.",
-  "home_hint_ready": "New threads start in {project}. Pick another project from the + in the sidebar."
+  "home_description": "Run Claude Code and Codex on your local repositories. Each thread can get its own git worktree, prepared by your setup script."
 }
