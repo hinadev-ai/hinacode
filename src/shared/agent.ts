@@ -80,6 +80,8 @@ export interface RunTurnInput {
   readonly prompt: string
   readonly attachments: ReadonlyArray<Attachment>
   readonly cwd: string
+  /** Whether the user trusts the project's own agent configuration, such as Claude hooks and permission rules. */
+  readonly projectTrusted: boolean
   readonly model: string
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
