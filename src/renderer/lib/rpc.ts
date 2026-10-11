@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { Atom } from "effect/reactivity"
+import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
@@ -44,3 +45,7 @@ export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom
 export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
   call("settings.set", patch).pipe(Effect.tap(() => Atom.refresh(settingsAtom))),
 )
+
+export const modelsAtom = Atom.family((provider: ProviderId) => Atom.make(call("models.list", { provider })))
+
+export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
