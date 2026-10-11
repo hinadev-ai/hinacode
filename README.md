@@ -13,7 +13,8 @@ A local desktop app for running Claude Code and Codex against your repositories.
 - Approvals for commands, edits and MCP tool calls appear inline. Steer a running turn by sending another message.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.
 - Built-in MCP server exposed to both agents: `review_changes`, `link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, and Linear issue tools backed by an API key stored with Electron's safeStorage.
-- Thread panel shows the workspace, setup log, changes with diffs, pull request links with merge state, and TCP ports opened by processes the thread spawned, each with a kill button.
+- Thread panel shows the workspace, setup log, changes with diffs, pull requests, and TCP ports opened by processes the thread spawned, each with a kill button.
+- GitHub through your `gh` login. Each pull request shows its title, draft, open, merged or closed state, CI checks and review decision, refreshed every minute. A worktree branch without a pull request gets a button that pushes it and runs `gh pr create --fill`. Settings > Integrations shows whether `gh` is installed and signed in.
 - Automations start a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree. Triggers are a signed webhook and pollers for new GitHub issues, Linear issues and Slack mentions.
 - English and 繁體中文, switchable in settings.
 - Rebindable keyboard shortcuts with chord recording and conflict detection.

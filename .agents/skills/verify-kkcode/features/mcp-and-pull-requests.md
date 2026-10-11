@@ -1,6 +1,6 @@
 # MCP tools and pull request links
 
-kkcode runs one MCP server on 127.0.0.1 and hands each agent run a bearer credential bound to its thread; the credential alone decides which thread a call acts as. Agents use it to review their changes (`review_changes`), register the pull requests they open (`link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`), and work with Linear (`linear_get_issue`, `linear_search_issues`, `linear_create_comment`, `linear_update_issue_state`). Linked pull requests appear in the thread's side panel, where the user can open or unlink them.
+kkcode runs one MCP server on 127.0.0.1 and hands each agent run a bearer credential bound to its thread; the credential alone decides which thread a call acts as. Agents use it to review their changes (`review_changes`), register the pull requests they open (`link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`), and work with Linear (`linear_get_issue`, `linear_search_issues`, `linear_create_comment`, `linear_update_issue_state`). Linked pull requests appear in the thread's side panel with their status from `gh`, where the user can open or unlink them, and a worktree branch without a pull request offers `Create pull request`.
 
 ## Sub-features
 
@@ -11,12 +11,15 @@ kkcode runs one MCP server on 127.0.0.1 and hands each agent run a bearer creden
 - `link-pr-in-turn` an agent calls `link_pull_request` during a real turn and the panel updates live.
 - `panel-links` the `Pull requests` region lists `owner/repo#N` links, each opening the URL externally.
 - `unlink` `Unlink owner/repo#N` removes a link from the panel.
+- `pr-status` each row's second line reads `<status> · [<review> · ]<title>`, the icon is colored by status, and a checks icon shows passing, failing or pending (none when the PR has no checks). `github.pullRequest {"url":...}` returns the same.
+- `pr-create` `Create pull request` shows when the thread's worktree is ready, `gh` is signed in, and the branch has no PR. It pushes the branch to `origin`, runs `gh pr create --head <branch> --base <baseRef> --fill` in the worktree, and links the result.
+- `gh-auth` Settings > Integrations > GitHub reads `Signed in to github.com as <login>.`, `The GitHub CLI (gh) is not installed.`, or the `gh auth login` hint. When not signed in, the panel shows one hint instead of per-row errors.
 - `linear` the Linear tools work with an API key stored in Settings > Integrations, and fail with a clear message without one.
 
 ## How to get to it (user POV)
 
 - Users do not call the tools; they ask an agent to, for example `Open a PR and link it`, and see the result in the thread details panel under `Pull requests`.
-- The panel region is always present in a thread; its empty state reads `None linked yet. Agents add them with the link_pull_request tool.`
+- The panel region is always present in a thread; its empty state reads `None linked yet. Create one from this branch, or ask an agent to open one.`
 
 ## Driving it with agent-browser and mcp-call.mjs
 
@@ -35,10 +38,15 @@ Preconditions:
 - **Unlink.** `$AB find role button click --name "Unlink kjj6198/kkcode#1" --exact`. The region returns to its empty state. Screenshot `mcp-and-pull-requests-04-unlinked.png`. `$S/rpc.mjs $PORT pullRequests.list "{\"threadId\":\"$TID\"}"` prints `[]`.
 - **Linear without a key.** `$S/mcp-call.mjs "$CONN" linear_get_issue '{"key":"ENG-1"}'` prints `isError=true` and `No Linear API key is configured. Ask the user to add one in kkcode Settings > Integrations, then retry.`
 
+- **Status.** After linking real PRs such as `https://github.com/kjj6198/kkcode/pull/32` (read-only), wait for the second line of each row, then compare `$S/rpc.mjs $PORT github.pullRequest '{"url":"..."}'` with `gh pr view <n> -R kjj6198/kkcode --json title,state,isDraft,reviewDecision,statusCheckRollup`.
+- **Create without touching GitHub.** Give the seeded repo a bare `origin` (`git init --bare`, `git remote add origin`, push `main`) and launch with a `gh` shim first on `PATH` that logs `pr create` and prints a PR URL, answers `pr view <branch>` with `no pull requests found for branch` until then, and passes everything else to the real `gh`. Commit in the worktree, click `Create pull request`, and check the log for `pr create --head <branch> --base main --fill` with the worktree as cwd.
+- **gh missing or signed out.** Launch with every `PATH` entry holding a `gh` removed (mise installs it in several places), or with `GH_CONFIG_DIR` pointing at an empty directory and `GH_TOKEN`/`GITHUB_TOKEN` unset. `$S/rpc.mjs $PORT github.auth` prints `missing` or `signedOut`.
+
 ## Gotchas
 
 - The credential is per thread and changes on every launch. Re-read `mcp.connection` after `launch.sh`.
 - `mcp-call.mjs` proves the server contract; only the in-turn step proves an agent can reach it. Report both.
 - Codex gates every kkcode tool call behind an approval card (MCP elicitation). See `chat-codex.md`.
 - Linking the same URL twice keeps one link. The panel updates through a push event; if it does not change without `$AB reload`, that is a bug.
+- Never click `Create pull request` against a real GitHub remote while verifying; it opens a real pull request.
 - Real Linear calls hit the user's workspace. Only run the Linear tools with a key the user gave you for testing.

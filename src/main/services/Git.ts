@@ -18,26 +18,19 @@ export interface RunOptions {
   readonly okExitCodes?: ReadonlyArray<number>
 }
 
-export class Git extends Context.Service<
-  Git,
-  {
-    /** Runs `git -C cwd ...args` and returns stdout. */
-    readonly run: (
-      cwd: string,
-      args: ReadonlyArray<string>,
-      options?: RunOptions,
-    ) => Effect.Effect<string, CommandError>
-    /** Runs the GitHub CLI in `cwd`. Fails with exit code -1 when `gh` is not installed. */
-    readonly gh: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, CommandError>
-  }
->()("kkcode/Git") {}
+interface ExecOptions extends RunOptions {
+  /** Added to the inherited environment. */
+  readonly env?: Record<string, string>
+}
 
-const make = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-
-  const exec = (command: string, args: ReadonlyArray<string>, cwd: string, options?: RunOptions) =>
+/** Runs `command` in `cwd` and returns stdout. A command that cannot start fails with exit code -1. */
+export const makeExec =
+  (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
+  (command: string, args: ReadonlyArray<string>, cwd: string, options?: ExecOptions) =>
     Effect.gen(function* () {
-      const handle = yield* spawner.spawn(ChildProcess.make(command, args, { cwd, stdin: "ignore" }))
+      const handle = yield* spawner.spawn(
+        ChildProcess.make(command, args, { cwd, stdin: "ignore", env: options?.env, extendEnv: true }),
+      )
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [
           Stream.mkString(Stream.decodeText(handle.stdout)),
@@ -57,10 +50,21 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  return Git.of({
-    run: (cwd, args, options) => exec("git", ["-C", cwd, ...args], cwd, options),
-    gh: (cwd, args) => exec("gh", args, cwd),
-  })
+export class Git extends Context.Service<
+  Git,
+  {
+    /** Runs `git -C cwd ...args` and returns stdout. */
+    readonly run: (
+      cwd: string,
+      args: ReadonlyArray<string>,
+      options?: RunOptions,
+    ) => Effect.Effect<string, CommandError>
+  }
+>()("kkcode/Git") {}
+
+const make = Effect.gen(function* () {
+  const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
+  return Git.of({ run: (cwd, args, options) => exec("git", ["-C", cwd, ...args], cwd, options) })
 })
 
 export const layer = Layer.effect(Git, make)

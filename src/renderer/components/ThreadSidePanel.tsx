@@ -7,19 +7,19 @@ import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine,
 import {
   type ChangedFileStatus,
   isThreadBusy,
-  type PullRequestState,
+  type PullRequest,
   type Thread,
   type Worktree,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise, projectsAtom, pullRequestAtom, worktreeChangesAtom } from "../lib/rpc.ts"
+import { branchPullRequestAtom, callPromise, projectsAtom, worktreeChangesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { SettleDialog, useActiveWorktree } from "./SettleDialog.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
-import { ThreadPullRequests } from "./ThreadPullRequests.tsx"
+import { pullRequestStatusLabel, ThreadPullRequests } from "./ThreadPullRequests.tsx"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
 import { AlertDialogTrigger } from "./ui/alert-dialog.tsx"
 import { Badge } from "./ui/badge.tsx"
@@ -38,7 +38,11 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
 
   return (
-    <aside ref={returnFocusToComposer} aria-label={m.panel_label()} className="flex w-96 shrink-0 flex-col border-l border-border">
+    <aside
+      ref={returnFocusToComposer}
+      aria-label={m.panel_label()}
+      className="flex w-96 shrink-0 flex-col border-l border-border"
+    >
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <h2 className="text-sm font-semibold">{m.panel_label()}</h2>
         <PanelToggle expanded onToggle={toggleSidePanel} />
@@ -58,7 +62,7 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
             <ThreadPorts threadId={thread.id} />
           </Section>
           <Section title={m.pr_links_title()}>
-            <ThreadPullRequests threadId={thread.id} />
+            <ThreadPullRequests thread={thread} />
           </Section>
         </div>
       </ScrollArea>
@@ -156,23 +160,17 @@ function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
       </div>
       <p className="font-mono text-xs break-all text-muted-foreground">{worktree.path}</p>
       {removed && <p className="text-xs text-muted-foreground">{m.panel_removed_hint()}</p>}
-      {pullRequest?.state === "MERGED" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
+      {pullRequest?.status === "merged" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
       <RevealButton path={worktree.path} disabled={removed} />
     </div>
   )
 }
 
-const pullRequestStateLabel = {
-  OPEN: m.pr_state_open,
-  CLOSED: m.pr_state_closed,
-  MERGED: m.pr_state_merged,
-} satisfies Record<PullRequestState["state"], () => string>
-
-function PullRequestBadge({ pullRequest }: { pullRequest: PullRequestState }) {
-  const label = m.panel_pr_badge({ state: pullRequestStateLabel[pullRequest.state]() })
+function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
+  const label = m.panel_pr_badge({ state: pullRequestStatusLabel[pullRequest.status]() })
   return (
     <Badge
-      variant={pullRequest.state === "MERGED" ? "default" : "outline"}
+      variant={pullRequest.status === "merged" ? "default" : "outline"}
       render={<a href={pullRequest.url} target="_blank" rel="noreferrer" title={pullRequest.url} aria-label={label} />}
     >
       <RiGitPullRequestLine aria-hidden />
@@ -183,7 +181,7 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PullRequestState }) {
 
 /** The GitHub pull request for the worktree's branch, or null when there is none or `gh` cannot tell. */
 const useBranchPullRequest = (worktreeId: string | undefined) =>
-  AsyncResult.getOrElse(useAtomValue(pullRequestAtom(worktreeId ?? null)), () => null)
+  AsyncResult.getOrElse(useAtomValue(branchPullRequestAtom(worktreeId ?? null)), () => null)
 
 function ChangesSection({ worktree }: { worktree: Worktree | undefined }) {
   if (!worktree) {
@@ -322,7 +320,7 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
 function SettleControl({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false)
   const worktree = useActiveWorktree(thread)
-  const merged = useBranchPullRequest(worktree?.id)?.state === "MERGED"
+  const merged = useBranchPullRequest(worktree?.id)?.status === "merged"
 
   if (thread.status === "settled" && !worktree) {
     return <p className="text-xs text-muted-foreground">{m.panel_settled()}</p>

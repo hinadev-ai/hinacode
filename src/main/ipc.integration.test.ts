@@ -16,6 +16,7 @@ import { AgentRunner } from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import * as Git from "./services/Git.ts"
+import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
@@ -70,6 +71,7 @@ const makeLayer = (dbPath: string) => {
   const features = Layer.mergeAll(Mcp.layer, Ports.layer).pipe(Layer.provide(domain))
   return Layer.mergeAll(domain, features, agentStubs).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
+    Layer.provideMerge(GitHub.layer),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
