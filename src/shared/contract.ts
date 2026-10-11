@@ -4,6 +4,7 @@ import {
   Locale, Message,
   Project,
   PullRequestState,
+PullRequestLink,
   Settings,
   Thread,
   ThreadStatus,
@@ -97,6 +98,15 @@ export const RpcMethods = {
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
   "approvals.pending": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(ApprovalRequest)),
+  // mcp
+  /** Secrets never cross back to the renderer; it can only ask whether one is set. */
+  "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
+  "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
+  "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
+  "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
+  "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
+  /** The built-in MCP server URL handed to agents running in this thread. */
+  "mcp.url": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -120,6 +130,11 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String, event: AgentEvent }),
   Schema.Struct({ type: Schema.Literal("message.created"), message: Message }),
+  Schema.Struct({
+    type: Schema.Literal("thread.pullRequests"),
+    threadId: Schema.String,
+    links: Schema.Array(PullRequestLink),
+  }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

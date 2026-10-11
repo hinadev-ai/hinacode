@@ -5,7 +5,7 @@ import type { Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldEvent } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
-import { McpServerUrl } from "../agents/mcp.ts"
+import { McpServer } from "../mcp/index.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
@@ -49,7 +49,7 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads
   const messages = yield* Messages
   const push = yield* Events
-  const mcpServerUrl = yield* McpServerUrl
+  const mcp = yield* McpServer
 
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
@@ -126,7 +126,7 @@ const make = Effect.gen(function* () {
         cwd,
         model: thread.model,
         resumeSessionId: thread.providerSessionId,
-        mcpServerUrl,
+        mcpServerUrl: mcp.urlForThread(thread.id),
       })
       .pipe(
         Stream.runForEach(handle),

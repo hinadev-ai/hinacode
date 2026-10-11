@@ -10,6 +10,7 @@ import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Events from "./services/Events.ts"
 import * as Git from "./services/Git.ts"
+import * as Mcp from "./mcp/index.ts"
 import * as Projects from "./services/Projects.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -28,6 +29,7 @@ const makeAppLayer = (dbPath: string) =>
         Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
         Settings.layer,
         Messages.layer,
+        Mcp.layer,
       ),
     ),
     Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, Events.layer)),

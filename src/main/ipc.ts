@@ -11,12 +11,15 @@ import {
 } from "../shared/contract.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Messages } from "./services/Messages.ts"
+import { McpServer } from "./mcp/index.ts"
 import { Projects } from "./services/Projects.ts"
+import { PullRequests } from "./services/PullRequests.ts"
+import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-type AppServices = Projects | Threads | Worktrees | Settings | Messages | AgentRunner
+type AppServices = Projects | Threads | Worktrees | Settings | Messages | AgentRunner | McpServer | PullRequests | Secrets
 
 interface HandlerError {
   readonly _tag: string
@@ -70,6 +73,14 @@ const handlers: Handlers = {
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
   "approvals.pending": ({ threadId }) => AgentRunner.use((runner) => runner.pendingApprovals(threadId)),
+
+  // mcp
+  "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
+  "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
+  "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
+  "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
+  "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
+  "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
 }
 
 const RpcCall = Schema.Struct({
