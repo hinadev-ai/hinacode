@@ -7,5 +7,6 @@
     "allowJs": true,
     "paths": { "@/*": ["./src/renderer/*"] }
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/*.d.ts"]
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/*.d.ts"],
+  "exclude": ["src/renderer/**/*.test.ts"]
 }
