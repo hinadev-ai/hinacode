@@ -1,6 +1,6 @@
 import { Schema } from "effect"
-import { AgentEvent, ModelInfo, ProviderId } from "./agent.ts"
-import { Locale, Project, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
+import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
+import { Locale, Message, Project, Settings, Thread, ThreadStatus, Worktree } from "./domain.ts"
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -55,6 +55,14 @@ export const RpcMethods = {
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
+
+  // chat
+  "messages.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Message)),
+  /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
+  "threads.send": rpc(Schema.Struct({ threadId: Schema.String, prompt: Schema.String }), Schema.Void),
+  "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
+  "approvals.pending": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(ApprovalRequest)),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -77,6 +85,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String, event: AgentEvent }),
+  Schema.Struct({ type: Schema.Literal("message.created"), message: Message }),
 ])
 export type PushEvent = typeof PushEvent.Type
 
