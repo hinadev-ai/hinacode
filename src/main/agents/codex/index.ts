@@ -50,11 +50,15 @@ const toolName = (item: ThreadItem): string | undefined => {
     case "mcpToolCall":
       return item.tool
     case "fileChange":
-      return "fileChange"
+      return "Edit"
     default:
       return undefined
   }
 }
+
+/** A `path` field lets the tool row summarize a file change by what it touched instead of raw JSON. */
+const toolInput = (item: ThreadItem): unknown =>
+  item.type === "fileChange" ? { path: item.changes.map((change) => change.path).join(", "), ...item } : item
 
 const toolResult = (item: ThreadItem, bufferedOutput: string | undefined): { output: unknown; isError: boolean } => {
   switch (item.type) {
@@ -173,7 +177,7 @@ const make = Effect.gen(function* () {
           if (name === undefined || startedTools.has(item.id)) return Effect.void
           startedTools.add(item.id)
           openTools.add(item.id)
-          return emit({ type: "tool_call_started", callId: item.id, name, input: item })
+          return emit({ type: "tool_call_started", callId: item.id, name, input: toolInput(item) })
         }
 
         const finishTool = (item: ThreadItem) =>
