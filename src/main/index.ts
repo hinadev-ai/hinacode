@@ -1,12 +1,15 @@
-import { join } from "node:path"
+import { join, relative, isAbsolute } from "node:path"
+import { pathToFileURL } from "node:url"
 import { NodeServices } from "@effect/platform-node"
-import { app, BrowserWindow, shell } from "electron"
+import { app, BrowserWindow, net, protocol, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { registerIpc } from "./ipc.ts"
+import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as Attachments from "./services/Attachments.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Events from "./services/Events.ts"
 import * as Git from "./services/Git.ts"
@@ -23,11 +26,25 @@ app.setName("kkcode")
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
 
+protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } }])
+
+/** Serves `kkcode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
+const serveAttachments = () =>
+  protocol.handle(ATTACHMENT_PROTOCOL, (request) => {
+    const path = decodeURIComponent(new URL(request.url).pathname.slice(1))
+    const inside = relative(Attachments.attachmentsRoot(), path)
+    if (!isAbsolute(path) || inside.startsWith("..") || isAbsolute(inside)) {
+      return new Response(null, { status: 403 })
+    }
+    return net.fetch(pathToFileURL(path).toString())
+  })
+
 const makeAppLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
     Settings.layer,
     Messages.layer,
+    Attachments.layer,
   )
   const features = Layer.mergeAll(Mcp.layer, Ports.layer).pipe(Layer.provide(domain))
   return AgentRunner.layer.pipe(
@@ -69,6 +86,7 @@ app.whenReady().then(async () => {
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
   registerIpc(runtime)
+  serveAttachments()
   app.on("before-quit", () => void runtime.dispose())
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

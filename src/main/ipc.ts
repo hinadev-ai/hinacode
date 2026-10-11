@@ -10,6 +10,7 @@ import {
   type RpcResponse,
 } from "../shared/contract.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { Attachments } from "./services/Attachments.ts"
 import { Messages } from "./services/Messages.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
@@ -31,6 +32,7 @@ type AppServices =
   | PullRequests
   | Secrets
   | Ports
+  | Attachments
 
 interface HandlerError {
   readonly _tag: string
@@ -79,8 +81,10 @@ const handlers: Handlers = {
     }),
 
   "messages.list": ({ threadId }) => Messages.use((messages) => messages.list(threadId)),
-  "threads.send": ({ threadId, prompt }) => AgentRunner.use((runner) => runner.send(threadId, prompt)),
-  "threads.steer": ({ threadId, text }) => AgentRunner.use((runner) => runner.steer(threadId, text)),
+  "threads.send": ({ threadId, prompt, attachments = [] }) =>
+    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments)),
+  "threads.steer": ({ threadId, text, attachments = [] }) =>
+    AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
@@ -95,6 +99,16 @@ const handlers: Handlers = {
   "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
+
+  // attachments
+  "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
+  "dialog.pickFiles": (_, sender) =>
+    Effect.promise(async () => {
+      const window = BrowserWindow.fromWebContents(sender)
+      const options = { properties: ["openFile", "multiSelections"] } satisfies Electron.OpenDialogOptions
+      const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+      return result.canceled ? [] : result.filePaths
+    }),
 }
 
 const RpcCall = Schema.Struct({

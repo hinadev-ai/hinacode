@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { Attachment } from "./domain.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex"])
 export type ProviderId = typeof ProviderId.Type
@@ -65,6 +66,7 @@ export type AgentEvent = typeof AgentEvent.Type
 export interface RunTurnInput {
   readonly threadId: string
   readonly prompt: string
+  readonly attachments: ReadonlyArray<Attachment>
   readonly cwd: string
   readonly model: string
   /** Provider session or thread id from a previous turn, for resume. */

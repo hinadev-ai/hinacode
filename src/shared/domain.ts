@@ -71,6 +71,18 @@ export type Thread = typeof Thread.Type
 export const ToolCallStatus = Schema.Literals(["running", "done", "error"])
 export type ToolCallStatus = typeof ToolCallStatus.Type
 
+/** A file the user attached, copied into the app's attachments dir so `path` outlives the source. */
+export const Attachment = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  /** Absolute path of the staged copy. */
+  path: Schema.String,
+  mime: Schema.String,
+  kind: Schema.Literals(["image", "file"]),
+  bytes: Schema.Number,
+})
+export type Attachment = typeof Attachment.Type
+
 export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),
   Schema.Struct({ type: Schema.Literal("reasoning"), text: Schema.String }),
@@ -83,6 +95,7 @@ export const MessagePart = Schema.Union([
     status: ToolCallStatus,
   }),
   Schema.Struct({ type: Schema.Literal("file_change"), path: Schema.String, diff: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("attachment"), attachment: Attachment }),
 ])
 export type MessagePart = typeof MessagePart.Type
 

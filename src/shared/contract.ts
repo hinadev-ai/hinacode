@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
 import {
+  Attachment,
   Locale,
   Message,
   OpenPort,
@@ -96,7 +97,14 @@ export const RpcMethods = {
   // chat
   "messages.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Message)),
   /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
-  "threads.send": rpc(Schema.Struct({ threadId: Schema.String, prompt: Schema.String }), Schema.Void),
+  "threads.send": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      prompt: Schema.String,
+      attachments: Schema.optional(Schema.Array(Attachment)),
+    }),
+    Schema.Void,
+  ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
   "approvals.pending": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(ApprovalRequest)),
@@ -115,7 +123,29 @@ export const RpcMethods = {
 
   // steering
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
-  "threads.steer": rpc(Schema.Struct({ threadId: Schema.String, text: Schema.String }), Schema.Void),
+  "threads.steer": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      text: Schema.String,
+      attachments: Schema.optional(Schema.Array(Attachment)),
+    }),
+    Schema.Void,
+  ),
+
+  // attachments
+  /** Copies a file (`path`) or decodes a pasted image (`dataUrl`) into the thread's attachments dir. */
+  "attachments.stage": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      source: Schema.Union([
+        Schema.Struct({ path: Schema.String }),
+        Schema.Struct({ dataUrl: Schema.String, name: Schema.String }),
+      ]),
+    }),
+    Attachment,
+  ),
+  /** Opens the native multi-file picker. Empty when the user cancels. */
+  "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
@@ -157,4 +187,6 @@ export interface KkcodeBridge {
   ) => Promise<RpcEnvelope<RpcResponseEncoded<M>>>
   /** Returns an unsubscribe function. */
   readonly onEvent: (listener: (event: typeof PushEvent.Encoded) => void) => () => void
+  /** Absolute path of a dropped or picked `File`; sandboxed renderers have no `File.path`. */
+  readonly pathForFile: (file: File) => string
 }
