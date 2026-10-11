@@ -44,7 +44,9 @@
   },
   "devDependencies": {
     "@effect/language-service": "0.87.4",
+    "@effect/vitest": "4.0.3",
     "@inlang/paraglide-js": "2.27.0",
+    "@playwright/test": "1.64.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "^24.19.2",
     "@types/react": "19.3.0",
@@ -54,9 +56,11 @@
     "electron-vite": "5.0.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
+    "playwright-bdd": "9.2.1",
     "shadcn": "4.21.4",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "7.3.7"
+    "vite": "7.3.7",
+    "vitest": "5.0.3"
   }
 }
