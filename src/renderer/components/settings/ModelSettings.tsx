@@ -12,6 +12,7 @@ import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
+import { SkeletonList } from "../ui/skeleton.tsx"
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
@@ -59,7 +60,9 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
         {label}
       </FieldLabel>
       {AsyncResult.builder(models)
-        .onInitial(() => <p className="text-sm text-muted-foreground">{m.settings_models_loading()}</p>)
+        .onInitial(() => (
+          <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
+        ))
         .onSuccess((list) =>
           list.length > 0 ? (
             <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />

@@ -10,6 +10,7 @@ import { Button } from "../../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.tsx"
 import { Textarea } from "../../ui/textarea.tsx"
 import { CopyField, formatTime, RunStatusBadge } from "./shared.tsx"
+import { SkeletonList } from "../../ui/skeleton.tsx"
 
 /** Webhook URL, Run now and recent runs for one automation. */
 export function AutomationDetails({ automation }: { automation: Automation }) {
@@ -152,7 +153,7 @@ function RecentRuns({ automationId }: { automationId: string }) {
     <section aria-label={m.automations_runs_title()} className="flex flex-col gap-2">
       <h4 className="text-sm font-medium">{m.automations_runs_title()}</h4>
       {AsyncResult.builder(runs)
-        .onInitial(() => <p className="text-sm text-muted-foreground">{m.automations_loading()}</p>)
+        .onInitial(() => <SkeletonList label={m.automations_loading()} rowClassName="h-8" />)
         .onSuccess((list) =>
           list.length === 0 ? (
             <p className="text-sm text-muted-foreground">{m.automations_runs_empty()}</p>
