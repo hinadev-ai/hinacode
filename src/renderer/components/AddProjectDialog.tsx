@@ -16,6 +16,7 @@ import {
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Textarea } from "./ui/textarea.tsx"
+import { errorMessage } from "../lib/errorMessage.ts"
 
 interface AddProjectDialogProps {
   readonly open: boolean
@@ -49,7 +50,7 @@ function AddProjectForm({ onCreated }: { onCreated: () => void }) {
     try {
       await createProject({ name: name.trim(), rootPath: rootPath.trim(), setupScript: setupScript || null })
     } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause)
+      return errorMessage(cause)
     }
     onCreated()
     return null
@@ -125,7 +126,7 @@ function AddProjectForm({ onCreated }: { onCreated: () => void }) {
           </FieldDescription>
         </Field>
       </FieldGroup>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{error}</FieldError>}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={isPending}>

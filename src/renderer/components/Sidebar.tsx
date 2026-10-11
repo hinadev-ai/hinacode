@@ -7,22 +7,18 @@ import {
   RiArrowRightSLine,
   RiFolder3Line,
   RiFolderAddLine,
-  RiGitBranchLine,
   RiSettings3Line,
   RiSideBarFill,
 } from "react-icons/ri"
-import { useShallow } from "zustand/react/shallow"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
-import { selectProjectThreads, useThreads } from "../stores/threads.ts"
-import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { AddProjectDialog } from "./AddProjectDialog.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { NewThreadDialog } from "./NewThreadDialog.tsx"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { SidebarThreadList } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
@@ -117,11 +113,9 @@ function ProjectList({ onAddProject }: { onAddProject: () => void }) {
 }
 
 function ProjectGroup({ project }: { project: Project }) {
-  const threads = useThreads(useShallow(selectProjectThreads(project.id)))
   const newThreadOpen = useUi((state) => state.newThreadProjectId === project.id)
   const setNewThreadProjectId = useUi((state) => state.setNewThreadProjectId)
   const setNewThreadOpen = (open: boolean) => setNewThreadProjectId(open ? project.id : null)
-  const [threadListRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
 
   return (
     <li>
@@ -151,46 +145,10 @@ function ProjectGroup({ project }: { project: Project }) {
           </Button>
         </div>
         <CollapsibleContent>
-          <ul ref={threadListRef} className="flex flex-col gap-0.5 py-0.5 pl-5">
-            {threads.length === 0 && (
-              <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
-            )}
-            {threads.map((thread) => (
-              <li key={thread.id}>
-                <Link
-                  to="/thread/$threadId"
-                  params={{ threadId: thread.id }}
-                  className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-sidebar-foreground/80 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
-                >
-                  <ProviderIcon provider={thread.provider} />
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate" title={thread.title}>
-                      {thread.title}
-                    </span>
-                    {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <SidebarThreadList projectId={project.id} />
         </CollapsibleContent>
       </Collapsible>
       <NewThreadDialog project={project} open={newThreadOpen} onOpenChange={setNewThreadOpen} />
     </li>
-  )
-}
-
-function WorktreeBranch({ worktreeId }: { worktreeId: string }) {
-  const worktree = useWorktrees((state) => state.byId[worktreeId])
-  if (!worktree) return null
-  return (
-    <span
-      className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground data-[removed=true]:line-through"
-      data-removed={worktree.status === "removed"}
-      title={m.sidebar_worktree_branch({ branch: worktree.branch })}
-    >
-      <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
-      <span className="truncate font-mono">{worktree.branch}</span>
-    </span>
   )
 }

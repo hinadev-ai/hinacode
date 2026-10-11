@@ -58,8 +58,9 @@ export const worktreeChangesAtom = Atom.family((worktreeId: string) =>
   Atom.make(call("worktrees.changes", { id: worktreeId })),
 )
 
-export const pullRequestAtom = Atom.family((worktreeId: string) =>
-  Atom.make(call("worktrees.mergedState", { id: worktreeId })),
+/** The pull request for a worktree's branch. A null worktree id resolves to null without asking `gh`. */
+export const pullRequestAtom = Atom.family((worktreeId: string | null) =>
+  Atom.make(worktreeId ? call("worktrees.mergedState", { id: worktreeId }) : Effect.succeed(null)),
 )
 
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))

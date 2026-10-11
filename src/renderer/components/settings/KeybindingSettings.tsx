@@ -12,6 +12,7 @@ import { Button } from "../ui/button.tsx"
 import { FieldError } from "../ui/field.tsx"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
+import { errorMessage } from "../../lib/errorMessage.ts"
 
 export function KeybindingSettings() {
   const { keybindings: overrides } = useSettings()
@@ -25,7 +26,7 @@ export function KeybindingSettings() {
     try {
       await updateSettings({ keybindings: next })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(errorMessage(cause))
     }
   }
 
@@ -55,7 +56,7 @@ export function KeybindingSettings() {
         </Button>
       }
     >
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{error}</FieldError>}
       <Table className="table-fixed">
         <TableHeader>
           <TableRow>

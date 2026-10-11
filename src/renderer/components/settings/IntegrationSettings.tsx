@@ -8,6 +8,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
+import { errorMessage } from "../../lib/errorMessage.ts"
 
 const LINEAR_KEY = "linear.apiKey"
 
@@ -34,7 +35,7 @@ function LinearKeyField() {
         await action()
         refreshStored()
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setError(errorMessage(cause))
       }
     })
 
@@ -62,7 +63,7 @@ function LinearKeyField() {
               <span className="text-muted-foreground">{m.settings_linear_missing()}</span>
             ),
           )
-          .onError((cause) => <span className="text-destructive">{m.common_error({ message: cause.message })}</span>)
+          .onError((cause) => <span className="text-destructive">{errorMessage(cause)}</span>)
           .orElse(() => null)}
       </p>
       <form onSubmit={onSubmit} className="flex items-center gap-2">
@@ -91,7 +92,7 @@ function LinearKeyField() {
         )}
       </form>
       <FieldDescription>{m.settings_linear_hint()}</FieldDescription>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }

@@ -1,46 +1,38 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { PatchDiff } from "@pierre/diffs/react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, startTransition, useActionState, useId, useState } from "react"
-import { RiExternalLinkLine, RiFolderOpenLine, RiGitBranchLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
+import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { type ReactNode, useId, useState } from "react"
+import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
 import type { ChangedFileStatus, PullRequestState, Thread, Worktree, WorktreeStatus } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, projectsAtom, pullRequestAtom, worktreeChangesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { SettleDialog, useActiveWorktree } from "./SettleDialog.tsx"
+import { ThreadPorts } from "./ThreadPorts.tsx"
+import { ThreadPullRequests } from "./ThreadPullRequests.tsx"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "./ui/alert-dialog.tsx"
+import { AlertDialogTrigger } from "./ui/alert-dialog.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 
-interface ThreadSidePanelProps {
-  readonly thread: Thread
-  readonly onHide: () => void
-}
-
-/** Right-hand panel of the thread route: where the thread runs, its setup log, its changes, and settling. */
-export function ThreadSidePanel({ thread, onHide }: ThreadSidePanelProps) {
+/** Right-hand panel of the thread route: where the thread runs, its setup log, changes, ports, pull requests, and settling. */
+export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
+  const toggleSidePanel = useUi((state) => state.toggleSidePanel)
+  const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
 
   return (
     <aside aria-label={m.panel_label()} className="flex w-96 shrink-0 flex-col border-l border-border">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <h2 className="text-sm font-semibold">{m.panel_label()}</h2>
-        <PanelToggle expanded onToggle={onHide} />
+        <PanelToggle expanded onToggle={toggleSidePanel} />
       </header>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-6 p-4">
+        <div ref={sectionsRef} className="flex flex-col gap-6 p-4">
           <Section title={m.panel_workspace()}>
             {worktree ? <WorktreeWorkspace worktree={worktree} /> : <RootWorkspace projectId={thread.projectId} />}
           </Section>
@@ -50,10 +42,16 @@ export function ThreadSidePanel({ thread, onHide }: ThreadSidePanelProps) {
             </Section>
           )}
           <ChangesSection worktree={worktree} />
+          <Section title={m.ports_title()}>
+            <ThreadPorts threadId={thread.id} />
+          </Section>
+          <Section title={m.pr_links_title()}>
+            <ThreadPullRequests threadId={thread.id} />
+          </Section>
         </div>
       </ScrollArea>
       <footer className="shrink-0 border-t border-border p-3">
-        <SettleControl thread={thread} worktree={worktree} />
+        <SettleControl thread={thread} />
       </footer>
     </aside>
   )
@@ -131,6 +129,7 @@ const statusVariant = {
 
 function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
   const removed = worktree.status === "removed"
+  const pullRequest = useBranchPullRequest(removed ? undefined : worktree.id)
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-w-0 items-center gap-2">
@@ -138,14 +137,15 @@ function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
         <span className="truncate font-mono text-sm" title={worktree.branch}>
           {worktree.branch}
         </span>
-        <Badge variant={statusVariant[worktree.status]} className="ml-auto">
-          {statusLabel[worktree.status]()}
-        </Badge>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {pullRequest && <PullRequestBadge pullRequest={pullRequest} />}
+          <Badge variant={statusVariant[worktree.status]}>{statusLabel[worktree.status]()}</Badge>
+        </span>
       </div>
       <p className="font-mono text-xs break-all text-muted-foreground">{worktree.path}</p>
       {removed && <p className="text-xs text-muted-foreground">{m.panel_removed_hint()}</p>}
+      {pullRequest?.state === "MERGED" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
       <RevealButton path={worktree.path} disabled={removed} />
-      {!removed && <PullRequestLink worktreeId={worktree.id} />}
     </div>
   )
 }
@@ -156,24 +156,22 @@ const pullRequestStateLabel = {
   MERGED: m.pr_state_merged,
 } satisfies Record<PullRequestState["state"], () => string>
 
-function PullRequestLink({ worktreeId }: { worktreeId: string }) {
-  const pullRequest = AsyncResult.getOrElse(useAtomValue(pullRequestAtom(worktreeId)), () => null)
-  if (!pullRequest) return null
+function PullRequestBadge({ pullRequest }: { pullRequest: PullRequestState }) {
+  const label = m.panel_pr_badge({ state: pullRequestStateLabel[pullRequest.state]() })
   return (
-    <div className="flex flex-col gap-1">
-      <a
-        href={pullRequest.url}
-        target="_blank"
-        rel="noreferrer"
-        className="flex items-center gap-1 self-start text-xs text-primary underline-offset-4 hover:underline"
-      >
-        {m.panel_pr({ state: pullRequestStateLabel[pullRequest.state]() })}
-        <RiExternalLinkLine aria-hidden />
-      </a>
-      {pullRequest.state === "MERGED" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
-    </div>
+    <Badge
+      variant={pullRequest.state === "MERGED" ? "default" : "outline"}
+      render={<a href={pullRequest.url} target="_blank" rel="noreferrer" title={pullRequest.url} aria-label={label} />}
+    >
+      <RiGitPullRequestLine aria-hidden />
+      {label}
+    </Badge>
   )
 }
+
+/** The GitHub pull request for the worktree's branch, or null when there is none or `gh` cannot tell. */
+const useBranchPullRequest = (worktreeId: string | undefined) =>
+  AsyncResult.getOrElse(useAtomValue(pullRequestAtom(worktreeId ?? null)), () => null)
 
 function ChangesSection({ worktree }: { worktree: Worktree | undefined }) {
   if (!worktree) {
@@ -256,7 +254,7 @@ function WorktreeChanges({ worktreeId }: { worktreeId: string }) {
         ))
         .onError((error) => (
           <p role="alert" className="text-xs text-destructive">
-            {m.panel_changes_failed({ message: error.message })}
+            {m.panel_changes_failed({ message: errorMessage(error) })}
           </p>
         ))
         .orElse(() => null)}
@@ -309,57 +307,22 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
   )
 }
 
-function SettleControl({ thread, worktree }: { thread: Thread; worktree: Worktree | undefined }) {
+function SettleControl({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false)
-  const activeWorktree = worktree && worktree.status !== "removed" ? worktree : undefined
+  const worktree = useActiveWorktree(thread)
+  const merged = useBranchPullRequest(worktree?.id)?.state === "MERGED"
 
-  const [error, settle, isPending] = useActionState(async () => {
-    try {
-      useThreads.getState().upsert(await callPromise("threads.settle", { threadId: thread.id }))
-    } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause)
-    }
-    setOpen(false)
-    return null
-  }, null)
-
-  if (thread.status === "settled" && !activeWorktree) {
+  if (thread.status === "settled" && !worktree) {
     return <p className="text-xs text-muted-foreground">{m.panel_settled()}</p>
   }
 
+  // Once the branch is merged, deleting the worktree loses nothing, so cleanup becomes the primary action.
+  const variant = !worktree ? "outline" : merged ? "default" : "destructive"
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger render={<Button variant={activeWorktree ? "destructive" : "outline"} className="w-full" />}>
-        {activeWorktree ? m.panel_settle_cleanup() : m.panel_settle()}
+    <SettleDialog thread={thread} open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger render={<Button variant={variant} className="w-full" />}>
+        {worktree ? m.panel_settle_cleanup() : m.panel_settle()}
       </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{m.settle_dialog_title()}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {activeWorktree ? m.settle_dialog_worktree({ path: activeWorktree.path }) : m.settle_dialog_root()}
-          </AlertDialogDescription>
-          {activeWorktree && (
-            <AlertDialogDescription>
-              {m.settle_dialog_branch({ branch: activeWorktree.branch, baseRef: activeWorktree.baseRef })}
-            </AlertDialogDescription>
-          )}
-        </AlertDialogHeader>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {m.common_error({ message: error })}
-          </p>
-        )}
-        <AlertDialogFooter>
-          <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction
-            variant={activeWorktree ? "destructive" : "default"}
-            disabled={isPending}
-            onClick={() => startTransition(settle)}
-          >
-            {activeWorktree ? m.settle_dialog_confirm_worktree() : m.settle_dialog_confirm_root()}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    </SettleDialog>
   )
 }
