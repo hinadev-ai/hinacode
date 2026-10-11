@@ -1,7 +1,7 @@
 import { Effect, Schema, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ModelInfo, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 
-export class AgentError extends Schema.TaggedErrorClass<AgentError>("AgentError")("AgentError", {
+export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   provider: Schema.String,
   message: Schema.String,
 }) {}
