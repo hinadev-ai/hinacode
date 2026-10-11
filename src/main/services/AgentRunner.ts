@@ -11,6 +11,7 @@ import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
+import { Projects } from "./Projects.ts"
 import { Threads } from "./Threads.ts"
 
 const PERSIST_INTERVAL_MS = 500
@@ -79,6 +80,7 @@ const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...
 
 const make = Effect.gen(function* () {
   const threads = yield* Threads
+  const projects = yield* Projects
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpServer
@@ -110,7 +112,13 @@ const make = Effect.gen(function* () {
    * steer closes it and opens another after the steer's user message, so ordering by createdAt keeps
    * the transcript in the order things happened.
    */
-  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, initial: Message) => {
+  const makeTurn = (
+    thread: Thread,
+    provider: AgentProvider,
+    cwd: string,
+    projectTrusted: boolean,
+    initial: Message,
+  ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
@@ -188,6 +196,7 @@ const make = Effect.gen(function* () {
           prompt,
           attachments,
           cwd,
+          projectTrusted,
           model: thread.model,
           resumeSessionId: thread.providerSessionId,
           mcpServerUrl: mcp.urlForThread(thread.id),
@@ -207,13 +216,14 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = yield* providerFor(thread.provider)
       const cwd = yield* threads.resolveCwd(thread.id)
+      const project = yield* projects.get(thread.projectId)
       const now = yield* nowIso
       const assistant = openAssistantMessage(threadId, now)
       yield* insertMessage(userMessage(threadId, prompt, attachments, now))
       yield* insertMessage(assistant)
       yield* updateThread({ id: threadId, status: "running" })
 
-      const turn = makeTurn(thread, provider, cwd, assistant)
+      const turn = makeTurn(thread, provider, cwd, project.trusted, assistant)
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
     })

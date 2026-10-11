@@ -37,7 +37,12 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
-    Schema.Struct({ name: Schema.String, rootPath: Schema.String, setupScript: Schema.NullOr(Schema.String) }),
+    Schema.Struct({
+      name: Schema.String,
+      rootPath: Schema.String,
+      setupScript: Schema.NullOr(Schema.String),
+      trusted: Schema.optional(Schema.Boolean),
+    }),
     Project,
   ),
   "projects.update": rpc(
@@ -46,6 +51,7 @@ export const RpcMethods = {
       name: Schema.optional(Schema.String),
       rootPath: Schema.optional(Schema.String),
       setupScript: Schema.optional(Schema.NullOr(Schema.String)),
+      trusted: Schema.optional(Schema.Boolean),
     }),
     Project,
   ),

@@ -26,6 +26,7 @@ interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
   readonly mcpServerUrl: string
+  readonly projectTrusted: boolean
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly query: Query
@@ -203,7 +204,7 @@ export const layer = Layer.effect(
                 model: input.model,
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
-                settingSources: settingSources(false),
+                settingSources: settingSources(input.projectTrusted),
                 systemPrompt: { type: "preset", preset: "claude_code" },
                 permissionMode: "default",
                 thinking: { type: "adaptive", display: "summarized" },
@@ -227,6 +228,7 @@ export const layer = Layer.effect(
           threadId: input.threadId,
           cwd: input.cwd,
           mcpServerUrl: input.mcpServerUrl,
+          projectTrusted: input.projectTrusted,
           model: input.model,
           prompts,
           abort,
@@ -249,7 +251,11 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (existing.cwd === input.cwd && existing.mcpServerUrl === input.mcpServerUrl) {
+          if (
+            existing.cwd === input.cwd &&
+            existing.mcpServerUrl === input.mcpServerUrl &&
+            existing.projectTrusted === input.projectTrusted
+          ) {
             return existing
           }
           yield* closeSession(existing)

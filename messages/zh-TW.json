@@ -27,6 +27,8 @@
   "project_setup_root_var": "專案根目錄",
   "project_setup_worktree_var": "新的 worktree",
   "project_submit": "新增專案",
+  "project_trust_label": "信任這個儲存庫的 Claude 設定",
+  "project_trust_hint": "Claude Code 會載入此資料夾中的 .claude/settings.json、.claude/settings.local.json 與 CLAUDE.md。其中的 hook 會直接執行 shell 指令而不詢問，權限規則也能不經核准卡片就允許工具。尚未審閱的程式碼請保持關閉。",
   "thread_dialog_title": "新討論串",
   "thread_dialog_description": "在 {project} 開始一個討論串。",
   "thread_title_label": "標題",
