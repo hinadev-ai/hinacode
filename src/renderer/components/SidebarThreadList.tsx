@@ -122,6 +122,7 @@ export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThre
     () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(projectId)],
     [projectId],
   )
+  const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 
   const save = async (ordered: ReadonlyArray<Thread>) => {
@@ -151,7 +152,9 @@ export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThre
         onDragStart={() => setAnimate(false)}
         onDragEnd={(event) => {
           if (!event.canceled) void save(move(threads, event))
-          setAnimate(true)
+          // dnd-kit is still playing its drop animation here; resuming auto-animate now makes both
+          // libraries move the same rows and the dropped row slides twice.
+          setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
         <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5 pl-5">
