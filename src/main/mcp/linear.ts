@@ -1,4 +1,4 @@
-import { type Issue, LinearClient } from "@linear/sdk"
+import type { Issue } from "@linear/sdk"
 import { Effect, Schema } from "effect"
 
 export class LinearRequestError extends Schema.TaggedError<LinearRequestError>()("LinearRequestError", {
@@ -30,9 +30,19 @@ const issueSummary = async (issue: Issue) => {
   ].join("\n")
 }
 
-/** Linear operations exposed as MCP tools. Each returns markdown for the agent. */
-export const makeLinear = (apiKey: string) => {
-  const client = new LinearClient({ apiKey })
+export type Linear = Effect.Success<ReturnType<typeof makeLinear>>
+
+/**
+ * Linear operations exposed as MCP tools. Each returns markdown for the agent.
+ * The SDK is loaded on the first call: it costs ~30 MB of main-process memory that most sessions never need.
+ */
+export const makeLinear = (apiKey: string) =>
+  Effect.map(
+    Effect.promise(() => import("@linear/sdk")),
+    ({ LinearClient }) => makeTools(new LinearClient({ apiKey })),
+  )
+
+const makeTools = (client: InstanceType<typeof import("@linear/sdk").LinearClient>) => {
   const getIssue = (key: string) => request(() => client.issue(key))
 
   return {
