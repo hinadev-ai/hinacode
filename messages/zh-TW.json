@@ -324,5 +324,15 @@
   "project_delete_body": "它的 {count} 個討論串及其訊息與連結的 pull request 都會被刪除，磁碟上的資料夾會保留。此操作無法復原。",
   "project_delete_worktrees": "它有 {count} 個 worktree。",
   "project_delete_remove_worktrees": "同時移除它的 worktree，分支若已合併也一併刪除",
-  "project_delete_confirm": "刪除專案"
+  "project_delete_confirm": "刪除專案",
+  "settings_appearance": "外觀",
+  "settings_theme": "主題",
+  "theme_default": "預設",
+  "settings_font_size": "字體大小",
+  "settings_ui_font": "介面字型",
+  "settings_mono_font": "等寬字型",
+  "settings_mono_font_hint": "用於程式碼、差異比對與指令輸出。",
+  "settings_font_default": "預設（{font}）",
+  "settings_fonts_loading": "正在讀取已安裝的字型…",
+  "settings_fonts_failed": "無法列出已安裝的字型：{message}"
 }

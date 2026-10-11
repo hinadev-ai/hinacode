@@ -12,8 +12,10 @@ import {
   type Worktree,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
+import { themes } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, projectsAtom, pullRequestAtom, worktreeChangesAtom } from "../lib/rpc.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -38,7 +40,11 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
 
   return (
-    <aside ref={returnFocusToComposer} aria-label={m.panel_label()} className="flex w-96 shrink-0 flex-col border-l border-border">
+    <aside
+      ref={returnFocusToComposer}
+      aria-label={m.panel_label()}
+      className="flex w-96 shrink-0 flex-col border-l border-border"
+    >
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <h2 className="text-sm font-semibold">{m.panel_label()}</h2>
         <PanelToggle expanded onToggle={toggleSidePanel} />
@@ -286,6 +292,7 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
   const diffId = useId()
   const mark = fileStatusMark[status]
   const filePatch = open ? patchForFile(patch, path) : undefined
+  const theme = themes[useSettings().appearance.theme]
 
   return (
     <li className="flex flex-col gap-1">
@@ -308,7 +315,13 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
           {filePatch ? (
             <PatchDiff
               patch={filePatch}
-              options={{ diffStyle: "unified", themeType: "dark", overflow: "wrap", disableFileHeader: true }}
+              options={{
+                diffStyle: "unified",
+                theme: theme.codeTheme,
+                themeType: theme.scheme,
+                overflow: "wrap",
+                disableFileHeader: true,
+              }}
             />
           ) : (
             <p className="p-2 text-muted-foreground">{m.panel_diff_missing()}</p>

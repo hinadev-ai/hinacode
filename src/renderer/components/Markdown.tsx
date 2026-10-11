@@ -1,7 +1,9 @@
-import type { Mermaid } from "mermaid"
+import type { Mermaid, MermaidConfig } from "mermaid"
 import { isValidElement, memo, type ReactNode, useEffect, useId, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { resolveColor, themes } from "../lib/appearance.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
 
@@ -86,29 +88,26 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
 let mermaidLoader: Promise<Mermaid> | undefined
 
 /** Mermaid is large, so it loads on the first diagram rather than with the app. */
-const loadMermaid = () =>
-  (mermaidLoader ??= import("mermaid").then(({ default: mermaid }) => {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: "base",
-      securityLevel: "strict",
-      fontFamily: "Geist Variable, sans-serif",
-      // Mermaid derives shades from these with its own color math, which cannot read CSS variables or oklch,
-      // so they are the dark theme tokens (muted, foreground, border, muted-foreground, card) in hex.
-      themeVariables: {
-        darkMode: true,
-        fontSize: "12px",
-        primaryColor: "#262626",
-        primaryTextColor: "#fafafa",
-        primaryBorderColor: "#404040",
-        lineColor: "#a1a1a1",
-        secondaryColor: "#262626",
-        tertiaryColor: "#171717",
-        edgeLabelBackground: "#171717",
-      },
-    })
-    return mermaid
-  }))
+const loadMermaid = () => (mermaidLoader ??= import("mermaid").then(({ default: mermaid }) => mermaid))
+
+/** Mermaid derives shades from these with its own color math, so they are passed as resolved hex. */
+const mermaidConfig = (scheme: "dark" | "light"): MermaidConfig => ({
+  startOnLoad: false,
+  theme: "base",
+  securityLevel: "strict",
+  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans"),
+  themeVariables: {
+    darkMode: scheme === "dark",
+    fontSize: "12px",
+    primaryColor: resolveColor("--muted"),
+    primaryTextColor: resolveColor("--foreground"),
+    primaryBorderColor: resolveColor("--border"),
+    lineColor: resolveColor("--muted-foreground"),
+    secondaryColor: resolveColor("--muted"),
+    tertiaryColor: resolveColor("--card"),
+    edgeLabelBackground: resolveColor("--card"),
+  },
+})
 
 type Diagram =
   | { readonly status: "rendering" }
@@ -121,11 +120,13 @@ const RENDER_DELAY_MS = 250
 function MermaidDiagram({ code }: { code: string }) {
   const id = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, "")}`
   const [diagram, setDiagram] = useState<Diagram>({ status: "rendering" })
+  const { appearance } = useSettings()
 
   useEffect(() => {
     let cancelled = false
     const render = async (): Promise<Diagram> => {
       const mermaid = await loadMermaid()
+      mermaid.initialize(mermaidConfig(themes[appearance.theme].scheme))
       // Checking first keeps an invalid source from leaving mermaid's error graphic in the document.
       if (!(await mermaid.parse(code, { suppressErrors: true }))) return { status: "failed" }
       const { svg } = await mermaid.render(id, code)
@@ -140,7 +141,7 @@ function MermaidDiagram({ code }: { code: string }) {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [code, id])
+  }, [code, id, appearance])
 
   return (
     <CodeFigure label="mermaid" code={code}>

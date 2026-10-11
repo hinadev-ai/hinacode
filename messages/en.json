@@ -342,5 +342,15 @@
     }
   ],
   "project_delete_remove_worktrees": "Also remove its worktrees, and their branches if merged",
-  "project_delete_confirm": "Delete project"
+  "project_delete_confirm": "Delete project",
+  "settings_appearance": "Appearance",
+  "settings_theme": "Theme",
+  "theme_default": "Default",
+  "settings_font_size": "Font size",
+  "settings_ui_font": "Interface font",
+  "settings_mono_font": "Monospace font",
+  "settings_mono_font_hint": "Used for code, diffs and command output.",
+  "settings_font_default": "Default ({font})",
+  "settings_fonts_loading": "Loading installed fonts…",
+  "settings_fonts_failed": "Could not list installed fonts: {message}"
 }

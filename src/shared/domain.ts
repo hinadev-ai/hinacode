@@ -123,6 +123,26 @@ export type Message = typeof Message.Type
 export const Locale = Schema.Literals(["en", "zh-TW"])
 export type Locale = typeof Locale.Type
 
+export const ThemeId = Schema.Literals([
+  "default",
+  "catppuccin-mocha",
+  "catppuccin-latte",
+  "tokyo-night",
+  "rose-pine",
+  "gruvbox-dark",
+])
+export type ThemeId = typeof ThemeId.Type
+
+export const Appearance = Schema.Struct({
+  theme: ThemeId,
+  /** Root font size in px. Everything sized in rem scales with it. */
+  fontSize: Schema.Int.check(Schema.isBetween({ minimum: 12, maximum: 20 })),
+  /** Installed font family names. Null uses the bundled DM Sans and Geist Mono. */
+  uiFont: Schema.NullOr(Schema.String),
+  monoFont: Schema.NullOr(Schema.String),
+})
+export type Appearance = typeof Appearance.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
@@ -140,6 +160,7 @@ export const Settings = Schema.Struct({
     bindHost: Schema.String,
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   }),
+  appearance: Appearance,
 })
 export type Settings = typeof Settings.Type
 
@@ -148,6 +169,7 @@ export const defaultSettings: Settings = {
   keybindings: {},
   defaultModel: { claude: null, codex: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
+  appearance: { theme: "default", fontSize: 16, uiFont: null, monoFont: null },
 }
 
 export const PullRequestLink = Schema.Struct({
