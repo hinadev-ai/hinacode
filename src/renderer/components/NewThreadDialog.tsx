@@ -2,9 +2,10 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
-import { ProviderId } from "../../shared/agent.ts"
+import { type ModelInfo, ProviderId } from "../../shared/agent.ts"
 import type { Project } from "../../shared/domain.ts"
-import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
+import { callPromise, currentBranchAtom, modelsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
@@ -59,7 +60,6 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
   const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
   const [title, setTitle] = useState("")
   const [inWorktree, setInWorktree] = useState(false)
-  const { defaultModel } = useSettings()
   const [provider, setProvider] = useState<ProviderId>("claude")
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
@@ -80,7 +80,7 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
       await navigate({ to: "/thread/$threadId", params: { threadId: thread.id } })
       return null
     } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause)
+      return errorMessage(cause)
     }
   }, null)
 
@@ -126,17 +126,8 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
         </Field>
         <Field>
           <FieldLabel htmlFor="thread-model">{m.thread_model_label()}</FieldLabel>
-          {/* Keyed so switching agent swaps in that agent's default model. */}
-          <Input
-            key={provider}
-            id="thread-model"
-            name="model"
-            defaultValue={defaultModel[provider] ?? ""}
-            required
-            placeholder={m.thread_model_placeholder()}
-            spellCheck={false}
-            className="font-mono"
-          />
+          {/* Keyed so switching agent starts over from that agent's default model. */}
+          <ModelPicker key={provider} id="thread-model" provider={provider} />
         </Field>
         <Field orientation="horizontal">
           <FieldContent>
@@ -147,7 +138,7 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
         </Field>
         {inWorktree && <WorktreeFields projectId={projectId} title={title} />}
       </FieldGroup>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{error}</FieldError>}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={isPending}>
@@ -155,6 +146,86 @@ function NewThreadForm({ projectId, onCreated }: { projectId: string; onCreated:
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+interface ModelPickerProps {
+  readonly id: string
+  readonly provider: ProviderId
+}
+
+/** The agent's listed models as a select; a free-text model id only when the agent lists none. */
+function ModelPicker({ id, provider }: ModelPickerProps) {
+  const models = useAtomValue(modelsAtom(provider))
+  const providerName = providerLabel[provider]()
+
+  return AsyncResult.builder(models)
+    .onInitial(() => (
+      <Select disabled>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue placeholder={m.settings_models_loading()} />
+        </SelectTrigger>
+      </Select>
+    ))
+    .onSuccess((list) =>
+      list.length > 0 ? (
+        <ModelSelect id={id} provider={provider} models={list} />
+      ) : (
+        <ModelIdInput id={id} provider={provider} notice={m.settings_models_unlisted({ provider: providerName })} />
+      ),
+    )
+    .onError((cause) => (
+      <ModelIdInput
+        id={id}
+        provider={provider}
+        notice={m.settings_models_failed({ provider: providerName, message: errorMessage(cause) })}
+      />
+    ))
+    .orElse(() => (
+      <ModelIdInput id={id} provider={provider} notice={m.settings_models_unlisted({ provider: providerName })} />
+    ))
+}
+
+function ModelSelect({ id, provider, models }: ModelPickerProps & { models: ReadonlyArray<ModelInfo> }) {
+  const preferred = useSettings().defaultModel[provider]
+  const items = models.map((model) => ({ value: model.id, label: model.label }))
+  // A default saved while the agent could not list models still wins, even if the list lacks it now.
+  if (preferred && !items.some((item) => item.value === preferred))
+    items.unshift({ value: preferred, label: preferred })
+  const [model, setModel] = useState(preferred ?? items[0]?.value ?? null)
+
+  return (
+    <Select name="model" required items={items} value={model} onValueChange={setModel}>
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue placeholder={m.settings_models_pick()} />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function ModelIdInput({ id, provider, notice }: ModelPickerProps & { notice: string }) {
+  const preferred = useSettings().defaultModel[provider]
+  return (
+    <>
+      <Input
+        id={id}
+        name="model"
+        defaultValue={preferred ?? ""}
+        required
+        placeholder={m.thread_model_placeholder()}
+        spellCheck={false}
+        autoComplete="off"
+        className="font-mono"
+      />
+      <FieldDescription>{notice}</FieldDescription>
+    </>
   )
 }
 
