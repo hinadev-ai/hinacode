@@ -4,7 +4,11 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import { PullRequestLink } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
-import { type PersistenceError, persistence } from "./errors.ts"
+import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
+import { type CommandError, Git } from "./Git.ts"
+import { GitHub, type GitHubError } from "./GitHub.ts"
+import { Threads } from "./Threads.ts"
+import { Worktrees } from "./Worktrees.ts"
 
 export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUrlInvalidError>()(
   "PullRequestUrlInvalidError",
@@ -12,6 +16,13 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
 ) {
   override get message(): string {
     return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>)`
+  }
+}
+
+/** Only a thread working in a ready worktree has a branch of its own to open a pull request from. */
+export class NoBranchError extends Schema.TaggedError<NoBranchError>()("NoBranchError", { threadId: Schema.String }) {
+  override get message(): string {
+    return "This thread has no worktree branch to open a pull request from"
   }
 }
 
@@ -38,12 +49,23 @@ export class PullRequests extends Context.Service<
       url: string,
     ) => Effect.Effect<string, PersistenceError | PullRequestUrlInvalidError>
     readonly unlink: (threadId: string, url: string) => Effect.Effect<void, PersistenceError>
+    /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. */
+    readonly create: (
+      threadId: string,
+    ) => Effect.Effect<
+      string,
+      PersistenceError | NotFoundError | NoBranchError | CommandError | GitHubError | PullRequestUrlInvalidError
+    >
   }
 >()("kkcode/PullRequests") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const events = yield* Events
+  const threads = yield* Threads
+  const worktrees = yield* Worktrees
+  const git = yield* Git
+  const github = yield* GitHub
 
   const findByThread = SqlSchema.findAll({
     Request: Schema.String,
@@ -76,7 +98,21 @@ const make = Effect.gen(function* () {
       yield* broadcast(threadId)
     })
 
-  return PullRequests.of({ list, link, unlink })
+  const create = (threadId: string) =>
+    Effect.gen(function* () {
+      const { worktreeId } = yield* threads.get(threadId)
+      if (worktreeId === null) return yield* new NoBranchError({ threadId })
+      const worktree = yield* worktrees.get(worktreeId)
+      if (worktree.status !== "ready") return yield* new NoBranchError({ threadId })
+      yield* git.run(worktree.path, ["push", "--set-upstream", "origin", worktree.branch])
+      const url = yield* github.createPullRequest(worktree.path, {
+        head: worktree.branch,
+        base: worktree.baseRef.replace(/^origin\//, ""),
+      })
+      return yield* link(threadId, url)
+    })
+
+  return PullRequests.of({ list, link, unlink, create })
 })
 
 export const layer = Layer.effect(PullRequests, make)

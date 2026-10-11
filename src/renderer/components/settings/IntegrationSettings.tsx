@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
 import { RiCheckboxCircleFill } from "react-icons/ri"
-import { callPromise, secretStoredAtom } from "../../lib/rpc.ts"
+import { callPromise, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
@@ -14,6 +14,7 @@ export function IntegrationSettings() {
   return (
     <SettingsSection title={m.settings_integrations()}>
       <FieldGroup>
+        <GitHubStatus />
         <SecretField
           name="linear.apiKey"
           label={m.settings_linear_label()}
@@ -28,6 +29,51 @@ export function IntegrationSettings() {
         />
       </FieldGroup>
     </SettingsSection>
+  )
+}
+
+/** Whether `gh` is installed and signed in. kkcode borrows its login rather than storing a token. */
+function GitHubStatus() {
+  const auth = useAtomValue(gitHubAuthAtom)
+  const refresh = useAtomRefresh(gitHubAuthAtom)
+
+  return (
+    <Field>
+      <FieldLabel>{m.settings_github_label()}</FieldLabel>
+      <div className="flex items-center gap-2">
+        <p aria-live="polite" className="flex items-center gap-1.5 text-sm">
+          {AsyncResult.builder(auth)
+            .onInitial(() => <span className="text-muted-foreground">{m.settings_github_checking()}</span>)
+            .onSuccess((status) => {
+              switch (status.type) {
+                case "signedIn":
+                  return (
+                    <>
+                      <RiCheckboxCircleFill aria-hidden className="size-4 text-emerald-500" />
+                      {m.settings_github_signed_in({ host: status.host, login: status.login })}
+                    </>
+                  )
+                case "missing":
+                  return <span className="text-muted-foreground">{m.settings_github_missing()}</span>
+                case "signedOut":
+                  return (
+                    <span className="text-muted-foreground">
+                      {m.settings_github_signed_out_before()}{" "}
+                      <code className="font-mono text-[0.85em] text-foreground">gh auth login</code>{" "}
+                      {m.settings_github_signed_out_after()}
+                    </span>
+                  )
+              }
+            })
+            .onError((cause) => <span className="text-destructive">{errorMessage(cause)}</span>)
+            .orElse(() => null)}
+        </p>
+        <Button variant="ghost" size="xs" onClick={refresh}>
+          {m.settings_github_check_again()}
+        </Button>
+      </div>
+      <FieldDescription>{m.settings_github_hint()}</FieldDescription>
+    </Field>
   )
 }
 

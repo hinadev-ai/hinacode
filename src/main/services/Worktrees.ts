@@ -7,7 +7,7 @@ import {
   type ChangedFileStatus,
   isThreadBusy,
   type Project,
-  PullRequestState,
+  type PullRequest,
   ThreadStatus,
   Worktree,
   type WorktreeChanges,
@@ -17,6 +17,7 @@ import { nowIso } from "./clock.ts"
 import { NotFoundError, type PersistenceError, persistence, WorktreeBusyError, WorktreeTakenError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { type CommandError, Git, type RunOptions } from "./Git.ts"
+import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 
 export interface CreateWorktree {
@@ -57,8 +58,10 @@ export class Worktrees extends Context.Service<
      */
     readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
     readonly changes: (id: string) => Effect.Effect<WorktreeChanges, Failure>
-    /** The branch's GitHub pull request, or null when there is none or `gh` is unavailable. */
-    readonly pullRequest: (id: string) => Effect.Effect<PullRequestState | null, PersistenceError | NotFoundError>
+    /** The branch's GitHub pull request, or null when there is none. */
+    readonly pullRequest: (
+      id: string,
+    ) => Effect.Effect<PullRequest | null, PersistenceError | NotFoundError | GitHubError | Schema.SchemaError>
     readonly currentBranch: (projectId: string) => Effect.Effect<string, Failure>
   }
 >()("kkcode/Worktrees") {}
@@ -96,12 +99,11 @@ const parseNameStatus = (output: string) => {
   return files
 }
 
-const decodePullRequest = Schema.decodeUnknownEffect(Schema.fromJsonString(PullRequestState))
-
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
   const git = yield* Git
+  const github = yield* GitHub
   const events = yield* Events
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
@@ -360,10 +362,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const worktree = yield* get(id)
       const { rootPath } = yield* projects.get(worktree.projectId)
-      return yield* git.gh(rootPath, ["pr", "view", worktree.branch, "--json", "state,url"]).pipe(
-        Effect.flatMap(decodePullRequest),
-        Effect.orElseSucceed(() => null),
-      )
+      return yield* github.branchPullRequest(rootPath, worktree.branch)
     })
 
   const currentBranch = (projectId: string) =>

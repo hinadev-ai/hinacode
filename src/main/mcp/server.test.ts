@@ -22,6 +22,7 @@ const stubs = Layer.mergeAll(
     list: (threadId) => Effect.sync(() => (listedThreads.push(threadId), [])),
     link: (_, url) => Effect.succeed(url),
     unlink: () => Effect.void,
+    create: () => Effect.die("not used"),
   }),
   Layer.succeed(Secrets, {
     get: () => Effect.succeed(Option.none()),

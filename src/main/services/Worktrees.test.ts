@@ -10,6 +10,7 @@ import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
+import * as GitHub from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import * as ProjectsLayer from "./Projects.ts"
 import { Threads } from "./Threads.ts"
@@ -24,7 +25,9 @@ const makeRuntime = (dbPath: string) =>
     ThreadsLayer.layer.pipe(
       Layer.provideMerge(WorktreesLayer.layer),
       Layer.provideMerge(ProjectsLayer.layer),
-      Layer.provide(Layer.mergeAll(Git.layer, Layer.succeed(Events, Events.of({ publish: () => Effect.void })))),
+      Layer.provide(
+        Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, Events.of({ publish: () => Effect.void }))),
+      ),
       Layer.provideMerge(Db.layer(dbPath)),
       Layer.provide(NodeServices.layer),
     ),
