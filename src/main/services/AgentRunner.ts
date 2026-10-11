@@ -11,7 +11,6 @@ import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
-import { Projects } from "./Projects.ts"
 import { Threads } from "./Threads.ts"
 
 const PERSIST_INTERVAL_MS = 500
@@ -48,7 +47,6 @@ const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
 
 const make = Effect.gen(function* () {
   const threads = yield* Threads
-  const projects = yield* Projects
   const messages = yield* Messages
   const push = yield* Events
   const mcpServerUrl = yield* McpServerUrl
