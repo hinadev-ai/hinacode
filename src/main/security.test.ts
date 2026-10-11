@@ -37,6 +37,7 @@ describe("externalUrl", () => {
 })
 
 const devServer = "http://localhost:5173"
+const mainFrame = (url: string) => ({ url, parent: null })
 
 describe("isAppDocument", () => {
   test("accepts the packaged document, ignoring query and fragment", () => {
@@ -68,8 +69,6 @@ describe("isAppDocument", () => {
 })
 
 describe("isTrustedSender", () => {
-  const mainFrame = (url: string) => ({ url, parent: null })
-
   test("accepts the main frame showing the app document", () => {
     assert.equal(isTrustedSender(mainFrame(packagedDocument), packagedDocument), true)
     assert.equal(isTrustedSender(mainFrame("http://localhost:5173/"), devServer), true)

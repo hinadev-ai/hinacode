@@ -6,6 +6,17 @@ export const externalUrl = (url: string): string | null => {
   return parsed && EXTERNAL_PROTOCOLS.has(parsed.protocol) ? parsed.href : null
 }
 
-export const isAppDocument = (_url: string, _appUrl: string): boolean => true
+/**
+ * Whether `url` is the renderer document: the packaged `index.html` itself, or any page on the
+ * electron-vite dev server origin when `appUrl` is that server.
+ */
+export const isAppDocument = (url: string, appUrl: string): boolean => {
+  const target = URL.parse(url)
+  const app = new URL(appUrl)
+  if (!target || target.protocol !== app.protocol || target.host !== app.host) return false
+  return app.protocol !== "file:" || target.pathname === app.pathname
+}
 
-export const isTrustedSender = (_frame: { url: string; parent: unknown } | null, _appUrl: string): boolean => true
+/** Only the app document in the top-level frame may call RPC; `frame` is `IpcMainInvokeEvent.senderFrame`. */
+export const isTrustedSender = (frame: { url: string; parent: unknown } | null, appUrl: string): boolean =>
+  frame !== null && frame.parent === null && isAppDocument(frame.url, appUrl)

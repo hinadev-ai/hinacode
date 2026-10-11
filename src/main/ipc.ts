@@ -9,6 +9,7 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
+import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
@@ -145,8 +146,17 @@ const dispatch = (raw: unknown, sender: WebContents): Effect.Effect<RpcEnvelope<
     ),
   )
 
-export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>) => {
-  ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) => runtime.runPromise(dispatch(raw, event.sender)))
+const untrustedSender: RpcEnvelope<never> = {
+  error: { tag: "UntrustedSender", message: "RPC is only available to the kkcode window" },
+}
+
+/** `appUrl` is the renderer document; RPC from any other document or from a subframe is refused. */
+export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
+  ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
+    isTrustedSender(event.senderFrame, appUrl)
+      ? runtime.runPromise(dispatch(raw, event.sender))
+      : Promise.resolve(untrustedSender),
+  )
 }
 
 const encodePushEvent = Schema.encodeSync(PushEvent)
