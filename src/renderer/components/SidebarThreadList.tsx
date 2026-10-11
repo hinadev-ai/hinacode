@@ -18,6 +18,7 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
   startTransition,
   useActionState,
   useMemo,
@@ -101,9 +102,18 @@ const sensors = [
   KeyboardSensor,
 ]
 
+interface SidebarThreadListProps {
+  readonly projectId: string
+  /** Takes focus after a delete leaves the project without threads. */
+  readonly newThreadButtonRef: RefObject<HTMLButtonElement | null>
+}
+
 /** Threads of one project in their saved order, reorderable by drag. */
-export function SidebarThreadList({ projectId }: { projectId: string }) {
+export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThreadListProps) {
   const threads = useThreads(useShallow(selectProjectThreads(projectId)))
+  const firstRowRef = useRef<HTMLAnchorElement>(null)
+  // The deleted row takes the focused element with it; keep focus in the list instead of on <body>.
+  const focusAfterDelete = () => firstRowRef.current ?? newThreadButtonRef.current
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
     () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(projectId)],
@@ -146,7 +156,14 @@ export function SidebarThreadList({ projectId }: { projectId: string }) {
             <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
-            <ThreadRow key={thread.id} thread={thread} index={index} group={projectId} />
+            <ThreadRow
+              key={thread.id}
+              thread={thread}
+              index={index}
+              group={projectId}
+              linkRef={index === 0 ? firstRowRef : undefined}
+              focusAfterDelete={focusAfterDelete}
+            />
           ))}
         </ul>
       </DragDropProvider>
@@ -165,9 +182,11 @@ interface ThreadRowProps {
   readonly thread: Thread
   readonly index: number
   readonly group: string
+  readonly linkRef: RefObject<HTMLAnchorElement | null> | undefined
+  readonly focusAfterDelete: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group }: ThreadRowProps) {
+function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -199,6 +218,7 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
         <RenameInput thread={thread} onDone={finishRename} />
       ) : (
         <Link
+          ref={linkRef}
           to="/thread/$threadId"
           params={{ threadId: thread.id }}
           draggable={false}
@@ -269,7 +289,12 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
       )}
 
       <SettleDialog thread={thread} open={mode === "settle"} onOpenChange={closeDialog} />
-      <DeleteThreadDialog thread={thread} open={mode === "delete"} onOpenChange={closeDialog} />
+      <DeleteThreadDialog
+        thread={thread}
+        open={mode === "delete"}
+        onOpenChange={closeDialog}
+        focusAfterDelete={focusAfterDelete}
+      />
     </li>
   )
 }
@@ -331,9 +356,11 @@ interface DeleteThreadDialogProps {
   readonly thread: Thread
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
+  /** Where focus goes once the thread is gone, since the row that opened the dialog is gone too. */
+  readonly focusAfterDelete: () => HTMLElement | null
 }
 
-function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogProps) {
+function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
   const worktree = useActiveWorktree(thread)
   const navigate = useNavigate()
   const { threadId: openThreadId } = useParams({ strict: false })
@@ -344,7 +371,6 @@ function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogPr
     } catch (cause) {
       return errorMessage(cause)
     }
-    onOpenChange(false)
     if (openThreadId === thread.id) await navigate({ to: "/" })
     useThreads.getState().remove(thread.id)
     return null
@@ -352,7 +378,7 @@ function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogPr
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent finalFocus={() => (useThreads.getState().byId[thread.id] ? true : focusAfterDelete())}>
         <AlertDialogHeader>
           <AlertDialogTitle>{m.delete_dialog_title()}</AlertDialogTitle>
           <AlertDialogDescription>{m.delete_dialog_body({ title: thread.title })}</AlertDialogDescription>
