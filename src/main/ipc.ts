@@ -9,12 +9,15 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
+import { McpServer } from "./mcp/index.ts"
 import { Projects } from "./services/Projects.ts"
+import { PullRequests } from "./services/PullRequests.ts"
+import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-type AppServices = Projects | Threads | Worktrees | Settings
+type AppServices = Projects | Threads | Worktrees | Settings | McpServer | PullRequests | Secrets
 
 interface HandlerError {
   readonly _tag: string
@@ -54,6 +57,14 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
+
+  // mcp
+  "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
+  "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
+  "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
+  "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
+  "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
+  "mcp.url": ({ threadId }) => McpServer.useSync((mcp) => mcp.urlForThread(threadId)),
 }
 
 const RpcCall = Schema.Struct({

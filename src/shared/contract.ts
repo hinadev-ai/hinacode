@@ -55,6 +55,16 @@ export const RpcMethods = {
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
+
+  // mcp
+  /** Secrets never cross back to the renderer; it can only ask whether one is set. */
+  "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
+  "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
+  "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
+  "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
+  "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
+  /** The built-in MCP server URL handed to agents running in this thread. */
+  "mcp.url": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
 }
 
 export type RpcMethod = keyof typeof RpcMethods
