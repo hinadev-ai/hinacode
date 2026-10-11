@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
+import { useThreads } from "../stores/threads.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
@@ -42,11 +43,18 @@ export function ThreadView({ thread }: { thread: Thread }) {
 function Transcript({ thread }: { thread: Thread }) {
   const history = useMessages((state) => state.byThread[thread.id])
   const load = useMessages((state) => state.load)
+  const unload = useMessages((state) => state.unload)
   const label = providerLabel[thread.provider]()
 
   useEffect(() => {
     void load(thread.id)
-  }, [load, thread.id])
+    // Leaving a thread frees its transcript. A thread mid-turn keeps its copy so the events still
+    // streaming in have something to fold into.
+    return () => {
+      const status = useThreads.getState().byId[thread.id]?.status
+      if (status !== "running" && status !== "awaiting_approval") unload(thread.id)
+    }
+  }, [load, unload, thread.id])
 
   if (history === undefined || history.status === "loading") {
     return <p className="m-auto text-sm text-muted-foreground">{m.thread_loading()}</p>

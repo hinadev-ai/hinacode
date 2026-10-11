@@ -17,6 +17,8 @@ interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
   /** Loads a thread's history once; later changes arrive through `addMessage` and `applyEvent`. */
   readonly load: (threadId: string) => Promise<void>
+  /** Drops a thread's history so the next `load` reads the persisted copy again. */
+  readonly unload: (threadId: string) => void
   readonly addMessage: (message: Message) => void
   readonly updateMessage: (message: Message) => void
   readonly applyEvent: (threadId: string, event: AgentEvent) => void
@@ -47,16 +49,26 @@ export const useMessages = create<MessagesState>()((set, get) => {
       const setHistory = (history: ThreadHistory) =>
         set((state) => ({ byThread: { ...state.byThread, [threadId]: history } }))
       setHistory({ status: "loading" })
+      // An `unload` while the request was in flight wins: the result would only leak.
+      const settle = (history: ThreadHistory) => {
+        if (get().byThread[threadId]?.status === "loading") setHistory(history)
+      }
       try {
         const [messages, approvals] = await Promise.all([
           callPromise("messages.list", { threadId }),
           callPromise("approvals.pending", { threadId }),
         ])
-        setHistory({ status: "ready", messages, approvals })
+        settle({ status: "ready", messages, approvals })
       } catch (cause) {
-        setHistory({ status: "error", message: cause instanceof Error ? cause.message : String(cause) })
+        settle({ status: "error", message: cause instanceof Error ? cause.message : String(cause) })
       }
     },
+
+    unload: (threadId) =>
+      set((state) => {
+        const { [threadId]: _dropped, ...byThread } = state.byThread
+        return { byThread }
+      }),
 
     addMessage: (message) =>
       updateReady(message.threadId, (history) => ({ ...history, messages: [...history.messages, message] })),
