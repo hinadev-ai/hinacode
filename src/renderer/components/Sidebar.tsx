@@ -2,20 +2,14 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import {
-  RiAddLine,
-  RiArrowRightSLine,
-  RiFolder3Line,
-  RiFolderAddLine,
-  RiSettings3Line,
-  RiSideBarFill,
-} from "react-icons/ri"
+import { RiAddLine, RiArrowRightSLine, RiFolderAddLine, RiSettings3Line, RiSideBarLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { useUi } from "../stores/ui.ts"
 import { AddProjectDialog } from "./AddProjectDialog.tsx"
+import { AppMark } from "./AppMark.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { NewThreadDialog } from "./NewThreadDialog.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
@@ -30,24 +24,24 @@ export function Sidebar() {
   const toggleSidebar = useUi((state) => state.toggleSidebar)
   const addProjectOpen = useUi((state) => state.addProjectOpen)
   const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
-  const hideChord = useKeymap()["sidebar.toggle"]
+  const keymap = useKeymap()
+  const hideChord = keymap["sidebar.toggle"]
+  const addChord = keymap["project.add"]
 
   return (
     <nav
       aria-label={m.sidebar_label()}
       hidden={!sidebarOpen}
-      className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className="flex w-60 shrink-0 flex-col text-sidebar-foreground"
     >
-      <header className="flex h-12 items-center gap-0.5 pr-2 pl-3">
-        <span className="mr-auto font-heading text-sm font-semibold">{m.app_name()}</span>
-        <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
-          <RiSettings3Line aria-hidden />
-        </Button>
+      <header className="mt-1.5 flex h-12 shrink-0 items-center gap-2 pr-2 pl-4">
+        <AppMark className="size-5 rounded-[5px] text-[11px]" />
+        <span className="mr-auto text-sm font-semibold tracking-tight">{m.app_name()}</span>
         <Tooltip>
           <TooltipTrigger
             render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} onClick={toggleSidebar} />}
           >
-            <RiSideBarFill aria-hidden />
+            <RiSideBarLine aria-hidden className="text-muted-foreground" />
           </TooltipTrigger>
           <TooltipContent side="bottom">
             {m.sidebar_hide()}
@@ -56,21 +50,37 @@ export function Sidebar() {
         </Tooltip>
       </header>
 
-      <div className="flex items-center justify-between px-3 pt-2 pb-1">
-        <h2 className="text-xs font-medium text-muted-foreground">{m.sidebar_projects()}</h2>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={m.sidebar_add_project()}
-          onClick={() => setAddProjectOpen(true)}
-        >
-          <RiFolderAddLine aria-hidden />
-        </Button>
-      </div>
-
       <ScrollArea className="min-h-0 flex-1">
         <ProjectList onAddProject={() => setAddProjectOpen(true)} />
       </ScrollArea>
+
+      <footer className="flex shrink-0 items-center gap-1 px-2 pt-1 pb-2">
+        <Link
+          to="/settings"
+          className="flex h-8 flex-1 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-foreground"
+        >
+          <RiSettings3Line aria-hidden className="size-4" />
+          {m.sidebar_settings()}
+        </Link>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={m.sidebar_add_project()}
+                onClick={() => setAddProjectOpen(true)}
+              />
+            }
+          >
+            <RiFolderAddLine aria-hidden className="text-muted-foreground" />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {m.sidebar_add_project()}
+            {addChord && <ChordKeys chord={addChord} />}
+          </TooltipContent>
+        </Tooltip>
+      </footer>
 
       <AddProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
     </nav>
@@ -83,19 +93,19 @@ function ProjectList({ onAddProject }: { onAddProject: () => void }) {
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
 
   return AsyncResult.builder(projects)
-    .onInitial(() => <p className="px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
+    .onInitial(() => <p className="px-4 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
     .onSuccess((list) =>
       list.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 px-3 py-4">
+        <div className="flex flex-col items-start gap-1 px-4 py-3">
           <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
-          <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>
-          <Button variant="outline" size="sm" onClick={onAddProject}>
+          <p className="text-xs text-pretty text-muted-foreground">{m.sidebar_empty_hint()}</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={onAddProject}>
             <RiFolderAddLine aria-hidden />
             {m.sidebar_add_project()}
           </Button>
         </div>
       ) : (
-        <ul ref={listRef} className="flex flex-col gap-0.5 px-1.5 pb-3">
+        <ul ref={listRef} className="flex flex-col gap-4 px-2 pt-1 pb-3">
           {list.map((project) => (
             <ProjectGroup key={project.id} project={project} />
           ))}
@@ -103,7 +113,7 @@ function ProjectList({ onAddProject }: { onAddProject: () => void }) {
       ),
     )
     .orElse(() => (
-      <div role="alert" className="flex flex-col items-start gap-2 px-3 py-2">
+      <div role="alert" className="flex flex-col items-start gap-2 px-4 py-2">
         <p className="text-xs text-destructive">{m.sidebar_load_failed()}</p>
         <Button variant="outline" size="xs" onClick={refresh}>
           {m.sidebar_retry()}
@@ -120,24 +130,23 @@ function ProjectGroup({ project }: { project: Project }) {
   return (
     <li>
       <Collapsible defaultOpen>
-        <div className="group/project flex items-center gap-0.5 rounded-md hover:bg-sidebar-accent">
+        <div className="group/project flex h-7 items-center gap-0.5">
           <CollapsibleTrigger
-            className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            className="group/trigger flex h-full min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             aria-label={m.sidebar_toggle_project({ project: project.name })}
           >
-            <RiArrowRightSLine
-              aria-hidden
-              className="size-4 shrink-0 text-muted-foreground transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
-            />
-            <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <span className="truncate font-medium" title={project.rootPath}>
+            <span className="truncate" title={project.rootPath}>
               {project.name}
             </span>
+            <RiArrowRightSLine
+              aria-hidden
+              className="size-3.5 shrink-0 opacity-0 transition-[rotate,opacity] duration-150 group-hover/project:opacity-100 group-focus-visible/trigger:opacity-100 group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
+            />
           </CollapsibleTrigger>
           <Button
             variant="ghost"
             size="icon-xs"
-            className="opacity-0 group-hover/project:opacity-100 focus-visible:opacity-100"
+            className="text-muted-foreground opacity-0 group-hover/project:opacity-100 focus-visible:opacity-100"
             aria-label={m.sidebar_new_thread_in({ project: project.name })}
             onClick={() => setNewThreadOpen(true)}
           >

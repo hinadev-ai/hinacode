@@ -141,9 +141,9 @@ export function SidebarThreadList({ projectId }: { projectId: string }) {
           setAnimate(true)
         }}
       >
-        <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5 pl-5">
+        <ul ref={listRef} className="flex flex-col gap-px">
           {threads.length === 0 && (
-            <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
+            <li className="px-2 py-1 text-xs text-muted-foreground/70">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
             <ThreadRow key={thread.id} thread={thread} index={index} group={projectId} />
@@ -151,7 +151,7 @@ export function SidebarThreadList({ projectId }: { projectId: string }) {
         </ul>
       </DragDropProvider>
       {reorderError && (
-        <p role="alert" className="px-2 py-1 pl-7 text-xs text-destructive">
+        <p role="alert" className="px-2 py-1 text-xs text-destructive">
           {m.sidebar_reorder_failed({ message: reorderError })}
         </p>
       )}
@@ -193,7 +193,7 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
       ref={ref}
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
-      className="group/thread relative rounded-md data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
+      className="group/thread relative rounded-md data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:shadow-lg"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -202,11 +202,12 @@ function ThreadRow({ thread, index, group }: ThreadRowProps) {
           to="/thread/$threadId"
           params={{ threadId: thread.id }}
           draggable={false}
+          data-settled={thread.status === "settled"}
           onContextMenu={(event) => {
             event.preventDefault()
             setMenuOpen(true)
           }}
-          className="flex items-center gap-2 rounded-md py-1 pr-2 pl-2 text-sm text-sidebar-foreground/80 outline-none group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+          className="flex min-h-8 items-center gap-2.5 rounded-md py-1.5 pr-2 pl-2 text-sm text-sidebar-foreground/75 outline-none transition-colors duration-100 group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[settled=true]:text-sidebar-foreground/45 data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
         >
           <ProviderIcon provider={thread.provider} />
           <span className="flex min-w-0 flex-1 flex-col">
@@ -377,8 +378,8 @@ function DeleteThreadDialog({ thread, open, onOpenChange }: DeleteThreadDialogPr
 }
 
 const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: string }>> = {
-  running: { label: m.thread_status_running, className: "bg-emerald-500 animate-pulse motion-reduce:animate-none" },
-  awaiting_approval: { label: m.thread_status_awaiting_approval, className: "bg-amber-500" },
+  running: { label: m.thread_status_running, className: "bg-success animate-pulse motion-reduce:animate-none" },
+  awaiting_approval: { label: m.thread_status_awaiting_approval, className: "bg-warning" },
 }
 
 /** A dot for threads that need watching: pulsing while running, steady while waiting for approval. */
@@ -387,7 +388,7 @@ function StatusDot({ status }: { status: ThreadStatus }): ReactNode {
   if (!dot) return null
   return (
     <span title={dot.label()} className="flex shrink-0 items-center">
-      <span aria-hidden className={`size-2 rounded-full ${dot.className}`} />
+      <span aria-hidden className={`size-1.5 rounded-full ${dot.className}`} />
       <span className="sr-only">{dot.label()}</span>
     </span>
   )
@@ -398,11 +399,11 @@ function WorktreeBranch({ worktreeId }: { worktreeId: string }) {
   if (!worktree) return null
   return (
     <span
-      className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground data-[removed=true]:line-through"
+      className="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-muted-foreground data-[removed=true]:line-through"
       data-removed={worktree.status === "removed"}
       title={m.sidebar_worktree_branch({ branch: worktree.branch })}
     >
-      <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
+      <RiGitBranchLine aria-hidden className="size-3 shrink-0 opacity-70" />
       <span className="truncate font-mono">{worktree.branch}</span>
     </span>
   )
