@@ -5,6 +5,7 @@ import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
+import { errorMessage } from "../lib/errorMessage.ts"
 
 /** One pending tool approval. It disappears when the provider reports `approval_resolved`. */
 export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequest; providerLabel: string }) {
@@ -13,7 +14,7 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
       await callPromise("approvals.respond", { requestId: request.id, decision })
       return null
     } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause)
+      return errorMessage(cause)
     }
   }, null)
   const choose = (decision: ApprovalDecision) => () => startTransition(() => respond(decision))
@@ -42,7 +43,7 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
           {m.approval_deny()}
         </Button>
       </div>
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{error}</FieldError>}
     </section>
   )
 }

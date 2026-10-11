@@ -11,6 +11,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
+import { errorMessage } from "../../lib/errorMessage.ts"
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
@@ -40,7 +41,7 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
     try {
       await updateSettings({ defaultModel: { ...defaultModel, [provider]: model } })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(errorMessage(cause))
     }
   }
 
@@ -66,9 +67,9 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
             textFallback(m.settings_models_unlisted({ provider: label }))
           ),
         )
-        .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: cause.message })))
+        .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
         .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
-      {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }

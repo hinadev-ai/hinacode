@@ -7,6 +7,7 @@ import { useLocale } from "../../stores/locale.ts"
 import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
+import { errorMessage } from "../../lib/errorMessage.ts"
 
 const localeLabel = { en: m.locale_en, "zh-TW": m.locale_zh_tw } satisfies Record<Locale, () => string>
 const isLocale = (value: unknown): value is Locale => Locale.literals.some((locale) => locale === value)
@@ -24,7 +25,7 @@ export function GeneralSettings() {
       const saved = await updateSettings({ locale: next })
       applyLocale(saved.locale)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(errorMessage(cause))
     }
   }
 
@@ -48,7 +49,7 @@ export function GeneralSettings() {
           </Select>
         </div>
         <FieldDescription>{m.settings_language_hint()}</FieldDescription>
-        {error && <FieldError>{m.common_error({ message: error })}</FieldError>}
+        {error && <FieldError>{error}</FieldError>}
       </Field>
     </SettingsSection>
   )
