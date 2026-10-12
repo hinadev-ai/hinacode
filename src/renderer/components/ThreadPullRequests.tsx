@@ -585,13 +585,16 @@ function ConfirmDialog({
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const number = pullRequest.number
+  // The dialog keeps showing its last action while it animates closed, after `action` is already null.
+  const [shown, setShown] = useState(action)
+  if (action !== null && action !== shown) setShown(action)
 
   const confirm = () =>
     startTransition(async () => {
-      if (!action) return
+      if (!shown) return
       setError(null)
       try {
-        if (action.type === "merge") await callPromise("github.merge", { url: pullRequest.url, method: action.method })
+        if (shown.type === "merge") await callPromise("github.merge", { url: pullRequest.url, method: shown.method })
         else await callPromise("github.close", { url: pullRequest.url })
         onOpenChange(false)
         onDone()
@@ -611,12 +614,12 @@ function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {action?.type === "close"
+            {shown?.type === "close"
               ? m.pr_close_title({ number })
-              : m.pr_merge_title({ number, method: action ? mergeLabel[action.method]() : "" })}
+              : m.pr_merge_title({ number, method: shown ? mergeLabel[shown.method]() : "" })}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {action?.type === "close"
+            {shown?.type === "close"
               ? m.pr_close_body()
               : m.pr_merge_body({ head: pullRequest.headRef, base: pullRequest.baseRef })}
           </AlertDialogDescription>
@@ -629,11 +632,11 @@ function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
           <AlertDialogAction
-            variant={action?.type === "close" ? "destructive" : "default"}
+            variant={shown?.type === "close" ? "destructive" : "default"}
             disabled={pending}
             onClick={confirm}
           >
-            {action?.type === "close" ? m.pr_close() : action ? mergeLabel[action.method]() : null}
+            {shown?.type === "close" ? m.pr_close() : shown ? mergeLabel[shown.method]() : null}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
