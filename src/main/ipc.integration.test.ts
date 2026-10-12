@@ -128,6 +128,7 @@ const scriptedTurn: ReadonlyArray<AgentEvent> = [
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
+  account: Effect.succeed({ type: "signedOut" }),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.fromIterable(
@@ -736,5 +737,19 @@ describe("agent questions over rpc", () => {
         .tag,
     ).toBe("UntrustedSender")
     result(await invoke("questions.respond", { requestId: "unknown", answers: { choice: ["blue"] } }))
+  })
+})
+
+describe("agent accounts over rpc", () => {
+  test("decodes provider IDs and refuses account requests from subframes", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)!
+    for (const payload of [{}, { provider: "futureProvider" }, { provider: 123 }]) {
+      const response = await handler({ sender: {}, senderFrame: mainFrame }, { method: "agents.account", payload })
+      expect(failure(response as RpcEnvelope<unknown>).tag).toBe("SchemaError")
+    }
+    expect(
+      failure(await invoke("agents.account", { provider: "claude" }, { url: appUrl, parent: mainFrame })).tag,
+    ).toBe("UntrustedSender")
+    expect(result(await invoke("agents.account", { provider: "claude" }))).toStrictEqual({ type: "signedOut" })
   })
 })

@@ -54,6 +54,8 @@ const reply = ({ id, method, params }) => {
     return
   }
   switch (method) {
+    case "account/read":
+      return send({ id, result: control().accountResponse ?? { account: null, requiresOpenaiAuth: true } })
     case "model/list":
       return send({
         id,

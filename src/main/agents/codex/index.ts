@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
+  AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
@@ -18,13 +19,16 @@ import { AgentError, type AgentProvider } from "../provider.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
+import { GetAccountResponse } from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
   ElicitationActionWire,
+  GetAccountParams,
   McpServerElicitationRequestParams,
   ModelListParams,
   ModelListResponse,
+  PlanType,
   ServerNotificationParams,
   ServerRequestParams,
   SkillMetadata,
@@ -220,6 +224,18 @@ const make = Effect.gen(function* () {
       cursor = page.nextCursor
     } while (cursor)
     return models
+  })
+
+  const account = Effect.gen(function* () {
+    const client = yield* getClient
+    const params: GetAccountParams = { refreshToken: false }
+    const raw = yield* client.request<unknown>("account/read", params)
+    const response = yield* Schema.decodeUnknownEffect(GetAccountResponse)(raw).pipe(
+      Effect.mapError(
+        () => new AgentError({ provider: "codex", message: "Failed to read the Codex account: invalid response" }),
+      ),
+    )
+    return toAccount(response.account)
   })
 
   const listSkills = (cwd: string) =>
@@ -634,6 +650,7 @@ const make = Effect.gen(function* () {
   return {
     id: "codex",
     listModels,
+    account,
     listCommands,
     runTurn,
     steer,
@@ -644,6 +661,42 @@ const make = Effect.gen(function* () {
     setAccessMode: () => Effect.void,
   } satisfies AgentProvider
 })
+
+const planNames: Partial<Record<PlanType, string>> = {
+  free: "Free",
+  go: "Go",
+  plus: "Plus",
+  pro: "Pro",
+  team: "Team",
+  business: "Business",
+  enterprise: "Enterprise",
+  edu: "Edu",
+}
+
+/** Codex reports plan ids, not names. Ids without a known public name are title-cased. */
+const planName = (plan: PlanType) =>
+  plan === "unknown"
+    ? null
+    : `ChatGPT ${
+        planNames[plan] ??
+        plan
+          .split("_")
+          .map((word) => word[0]?.toUpperCase() + word.slice(1))
+          .join(" ")
+      }`
+
+const toAccount = (account: GetAccountResponse["account"]): AgentAccount => {
+  switch (account?.type) {
+    case undefined:
+      return { type: "signedOut" }
+    case "apiKey":
+      return { type: "apiKey" }
+    case "chatgpt":
+      return { type: "subscription", email: account.email, plan: planName(account.planType), organization: null }
+    case "amazonBedrock":
+      return { type: "external", service: "Amazon Bedrock" }
+  }
+}
 
 export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {
   static readonly layer = Layer.effect(CodexProvider, make)

@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect"
 import {
+  AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
@@ -164,6 +165,7 @@ export const RpcMethods = {
   "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
+  "agents.account": rpc(Schema.Struct({ provider: ProviderId }), AgentAccount),
   /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */

@@ -48,6 +48,7 @@ vi.mock("@linear/sdk", async (importOriginal) => ({
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([]),
+  account: Effect.succeed({ type: "signedOut" }),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,

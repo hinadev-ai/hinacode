@@ -1,6 +1,7 @@
 import { Effect, Schema, Stream } from "effect"
 import type { AccessMode, Attachment } from "../../shared/domain.ts"
 import type {
+  AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
@@ -22,6 +23,8 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
 export interface AgentProvider {
   readonly id: ProviderId
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
+  /** Read fresh on each call, so signing in or out in a terminal shows up without a restart. */
+  readonly account: Effect.Effect<AgentAccount, AgentError>
   /** Commands and skills the agent would load for a thread working in `cwd`. */
   readonly listCommands: (input: {
     readonly threadId: string

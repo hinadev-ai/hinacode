@@ -61,6 +61,9 @@ export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
 )
 
+/** Not kept alive, so reopening the Models tab picks up a sign-in made in a terminal meanwhile. */
+export const accountAtom = Atom.family((provider: ProviderId) => Atom.make(call("agents.account", { provider })))
+
 /**
  * Identifies a thread together with its agent and workspace, since switching either changes what the
  * composer can complete. Key for `commandsAtom` and `filesAtom`.

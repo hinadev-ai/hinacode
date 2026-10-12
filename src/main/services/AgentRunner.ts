@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Context, Deferred, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
+  AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
@@ -84,6 +85,7 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
+    readonly account: (provider: ProviderId) => Effect.Effect<AgentAccount, AgentError>
     /** Sub-agents the thread's agent spawned since the app started, newest first. */
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
     readonly listCommands: (
@@ -500,6 +502,7 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
+    account: (id) => providers[id].account,
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     listCommands: (threadId) =>
       Effect.gen(function* () {

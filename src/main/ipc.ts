@@ -162,6 +162,7 @@ const handlers: Handlers = {
   "notifications.askPermission": ({ title, body }) => askNotificationPermission(title, body),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
+  "agents.account": ({ provider }) => AgentRunner.use((runner) => runner.account(provider)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),

@@ -1,3 +1,5 @@
+import { Schema } from "effect"
+
 /**
  * Subset of the Codex app-server v2 protocol used by kkcode.
  * Copied from `codex app-server generate-ts` (codex-cli 0.161.0), trimmed to the fields we read or send.
@@ -254,3 +256,34 @@ export interface McpServerElicitationRequestParams {
 }
 
 export type ElicitationActionWire = "accept" | "decline" | "cancel"
+
+export type GetAccountParams = { refreshToken?: boolean }
+export const PlanType = Schema.Literals([
+  "free",
+  "go",
+  "plus",
+  "pro",
+  "prolite",
+  "promax",
+  "team",
+  "self_serve_business_prolite",
+  "self_serve_business_usage_based",
+  "business",
+  "ent26",
+  "enterprise_cbp_automation",
+  "enterprise_cbp_usage_based",
+  "enterprise",
+  "edu",
+  "edu_plus",
+  "edu_pro",
+  "unknown",
+])
+export type PlanType = typeof PlanType.Type
+export const Account = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("apiKey") }),
+  Schema.Struct({ type: Schema.Literal("chatgpt"), email: Schema.NullOr(Schema.String), planType: PlanType }),
+  Schema.Struct({ type: Schema.Literal("amazonBedrock"), usesCodexManagedCredentials: Schema.Boolean }),
+])
+export type Account = typeof Account.Type
+export const GetAccountResponse = Schema.Struct({ account: Schema.NullOr(Account), requiresOpenaiAuth: Schema.Boolean })
+export type GetAccountResponse = typeof GetAccountResponse.Type
