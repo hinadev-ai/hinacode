@@ -132,6 +132,7 @@
   "sidebar_worktree_branch": "Worktree 分支 {branch}",
   "sidebar_show": "顯示側邊欄",
   "sidebar_hide": "隱藏側邊欄",
+  "sidebar_resize": "調整側邊欄寬度",
   "command_settings_open": "開啟設定",
   "command_thread_new": "新討論串",
   "command_project_add": "新增專案",
