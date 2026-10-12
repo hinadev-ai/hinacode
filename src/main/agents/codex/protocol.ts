@@ -34,12 +34,17 @@ export type ThreadResumeResponse = { thread: Thread }
 export type UserInput =
   | { type: "text"; text: string; text_elements: Array<unknown> }
   | { type: "localImage"; path: string }
+  | { type: "skill"; name: string; path: string }
 
 export type TurnStartParams = {
   threadId: string
   input: Array<UserInput>
   cwd?: string | null
   model?: string | null
+  /** Omitted keeps the thread's effort. */
+  effort?: string | null
+  /** Omitted keeps the thread's tier; null goes back to the standard one. */
+  serviceTier?: string | null
 }
 
 export type TurnStatus = "completed" | "interrupted" | "failed" | "inProgress"
@@ -51,8 +56,27 @@ export type TurnInterruptParams = { threadId: string; turnId: string }
 export type TurnSteerParams = { threadId: string; input: Array<UserInput>; expectedTurnId: string }
 
 export type ModelListParams = { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }
-export type Model = { id: string; model: string; displayName: string; hidden: boolean; isDefault: boolean }
+export type Model = {
+  id: string
+  model: string
+  displayName: string
+  hidden: boolean
+  isDefault: boolean
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>
+  defaultReasoningEffort: string
+  serviceTiers: Array<{ id: string; name: string; description: string }>
+}
 export type ModelListResponse = { data: Array<Model>; nextCursor: string | null }
+
+export type SkillsListParams = { cwds?: Array<string>; forceReload?: boolean }
+export type SkillMetadata = {
+  name: string
+  description: string
+  shortDescription?: string
+  path: string
+  enabled: boolean
+}
+export type SkillsListResponse = { data: Array<{ cwd: string; skills: Array<SkillMetadata> }> }
 
 export type CommandExecutionStatus = "inProgress" | "completed" | "failed" | "declined"
 export type PatchApplyStatus = "inProgress" | "completed" | "failed" | "declined"

@@ -1,0 +1,223 @@
+import { useAtomValue } from "@effect/atom-react"
+import { AsyncResult } from "effect/reactivity"
+import { RiBrainLine, RiFlashlightLine } from "react-icons/ri"
+import { type ModelInfo, ProviderId, unlistedModel } from "../../shared/agent.ts"
+import type { RpcRequest } from "../../shared/contract.ts"
+import type { Thread } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
+import { callPromise, currentBranchAtom, modelsAtom } from "../lib/rpc.ts"
+import { m } from "../paraglide/messages.js"
+import { type Draft, useDrafts } from "../stores/drafts.ts"
+import { useThreads } from "../stores/threads.ts"
+import { ProviderIcon } from "./ProviderIcon.tsx"
+import { Button } from "./ui/button.tsx"
+import { Input } from "./ui/input.tsx"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+
+interface ControlProps {
+  readonly thread: Thread
+  readonly onError: (message: string) => void
+}
+
+const triggerClass = "border-0 text-xs"
+
+const update = async (patch: RpcRequest<"threads.update">, onError: (message: string) => void) => {
+  try {
+    useThreads.getState().upsert(await callPromise("threads.update", patch))
+  } catch (cause) {
+    onError(errorMessage(cause))
+  }
+}
+
+/** The agent's listed models, plus the thread's own model when the agent no longer lists it. */
+function useThreadModels(thread: Thread) {
+  const listed = AsyncResult.getOrElse(useAtomValue(modelsAtom(thread.provider)), (): ReadonlyArray<ModelInfo> => [])
+  const current = listed.find((model) => model.id === thread.model)
+  return current
+    ? { models: listed, current }
+    : { models: [unlistedModel(thread.model, thread.provider), ...listed], current: undefined }
+}
+
+const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
+
+export function AgentPicker({ thread, onError }: ControlProps) {
+  const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
+  return (
+    <Select
+      items={providers}
+      value={thread.provider}
+      onValueChange={(provider) =>
+        provider && provider !== thread.provider && update({ id: thread.id, provider }, onError)
+      }
+    >
+      <SelectTrigger size="sm" aria-label={m.thread_agent_picker()} className={triggerClass}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {providers.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            <ProviderIcon provider={item.value} />
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+export function ModelPicker({ thread, onError }: ControlProps) {
+  const { models } = useThreadModels(thread)
+  const items = models.map((model) => ({ value: model.id, label: model.label }))
+
+  // Effort and fast mode the next model cannot honor go back to its defaults.
+  const change = (id: string | null) => {
+    const next = models.find((model) => model.id === id)
+    if (next === undefined || next.id === thread.model) return
+    void update(
+      {
+        id: thread.id,
+        model: next.id,
+        ...(thread.effort !== null && !next.efforts.includes(thread.effort) ? { effort: null } : {}),
+        ...(thread.fastMode && !next.fastMode ? { fastMode: false } : {}),
+      },
+      onError,
+    )
+  }
+
+  return (
+    <Select items={items} value={thread.model} onValueChange={change}>
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={triggerClass}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+const effortLabels: Record<string, () => string> = {
+  minimal: m.effort_minimal,
+  low: m.effort_low,
+  medium: m.effort_medium,
+  high: m.effort_high,
+  xhigh: m.effort_xhigh,
+  max: m.effort_max,
+  ultra: m.effort_ultra,
+}
+const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
+
+const DEFAULT_EFFORT = "default"
+
+/** Shown only for models with effort control. */
+export function EffortPicker({ thread, onError }: ControlProps) {
+  const { current } = useThreadModels(thread)
+  if (current === undefined || current.efforts.length === 0) return null
+  const defaultLabel = current.defaultEffort
+    ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
+    : m.thread_effort_default()
+  const items = [
+    { value: DEFAULT_EFFORT, label: defaultLabel },
+    ...current.efforts.map((effort) => ({ value: effort, label: effortLabel(effort) })),
+  ]
+
+  return (
+    <Select
+      items={items}
+      value={thread.effort ?? DEFAULT_EFFORT}
+      onValueChange={(value) => {
+        const effort = value === DEFAULT_EFFORT ? null : value
+        if (value !== null && effort !== thread.effort) void update({ id: thread.id, effort }, onError)
+      }}
+    >
+      <SelectTrigger size="sm" aria-label={m.thread_effort_picker()} className={triggerClass}>
+        <RiBrainLine aria-hidden />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/** Shown only for models with a fast service tier. */
+export function FastModeToggle({ thread, onError }: ControlProps) {
+  const { current } = useThreadModels(thread)
+  if (!current?.fastMode) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-pressed={thread.fastMode}
+            onClick={() => void update({ id: thread.id, fastMode: !thread.fastMode }, onError)}
+            className="text-xs text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+          >
+            <RiFlashlightLine aria-hidden />
+            {m.thread_fast_mode()}
+          </Button>
+        }
+      />
+      <TooltipContent>{m.thread_fast_mode_hint()}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+const workspaces = [
+  { value: "local", label: m.thread_workspace_local() },
+  { value: "worktree", label: m.thread_workspace_worktree() },
+]
+
+/** Where the first turn runs: the project root, or a new worktree forked from a base ref. */
+export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree: Draft["worktree"] }) {
+  const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
+  const setWorktree = (next: Draft["worktree"]) => useDrafts.getState().setWorktree(thread.id, next)
+
+  return (
+    <div className="mx-auto mt-1 flex max-w-3xl items-center gap-1 px-1 text-xs text-muted-foreground">
+      <Select
+        items={workspaces}
+        value={worktree === null ? "local" : "worktree"}
+        onValueChange={(value) => setWorktree(value === "worktree" ? { baseRef: "" } : null)}
+      >
+        <SelectTrigger size="sm" aria-label={m.thread_workspace_picker()} className={triggerClass}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {workspaces.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {worktree !== null && (
+        <label className="flex items-center gap-1.5">
+          {m.thread_base_ref_prefix()}
+          <Input
+            aria-label={m.thread_base_ref_label()}
+            value={worktree.baseRef}
+            onChange={(event) => setWorktree({ baseRef: event.target.value })}
+            placeholder={currentBranch}
+            spellCheck={false}
+            autoComplete="off"
+            className="h-7 w-48 font-mono text-xs"
+          />
+        </label>
+      )}
+    </div>
+  )
+}

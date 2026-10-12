@@ -56,6 +56,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
   --color-working: var(--working);
+  --color-syntax-token: var(--syntax-token);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -97,6 +98,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
+  /* Commands and mentions in the composer: the brand violet, since the default primary is gray. */
+  --syntax-token: #7c3aed;
   --primary-foreground: oklch(0.985 0 0);
   /* Brand violet, reserved for "an agent is working". */
   --working: oklch(0.541 0.247 293.009);
@@ -136,6 +139,7 @@
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --working: oklch(0.702 0.183 293.541);
+  --syntax-token: #a78bfa;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -169,6 +173,7 @@
  */
 
 [data-theme] {
+  --syntax-token: var(--primary);
   --card: var(--surface);
   --card-foreground: var(--foreground);
   --popover: var(--surface);

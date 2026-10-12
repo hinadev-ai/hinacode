@@ -6,7 +6,6 @@ import { type ReactNode, useId, useState } from "react"
 import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
 import {
   type ChangedFileStatus,
-  isThreadBusy,
   type PullRequest,
   type Thread,
   type Worktree,
@@ -19,12 +18,10 @@ import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import { SettleDialog, useActiveWorktree } from "./SettleDialog.tsx"
 import { ThreadAgents, useRunningSubagentCount } from "./ThreadAgents.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
 import { pullRequestStatusLabel, ThreadPullRequests } from "./ThreadPullRequests.tsx"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
-import { AlertDialogTrigger } from "./ui/alert-dialog.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
@@ -37,7 +34,7 @@ const returnFocusToComposer = (panel: HTMLElement | null) => () => {
 
 /**
  * Right-hand panel of the thread route. Details: where the thread runs, its setup log, changes, ports
- * and pull requests. Agents: the sub-agents its agent spawned. Settling sits below both.
+ * and pull requests. Agents: the sub-agents its agent spawned.
  */
 export function ThreadSidePanel({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
@@ -90,9 +87,6 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
           </ScrollArea>
         </TabsContent>
       </Tabs>
-      <footer className="shrink-0 border-t border-border p-3">
-        <SettleControl thread={thread} />
-      </footer>
     </aside>
   )
 }
@@ -356,27 +350,5 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
         </div>
       )}
     </li>
-  )
-}
-
-function SettleControl({ thread }: { thread: Thread }) {
-  const [open, setOpen] = useState(false)
-  const worktree = useActiveWorktree(thread)
-  const merged = useBranchPullRequest(worktree?.id)?.status === "merged"
-
-  if (thread.status === "settled" && !worktree) {
-    return <p className="text-xs text-muted-foreground">{m.panel_settled()}</p>
-  }
-
-  // Once the branch is merged, deleting the worktree loses nothing, so cleanup becomes the primary action.
-  const variant = !worktree ? "outline" : merged ? "default" : "destructive"
-  return (
-    <SettleDialog thread={thread} open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger
-        render={<Button variant={variant} className="w-full" disabled={isThreadBusy(thread.status)} />}
-      >
-        {worktree ? m.panel_settle_cleanup() : m.panel_settle()}
-      </AlertDialogTrigger>
-    </SettleDialog>
   )
 }

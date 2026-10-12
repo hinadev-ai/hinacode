@@ -55,6 +55,8 @@ const input = (threadId: string): RunTurnInput => ({
   attachments: [],
   cwd: tmpdir(),
   model: "fake-model",
+  effort: null,
+  fastMode: false,
   resumeSessionId: null,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
 })

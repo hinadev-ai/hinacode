@@ -1,8 +1,16 @@
 import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
-import { query, type Options, type Query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
-import type { AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import {
+  type EffortLevel,
+  query,
+  type Options,
+  type Query,
+  type SDKMessage,
+  type SDKUserMessage,
+  type SlashCommand,
+} from "@anthropic-ai/claude-agent-sdk"
+import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
+import type { AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
@@ -12,12 +20,32 @@ import { kkcodeMcpServer } from "./mcp.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
 
+const fallbackModel = (id: string, label: string): ModelInfo => ({
+  id,
+  label,
+  provider: "claude",
+  efforts: [],
+  defaultEffort: null,
+  fastMode: false,
+})
+
 const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
-  { id: "claude-opus-5-5", label: "Opus 5.5", provider: "claude" },
-  { id: "claude-fable-5-1", label: "Fable 5.1", provider: "claude" },
-  { id: "claude-sonnet-5-5", label: "Sonnet 5.5", provider: "claude" },
-  { id: "claude-haiku-5-5", label: "Haiku 5.5", provider: "claude" },
+  fallbackModel("claude-opus-5-5", "Opus 5.5"),
+  fallbackModel("claude-fable-5-1", "Fable 5.1"),
+  fallbackModel("claude-sonnet-5-5", "Sonnet 5.5"),
+  fallbackModel("claude-haiku-5-5", "Haiku 5.5"),
 ]
+
+const EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
+const isEffortLevel = (effort: string | null): effort is EffortLevel =>
+  effort !== null && EFFORT_LEVELS.includes(effort)
+
+const toCommand = (command: SlashCommand): AgentCommand => ({
+  trigger: "/",
+  name: command.name,
+  description: command.description,
+  argumentHint: command.argumentHint,
+})
 
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
@@ -29,6 +57,8 @@ interface Session extends MapState, ApprovalSession {
   readonly abort: AbortController
   readonly query: Query
   model: string
+  effort: string | null
+  fastMode: boolean
   sessionId: string | null
   turn: TurnQueue | null
   interrupted: boolean
@@ -48,7 +78,7 @@ const agentError = (message: string) => (cause: unknown) =>
  * GUI-launched Electron apps (notably on macOS) get a minimal PATH, so fall back to a login shell
  * to find the user's `claude` install.
  */
-function resolveClaudeExecutable(): string | undefined {
+export function resolveClaudeExecutable(): string | undefined {
   const attempts: Array<[string, Array<string>]> = [
     ["which", ["claude"]],
     [process.env.SHELL ?? "/bin/sh", ["-lc", "command -v claude"]],
@@ -200,6 +230,8 @@ export const layer = Layer.effect(
                 ...baseOptions(),
                 cwd: input.cwd,
                 model: input.model,
+                ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
+                settings: { fastMode: input.fastMode },
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
@@ -228,6 +260,8 @@ export const layer = Layer.effect(
           threadId: input.threadId,
           cwd: input.cwd,
           model: input.model,
+          effort: input.effort,
+          fastMode: input.fastMode,
           prompts,
           abort,
           query: handle,
@@ -279,6 +313,18 @@ export const layer = Layer.effect(
             })
             session.model = input.model
           }
+          if (session.effort !== input.effort || session.fastMode !== input.fastMode) {
+            yield* Effect.tryPromise({
+              try: () =>
+                session.query.applyFlagSettings({
+                  effortLevel: isEffortLevel(input.effort) ? input.effort : null,
+                  fastMode: input.fastMode,
+                }),
+              catch: agentError("Failed to switch effort or fast mode"),
+            })
+            session.effort = input.effort
+            session.fastMode = input.fastMode
+          }
           session.turn = turn
           session.interrupted = false
           session.pendingSteers = 0
@@ -322,18 +368,65 @@ export const layer = Layer.effect(
       for (const model of models) {
         if (model.value === "default") continue
         const id = model.resolvedModel ?? model.value
-        if (!byId.has(id)) byId.set(id, { id, label: model.displayName, provider: "claude" })
+        if (byId.has(id)) continue
+        byId.set(id, {
+          id,
+          label: model.displayName,
+          provider: "claude",
+          efforts: model.supportsEffort ? (model.supportedEffortLevels ?? []) : [],
+          defaultEffort: null,
+          fastMode: model.supportsFastMode ?? false,
+        })
       }
       return [...byId.values()]
     }).pipe(Effect.orElseSucceed(() => FALLBACK_MODELS))
 
     const listModels = yield* Effect.cachedWithTTL(fetchModels, Duration.minutes(10))
 
+    /** A throwaway CLI in `cwd` that loads the same settings, skills and plugins a thread there would. */
+    const probeCommands = (cwd: string) =>
+      Effect.gen(function* () {
+        const prompts = yield* Queue.unbounded<SDKUserMessage>()
+        const probe = query({
+          prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
+          options: { ...baseOptions(), cwd, settingSources: ["user", "project", "local"], persistSession: false },
+        })
+        return yield* Effect.tryPromise({
+          try: () => probe.supportedCommands(),
+          catch: agentError("Failed to list Claude commands"),
+        }).pipe(
+          Effect.timeout(Duration.seconds(30)),
+          Effect.catchTag("TimeoutError", () =>
+            Effect.fail(new AgentError({ provider: "claude", message: "Timed out listing Claude commands" })),
+          ),
+          Effect.ensuring(Effect.sync(() => probe.close())),
+        )
+      })
+    const probedCommands = yield* Cache.make({
+      lookup: probeCommands,
+      capacity: 32,
+      timeToLive: Duration.minutes(1),
+    })
+
+    const listCommands = ({ threadId, cwd }: { readonly threadId: string; readonly cwd: string }) =>
+      Effect.gen(function* () {
+        const session = sessions.get(threadId)
+        const commands =
+          session !== undefined && session.cwd === cwd
+            ? yield* Effect.tryPromise({
+                try: () => session.query.supportedCommands(),
+                catch: agentError("Failed to list Claude commands"),
+              })
+            : yield* Cache.get(probedCommands, cwd)
+        return commands.map(toCommand)
+      })
+
     yield* Effect.addFinalizer(() => Effect.forEach([...sessions.values()], closeSession, { discard: true }))
 
     return ClaudeProvider.of({
       id: "claude",
       listModels,
+      listCommands,
       runTurn,
       steer,
       interrupt: (threadId) => {
