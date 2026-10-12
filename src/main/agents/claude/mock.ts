@@ -75,6 +75,7 @@ export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "u
         steer: () => Effect.fail(new AgentError({ provider: "claude", message: "No turn is running on this thread" })),
         interrupt: () => Effect.void,
         respondApproval: () => Effect.void,
+        respondQuestion: () => Effect.void,
         setAccessMode: () => Effect.void,
       })
     }),

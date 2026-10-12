@@ -11,6 +11,7 @@ import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
+import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
@@ -105,6 +106,9 @@ function Transcript({ thread }: { thread: Thread }) {
       <div className="px-4">
         {history.approvals.map((request) => (
           <ApprovalCard key={request.id} request={request} providerLabel={label} />
+        ))}
+        {history.questions.map((request) => (
+          <QuestionRequestCard key={request.id} request={request} providerLabel={label} />
         ))}
         {history.secretRequests.map((request) => (
           <SecretRequestCard key={request.id} request={request} providerLabel={label} />

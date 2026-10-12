@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { AgentEvent, ApprovalRequest, SecretRequest } from "../../shared/agent.ts"
+import type { AgentEvent, ApprovalRequest, QuestionRequest, SecretRequest } from "../../shared/agent.ts"
 import type { TranscriptPush } from "../../shared/contract.ts"
 import type { Message } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
@@ -11,6 +11,7 @@ type ReadyHistory = {
   readonly status: "ready"
   readonly messages: ReadonlyArray<Message>
   readonly approvals: ReadonlyArray<ApprovalRequest>
+  readonly questions: ReadonlyArray<QuestionRequest>
   readonly secretRequests: ReadonlyArray<SecretRequest>
 }
 
@@ -30,7 +31,7 @@ interface MessagesState {
 }
 
 /**
- * Transcript, pending approvals and pending secret requests per thread. Threads that were never opened ignore pushes: their
+ * Transcript, pending approvals, questions and secret requests per thread. Threads that were never opened ignore pushes: their
  * first `load` reads a snapshot instead.
  */
 export const useMessages = create<MessagesState>()((set, get) => {
@@ -134,16 +135,18 @@ function applyPush(history: ReadyHistory, push: TranscriptPush): ReadyHistory {
     }
     case "thread.event": {
       const approvals = foldApprovals(history.approvals, push.event)
+      const questions = foldQuestions(history.questions, push.event)
       const secretRequests = foldSecretRequests(history.secretRequests, push.event)
       const messages = foldTranscript(history.messages, push.event, new Date().toISOString())
       if (
         approvals === history.approvals &&
+        questions === history.questions &&
         secretRequests === history.secretRequests &&
         messages === history.messages
       ) {
         return history
       }
-      return { ...history, approvals, secretRequests, messages }
+      return { ...history, approvals, questions, secretRequests, messages }
     }
   }
 }
@@ -159,6 +162,20 @@ function foldApprovals(approvals: ReadonlyArray<ApprovalRequest>, event: AgentEv
       return approvals.length === 0 ? approvals : []
     default:
       return approvals
+  }
+}
+
+function foldQuestions(questions: ReadonlyArray<QuestionRequest>, event: AgentEvent): ReadonlyArray<QuestionRequest> {
+  switch (event.type) {
+    case "question_requested":
+      return [...questions, event.request]
+    case "question_resolved":
+      return questions.filter((request) => request.id !== event.requestId)
+    case "turn_completed":
+    case "turn_failed":
+      return questions.length === 0 ? questions : []
+    default:
+      return questions
   }
 }
 

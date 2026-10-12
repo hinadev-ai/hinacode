@@ -215,7 +215,26 @@ export type ServerRequestParams = {
   "item/commandExecution/requestApproval": CommandExecutionRequestApprovalParams
   "item/fileChange/requestApproval": FileChangeRequestApprovalParams
   "mcpServer/elicitation/request": McpServerElicitationRequestParams
+  "item/tool/requestUserInput": ToolRequestUserInputParams
 }
+
+/** EXPERIMENTAL in Codex. `isOther` lets the user type an answer; `options` is null for a free-text question. */
+export type ToolRequestUserInputQuestion = {
+  id: string
+  header: string
+  question: string
+  isOther: boolean
+  isSecret: boolean
+  options: Array<{ label: string; description: string }> | null
+}
+export type ToolRequestUserInputParams = {
+  threadId: string
+  turnId: string
+  itemId: string
+  questions: Array<ToolRequestUserInputQuestion>
+}
+/** Answers keyed by question id. */
+export type ToolRequestUserInputResponse = { answers: { [id in string]?: { answers: Array<string> } } }
 
 /** Codex asks before every MCP tool call through an elicitation tagged `codex_approval_kind: "mcp_tool_call"`. */
 export interface McpServerElicitationRequestParams {
