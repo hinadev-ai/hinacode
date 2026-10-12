@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
+import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useSettings } from "./lib/settings.ts"
 import { notifyThreadEvent } from "./lib/threadNotifications.ts"
 import { router } from "./router.tsx"
@@ -15,6 +16,7 @@ import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
 import { usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
+import { useTerminals } from "./stores/terminals.ts"
 import { useThreads } from "./stores/threads.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
@@ -65,6 +67,11 @@ onPushEvent((event) => {
       return usePullRequests.getState().replace(event.threadId, event.links)
     case "thread.subagents":
       return useSubagents.getState().replace(event.threadId, event.subagents)
+    case "terminal.data":
+      return writeTerminal(event.id, event.data)
+    case "terminal.exited":
+      terminalExited(event.id, event.exitCode)
+      return useTerminals.getState().markExited(event.id, event.exitCode)
   }
 })
 
