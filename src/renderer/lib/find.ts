@@ -45,28 +45,23 @@ export function searchableText(part: MessagePart): string {
   }
 }
 
-/**
- * A folded command's searched text: its `description`, the row label, then its `command`, which shows in
- * full once the row opens. A command without a description labels its row with itself, so Find marks it
- * only in the full command, never in the truncated label.
- */
-export interface CommandText {
-  readonly description: string | null
+export interface CommandFindText {
+  readonly distinctLabel: string | null
   readonly command: string
 }
 
-export function commandText(call: ToolCall): CommandText {
+export function commandFindText(call: ToolCall): CommandFindText {
   const label = describeCommand(call)
   const { summary: command } = describeToolCall(call)
-  return { description: label === command ? null : label, command }
+  return { distinctLabel: label === command ? null : label, command }
 }
 
-export const commandSearchText = ({ description, command }: CommandText) =>
-  description === null ? command : `${description}\n${command}`
+export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
+  distinctLabel === null ? command : `${distinctLabel}\n${command}`
 
-/** Whether a match at `offset` in `commandSearchText` falls in the command rather than the description. */
-export const isInCommand = ({ description }: CommandText, offset: number) =>
-  offset >= (description === null ? 0 : description.length + 1)
+/** Whether a match at `offset` in `commandSearchText` falls in the command rather than the distinct label. */
+export const isInCommand = ({ distinctLabel }: CommandFindText, offset: number) =>
+  offset >= (distinctLabel === null ? 0 : distinctLabel.length + 1)
 
 /** Every match of `query` in the transcript, in reading order. */
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
@@ -86,7 +81,7 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
         continue
       }
       for (const [position, call] of block.calls.entries()) {
-        search(message.id, block.index + position, commandSearchText(commandText(call)))
+        search(message.id, block.index + position, commandSearchText(commandFindText(call)))
       }
     }
   }

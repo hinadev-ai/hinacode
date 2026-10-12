@@ -16,9 +16,10 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
-import { commandText, type FindRevealRequest, isInCommand } from "../lib/find.ts"
+import { commandFindText, type FindRevealRequest, isInCommand } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { describeCommand, describeToolCall } from "../lib/toolCall.ts"
+import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -244,14 +245,16 @@ export function CommandGroup({
 }
 
 function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
-  const text = commandText(call)
-  const { description, command } = text
-  const [open, setOpen] = useFindDisclosure(reveal !== null && isInCommand(text, reveal.match.offset) ? reveal : null)
+  const text = commandFindText(call)
+  const { distinctLabel, command } = text
+  const revealsCommand = reveal !== null && isInCommand(text, reveal.match.offset)
+  const revealsLabel = reveal !== null && !revealsCommand
+  const [open, setOpen] = useFindDisclosure(revealsCommand ? reveal : null)
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-1 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-        <span className="min-w-0 truncate" title={command}>
-          {description === null ? command : <Highlighted text={description} />}
+        <span className={cn("min-w-0", revealsLabel ? "wrap-anywhere" : "truncate")} title={command}>
+          {distinctLabel === null ? command : <Highlighted text={distinctLabel} />}
         </span>
         <RiArrowRightSLine
           aria-hidden
