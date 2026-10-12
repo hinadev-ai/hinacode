@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
-import { threadDetails, threadMenu } from "../support/ui.ts"
+import { threadDetails, threadDetailsTab, threadMenu } from "../support/ui.ts"
 
 const branchOf = (title: string) => `kk/${title.replace(/\s+/g, "-")}`
 
@@ -46,13 +46,13 @@ When("I change {string} and add {string} in the worktree", async ({ app }, chang
 })
 
 When("I refresh the changes", async ({ app }) => {
-  const panel = await threadDetails(app.page)
-  await panel.getByRole("button", { name: "Refresh changes", exact: true }).click()
+  const diff = await threadDetailsTab(app.page, "Diff")
+  await diff.getByRole("button", { name: "Refresh diff", exact: true }).click()
 })
 
 When("I open the diff of {string}", async ({ app }, file: string) => {
-  const panel = await threadDetails(app.page)
-  await panel.getByRole("region", { name: "Changes" }).getByRole("button").filter({ hasText: file }).click()
+  const diff = await threadDetailsTab(app.page, "Diff")
+  await diff.getByRole("button").filter({ hasText: file }).click()
 })
 
 When("I settle the thread and clean up its worktree", async ({ app }) => {
@@ -103,22 +103,17 @@ Then("git lists the worktree on the branch {string}", async ({ app, repo, names 
 })
 
 Then(
-  "the changes list {string} as modified and {string} as untracked",
-  async ({ app }, modified: string, untracked: string) => {
-    const panel = await threadDetails(app.page)
-    const changes = panel.getByRole("region", { name: "Changes" })
-    await expect(changes.getByRole("button").filter({ hasText: modified }).getByTitle("Modified")).toBeVisible()
-    await expect(
-      changes.getByRole("button").filter({ hasText: untracked }).getByTitle("New, not tracked"),
-    ).toBeVisible()
+  "the changes list {string} as modified and {string} as added",
+  async ({ app }, modified: string, added: string) => {
+    const diff = await threadDetailsTab(app.page, "Diff")
+    await expect(diff.getByRole("button").filter({ hasText: modified }).getByTitle("Modified")).toBeVisible()
+    await expect(diff.getByRole("button").filter({ hasText: added }).getByTitle("Added")).toBeVisible()
   },
 )
 
 Then("the diff of {string} shows {string}", async ({ app }, file: string, text: string) => {
-  const panel = await threadDetails(app.page)
-  await expect(
-    panel.getByRole("region", { name: "Changes" }).getByRole("listitem").filter({ hasText: file }),
-  ).toContainText(text)
+  const diff = await threadDetailsTab(app.page, "Diff")
+  await expect(diff.getByRole("listitem").filter({ hasText: file })).toContainText(text)
 })
 
 Then("the worktree is removed from disk but its branch is kept", async ({ app, repo }) => {

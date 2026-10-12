@@ -58,6 +58,22 @@ describe("foldEvent", () => {
     expect(failed.completedAt).toBe(now)
   })
 
+  test("a limit ends every outstanding tool and retains the provider explanation", () => {
+    const messages = [
+      assistant("m1", [{ type: "tool_call", callId: "c1", name: "Bash", input: {}, status: "running" }]),
+      user("u2"),
+      assistant("m3"),
+    ]
+    const next = foldTranscript(
+      messages,
+      { type: "turn_limited", limit: { kind: "org_spend", message: "Spend limit reached" } },
+      now,
+    )
+    expect(next[0]?.parts[0]).toMatchObject({ status: "error" })
+    expect(next[2]?.parts).toEqual([{ type: "text", text: "Spend limit reached" }])
+    expect(next[2]?.completedAt).toBe(now)
+  })
+
   test("events that do not touch the transcript return the same message", () => {
     const message = assistant("m1")
     expect(foldEvent(message, { type: "session_bound", providerSessionId: "s" }, now)).toBe(message)

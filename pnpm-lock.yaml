@@ -253,6 +253,9 @@ importers:
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1
+      tw-shimmer:
+        specifier: ^0.4.13
+        version: 0.4.13(tailwindcss@4.3.3)
       zustand:
         specifier: 5.0.15
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
@@ -4056,6 +4059,11 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
+
+  tw-shimmer@0.4.13:
+    resolution: {integrity: sha512-hEkTdCdOeDAr/Yx37U/W6BQjiXjLkGxugVIHsbCdSGDGHWzWMSyNNAqH+wVt0TinAtVsRsnwPYrIDbt2HSUAQg==}
+    peerDependencies:
+      tailwindcss: '>=4.0.0-0'
 
   type-fest@4.41.0:
     resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
@@ -8104,6 +8112,10 @@ snapshots:
       strip-bom: 3.0.0
 
   tslib@2.8.1: {}
+
+  tw-shimmer@0.4.13(tailwindcss@4.3.3):
+    dependencies:
+      tailwindcss: 4.3.3
 
   type-fest@4.41.0: {}
 

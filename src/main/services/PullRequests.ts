@@ -6,36 +6,21 @@ import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { type CommandError, Git } from "./Git.ts"
-import { GitHub, type GitHubError } from "./GitHub.ts"
+import {
+  GitHub,
+  type GitHubError,
+  parseGitHubPullRequestUrl,
+  type PullRequestUrlInvalidError,
+  requirePullRequestUrl,
+} from "./GitHub.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
-
-export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUrlInvalidError>()(
-  "PullRequestUrlInvalidError",
-  { url: Schema.String },
-) {
-  override get message(): string {
-    return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>)`
-  }
-}
 
 /** Only a thread working in a ready worktree has a branch of its own to open a pull request from. */
 export class NoBranchError extends Schema.TaggedError<NoBranchError>()("NoBranchError", { threadId: Schema.String }) {
   override get message(): string {
     return "This thread has no worktree branch to open a pull request from"
   }
-}
-
-/** Canonical `https://github.com/<owner>/<repo>/pull/<n>`, dropping sub-pages like `/files` and any query or hash. */
-export const parseGitHubPullRequestUrl = (raw: string): string | undefined => {
-  if (!URL.canParse(raw)) return undefined
-  const url = new URL(raw)
-  if (url.protocol !== "https:" || (url.hostname !== "github.com" && url.hostname !== "www.github.com"))
-    return undefined
-  const match = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\/.*)?$/.exec(url.pathname)
-  if (!match) return undefined
-  const [, owner, repo, number] = match
-  return `https://github.com/${owner}/${repo}/pull/${number}`
 }
 
 /** Pull requests an agent registered for a thread. Every change is pushed as `thread.pullRequests`. */
@@ -86,8 +71,7 @@ const make = Effect.gen(function* () {
 
   const link = (threadId: string, raw: string) =>
     Effect.gen(function* () {
-      const url = parseGitHubPullRequestUrl(raw.trim())
-      if (url === undefined) return yield* new PullRequestUrlInvalidError({ url: raw })
+      const url = yield* requirePullRequestUrl(raw)
       const row: PullRequestLink = { id: randomUUID(), threadId, url, createdAt: yield* nowIso }
       yield* sql`INSERT INTO pull_request_link ${sql.insert(row)} ON CONFLICT (thread_id, url) DO NOTHING`.pipe(
         Effect.mapError(persistence("pullRequests.link")),

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import type { AgentEvent, Subagent } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
@@ -20,6 +21,7 @@ import * as Mcp from "./mcp/index.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
+import * as Favicons from "./services/Favicons.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
@@ -104,7 +106,21 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
   listCommands: () => Effect.succeed([]),
-  runTurn: () => Stream.fromIterable(scriptedTurn),
+  runTurn: (input) =>
+    Stream.fromIterable(
+      input.prompt === "simulate usage limit"
+        ? [
+            {
+              type: "turn_limited",
+              limit: {
+                kind: "usage",
+                message: "Usage limit reached",
+                reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+              },
+            },
+          ]
+        : scriptedTurn,
+    ),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
@@ -122,8 +138,11 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 /** The production composition from `index.ts`, with scripted agent providers and a stubbed Automations. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-    Settings.layer,
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
     Attachments.layer,
     Search.layer,
@@ -136,7 +155,7 @@ const makeLayer = (dbPath: string) => {
   const base = Layer.mergeAll(agents, automationsStub)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
-    Layer.provideMerge(GitHub.layer),
+    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
@@ -338,14 +357,36 @@ describe("projects, threads and settings over rpc", () => {
     )
   })
 
-  test("a thread starts supervised and keeps the access mode it is switched to", async () => {
+  test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
-    expect(thread.accessMode).toBe("supervised")
+    expect(thread.accessMode).toBe("full")
 
-    result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
+    result(await invoke("settings.set", { defaultAccessMode: "auto" }))
+    const next = result(await invoke("threads.create", { projectId: project.id }))
+    expect(next.accessMode).toBe("auto")
+    result(await invoke("settings.set", { defaultAccessMode: "full" }))
+
+    result(await invoke("threads.update", { id: thread.id, accessMode: "supervised" }))
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
-    expect(listed?.accessMode).toBe("full")
+    expect(listed?.accessMode).toBe("supervised")
+  })
+
+  test("reordering a thread keeps its updatedAt", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const created = result(await invoke("threads.create", { projectId: project.id }))
+    // Last touched at the epoch, so a reorder that bumps updatedAt to the real clock cannot go unnoticed.
+    const thread = await runtime.runPromise(
+      Threads.Threads.use((threads) => threads.update({ id: created.id, title: "old" })).pipe(
+        Effect.provide(TestClock.layer()),
+      ),
+    )
+    expect(thread.updatedAt).toBe("1970-01-01T00:00:00.000Z")
+
+    const moved = result(await invoke("threads.update", { id: thread.id, sortIndex: thread.sortIndex + 10 }))
+    expect(moved.updatedAt).toBe(thread.updatedAt)
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed).toMatchObject({ sortIndex: thread.sortIndex + 10, updatedAt: thread.updatedAt })
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
@@ -445,5 +486,42 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+})
+
+describe("limited threads over rpc", () => {
+  test("persists a limit, schedules and cancels once, then allows a normal retry", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate usage limit" }))
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("limited")
+    const scheduled = result(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true }))
+    expect(scheduled.usageLimit).toMatchObject({ kind: "usage", reset: { autoResume: true } })
+    const cancelled = result(await invoke("threads.resumeAtReset", { id: thread.id, enabled: false }))
+    expect(cancelled.usageLimit).toMatchObject({ kind: "usage", reset: { autoResume: false } })
+    await expect
+      .poll(
+        async () => result(await invoke("threads.transcript", { threadId: thread.id })).messages.at(-1)?.completedAt,
+      )
+      .not.toBeNull()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "retry" }))
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("idle")
+    expect(result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.usageLimit).toBeNull()
+    expect(failure(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true })).tag).toBe("AgentError")
+  })
+
+  test("decodes the schedule request before the handler sees it", async () => {
+    const response = await electron.handlers.get(RPC_CHANNEL)!(
+      { sender: {}, senderFrame: mainFrame },
+      {
+        method: "threads.resumeAtReset",
+        payload: { id: "thread", enabled: "true" },
+      },
+    )
+    expect(response).toMatchObject({ error: { tag: "SchemaError" } })
   })
 })

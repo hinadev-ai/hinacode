@@ -79,7 +79,7 @@ describe("Search.threads", () => {
           output: "hidden output",
           status: "done",
         },
-        { type: "file_change", path: "src/db/0006_messages_fts.ts", diff: "+hidden diff" },
+        { type: "file_change", path: "src/db/0008_messages_fts.ts", diff: "+hidden diff" },
       ])
       const search = yield* Search.Search
 

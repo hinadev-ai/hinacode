@@ -21,7 +21,8 @@ interface ControlProps {
   readonly onError: (message: string) => void
 }
 
-const triggerClass = "border-0 text-xs"
+const triggerClass =
+  "rounded-full border-0 text-xs text-muted-foreground hover:bg-foreground/6 hover:text-foreground dark:bg-transparent dark:hover:bg-foreground/9"
 
 const update = async (patch: RpcRequest<"threads.update">, onError: (message: string) => void) => {
   try {
@@ -177,7 +178,7 @@ export function FastModeToggle({ thread, onError }: ControlProps) {
   )
 }
 
-const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
+export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
   supervised: { icon: RiShieldUserLine, label: m.access_supervised },
   auto: { icon: RiShieldCheckLine, label: m.access_auto },
   full: { icon: RiLockUnlockLine, label: m.access_full },

@@ -121,7 +121,7 @@ classDiagram
   AgentProvider <|.. CodexProvider
 ```
 
-Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `turn_completed` and `turn_failed`. Everything after the provider is agent-agnostic. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
+Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
 Adding a backend means one `AgentProvider` implementation in `src/main/agents/`, one entry in the `providers` record in `AgentRunner.ts`, and one literal in `ProviderId`.
 
@@ -221,7 +221,7 @@ flowchart LR
 - **One normalization point.** `resolveKeymap` accepts any chord TanStack can parse: lowercase defaults, overrides saved before the switch, and recordings such as `Mod+Shift+[KeyK]`. The recorder stores physical keys, so a binding stays on the same key across layouts. Defaults are logical keys with a physical fallback.
 - **Conflicts** compare chords by their display label (`sameChord`), so a recorded physical key and a default on the same key count as one shortcut. `useKeybindings` binds each chord once, first command in registry order winning.
 - **Fields.** Plain keys and Shift or Alt combos typed into a field never run a command. Control and Meta chords do.
-- **Terminal scope.** `useTerminalScope(ref)` marks an element that owns every key without Control or Meta, including Escape. App commands skip those keys there and leave the event untouched. Control and Meta chords still run app commands when the element lets the keydown bubble, which `isAppChord(event)` decides for xterm's custom key handler.
+- **Terminal scope.** `useTerminalScope(ref)` marks an element that owns every key without Control or Meta, including Escape. App commands skip those keys there and leave the event untouched. Control and Meta chords still run app commands when the element lets the keydown bubble, so the terminal engine lets every keydown for which `isAppChord(event)` is true reach the app.
 
 ## Data model
 
@@ -257,6 +257,7 @@ erDiagram
     text provider_session_id
     text status
     int sort_index
+    text turn_base_tree "git tree at latest turn start"
   }
   message {
     text id PK
@@ -297,10 +298,16 @@ stateDiagram-v2
     running --> awaiting_approval: approval_requested / secret_requested
     awaiting_approval --> running: approval_resolved / secret_resolved
     running --> idle: turn_completed / turn_failed
+    running --> limited: turn_limited
+    awaiting_approval --> limited: turn_limited
+    limited --> running: send / scheduled reset retry
+    limited --> settled: settle
     awaiting_approval --> idle: interrupt
     idle --> settled: settle
   }
 ```
+
+Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and settling clear the limit. Restart preserves limited threads and scheduled requests.
 
 ```mermaid
 stateDiagram-v2

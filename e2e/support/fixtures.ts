@@ -27,6 +27,9 @@ export interface WebhookState {
 }
 
 interface TestFixtures {
+  readonly usageLimitApp: KkcodeApp
+  readonly automaticResumeApp: KkcodeApp
+  readonly orgSpendLimitApp: KkcodeApp
   readonly names: Names
   /** A throwaway git repository on `main` with a README and a gitignored `.env`, inside the app's user-data directory. */
   readonly repo: string
@@ -48,6 +51,45 @@ interface WorkerFixtures {
 // Playwright's `use` callback is not React's hook of the same name.
 /* oxlint-disable react/rules-of-hooks, no-empty-pattern */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
+  usageLimitApp: async ({}, provide, testInfo) => {
+    const app = await spawnApp({ mockClaude: "usage-limit", mockResetMs: 60_000 })
+    try {
+      await provide(app)
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach("usage-limit-screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
+      }
+    } finally {
+      await app.close()
+    }
+  },
+  automaticResumeApp: async ({}, provide, testInfo) => {
+    const app = await spawnApp({ mockClaude: "usage-limit", mockResetMs: 5_000 })
+    try {
+      await provide(app)
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach("automatic-resume-screenshot", {
+          body: await app.page.screenshot(),
+          contentType: "image/png",
+        })
+      }
+    } finally {
+      await app.close()
+    }
+  },
+  orgSpendLimitApp: async ({}, provide, testInfo) => {
+    const app = await spawnApp({ mockClaude: "org-spend-limit" })
+    try {
+      await provide(app)
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach("org-spend-limit-screenshot", {
+          body: await app.page.screenshot(),
+          contentType: "image/png",
+        })
+      }
+    } finally {
+      await app.close()
+    }
+  },
   app: [
     async ({}, provide) => {
       const app = await spawnApp()

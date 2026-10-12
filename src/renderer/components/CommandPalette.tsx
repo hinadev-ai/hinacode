@@ -20,11 +20,20 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
   const [settled, setSettled] = useState<ReadonlyMap<SourceResult, ReadonlyArray<PaletteItem>>>(new Map())
 
   useEffect(() => {
+    let current = true
     for (const result of results) {
       if (!(result instanceof Promise)) continue
-      void result.then((items) =>
-        setSettled((previous) => (previous.has(result) ? previous : new Map(previous).set(result, items))),
-      )
+      void result.then((items) => {
+        if (!current) return
+        setSettled((previous) =>
+          previous.has(result)
+            ? previous
+            : new Map([...previous].filter(([key]) => results.includes(key))).set(result, items),
+        )
+      })
+    }
+    return () => {
+      current = false
     }
   }, [results])
 

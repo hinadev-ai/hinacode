@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
+import { UsageLimit } from "./limits.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex"])
 export type ProviderId = typeof ProviderId.Type
@@ -81,10 +82,15 @@ export const SecretRequest = Schema.Struct({
 })
 export type SecretRequest = typeof SecretRequest.Type
 
+/** How much of the model's context window the conversation fills, as of its latest model request. */
+export const ContextWindow = Schema.Struct({ usedTokens: Schema.Number, maxTokens: Schema.Number })
+export type ContextWindow = typeof ContextWindow.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
   costUsd: Schema.optional(Schema.Number),
+  context: Schema.optional(ContextWindow),
 })
 export type TokenUsage = typeof TokenUsage.Type
 
@@ -139,6 +145,7 @@ export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
   Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
 export type AgentEvent = typeof AgentEvent.Type
 

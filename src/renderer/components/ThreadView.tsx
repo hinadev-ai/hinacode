@@ -1,8 +1,12 @@
 import type { LegendListRef } from "@legendapp/list/react"
+import { useAtomValue } from "@effect/atom-react"
+import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useMemo, useRef } from "react"
 import { isThreadBusy, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
+import { repositoryAtom } from "../lib/rpc.ts"
+import { ThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -14,6 +18,7 @@ import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
@@ -24,11 +29,13 @@ const statusLabel = {
   idle: m.thread_status_idle,
   running: m.thread_status_running,
   awaiting_approval: m.thread_status_awaiting_approval,
+  limited: m.thread_status_limited,
   settled: m.thread_status_settled,
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 
 export function ThreadView({ thread, actions }: { thread: Thread; actions?: ReactNode }) {
+  const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
@@ -39,14 +46,22 @@ export function ThreadView({ thread, actions }: { thread: Thread; actions?: Reac
           <ProviderIcon provider={thread.provider} />
           {providerLabel[thread.provider]()}
         </span>
-        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+        <span
+          data-status={thread.status}
+          className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground data-[status=limited]:border-attention/30 data-[status=limited]:bg-attention/10 data-[status=limited]:text-attention"
+        >
           {statusLabel[thread.status]()}
         </span>
         {actions}
       </header>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-        <Transcript thread={thread} />
+        <ThreadRepository value={repository}>
+          <Transcript thread={thread} />
+        </ThreadRepository>
       </div>
+      {thread.status === "limited" && thread.usageLimit !== null && (
+        <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />
+      )}
       <Composer thread={thread} />
     </div>
   )

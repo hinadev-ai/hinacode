@@ -1,8 +1,10 @@
 import { create } from "zustand"
 import { getPanelLayout } from "../lib/panelLayout.ts"
+import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from "../lib/sidebarWidth.ts"
 
 interface UiState {
   readonly sidebarOpen: boolean
+  readonly sidebarWidth: number
   readonly sidePanelOpen: boolean
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
@@ -29,11 +31,14 @@ interface UiState {
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
   readonly setFindQuery: (query: string) => void
+  /** Clamps, applies and persists the desktop sidebar width. */
+  readonly setSidebarWidth: (width: number) => void
 }
 
 /** App-wide UI state driven by keybindings and shared across components without prop drilling. */
 export const useUi = create<UiState>()((set) => ({
   sidebarOpen: true,
+  sidebarWidth: loadSidebarWidth(),
   sidePanelOpen: true,
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
@@ -72,4 +77,9 @@ export const useUi = create<UiState>()((set) => ({
     })),
   closeFind: () => set({ findThreadId: null }),
   setFindQuery: (findQuery) => set({ findQuery, findMessageId: null }),
+  setSidebarWidth: (width) => {
+    const sidebarWidth = clampSidebarWidth(width)
+    saveSidebarWidth(sidebarWidth)
+    set({ sidebarWidth })
+  },
 }))
