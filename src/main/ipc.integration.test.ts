@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { createConnection } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
@@ -866,10 +867,24 @@ describe("remote mode", () => {
     expect((await stale.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
   })
 
-  test("turning remote off closes the listener", async () => {
+  test("turning remote off releases the port and turning it back on listens again", async () => {
     result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
-    const nobody = phone(port)
-    await new Promise<void>((resolve) => nobody.socket.once("error", () => resolve()))
+    const refused = await new Promise<string>((resolve) => {
+      const probe = createConnection({ host: "127.0.0.1", port })
+      probe.once("error", (error: NodeJS.ErrnoException) => resolve(error.code ?? "error"))
+      probe.once("connect", () => {
+        probe.destroy()
+        resolve("connected")
+      })
+    })
+    expect(refused).toBe("ECONNREFUSED")
+
+    result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+    const back = phone(port)
+    await back.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await back.ready()
+    back.socket.close()
   })
 })
