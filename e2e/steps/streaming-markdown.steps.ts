@@ -112,9 +112,16 @@ When("the agent appends Markdown", async ({ app }, text: string) => {
   await app.pushEvents([eventPush(stream, { type: "text_delta", text })])
 })
 
-Then("the unresolved reference {string} is shown as text", async ({ app }, text: string) => {
-  await expect(article(app.page).locator("p")).toHaveText([text, "A separate paragraph."])
-  await expect(article(app.page).getByRole("link")).toHaveCount(0)
+Then("the reply shows Writing while its trailing text is incomplete", async ({ app }) => {
+  await expect(article(app.page)).toHaveText("Writing…")
+  await expect(article(app.page).locator("pre code, table, a")).toHaveCount(0)
+})
+
+When("the agent finishes its reply", async ({ app }) => {
+  const stream = streamOf(app)
+  await app.pushEvents([eventPush(stream, { type: "turn_completed" })])
+  await expect(article(app.page)).toHaveAttribute("aria-busy", "false")
+  await expect(article(app.page)).not.toContainText("Writing…")
 })
 
 Then("the Markdown link {string} points to {string}", async ({ app }, label: string, href: string) => {
@@ -144,7 +151,6 @@ Then("the Markdown table has a row {string} with value {string}", async ({ app }
 Then("the completed Markdown exactly matches its full snapshot", async ({ app }) => {
   const stream = streamOf(app)
   const rendered = article(app.page)
-  await app.pushEvents([eventPush(stream, { type: "turn_completed" })])
   await expect(rendered).toHaveAttribute("aria-busy", "false")
   const html = await renderedHtml(app.page)
   const snapshot: Message = {
@@ -194,21 +200,22 @@ When("the agent requests a tool and approval behind queued text", async ({ app }
   ])
 })
 
-Then("the approval first appears with the preceding text already rendered", async ({ app }) => {
+Then("the approval first appears with finished text and Writing for the trailing text", async ({ app }) => {
   const stream = streamOf(app)
   if (!stream.firstBoundary || !stream.firstToolBoundary) throw new Error("boundary observations were not armed")
   expect(await stream.firstToolBoundary()).toContain("Before tool.")
   const text = await stream.firstBoundary()
   expect(text).toContain("Before tool.")
   expect(text).toContain("After tool.")
-  expect(text).toContain("Before approval.")
+  expect(text).not.toContain("Before approval.")
+  expect(text).toContain("Writing…")
   await expect(app.page.getByRole("region", { name: "Claude Code needs your approval" })).toBeVisible()
   await expect(app.page.getByRole("button", { name: "Allow", exact: true })).toBeEnabled()
 })
 
 Then("the transcript keeps text on both sides of the tool and reasoning", async ({ app }) => {
   const rendered = article(app.page)
-  await expect(rendered.locator(":scope > p")).toHaveText(["Before tool.", "After tool.", "Before approval."])
+  await expect(rendered.locator(":scope > div > p")).toHaveText(["Before tool.", "After tool."])
   await expect(rendered.getByRole("button", { name: /Read.*README\.md.*Running/ })).toBeVisible()
   await rendered.getByRole("button", { name: "Reasoning", exact: true }).click()
   await expect(rendered).toContainText("Check the result.")
@@ -217,7 +224,7 @@ Then("the transcript keeps text on both sides of the tool and reasoning", async 
     "ReadREADME.mdRunning",
     "After tool.",
     "ReasoningCheck the result.",
-    "Before approval.",
+    "Writing…",
   ])
 })
 
@@ -243,6 +250,8 @@ Then("the tool result is inspectable and the approval disappears", async ({ app 
   await expect(rendered.getByRole("heading", { name: "Output", exact: true })).toBeVisible()
   await expect(rendered.locator("pre").last()).toHaveText("Repository instructions")
   await expect(rendered).toHaveAttribute("aria-busy", "false")
+  await expect(rendered).toContainText("Before approval.")
+  await expect(rendered).not.toContainText("Writing…")
 })
 
 When("the agent sends its final text and {word} in one burst", async ({ app }, ending: string) => {
@@ -279,7 +288,10 @@ const scrollContainer = (page: Page) =>
 When("I type and scroll while the agent streams many Markdown blocks", async ({ app }) => {
   const stream = streamOf(app)
   const initial = Array.from({ length: 80 }, (_, index) => `Paragraph ${index}: inspect **this** output.\n\n`).join("")
-  await app.pushEvents([eventPush(stream, { type: "text_delta", text: initial })])
+  await app.pushEvents([
+    eventPush(stream, { type: "text_delta", text: initial }),
+    eventPush(stream, { type: "reasoning_delta", text: "Continue the reply." }),
+  ])
   await expect(article(app.page)).toContainText("Paragraph 79:")
   const viewport = scrollContainer(app.page)
   await expect.poll(() => viewport.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(500)
@@ -292,11 +304,10 @@ When("I type and scroll while the agent streams many Markdown blocks", async ({ 
     10,
   )
   try {
-    await expect(article(app.page)).toContainText("Live 0:")
-    const composer = app.page.getByRole("textbox", { name: "Message", exact: true })
-    const paragraphs = await article(app.page).locator("p").count()
+    await expect(article(app.page)).toContainText("Writing…")
+    const composer = app.page.getByLabel("Message", { exact: true })
     await composer.pressSequentially("Keep this draft")
-    await expect.poll(() => article(app.page).locator("p").count()).toBeGreaterThan(paragraphs)
+    await expect(article(app.page)).not.toContainText("Live 0:")
     await composer.pressSequentially(" while output arrives")
     await expect(composer).toHaveValue("Keep this draft while output arrives")
     await expect
@@ -310,7 +321,9 @@ When("I type and scroll while the agent streams many Markdown blocks", async ({ 
     await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(10)
     await expect(article(app.page)).not.toContainText("Live 299:")
     stream.readingPosition = await viewport.evaluate((node) => node.scrollTop)
-    await expect(article(app.page)).toContainText("Live 299:")
+    await production
+    await expect(article(app.page)).toContainText("Writing…")
+    await expect(article(app.page)).not.toContainText("Live 299:")
   } finally {
     await production
   }
@@ -319,10 +332,11 @@ When("I type and scroll while the agent streams many Markdown blocks", async ({ 
 Then("my draft and reading position survive the continuing stream", async ({ app }) => {
   const stream = streamOf(app)
   if (stream.readingPosition === undefined) throw new Error("reading position was not recorded")
-  await expect(app.page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
-    "Keep this draft while output arrives",
-  )
+  await expect(app.page.getByLabel("Message", { exact: true })).toHaveValue("Keep this draft while output arrives")
   await expect.poll(() => scrollContainer(app.page).evaluate((node) => node.scrollTop)).toBe(stream.readingPosition)
   await expect(article(app.page)).toHaveAttribute("aria-busy", "true")
   await app.pushEvents([eventPush(stream, { type: "turn_completed" })])
+  await expect(article(app.page)).toContainText("Live 299:")
+  await expect(article(app.page)).not.toContainText("Writing…")
+  await expect.poll(() => scrollContainer(app.page).evaluate((node) => node.scrollTop)).toBe(stream.readingPosition)
 })
