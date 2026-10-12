@@ -610,5 +610,42 @@
   "settings_notifications_not_determined": "通知需要你的許可",
   "settings_notifications_not_determined_hint": "macOS 會在 kkcode 第一次傳送通知時詢問。現在就允許，才不會錯過第一則通知。",
   "settings_notifications_allow": "允許通知",
-  "notification_open": "開啟"
+  "notification_open": "開啟",
+  "settings_remote": "遠端",
+  "remote_description": "用 kkcode 手機 App 操作執行緒。手機會直接連線到這台電腦，所以需要在同一個網路或 Tailnet 上。",
+  "remote_enable_label": "允許遠端控制",
+  "remote_enable_hint": "已配對的手機可以讀取執行緒、回覆核准請求、傳送提示，並在工作樹中開啟終端機。",
+  "remote_status_off": "已關閉",
+  "remote_status_checking": "正在檢查監聽狀態…",
+  "remote_status_starting": "正在啟動監聽…",
+  "remote_status_listening": "正在監聽 {address}",
+  "remote_status_connected": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已連線 {count} 台裝置",
+        "countPlural=other": "已連線 {count} 台裝置"
+      }
+    }
+  ],
+  "remote_status_error": "無法監聽：{message}",
+  "remote_bind_label": "遠端監聽位址",
+  "remote_bind_loopback": "僅限這台電腦（127.0.0.1）",
+  "remote_bind_all": "所有網路介面（0.0.0.0）",
+  "remote_bind_loopback_hint": "只有這台電腦上的程式可以連線。要從手機連線，請選擇所有網路介面。",
+  "remote_bind_all_hint": "網路或 Tailnet 上的裝置可以連線。每台裝置仍需要存取權杖。",
+  "remote_network_note": "透過 Tailscale 連線時，WireGuard 會加密連線。在一般區域網路上連線不會加密，所以在不信任的網路上請關閉遠端控制。",
+  "remote_port_label": "連接埠",
+  "remote_pair_title": "配對手機",
+  "remote_pair_loading": "正在載入配對碼…",
+  "remote_pair_failed": "無法載入配對碼：{message}",
+  "remote_pair_host_label": "位址",
+  "remote_pair_host_hint": "手機用來連線到這台電腦的位址。不在家時請選擇 Tailscale 名稱。",
+  "remote_pair_qr_label": "配對 QR 碼",
+  "remote_pair_url_label": "配對網址",
+  "remote_pair_url_copy": "複製配對網址",
+  "remote_pair_token_hint": "QR 碼和網址包含存取權杖。任何掃描它的人都能控制 kkcode。",
+  "remote_rotate": "更換權杖",
+  "remote_rotate_hint": "產生新的權杖，並中斷所有已配對手機的連線。"
 }

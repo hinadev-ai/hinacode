@@ -8,6 +8,7 @@ import {
   RiPaletteLine,
   RiPlugLine,
   RiSettings3Line,
+  RiSmartphoneLine,
 } from "react-icons/ri"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
@@ -16,6 +17,7 @@ import { IntegrationSettings } from "../components/settings/IntegrationSettings.
 import { KeybindingSettings } from "../components/settings/KeybindingSettings.tsx"
 import { ModelSettings } from "../components/settings/ModelSettings.tsx"
 import { NotificationSettings } from "../components/settings/NotificationSettings.tsx"
+import { RemoteSettings } from "../components/settings/RemoteSettings.tsx"
 import { m } from "../paraglide/messages.js"
 
 interface SettingsPage {
@@ -37,6 +39,7 @@ const pages: ReadonlyArray<SettingsPage> = [
   },
   { id: "keybindings", label: m.settings_keybindings, icon: RiKeyboardLine, component: KeybindingSettings },
   { id: "integrations", label: m.settings_integrations, icon: RiPlugLine, component: IntegrationSettings },
+  { id: "remote", label: m.settings_remote, icon: RiSmartphoneLine, component: RemoteSettings },
   { id: "automations", label: m.settings_automations, icon: RiFlashlightLine, component: AutomationSettings },
 ]
 

@@ -186,6 +186,14 @@ export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
 )
 
+/** Polls the remote listener every 2s while subscribed so the device count stays current. */
+export const remoteStatusAtom = Atom.make(
+  Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
+)
+
+/** Not kept alive, so reopening the page asks again and picks up a changed network. */
+export const remotePairingAtom = Atom.make(call("remote.pairing", undefined))
+
 const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
 
