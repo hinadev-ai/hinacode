@@ -11,7 +11,6 @@ import {
   useState,
   useTransition,
 } from "react"
-import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
@@ -21,6 +20,14 @@ import { m } from "../paraglide/messages.js"
 import { emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
+import {
+  ComposerActions,
+  ComposerAttachButton,
+  ComposerBar,
+  Composer as ComposerRoot,
+  ComposerSend,
+  ComposerToolbar,
+} from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import {
   AccessPicker,
@@ -32,7 +39,6 @@ import {
 } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
-import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -73,7 +79,8 @@ export function Composer({ thread }: { thread: Thread }) {
   const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const canSend = (text.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
+  const hasDraft = text.trim() !== "" || attachments.length > 0
+  const canSend = hasDraft && !isSending && !isStaging
 
   const send = () => {
     if (!canSend) return
@@ -171,56 +178,52 @@ export function Composer({ thread }: { thread: Thread }) {
 
   return (
     <form onSubmit={onSubmit} className="flex max-h-3/5 min-h-0 shrink-0 flex-col px-3 pb-3">
-      <div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
-        {attachments.length > 0 && (
-          <ul
-            aria-label={m.attachment_pending_label()}
-            className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
-          >
-            {attachments.map((attachment) => (
-              <li key={attachment.id}>
-                <PendingAttachment
-                  attachment={attachment}
-                  onRemove={() => useDrafts.getState().removeAttachment(thread.id, attachment.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-        <ComposerInput
-          ref={textareaRef}
-          aria-label={m.thread_composer_label()}
-          placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
-          value={text}
-          onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
-          commands={commands}
-          files={files}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          rows={2}
-          className="min-h-[calc(1lh+1rem)]"
-        />
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <AttachButton onClick={pickFiles} disabled={isStaging} />
-          {unstarted && <AgentPicker thread={thread} onError={setError} />}
-          <ModelPicker thread={thread} onError={setError} />
-          <EffortPicker thread={thread} onError={setError} />
-          <FastModeToggle thread={thread} onError={setError} />
-          <AccessPicker thread={thread} onError={setError} />
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+      <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
+        <ComposerBar className="min-h-0 focus-within:border-ring">
+          {attachments.length > 0 && (
+            <ul
+              aria-label={m.attachment_pending_label()}
+              className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+            >
+              {attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <PendingAttachment
+                    attachment={attachment}
+                    onRemove={() => useDrafts.getState().removeAttachment(thread.id, attachment.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          <ComposerInput
+            ref={textareaRef}
+            aria-label={m.thread_composer_label()}
+            placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
+            value={text}
+            onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+            commands={commands}
+            files={files}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            rows={2}
+            className="min-h-[calc(1lh+1rem)]"
+          />
+          <ComposerToolbar className="shrink-0 gap-2">
+            <ComposerActions className="min-w-0 flex-1 flex-wrap">
+              <AttachButton onClick={pickFiles} disabled={isStaging} />
+              {unstarted && <AgentPicker thread={thread} onError={setError} />}
+              <ModelPicker thread={thread} onError={setError} />
+              <EffortPicker thread={thread} onError={setError} />
+              <FastModeToggle thread={thread} onError={setError} />
+              <AccessPicker thread={thread} onError={setError} />
+            </ComposerActions>
             <ContextRing threadId={thread.id} />
-            {busy && (
-              <Button type="button" size="sm" variant="secondary" onClick={stop}>
-                <RiStopFill aria-hidden />
-                {m.thread_composer_stop()}
-              </Button>
-            )}
-            <SendButton steer={busy} disabled={!canSend} />
-          </div>
-        </div>
-      </div>
+            <SendButton busy={busy} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
+          </ComposerToolbar>
+        </ComposerBar>
+      </ComposerRoot>
       {unstarted && <WorkspacePicker thread={thread} worktree={worktree} />}
       {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
     </form>
@@ -231,33 +234,39 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   return (
     <Tooltip>
       <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            onClick={onClick}
-            disabled={disabled}
-            aria-label={m.attachment_add()}
-          >
-            <RiAttachment2 aria-hidden />
-          </Button>
-        }
+        render={<ComposerAttachButton onClick={onClick} disabled={disabled} aria-label={m.attachment_add()} />}
       />
       <TooltipContent>{m.attachment_add_hint()}</TooltipContent>
     </Tooltip>
   )
 }
 
-function SendButton({ steer, disabled }: { steer: boolean; disabled: boolean }) {
-  const label = steer ? m.thread_composer_steer() : m.thread_composer_send()
+/** While the agent runs, an empty composer offers Stop and a draft offers Steer. */
+function SendButton({
+  busy,
+  hasDraft,
+  canSend,
+  onStop,
+}: {
+  busy: boolean
+  hasDraft: boolean
+  canSend: boolean
+  onStop: () => void
+}) {
+  const stopping = busy && !hasDraft
+  const label = stopping ? m.thread_composer_stop() : busy ? m.thread_composer_steer() : m.thread_composer_send()
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button type="submit" size="icon-sm" disabled={disabled} aria-label={label}>
-            {steer ? <RiSteering2Line aria-hidden /> : <RiSendPlaneLine aria-hidden />}
-          </Button>
+          <ComposerSend
+            type={stopping ? "button" : "submit"}
+            onClick={stopping ? onStop : undefined}
+            streaming={stopping}
+            idle={!canSend}
+            disabled={!stopping && !canSend}
+            aria-label={label}
+          />
         }
       />
       <TooltipContent>{label}</TooltipContent>

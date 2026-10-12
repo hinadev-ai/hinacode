@@ -1,6 +1,12 @@
 # Chat with Claude Code
 
-A user sends a prompt in a Claude Code thread and watches the reply stream in, with tool calls shown as rows, permission requests shown as an approval card, a Stop button that interrupts the turn, and the conversation restored and resumable after the app restarts. Every step here costs a real Claude turn.
+A user sends a prompt in a Claude Code thread and watches the reply stream in, with tool calls shown as rows, permission requests shown as an approval card, a Stop button that interrupts the turn, and the conversation restored and resumable after the app restarts. The manual turns below use a real Claude account.
+
+## Usage-limit simulation
+
+`e2e/features/limited-threads.feature` covers the Limited sidebar and header state, callouts in both themes and locales, persistence, one automatic retry after reset, cancellation, and manual retry. It runs through the production mapper and runner without using a Claude account.
+
+For a manual simulation, launch with `KKCODE_MOCK_CLAUDE=usage-limit` and an isolated `KKCODE_USER_DATA`. The first send reaches the limit, and the next attempt succeeds. Set `KKCODE_MOCK_RESET_MS=5000` for a five-second reset. `KKCODE_MOCK_CLAUDE=org-spend-limit` reproduces the organization cap, including its misleading session-reset text. That callout has no automatic resume action. The mock also disables model-based thread naming.
 
 ## Sub-features
 

@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
+import { UsageLimit } from "./limits.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex"])
 export type ProviderId = typeof ProviderId.Type
@@ -144,6 +145,7 @@ export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
   Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
 export type AgentEvent = typeof AgentEvent.Type
 
