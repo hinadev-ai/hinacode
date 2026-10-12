@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import {
+  type AccountInfo,
   type EffortLevel,
   type PermissionMode,
   query,
@@ -11,7 +12,7 @@ import {
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
-import type { AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
@@ -70,6 +71,31 @@ interface Session extends MapState, ApprovalSession {
   pendingSteers: number
   /** Turns whose consumer left before their result; their remaining messages must not reach the next turn. */
   abandonedTurns: number
+}
+
+const externalServices: Record<Exclude<NonNullable<AccountInfo["apiProvider"]>, "firstParty">, string> = {
+  bedrock: "Amazon Bedrock",
+  vertex: "Google Vertex AI",
+  foundry: "Microsoft Foundry",
+  anthropicAws: "Claude Platform on AWS",
+  anthropicGoogleCloud: "Claude Platform on Google Cloud",
+  mantle: "Mantle",
+  gateway: "an enterprise gateway",
+}
+
+const toAccount = (info: AccountInfo): AgentAccount => {
+  if (info.apiProvider !== undefined && info.apiProvider !== "firstParty") {
+    return { type: "external", service: externalServices[info.apiProvider] }
+  }
+  if (info.email !== undefined || info.subscriptionType !== undefined) {
+    return {
+      type: "subscription",
+      email: info.email ?? null,
+      plan: info.subscriptionType ?? null,
+      organization: info.organization ?? null,
+    }
+  }
+  return info.apiKeySource === undefined ? { type: "signedOut" } : { type: "apiKey" }
 }
 
 const agentError = (message: string) => (cause: unknown) =>
@@ -394,16 +420,25 @@ export const layer = Layer.effect(
         yield* Queue.offer(session.prompts, message)
       })
 
-    const fetchModels = Effect.gen(function* () {
-      const prompts = yield* Queue.unbounded<SDKUserMessage>()
-      const probe = query({
-        prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
-        options: { ...baseOptions(), settingSources: [], persistSession: false },
+    /** Asks a throwaway CLI one question, then closes it. It loads no settings unless `options` asks for them. */
+    const probe = <A>(read: (probe: Query) => Promise<A>, failure: string, options: Options = {}) =>
+      Effect.gen(function* () {
+        const prompts = yield* Queue.unbounded<SDKUserMessage>()
+        const cli = query({
+          prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
+          options: { ...baseOptions(), settingSources: [], persistSession: false, ...options },
+        })
+        return yield* Effect.tryPromise({ try: () => read(cli), catch: agentError(failure) }).pipe(
+          Effect.timeout(Duration.seconds(30)),
+          Effect.catchTag("TimeoutError", () =>
+            Effect.fail(new AgentError({ provider: "claude", message: `${failure}: timed out` })),
+          ),
+          Effect.ensuring(Effect.sync(() => cli.close())),
+        )
       })
-      const models = yield* Effect.tryPromise({
-        try: () => probe.supportedModels(),
-        catch: agentError("Failed to list Claude models"),
-      }).pipe(Effect.timeout(Duration.seconds(30)), Effect.ensuring(Effect.sync(() => probe.close())))
+
+    const fetchModels = Effect.gen(function* () {
+      const models = yield* probe((cli) => cli.supportedModels(), "Failed to list Claude models")
       const byId = new Map<string, ModelInfo>()
       for (const model of models) {
         if (model.value === "default") continue
@@ -426,23 +461,12 @@ export const layer = Layer.effect(
 
     /** A throwaway CLI in `cwd` that loads the same settings, skills and plugins a thread there would. */
     const probeCommands = (cwd: string) =>
-      Effect.gen(function* () {
-        const prompts = yield* Queue.unbounded<SDKUserMessage>()
-        const probe = query({
-          prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
-          options: { ...baseOptions(), cwd, settingSources: ["user", "project", "local"], persistSession: false },
-        })
-        return yield* Effect.tryPromise({
-          try: () => probe.supportedCommands(),
-          catch: agentError("Failed to list Claude commands"),
-        }).pipe(
-          Effect.timeout(Duration.seconds(30)),
-          Effect.catchTag("TimeoutError", () =>
-            Effect.fail(new AgentError({ provider: "claude", message: "Timed out listing Claude commands" })),
-          ),
-          Effect.ensuring(Effect.sync(() => probe.close())),
-        )
+      probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", {
+        cwd,
+        settingSources: ["user", "project", "local"],
       })
+
+    const account = probe((cli) => cli.accountInfo(), "Failed to read the Claude account").pipe(Effect.map(toAccount))
     const probedCommands = yield* Cache.make({
       lookup: probeCommands,
       capacity: 32,
@@ -467,6 +491,7 @@ export const layer = Layer.effect(
     return ClaudeProvider.of({
       id: "claude",
       listModels,
+      account,
       listCommands,
       runTurn,
       steer,

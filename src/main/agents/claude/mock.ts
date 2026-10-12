@@ -20,6 +20,12 @@ export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "u
       return ClaudeProvider.of({
         id: "claude",
         listModels: Effect.succeed([unlistedModel("claude-sonnet-5-5", "claude")]),
+        account: Effect.succeed({
+          type: "subscription",
+          email: "dev@example.com",
+          plan: "Claude Max",
+          organization: "Example Org",
+        }),
         listCommands: () => Effect.succeed([]),
         runTurn: (input) =>
           Stream.suspend(() => {

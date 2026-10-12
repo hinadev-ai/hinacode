@@ -48,6 +48,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
   return {
     id,
     listModels: Effect.succeed([]),
+    account: Effect.succeed({ type: "signedOut" }),
     listCommands: () => Effect.succeed([]),
     runTurn: ({ threadId }) =>
       Stream.unwrap(

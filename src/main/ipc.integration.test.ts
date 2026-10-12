@@ -107,6 +107,7 @@ const scriptedTurn: ReadonlyArray<AgentEvent> = [
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
+  account: Effect.succeed({ type: "signedOut" }),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.fromIterable(

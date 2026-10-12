@@ -227,3 +227,29 @@ export interface McpServerElicitationRequestParams {
 }
 
 export type ElicitationActionWire = "accept" | "decline" | "cancel"
+
+export type GetAccountParams = { refreshToken?: boolean }
+export type PlanType =
+  | "free"
+  | "go"
+  | "plus"
+  | "pro"
+  | "prolite"
+  | "promax"
+  | "team"
+  | "self_serve_business_prolite"
+  | "self_serve_business_usage_based"
+  | "business"
+  | "ent26"
+  | "enterprise_cbp_automation"
+  | "enterprise_cbp_usage_based"
+  | "enterprise"
+  | "edu"
+  | "edu_plus"
+  | "edu_pro"
+  | "unknown"
+export type Account =
+  | { type: "apiKey" }
+  | { type: "chatgpt"; email: string | null; planType: PlanType }
+  | { type: "amazonBedrock"; usesCodexManagedCredentials: boolean }
+export type GetAccountResponse = { account: Account | null; requiresOpenaiAuth: boolean }

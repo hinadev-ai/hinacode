@@ -20,6 +20,22 @@ export const ModelInfo = Schema.Struct({
 })
 export type ModelInfo = typeof ModelInfo.Type
 
+/** Who the agent's CLI is signed in as, which decides what its turns bill to. */
+export const AgentAccount = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("subscription"),
+    email: Schema.NullOr(Schema.String),
+    /** Display name of the plan, such as "Claude Max" or "ChatGPT Plus". */
+    plan: Schema.NullOr(Schema.String),
+    organization: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({ type: Schema.Literal("apiKey") }),
+  /** A cloud provider's credentials, such as Amazon Bedrock or Google Vertex AI. */
+  Schema.Struct({ type: Schema.Literal("external"), service: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("signedOut") }),
+])
+export type AgentAccount = typeof AgentAccount.Type
+
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   id,
