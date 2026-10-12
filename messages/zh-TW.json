@@ -347,6 +347,8 @@
   "project_clone_to_label": "複製到",
   "project_clone_submit": "複製並加入",
   "project_cloning": "正在複製…",
+  "sidebar_pull_request": "開啟 pull request #{number}",
+  "sidebar_pull_request_stack": "開啟 pull request #{number}，{count} 個連結中最新的一個",
   "thread_agent_picker": "代理",
   "thread_workspace_picker": "工作區",
   "thread_workspace_local": "本機",

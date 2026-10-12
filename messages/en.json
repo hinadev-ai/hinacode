@@ -365,6 +365,8 @@
   "project_clone_to_label": "Clone to",
   "project_clone_submit": "Clone and add",
   "project_cloning": "Cloning…",
+  "sidebar_pull_request": "Open pull request #{number}",
+  "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
   "thread_agent_picker": "Agent",
   "thread_workspace_picker": "Workspace",
   "thread_workspace_local": "Local",
