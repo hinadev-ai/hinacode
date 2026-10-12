@@ -58,7 +58,7 @@ Ported from Zed's project panel (`crates/project_panel/src/project_panel.rs`):
 
 - `fs.list {root, path} -> FsEntry[]` returns one directory level. There is no recursive listing: `files.list` already serves `@` completion.
 - `fs.read {root, path} -> FsFileContent` returns up to the first 1 MB. A NUL byte in the first 8000 bytes, git's own test, marks the file binary and sends no content.
-- `fs.watch {root, paths}` replaces the set of watched directories for that root. The renderer sends the root plus every expanded folder, and an empty set when the thread view unmounts.
+- `fs.watch {root, paths}` replaces the set of watched directories for that root. The renderer sends the root, every expanded folder and the open file's parent folder, and an empty set when the thread view unmounts.
 - Push `fs.changed {root, path}` fires 100 ms after the last change in a watched directory. The renderer re-lists that directory, and the viewer reads its file again when the file lives there.
 
 ### Main: `services/Files.ts`

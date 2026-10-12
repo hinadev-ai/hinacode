@@ -109,7 +109,10 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     void refresh(root)
   }, [refresh, root])
 
-  const watched = useMemo(() => ["", ...tree.expanded], [tree.expanded])
+  const watched = useMemo(
+    () => [...new Set(["", ...tree.expanded, ...(tree.opened === null ? [] : [parentOf(tree.opened)])])],
+    [tree.expanded, tree.opened],
+  )
   useEffect(() => {
     callPromise("fs.watch", { root, paths: watched }).catch(() => undefined)
   }, [root, watched])
