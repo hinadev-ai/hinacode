@@ -100,7 +100,7 @@ const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
 
 const createProject = async (name: string) =>
-  result(await invoke("projects.create", { name, rootPath: repo, setupScript: null, trusted: false }))
+  result(await invoke("projects.create", { name, rootPath: repo, setupScript: null }))
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kk-ipc-test-"))
@@ -158,7 +158,6 @@ describe("rpc contract", () => {
         name: "nope",
         rootPath: join(dir, "missing"),
         setupScript: null,
-        trusted: false,
       }),
     )
     expect(error.tag).toBe("ProjectRootInvalidError")
@@ -176,7 +175,6 @@ describe("projects, threads and settings over rpc", () => {
       name: "again",
       rootPath: repo,
       setupScript: null,
-      trusted: false,
     })
     expect(failure(duplicate).tag).toBe("ProjectPathTakenError")
   })
