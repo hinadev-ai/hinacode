@@ -1,10 +1,19 @@
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Semaphore, Stream } from "effect"
-import type { AgentEvent, ApprovalDecision, ModelInfo, RunTurnInput, TokenUsage } from "../../../shared/agent.ts"
+import type {
+  AgentEvent,
+  ApprovalDecision,
+  ModelInfo,
+  RunTurnInput,
+  Subagent,
+  TokenUsage,
+} from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
+import { nowIso } from "../../services/clock.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
+import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import type {
   ApprovalDecisionWire,
   ElicitationActionWire,
@@ -133,6 +142,8 @@ const make = Effect.gen(function* () {
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
   /** In-flight runs keyed by kkcode threadId, for steer and interrupt. */
   const runs = new Map<string, Run>()
+  /** Keyed by kkcode threadId; a sub-agent can outlive the turn that spawned it. */
+  const subagentsByThread = new Map<string, Subagents>()
 
   const interruptTurn = (turn: RemoteTurn) =>
     Effect.suspend(() =>
@@ -203,6 +214,10 @@ const make = Effect.gen(function* () {
           const startedTools = new Set<string>()
           const openTools = new Set<string>()
           const approvalIdByRpcId = new Map<string | number, string>()
+          let subagents = subagentsByThread.get(input.threadId)
+          if (subagents === undefined) subagentsByThread.set(input.threadId, (subagents = new Map()))
+          const emitSubagents = (changed: ReadonlyArray<Subagent>) =>
+            Effect.forEach(changed, (subagent) => emit({ type: "subagent_updated", subagent }), { discard: true })
           let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
           let lastError: string | undefined
 
@@ -317,6 +332,18 @@ const make = Effect.gen(function* () {
           const handle = (message: Incoming): Effect.Effect<boolean, AgentError, Scope.Scope> =>
             Effect.gen(function* () {
               if (message.kind === "exit") return yield* Effect.fail(message.error)
+              const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
+              if (message.kind === "notification" && childThreadId !== undefined && subagents.has(childThreadId)) {
+                const changed = applyChildNotification(
+                  subagents,
+                  childThreadId,
+                  message.method,
+                  message.params,
+                  toolName,
+                )
+                if (changed) yield* emitSubagents([changed])
+                return false
+              }
               if (!belongsToTurn(message.params)) return false
 
               if (message.kind === "request") {
@@ -363,11 +390,13 @@ const make = Effect.gen(function* () {
                 case "item/started": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   yield* startTool(params.item)
+                  yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }
                 case "item/completed": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   yield* finishTool(params.item)
+                  yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }
                 case "thread/tokenUsage/updated": {
