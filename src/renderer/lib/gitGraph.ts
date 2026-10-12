@@ -46,10 +46,11 @@ export function layoutGraph(commits: ReadonlyArray<GitCommit>): Array<GraphRow> 
     const passing = lanes.flatMap((hash, index) => (hash === null ? [] : [{ fromLane: index, toLane: index }]))
     const toParents = commit.parents.map((parent, index) => {
       let parentLane = lanes.indexOf(parent)
-      if (parentLane === -1) {
-        parentLane = index === 0 ? lane : freeLane(lanes)
-        lanes[parentLane] = parent
-      }
+      // The first parent stays in this lane unless a lane to its left already waits for it, so a main
+      // line keeps its lane when a branch to its right forked from the same commit.
+      if (index === 0 && (parentLane === -1 || parentLane > lane)) parentLane = lane
+      else if (parentLane === -1) parentLane = freeLane(lanes)
+      lanes[parentLane] = parent
       return { fromLane: lane, toLane: parentLane }
     })
     while (lanes.length > 0 && lanes.at(-1) === null) lanes.pop()

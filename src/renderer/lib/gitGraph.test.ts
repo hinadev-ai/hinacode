@@ -48,6 +48,17 @@ describe("layoutGraph", () => {
     ])
   })
 
+  test("keeps the main line in its lane when a branch to its right forked from the same commit", () => {
+    expect(shape([commit("m2", "m1", "f1"), commit("f1", "base"), commit("m1", "base"), commit("base")])).toStrictEqual(
+      [
+        { hash: "m2", lane: 0, edges: ["0>0", "0>1"] },
+        { hash: "f1", lane: 1, edges: ["0>0", "1>1"] },
+        { hash: "m1", lane: 0, edges: ["1>0", "0>0"] },
+        { hash: "base", lane: 0, edges: [] },
+      ],
+    )
+  })
+
   test("reuses a freed lane and leads lines past the last loaded commit downward", () => {
     expect(
       shape([commit("a", "x"), commit("b", "a2"), commit("a2", "x"), commit("c", "y"), commit("x", "older")]),
