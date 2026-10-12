@@ -62,3 +62,33 @@ Then("the thread details panel is {int} pixels wide", async ({ app }, width: num
 Then("the sidebar is {int} pixels wide", async ({ app }, width: number) => {
   await expect.poll(() => widthOf(sidebar(app.page))).toBe(width)
 })
+
+When("I start dragging {string}", async ({ app }, name: string) => {
+  const box = await handle(app.page, name).boundingBox()
+  if (!box) throw new Error(`${name} is not visible`)
+  await app.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await app.page.mouse.down()
+  await expect.poll(() => app.page.evaluate(() => document.body.style.userSelect)).toBe("none")
+})
+
+Then("no resize drag is active", async ({ app }) => {
+  try {
+    await expect
+      .poll(() =>
+        app.page.evaluate(() => ({ cursor: document.body.style.cursor, select: document.body.style.userSelect })),
+      )
+      .toEqual({ cursor: "", select: "" })
+  } finally {
+    await app.page.mouse.up()
+  }
+})
+
+Then("the resize maximum matches the displayed panel width", async ({ app }) => {
+  await expect
+    .poll(async () => Number(await handle(app.page, "Resize thread details").getAttribute("aria-valuemax")))
+    .toBe(await widthOf(detailsView(app.page)))
+})
+
+When("I press ArrowLeft {int} times on {string}", async ({ app }, count: number, name: string) => {
+  for (let index = 0; index < count; index++) await handle(app.page, name).press("ArrowLeft")
+})
