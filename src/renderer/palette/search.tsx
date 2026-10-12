@@ -53,8 +53,8 @@ const logFailure = (what: string) => (cause: unknown) => {
 }
 
 /**
- * The palette asks again whenever the threads it reads change, which they do on every streamed
- * turn, so a repeat of the last question shares its answer.
+ * Share only pending requests when the palette asks again during a streamed turn. Settled answers
+ * are discarded so reopening or repeating a search reads current messages and workspace files.
  */
 let lastThreads: { query: string; items: Promise<ReadonlyArray<ThreadSearchHit>> } | null = null
 let lastFiles: { key: string; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
@@ -64,7 +64,11 @@ export const threadSearchSource: PaletteSource = {
   items: (query, ctx) => {
     if (query === "") return []
     if (lastThreads?.query !== query) {
-      lastThreads = { query, items: callPromise("search.threads", { query }).catch(logFailure("Search failed")) }
+      const request = { query, items: callPromise("search.threads", { query }).catch(logFailure("Search failed")) }
+      lastThreads = request
+      void request.items.then(() => {
+        if (lastThreads === request) lastThreads = null
+      })
     }
     return lastThreads.items.then((hits) => hits.map((hit) => threadItem(hit, query, ctx)))
   },
@@ -88,7 +92,13 @@ export const fileSearchSource: PaletteSource = {
   items: (query, ctx) => {
     if (query === "" || !ctx.threadId) return []
     const key = `${ctx.threadId}\0${query}`
-    if (lastFiles?.key !== key) lastFiles = { key, items: searchFiles(ctx.threadId, query, key) }
+    if (lastFiles?.key !== key) {
+      const request = { key, items: searchFiles(ctx.threadId, query, key) }
+      lastFiles = request
+      void request.items.then(() => {
+        if (lastFiles === request) lastFiles = null
+      })
+    }
     return lastFiles.items
   },
 }

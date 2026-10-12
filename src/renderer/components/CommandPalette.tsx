@@ -155,6 +155,7 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
 /** Quick open and command palette in one dialog. Mount once, in the app shell. */
 export function CommandPalette() {
   const open = usePalette((state) => state.open)
+  const openRequest = usePalette((state) => state.openRequest)
   const chosen = useRef<{ item: PaletteItem; remember: boolean } | null>(null)
 
   const choose = (item: PaletteItem, remember: boolean) => {
@@ -186,7 +187,7 @@ export function CommandPalette() {
             aria-label={m.palette_label()}
             className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
           >
-            <PaletteBody onChoose={choose} />
+            <PaletteBody key={openRequest} onChoose={choose} />
           </DialogPrimitive.Popup>
         </DialogPrimitive.Viewport>
       </DialogPortal>
