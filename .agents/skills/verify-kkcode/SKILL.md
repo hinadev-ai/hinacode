@@ -7,6 +7,12 @@ description: Launch, drive and screenshot the kkcode Electron desktop app (Claud
 
 kkcode is an Electron 44 app built with electron-vite. The surface a user touches is one window: a sidebar of projects and threads, a chat view per thread with a composer, a thread details side panel, and a settings page. Agents also touch it through the built-in MCP server, and other programs reach it through the automations webhook. This skill starts an isolated instance on the headless X server, drives it with `agent-browser` over Chrome DevTools Protocol, and stores evidence in `.context/shots/`.
 
+## What the e2e suite already proves
+
+Run `pnpm test:e2e` first. Playwright drives the built app through the Gherkin scenarios in `e2e/features`, one isolated instance per worker, and covers everything a user can do without an agent turn, a GitHub account or a native dialog: projects and threads (add, errors, collapse, keyboard reorder, rename, settle, delete, restart), worktrees (setup script and its variables, setup log, failure, changes and diffs, settle cleanup), ports (listing, scope, the two-click stop), the MCP server contract (tool list, credential checks, `review_changes`, linking and unlinking pull requests, Linear without a key), webhook automations (creation, the one-time secret, unsigned, unknown and disabled deliveries), and settings (language, default model, shortcut recording, conflicts, reset, encrypted secrets). A green run is the proof for those; do not redo them by hand.
+
+This skill is for what a test cannot own: real Claude Code and Codex turns, tools called from inside a turn, GitHub through a real `gh`, deliveries and automations that start threads, native file pickers, and screenshots or videos for a pull request. `features/README.md` lists, per feature, which sub-features are automated and which are left to a verification run.
+
 All helpers live in `scripts/` next to this file. Run from the repo root and set these once per run:
 
 ```sh
@@ -140,4 +146,4 @@ Agent CLIs keep their own transcripts (`~/.claude/projects/`, `~/.codex/sessions
 
 ## Feature map
 
-`features/README.md` indexes one file per user-facing feature with its sub-features, entry points, driving recipe and gotchas. A proof covers every entry point the feature file lists, or reports the ones it skipped.
+`features/README.md` indexes one file per user-facing feature with its sub-features, entry points, driving recipe and gotchas. Each file names the e2e scenarios that already cover it; a proof covers the remaining entry points the file lists, or reports the ones it skipped.

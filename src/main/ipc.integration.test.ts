@@ -41,6 +41,8 @@ interface Frame {
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<{ channel: string; payload: unknown }>,
+  /** Called after every push, so a test can wait for the one it expects instead of polling. */
+  watchers: new Set<() => void>(),
   shown: [] as Array<object>,
   userData: "",
 }))
@@ -50,7 +52,14 @@ vi.mock("electron", () => ({
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
   BrowserWindow: {
     getAllWindows: () => [
-      { webContents: { send: (channel: string, payload: unknown) => electron.pushes.push({ channel, payload }) } },
+      {
+        webContents: {
+          send: (channel: string, payload: unknown) => {
+            electron.pushes.push({ channel, payload })
+            for (const notify of electron.watchers) notify()
+          },
+        },
+      },
     ],
     fromWebContents: (sender: object) => ({
       show: () => {
@@ -151,6 +160,18 @@ const failure = (envelope: RpcEnvelope<unknown>) => {
 
 const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
+
+/** Resolves as soon as a push matching `predicate` has been sent, including one sent already. */
+const pushedEventually = (predicate: (event: PushEvent) => boolean) =>
+  new Promise<void>((resolve) => {
+    const check = () => {
+      if (!pushed().some(predicate)) return
+      electron.watchers.delete(check)
+      resolve()
+    }
+    electron.watchers.add(check)
+    check()
+  })
 
 const createProject = async (name: string) =>
   result(await invoke("projects.create", { name, rootPath: repo, setupScript: null }))
@@ -374,11 +395,13 @@ describe("projects, threads and settings over rpc", () => {
     } satisfies Partial<Worktree>)
 
     // Setup runs in the background; without a setup script it settles on `ready` almost at once.
-    await expect
-      .poll(
-        async () => result(await invoke("worktrees.list", undefined)).find((item) => item.id === worktree.id)?.status,
-      )
-      .toBe("ready")
+    await pushedEventually(
+      (event) =>
+        event.type === "worktree.updated" && event.worktree.id === worktree.id && event.worktree.status === "ready",
+    )
+    expect(result(await invoke("worktrees.list", undefined)).find((item) => item.id === worktree.id)?.status).toBe(
+      "ready",
+    )
     const updates = pushed().filter((event) => event.type === "worktree.updated")
     expect(updates.map((event) => event.type === "worktree.updated" && event.worktree.status)).toStrictEqual([
       "preparing",

@@ -140,6 +140,7 @@ export const spawnApp = async (): Promise<KkcodeApp> => {
           const window = BrowserWindow.getAllWindows()[0]
           if (!window) throw new Error("no app window for push events")
           for (const event of input.events) {
+            // Pacing is input to the streaming workload; it does not wait for an assertion.
             if (input.intervalMs > 0) await new Promise<void>((done) => setTimeout(done, input.intervalMs))
             window.webContents.send("event", event)
           }

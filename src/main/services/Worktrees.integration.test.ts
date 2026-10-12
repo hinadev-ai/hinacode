@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Context, Effect, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
@@ -21,14 +21,22 @@ import * as WorktreesLayer from "./Worktrees.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
 
-type Services = Threads | Worktrees | Projects | SqlClient.SqlClient
+type Services = Threads | Worktrees | Projects | SqlClient.SqlClient | Pushes
 
-const makeLayer = (dbPath: string, events: Events["Service"] = Events.of({ publish: () => Effect.void })) =>
+/** What the service would push to the renderer; tests wait on these instead of polling the database. */
+class Pushes extends Context.Service<Pushes, PubSub.PubSub<PushEvent>>()("test/Pushes") {}
+
+const makeLayer = (
+  dbPath: string,
+  pushes: PubSub.PubSub<PushEvent>,
+  events: Events["Service"] = Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
+) =>
   ThreadsLayer.layer.pipe(
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
     Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
     Layer.provideMerge(Db.layer(dbPath)),
+    Layer.provideMerge(Layer.succeed(Pushes, pushes)),
     Layer.provide(NodeServices.layer),
   )
 
@@ -41,24 +49,38 @@ interface Repo {
 
 const worktreeOf = (worktreeId: string | null) => Worktrees.use((worktrees) => worktrees.get(worktreeId!))
 
-/** Setup runs in the background; with no setup script it settles on `ready` almost at once. */
+/**
+ * Setup runs in the background and ends with a `worktree.updated` push. Subscribing before reading the
+ * row means a push between the two cannot be missed.
+ */
 const waitUntilSetUp = (worktreeId: string | null) =>
   Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if ((yield* worktreeOf(worktreeId)).status !== "preparing") return
-      yield* Effect.sleep("20 millis")
+    const updates = yield* PubSub.subscribe(yield* Pushes)
+    if ((yield* worktreeOf(worktreeId)).status !== "preparing") return
+    while (true) {
+      const event = yield* PubSub.take(updates)
+      if (
+        event.type === "worktree.updated" &&
+        event.worktree.id === worktreeId &&
+        event.worktree.status !== "preparing"
+      )
+        return
     }
-    throw new Error("setup never finished")
-  })
+  }).pipe(Effect.scoped)
 
-/** Removal deletes the checkout in the background after marking the row removed. */
+/** Removal deletes the checkout in the background after marking the row removed; the parent directory reports it. */
 const waitUntilDeleted = (path: string) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if (!existsSync(path)) return
-      yield* Effect.sleep("20 millis")
+  Effect.callback<void>((resume) => {
+    let done = false
+    const check = () => {
+      if (done || existsSync(path)) return
+      done = true
+      watcher.close()
+      resume(Effect.void)
     }
-    throw new Error("checkout never deleted")
+    const watcher = watch(dirname(path), check)
+    check()
+    return Effect.sync(() => watcher.close())
   })
 
 const waitForAllSetups = Worktrees.use((worktrees) => worktrees.list).pipe(
@@ -81,9 +103,10 @@ const withRepo = <A, E>(f: (repo: Repo) => Effect.Effect<A, E, Services>) =>
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
     const dbPath = join(dir, "kkcode.sqlite")
+    const pushes = yield* PubSub.unbounded<PushEvent>()
     // A separate runtime, as the app has after a relaunch; `Effect.provide` would reuse the open layers.
     const restart = Effect.acquireUseRelease(
-      Effect.sync(() => ManagedRuntime.make(makeLayer(dbPath))),
+      Effect.sync(() => ManagedRuntime.make(makeLayer(dbPath, pushes))),
       (runtime) => Effect.promise(() => runtime.runPromise(Worktrees.use((worktrees) => worktrees.list))),
       (runtime) => Effect.promise(() => runtime.dispose()),
     )
@@ -92,7 +115,7 @@ const withRepo = <A, E>(f: (repo: Repo) => Effect.Effect<A, E, Services>) =>
         projects.create({ name: "repo", rootPath: root, setupScript: null }),
       )
       return yield* f({ root, projectId: project.id, restart })
-    }).pipe(Effect.ensuring(waitForAllSetups), Effect.provide(makeLayer(dbPath)))
+    }).pipe(Effect.ensuring(waitForAllSetups), Effect.provide(makeLayer(dbPath, pushes)))
   })
 
 const createThread = (projectId: string, title: string, branch?: string) =>
@@ -113,20 +136,6 @@ const shareWorktree = (threadId: string, worktreeId: string | null) =>
     yield* sql`UPDATE thread SET worktree_id = ${worktreeId} WHERE id = ${threadId}`
   })
 
-const withinDeadline = async <A>(promise: Promise<A>) => {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("worktree request or setup did not finish")), 5_000)
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 describe("background setup", () => {
   for (const exitCode of [0, 7]) {
     const status = exitCode === 0 ? "ready" : "failed"
@@ -142,6 +151,7 @@ describe("background setup", () => {
       const runtime = ManagedRuntime.make(
         makeLayer(
           join(dir, "kkcode.sqlite"),
+          Effect.runSync(PubSub.unbounded<PushEvent>()),
           Events.of({
             publish: (event) =>
               Effect.sync(() => {
@@ -176,7 +186,7 @@ describe("background setup", () => {
           ),
         )
         creation = runtime.runPromise(createThread(project.id, "background", "kk/background"))
-        const thread = await withinDeadline(creation)
+        const thread = await creation
         expect(existsSync(releasePath)).toBe(false)
         expect(thread.worktreeId).not.toBeNull()
         expect(await runtime.runPromise(Threads.use((threads) => threads.get(thread.id)))).toStrictEqual(thread)
@@ -184,13 +194,13 @@ describe("background setup", () => {
         expect(preparing.status).toBe("preparing")
         expect(existsSync(join(preparing.path, ".git"))).toBe(true)
 
-        await withinDeadline(started.promise)
+        await started.promise
         expect(await runtime.runPromise(Worktrees.use((worktrees) => worktrees.get(preparing.id)))).toMatchObject({
           status: "preparing",
           setupLog: "setup started\n",
         })
         writeFileSync(releasePath, "")
-        const completed = await withinDeadline(finished.promise)
+        const completed = await finished.promise
         const expectedLog = `setup started\nsetup finished\n${exitCode === 0 ? "" : `\nSetup script exited with code ${exitCode}\n`}`
         expect(completed).toMatchObject({ id: preparing.id, status, setupLog: expectedLog })
         expect(await runtime.runPromise(worktreeOf(thread.worktreeId))).toStrictEqual(completed)
@@ -202,8 +212,8 @@ describe("background setup", () => {
         writeFileSync(releasePath, "")
         try {
           if (creation) {
-            await withinDeadline(creation)
-            await withinDeadline(finished.promise)
+            await creation
+            await finished.promise
           }
         } finally {
           await runtime.dispose()
@@ -364,27 +374,6 @@ describe("startup", () => {
 
         const [second] = yield* restart
         expect(second).toStrictEqual(first)
-      }),
-    ),
-  )
-})
-
-describe("starting a thread in a worktree", () => {
-  it.live("moves an unstarted thread into a worktree branched from its title, then renames the branch", () =>
-    withRepo(({ root, projectId }) =>
-      Effect.gen(function* () {
-        const created = yield* createThread(projectId, "thread-abcde")
-        const thread = yield* Threads.use((threads) => threads.attachWorktree(created.id, ""))
-        const worktree = yield* worktreeOf(thread.worktreeId)
-        expect(worktree).toMatchObject({ branch: "kk/thread-abcde", baseRef: "main" } satisfies Partial<Worktree>)
-
-        const renamed = yield* Worktrees.use((worktrees) => worktrees.renameBranch(worktree.id, "kk/fix-login"))
-        expect(renamed.branch).toBe("kk/fix-login")
-        expect(git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("kk/fix-login")
-        expect(git(root, "branch", "--list", "kk/thread-abcde")).toBe("")
-
-        const again = yield* Threads.use((threads) => threads.attachWorktree(created.id, "main")).pipe(Effect.flip)
-        expect(again._tag).toBe("ThreadStartedError")
       }),
     ),
   )

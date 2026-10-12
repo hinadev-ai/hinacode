@@ -2,6 +2,10 @@
 
 This directory is the maintained source for verifying what a kkcode user can do. Read this index, then use the matching feature file as the recipe. Launch, doctor, evidence and cleanup rules are in `../SKILL.md`.
 
+## Automated first
+
+`pnpm test:e2e` runs the Gherkin scenarios in `e2e/features` against the built app. Every feature file below starts with the scenarios that already cover it; those sub-features are proven by a green run and are not driven by hand. The recipes that remain are the ones a test cannot own: real agent turns, tools called from inside a turn, GitHub through a real `gh`, automations that start threads, and native dialogs. When a recipe here turns out to be automatable, move it into `e2e/features` and delete it from the feature file.
+
 ## Baseline preconditions
 
 - Variables from SKILL.md are set: `S`, `PORT`, `DATA`, `SHOTS`, `AB`.
@@ -23,20 +27,20 @@ This directory is the maintained source for verifying what a kkcode user can do.
 
 - Screenshots go to `$SHOTS/<feature>-<NN>-<step>.png`, text artifacts to the same stem with `.txt`.
 - Capture the action and the resulting state, plus a read-only second view for every mutation (rpc read-back, file on disk, relaunch).
-- List each sub-feature as proven, failed (with the artifact), or skipped (with the reason and the unmet precondition). Do not report a sub-feature as proven through a different entry point than the one named.
+- List each sub-feature as automated (name the scenario), proven, failed (with the artifact), or skipped (with the reason and the unmet precondition). Do not report a sub-feature as proven through a different entry point than the one named.
 
 ## Feature entry contract
 
-Each feature file starts with an H1 title and one paragraph describing the user-visible behavior, then four H2 sections in this order: `Sub-features` (short IDs, one line each), `How to get to it (user POV)` (every entry point), `Driving it with <harness>` (starts with `Preconditions:`, then labeled bullets pairing an action, the exact command, and the observable result), and `Gotchas`.
+Each feature file starts with an H1 title and one paragraph describing the user-visible behavior, then these H2 sections in order: `Automated coverage` (the `e2e/features` scenarios and what they prove), `Sub-features` (short IDs, one line each, marked `e2e` when a scenario covers them), `How to get to it (user POV)` (every entry point), `Driving it with <harness>` (starts with `Preconditions:`, then labeled bullets pairing an action, the exact command, and the observable result, for the sub-features not marked `e2e`), and `Gotchas`.
 
 ## Features
 
-- [Projects and threads](./projects-and-threads.md): add project, instant new thread with placeholder title, sidebar grouping, keyboard reorder, rename, settle, delete, persistence. No agent cost. Proven end to end when this skill was created.
-- [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, effort and fast mode, `/` and `@` completions, restore and resume after relaunch.
-- [Chat with Codex](./chat-codex.md): picking Codex in the composer, `$` skills, the same chat on Codex, including MCP elicitation approvals for kkcode tools.
-- [Worktrees](./worktrees.md): `Workspace` picker and `Base ref`, creation on first send, branch rename, setup script with `$KKCODE_ROOT_PATH`, setup log, failure state, changes and diffs, settle cleanup. One short Claude turn.
-- [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments.
-- [MCP tools and pull request links](./mcp-and-pull-requests.md): tool contract and auth, `review_changes`, `link_pull_request` from inside a turn, panel links with `gh` status, unlink, creating a pull request, `gh` sign-in states, Linear without a key, `request_secret` card, `create_thread`.
-- [Settings](./settings.md): language en and zh-TW, default models, thread naming model, keybinding recording, conflicts and reset, Linear and Slack secrets. No agent cost.
-- [Ports](./ports.md): listing workspace listeners and the two-click kill. No agent cost.
-- [Automations](./automations.md): signed webhook delivery, rejects, dedup, run now, listener port, pollers.
+- [Projects and threads](./projects-and-threads.md): fully automated except pointer-drag reorder and the native folder picker.
+- [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, restore and resume after relaunch. Real turns only.
+- [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for kkcode tools. Real turns only.
+- [Worktrees](./worktrees.md): setup services and panels automated; composer creation and branch naming need a real first turn, and the `PR <state>` badge needs a GitHub remote.
+- [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments. Real turns only.
+- [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; `link_pull_request` from inside a turn, `gh` status, creating a pull request, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand.
+- [Settings](./settings.md): automated except the Codex default model and the Slack token, which share code with the automated cases.
+- [Ports](./ports.md): automated except a listener spawned by an agent.
+- [Automations](./automations.md): creation and rejects automated; signed deliveries, dedup, run now, worktree runs, pollers and the listener port by hand, since each starts a thread.

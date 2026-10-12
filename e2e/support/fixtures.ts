@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createBdd, test as base } from "playwright-bdd"
 import { type KkcodeApp, spawnApp } from "./app.ts"
+import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
 import { Seed } from "./seed.ts"
 
@@ -12,12 +13,31 @@ export interface Names {
   readonly of: (name: string) => string
 }
 
+export interface AgentState {
+  /** The MCP connection of the thread the scenario's agent acts as. */
+  connection: { url: string; headers: { authorization: string } } | null
+  /** The last tool result the agent received. */
+  result: { isError: boolean; text: string } | null
+}
+
+export interface WebhookState {
+  readonly automations: Map<string, { id: string; secret: string; url: string }>
+  /** The last webhook response. */
+  response: { status: number; body: string } | null
+}
+
 interface TestFixtures {
   readonly names: Names
-  /** A throwaway git repository on `main` with one commit, inside the app's user-data directory. */
+  /** A throwaway git repository on `main` with a README and a gitignored `.env`, inside the app's user-data directory. */
   readonly repo: string
-  /** Project ids by display name, for the ids seeded during the scenario. */
+  /** Project ids by display name, for the projects seeded during the scenario. */
   readonly projectIds: Map<string, string>
+  /** Thread ids by display title, for the threads seeded during the scenario. */
+  readonly threadIds: Map<string, string>
+  /** TCP listeners the scenario started, by where they run; all are killed afterwards. */
+  readonly listeners: Map<string, Listener>
+  readonly agent: AgentState
+  readonly webhook: WebhookState
 }
 
 interface WorkerFixtures {
@@ -47,7 +67,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   repo: async ({ app, names }, provide) => {
     const path = join(app.userData, "repos", names.of("repo"))
     mkdirSync(path, { recursive: true })
+    writeFileSync(join(path, "README.md"), "# e2e\n")
+    writeFileSync(join(path, ".gitignore"), ".env\n")
+    writeFileSync(join(path, ".env"), "E2E_SECRET=from-root\n")
     execFileSync("git", ["init", "-q", "-b", "main", path])
+    execFileSync("git", ["-C", path, "add", "README.md", ".gitignore"])
     execFileSync("git", [
       "-C",
       path,
@@ -57,13 +81,26 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       "user.name=e2e",
       "commit",
       "-q",
-      "--allow-empty",
       "-m",
       "init",
     ])
     await provide(path)
   },
   projectIds: async ({}, provide) => provide(new Map()),
+  threadIds: async ({}, provide) => provide(new Map()),
+  listeners: async ({}, provide) => {
+    const started = new Map<string, Listener>()
+    await provide(started)
+    for (const { pid } of started.values()) {
+      try {
+        process.kill(pid)
+      } catch {
+        // already gone, which some scenarios assert
+      }
+    }
+  },
+  agent: async ({}, provide) => provide({ connection: null, result: null }),
+  webhook: async ({}, provide) => provide({ automations: new Map(), response: null }),
 })
 /* oxlint-enable react/rules-of-hooks, no-empty-pattern */
 
@@ -74,7 +111,11 @@ AfterScenario(async ({ app, $testInfo }) => {
   if ($testInfo.status !== $testInfo.expectedStatus) {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
   }
-  await rpc(app.page, "settings.set", { locale: "en", keybindings: {} })
+  await rpc(app.page, "settings.set", {
+    locale: "en",
+    keybindings: {},
+    defaultModel: { claude: null, codex: null },
+  })
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
