@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 import {
   clampWidth,
@@ -12,6 +13,8 @@ import {
 export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents"
 export type SidePanelSize = "normal" | "wide"
 export type SidebarTab = "threads" | "archived"
+
+let findRevealRequests = 0
 
 const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "kkcode.sidebarProjects"
@@ -63,6 +66,7 @@ interface UiState {
   readonly findMessageId: string | null
   /** Bumped to ask the find bar to focus and select its field. */
   readonly findFocusRequest: number
+  readonly findReveal: FindRevealRequest | null
   readonly toggleSidebar: () => void
   readonly toggleSidePanel: () => void
   readonly setSidebarOverlayOpen: (open: boolean) => void
@@ -85,6 +89,7 @@ interface UiState {
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
   readonly setFindQuery: (query: string) => void
+  readonly revealFindMatch: (match: FindMatch | null) => void
   /** Clamps, applies and persists the desktop sidebar width. */
   readonly setSidebarWidth: (width: number) => void
   /** Clamps, applies and persists the docked side panel width for one size. Null restores its default. */
@@ -130,6 +135,7 @@ export const useUi = create<UiState>()((set, get) => ({
   findQuery: "",
   findMessageId: null,
   findFocusRequest: 0,
+  findReveal: null,
   toggleSidebar: () =>
     set((state) =>
       getPanelLayout() === "compact"
@@ -177,8 +183,9 @@ export const useUi = create<UiState>()((set, get) => ({
       findMessageId: messageId ?? null,
       findFocusRequest: state.findFocusRequest + 1,
     })),
-  closeFind: () => set({ findThreadId: null }),
+  closeFind: () => set({ findThreadId: null, findReveal: null }),
   setFindQuery: (findQuery) => set({ findQuery, findMessageId: null }),
+  revealFindMatch: (match) => set({ findReveal: match && { id: ++findRevealRequests, match } }),
   setSidebarWidth: (width) => {
     const sidebarWidth = clampWidth(SIDEBAR_BOUNDS, width)
     saveWidth(SIDEBAR_WIDTH_KEY, sidebarWidth)

@@ -1,11 +1,21 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { describeToolCall } from "./toolCall.ts"
+import { isOwnPart } from "./subagents.ts"
+import { describeCommand, describeToolCall, groupCommands } from "./toolCall.ts"
+
+type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 export interface FindMatch {
   readonly messageId: string
+  /** Index among the parts the transcript renders, which leaves out sub-agent calls. */
   readonly partIndex: number
   /** UTF-16 offset of the match in the part's searchable text. */
   readonly offset: number
+}
+
+/** A move of the find bar to `match`. Every move has a new `id`, including a move back to the same match. */
+export interface FindRevealRequest {
+  readonly id: number
+  readonly match: FindMatch
 }
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -35,20 +45,43 @@ export function searchableText(part: MessagePart): string {
   }
 }
 
+export interface CommandFindText {
+  readonly distinctLabel: string | null
+  readonly command: string
+}
+
+export function commandFindText(call: ToolCall): CommandFindText {
+  const label = describeCommand(call)
+  const { summary: command } = describeToolCall(call)
+  return { distinctLabel: label === command ? null : label, command }
+}
+
+export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
+  distinctLabel === null ? command : `${distinctLabel}\n${command}`
+
+/** Whether a match at `offset` in `commandSearchText` falls in the command rather than the distinct label. */
+export const isInCommand = ({ distinctLabel }: CommandFindText, offset: number) =>
+  offset >= (distinctLabel === null ? 0 : distinctLabel.length + 1)
+
 /** Every match of `query` in the transcript, in reading order. */
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
   const pattern = findPattern(query)
   if (pattern === null) return []
   const matches: Array<FindMatch> = []
+  const search = (messageId: string, partIndex: number, text: string) => {
+    for (const match of text.matchAll(pattern)) matches.push({ messageId, partIndex, offset: match.index })
+  }
   for (const message of messages) {
+    const parts = message.parts.filter(isOwnPart)
     // Reply text appears only once the agent finishes it, so the part still being written is not on screen.
-    const writing = message.completedAt === null && message.parts.at(-1)?.type === "text"
-    const searchedParts = writing ? message.parts.length - 1 : message.parts.length
-    for (let partIndex = 0; partIndex < searchedParts; partIndex++) {
-      const part = message.parts[partIndex]
-      if (part === undefined) continue
-      for (const match of searchableText(part).matchAll(pattern)) {
-        matches.push({ messageId: message.id, partIndex, offset: match.index })
+    const writing = message.completedAt === null && parts.at(-1)?.type === "text"
+    for (const block of groupCommands(writing ? parts.slice(0, -1) : parts)) {
+      if (block.type === "part") {
+        search(message.id, block.index, searchableText(block.part))
+        continue
+      }
+      for (const [position, call] of block.calls.entries()) {
+        search(message.id, block.index + position, commandSearchText(commandFindText(call)))
       }
     }
   }
