@@ -1,6 +1,7 @@
 import { getRouteApi } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { useRef } from "react"
+import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
@@ -14,7 +15,6 @@ const route = getRouteApi("/thread/$threadId")
 export function ThreadRoute() {
   const { threadId } = route.useParams()
   const thread = useThreads((state) => state.byId[threadId])
-  const panelOpen = useUi((state) => state.sidePanelOpen)
   const togglePanel = useUi((state) => state.toggleSidePanel)
   const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
@@ -31,20 +31,22 @@ export function ThreadRoute() {
           key={thread.id}
           thread={thread}
           actions={
-            !docked || !panelOpen ? (
-              <PanelToggle buttonRef={toggleRef} expanded={!docked && overlayOpen} onToggle={togglePanel} />
-            ) : undefined
+            <>
+              <TerminalToggle threadId={thread.id} />
+              {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
+            </>
           }
         />
+        <TerminalDrawer threadId={thread.id} />
       </div>
-      {docked && panelOpen ? <ThreadSidePanel key={thread.id} thread={thread} /> : null}
+      {docked && <ThreadSidePanel key={thread.id} thread={thread} />}
       {!docked && (
         <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
           <DialogPortal>
             <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-background/60" />
             <DialogPrimitive.Popup
               finalFocus={toggleRef}
-              className="fixed inset-y-0 right-0 z-50 flex w-96 max-w-full flex-col overflow-hidden border-l border-border bg-background outline-none"
+              className="fixed inset-y-0 right-0 z-50 flex w-[calc(24rem+2.75rem)] max-w-full flex-col overflow-hidden border-l border-border bg-background outline-none"
             >
               <DialogTitle className="sr-only">{m.panel_label()}</DialogTitle>
               <ThreadSidePanel key={thread.id} thread={thread} compact />

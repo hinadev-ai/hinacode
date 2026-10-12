@@ -3,11 +3,12 @@ import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
-import { COMMAND_PREFIX, usePalette } from "../palette/usePalette.ts"
+import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
+import { useTerminals } from "../stores/terminals.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
-import { useUi } from "../stores/ui.ts"
+import { type SidePanelViewId, useUi } from "../stores/ui.ts"
 
 export interface CommandContext {
   readonly navigate: ReturnType<typeof useNavigate>
@@ -37,6 +38,11 @@ const goToSiblingThread = (ctx: CommandContext, step: 1 | -1) => {
   // From outside a thread, "next" starts at the top and "previous" at the bottom.
   const target = index === -1 ? threads.at(step === 1 ? 0 : -1) : threads.at((index + step) % threads.length)
   if (target) void ctx.navigate({ to: "/thread/$threadId", params: { threadId: target.id } })
+}
+
+/** Switches the side panel to `view` and focuses it, or hides the panel when it already shows `view`. */
+const showView = (ctx: CommandContext, view: SidePanelViewId) => {
+  if (ctx.threadId) useUi.getState().toggleView(ctx.threadId, view, { focus: true })
 }
 
 export const commands = [
@@ -93,6 +99,44 @@ export const commands = [
     title: m.command_composer_focus,
     run: () => useUi.getState().requestComposerFocus(),
   },
+  // mod+shift+r and mod+shift+i belong to Electron's default menu (Force Reload, and Toggle Developer
+  // Tools outside macOS), which takes the key before the page sees it.
+  {
+    id: "view.details",
+    defaultKeys: "mod+shift+o",
+    title: m.command_view_details,
+    run: (ctx) => showView(ctx, "details"),
+  },
+  {
+    id: "view.files",
+    defaultKeys: "mod+shift+e",
+    title: m.command_view_files,
+    run: (ctx) => showView(ctx, "files"),
+  },
+  {
+    id: "view.changes",
+    defaultKeys: "mod+shift+d",
+    title: m.command_view_changes,
+    run: (ctx) => showView(ctx, "changes"),
+  },
+  {
+    id: "view.git",
+    defaultKeys: "mod+shift+g",
+    title: m.command_view_git,
+    run: (ctx) => showView(ctx, "git"),
+  },
+  {
+    id: "view.pullRequests",
+    defaultKeys: "mod+shift+m",
+    title: m.command_view_pull_requests,
+    run: (ctx) => showView(ctx, "pullRequests"),
+  },
+  {
+    id: "view.agents",
+    defaultKeys: "mod+shift+a",
+    title: m.command_view_agents,
+    run: (ctx) => showView(ctx, "agents"),
+  },
   {
     id: "turn.interrupt",
     defaultKeys: "mod+shift+c",
@@ -111,6 +155,40 @@ export const commands = [
     title: m.command_thread_previous,
     run: (ctx) => goToSiblingThread(ctx, -1),
   },
+  {
+    id: "search.find",
+    defaultKeys: "mod+f",
+    title: m.command_search_find,
+    run: (ctx) => {
+      if (ctx.threadId) useUi.getState().openFind(ctx.threadId)
+    },
+  },
+  {
+    id: "search.global",
+    defaultKeys: "mod+shift+f",
+    title: m.command_search_global,
+    run: () => usePalette.getState().show(SEARCH_PREFIX),
+  },
+  {
+    id: "terminal.toggle",
+    defaultKeys: "mod+j",
+    title: m.command_terminal_toggle,
+    run: (ctx) => {
+      if (!ctx.threadId) return
+      const open = useTerminals.getState().byThreadId[ctx.threadId]?.open ?? false
+      void useTerminals.getState().toggle(ctx.threadId)
+      if (open) useUi.getState().requestComposerFocus()
+    },
+  },
+  {
+    id: "terminal.new",
+    defaultKeys: "mod+shift+`",
+    title: m.command_terminal_new,
+    run: (ctx) => {
+      if (ctx.threadId) void useTerminals.getState().openSession(ctx.threadId)
+    },
+  },
+
   {
     id: "language.switch",
     defaultKeys: "",

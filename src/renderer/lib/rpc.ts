@@ -78,6 +78,12 @@ export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+/** The start of the file `path` under `root`, keyed by `JSON.stringify([root, path])`. */
+export const fileContentAtom = Atom.family((key: string) => {
+  const [root, path] = JSON.parse(key) as [string, string]
+  return Atom.make(call("fs.read", { root, path }))
+})
+
 /** Keyed by `${threadId}\n${scope}`. Asked again when the window comes back, since agents edit files meanwhile. */
 export const threadChangesAtom = Atom.family((key: string) => {
   const [threadId = "", scope] = key.split("\n")
@@ -85,6 +91,26 @@ export const threadChangesAtom = Atom.family((key: string) => {
     Atom.makeRefreshOnSignal(windowReturnSignal),
   )
 })
+
+/** How many commits the git graph asks for, per checkout. Grows as the list scrolls to its end. */
+export const gitLogLimitAtom = Atom.family((_root: string) => Atom.make(200))
+
+/** Commits of the checkout at `root`. Asked again when that worktree's status changes. */
+export const gitLogAtom = Atom.family((root: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent((event) => event.type === "worktree.updated" && event.worktree.path === root && get.refreshSelf()),
+    )
+    return call("git.log", { root, limit: get(gitLogLimitAtom(root)) })
+  }),
+)
+
+/** One commit's changes, keyed by `commitKey`. */
+export const commitDiffAtom = Atom.family((key: string) => {
+  const [root = "", hash = ""] = key.split("\n")
+  return Atom.make(call("git.show", { root, hash }))
+})
+export const commitKey = (root: string, hash: string) => `${root}\n${hash}`
 
 /**
  * Bumps when the window comes back into view or regains focus. Effect's `windowFocusSignal` only

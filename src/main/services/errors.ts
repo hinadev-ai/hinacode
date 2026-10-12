@@ -10,7 +10,7 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree", "automation"]),
+  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal"]),
   id: Schema.String,
 }) {
   override get message(): string {
@@ -31,6 +31,15 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
 }) {
   override get message(): string {
     return `${this.rootPath} is not a directory`
+  }
+}
+
+/** The renderer asked to read a checkout that is neither a project root nor a live worktree. */
+export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("UnknownRootError", {
+  root: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.root} is not a project or worktree kkcode knows`
   }
 }
 

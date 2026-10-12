@@ -1,4 +1,4 @@
-import { join, relative, isAbsolute } from "node:path"
+import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { NodeServices } from "@effect/platform-node"
 import { app, BrowserWindow, net, protocol, shell } from "electron"
@@ -8,11 +8,12 @@ import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
-import { externalUrl, isAppDocument } from "./security.ts"
+import { externalUrl, isAppDocument, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
+import * as Files from "./services/Files.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Git from "./services/Git.ts"
@@ -20,7 +21,9 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
+import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -44,10 +47,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_PROTOCOL, privileges:
 const serveAttachments = () =>
   protocol.handle(ATTACHMENT_PROTOCOL, (request) => {
     const path = decodeURIComponent(new URL(request.url).pathname.slice(1))
-    const inside = relative(Attachments.attachmentsRoot(), path)
-    if (!isAbsolute(path) || inside.startsWith("..") || isAbsolute(inside)) {
-      return new Response(null, { status: 403 })
-    }
+    if (!isInside(Attachments.attachmentsRoot(), path)) return new Response(null, { status: 403 })
     return net.fetch(pathToFileURL(path).toString())
   })
 
@@ -60,19 +60,23 @@ const makeAppLayer = (dbPath: string) => {
     ),
     Messages.layer,
     Attachments.layer,
+    Search.layer,
+    Files.layer,
   )
   const naming =
     mockClaude === undefined
       ? ThreadNaming.layer
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer, naming).pipe(
+    Layer.provide(domain),
+  )
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
     Layer.provideMerge(agents),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, Git.layer, eventsLayer)),
-    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Favicons.layer)),
+    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
+    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )

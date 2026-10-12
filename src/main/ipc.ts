@@ -13,7 +13,10 @@ import {
 import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { UnknownRootError } from "./services/errors.ts"
 import { Events } from "./services/Events.ts"
+import { Files } from "./services/Files.ts"
+import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
@@ -21,8 +24,10 @@ import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
+import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { Terminals } from "./services/Terminals.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
@@ -34,11 +39,15 @@ type AppServices =
   | AgentRunner
   | McpCredentials
   | PullRequests
+  | Search
   | Secrets
   | Ports
+  | Terminals
   | Attachments
   | Automations
+  | Git
   | GitHub
+  | Files
   | Favicons
 
 interface HandlerError {
@@ -63,13 +72,36 @@ const defaultModel = (provider: ProviderId) =>
     return models[0]?.id ?? ""
   })
 
+/** Git history is only read from a checkout kkcode recorded, never from a path the renderer made up. */
+const knownRoot = (root: string) =>
+  Effect.gen(function* () {
+    const projects = yield* Projects.use((service) => service.list)
+    const worktrees = yield* Worktrees.use((service) => service.list)
+    const known =
+      projects.some((project) => project.rootPath === root) ||
+      worktrees.some((worktree) => worktree.path === root && worktree.status !== "removed")
+    if (!known) return yield* new UnknownRootError({ root })
+    return root
+  })
+
+/** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
+const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
+
 const handlers: Handlers = {
   "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
-  "projects.delete": ({ id }) => Projects.use((projects) => projects.remove(id)),
+  "projects.delete": ({ id }) =>
+    Effect.gen(function* () {
+      const threads = yield* Threads.use((service) => service.list)
+      yield* Effect.forEach(
+        threads.filter((thread) => thread.projectId === id),
+        (thread) => closeTerminals(thread.id),
+      )
+      yield* Projects.use((projects) => projects.remove(id))
+    }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId }) =>
@@ -97,7 +129,9 @@ const handlers: Handlers = {
       }
       return thread
     }),
-  "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
+  "threads.delete": ({ id, removeWorktree }) =>
+    closeTerminals(id).pipe(Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree })))),
+
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
@@ -106,8 +140,11 @@ const handlers: Handlers = {
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
-  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "threads.settle": ({ threadId }) =>
+    closeTerminals(threadId).pipe(Effect.andThen(Threads.use((threads) => threads.settle(threadId)))),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
+  "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
+  "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
 
   "settings.get": () => Settings.use((settings) => settings.get),
@@ -116,7 +153,11 @@ const handlers: Handlers = {
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
-
+  "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
+  "search.files": ({ threadId, query, limit }) => Search.use((search) => search.files(threadId, query, limit)),
+  "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
+  "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
+  "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {
       const window = BrowserWindow.fromWebContents(sender)
@@ -156,6 +197,11 @@ const handlers: Handlers = {
   "mcp.connection": ({ threadId }) => McpCredentials.use((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
+  "terminal.open": (input) => Terminals.use((terminals) => terminals.open(input)),
+  "terminal.write": ({ id, data }) => Terminals.use((terminals) => terminals.write(id, data)),
+  "terminal.resize": ({ id, cols, rows }) => Terminals.use((terminals) => terminals.resize(id, cols, rows)),
+  "terminal.close": ({ id }) => Terminals.use((terminals) => terminals.close(id)),
+  "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "dialog.pickFiles": (_, sender) =>

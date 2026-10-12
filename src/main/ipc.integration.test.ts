@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
@@ -20,14 +20,17 @@ import { eventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
+import * as Files from "./services/Files.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
+import * as Terminals from "./services/Terminals.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
@@ -144,16 +147,18 @@ const makeLayer = (dbPath: string) => {
     ),
     Messages.layer,
     Attachments.layer,
+    Search.layer,
+    Files.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const base = Layer.mergeAll(agents, automationsStub)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
-    Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
-    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Favicons.layer)),
+    Layer.provide(eventsLayer),
+    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
@@ -399,6 +404,20 @@ describe("projects, threads and settings over rpc", () => {
     expect(files).not.toContain("secret.env")
   })
 
+  test("lists a folder only for the app frame, a known root, and a path inside it", async () => {
+    const { rootPath } = result(await invoke("projects.list", undefined))[0]!
+    mkdirSync(join(repo, "docs"), { recursive: true })
+    const listed = result(await invoke("fs.list", { root: rootPath, path: "" }))
+    expect(listed.find((entry) => entry.name === "docs")?.kind).toBe("dir")
+
+    const subframe = await invoke("fs.list", { root: rootPath, path: "" }, { url: appUrl, parent: mainFrame })
+    expect(failure(subframe).tag).toBe("UntrustedSender")
+    expect(failure(await invoke("fs.list", { root: dir, path: "" })).tag).toBe("FsAccessError")
+    expect(failure(await invoke("fs.list", { root: rootPath, path: ".." })).tag).toBe("FsAccessError")
+    expect(failure(await invoke("fs.watch", { root: dir, paths: [""] })).tag).toBe("FsAccessError")
+    expect(failure(await invoke("fs.read", { root: rootPath, path: "../kkcode.sqlite" })).tag).toBe("FsAccessError")
+  })
+
   test("cloning into a folder that already holds that repository adds it without cloning", async () => {
     const clone = join(dir, "myprofile")
     execFileSync("git", ["init", "-q", clone])
@@ -461,6 +480,16 @@ describe("projects, threads and settings over rpc", () => {
     ])
     result(await invoke("worktrees.remove", { id: worktree.id, deleteBranch: "force" }))
   })
+
+  test("deleting a project ends the shells of its threads", async () => {
+    const root = join(dir, "doomed")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "doomed", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("terminal.open", { threadId: thread.id, cols: 80, rows: 24 }))
+    result(await invoke("projects.delete", { id: project.id }))
+    expect(result(await invoke("terminal.list", { threadId: thread.id }))).toStrictEqual([])
+  })
 })
 
 describe("sub-agents over rpc", () => {
@@ -484,6 +513,63 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+})
+
+const history = () => join(dir, "history")
+const inHistory = (...args: Array<string>) =>
+  execFileSync("git", ["-C", history(), "-c", "user.email=t@t", "-c", "user.name=Kalan", ...args], {
+    encoding: "utf8",
+  }).trim()
+const commitInHistory = (file: string, message: string) => {
+  writeFileSync(join(history(), file), message)
+  inHistory("add", file)
+  inHistory("commit", "-q", "-m", message)
+  return inHistory("rev-parse", "HEAD")
+}
+
+describe("git history over rpc", () => {
+  test("lists a branch, a merge and a tag, and shows a merge against its first parent", async () => {
+    execFileSync("git", ["init", "-q", "-b", "main", history()])
+    const base = commitInHistory("a.txt", "init")
+    inHistory("switch", "-q", "-c", "feat/x")
+    const feature = commitInHistory("b.txt", "feat: add b")
+    inHistory("switch", "-q", "main")
+    const mainline = commitInHistory("c.txt", "fix: add c")
+    inHistory("merge", "-q", "--no-ff", "-m", "Merge branch 'feat/x'", "feat/x")
+    const merge = inHistory("rev-parse", "HEAD")
+    inHistory("tag", "v1")
+    result(await invoke("projects.create", { name: "history", rootPath: history(), setupScript: null }))
+
+    const commits = result(await invoke("git.log", { root: history() }))
+    expect(commits).toHaveLength(4)
+    expect(commits[0]).toMatchObject({
+      hash: merge,
+      parents: [mainline, feature],
+      subject: "Merge branch 'feat/x'",
+      author: "Kalan",
+      refs: ["HEAD", "main", "tag: v1"],
+    })
+    expect(commits.find((item) => item.hash === feature)?.refs).toStrictEqual(["feat/x"])
+    expect(commits.at(-1)).toMatchObject({ hash: base, parents: [] })
+    expect(result(await invoke("git.log", { root: history(), limit: 2 }))).toHaveLength(2)
+
+    const diff = result(await invoke("git.show", { root: history(), hash: merge }))
+    expect(diff.files).toStrictEqual([{ path: "b.txt", status: "added" }])
+    expect(diff.patch).toContain("diff --git a/b.txt b/b.txt")
+  })
+
+  test("reads a live worktree but refuses removed ones, unknown paths and option-like hashes", async () => {
+    const project = result(await invoke("projects.list", undefined)).find((item) => item.rootPath === history())!
+    const worktree = result(
+      await invoke("worktrees.create", { projectId: project.id, branch: "kk/history", baseRef: "main" }),
+    )
+    expect(result(await invoke("git.log", { root: worktree.path }))[0]?.refs).toContain("kk/history")
+
+    result(await invoke("worktrees.remove", { id: worktree.id, deleteBranch: "force" }))
+    expect(failure(await invoke("git.log", { root: worktree.path })).tag).toBe("UnknownRootError")
+    expect(failure(await invoke("git.log", { root: dir })).tag).toBe("UnknownRootError")
+    expect(failure(await invoke("git.show", { root: history(), hash: "--output=/tmp/x" })).tag).toBe("SchemaError")
   })
 })
 

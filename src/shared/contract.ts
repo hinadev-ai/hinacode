@@ -16,7 +16,12 @@ import {
   Changes,
   ChangesScope,
   AutomationRun,
+  FileSearchHit,
   AutomationTrigger,
+  FsEntry,
+  FsFileContent,
+  CommitDiff,
+  GitCommit,
   MergeMethod,
   Message,
   OpenPort,
@@ -26,7 +31,9 @@ import {
   PullRequestDetail,
   PullRequestLink,
   Settings,
+  TerminalSession,
   Thread,
+  ThreadSearchHit,
   ThreadStatus,
   Worktree,
 } from "./domain.ts"
@@ -44,6 +51,8 @@ const AutomationInput = Schema.Struct({
   branchTemplate: Schema.NullOr(Schema.String),
 })
 export type AutomationInput = typeof AutomationInput.Type
+
+const TerminalSize = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000 }))
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -122,6 +131,22 @@ export const RpcMethods = {
   /** Marks the thread settled and removes its worktree. */
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /**
+   * Commits on every branch of the checkout at `root`, newest first in topological order. `root` must be
+   * a project root or a live worktree path.
+   */
+  "git.log": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000 }))),
+    }),
+    Schema.Array(GitCommit),
+  ),
+  /** One commit's diff against its first parent. Hex only, so a hash can never be read as an option. */
+  "git.show": rpc(
+    Schema.Struct({ root: Schema.String, hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{7,64}$/)) }),
+    CommitDiff,
+  ),
   /** Shows the path in the OS file manager. */
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 
@@ -133,6 +158,26 @@ export const RpcMethods = {
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
   "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
+  /** Messages across every thread containing `query`, newest first. */
+  "search.threads": rpc(
+    Schema.Struct({ query: Schema.String, limit: Schema.optional(Schema.Number) }),
+    Schema.Array(ThreadSearchHit),
+  ),
+  /** Lines containing `query` in the thread's active workspace, found with ripgrep. */
+  "search.files": rpc(
+    Schema.Struct({ threadId: Schema.String, query: Schema.String, limit: Schema.optional(Schema.Number) }),
+    Schema.Array(FileSearchHit),
+  ),
+
+  /**
+   * One level of a folder under `root`, folders first. `root` must be a project root or a live worktree
+   * path, and `path` is relative to it ("" for the root itself).
+   */
+  "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
+  /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
+  "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
+  "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
@@ -197,6 +242,18 @@ export const RpcMethods = {
 
   "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
+
+  /** Starts a login shell in the thread's worktree, or in the project root when it has none. */
+  "terminal.open": rpc(
+    Schema.Struct({ threadId: Schema.String, cols: TerminalSize, rows: TerminalSize }),
+    TerminalSession,
+  ),
+  /** Input for the shell. Ignored once the session has exited. */
+  "terminal.write": rpc(Schema.Struct({ id: Schema.String, data: Schema.String }), Schema.Void),
+  "terminal.resize": rpc(Schema.Struct({ id: Schema.String, cols: TerminalSize, rows: TerminalSize }), Schema.Void),
+  /** Ends the shell if it still runs and forgets the session. */
+  "terminal.close": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "terminal.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(TerminalSession)),
 
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
@@ -306,8 +363,14 @@ export const PushEvent = Schema.Union([
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
   }),
+  /** Something changed directly inside a folder `fs.watch` asked for. */
+  Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  /** Shell output, batched to about one push per frame. */
+  Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
+  /** Sent after the session's last `terminal.data`. */
+  Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

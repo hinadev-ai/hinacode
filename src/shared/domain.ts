@@ -31,7 +31,7 @@ export const Worktree = Schema.Struct({
 })
 export type Worktree = typeof Worktree.Type
 
-export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted"])
+export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted", "untracked", "conflict"])
 export type ChangedFileStatus = typeof ChangedFileStatus.Type
 
 /** What the working tree changed since a base, committed or not, new files included. */
@@ -42,9 +42,53 @@ export const Changes = Schema.Struct({
 })
 export type Changes = typeof Changes.Type
 
-/** `worktree`: since the worktree forked from its base ref. `turn`: since the thread's latest turn started. */
+/** Worktree fork or latest turn baseline. */
 export const ChangesScope = Schema.Literals(["worktree", "turn"])
 export type ChangesScope = typeof ChangesScope.Type
+
+export const FsEntryKind = Schema.Literals(["file", "dir", "symlink"])
+export type FsEntryKind = typeof FsEntryKind.Type
+
+/** One entry of a folder listing in a thread's working directory. */
+export const FsEntry = Schema.Struct({
+  name: Schema.String,
+  /** Relative to the listed root, `/`-separated. */
+  path: Schema.String,
+  kind: FsEntryKind,
+  /** Gitignored, itself or through a parent folder. */
+  ignored: Schema.Boolean,
+  /** For a folder, the most notable status among the files under it. */
+  gitStatus: Schema.NullOr(ChangedFileStatus),
+})
+export type FsEntry = typeof FsEntry.Type
+
+/** The start of a file, as the file viewer shows it. */
+export const FsFileContent = Schema.Struct({
+  /** Empty for a binary file. */
+  content: Schema.String,
+  /** The file is longer than what `content` holds. */
+  truncated: Schema.Boolean,
+  binary: Schema.Boolean,
+})
+export type FsFileContent = typeof FsFileContent.Type
+
+export const GitCommit = Schema.Struct({
+  hash: Schema.String,
+  parents: Schema.Array(Schema.String),
+  subject: Schema.String,
+  author: Schema.String,
+  authoredAt: Timestamp,
+  /** Decorations as `git log` prints them, e.g. `HEAD`, `main`, `origin/main`, `tag: v1`. */
+  refs: Schema.Array(Schema.String),
+})
+export type GitCommit = typeof GitCommit.Type
+
+/** One commit's changes against its first parent. */
+export const CommitDiff = Schema.Struct({
+  patch: Schema.String,
+  files: Schema.Array(Schema.Struct({ path: Schema.String, status: ChangedFileStatus })),
+})
+export type CommitDiff = typeof CommitDiff.Type
 
 /** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
 export const GitHubAuth = Schema.Union([
@@ -291,6 +335,18 @@ export const OpenPort = Schema.Struct({
 })
 export type OpenPort = typeof OpenPort.Type
 
+/** An integrated terminal: a shell in the thread's workspace. Lives in memory and ends with the app. */
+export const TerminalSession = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  cwd: Schema.String,
+  cols: Schema.Number,
+  rows: Schema.Number,
+  status: Schema.Literals(["running", "exited"]),
+  exitCode: Schema.NullOr(Schema.Number),
+})
+export type TerminalSession = typeof TerminalSession.Type
+
 /**
  * What starts an automation. A webhook's HMAC secret lives in Secrets, never in this shape,
  * so the renderer only ever sees it once, in the `automations.create` response.
@@ -356,3 +412,27 @@ export const Automation = Schema.Struct({
   updatedAt: Timestamp,
 })
 export type Automation = typeof Automation.Type
+
+/** A message that matched a global search, newest first. */
+export const ThreadSearchHit = Schema.Struct({
+  threadId: Schema.String,
+  threadTitle: Schema.String,
+  projectId: Schema.String,
+  messageId: Schema.String,
+  /** About 80 characters of the message around the first match. */
+  snippet: Schema.String,
+  at: Timestamp,
+})
+export type ThreadSearchHit = typeof ThreadSearchHit.Type
+
+/** A line in the open thread's workspace that matched a global search. */
+export const FileSearchHit = Schema.Struct({
+  /** Relative to the workspace root. */
+  path: Schema.String,
+  line: Schema.Number,
+  /** 1-based, in UTF-16 code units, of the first match on the line. */
+  column: Schema.Number,
+  /** The line around its first match, trimmed for long lines. */
+  text: Schema.String,
+})
+export type FileSearchHit = typeof FileSearchHit.Type

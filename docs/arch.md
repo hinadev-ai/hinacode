@@ -54,10 +54,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                             |
-| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `secrets.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`               |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                    |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `secrets.respond`, `settings.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.watch`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`     |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
@@ -75,7 +75,7 @@ flowchart BT
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports"]
+  features["McpCredentials, Ports, Terminals"]
   runner["AgentRunner"]
   autos["Automations"]
   mcp["MCP server"]
@@ -202,6 +202,37 @@ sequenceDiagram
   S->>S: apply snapshot
   S->>S: replay pending pushes where push.seq > seq
   M-->>S: later pushes apply directly
+```
+
+## Thread side panel
+
+The right edge of the thread route is an activity bar: one icon per view, and the selected view to its left. `sidePanel/views.ts` holds the registry, one entry per view with its icon, title, command and component. The bar, the content area and the `view.*` commands all render from that array, so adding a view is one entry and no branch anywhere else. `useUi` remembers the view per thread and the last one picked; picking the shown view again hides the panel.
+
+```mermaid
+flowchart LR
+  registry["sidePanel/views.ts<br/>details, files, changes,<br/>git, pullRequests, agents"]
+  registry --> bar["ActivityBar<br/>tablist, badges, chords"]
+  registry --> content["ThreadSidePanel<br/>tabpanel for the selected view"]
+  registry --> commands["view.* commands"]
+  commands & bar --> ui["useUi<br/>view per thread, wide flag"]
+  ui --> content
+```
+
+The Files view reads the disk only through `Files` in main. `fs.list` lists one folder level with ignore and git status, `fs.read` returns up to 1 MB of one file, and `fs.watch` sets the folders that push `fs.changed`. All three accept only a known project root or live worktree as `root` and refuse any `path` whose realpath leaves it.
+
+```mermaid
+sequenceDiagram
+  participant E as FileExplorer
+  participant V as FileViewer
+  participant F as Files (main)
+  E->>F: fs.list {root, path} per expanded folder
+  E->>F: fs.watch {root, expanded folders}
+  E->>V: Enter on a file
+  V->>F: fs.read {root, path}
+  F-->>E: fs.changed {root, folder}, 100 ms after the last change
+  E->>F: fs.list again
+  F-->>V: same push for the file's folder
+  V->>F: fs.read again
 ```
 
 ## Keybindings
@@ -402,8 +433,11 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Turn orchestration                        | `src/main/services/AgentRunner.ts`                         |
 | Transcript folding (shared with renderer) | `src/shared/foldEvent.ts`                                  |
 | Worktree lifecycle, diff, settle          | `src/main/services/Worktrees.ts`, `Git.ts`, `workspace.ts` |
+| Commit graph (log, show, lane layout)     | `src/main/services/Git.ts`, `src/renderer/lib/gitGraph.ts` |
 | Providers                                 | `src/main/agents/claude/`, `src/main/agents/codex/`        |
 | MCP server and tools                      | `src/main/mcp/`                                            |
 | Automations                               | `src/main/services/automations/`                           |
 | Contracts                                 | `src/shared/contract.ts`, `domain.ts`, `agent.ts`          |
 | Renderer state                            | `src/renderer/stores/`                                     |
+| Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |
+| File listing, reading, watching           | `src/main/services/Files.ts`                               |
