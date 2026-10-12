@@ -216,7 +216,6 @@
   "panel_tab_files": "Files",
   "panel_tab_git": "Git",
   "panel_views": "Thread views",
-  "git_view_empty": "Git history for this branch will show here.",
   "viewer_loading": "Loading file…",
   "viewer_failed": "Could not open the file: {message}",
   "viewer_binary": "This is a binary file, so it is not shown.",

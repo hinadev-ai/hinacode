@@ -216,7 +216,6 @@
   "panel_tab_files": "檔案",
   "panel_tab_git": "Git",
   "panel_views": "討論串檢視",
-  "git_view_empty": "這個分支的 git 歷史會顯示在這裡。",
   "viewer_loading": "正在載入檔案…",
   "viewer_failed": "無法開啟檔案：{message}",
   "viewer_binary": "這是二進位檔案，不會顯示。",

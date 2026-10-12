@@ -21,10 +21,11 @@ import type { CommitDiff, GitCommit, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
-import { commitDiffAtom, commitKey, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
+import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
+import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
@@ -49,9 +50,13 @@ export function GitGraphView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const project = projects.find((candidate) => candidate.id === thread.projectId)
-  const root = worktree && worktree.status !== "removed" ? worktree.path : project?.rootPath
+  const inWorktree = worktree !== undefined && worktree.status !== "removed"
+  const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => undefined)
+  const root = inWorktree ? worktree.path : project?.rootPath
   if (!root) return null
-  return <GitGraph key={root} root={root} branch={worktree?.branch} threadStatus={thread.status} />
+  return (
+    <GitGraph key={root} root={root} branch={inWorktree ? worktree.branch : rootBranch} threadStatus={thread.status} />
+  )
 }
 
 function GitGraph({ root, branch, threadStatus }: { root: string; branch?: string; threadStatus: Thread["status"] }) {
@@ -183,6 +188,11 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
   )
 
   const showDiff = diffOpen && selectedCommit !== undefined
+  // A diff needs the room a file viewer gets.
+  useEffect(() => {
+    useUi.getState().setSidePanelWide(showDiff)
+    return () => useUi.getState().setSidePanelWide(false)
+  }, [showDiff])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
