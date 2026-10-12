@@ -12,11 +12,12 @@ import type { Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
+import { GitGraphView } from "../GitGraphView.tsx"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { ChangesView } from "./ChangesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { FilesView } from "./FilesView.tsx"
-import { AgentsView, GitView, PullRequestsView } from "./SimpleViews.tsx"
+import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
@@ -40,7 +41,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   },
   { id: "files", icon: RiFileCopy2Line, title: m.panel_tab_files, commandId: "view.files", component: FilesView },
   { id: "changes", icon: RiFileEditLine, title: m.panel_changes, commandId: "view.changes", component: ChangesView },
-  { id: "git", icon: RiGitBranchLine, title: m.panel_tab_git, commandId: "view.git", component: GitView },
+  { id: "git", icon: RiGitBranchLine, title: m.panel_tab_git, commandId: "view.git", component: GitGraphView },
   {
     id: "pullRequests",
     icon: RiGitPullRequestLine,
