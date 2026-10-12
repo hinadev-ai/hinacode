@@ -1,26 +1,17 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { Link, useRouter, useNavigate } from "@tanstack/react-router"
+import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
 import { type RefObject, useEffect, useRef, useState } from "react"
-import {
-  RiAddLine,
-  RiArrowRightSLine,
-  RiFolder3Line,
-  RiFolderAddLine,
-  RiSettings3Line,
-  RiSideBarFill,
-} from "react-icons/ri"
+import { RiAddLine, RiArrowRightSLine, RiFolder3Line, RiFolderAddLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
-import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { useUi } from "../stores/ui.ts"
-import { ChordKeys } from "./ChordKeys.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
@@ -29,7 +20,6 @@ import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "./ui/dialog.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 /** Stays mounted while hidden so its dialogs, opened by keybindings, still render. */
 export function Sidebar({
@@ -44,10 +34,8 @@ export function Sidebar({
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const overlayOpen = useUi((state) => state.sidebarOverlayOpen)
   const setOverlayOpen = useUi((state) => state.setSidebarOverlayOpen)
-  const toggleSidebar = useUi((state) => state.toggleSidebar)
   const addProjectOpen = useUi((state) => state.addProjectOpen)
   const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
-  const hideChord = useKeymap()["sidebar.toggle"]
   const sidebarWidth = useUi((state) => state.sidebarWidth)
   const setSidebarWidth = useUi((state) => state.setSidebarWidth)
   const addProjectButtonRef = useRef<HTMLButtonElement>(null)
@@ -68,32 +56,6 @@ export function Sidebar({
           : "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
       }
     >
-      <header className="flex h-12 shrink-0 items-center gap-0.5 pr-2 pl-3">
-        <span className="mr-auto min-w-0 truncate font-heading text-sm font-semibold">{m.app_name()}</span>
-        <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
-          <RiSettings3Line aria-hidden />
-        </Button>
-        {compact ? (
-          <DialogPrimitive.Close
-            render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} title={m.sidebar_hide()} />}
-          >
-            <RiSideBarFill aria-hidden />
-          </DialogPrimitive.Close>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger
-              render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} onClick={toggleSidebar} />}
-            >
-              <RiSideBarFill aria-hidden />
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {m.sidebar_hide()}
-              {hideChord && <ChordKeys chord={hideChord} />}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </header>
-
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <h2 className="text-xs font-medium text-muted-foreground">{m.sidebar_projects()}</h2>
         <Button
@@ -129,10 +91,10 @@ export function Sidebar({
   return (
     <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
       <DialogPortal keepMounted>
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-background/60" />
+        <DialogPrimitive.Backdrop className="fixed inset-x-0 top-titlebar bottom-0 z-50 bg-background/60" />
         <DialogPrimitive.Popup
           finalFocus={finalFocus}
-          className="fixed inset-y-0 left-0 z-50 flex w-64 max-w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar outline-none"
+          className="fixed top-titlebar bottom-0 left-0 z-50 flex w-64 max-w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar outline-none"
         >
           <DialogTitle className="sr-only">{m.sidebar_label()}</DialogTitle>
           {content}
