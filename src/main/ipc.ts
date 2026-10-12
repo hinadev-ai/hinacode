@@ -116,6 +116,7 @@ const handlers: Handlers = {
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
+  "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
 
   "dialog.pickFolder": (_, sender) =>

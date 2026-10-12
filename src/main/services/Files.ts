@@ -1,9 +1,9 @@
 import { type Dirent, watch as watchFs } from "node:fs"
-import { readdir, realpath } from "node:fs/promises"
+import { open, readdir, realpath } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import type { ChangedFileStatus, FsEntry, FsEntryKind } from "../../shared/domain.ts"
+import type { ChangedFileStatus, FsEntry, FsEntryKind, FsFileContent } from "../../shared/domain.ts"
 import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
@@ -12,11 +12,11 @@ import { parseNameStatus } from "./Worktrees.ts"
 
 const reasons = {
   unknownRoot: "is not a project root or worktree",
-  outsideRoot: "is not a folder inside",
+  outsideRoot: "is not inside",
   unreadable: "cannot be read in",
 } as const
 
-/** The renderer asked for something outside the folders kkcode manages, or for a folder that is gone. */
+/** The renderer asked for something outside the folders kkcode manages, or for something that is gone. */
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
@@ -40,6 +40,8 @@ export class Files extends Context.Service<
       root: string,
       path: string,
     ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | PersistenceError>
+    /** Up to the first `MAX_READ_BYTES` of the file `path` under `root`, checked like `list`. */
+    readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
     /**
      * Replaces the folders under `root` that push `fs.changed`. Folders that no longer exist are skipped,
      * and an empty `paths` closes every watcher of the root.
@@ -52,6 +54,26 @@ export class Files extends Context.Service<
 >()("kkcode/Files") {}
 
 const WATCH_DEBOUNCE_MS = 100
+
+export const MAX_READ_BYTES = 1024 * 1024
+
+/** Git's own test: a NUL byte in the first 8000 bytes makes a file binary. */
+const BINARY_SNIFF_BYTES = 8000
+
+/** Reads one byte past the cap, which tells a file of exactly the cap from a longer one. */
+const readStart = async (file: string): Promise<FsFileContent> => {
+  const handle = await open(file, "r")
+  try {
+    const buffer = Buffer.alloc(MAX_READ_BYTES + 1)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    const bytes = buffer.subarray(0, Math.min(bytesRead, MAX_READ_BYTES))
+    const truncated = bytesRead > MAX_READ_BYTES
+    if (bytes.subarray(0, BINARY_SNIFF_BYTES).includes(0)) return { content: "", truncated, binary: true }
+    return { content: bytes.toString("utf8"), truncated, binary: false }
+  } finally {
+    await handle.close()
+  }
+}
 
 const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true })
 
@@ -96,8 +118,8 @@ const statusOf = (path: string, changed: ReadonlyMap<string, ChangedFileStatus>)
   return summarize(statuses)
 }
 
-/** The real path of the folder `path` names, refusing `..`, absolute paths and symlinks that lead out of `root`. */
-const resolveDir = (root: string, path: string) =>
+/** The real path `path` names under `root`, refusing `..`, absolute paths and symlinks that lead out of `root`. */
+const resolveInside = (root: string, path: string) =>
   Effect.gen(function* () {
     const segments = path === "" ? [] : path.split("/")
     if (isAbsolute(path) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
@@ -236,13 +258,23 @@ const make = Effect.gen(function* () {
   const list = (root: string, path: string) =>
     Effect.gen(function* () {
       const baseRef = yield* knownRoot(root)
-      const entries = yield* readEntries(root, path, yield* resolveDir(root, path))
+      const entries = yield* readEntries(root, path, yield* resolveInside(root, path))
       const [isIgnored, changed] = yield* Effect.all([ignoredIn(root, path), changedPaths(root, path, baseRef)], {
         concurrency: "unbounded",
       })
       return entries
         .map((entry) => ({ ...entry, ignored: isIgnored(entry.path), gitStatus: statusOf(entry.path, changed) }))
         .toSorted(byKindThenName)
+    })
+
+  const read = (root: string, path: string) =>
+    Effect.gen(function* () {
+      yield* knownRoot(root)
+      const file = yield* resolveInside(root, path)
+      return yield* Effect.tryPromise({
+        try: () => readStart(file),
+        catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
+      })
     })
 
   /** Root -> watched folder path -> close. */
@@ -283,7 +315,7 @@ const make = Effect.gen(function* () {
       }
       for (const path of new Set(paths)) {
         if (current.has(path)) continue
-        const dir = yield* resolveDir(root, path).pipe(
+        const dir = yield* resolveInside(root, path).pipe(
           Effect.map((resolved): string | null => resolved),
           Effect.catchIf(
             (error) => error.reason === "unreadable",
@@ -299,7 +331,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, watch })
+  return Files.of({ list, read, watch })
 })
 
 export const layer = Layer.effect(Files, make)

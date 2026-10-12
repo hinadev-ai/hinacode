@@ -16,6 +16,7 @@ import {
   AutomationRun,
   AutomationTrigger,
   FsEntry,
+  FsFileContent,
   Locale,
   Message,
   OpenPort,
@@ -146,6 +147,8 @@ export const RpcMethods = {
    * path, and `path` is relative to it ("" for the root itself).
    */
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
+  /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
+  "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
   /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 

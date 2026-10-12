@@ -58,6 +58,16 @@ export const FsEntry = Schema.Struct({
 })
 export type FsEntry = typeof FsEntry.Type
 
+/** The start of a file, as the file viewer shows it. */
+export const FsFileContent = Schema.Struct({
+  /** Empty for a binary file. */
+  content: Schema.String,
+  /** The file is longer than what `content` holds. */
+  truncated: Schema.Boolean,
+  binary: Schema.Boolean,
+})
+export type FsFileContent = typeof FsFileContent.Type
+
 /** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
 export const GitHubAuth = Schema.Union([
   Schema.Struct({ type: Schema.Literal("missing") }),

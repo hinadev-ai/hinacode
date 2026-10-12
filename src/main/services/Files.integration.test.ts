@@ -10,7 +10,7 @@ import type { FsEntry } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread, type SeedThread } from "../db/testing.ts"
 import { Events } from "./Events.ts"
-import { Files } from "./Files.ts"
+import { Files, MAX_READ_BYTES } from "./Files.ts"
 import * as FilesLayer from "./Files.ts"
 import * as Git from "./Git.ts"
 
@@ -55,6 +55,11 @@ beforeAll(() => {
   write(join(repo, "debug.log"), "log\n")
   symlinkSync(outside, join(repo, "escape"))
   symlinkSync(join(repo, "src"), join(repo, "inner"))
+
+  write(join(outside, "secret.txt"), "secret\n")
+  symlinkSync(join(outside, "secret.txt"), join(repo, "untracked/leak.txt"))
+  write(join(repo, "untracked/huge.txt"), "x".repeat(MAX_READ_BYTES + 10))
+  writeFileSync(join(repo, "untracked/image.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2]))
 })
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -176,6 +181,52 @@ describe("fs.list", () => {
       expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unknownRoot" })
     }),
   )
+})
+
+const read = (root: string, path: string) => run(Files.use((files) => files.read(root, path)))
+
+describe("fs.read", () => {
+  it.effect("reads a text file, through a symlink that stays inside the root", () =>
+    Effect.gen(function* () {
+      expect(yield* read(repo, "src/a.ts")).toStrictEqual({
+        content: "src/a.ts\nedit\n",
+        truncated: false,
+        binary: false,
+      })
+      expect((yield* read(repo, "inner/b.ts")).content).toBe("src/b.ts\n")
+    }),
+  )
+
+  it.effect("stops at 1 MB and says so", () =>
+    Effect.gen(function* () {
+      const huge = yield* read(repo, "untracked/huge.txt")
+      expect(huge.truncated).toBe(true)
+      expect(huge.content).toHaveLength(MAX_READ_BYTES)
+    }),
+  )
+
+  it.effect("does not send the bytes of a binary file", () =>
+    Effect.gen(function* () {
+      expect(yield* read(repo, "untracked/image.bin")).toStrictEqual({ content: "", truncated: false, binary: true })
+    }),
+  )
+
+  const refusals: ReadonlyArray<[string, () => [root: string, path: string], string]> = [
+    ["a root that is no project or worktree", () => [outside, "secret.txt"], "unknownRoot"],
+    ["a path through ..", () => [repo, "../outside/secret.txt"], "outsideRoot"],
+    ["an absolute path", () => [repo, join(outside, "secret.txt")], "outsideRoot"],
+    ["a symlink to a file outside the root", () => [repo, "untracked/leak.txt"], "outsideRoot"],
+    ["a folder", () => [repo, "src"], "unreadable"],
+    ["a file that does not exist", () => [repo, "missing.txt"], "unreadable"],
+  ]
+  for (const [name, args, reason] of refusals) {
+    it.effect(`refuses ${name}`, () =>
+      Effect.gen(function* () {
+        const error = yield* read(...args()).pipe(Effect.flip)
+        expect(error).toMatchObject({ _tag: "FsAccessError", reason })
+      }),
+    )
+  }
 })
 
 describe("fs.watch", () => {
