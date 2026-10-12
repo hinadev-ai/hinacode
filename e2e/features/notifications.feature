@@ -39,3 +39,10 @@ Feature: Notifications
     And the agent in "Background" emits "turn_completed"
     And the agent in "Background" emits "turn_failed"
     Then the only notification is for "Background" and reads "Failed: Turn interrupted"
+
+  Scenario: Clicking a notification restores the minimized window
+    When the agent in "Background" emits "turn_completed"
+    And I minimize the notification window
+    And I click the notification for "Background"
+    Then the thread "Background" is open
+    And the notification window is restored and focused

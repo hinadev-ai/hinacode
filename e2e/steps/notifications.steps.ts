@@ -92,3 +92,12 @@ Then(
     await expect.poll(() => captured(app.page)).toEqual([{ title: names.of(title), body }])
   },
 )
+
+When("I minimize the notification window", async ({ app }) => {
+  await app.minimize()
+  await expect.poll(() => app.windowState()).toMatchObject({ minimized: true })
+})
+
+Then("the notification window is restored and focused", async ({ app }) => {
+  await expect.poll(() => app.windowState()).toStrictEqual({ minimized: false, focused: true })
+})
