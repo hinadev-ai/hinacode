@@ -451,5 +451,18 @@
   "access_auto_hint_claude": "Claude 自行核准安全的操作，其餘會詢問",
   "access_auto_hint_claude_edits": "編輯直接執行，指令仍會詢問",
   "access_auto_hint_codex": "在沙箱內自由執行，超出沙箱時詢問",
-  "access_full_hint": "所有操作都直接執行，不會詢問"
+  "access_full_hint": "所有操作都直接執行，不會詢問",
+  "git_graph_label": "提交紀錄",
+  "git_graph_refresh": "重新整理紀錄",
+  "git_graph_loading": "正在載入提交…",
+  "git_graph_empty": "尚無提交。",
+  "git_graph_failed": "無法讀取紀錄：{message}",
+  "git_graph_commit": "{subject}，作者 {author}",
+  "git_graph_more_refs": "+{count}",
+  "git_graph_diff_label": "{hash} 的變更",
+  "git_graph_diff_loading": "正在載入變更…",
+  "git_graph_diff_failed": "無法載入變更：{message}",
+  "git_graph_diff_empty": "這個提交沒有變更檔案。",
+  "git_graph_resize": "調整變更區域高度",
+  "git_graph_hint": "選擇一個提交以檢視它的變更。"
 }

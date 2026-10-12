@@ -469,5 +469,18 @@
   "access_auto_hint_claude": "Claude approves safe actions and asks about the rest",
   "access_auto_hint_claude_edits": "Edits run without asking; commands still ask",
   "access_auto_hint_codex": "Runs freely in the sandbox; asks to go beyond it",
-  "access_full_hint": "Runs everything without asking"
+  "access_full_hint": "Runs everything without asking",
+  "git_graph_label": "Commit history",
+  "git_graph_refresh": "Refresh history",
+  "git_graph_loading": "Loading commits…",
+  "git_graph_empty": "No commits yet.",
+  "git_graph_failed": "Could not read history: {message}",
+  "git_graph_commit": "{subject} by {author}",
+  "git_graph_more_refs": "+{count}",
+  "git_graph_diff_label": "Changes in {hash}",
+  "git_graph_diff_loading": "Loading changes…",
+  "git_graph_diff_failed": "Could not load changes: {message}",
+  "git_graph_diff_empty": "This commit changes no files.",
+  "git_graph_resize": "Resize changes",
+  "git_graph_hint": "Select a commit to see its changes."
 }
