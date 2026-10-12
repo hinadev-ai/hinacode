@@ -1,6 +1,7 @@
 import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Project, Settings } from "../../shared/domain.ts"
+import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -50,7 +51,7 @@ export const commands = [
     run: (ctx) => {
       const current = ctx.threadId ? useThreads.getState().byId[ctx.threadId] : undefined
       const projectId = current?.projectId ?? ctx.projects[0]?.id
-      if (projectId) useUi.getState().setNewThreadProjectId(projectId)
+      if (projectId) void startThread(projectId, ctx.navigate)
       else useUi.getState().setAddProjectOpen(true)
     },
   },

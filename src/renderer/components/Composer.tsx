@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import {
   type ClipboardEvent,
@@ -12,20 +12,20 @@ import {
   useTransition,
 } from "react"
 import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
-import type { ModelInfo } from "../../shared/agent.ts"
+import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise, modelsAtom } from "../lib/rpc.ts"
+import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, useDrafts } from "../stores/drafts.ts"
-import { useThreads } from "../stores/threads.ts"
+import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import { PendingAttachment } from "./AttachmentView.tsx"
+import { AgentPicker, EffortPicker, FastModeToggle, ModelPicker, WorkspacePicker } from "./ComposerControls.tsx"
+import { ComposerInput } from "./ComposerInput.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
-import { Textarea } from "./ui/textarea.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const readAsDataUrl = (file: File) =>
@@ -50,11 +50,20 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread }: { thread: Thread }) {
-  const { text, attachments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, worktree } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  // Agent and workspace stay open to change until the first message.
+  const unstarted = useMessages((state) => {
+    const history = state.byThread[thread.id]
+    return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
+  })
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const key = completionKey(thread)
+  const commands = AsyncResult.getOrElse(useAtomValue(commandsAtom(key)), (): ReadonlyArray<AgentCommand> => [])
+  const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
+  const refreshFiles = useAtomRefresh(filesAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const canSend = (text.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
 
@@ -67,7 +76,12 @@ export function Composer({ thread }: { thread: Thread }) {
       try {
         await (busy
           ? callPromise("threads.steer", { threadId: thread.id, text: prompt, attachments: sent.attachments })
-          : callPromise("threads.send", { threadId: thread.id, prompt, attachments: sent.attachments }))
+          : callPromise("threads.send", {
+              threadId: thread.id,
+              prompt,
+              attachments: sent.attachments,
+              worktree: unstarted ? (sent.worktree ?? undefined) : undefined,
+            }))
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
@@ -133,6 +147,13 @@ export function Composer({ thread }: { thread: Thread }) {
     send()
   }
 
+  // A finished turn may have added files worth mentioning.
+  const wasBusy = useRef(busy)
+  useEffect(() => {
+    if (wasBusy.current && !busy) refreshFiles()
+    wasBusy.current = busy
+  }, [busy, refreshFiles])
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
@@ -142,7 +163,7 @@ export function Composer({ thread }: { thread: Thread }) {
 
   return (
     <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
+      <div className="relative mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
         {attachments.length > 0 && (
           <ul aria-label={m.attachment_pending_label()} className="flex flex-wrap gap-2 px-1 pt-1.5">
             {attachments.map((attachment) => (
@@ -155,22 +176,26 @@ export function Composer({ thread }: { thread: Thread }) {
             ))}
           </ul>
         )}
-        <Textarea
+        <ComposerInput
           ref={textareaRef}
           aria-label={m.thread_composer_label()}
           placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
           value={text}
-          onChange={(event) => useDrafts.getState().setText(thread.id, event.target.value)}
+          onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+          commands={commands}
+          files={files}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onDragOver={onDragOver}
           onDrop={onDrop}
           rows={2}
-          className="max-h-60 min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
         <div className="flex items-center gap-2">
           <AttachButton onClick={pickFiles} disabled={isStaging} />
+          {unstarted && <AgentPicker thread={thread} onError={setError} />}
           <ModelPicker thread={thread} onError={setError} />
+          <EffortPicker thread={thread} onError={setError} />
+          <FastModeToggle thread={thread} onError={setError} />
           <div className="ml-auto flex items-center gap-2">
             {busy && (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>
@@ -182,6 +207,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </div>
         </div>
       </div>
+      {unstarted && <WorkspacePicker thread={thread} worktree={worktree} />}
       {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
     </form>
   )
@@ -222,39 +248,5 @@ function SendButton({ steer, disabled }: { steer: boolean; disabled: boolean }) 
       />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
-  )
-}
-
-function ModelPicker({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
-  const result = useAtomValue(modelsAtom(thread.provider))
-  const listed = AsyncResult.getOrElse(result, (): ReadonlyArray<ModelInfo> => [])
-  // Keep the thread's model selectable even when the provider no longer lists it.
-  const models = listed.some((model) => model.id === thread.model)
-    ? listed
-    : [{ id: thread.model, label: thread.model, provider: thread.provider }, ...listed]
-  const items = models.map((model) => ({ value: model.id, label: model.label }))
-
-  const change = async (model: string | null) => {
-    if (model === null || model === thread.model) return
-    try {
-      useThreads.getState().upsert(await callPromise("threads.update", { id: thread.id, model }))
-    } catch (cause) {
-      onError(errorMessage(cause))
-    }
-  }
-
-  return (
-    <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className="border-0 text-xs">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   )
 }

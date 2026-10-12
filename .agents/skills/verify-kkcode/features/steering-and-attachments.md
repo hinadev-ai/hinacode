@@ -17,7 +17,7 @@ While a turn runs, a user can steer it by sending another message, which the age
 ## How to get to it (user POV)
 
 - While the header reads `Running`, the composer placeholder becomes `Steer the agent… Enter sends while it works.` and the send button is `Steer`.
-- Paste (`Ctrl+V`) or drop onto the `Message` textbox, or click `Attach files`.
+- Paste (`Ctrl+V`) or drop onto the `Message` box, or click `Attach files`.
 
 ## Driving it with agent-browser
 
