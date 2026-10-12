@@ -1,4 +1,5 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
+import { assistantPresentation } from "./assistantPresentation.ts"
 import { describeToolCall } from "./toolCall.ts"
 
 export interface FindMatch {
@@ -41,12 +42,12 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
   if (pattern === null) return []
   const matches: Array<FindMatch> = []
   for (const message of messages) {
+    const presentation = assistantPresentation(message)
+    const parts = presentation.kind === "completed" ? [...presentation.work, ...presentation.reply] : presentation.parts
     // Reply text appears only once the agent finishes it, so the part still being written is not on screen.
-    const writing = message.completedAt === null && message.parts.at(-1)?.type === "text"
-    const searchedParts = writing ? message.parts.length - 1 : message.parts.length
-    for (let partIndex = 0; partIndex < searchedParts; partIndex++) {
-      const part = message.parts[partIndex]
-      if (part === undefined) continue
+    const writing = message.completedAt === null && parts.at(-1)?.part.type === "text"
+    const searchedParts = writing ? parts.slice(0, -1) : parts
+    for (const { part, index: partIndex } of searchedParts) {
       for (const match of searchableText(part).matchAll(pattern)) {
         matches.push({ messageId: message.id, partIndex, offset: match.index })
       }

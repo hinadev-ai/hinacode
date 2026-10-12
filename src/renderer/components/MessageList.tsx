@@ -1,6 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
+import { assistantPresentation, type IndexedMessagePart } from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
@@ -10,6 +11,7 @@ import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
+import { WorkedFor } from "./WorkedFor.tsx"
 
 const keyExtractor = (message: Message) => message.id
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
@@ -17,12 +19,15 @@ const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} 
 const edgeSpacer = <div className="h-4" />
 
 /** Posted questions stay answerable only while nothing has been said after them. */
-const AnswerableContext = createContext<{ readonly lastMessageId: string | undefined; readonly providerLabel: string }>(
-  {
-    lastMessageId: undefined,
-    providerLabel: "",
-  },
-)
+const AnswerableContext = createContext<{
+  readonly lastMessageId: string | undefined
+  readonly providerLabel: string
+  readonly summarizeWork: boolean
+}>({
+  lastMessageId: undefined,
+  providerLabel: "",
+  summarizeWork: true,
+})
 
 /**
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
@@ -34,6 +39,7 @@ export function MessageList({
   listRef,
   header,
   alignItemsAtEnd = true,
+  summarizeWork = true,
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
@@ -42,9 +48,13 @@ export function MessageList({
   header?: ReactElement
   /** Chat sits at the bottom, by the composer. A log reads from the top. */
   alignItemsAtEnd?: boolean
+  summarizeWork?: boolean
 }) {
   const lastMessageId = messages.at(-1)?.id
-  const answerable = useMemo(() => ({ lastMessageId, providerLabel }), [lastMessageId, providerLabel])
+  const answerable = useMemo(
+    () => ({ lastMessageId, providerLabel, summarizeWork }),
+    [lastMessageId, providerLabel, summarizeWork],
+  )
   return (
     <AnswerableContext value={answerable}>
       <LegendList
@@ -79,7 +89,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
 
 function MessageBody({ message }: { message: Message }) {
   const repository = useThreadRepository()
-  const { lastMessageId, providerLabel } = use(AnswerableContext)
+  const { summarizeWork } = use(AnswerableContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -112,41 +122,54 @@ function MessageBody({ message }: { message: Message }) {
       </article>
     )
   }
+  const presentation = assistantPresentation(message, summarizeWork)
+  const completed = presentation.kind === "completed"
+  const shown = completed ? presentation.reply : presentation.parts
   const streaming = message.completedAt === null
-  // A sub-agent's calls belong to its own view, opened from the call that spawned it.
-  const parts = message.parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined)
   // A steer sent before the agent said anything closes an empty assistant message.
-  if (!streaming && parts.length === 0) return null
-  const last = parts.at(-1)
-  const writing = streaming && last?.type === "text"
+  if (!streaming && shown.length === 0 && (!completed || presentation.work.length === 0)) return null
+  const last = shown.at(-1)
+  const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
   return (
     <article
       aria-busy={streaming}
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {parts.map((part, index) =>
-        // Parts only ever get appended or updated in place, so the index is a stable key.
-        part.type === "text" ? (
-          <ReplyText key={index} text={part.text} done={!(writing && index === parts.length - 1)} />
-        ) : part.type === "questions" && message.id === lastMessageId ? (
-          <PostedQuestionsCard
-            key={index}
-            threadId={message.threadId}
-            questions={part.questions}
-            providerLabel={providerLabel}
-          />
-        ) : (
-          <MessagePartView key={index} part={part} />
-        ),
+      {completed && (
+        <WorkedFor durationMs={presentation.durationMs} work={presentation.work}>
+          {presentation.work.map((indexed) => (
+            <AssistantPart key={indexed.index} message={message} indexed={indexed} done />
+          ))}
+        </WorkedFor>
       )}
-      {streaming && (parts.length === 0 || writing) && (
+      {shown.map((indexed) => (
+        <AssistantPart key={indexed.index} message={message} indexed={indexed} done={indexed.index !== writingIndex} />
+      ))}
+      {streaming && (shown.length === 0 || writingIndex !== undefined) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
-          {writing ? m.message_writing() : m.message_thinking()}
+          {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
     </article>
   )
+}
+
+function AssistantPart({
+  message,
+  indexed: { part },
+  done,
+}: {
+  message: Message
+  indexed: IndexedMessagePart
+  done: boolean
+}) {
+  const { lastMessageId, providerLabel } = use(AnswerableContext)
+  if (part.type === "text") return <ReplyText text={part.text} done={done} />
+  if (part.type === "questions" && message.id === lastMessageId) {
+    return <PostedQuestionsCard threadId={message.threadId} questions={part.questions} providerLabel={providerLabel} />
+  }
+  return <MessagePartView part={part} />
 }
 
 /**
