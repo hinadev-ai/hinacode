@@ -21,6 +21,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -35,6 +36,7 @@ interface Frame {
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<{ channel: string; payload: unknown }>,
+  shown: [] as Array<object>,
   userData: "",
 }))
 
@@ -45,7 +47,11 @@ vi.mock("electron", () => ({
     getAllWindows: () => [
       { webContents: { send: (channel: string, payload: unknown) => electron.pushes.push({ channel, payload }) } },
     ],
-    fromWebContents: () => null,
+    fromWebContents: (sender: object) => ({
+      show: () => {
+        electron.shown.push(sender)
+      },
+    }),
   },
   dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
   shell: { showItemInFolder: () => undefined },
@@ -134,6 +140,26 @@ afterAll(async () => {
 })
 
 describe("rpc trust boundary", () => {
+  test("only a trusted, valid app.ready call shows its sender's window", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)
+    if (!handler) throw new Error("RPC handler is missing")
+    const sender = {}
+    const request = { method: "app.ready", payload: undefined }
+    electron.shown.length = 0
+    expect(
+      await handler({ sender, senderFrame: { url: "file:///tmp/probe.html", parent: null } }, request),
+    ).toMatchObject({ error: { tag: "UntrustedSender" } })
+    expect(await handler({ sender, senderFrame: { url: appUrl, parent: mainFrame } }, request)).toMatchObject({
+      error: { tag: "UntrustedSender" },
+    })
+    expect(await handler({ sender, senderFrame: mainFrame }, { method: 4, payload: undefined })).toMatchObject({
+      error: { tag: "SchemaError" },
+    })
+    expect(electron.shown).toStrictEqual([])
+    expect(await handler({ sender, senderFrame: mainFrame }, request)).toStrictEqual({ result: undefined })
+    expect(electron.shown).toStrictEqual([sender])
+  })
+
   test("refuses calls from documents that are not the app and from subframes", async () => {
     const foreign = await invoke("settings.get", undefined, { url: "file:///tmp/probe.html", parent: null })
     expect(failure(foreign).tag).toBe("UntrustedSender")
@@ -192,6 +218,27 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).toContain(thread.id)
     result(await invoke("threads.delete", { id: thread.id, removeWorktree: false }))
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).not.toContain(thread.id)
+  })
+
+  test("lists every thread's linked pull requests in one call", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const threadOf = async () => result(await invoke("threads.create", { projectId: project.id }))
+    const [first, second] = [await threadOf(), await threadOf()]
+    await runtime.runPromise(
+      PullRequests.PullRequests.use((pullRequests) =>
+        Effect.all([
+          pullRequests.link(first.id, "https://github.com/kjj6198/kkcode/pull/48"),
+          pullRequests.link(first.id, "https://github.com/kjj6198/kkcode/pull/49"),
+          pullRequests.link(second.id, "https://github.com/kjj6198/kkcode/pull/55"),
+        ]),
+      ),
+    )
+    const links = result(await invoke("pullRequests.all", undefined))
+    expect(links.map((link) => [link.threadId, link.url])).toStrictEqual([
+      [first.id, "https://github.com/kjj6198/kkcode/pull/48"],
+      [first.id, "https://github.com/kjj6198/kkcode/pull/49"],
+      [second.id, "https://github.com/kjj6198/kkcode/pull/55"],
+    ])
   })
 
   test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {

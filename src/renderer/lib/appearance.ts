@@ -1,17 +1,20 @@
 import type { DiffsThemeNames } from "@pierre/diffs"
 import { Effect } from "effect"
 import { Atom } from "effect/reactivity"
+import { useSyncExternalStore } from "react"
 import type { Appearance, ThemeId } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 
 interface Theme {
   readonly label: () => string
-  readonly scheme: "dark" | "light"
+  readonly scheme: "dark" | "light" | "system"
   /** Shiki theme for syntax highlighting in diffs. Undefined keeps the diff viewer's own theme. */
   readonly codeTheme?: DiffsThemeNames
 }
 
 export const themes: Record<ThemeId, Theme> = {
+  system: { label: m.theme_system, scheme: "system" },
+  light: { label: m.theme_light, scheme: "light" },
   default: { label: m.theme_default, scheme: "dark" },
   "catppuccin-mocha": { label: () => "Catppuccin Mocha", scheme: "dark", codeTheme: "catppuccin-mocha" },
   "catppuccin-latte": { label: () => "Catppuccin Latte", scheme: "light", codeTheme: "catppuccin-latte" },
@@ -20,12 +23,40 @@ export const themes: Record<ThemeId, Theme> = {
   "gruvbox-dark": { label: () => "Gruvbox Dark", scheme: "dark", codeTheme: "gruvbox-dark-medium" },
 }
 
+const systemAppearance = window.matchMedia("(prefers-color-scheme: dark)")
+const appearanceListeners = new Set<() => void>()
+systemAppearance.addEventListener("change", () => {
+  for (const listener of appearanceListeners) listener()
+})
+
+const subscribeAppearance = (listener: () => void) => {
+  appearanceListeners.add(listener)
+  return () => {
+    appearanceListeners.delete(listener)
+  }
+}
+
+const resolveScheme = (theme: ThemeId): "dark" | "light" => {
+  const scheme = themes[theme].scheme
+  if (scheme !== "system") return scheme
+  return systemAppearance.matches ? "dark" : "light"
+}
+
+export function useTheme(theme: ThemeId) {
+  const scheme = useSyncExternalStore(subscribeAppearance, () => resolveScheme(theme))
+  return { ...themes[theme], scheme }
+}
+
 const fontFamily = (name: string | null) => (name === null ? "" : JSON.stringify(name))
 
-export function applyAppearance({ theme, fontSize, uiFont, monoFont }: Appearance) {
+export function applyAppearance(
+  { theme, fontSize, uiFont, monoFont }: Appearance,
+  scheme: "dark" | "light" = resolveScheme(theme),
+) {
   const root = document.documentElement
-  root.classList.toggle("dark", themes[theme].scheme === "dark")
-  if (theme === "default") delete root.dataset.theme
+  root.classList.toggle("dark", scheme === "dark")
+  root.style.colorScheme = scheme
+  if (theme === "default" || theme === "system" || theme === "light") delete root.dataset.theme
   else root.dataset.theme = theme
   root.style.fontSize = `${fontSize}px`
   root.style.setProperty("--ui-font", fontFamily(uiFont))

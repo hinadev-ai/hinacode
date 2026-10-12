@@ -62,6 +62,7 @@ const defaultModel = (provider: ProviderId) =>
   })
 
 const handlers: Handlers = {
+  "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
@@ -124,6 +125,7 @@ const handlers: Handlers = {
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
+  "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
   "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
   "github.auth": () => GitHub.use((github) => github.auth),
