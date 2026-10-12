@@ -24,9 +24,16 @@ interface ConnectionState {
   readonly status: ConnectionStatus
   /** Why the desktop refused us, shown on the connect screen. */
   readonly error: string | null
+  /** Counts successful handshakes. Desktop-side sessions such as terminals do not survive one. */
+  readonly generation: number
 }
 
-export const useConnection = create<ConnectionState>()(() => ({ target: null, status: "offline", error: null }))
+export const useConnection = create<ConnectionState>()(() => ({
+  target: null,
+  status: "offline",
+  error: null,
+  generation: 0,
+}))
 
 export class RpcError extends Error {
   constructor(
@@ -167,7 +174,7 @@ function receive(ws: WebSocket, data: unknown) {
         return
       }
       attempt = 0
-      useConnection.setState({ status: "connected", error: null })
+      useConnection.setState((state) => ({ status: "connected", error: null, generation: state.generation + 1 }))
       return
     case "result": {
       const call = pending.get(frame.id)

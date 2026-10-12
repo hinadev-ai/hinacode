@@ -25,6 +25,7 @@ export default function ThreadScreen() {
   const thread = useThreads((state) => state.byId[id])
   const loaded = useThreads((state) => state.status === "ready")
   const status = useConnection((state) => state.status)
+  const generation = useConnection((state) => state.generation)
   const [tab, setTab] = useState<Tab>("chat")
   // The shell outlives tab switches and ends with this screen.
   const [terminalOpened, setTerminalOpened] = useState(false)
@@ -95,7 +96,7 @@ export default function ThreadScreen() {
           {tab === "prs" && <PullRequests thread={thread} />}
           {terminalOpened && (
             <View style={[styles.flex, tab !== "terminal" && styles.hidden]}>
-              <TerminalPanel threadId={thread.id} />
+              <TerminalPanel key={generation} threadId={thread.id} />
             </View>
           )}
         </KeyboardAvoidingView>
