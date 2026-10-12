@@ -13,6 +13,7 @@ import { Composer } from "./Composer.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { Button } from "./ui/button.tsx"
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex }
@@ -21,6 +22,7 @@ const statusLabel = {
   idle: m.thread_status_idle,
   running: m.thread_status_running,
   awaiting_approval: m.thread_status_awaiting_approval,
+  limited: m.thread_status_limited,
   settled: m.thread_status_settled,
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
@@ -37,7 +39,10 @@ export function ThreadView({ thread, actions }: { thread: Thread; actions?: Reac
           <ProviderIcon provider={thread.provider} />
           {providerLabel[thread.provider]()}
         </span>
-        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+        <span
+          data-status={thread.status}
+          className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground data-[status=limited]:border-attention/30 data-[status=limited]:bg-attention/10 data-[status=limited]:text-attention"
+        >
           {statusLabel[thread.status]()}
         </span>
         {actions}
@@ -47,6 +52,9 @@ export function ThreadView({ thread, actions }: { thread: Thread; actions?: Reac
           <Transcript thread={thread} />
         </ThreadRepository>
       </div>
+      {thread.status === "limited" && thread.usageLimit !== null && (
+        <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />
+      )}
       <Composer thread={thread} />
     </div>
   )
