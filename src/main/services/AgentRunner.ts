@@ -343,11 +343,7 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, handle, messages: () => turnMessages }
   }
 
-  /**
-   * A thread linked to a pull request works on that pull request's branch, as a pull request checkout does
-   * from its first send, so only the title is renamed. The link outlives a send that failed after attaching.
-   */
-  const nameThread = (thread: Thread, prompt: string) =>
+  const nameThreadWithPullRequestScope = (thread: Thread, prompt: string) =>
     pullRequests.list(thread.id).pipe(
       Effect.flatMap((links) => naming.nameFromPrompt(thread, prompt, links.length === 0 ? "titleAndBranch" : "title")),
       Effect.catch((error) => Effect.logWarning("thread naming failed", error)),
@@ -382,7 +378,7 @@ const make = Effect.gen(function* () {
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
       // Automations title their threads from their own template.
       if (first && thread.createdBy === "user" && prompt.trim() !== "")
-        yield* Effect.forkDetach(nameThread(thread, prompt))
+        yield* Effect.forkDetach(nameThreadWithPullRequestScope(thread, prompt))
     }).pipe(exclusive(threadId))
 
   const send = (

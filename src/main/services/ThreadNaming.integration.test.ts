@@ -29,7 +29,6 @@ import * as Worktrees from "./Worktrees.ts"
 
 vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false } }))
 
-// Text generation is the only external call naming makes; everything after its answer runs for real.
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
   query: async function* () {
@@ -73,7 +72,6 @@ const heads: Record<string, GitHub.PullRequestHead> = {
   },
 }
 
-/** `gh` stands in for GitHub; the heads it names are fetched from the local `origin` for real. */
 const github = Layer.effect(
   GitHub.GitHub,
   Effect.gen(function* () {
@@ -86,7 +84,6 @@ const github = Layer.effect(
   }),
 ).pipe(Layer.provide(GitHub.layer))
 
-/** The real naming service, reporting when a run has finished so the test can inspect what it left. */
 const observedNaming = (named: Deferred.Deferred<void>) =>
   Layer.effect(
     ThreadNaming.ThreadNaming,
@@ -128,10 +125,6 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
   )
 }
 
-/**
- * A repo whose `origin` holds a same-repository pull request branch and a fork's pull request, which
- * GitHub only serves as `refs/pull/<n>/head`. Neither exists locally, as for someone else's pull request.
- */
 const makeRepo = (dir: string) => {
   const root = join(dir, "repo")
   const origin = join(dir, "origin.git")
@@ -152,7 +145,6 @@ const makeRepo = (dir: string) => {
   return root
 }
 
-/** What naming left behind: the title, the checkout's branch and upstream, and the worktree row. */
 const inspect = (threadId: string) =>
   Effect.gen(function* () {
     const thread = yield* Threads.Threads.use((threads) => threads.get(threadId))
@@ -172,10 +164,6 @@ const inspect = (threadId: string) =>
     }
   })
 
-/**
- * Creates a repo and a thread in it, runs `act` on the thread, then waits for the detached naming run and
- * the worktree's setup to end before inspecting what they left.
- */
 const nameAfter = <E>(
   act: (
     threadId: string,
@@ -243,7 +231,6 @@ describe("naming a thread from its first message", () => {
     Effect.gen(function* () {
       const named = yield* nameAfter((threadId) =>
         Effect.gen(function* () {
-          // What a first send does before it can fail: check the pull request out and link it.
           const { pullRequestUrl } = yield* Threads.Threads.use((threads) =>
             threads.attachWorktree(threadId, { _tag: "pullRequest", selector: "7" }),
           )
