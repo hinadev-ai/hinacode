@@ -3,7 +3,7 @@ import { dirname } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import type { ChecksStatus, GitHubAuth, PullRequest, PullRequestStatus, ReviewStatus } from "../../shared/domain.ts"
-import type { GitHubRepository } from "../../shared/github.ts"
+import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
 import { CommandError, makeExec } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
@@ -48,7 +48,8 @@ const RollupEntry = Schema.Struct({
 })
 type RollupEntry = typeof RollupEntry.Type
 
-export const PULL_REQUEST_FIELDS = "url,number,title,state,isDraft,reviewDecision,statusCheckRollup"
+export const PULL_REQUEST_FIELDS =
+  "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,author,headRefName,baseRefName,additions,deletions"
 
 const PullRequestJson = Schema.fromJsonString(
   Schema.Struct({
@@ -59,6 +60,11 @@ const PullRequestJson = Schema.fromJsonString(
     isDraft: Schema.Boolean,
     reviewDecision: Schema.String,
     statusCheckRollup: Schema.Array(RollupEntry),
+    author: Schema.Struct({ login: Schema.String }),
+    headRefName: Schema.String,
+    baseRefName: Schema.String,
+    additions: Schema.Number,
+    deletions: Schema.Number,
   }),
 )
 
@@ -98,6 +104,11 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
     status,
     checks: summarizeChecks(json.statusCheckRollup),
     review: reviewStatus[json.reviewDecision] ?? null,
+    author: json.author.login,
+    headRefName: json.headRefName,
+    baseRefName: json.baseRefName,
+    additions: json.additions,
+    deletions: json.deletions,
   }
 }
 
@@ -127,6 +138,8 @@ export class GitHub extends Context.Service<
      * user's preferred protocol work; without a signed-in `gh` it falls back to `git` over https.
      */
     readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
+    /** The GitHub repository `origin` points at in the checkout at `cwd`, or null when it has none. Never fails. */
+    readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
 >()("kkcode/GitHub") {}
 
@@ -185,6 +198,12 @@ const make = Effect.gen(function* () {
     )
   }
 
+  const repository = (cwd: string) =>
+    exec("git", ["-C", cwd, "remote", "get-url", "origin"], cwd).pipe(
+      Effect.map(parseGitHubRepository),
+      Effect.orElseSucceed(() => null),
+    )
+
   return GitHub.of({
     auth,
     run: gh,
@@ -192,6 +211,7 @@ const make = Effect.gen(function* () {
     branchPullRequest,
     createPullRequest,
     clone,
+    repository,
   })
 })
 
