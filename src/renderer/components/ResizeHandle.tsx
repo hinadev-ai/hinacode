@@ -38,6 +38,19 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     return () => observer.disconnect()
   }, [targetRef])
 
+  // A captured pointer can outlive the handle when a panel hides or becomes an overlay.
+  useEffect(
+    () => () => {
+      if (!drag.current) return
+      drag.current = null
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+      const element = targetRef.current
+      if (element) element.style.transition = ""
+    },
+    [targetRef],
+  )
+
   const endDrag = () => {
     const current = drag.current
     if (!current) return
@@ -73,16 +86,25 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (width === null) return
+    const element = targetRef.current
+    if (!element) return
+    const currentWidth = element.getBoundingClientRect().width
     const next = {
-      ArrowLeft: width - grow * KEYBOARD_STEP,
-      ArrowRight: width + grow * KEYBOARD_STEP,
+      ArrowLeft: currentWidth - grow * KEYBOARD_STEP,
+      ArrowRight: currentWidth + grow * KEYBOARD_STEP,
       Home: bounds.min,
       End: bounds.max,
     }[event.key]
     if (next === undefined) return
     event.preventDefault()
-    onResize(clampWidth(bounds, next))
+    const resized = clampWidth(bounds, next)
+    // Keyboard input is direct manipulation too. Finish this step before measuring the next one.
+    const transition = element.style.transition
+    element.style.transition = "none"
+    element.style.width = `${resized}px`
+    element.getBoundingClientRect()
+    element.style.transition = transition
+    onResize(resized)
   }
 
   return (

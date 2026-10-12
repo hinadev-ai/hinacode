@@ -1,9 +1,9 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
-import { createElement, type RefObject, useCallback, useEffect, useRef } from "react"
+import { createElement, type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
 import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
-import { usePanelLayout } from "../lib/panelLayout.ts"
+import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
 import { SIDE_PANEL_BOUNDS } from "../lib/panelWidth.ts"
 import { m } from "../paraglide/messages.js"
 import { selectSidePanelView, useUi } from "../stores/ui.ts"
@@ -48,6 +48,8 @@ interface ViewContentProps {
 
 function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
   const view = viewById(viewId)
+  const maximum = useSidePanelMaxWidth()
+  const content = useMemo(() => createElement(view.component, { thread }), [view, thread])
   const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))
   const width = useUi((state) => state.sidePanelWidths[size])
   const setWidth = useUi((state) => state.setSidePanelWidth)
@@ -73,7 +75,7 @@ function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
       role="tabpanel"
       tabIndex={-1}
       aria-label={view.title()}
-      style={compact || width === null ? undefined : { width }}
+      style={compact ? undefined : { width: width ?? undefined, maxWidth: maximum }}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-col outline-none",
         compact ? "flex-1" : "max-w-[50vw] transition-[width] duration-200 ease-out motion-reduce:transition-none",
@@ -85,7 +87,7 @@ function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
           label={m.panel_resize()}
           edge="left"
           targetRef={ref}
-          bounds={SIDE_PANEL_BOUNDS}
+          bounds={{ min: SIDE_PANEL_BOUNDS.min, max: maximum }}
           onResize={(next) => setWidth(size, next)}
           onReset={() => setWidth(size, null)}
         />
@@ -94,7 +96,7 @@ function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
         <h2 className="truncate text-sm font-medium">{view.title()}</h2>
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
       </header>
-      {createElement(view.component, { thread })}
+      {content}
     </section>
   )
 }
