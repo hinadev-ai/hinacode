@@ -85,3 +85,12 @@ Adding an agent backend means one implementation of `AgentProvider` in `src/main
 Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own kkcode on a throwaway `KKCODE_USER_DATA`, seeds preconditions through `window.kkcode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
 
 Tests never wait on wall-clock timers; oxlint rejects `setTimeout`, `setInterval` and the `timers` modules in test files. Wait on the thing itself instead: a push event, a `PubSub` the service publishes to, a file change, a Playwright locator assertion, or `TestClock.adjust` for code that sleeps. The verification skill in `.agents/skills/verify-kkcode` picks up where e2e stops: real agent turns, GitHub through `gh`, and native dialogs.
+
+## Acknowledgements
+
+Several designs in kkcode follow [T3 Code](https://github.com/pingdotgg/t3code) (MIT, copyright 2026 T3 Tools Inc.), reimplemented here rather than copied:
+
+- Effect services as `Context.Service` classes with a `make` effect and a `layer` export, and migrations registered through `Migrator.fromRecord`.
+- The MCP server design: Effect's `McpServer.layerHttp` behind bearer auth, one random credential per thread, injected into the agent's MCP config. The pull request tools (`link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests`) and `request_secret` share T3 Code's names.
+- The pull request checks rollup: `null` when a PR has no checks, failing before pending before passing, and `workflow / name` as the check label.
+- Webhook automations verified with a `sha256=` HMAC in `x-hub-signature-256`, with `{{path}}` placeholders filled into the prompt.
