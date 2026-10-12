@@ -59,11 +59,11 @@ Pairing URL: `kkcode://connect?host=<host>&port=<port>&token=<token>`. The token
 
 ### Which methods the phone may call
 
-`RpcMethods` entries that need the desktop window are marked `desktopOnly` in the contract: `app.ready`, `app.focus`, `dialog.*`, `shell.reveal`, `attachments.stage`, `notifications.*` and `fs.watch`. The remote server refuses them with the `DesktopOnly` error tag. Everything else is allowed, including the `terminal.*` family and `github.merge`, because the person holding the paired phone is the same person who sits at the desktop.
+`desktopOnlyMethods` in the contract lists the entries that need the desktop window: `app.ready`, `app.focus`, `dialog.*`, `shell.reveal`, `attachments.stage`, `notifications.*` and `fs.watch`. The remote server refuses them with the `DesktopOnly` error tag. Everything else is allowed, including the `terminal.*` family and `github.merge`, because the person holding the paired phone is the same person who sits at the desktop.
 
 ### Main process
 
-- `src/main/remote/server.ts`: an Effect service `Remote` that owns the listener. Built like the automation webhook server: `HttpRouter` on `NodeHttpServer`, with `GET /remote` upgraded to a WebSocket through `HttpServerRequest.upgrade`. It restarts when `settings.remote` changes and reports `listenError` the way automations do.
+- `src/main/remote/server.ts`: the listener, a `ws` WebSocketServer on a plain `node:http` server, wrapped in `acquireRelease`. Effect's own socket API is pull based and would have doubled the code for no gain here. It restarts when `settings.remote` changes and reports `listenError` the way automations do. `src/main/remote/access.ts` holds the token and the status so the settings page can read them without the listener.
 - `src/main/ipc.ts` exports `dispatch(raw, window)` so both transports share one decode, handle and encode path. Remote calls pass `window: null`.
 - `Events` gets a second subscriber: the remote server registers its sockets and the Electron layer keeps sending to windows. `eventsLayer` becomes one layer that fans out to both.
 - New rpc methods for the desktop renderer: `remote.status` (listening address, listen error, number of connected devices) and `remote.pairing` (URL and token for the QR code), `remote.rotateToken`.
