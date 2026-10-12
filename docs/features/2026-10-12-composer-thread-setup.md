@@ -40,6 +40,23 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 
 The thread stores `effort` (null means the model's default) and `fastMode` (migration `0004`). `models.list` reports each model's `efforts`, `defaultEffort` and `fastMode`, so the composer only shows the controls a model supports. Changing model drops values the new model can't honor, and switching agent resets both. Claude gets them as the `effort` option and `settings.fastMode` at session start, and through `applyFlagSettings` when they change. Codex gets `effort` and `serviceTier: "priority"` (its "Fast" tier) on `turn/start`.
 
+## Access modes
+
+Each thread has an `accessMode` (migration `0005`), picked in the composer's `Access` select. New threads start `supervised`, and the mode can change at any time, including mid-thread.
+
+| Mode       | Claude `permissionMode`                                | Codex approval policy, sandbox  |
+| ---------- | ------------------------------------------------------ | ------------------------------- |
+| Supervised | `default`                                              | `untrusted`, `workspace-write`  |
+| Auto       | `auto`, or `acceptEdits` if the model has no auto mode | `on-request`, `workspace-write` |
+| Full       | `bypassPermissions`                                    | `never`, `danger-full-access`   |
+
+- `models.list` reports `autoMode` per model (Claude's `supportsAutoMode`), so the Auto item says what it will actually do.
+- Claude sessions always start with `allowDangerouslySkipPermissions`, which only makes `bypassPermissions` reachable. The permission mode decides what runs unasked. That lets a live session move to full access with `setPermissionMode` instead of restarting. A change reaches a running Claude turn at once, and is applied before each turn otherwise.
+- Codex gets the mode on `thread/start` and `thread/resume`, and again on `turn/start`, since resuming a loaded thread ignores overrides. `turn/start` replaces the sandbox only when its kind changes: the replacement is a whole policy and would drop the user's `sandbox_workspace_write` config.
+- Full access uses the destructive color in the trigger. Amber means a thread is waiting on you, and a full-access thread never waits; the risk is that destructive commands run without a check.
+
+Out of scope: a default access mode for new threads in Settings, and per-project defaults. Automations start threads `supervised` like everything else.
+
 ## Highlighting and completion
 
 - **Highlighting.** The textarea's text is transparent, and a highlighted copy of the same text sits under it (`ComposerInput`, `lib/composerSyntax.ts`). It colors list markers, inline and fenced code, known commands and mentions of files that exist. Only color changes, never font or spacing, so both layers wrap the same way.

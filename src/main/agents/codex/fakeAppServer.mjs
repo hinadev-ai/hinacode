@@ -17,6 +17,17 @@ const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
 const completeTurn = (threadId, turnId, status) =>
   send({ method: "turn/completed", params: { threadId, turn: { id: turnId, status, error: null } } })
 
+const sandboxPolicy = (mode) =>
+  mode === "danger-full-access"
+    ? { type: "dangerFullAccess" }
+    : {
+        type: "workspaceWrite",
+        writableRoots: [],
+        networkAccess: false,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      }
+
 const held = []
 let turns = 0
 
@@ -24,7 +35,7 @@ const reply = ({ id, method, params }) => {
   switch (method) {
     case "thread/start":
     case "thread/resume":
-      return send({ id, result: { thread: { id: "codex-thread" } } })
+      return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })

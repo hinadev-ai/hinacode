@@ -1,5 +1,5 @@
 import { Effect, Schema, Stream } from "effect"
-import type { Attachment } from "../../shared/domain.ts"
+import type { AccessMode, Attachment } from "../../shared/domain.ts"
 import type {
   AgentCommand,
   AgentEvent,
@@ -36,4 +36,6 @@ export interface AgentProvider {
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
   readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+  /** Applies a new access mode to a live session. Providers without one pick it up on the next turn. */
+  readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
 }

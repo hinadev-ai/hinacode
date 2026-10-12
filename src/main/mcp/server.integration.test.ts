@@ -61,6 +61,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       return done ? Effect.asVoid(Deferred.succeed(done, undefined)) : Effect.void
     },
     respondApproval: () => Effect.void,
+    setAccessMode: () => Effect.void,
   }
 }
 

@@ -430,5 +430,15 @@
   "thread_fast_mode": "Fast",
   "thread_fast_mode_hint": "Faster responses that use more of your plan",
   "composer_commands_label": "Commands",
-  "composer_files_label": "Files"
+  "composer_files_label": "Files",
+  "access_picker": "Access",
+  "access_supervised": "Supervised",
+  "access_auto": "Auto",
+  "access_full": "Full access",
+  "access_supervised_hint_claude": "Asks before edits and commands",
+  "access_supervised_hint_codex": "Asks before any command that isn't read-only",
+  "access_auto_hint_claude": "Claude approves safe actions and asks about the rest",
+  "access_auto_hint_claude_edits": "Edits run without asking; commands still ask",
+  "access_auto_hint_codex": "Runs freely in the sandbox; asks to go beyond it",
+  "access_full_hint": "Runs everything without asking"
 }

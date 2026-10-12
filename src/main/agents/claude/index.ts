@@ -2,6 +2,7 @@ import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import {
   type EffortLevel,
+  type PermissionMode,
   query,
   type Options,
   type Query,
@@ -11,9 +12,10 @@ import {
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
 import type { AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
-import type { Attachment } from "../../../shared/domain.ts"
+import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
+import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
@@ -27,6 +29,7 @@ const fallbackModel = (id: string, label: string): ModelInfo => ({
   efforts: [],
   defaultEffort: null,
   fastMode: false,
+  autoMode: false,
 })
 
 const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
@@ -59,6 +62,7 @@ interface Session extends MapState, ApprovalSession {
   model: string
   effort: string | null
   fastMode: boolean
+  permissionMode: PermissionMode
   sessionId: string | null
   turn: TurnQueue | null
   interrupted: boolean
@@ -217,8 +221,19 @@ export const layer = Layer.effect(
         ),
       )
 
+    const permissionModeFor = (accessMode: AccessMode, model: string) =>
+      accessMode === "auto"
+        ? Effect.map(listModels, (models) =>
+            permissionMode(
+              accessMode,
+              models.some((listed) => listed.id === model && listed.autoMode),
+            ),
+          )
+        : Effect.succeed(permissionMode(accessMode, false))
+
     const startSession = (input: RunTurnInput) =>
       Effect.gen(function* () {
+        const mode = yield* permissionModeFor(input.accessMode, input.model)
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
         const resume = input.resumeSessionId ?? lastSessionIds.get(input.threadId)
@@ -236,7 +251,9 @@ export const layer = Layer.effect(
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
                 systemPrompt: { type: "preset", preset: "claude_code" },
-                permissionMode: "default",
+                permissionMode: mode,
+                // Lets a live session switch to full access; the mode above decides what runs unasked.
+                allowDangerouslySkipPermissions: true,
                 thinking: { type: "adaptive", display: "summarized" },
                 // One-line "what it is doing now" for each sub-agent in the Agents tab.
                 agentProgressSummaries: true,
@@ -262,6 +279,7 @@ export const layer = Layer.effect(
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
+          permissionMode: mode,
           prompts,
           abort,
           query: handle,
@@ -296,6 +314,17 @@ export const layer = Layer.effect(
         return Effect.promise(() => session.query.interrupt()).pipe(Effect.ignore)
       })
 
+    const switchPermissionMode = (session: Session, accessMode: AccessMode) =>
+      Effect.gen(function* () {
+        const mode = yield* permissionModeFor(accessMode, session.model)
+        if (mode === session.permissionMode) return
+        yield* Effect.tryPromise({
+          try: () => session.query.setPermissionMode(mode),
+          catch: agentError("Failed to switch access mode"),
+        })
+        session.permissionMode = mode
+      })
+
     const runTurn = (input: RunTurnInput) =>
       Stream.callback<AgentEvent, AgentError>((turn) =>
         Effect.gen(function* () {
@@ -325,6 +354,7 @@ export const layer = Layer.effect(
             session.effort = input.effort
             session.fastMode = input.fastMode
           }
+          yield* switchPermissionMode(session, input.accessMode)
           session.turn = turn
           session.interrupted = false
           session.pendingSteers = 0
@@ -376,6 +406,7 @@ export const layer = Layer.effect(
           efforts: model.supportsEffort ? (model.supportedEffortLevels ?? []) : [],
           defaultEffort: null,
           fastMode: model.supportsFastMode ?? false,
+          autoMode: model.supportsAutoMode ?? false,
         })
       }
       return [...byId.values()]
@@ -434,6 +465,10 @@ export const layer = Layer.effect(
         return session === undefined ? Effect.void : interruptQuery(session)
       },
       respondApproval: approvals.respond,
+      setAccessMode: (threadId, accessMode) => {
+        const session = sessions.get(threadId)
+        return session === undefined ? Effect.void : switchPermissionMode(session, accessMode)
+      },
     })
   }),
 )

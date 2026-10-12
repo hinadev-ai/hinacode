@@ -104,16 +104,18 @@ classDiagram
     steer(threadId, text, attachments)
     interrupt(threadId)
     respondApproval(requestId, decision)
+    setAccessMode(threadId, accessMode)
   }
   class ClaudeProvider {
     one long-lived query() per thread
     canUseTool → approvals
+    permissionMode from the thread's access mode
     loads user, project and local settings
   }
   class CodexProvider {
     one app-server per app, respawned on exit
     runs keyed by threadId
-    approvalPolicy on-request, sandbox workspace-write
+    approvalPolicy and sandbox from the thread's access mode
   }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider

@@ -66,7 +66,7 @@ $AB screenshot "$SHOTS/<feature>-<step>.png"
 
 Run `agent-browser skills get electron` once if you have not used agent-browser with Electron before. Always pass `--session`: the default session is shared with other agents.
 
-Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), comboboxes `Agent` / `Model` / `Effort` / `Workspace`, toggle `Fast`, textbox `Base ref`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
+Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), comboboxes `Agent` / `Model` / `Effort` / `Access` / `Workspace`, toggle `Fast`, textbox `Base ref`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
 
 Rules that came out of real runs:
 
@@ -87,7 +87,7 @@ The renderer exposes `window.kkcode.rpc(method, payload)`. The method map with r
 $S/seed-repo.sh $DATA/repo                          # git repo on main + a gitignored .env
 $S/rpc.mjs $PORT projects.create "{\"name\":\"demo\",\"rootPath\":\"$DATA/repo\",\"setupScript\":null}"
 $S/rpc.mjs $PORT threads.create '{"projectId":"<id>"}'    # Claude Code, default model, title thread-xxxxx
-$S/rpc.mjs $PORT threads.update '{"id":"<id>","title":"t1","model":"claude-sonnet-5-5"}'   # also provider, effort (string or null), fastMode
+$S/rpc.mjs $PORT threads.update '{"id":"<id>","title":"t1","model":"claude-sonnet-5-5"}'   # also provider, effort (string or null), fastMode, accessMode
 $S/rpc.mjs $PORT threads.transcript '{"threadId":"<id>"}'
 $S/rpc.mjs $PORT mcp.connection '{"threadId":"<id>"}'
 ```

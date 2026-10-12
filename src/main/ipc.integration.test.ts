@@ -107,6 +107,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
+  setAccessMode: () => Effect.void,
 })
 
 const providers = Layer.mergeAll(
@@ -333,6 +334,16 @@ describe("projects, threads and settings over rpc", () => {
     expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
       "ThreadStartedError",
     )
+  })
+
+  test("a thread starts supervised and keeps the access mode it is switched to", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.accessMode).toBe("supervised")
+
+    result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed?.accessMode).toBe("full")
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {

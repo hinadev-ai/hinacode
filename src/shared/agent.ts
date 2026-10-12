@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { Attachment } from "./domain.ts"
+import type { AccessMode, Attachment } from "./domain.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex"])
 export type ProviderId = typeof ProviderId.Type
@@ -14,6 +14,8 @@ export const ModelInfo = Schema.Struct({
   defaultEffort: Schema.NullOr(Schema.String),
   /** Whether the model offers a faster, pricier service tier. */
   fastMode: Schema.Boolean,
+  /** Whether the agent can judge each action itself in the `auto` access mode, instead of only accepting edits. */
+  autoMode: Schema.Boolean,
 })
 export type ModelInfo = typeof ModelInfo.Type
 
@@ -25,6 +27,7 @@ export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   efforts: [],
   defaultEffort: null,
   fastMode: false,
+  autoMode: false,
 })
 
 /**
@@ -148,6 +151,7 @@ export interface RunTurnInput {
   /** Null leaves the model's default effort. */
   readonly effort: string | null
   readonly fastMode: boolean
+  readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
   /** The built-in kkcode MCP server, authenticated as this thread. */

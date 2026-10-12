@@ -11,7 +11,7 @@ import type {
   Subagent,
   SecretRequest,
 } from "../../shared/agent.ts"
-import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -57,6 +57,8 @@ export class AgentRunner extends Context.Service<
       attachments: ReadonlyArray<Attachment>,
     ) => Effect.Effect<void, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
+    readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
     /**
      * Shows the user a secret card in the thread and waits for their answer. Fails when no turn is
@@ -285,6 +287,7 @@ const make = Effect.gen(function* () {
             model: thread.model,
             effort: thread.effort,
             fastMode: thread.fastMode,
+            accessMode: thread.accessMode,
             resumeSessionId: thread.providerSessionId,
             mcpServer,
           })
@@ -385,6 +388,8 @@ const make = Effect.gen(function* () {
       Effect.suspend(() => activeTurns.get(threadId)?.steer(text, attachments) ?? send(threadId, text, attachments)),
     interrupt: (threadId) =>
       Effect.suspend(() => activeTurns.get(threadId)?.provider.interrupt(threadId) ?? Effect.void),
+    setAccessMode: (threadId, accessMode) =>
+      Effect.suspend(() => activeTurns.get(threadId)?.provider.setAccessMode(threadId, accessMode) ?? Effect.void),
     respondApproval: (requestId, decision) =>
       Effect.suspend(() => {
         const request = approvals.get(requestId)

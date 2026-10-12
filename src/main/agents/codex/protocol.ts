@@ -13,6 +13,17 @@ export type InitializeParams = {
 
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access"
 export type AskForApproval = "untrusted" | "on-request" | "never"
+export type SandboxPolicy =
+  | { type: "dangerFullAccess" }
+  | { type: "readOnly"; networkAccess: boolean }
+  | { type: "externalSandbox"; networkAccess: "restricted" | "enabled" }
+  | {
+      type: "workspaceWrite"
+      writableRoots: Array<string>
+      networkAccess: boolean
+      excludeTmpdirEnvVar: boolean
+      excludeSlashTmp: boolean
+    }
 
 export type ThreadStartParams = {
   model?: string | null
@@ -28,8 +39,9 @@ export type ThreadResumeParams = ThreadStartParams & {
 }
 
 export type Thread = { id: string; sessionId: string }
-export type ThreadStartResponse = { thread: Thread }
-export type ThreadResumeResponse = { thread: Thread }
+/** `sandbox` is the policy in effect, including the user's config. */
+export type ThreadStartResponse = { thread: Thread; sandbox: SandboxPolicy }
+export type ThreadResumeResponse = ThreadStartResponse
 
 export type UserInput =
   | { type: "text"; text: string; text_elements: Array<unknown> }
@@ -45,6 +57,9 @@ export type TurnStartParams = {
   effort?: string | null
   /** Omitted keeps the thread's tier; null goes back to the standard one. */
   serviceTier?: string | null
+  /** Applies to this turn and the ones after it. */
+  approvalPolicy?: AskForApproval | null
+  sandboxPolicy?: SandboxPolicy | null
 }
 
 export type TurnStatus = "completed" | "interrupted" | "failed" | "inProgress"
