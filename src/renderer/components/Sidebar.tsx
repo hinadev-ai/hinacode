@@ -3,14 +3,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Link, useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
-import {
-  type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-  useEffect,
-  useRef,
-  useState,
-} from "react"
+import { type RefObject, useEffect, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -22,12 +15,13 @@ import {
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
-import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, clampSidebarWidth } from "../lib/sidebarWidth.ts"
+import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { useUi } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
+import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
@@ -55,6 +49,7 @@ export function Sidebar({
   const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
   const hideChord = useKeymap()["sidebar.toggle"]
   const sidebarWidth = useUi((state) => state.sidebarWidth)
+  const setSidebarWidth = useUi((state) => state.setSidebarWidth)
   const addProjectButtonRef = useRef<HTMLButtonElement>(null)
   const navRef = useRef<HTMLElement>(null)
   const router = useRouter()
@@ -117,7 +112,16 @@ export function Sidebar({
       </ScrollArea>
 
       <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
-      {!compact && sidebarOpen && <SidebarResizeHandle navRef={navRef} />}
+      {!compact && sidebarOpen && (
+        <ResizeHandle
+          label={m.sidebar_resize()}
+          edge="right"
+          targetRef={navRef}
+          bounds={SIDEBAR_BOUNDS}
+          onResize={setSidebarWidth}
+          onReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+        />
+      )}
     </nav>
   )
 
@@ -135,82 +139,6 @@ export function Sidebar({
         </DialogPrimitive.Popup>
       </DialogPortal>
     </Dialog>
-  )
-}
-
-const KEYBOARD_STEP = 16
-
-function SidebarResizeHandle({ navRef }: { navRef: RefObject<HTMLElement | null> }) {
-  const width = useUi((state) => state.sidebarWidth)
-  const setWidth = useUi((state) => state.setSidebarWidth)
-  const [dragging, setDragging] = useState(false)
-  const drag = useRef<{ startX: number; startWidth: number; width: number } | null>(null)
-
-  const endDrag = () => {
-    const current = drag.current
-    if (!current) return
-    drag.current = null
-    setDragging(false)
-    document.body.style.cursor = ""
-    document.body.style.userSelect = ""
-    setWidth(current.width)
-  }
-
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { startX: event.clientX, startWidth: width, width }
-    setDragging(true)
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-  }
-
-  // Writes straight to the DOM so a drag doesn't re-render the whole sidebar on every move.
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const current = drag.current
-    if (!current || !navRef.current) return
-    current.width = clampSidebarWidth(current.startWidth + event.clientX - current.startX)
-    navRef.current.style.width = `${current.width}px`
-  }
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const next = {
-      ArrowLeft: width - KEYBOARD_STEP,
-      ArrowRight: width + KEYBOARD_STEP,
-      Home: SIDEBAR_MIN_WIDTH,
-      End: SIDEBAR_MAX_WIDTH,
-    }[event.key]
-    if (next === undefined) return
-    event.preventDefault()
-    setWidth(next)
-  }
-
-  return (
-    <div
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a focusable splitter is a widget, and <hr> is void so it can't hold the hover line
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={m.sidebar_resize()}
-      aria-valuemin={SIDEBAR_MIN_WIDTH}
-      aria-valuemax={SIDEBAR_MAX_WIDTH}
-      aria-valuenow={width}
-      tabIndex={0}
-      data-dragging={dragging || undefined}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onLostPointerCapture={endDrag}
-      onKeyDown={onKeyDown}
-      onDoubleClick={() => setWidth(SIDEBAR_DEFAULT_WIDTH)}
-      className="group absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none outline-none"
-    >
-      <div
-        aria-hidden
-        className="mx-auto h-full w-0.5 bg-sidebar-ring opacity-0 transition-opacity duration-100 ease-(--ease-out) group-hover:opacity-100 group-focus-visible:opacity-100 group-data-dragging:opacity-100 motion-reduce:transition-none"
-      />
-    </div>
   )
 }
 
