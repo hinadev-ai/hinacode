@@ -421,6 +421,16 @@ describe("projects, threads and settings over rpc", () => {
     ])
     result(await invoke("worktrees.remove", { id: worktree.id, deleteBranch: "force" }))
   })
+
+  test("deleting a project ends the shells of its threads", async () => {
+    const root = join(dir, "doomed")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "doomed", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("terminal.open", { threadId: thread.id, cols: 80, rows: 24 }))
+    result(await invoke("projects.delete", { id: project.id }))
+    expect(result(await invoke("terminal.list", { threadId: thread.id }))).toStrictEqual([])
+  })
 })
 
 describe("sub-agents over rpc", () => {
