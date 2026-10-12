@@ -10,6 +10,7 @@ import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import { externalUrl, isAppDocument, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
+import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
@@ -51,11 +52,12 @@ const serveAttachments = () =>
     return net.fetch(pathToFileURL(path).toString())
   })
 
-const makeAppLayer = (dbPath: string) => {
+const makeAppLayer = (dbPath: string, accountsRoot: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(accountsRoot)),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
@@ -117,7 +119,8 @@ const createWindow = () => {
 }
 
 app.whenReady().then(async () => {
-  const runtime = ManagedRuntime.make(makeAppLayer(join(app.getPath("userData"), "kkcode.sqlite")))
+  const userData = app.getPath("userData")
+  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite"), join(userData, "accounts")))
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
   registerIpc(runtime, appUrl)

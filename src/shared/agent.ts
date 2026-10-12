@@ -36,6 +36,16 @@ export const AgentAccount = Schema.Union([
 ])
 export type AgentAccount = typeof AgentAccount.Type
 
+/** An account added in kkcode: a separate agent home with its own login and transcripts. */
+export const AgentProfile = Schema.Struct({
+  id: Schema.String,
+  provider: ProviderId,
+  name: Schema.String,
+})
+export type AgentProfile = typeof AgentProfile.Type
+
+export const AgentProfileName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
+
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   id,

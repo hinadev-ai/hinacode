@@ -20,6 +20,7 @@ import { AgentError, type AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
+import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Files from "./services/Files.ts"
@@ -193,6 +194,7 @@ const makeLayer = (dbPath: string) => {
     Threads.layer.pipe(
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,

@@ -10,7 +10,7 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal"]),
+  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account"]),
   id: Schema.String,
 }) {
   override get message(): string {
@@ -53,12 +53,22 @@ export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()
   }
 }
 
-/** The agent and workspace of a thread are fixed once it has a message. */
+/** The agent and workspace of a thread are fixed once it has a message, its account once it has a session. */
 export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()("ThreadStartedError", {
   id: Schema.String,
 }) {
   override get message(): string {
-    return "This thread has already started. Start a new thread to change its agent or workspace."
+    return "This thread has already started. Start a new thread to change its agent, account or workspace."
+  }
+}
+
+/** Removing the account would leave threads with transcripts nobody can resume. */
+export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("AccountInUseError", {
+  id: Schema.String,
+  threads: Schema.Number,
+}) {
+  override get message(): string {
+    return `${this.threads} ${this.threads === 1 ? "thread uses" : "threads use"} this account. Delete them first.`
   }
 }
 
