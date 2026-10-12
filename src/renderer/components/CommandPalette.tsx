@@ -153,13 +153,14 @@ export function CommandPalette() {
     usePalette.getState().hide()
   }
 
-  // Runs after focus has gone back to where it was, so an item that focuses the composer keeps it.
+  // Base UI moves focus back to where it was in the frame after the close completes, so the item runs a
+  // frame later to keep whatever it focuses, such as the composer or the find bar.
   const runChosen = (isOpen: boolean) => {
     const choice = chosen.current
     chosen.current = null
     if (isOpen || !choice) return
     if (choice.remember) usePalette.getState().remember(choice.item.id)
-    choice.item.run()
+    requestAnimationFrame(() => choice.item.run())
   }
 
   return (
