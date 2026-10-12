@@ -3,7 +3,7 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
 import { type AgentAccount, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode } from "../../../shared/domain.ts"
-import { accountAtom, modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import { accountAtom, accountKey, modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { accessModes } from "../ComposerControls.tsx"
@@ -87,7 +87,7 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
 }
 
 function AccountStatus({ provider }: { provider: ProviderId }) {
-  const account = useAtomValue(accountAtom(provider))
+  const account = useAtomValue(accountAtom(accountKey(provider, null)))
   return (
     <output
       aria-label={m.settings_account_label({ provider: providerLabel[provider]() })}

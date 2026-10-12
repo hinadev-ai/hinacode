@@ -61,8 +61,16 @@ export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
 )
 
-/** Not kept alive, so reopening the Models tab picks up a sign-in made in a terminal meanwhile. */
-export const accountAtom = Atom.family((provider: ProviderId) => Atom.make(call("agents.account", { provider })))
+/**
+ * Who an account is signed in as, keyed by `accountKey`. Not kept alive, so reopening the Models tab picks
+ * up a sign-in made in a terminal meanwhile.
+ */
+export const accountAtom = Atom.family((key: string) => {
+  const [provider, accountId] = JSON.parse(key) as [ProviderId, string | null]
+  return Atom.make(call("agents.account", { provider, accountId }))
+})
+/** `accountId` null is the CLI's own login. */
+export const accountKey = (provider: ProviderId, accountId: string | null) => JSON.stringify([provider, accountId])
 
 /**
  * Identifies a thread together with its agent and workspace, since switching either changes what the

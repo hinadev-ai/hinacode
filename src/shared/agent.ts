@@ -249,6 +249,8 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
+  /** The account's agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`). Null uses the CLI's own login. */
+  readonly home: string | null
   /** The built-in kkcode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
 }

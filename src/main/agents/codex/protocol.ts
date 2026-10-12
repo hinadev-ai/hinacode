@@ -306,3 +306,16 @@ export const GetAccountRateLimitsResponse = Schema.Struct({
   rateLimitsByLimitId: Schema.NullOr(Schema.Record(Schema.String, RateLimitSnapshot)),
 })
 export type GetAccountRateLimitsResponse = typeof GetAccountRateLimitsResponse.Type
+export type LoginAccountParams = { type: "chatgpt" }
+export const LoginAccountResponse = Schema.Struct({
+  type: Schema.Literal("chatgpt"),
+  loginId: Schema.String,
+  /** URL the client should open in a browser to initiate the OAuth flow. */
+  authUrl: Schema.String,
+})
+export type CancelLoginAccountParams = { loginId: string }
+export const AccountLoginCompletedNotification = Schema.Struct({
+  loginId: Schema.NullOr(Schema.String),
+  success: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+})

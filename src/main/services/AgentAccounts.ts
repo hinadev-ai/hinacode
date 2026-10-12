@@ -43,7 +43,7 @@ const make = (root: string) =>
     const findAll = SqlSchema.findAll({
       Request: Schema.Void,
       Result: AgentProfile,
-      execute: () => sql`SELECT id, provider, name FROM agent_account ORDER BY created_at, id`,
+      execute: () => sql`SELECT id, provider, name FROM agent_account ORDER BY created_at, rowid`,
     })
     const findById = SqlSchema.findOneOption({
       Request: Schema.String,

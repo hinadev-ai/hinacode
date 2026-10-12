@@ -6,7 +6,7 @@ import { Fragment } from "react"
 import type { AccountLimits, ProviderId } from "../../shared/agent.ts"
 import type { LimitWindow, LimitWindowKind } from "../../shared/limits.ts"
 import { formatMinutes, formatResetIn, limitLevel, mostUsed } from "../lib/planLimits.ts"
-import { accountAtom, accountLimitsAtom } from "../lib/rpc.ts"
+import { accountAtom, accountKey, accountLimitsAtom } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -148,7 +148,7 @@ export function AccountLimitsGroup({
 }
 
 function AccountHeading({ provider }: { provider: ProviderId }) {
-  const account = AsyncResult.getOrElse(useAtomValue(accountAtom(provider)), () => null)
+  const account = AsyncResult.getOrElse(useAtomValue(accountAtom(accountKey(provider, null))), () => null)
   const details =
     account?.type === "subscription" ? [account.email, account.plan].filter((detail) => detail !== null) : []
   return (

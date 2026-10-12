@@ -11,6 +11,7 @@ import { eventsLayer, registerIpc } from "./ipc.ts"
 import { externalUrl, isAppDocument, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
+import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
@@ -75,7 +76,7 @@ const makeAppLayer = (dbPath: string, accountsRoot: string) => {
   )
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
+  return Layer.mergeAll(Automations.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
