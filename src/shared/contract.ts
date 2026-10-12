@@ -17,6 +17,10 @@ import {
   ChangesScope,
   AutomationRun,
   AutomationTrigger,
+  FsEntry,
+  FsFileContent,
+  CommitDiff,
+  GitCommit,
   MergeMethod,
   Message,
   OpenPort,
@@ -122,6 +126,22 @@ export const RpcMethods = {
   /** Marks the thread settled and removes its worktree. */
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /**
+   * Commits on every branch of the checkout at `root`, newest first in topological order. `root` must be
+   * a project root or a live worktree path.
+   */
+  "git.log": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000 }))),
+    }),
+    Schema.Array(GitCommit),
+  ),
+  /** One commit's diff against its first parent. Hex only, so a hash can never be read as an option. */
+  "git.show": rpc(
+    Schema.Struct({ root: Schema.String, hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{7,64}$/)) }),
+    CommitDiff,
+  ),
   /** Shows the path in the OS file manager. */
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 
@@ -133,6 +153,16 @@ export const RpcMethods = {
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
   "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
+
+  /**
+   * One level of a folder under `root`, folders first. `root` must be a project root or a live worktree
+   * path, and `path` is relative to it ("" for the root itself).
+   */
+  "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
+  /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
+  "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
+  "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
@@ -306,6 +336,8 @@ export const PushEvent = Schema.Union([
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
   }),
+  /** Something changed directly inside a folder `fs.watch` asked for. */
+  Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
 ])

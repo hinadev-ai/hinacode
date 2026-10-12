@@ -10,20 +10,10 @@ import { threadChangesAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
+import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-
-const fileStatusLabel = {
-  added: m.file_status_added,
-  modified: m.file_status_modified,
-  deleted: m.file_status_deleted,
-} satisfies Record<ChangedFileStatus, () => string>
-
-const fileStatusMark = {
-  added: { letter: "A", className: "text-emerald-500" },
-  modified: { letter: "M", className: "text-amber-500" },
-  deleted: { letter: "D", className: "text-destructive" },
-} satisfies Record<ChangedFileStatus, { letter: string; className: string }>
 
 /** The single-file section of a combined `git diff`, found by its `diff --git a/… b/<path>` header. */
 const patchForFile = (patch: string, path: string) =>
@@ -69,7 +59,13 @@ function ChangesList({ thread, scope, baseLabel }: { thread: Thread; scope: Chan
   const changesAtom = threadChangesAtom(`${thread.id}\n${scope}`)
   const changes = useAtomValue(changesAtom)
   const refresh = useAtomRefresh(changesAtom)
-  const [openPath, setOpenPath] = useState<string | null>(null)
+  const openPath = useUi((state) => state.changesPath)
+  const setOpenPath = useUi((state) => state.setChangesPath)
+
+  useEffect(() => {
+    useUi.getState().setSidePanelWide(openPath !== null)
+    return () => useUi.getState().setSidePanelWide(false)
+  }, [openPath])
 
   // A turn starting or ending is when the diff moves; ask again then instead of polling.
   const lastStatus = useRef(thread.status)

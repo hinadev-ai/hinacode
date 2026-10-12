@@ -13,7 +13,10 @@ import {
 import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { UnknownRootError } from "./services/errors.ts"
 import { Events } from "./services/Events.ts"
+import { Files } from "./services/Files.ts"
+import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
@@ -38,7 +41,9 @@ type AppServices =
   | Ports
   | Attachments
   | Automations
+  | Git
   | GitHub
+  | Files
   | Favicons
 
 interface HandlerError {
@@ -61,6 +66,18 @@ const defaultModel = (provider: ProviderId) =>
     if (preferred !== null) return preferred
     const models = yield* AgentRunner.use((runner) => runner.listModels(provider))
     return models[0]?.id ?? ""
+  })
+
+/** Git history is only read from a checkout kkcode recorded, never from a path the renderer made up. */
+const knownRoot = (root: string) =>
+  Effect.gen(function* () {
+    const projects = yield* Projects.use((service) => service.list)
+    const worktrees = yield* Worktrees.use((service) => service.list)
+    const known =
+      projects.some((project) => project.rootPath === root) ||
+      worktrees.some((worktree) => worktree.path === root && worktree.status !== "removed")
+    if (!known) return yield* new UnknownRootError({ root })
+    return root
   })
 
 const handlers: Handlers = {
@@ -108,6 +125,8 @@ const handlers: Handlers = {
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
+  "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
+  "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
 
   "settings.get": () => Settings.use((settings) => settings.get),
@@ -116,6 +135,9 @@ const handlers: Handlers = {
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
+  "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
+  "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
+  "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
 
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {
