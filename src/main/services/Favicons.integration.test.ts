@@ -102,8 +102,11 @@ describe("Favicons.favicon", () => {
       "/favicon.ico": (_, response) => {
         response.writeHead(200, { "content-type": "image/png" })
         response.write(PNG)
-        const timer = setInterval(() => response.write(Buffer.alloc(16 * 1024)), 1)
-        response.on("close", () => clearInterval(timer))
+        const pump = () => {
+          while (!response.destroyed && response.write(Buffer.alloc(16 * 1024)));
+        }
+        response.on("drain", pump)
+        pump()
       },
     })
     const started = Date.now()
