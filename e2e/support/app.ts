@@ -33,6 +33,8 @@ export interface KkcodeApp {
   readonly restart: () => Promise<void>
   /** Reloads the renderer, which re-reads projects, threads and settings from main. */
   readonly reload: () => Promise<void>
+  readonly minimize: () => Promise<void>
+  readonly windowState: () => Promise<{ readonly minimized: boolean; readonly focused: boolean }>
   readonly setWindow: (size: { width: number; height: number; zoom: number }) => Promise<void>
   readonly pushEvents: (events: ReadonlyArray<PushEvent>, intervalMs?: number) => Promise<void>
   readonly close: () => Promise<void>
@@ -66,7 +68,7 @@ const launch = async (
   delete env.ELECTRON_RUN_AS_NODE
   const app = await electron.launch({
     executablePath,
-    args: ["--no-sandbox", "--disable-gpu", join(projectRoot, "out/main/index.js")],
+    args: ["--no-sandbox", "--disable-gpu", "--mute-audio", join(projectRoot, "out/main/index.js")],
     cwd: projectRoot,
     env: {
       ...env,
@@ -142,6 +144,15 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<KkcodeApp
       await current.page.reload()
       await waitForRenderer(current.page)
     },
+    minimize: async () => {
+      await current.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.minimize())
+    },
+    windowState: async () =>
+      current.app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0]
+        if (!window) throw new Error("kkcode window is missing")
+        return { minimized: window.isMinimized(), focused: window.isFocused() }
+      }),
     setWindow: async (size) => {
       await current.app.evaluate(({ BrowserWindow }, { width, height, zoom }) => {
         const window = BrowserWindow.getAllWindows()[0]

@@ -576,6 +576,24 @@
       }
     }
   ],
+  "settings_notifications": "通知",
+  "settings_notifications_hint": "你沒在看的討論串有變化時，kkcode 會通知你。",
+  "settings_notifications_completed": "完成的回合",
+  "settings_notifications_completed_hint": "代理完成了這一回合。",
+  "settings_notifications_needs_input": "需要你的回應",
+  "settings_notifications_needs_input_hint": "代理正在等你核准工具、回答問題或輸入密鑰。",
+  "settings_notifications_failed": "失敗與用量上限",
+  "settings_notifications_failed_hint": "回合失敗、被停止，或達到用量上限。",
+  "settings_notifications_sound": "音效",
+  "settings_notifications_sound_hint": "每則通知都播放一段短音效，不同種類的音效不同。",
+  "settings_notifications_test": "傳送測試通知",
+  "notification_completed": "已完成",
+  "notification_approval": "等待你的核准",
+  "notification_question": "等待你的回答",
+  "notification_secret": "等待輸入密鑰",
+  "notification_failed": "失敗：{message}",
+  "notification_limited": "已達用量上限而停止",
+  "notification_test": "通知已開啟。",
   "file_status_untracked": "新檔案，尚未追蹤",
   "panel_changes": "變更",
   "settings_account_label": "{provider} 帳號",
@@ -586,5 +604,11 @@
   "settings_account_external": "使用 {service} 的憑證",
   "settings_account_signed_out_claude": "尚未登入。請在終端機執行 claude，再輸入 /login。",
   "settings_account_signed_out_codex": "尚未登入。請在終端機執行 codex login。",
-  "settings_account_failed": "無法讀取帳號：{message}"
+  "settings_account_failed": "無法讀取帳號：{message}",
+  "settings_notifications_denied": "macOS 已封鎖通知",
+  "settings_notifications_denied_hint": "請在「系統設定」的「通知」中允許 kkcode。音效仍會播放。",
+  "settings_notifications_not_determined": "通知需要你的許可",
+  "settings_notifications_not_determined_hint": "macOS 會在 kkcode 第一次傳送通知時詢問。現在就允許，才不會錯過第一則通知。",
+  "settings_notifications_allow": "允許通知",
+  "notification_open": "開啟"
 }

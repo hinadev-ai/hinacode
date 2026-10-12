@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Schema, Struct } from "effect"
 import {
   AgentAccount,
   AgentCommand,
@@ -25,8 +25,9 @@ import {
   FsFileContent,
   CommitDiff,
   GitCommit,
-  Locale,
   MergeMethod,
+  NotificationPermission,
+  PermissionRequestOutcome,
   Message,
   OpenPort,
   Project,
@@ -63,6 +64,7 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 /** Every renderer -> main call. Both sides decode what they receive with these schemas. */
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
+  "app.focus": rpc(Schema.Void, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -155,18 +157,12 @@ export const RpcMethods = {
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
-  "settings.set": rpc(
-    Schema.Struct({
-      locale: Schema.optional(Locale),
-      keybindings: Schema.optional(Settings.fields.keybindings),
-      defaultModel: Schema.optional(Settings.fields.defaultModel),
-      automations: Schema.optional(Settings.fields.automations),
-      appearance: Schema.optional(Settings.fields.appearance),
-      textGenerationModel: Schema.optional(Settings.fields.textGenerationModel),
-      defaultAccessMode: Schema.optional(Settings.fields.defaultAccessMode),
-    }),
-    Settings,
+  "notifications.permission": rpc(Schema.Void, NotificationPermission),
+  "notifications.askPermission": rpc(
+    Schema.Struct({ title: Schema.String, body: Schema.String }),
+    PermissionRequestOutcome,
   ),
+  "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(Schema.Struct({ provider: ProviderId }), AgentAccount),

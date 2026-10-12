@@ -25,6 +25,7 @@ import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { Search } from "./services/Search.ts"
+import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Terminals } from "./services/Terminals.ts"
@@ -89,6 +90,14 @@ const closeTerminals = (threadId: string) => Terminals.use((terminals) => termin
 
 const handlers: Handlers = {
   "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
+  "app.focus": (_, sender) =>
+    Effect.sync(() => {
+      const window = BrowserWindow.fromWebContents(sender)
+      if (!window) return
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    }),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
@@ -149,6 +158,8 @@ const handlers: Handlers = {
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
+  "notifications.permission": () => notificationPermission,
+  "notifications.askPermission": ({ title, body }) => askNotificationPermission(title, body),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "agents.account": ({ provider }) => AgentRunner.use((runner) => runner.account(provider)),

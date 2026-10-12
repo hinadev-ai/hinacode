@@ -2,14 +2,16 @@ import "./index.css"
 import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
-import { AtomRegistry } from "effect/reactivity"
+import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { StrictMode, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
+import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useSettings } from "./lib/settings.ts"
+import { notifyThreadEvent } from "./lib/threadNotifications.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
@@ -33,6 +35,8 @@ function App() {
   return (
     <TooltipProvider key={locale}>
       <RouterProvider router={router} />
+      {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
+      <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>
   )
 }
@@ -52,8 +56,12 @@ onPushEvent((event) => {
       return useThreads.getState().upsert(event.thread)
     case "message.created":
     case "message.updated":
-    case "thread.event":
       return useMessages.getState().receive(event)
+    case "thread.event": {
+      useMessages.getState().receive(event)
+      const { notifications } = AsyncResult.getOrElse(registry.get(settingsAtom), () => settings)
+      return notifyThreadEvent(event.threadId, event.event, notifications)
+    }
     case "worktree.updated":
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":
