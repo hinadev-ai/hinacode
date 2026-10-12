@@ -1,5 +1,11 @@
 allowBuilds:
   electron: true
+  electron-winstaller: false
   esbuild: true
 minimumReleaseAgeExclude:
   - effect@4.0.3
+# Install the Claude SDK's native binary for every platform we package.
+supportedArchitectures:
+  os: [current, darwin, linux]
+  cpu: [current, arm64, x64]
+  libc: [current, glibc]

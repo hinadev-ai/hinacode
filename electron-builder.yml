@@ -1,0 +1,27 @@
+appId: dev.kkcode.app
+productName: kkcode
+directories:
+  output: dist
+# The Claude SDK spawns its native CLI binary, which cannot run from inside app.asar.
+asarUnpack:
+  - "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+mac:
+  target:
+    # Zipped by scripts/package-mac.sh: electron-builder on Linux breaks framework symlinks and skips signing.
+    - target: dir
+      arch: arm64
+  category: public.app-category.developer-tools
+  files:
+    - out/**
+    - package.json
+    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,darwin-x64}*/**"
+linux:
+  target:
+    - target: AppImage
+      arch: x64
+  category: Development
+  files:
+    - out/**
+    - package.json
+    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{darwin,linux-arm64}*/**"
+publish: null
