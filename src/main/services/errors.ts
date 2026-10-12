@@ -44,6 +44,15 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
 }
 
 /** A thread asked for a branch whose checkout another thread already owns. */
+export class PullRequestElsewhereError extends Schema.TaggedError<PullRequestElsewhereError>()(
+  "PullRequestElsewhereError",
+  { url: Schema.String, repository: Schema.String },
+) {
+  override get message(): string {
+    return `${this.url} is not a pull request of this project's repository, ${this.repository}`
+  }
+}
+
 export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()("WorktreeTakenError", {
   branch: Schema.String,
   path: Schema.String,

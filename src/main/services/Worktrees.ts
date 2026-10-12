@@ -27,7 +27,7 @@ import { nowIso } from "./clock.ts"
 import { NotFoundError, type PersistenceError, persistence, WorktreeBusyError, WorktreeTakenError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { type CommandError, Git } from "./Git.ts"
-import { GitHub, type GitHubError } from "./GitHub.ts"
+import { GitHub, type GitHubError, type PullRequestHead } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import { diffWorkingTree } from "./workingTree.ts"
 
@@ -35,6 +35,8 @@ export interface CreateWorktree {
   readonly projectId: string
   readonly branch: string
   readonly baseRef: string
+  /** Where a branch that does not exist yet starts. Defaults to `baseRef`. */
+  readonly startPoint?: string
 }
 
 /** `ifMerged` deletes the branch only when it is fully merged into the worktree's base ref. */
@@ -53,6 +55,15 @@ export class Worktrees extends Context.Service<
      * A branch has at most one live worktree: asking for it again fails with `WorktreeTakenError`.
      */
     readonly create: (input: CreateWorktree) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
+    /**
+     * Like `create`, on the pull request's head fetched from `origin`. A branch of the same repository keeps
+     * its name and tracks `origin`, so pushing updates the pull request. A fork's head has no branch on
+     * `origin`, so it lands on a local `kk/pr-<number>` branch.
+     */
+    readonly createFromPullRequest: (
+      projectId: string,
+      head: PullRequestHead,
+    ) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
     /**
      * Marks the worktree removed and returns at once; the checkout and (per `deleteBranch`) the
      * branch are deleted in the background, so a large tree does not hold up the caller.
@@ -85,6 +96,10 @@ export class Worktrees extends Context.Service<
       id: string,
     ) => Effect.Effect<PullRequest | null, PersistenceError | NotFoundError | GitHubError | Schema.SchemaError>
     readonly currentBranch: (projectId: string) => Effect.Effect<string, Failure>
+    /** Local branches, most recently committed first, then `origin/*` branches that have no local copy. */
+    readonly branches: (projectId: string) => Effect.Effect<ReadonlyArray<string>, Failure>
+    /** `origin`'s default branch, or `main` when the checkout does not know it. */
+    readonly defaultBranch: (projectId: string) => Effect.Effect<string, PersistenceError | NotFoundError>
   }
 >()("kkcode/Worktrees") {}
 
@@ -273,7 +288,7 @@ const make = Effect.gen(function* () {
       if (Option.isNone(orphan)) {
         const args = (yield* branchExists(project.rootPath, input.branch))
           ? ["worktree", "add", path, input.branch]
-          : ["worktree", "add", "-b", input.branch, path, input.baseRef]
+          : ["worktree", "add", "-b", input.branch, path, input.startPoint ?? input.baseRef]
         yield* git.run(project.rootPath, args)
       }
 
@@ -292,6 +307,16 @@ const make = Effect.gen(function* () {
       yield* Effect.forkDetach(setup(worktree, project))
       return worktree
     }).pipe(exclusive)
+
+  const createFromPullRequest = (projectId: string, head: PullRequestHead) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const [branch, source, fetched] = head.isCrossRepository
+        ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/kkcode/pull/${head.number}`]
+        : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
+      yield* git.run(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
+      return yield* create({ projectId, branch, baseRef: head.baseRefName, startPoint: fetched })
+    })
 
   const renameBranch = (id: string, branch: string) =>
     Effect.gen(function* () {
@@ -376,16 +401,51 @@ const make = Effect.gen(function* () {
       Effect.map((output) => output.trim()),
     )
 
+  const branches = (projectId: string) =>
+    projects.get(projectId).pipe(
+      Effect.flatMap(({ rootPath }) =>
+        git.run(rootPath, [
+          "for-each-ref",
+          "--sort=-committerdate",
+          "--format=%(refname)",
+          "refs/heads",
+          "refs/remotes/origin",
+        ]),
+      ),
+      Effect.map((output) => {
+        const refs = output.split("\n").filter((ref) => ref !== "" && ref !== "refs/remotes/origin/HEAD")
+        const local = refs.flatMap((ref) => (ref.startsWith("refs/heads/") ? [ref.slice("refs/heads/".length)] : []))
+        const remote = refs.flatMap((ref) => {
+          const name = ref.startsWith("refs/remotes/origin/") ? ref.slice("refs/remotes/origin/".length) : null
+          return name === null || local.includes(name) ? [] : [`origin/${name}`]
+        })
+        return [...local, ...remote]
+      }),
+    )
+
+  const defaultBranch = (projectId: string) =>
+    projects.get(projectId).pipe(
+      Effect.flatMap(({ rootPath }) =>
+        git.run(rootPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]).pipe(
+          Effect.map((output) => output.trim().replace(/^origin\//, "")),
+          Effect.orElseSucceed(() => "main"),
+        ),
+      ),
+    )
+
   return Worktrees.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("worktrees.list"))),
     get,
     create,
+    createFromPullRequest,
     remove,
     removeWhileExclusive,
     exclusive,
     changes,
     pullRequest,
     currentBranch,
+    branches,
+    defaultBranch,
     renameBranch,
   })
 })

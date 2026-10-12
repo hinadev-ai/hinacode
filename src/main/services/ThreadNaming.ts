@@ -25,14 +25,20 @@ const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the
 /** Enough of a long first message to tell what it is about. */
 const PROMPT_LIMIT = 4000
 
+/**
+ * What naming may change. `titleAndBranch` is only for a branch kkcode created for this task: renaming any
+ * other branch, such as a pull request's head, detaches it from its upstream and its pull request.
+ */
+export type NamingScope = "title" | "titleAndBranch"
+
 export class ThreadNaming extends Context.Service<
   ThreadNaming,
   {
     /**
-     * Titles the thread and renames its worktree branch from its first message. Never fails: on any
-     * error the placeholder names stay. A title the user changed in the meantime is kept.
+     * Titles the thread from its first message and, within `scope`, renames its worktree branch. Never fails:
+     * on any error the placeholder names stay. A title the user changed in the meantime is kept.
      */
-    readonly nameFromPrompt: (thread: Thread, prompt: string) => Effect.Effect<void>
+    readonly nameFromPrompt: (thread: Thread, prompt: string, scope: NamingScope) => Effect.Effect<void>
   }
 >()("kkcode/ThreadNaming") {}
 
@@ -82,7 +88,7 @@ const make = Effect.gen(function* () {
       return yield* Schema.decodeUnknownEffect(Suggestion)(output)
     })
 
-  const nameFromPrompt = (thread: Thread, prompt: string) =>
+  const nameFromPrompt = (thread: Thread, prompt: string, scope: NamingScope) =>
     Effect.gen(function* () {
       const { textGenerationModel } = yield* settings.get
       const suggestion = yield* suggest(textGenerationModel, prompt)
@@ -93,7 +99,7 @@ const make = Effect.gen(function* () {
         yield* events.publish({ type: "thread.updated", thread: renamed })
       }
       const branch = slugifyBranch(suggestion.branch)
-      if (current.worktreeId !== null && branch !== "") {
+      if (scope === "titleAndBranch" && current.worktreeId !== null && branch !== "") {
         yield* worktrees.renameBranch(current.worktreeId, `kk/${branch}`)
       }
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("thread naming failed", cause)))

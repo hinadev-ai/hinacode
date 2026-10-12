@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, Question, TokenUsage } from "./agent.ts"
+import { PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
@@ -155,6 +156,23 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
+
+/** Where a thread's new worktree starts: a new branch forked from `baseRef`, or an open pull request's head. */
+export const WorktreeSource = Schema.Union([
+  Schema.TaggedStruct("branch", { baseRef: Schema.String }),
+  Schema.TaggedStruct("pullRequest", { selector: PullRequestSelector }),
+])
+export type WorktreeSource = typeof WorktreeSource.Type
+
+/** An open pull request the worktree picker can check out. */
+export const OpenPullRequest = Schema.Struct({
+  number: Schema.Int,
+  title: Schema.String,
+  headRefName: Schema.String,
+  author: Schema.String,
+  isDraft: Schema.Boolean,
+})
+export type OpenPullRequest = typeof OpenPullRequest.Type
 
 export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type

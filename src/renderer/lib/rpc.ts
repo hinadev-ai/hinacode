@@ -87,6 +87,20 @@ export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+/** Branches a new worktree can fork from. Asked again when the window comes back, in case one was made meanwhile. */
+export const branchesAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.branches", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
+
+/** The repository's open pull requests, through `gh`. Asked again when the window comes back. */
+export const pullRequestsAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.pullRequests", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
+
+export const defaultBranchAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.defaultBranch", { id: projectId })),
+)
+
 /** The start of the file `path` under `root`, keyed by `JSON.stringify([root, path])`. */
 export const fileContentAtom = Atom.family((key: string) => {
   const [root, path] = JSON.parse(key) as [string, string]

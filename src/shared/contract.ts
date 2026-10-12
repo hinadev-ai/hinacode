@@ -41,6 +41,8 @@ import {
   ThreadSearchHit,
   ThreadStatus,
   Worktree,
+  WorktreeSource,
+  OpenPullRequest,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
 
@@ -139,6 +141,12 @@ export const RpcMethods = {
   /** Brings an archived thread back as idle. A removed worktree stays removed. */
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** The ref a new worktree forks from unless the user picks another: origin's default branch, else `main`. */
+  "projects.defaultBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** Local branches, most recently committed first, then `origin/*` branches that have no local copy. */
+  "projects.branches": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(Schema.String)),
+  /** Open pull requests of the project's repository, newest first. Empty when `gh` is missing or signed out. */
+  "projects.pullRequests": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(OpenPullRequest)),
   /** The project's own favicon as a data URL, or null when it has none. */
   "projects.icon": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(Schema.String)),
   /**
@@ -222,7 +230,7 @@ export const RpcMethods = {
       threadId: Schema.String,
       prompt: Schema.String,
       attachments: Schema.optional(Schema.Array(Attachment)),
-      worktree: Schema.optional(Schema.Struct({ baseRef: Schema.String })),
+      worktree: Schema.optional(WorktreeSource),
     }),
     Schema.Void,
   ),

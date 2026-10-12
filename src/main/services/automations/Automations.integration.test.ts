@@ -20,6 +20,7 @@ import * as Git from "../Git.ts"
 import * as GitHub from "../GitHub.ts"
 import * as Messages from "../Messages.ts"
 import * as Projects from "../Projects.ts"
+import * as PullRequests from "../PullRequests.ts"
 import * as Secrets from "../Secrets.ts"
 import * as Settings from "../Settings.ts"
 import * as ThreadNaming from "../ThreadNaming.ts"
@@ -85,6 +86,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   )
   const agents = AgentRunner.layer.pipe(
     Layer.provideMerge(ThreadNaming.layer.pipe(Layer.provide(domain))),
+    Layer.provideMerge(PullRequests.layer.pipe(Layer.provide(domain))),
     Layer.provideMerge(domain),
   )
   const database = Layer.effectDiscard(

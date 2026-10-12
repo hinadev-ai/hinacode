@@ -1,11 +1,20 @@
 import { create } from "zustand"
-import type { Attachment } from "../../shared/domain.ts"
+import type { Attachment, WorktreeSource } from "../../shared/domain.ts"
+import { parsePullRequestSelector } from "../../shared/github.ts"
 
 export interface Draft {
   readonly text: string
   readonly attachments: ReadonlyArray<Attachment>
-  /** Before the first message only: run the thread in a new worktree. An empty base ref means the current branch. */
-  readonly worktree: { readonly baseRef: string } | null
+  /**
+   * Before the first message only: run the thread in a new worktree. `ref` is what the user typed: a branch to fork
+   * from, or a pull request number or URL to check out.
+   */
+  readonly worktree: { readonly ref: string } | null
+}
+
+export const toWorktreeSource = (ref: string): WorktreeSource => {
+  const selector = parsePullRequestSelector(ref)
+  return selector === undefined ? { _tag: "branch", baseRef: ref.trim() } : { _tag: "pullRequest", selector }
 }
 
 export const emptyDraft: Draft = { text: "", attachments: [], worktree: null }
