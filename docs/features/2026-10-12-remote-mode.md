@@ -74,7 +74,7 @@ Pairing URL: `kkcode://connect?host=<host>&port=<port>&token=<token>`. The token
 
 - `lib/connection.ts`: one WebSocket, reconnect with backoff, `call(method, payload)` returning the decoded response, `onEvent`. Mirrors `src/renderer/lib/rpc.ts`.
 - Stores: `threads`, `projects`, `messages` (folds `TranscriptPush` with `foldTranscript` from `src/shared/foldEvent.ts`, the same reducer main and the desktop use), `pullRequests`, `terminals`.
-- Screens: `connect`, `index` (threads by project), `thread/[id]` with Chat, PRs and Terminal tabs. The composer mirrors the desktop one: model, effort, fast mode and access pickers open as bottom sheets and write through `threads.update`; drafts are kept per thread in memory. Icons are the desktop's Remix set, with the paths copied into `components/icon.tsx` and drawn by `react-native-svg`.
+- Screens: `connect`, `index` (threads by project), `thread/[id]` with Chat, PRs and Terminal tabs. The composer shows one chip, the agent mark and model name, which opens a full-height sheet with agent, model, effort, fast mode and access; each choice writes through `threads.update`, and drafts are kept per thread in memory. Icons are the desktop's Remix set, with the paths copied into `components/icon.tsx` and drawn by `react-native-svg`.
 - Terminal: xterm.js. On native it runs inside a `WebView` that receives `terminal.data` and sends keystrokes back through `postMessage`; on web it mounts directly.
 
 ### Trust boundary
