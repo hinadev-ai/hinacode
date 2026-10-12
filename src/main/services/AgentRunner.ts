@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
-import type { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "../../shared/agent.ts"
+import type {
+  AgentEvent,
+  ApprovalDecision,
+  ApprovalRequest,
+  ModelInfo,
+  ProviderId,
+  Subagent,
+} from "../../shared/agent.ts"
 import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -37,6 +44,8 @@ export class AgentRunner extends Context.Service<
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
+    /** Sub-agents the thread's agent spawned since the app started, newest first. */
+    readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
   }
 >()("kkcode/AgentRunner") {}
 
@@ -100,6 +109,8 @@ const make = Effect.gen(function* () {
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
+  /** Latest state of each sub-agent per thread, in spawn order. Kept in memory only, so it ends with the app. */
+  const subagents = new Map<string, Map<string, Subagent>>()
   let seq = 0
 
   // Nothing runs at boot, so whatever a killed app left running is over.
@@ -122,6 +133,16 @@ const make = Effect.gen(function* () {
       if (lock === undefined) threadLocks.set(threadId, (lock = Semaphore.makeUnsafe(1)))
       return Semaphore.withPermit(lock, effect)
     }
+
+  const listSubagents = (threadId: string) => [...(subagents.get(threadId)?.values() ?? [])].toReversed()
+
+  /** Sub-agent progress has its own push instead of the transcript, so it never lands in the chat. */
+  const updateSubagent = (threadId: string, subagent: Subagent) => {
+    let byId = subagents.get(threadId)
+    if (byId === undefined) subagents.set(threadId, (byId = new Map()))
+    byId.set(subagent.id, subagent)
+    return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
+  }
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
 
@@ -153,6 +174,7 @@ const make = Effect.gen(function* () {
 
     const handle = (event: AgentEvent) =>
       Effect.gen(function* () {
+        if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
@@ -286,6 +308,7 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
+    subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
   })
 })
 
