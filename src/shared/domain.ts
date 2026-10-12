@@ -10,8 +10,6 @@ export const Project = Schema.Struct({
   name: Schema.String,
   rootPath: Schema.String,
   setupScript: Schema.NullOr(Schema.String),
-  /** The user allowed the repository's own Claude settings (hooks, permission rules, CLAUDE.md) to load. */
-  trusted: Schema.Boolean,
   createdAt: Timestamp,
   updatedAt: Timestamp,
 })
@@ -44,11 +42,35 @@ export const WorktreeChanges = Schema.Struct({
 })
 export type WorktreeChanges = typeof WorktreeChanges.Type
 
-export const PullRequestState = Schema.Struct({
-  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+/** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
+export const GitHubAuth = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("missing") }),
+  Schema.Struct({ type: Schema.Literal("signedOut") }),
+  Schema.Struct({ type: Schema.Literal("signedIn"), host: Schema.String, login: Schema.String }),
+])
+export type GitHubAuth = typeof GitHubAuth.Type
+
+export const PullRequestStatus = Schema.Literals(["draft", "open", "merged", "closed"])
+export type PullRequestStatus = typeof PullRequestStatus.Type
+
+export const ChecksStatus = Schema.Literals(["passing", "failing", "pending"])
+export type ChecksStatus = typeof ChecksStatus.Type
+
+export const ReviewStatus = Schema.Literals(["approved", "changesRequested", "reviewRequired"])
+export type ReviewStatus = typeof ReviewStatus.Type
+
+/** A GitHub pull request as `gh pr view` reports it. */
+export const PullRequest = Schema.Struct({
   url: Schema.String,
+  number: Schema.Number,
+  title: Schema.String,
+  status: PullRequestStatus,
+  /** Null when the head commit has no checks, so a repository without CI never looks green. */
+  checks: Schema.NullOr(ChecksStatus),
+  /** Null when the repository requires no review and nobody reviewed. */
+  review: Schema.NullOr(ReviewStatus),
 })
-export type PullRequestState = typeof PullRequestState.Type
+export type PullRequest = typeof PullRequest.Type
 
 export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "settled", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type

@@ -13,6 +13,7 @@ import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Events } from "./services/Events.ts"
+import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpServer } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
@@ -35,6 +36,7 @@ type AppServices =
   | Ports
   | Attachments
   | Automations
+  | GitHub
 
 interface HandlerError {
   readonly _tag: string
@@ -64,7 +66,7 @@ const handlers: Handlers = {
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
   "worktrees.changes": ({ id }) => Worktrees.use((worktrees) => worktrees.changes(id)),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
-  "worktrees.mergedState": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
+  "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
@@ -96,6 +98,9 @@ const handlers: Handlers = {
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
+  "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
+  "github.auth": () => GitHub.use((github) => github.auth),
+  "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
   "mcp.connection": ({ threadId }) => McpServer.useSync((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),

@@ -9,7 +9,8 @@ import {
   Message,
   OpenPort,
   Project,
-  PullRequestState,
+  GitHubAuth,
+  PullRequest,
   PullRequestLink,
   Settings,
   Thread,
@@ -41,7 +42,6 @@ export const RpcMethods = {
       name: Schema.String,
       rootPath: Schema.String,
       setupScript: Schema.NullOr(Schema.String),
-      trusted: Schema.optional(Schema.Boolean),
     }),
     Project,
   ),
@@ -51,7 +51,6 @@ export const RpcMethods = {
       name: Schema.optional(Schema.String),
       rootPath: Schema.optional(Schema.String),
       setupScript: Schema.optional(Schema.NullOr(Schema.String)),
-      trusted: Schema.optional(Schema.Boolean),
     }),
     Project,
   ),
@@ -97,7 +96,7 @@ export const RpcMethods = {
   "worktrees.changes": rpc(Schema.Struct({ id: Schema.String }), WorktreeChanges),
   "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   /** The branch's GitHub pull request via `gh`, or null when there is none. */
-  "worktrees.mergedState": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequestState)),
+  "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   /** Marks the thread settled and removes its worktree. */
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
@@ -146,6 +145,11 @@ export const RpcMethods = {
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
+  /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. Returns the URL. */
+  "pullRequests.create": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
+
+  "github.auth": rpc(Schema.Void, GitHubAuth),
+  "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
   /** The built-in MCP server connection handed to agents running in this thread. */
   "mcp.connection": rpc(
     Schema.Struct({ threadId: Schema.String }),

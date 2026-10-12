@@ -9,7 +9,6 @@ import { AgentError, type AgentProvider } from "../provider.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
-import { settingSources } from "./settingSources.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
 
@@ -26,7 +25,6 @@ type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
-  readonly projectTrusted: boolean
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly query: Query
@@ -204,7 +202,7 @@ export const layer = Layer.effect(
                 model: input.model,
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
-                settingSources: settingSources(input.projectTrusted),
+                settingSources: ["user", "project", "local"],
                 systemPrompt: { type: "preset", preset: "claude_code" },
                 permissionMode: "default",
                 thinking: { type: "adaptive", display: "summarized" },
@@ -227,7 +225,6 @@ export const layer = Layer.effect(
         const session: Session = {
           threadId: input.threadId,
           cwd: input.cwd,
-          projectTrusted: input.projectTrusted,
           model: input.model,
           prompts,
           abort,
@@ -250,9 +247,7 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (existing.cwd === input.cwd && existing.projectTrusted === input.projectTrusted) {
-            return existing
-          }
+          if (existing.cwd === input.cwd) return existing
           yield* closeSession(existing)
         }
         return yield* startSession(input)
