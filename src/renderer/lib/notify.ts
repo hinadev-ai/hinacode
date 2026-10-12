@@ -1,4 +1,5 @@
 import type { ThreadAlert } from "../../shared/domain.ts"
+import { callPromise } from "./rpc.ts"
 
 /** Hz per note. Rising for done, repeated for a request, falling for a failure, so the kind is audible. */
 const chimes: Record<ThreadAlert, ReadonlyArray<number>> = {
@@ -43,7 +44,7 @@ interface Notice {
 export const notify = ({ alert, title, body, sound, tag, onClick }: Notice) => {
   const notification = new Notification(title, { body, silent: true, ...(tag === undefined ? {} : { tag }) })
   notification.addEventListener("click", () => {
-    window.focus()
+    void callPromise("app.focus", undefined)
     onClick?.()
   })
   if (sound) playChime(alert)

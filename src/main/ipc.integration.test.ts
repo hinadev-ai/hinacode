@@ -49,6 +49,8 @@ const electron = vi.hoisted(() => ({
   /** Called after every push, so a test can wait for the one it expects instead of polling. */
   watchers: new Set<() => void>(),
   shown: [] as Array<object>,
+  restored: [] as Array<object>,
+  focused: [] as Array<object>,
   userData: "",
 }))
 
@@ -67,6 +69,13 @@ vi.mock("electron", () => ({
       },
     ],
     fromWebContents: (sender: object) => ({
+      isMinimized: () => true,
+      restore: () => {
+        electron.restored.push(sender)
+      },
+      focus: () => {
+        electron.focused.push(sender)
+      },
       show: () => {
         electron.shown.push(sender)
       },
@@ -256,6 +265,32 @@ describe("rpc trust boundary", () => {
     expect(electron.shown).toStrictEqual([])
     expect(await handler({ sender, senderFrame: mainFrame }, request)).toStrictEqual({ result: undefined })
     expect(electron.shown).toStrictEqual([sender])
+  })
+
+  test("only a valid app.focus call from the app frame restores and focuses its own window", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)
+    if (!handler) throw new Error("RPC handler is missing")
+    const sender = {}
+    const request = { method: "app.focus", payload: undefined }
+    electron.shown.length = 0
+    electron.restored.length = 0
+    electron.focused.length = 0
+    expect(
+      await handler({ sender, senderFrame: { url: "file:///tmp/probe.html", parent: null } }, request),
+    ).toMatchObject({ error: { tag: "UntrustedSender" } })
+    expect(await handler({ sender, senderFrame: { url: appUrl, parent: mainFrame } }, request)).toMatchObject({
+      error: { tag: "UntrustedSender" },
+    })
+    expect(await handler({ sender, senderFrame: mainFrame }, { ...request, payload: {} })).toMatchObject({
+      error: { tag: "SchemaError" },
+    })
+    expect(electron.shown).toStrictEqual([])
+    expect(electron.restored).toStrictEqual([])
+    expect(electron.focused).toStrictEqual([])
+    expect(await handler({ sender, senderFrame: mainFrame }, request)).toStrictEqual({ result: undefined })
+    expect(electron.shown).toStrictEqual([sender])
+    expect(electron.restored).toStrictEqual([sender])
+    expect(electron.focused).toStrictEqual([sender])
   })
 
   test("refuses calls from documents that are not the app and from subframes", async () => {

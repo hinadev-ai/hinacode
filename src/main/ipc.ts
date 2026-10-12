@@ -89,6 +89,14 @@ const closeTerminals = (threadId: string) => Terminals.use((terminals) => termin
 
 const handlers: Handlers = {
   "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
+  "app.focus": (_, sender) =>
+    Effect.sync(() => {
+      const window = BrowserWindow.fromWebContents(sender)
+      if (!window) return
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    }),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),

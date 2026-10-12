@@ -18,7 +18,7 @@ A developer starts a few agents and goes back to other work. The sidebar shows w
 
 ## Design
 
-The renderer already receives every turn event as a `thread.event` push, knows the open route, and knows whether the window has focus. So the whole feature lives there, with no new rpc method, service or table.
+The renderer already receives every turn event as a `thread.event` push, knows the open route, and knows whether the window has focus. The notifier lives there, with no new service or table. Clicking a notification calls the validated `app.focus` rpc to restore, show and focus only the window belonging to the sending app frame. The renderer then opens the thread.
 
 - `Settings.notifications` holds one boolean per `ThreadAlert` (`completed`, `needsInput`, `failed`) plus `sound`. It is a settings row like any other, so defaults fill in for existing profiles and no migration is needed.
 - `lib/notifications.ts` maps an `AgentEvent` to an alert and a body in one table: `turn_completed` is `completed`, `approval_requested` and `secret_requested` are `needsInput`, `turn_failed` and `turn_limited` are `failed`. Other events map to nothing.

@@ -61,6 +61,7 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 /** Every renderer -> main call. Both sides decode what they receive with these schemas. */
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
+  "app.focus": rpc(Schema.Void, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
