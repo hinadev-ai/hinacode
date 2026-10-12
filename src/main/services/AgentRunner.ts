@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
+import { Context, Deferred, Duration, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
+  AccountLimits,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -87,6 +88,8 @@ export class AgentRunner extends Context.Service<
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
     readonly account: (provider: ProviderId) => Effect.Effect<AgentAccount, AgentError>
+    /** One entry per signed-in account. A provider that fails to answer reports null limits. */
+    readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>>
     /** Null until the thread's first turn binds an agent session. */
     readonly usage: (
       threadId: string,
@@ -162,6 +165,17 @@ const make = Effect.gen(function* () {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
   }
+
+  // A Claude read spawns a CLI, so each provider is asked at most once a minute.
+  const cachedLimits = yield* Effect.forEach(Object.values(providers), (provider) =>
+    Effect.cachedWithTTL(
+      provider.planLimits.pipe(
+        Effect.orElseSucceed(() => null),
+        Effect.map((limits): AccountLimits => ({ provider: provider.id, accountId: null, limits })),
+      ),
+      Duration.minutes(1),
+    ),
+  )
 
   const turns = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
@@ -508,6 +522,7 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
     account: (id) => providers[id].account,
+    limits: Effect.all(cachedLimits, { concurrency: "unbounded" }),
     usage: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

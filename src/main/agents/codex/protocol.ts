@@ -287,3 +287,22 @@ export const Account = Schema.Union([
 export type Account = typeof Account.Type
 export const GetAccountResponse = Schema.Struct({ account: Schema.NullOr(Account), requiresOpenaiAuth: Schema.Boolean })
 export type GetAccountResponse = typeof GetAccountResponse.Type
+
+export const RateLimitWindow = Schema.Struct({
+  usedPercent: Schema.Number,
+  windowDurationMins: Schema.NullOr(Schema.Number),
+  /** Unix seconds. */
+  resetsAt: Schema.NullOr(Schema.Number),
+})
+export type RateLimitWindow = typeof RateLimitWindow.Type
+export const RateLimitSnapshot = Schema.Struct({
+  limitId: Schema.NullOr(Schema.String),
+  primary: Schema.NullOr(RateLimitWindow),
+  secondary: Schema.NullOr(RateLimitWindow),
+})
+export type RateLimitSnapshot = typeof RateLimitSnapshot.Type
+export const GetAccountRateLimitsResponse = Schema.Struct({
+  rateLimits: RateLimitSnapshot,
+  rateLimitsByLimitId: Schema.NullOr(Schema.Record(Schema.String, RateLimitSnapshot)),
+})
+export type GetAccountRateLimitsResponse = typeof GetAccountRateLimitsResponse.Type

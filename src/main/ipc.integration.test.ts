@@ -13,9 +13,10 @@ import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
+import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
-import type { AgentProvider } from "./agents/provider.ts"
+import { AgentError, type AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
@@ -131,10 +132,19 @@ const sessionUsage: ThreadUsage = {
   transcripts: 3,
 }
 
+const claudeLimits: PlanLimits = {
+  windows: [{ window: { kind: "session" }, usedPercent: 79, resetsAt: "2026-10-12T15:00:00.000Z" }],
+  readAt: "2026-10-12T10:00:00.000Z",
+}
+
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
   account: Effect.succeed({ type: "signedOut" }),
+  planLimits:
+    id === "claude"
+      ? Effect.succeed(claudeLimits)
+      : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
@@ -637,6 +647,15 @@ describe("token usage over rpc", () => {
     await expect
       .poll(async () => result(await invoke("threads.usage", { threadId: thread.id })))
       .toStrictEqual(sessionUsage)
+  })
+})
+
+describe("plan limits over rpc", () => {
+  test("lists every provider, with null limits for one that cannot answer", async () => {
+    expect(result(await invoke("limits.list", undefined))).toStrictEqual([
+      { provider: "claude", accountId: null, limits: claudeLimits },
+      { provider: "codex", accountId: null, limits: null },
+    ])
   })
 })
 

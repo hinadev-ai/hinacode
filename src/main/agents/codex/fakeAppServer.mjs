@@ -56,6 +56,8 @@ const reply = ({ id, method, params }) => {
   switch (method) {
     case "account/read":
       return send({ id, result: control().accountResponse ?? { account: null, requiresOpenaiAuth: true } })
+    case "account/rateLimits/read":
+      return send({ id, result: control().rateLimitsResponse ?? {} })
     case "model/list":
       return send({
         id,

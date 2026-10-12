@@ -14,13 +14,14 @@ import type {
   TokenUsage,
 } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
+import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, makeRolloutUsage } from "./rollouts.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
-import { GetAccountResponse } from "./protocol.ts"
+import { GetAccountRateLimitsResponse, GetAccountResponse, type RateLimitWindow } from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
@@ -237,6 +238,17 @@ const make = Effect.gen(function* () {
       ),
     )
     return toAccount(response.account)
+  })
+
+  const planLimits = Effect.gen(function* () {
+    const client = yield* getClient
+    const raw = yield* client.request<unknown>("account/rateLimits/read", undefined)
+    const response = yield* Schema.decodeUnknownEffect(GetAccountRateLimitsResponse)(raw).pipe(
+      Effect.mapError(
+        () => new AgentError({ provider: "codex", message: "Failed to read Codex plan limits: invalid response" }),
+      ),
+    )
+    return toPlanLimits(response, yield* nowIso)
   })
 
   const rolloutUsage = makeRolloutUsage(codexHome())
@@ -660,6 +672,7 @@ const make = Effect.gen(function* () {
     id: "codex",
     listModels,
     account,
+    planLimits,
     usage: readUsage,
     listCommands,
     runTurn,
@@ -706,6 +719,33 @@ const toAccount = (account: GetAccountResponse["account"]): AgentAccount => {
     case "amazonBedrock":
       return { type: "external", service: "Amazon Bedrock" }
   }
+}
+
+const SESSION_MINUTES = 5 * 60
+const WEEK_MINUTES = 7 * 24 * 60
+
+/** A window without a duration can't be named, so it is left out. */
+const toLimitWindow = (window: RateLimitWindow | null): ReadonlyArray<LimitWindow> => {
+  const minutes = window?.windowDurationMins ?? null
+  if (window === null || minutes === null) return []
+  return [
+    {
+      window:
+        minutes === SESSION_MINUTES
+          ? { kind: "session" }
+          : minutes === WEEK_MINUTES
+            ? { kind: "weekly" }
+            : { kind: "minutes", minutes },
+      usedPercent: window.usedPercent,
+      resetsAt: window.resetsAt === null ? null : new Date(window.resetsAt * 1000).toISOString(),
+    },
+  ]
+}
+
+/** The `codex` bucket is what Codex itself meters; the legacy single snapshot stands in when it is missing. */
+const toPlanLimits = (response: GetAccountRateLimitsResponse, readAt: string): PlanLimits => {
+  const snapshot = response.rateLimitsByLimitId?.["codex"] ?? response.rateLimits
+  return { windows: [...toLimitWindow(snapshot.primary), ...toLimitWindow(snapshot.secondary)], readAt }
 }
 
 export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {
