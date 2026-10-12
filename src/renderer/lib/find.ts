@@ -1,8 +1,12 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { describeToolCall } from "./toolCall.ts"
+import { isOwnPart } from "./subagents.ts"
+import { describeCommand, describeToolCall, groupCommands } from "./toolCall.ts"
+
+type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 export interface FindMatch {
   readonly messageId: string
+  /** Index among the parts the transcript renders, which leaves out sub-agent calls. */
   readonly partIndex: number
   /** UTF-16 offset of the match in the part's searchable text. */
   readonly offset: number
@@ -35,21 +39,31 @@ export function searchableText(part: MessagePart): string {
   }
 }
 
+/**
+ * A command folded into a group shows its row label, then, once its row opens, the command itself when
+ * the label is the agent's description of it.
+ */
+export function commandSearchText(call: ToolCall): string {
+  const label = describeCommand(call)
+  const { summary: command } = describeToolCall(call)
+  return label === command ? label : `${label}\n${command}`
+}
+
 /** Every match of `query` in the transcript, in reading order. */
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
   const pattern = findPattern(query)
   if (pattern === null) return []
   const matches: Array<FindMatch> = []
+  const search = (messageId: string, partIndex: number, text: string) => {
+    for (const match of text.matchAll(pattern)) matches.push({ messageId, partIndex, offset: match.index })
+  }
   for (const message of messages) {
+    const parts = message.parts.filter(isOwnPart)
     // Reply text appears only once the agent finishes it, so the part still being written is not on screen.
-    const writing = message.completedAt === null && message.parts.at(-1)?.type === "text"
-    const searchedParts = writing ? message.parts.length - 1 : message.parts.length
-    for (let partIndex = 0; partIndex < searchedParts; partIndex++) {
-      const part = message.parts[partIndex]
-      if (part === undefined) continue
-      for (const match of searchableText(part).matchAll(pattern)) {
-        matches.push({ messageId: message.id, partIndex, offset: match.index })
-      }
+    const writing = message.completedAt === null && parts.at(-1)?.type === "text"
+    for (const block of groupCommands(writing ? parts.slice(0, -1) : parts)) {
+      if (block.type === "part") search(message.id, block.index, searchableText(block.part))
+      else block.calls.forEach((call, position) => search(message.id, block.index + position, commandSearchText(call)))
     }
   }
   return matches

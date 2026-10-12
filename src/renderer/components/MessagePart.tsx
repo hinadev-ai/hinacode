@@ -1,5 +1,5 @@
 import { useParams } from "@tanstack/react-router"
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -16,12 +16,14 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
+import type { FindMatch } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { describeCommand, describeToolCall } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
-import { Highlighted } from "./FindHighlight.tsx"
+import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
@@ -168,14 +170,45 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
-/** Back-to-back shell commands as one line that opens into a list of them, each opening into its output. */
-export function CommandGroup({ calls }: { calls: ReadonlyArray<ToolCall> }) {
+/**
+ * Open state the reader controls, except that it opens each time the find bar moves to a match it hides.
+ * `target` is that match, or null when the find bar's match is elsewhere.
+ */
+function useFindDisclosure(target: FindMatch | null) {
+  const [open, setOpen] = useState(target !== null)
+  const [revealed, setRevealed] = useState(target)
+  if (target !== revealed) {
+    setRevealed(target)
+    if (target !== null) setOpen(true)
+  }
+  return [open, setOpen] as const
+}
+
+/**
+ * Back-to-back shell commands as one line that opens into a list of them, each opening into its output.
+ * `index` is the first command's part index in message `messageId`.
+ */
+export function CommandGroup({
+  messageId,
+  index,
+  calls,
+}: {
+  messageId: string
+  index: number
+  calls: ReadonlyArray<ToolCall>
+}) {
   const count = calls.length
   const running = calls.findLast((call) => call.status === "running")
   const failed = calls.filter((call) => call.status === "error").length
+  const target = useUi((state) => state.findTarget)
+  const targetHere =
+    target !== null && target.messageId === messageId && target.partIndex >= index && target.partIndex < index + count
+      ? target
+      : null
+  const [open, setOpen] = useFindDisclosure(targetHere)
 
   return (
-    <Collapsible className="my-1">
+    <Collapsible open={open} onOpenChange={setOpen} className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiTerminalBoxLine aria-hidden className="size-3.5 shrink-0" />
@@ -197,9 +230,11 @@ export function CommandGroup({ calls }: { calls: ReadonlyArray<ToolCall> }) {
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 ml-7 overflow-hidden rounded-lg border border-border">
         <ul className="divide-y divide-border">
-          {calls.map((call) => (
+          {calls.map((call, position) => (
             <li key={call.callId}>
-              <CommandRow call={call} />
+              <FindPartContext value={index + position}>
+                <CommandRow call={call} target={targetHere?.partIndex === index + position ? targetHere : null} />
+              </FindPartContext>
             </li>
           ))}
         </ul>
@@ -208,13 +243,20 @@ export function CommandGroup({ calls }: { calls: ReadonlyArray<ToolCall> }) {
   )
 }
 
-function CommandRow({ call }: { call: ToolCall }) {
+/** `target` is the find bar's match when it is in this command's row label or command, as `commandSearchText` orders them. */
+function CommandRow({ call, target }: { call: ToolCall; target: FindMatch | null }) {
   const { summary: command } = describeToolCall(call)
+  const label = describeCommand(call)
+  // A row labeled with the command itself shows it in full when open, but Find counts it once.
+  const described = label !== command
+  const [open, setOpen] = useFindDisclosure(
+    described && target !== null && target.offset > label.length ? target : null,
+  )
   return (
-    <Collapsible>
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-1 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
         <span className="min-w-0 truncate" title={command}>
-          <Highlighted text={describeCommand(call)} />
+          <Highlighted text={label} />
         </span>
         <RiArrowRightSLine
           aria-hidden
@@ -228,7 +270,7 @@ function CommandRow({ call }: { call: ToolCall }) {
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-2 px-3 pb-2 text-xs">
-        <ToolSection label={m.tool_command()} text={command} />
+        <ToolSection label={m.tool_command()} text={command} highlighted={described} />
         <ToolSection
           label={m.tool_output()}
           text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
@@ -238,12 +280,12 @@ function CommandRow({ call }: { call: ToolCall }) {
   )
 }
 
-function ToolSection({ label, text }: { label: string; text: string }) {
+function ToolSection({ label, text, highlighted = false }: { label: string; text: string; highlighted?: boolean }) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
       <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono whitespace-pre-wrap">
-        {text}
+        {highlighted ? <Highlighted text={text} /> : text}
       </pre>
     </section>
   )

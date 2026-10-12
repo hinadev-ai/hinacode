@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { FindMatch } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 import {
   clampWidth,
@@ -47,6 +48,8 @@ interface UiState {
   readonly findMessageId: string | null
   /** Bumped to ask the find bar to focus and select its field. */
   readonly findFocusRequest: number
+  /** The match the find bar last moved to. A disclosure that hides it opens, once per move. */
+  readonly findTarget: FindMatch | null
   readonly toggleSidebar: () => void
   readonly toggleSidePanel: () => void
   readonly setSidebarOverlayOpen: (open: boolean) => void
@@ -65,6 +68,7 @@ interface UiState {
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
   readonly setFindQuery: (query: string) => void
+  readonly setFindTarget: (target: FindMatch | null) => void
   /** Clamps, applies and persists the desktop sidebar width. */
   readonly setSidebarWidth: (width: number) => void
   /** Clamps, applies and persists the docked side panel width for one size. Null restores its default. */
@@ -107,6 +111,7 @@ export const useUi = create<UiState>()((set, get) => ({
   findQuery: "",
   findMessageId: null,
   findFocusRequest: 0,
+  findTarget: null,
   toggleSidebar: () =>
     set((state) =>
       getPanelLayout() === "compact"
@@ -148,8 +153,9 @@ export const useUi = create<UiState>()((set, get) => ({
       findMessageId: messageId ?? null,
       findFocusRequest: state.findFocusRequest + 1,
     })),
-  closeFind: () => set({ findThreadId: null }),
+  closeFind: () => set({ findThreadId: null, findTarget: null }),
   setFindQuery: (findQuery) => set({ findQuery, findMessageId: null }),
+  setFindTarget: (findTarget) => set({ findTarget }),
   setSidebarWidth: (width) => {
     const sidebarWidth = clampWidth(SIDEBAR_BOUNDS, width)
     saveWidth(SIDEBAR_WIDTH_KEY, sidebarWidth)
