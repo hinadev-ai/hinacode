@@ -456,10 +456,14 @@ const make = Effect.gen(function* () {
                 }
                 case "thread/tokenUsage/updated": {
                   const params = message.params as ServerNotificationParams[typeof method]
+                  const { last, modelContextWindow } = params.tokenUsage
                   // `last` is one model request; a turn makes several, so their sum is the turn's usage.
                   usage = {
-                    inputTokens: usage.inputTokens + params.tokenUsage.last.inputTokens,
-                    outputTokens: usage.outputTokens + params.tokenUsage.last.outputTokens,
+                    inputTokens: usage.inputTokens + last.inputTokens,
+                    outputTokens: usage.outputTokens + last.outputTokens,
+                    ...(modelContextWindow !== null && {
+                      context: { usedTokens: last.totalTokens, maxTokens: modelContextWindow },
+                    }),
                   }
                   return false
                 }

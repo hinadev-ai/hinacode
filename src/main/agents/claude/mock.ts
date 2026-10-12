@@ -34,6 +34,7 @@ export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "u
             const state: MapState = {
               pendingEdits: new Map(),
               subagents: new Map(),
+              lastRequest: null,
               limitMessage: null,
               limitResetAt: null,
             }

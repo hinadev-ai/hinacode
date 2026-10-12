@@ -38,6 +38,7 @@ import {
   WorkspacePicker,
 } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
+import { ContextRing } from "./ContextRing.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -218,6 +219,7 @@ export function Composer({ thread }: { thread: Thread }) {
               <FastModeToggle thread={thread} onError={setError} />
               <AccessPicker thread={thread} onError={setError} />
             </ComposerActions>
+            <ContextRing threadId={thread.id} />
             <SendButton busy={busy} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
           </ComposerToolbar>
         </ComposerBar>

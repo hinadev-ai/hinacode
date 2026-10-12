@@ -28,6 +28,19 @@ const sandboxPolicy = (mode) =>
         excludeSlashTmp: false,
       }
 
+const breakdown = (inputTokens, outputTokens) => ({
+  totalTokens: inputTokens + outputTokens,
+  inputTokens,
+  cachedInputTokens: 0,
+  outputTokens,
+  reasoningOutputTokens: 0,
+})
+// A completed turn makes two model requests.
+const turnTokenUsage = [
+  { total: breakdown(1000, 50), last: breakdown(1000, 50), modelContextWindow: 258400 },
+  { total: breakdown(3200, 80), last: breakdown(2200, 30), modelContextWindow: 258400 },
+]
+
 const held = []
 let turns = 0
 
@@ -39,7 +52,12 @@ const reply = ({ id, method, params }) => {
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
-      if (!control().holdTurn) return completeTurn(params.threadId, turnId, "completed")
+      if (!control().holdTurn) {
+        for (const tokenUsage of turnTokenUsage) {
+          send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })
+        }
+        return completeTurn(params.threadId, turnId, "completed")
+      }
       return send({
         method: "item/agentMessage/delta",
         params: { threadId: params.threadId, turnId, itemId: "message", delta: "working" },
