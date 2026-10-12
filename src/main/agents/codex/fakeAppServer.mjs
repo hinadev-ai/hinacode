@@ -43,15 +43,60 @@ const turnTokenUsage = [
 
 const held = []
 let turns = 0
+let activeQuestion = null
 
 const reply = ({ id, method, params }) => {
+  if (method === undefined) {
+    if (id === activeQuestion?.id) {
+      completeTurn(activeQuestion.threadId, activeQuestion.turnId, "completed")
+      activeQuestion = null
+    }
+    return
+  }
   switch (method) {
+    case "model/list":
+      return send({
+        id,
+        result: {
+          data: [
+            {
+              id: "gpt-6.1-sol",
+              displayName: "GPT-6.1 Sol",
+              supportedReasoningEfforts: [],
+              defaultReasoningEffort: "low",
+              serviceTiers: [],
+            },
+          ],
+          nextCursor: null,
+        },
+      })
+    case "skills/list":
+      return send({ id, result: { data: [] } })
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
+      const { question, postedQuestions } = control()
+      if (question) {
+        activeQuestion = { id: 900 + turns, threadId: params.threadId, turnId }
+        return send({
+          id: activeQuestion.id,
+          method: "item/tool/requestUserInput",
+          params: { threadId: params.threadId, turnId, itemId: "question-tool", questions: question },
+        })
+      }
+      if (postedQuestions) {
+        send({
+          method: "item/completed",
+          params: {
+            threadId: params.threadId,
+            turnId,
+            item: { id: "posted", type: "agentMessage", text: "Posted question", questions: postedQuestions },
+          },
+        })
+      }
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
           send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })
@@ -82,5 +127,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 
 // Held messages go out when the test flips `release`; the control file changing is the only trigger.
 watch(process.env.FAKE_CODEX_CONTROL, () => {
+  if (activeQuestion && control().cancelQuestion) {
+    send({
+      method: "serverRequest/resolved",
+      params: { threadId: activeQuestion.threadId, requestId: activeQuestion.id },
+    })
+    completeTurn(activeQuestion.threadId, activeQuestion.turnId, "completed")
+    activeQuestion = null
+  }
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
 })

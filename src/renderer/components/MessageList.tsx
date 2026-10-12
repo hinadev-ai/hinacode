@@ -1,5 +1,5 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
-import { memo, type Ref, useMemo, useState } from "react"
+import { createContext, memo, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
@@ -8,6 +8,7 @@ import { AttachmentView } from "./AttachmentView.tsx"
 import { Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
+import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 
 const keyExtractor = (message: Message) => message.id
@@ -15,26 +16,46 @@ const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} 
 // Spacers instead of container padding: the list measures header and footer, but not padding.
 const edgeSpacer = <div className="h-4" />
 
+/** Posted questions stay answerable only while nothing has been said after them. */
+const AnswerableContext = createContext<{ readonly lastMessageId: string | undefined; readonly providerLabel: string }>(
+  {
+    lastMessageId: undefined,
+    providerLabel: "",
+  },
+)
+
 /**
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
  * viewport is already near the end, so scrolling up to read stops the auto-scroll.
  */
-export function MessageList({ messages, listRef }: { messages: ReadonlyArray<Message>; listRef?: Ref<LegendListRef> }) {
+export function MessageList({
+  messages,
+  providerLabel,
+  listRef,
+}: {
+  messages: ReadonlyArray<Message>
+  providerLabel: string
+  listRef?: Ref<LegendListRef>
+}) {
+  const lastMessageId = messages.at(-1)?.id
+  const answerable = useMemo(() => ({ lastMessageId, providerLabel }), [lastMessageId, providerLabel])
   return (
-    <LegendList
-      ref={listRef}
-      data={messages}
-      keyExtractor={keyExtractor}
-      renderItem={renderItem}
-      estimatedItemSize={120}
-      alignItemsAtEnd
-      initialScrollAtEnd
-      maintainScrollAtEnd
-      maintainVisibleContentPosition
-      ListHeaderComponent={edgeSpacer}
-      ListFooterComponent={edgeSpacer}
-      className="min-h-0 flex-1"
-    />
+    <AnswerableContext value={answerable}>
+      <LegendList
+        ref={listRef}
+        data={messages}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        estimatedItemSize={120}
+        alignItemsAtEnd
+        initialScrollAtEnd
+        maintainScrollAtEnd
+        maintainVisibleContentPosition
+        ListHeaderComponent={edgeSpacer}
+        ListFooterComponent={edgeSpacer}
+        className="min-h-0 flex-1"
+      />
+    </AnswerableContext>
   )
 }
 
@@ -52,6 +73,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
 
 function MessageBody({ message }: { message: Message }) {
   const repository = useThreadRepository()
+  const { lastMessageId, providerLabel } = use(AnswerableContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -99,6 +121,13 @@ function MessageBody({ message }: { message: Message }) {
         // Parts only ever get appended or updated in place, so the index is a stable key.
         part.type === "text" ? (
           <ReplyText key={index} text={part.text} done={!(writing && index === message.parts.length - 1)} />
+        ) : part.type === "questions" && message.id === lastMessageId ? (
+          <PostedQuestionsCard
+            key={index}
+            threadId={message.threadId}
+            questions={part.questions}
+            providerLabel={providerLabel}
+          />
         ) : (
           <MessagePartView key={index} part={part} />
         ),

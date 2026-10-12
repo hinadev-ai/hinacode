@@ -72,6 +72,37 @@ export type ApprovalRequest = typeof ApprovalRequest.Type
 export const ApprovalDecision = Schema.Literals(["allow", "allow_for_session", "deny"])
 export type ApprovalDecision = typeof ApprovalDecision.Type
 
+export const QuestionOption = Schema.Struct({ label: Schema.String, description: Schema.String })
+export type QuestionOption = typeof QuestionOption.Type
+
+export const Question = Schema.Struct({
+  /** What the answer is keyed by when it goes back to the agent. */
+  id: Schema.String,
+  /** A short tag such as "Auth method"; may be empty. */
+  header: Schema.String,
+  question: Schema.String,
+  options: Schema.Array(QuestionOption),
+  multiSelect: Schema.Boolean,
+  /** Whether the user may type an answer instead of picking an option. */
+  allowsText: Schema.Boolean,
+  /** The typed answer is masked on screen. */
+  secret: Schema.Boolean,
+})
+export type Question = typeof Question.Type
+
+/** The agent asked the user one or more questions (Claude's AskUserQuestion, Codex's request_user_input). */
+export const QuestionRequest = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  provider: ProviderId,
+  questions: Schema.Array(Question),
+})
+export type QuestionRequest = typeof QuestionRequest.Type
+
+/** Picked option labels or the typed text, keyed by question id. A question left out was skipped. */
+export const QuestionAnswers = Schema.Record(Schema.String, Schema.Array(Schema.String))
+export type QuestionAnswers = typeof QuestionAnswers.Type
+
 /** An agent asked the user for a secret through the MCP `request_secret` tool. The value never travels with it. */
 export const SecretRequest = Schema.Struct({
   id: Schema.String,
@@ -138,6 +169,10 @@ export const AgentEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("approval_requested"), request: ApprovalRequest }),
   Schema.Struct({ type: Schema.Literal("approval_resolved"), requestId: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("question_requested"), request: QuestionRequest }),
+  Schema.Struct({ type: Schema.Literal("question_resolved"), requestId: Schema.String }),
+  /** Questions the user answers with their next message; the turn does not wait for them. */
+  Schema.Struct({ type: Schema.Literal("questions_posted"), text: Schema.String, questions: Schema.Array(Question) }),
   /** Carries the sub-agent's full current state, not a patch. Never part of the transcript. */
   Schema.Struct({ type: Schema.Literal("subagent_updated"), subagent: Subagent }),
   /** Raised by the built-in MCP server, not the provider, while a turn runs. */

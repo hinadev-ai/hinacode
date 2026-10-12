@@ -75,3 +75,11 @@ test("skips reply text the agent is still writing", () => {
   ]
   expect(findMatches(messages, "migration")).toEqual([{ messageId: "m1", partIndex: 0, offset: 6 }])
 })
+
+test("finds a posted question's transcript text after the user answers", () => {
+  const messages = [
+    message("question", [{ type: "questions", text: "Which color?", questions: [] }]),
+    { ...message("answer", [{ type: "text", text: "Blue" }]), role: "user" as const },
+  ]
+  expect(findMatches(messages, "color")).toEqual([{ messageId: "question", partIndex: 0, offset: 6 }])
+})
