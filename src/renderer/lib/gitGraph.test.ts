@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { GitCommit } from "../../shared/domain.ts"
-import { laneCount, layoutGraph } from "./gitGraph.ts"
+import { chipRefs, laneCount, layoutGraph } from "./gitGraph.ts"
 
 const commit = (hash: string, ...parents: Array<string>): GitCommit => ({
   hash,
@@ -68,6 +68,17 @@ describe("layoutGraph", () => {
       { hash: "a2", lane: 1, edges: ["0>0", "1>0"] },
       { hash: "c", lane: 1, edges: ["0>0", "1>1"] },
       { hash: "x", lane: 0, edges: ["1>1", "0>0"] },
+    ])
+  })
+})
+
+describe("chipRefs", () => {
+  test("drops remote HEAD and remote branches that sit where their local branch does", () => {
+    expect(chipRefs(["HEAD", "main", "origin/main", "origin/HEAD", "origin/feat/y", "tag: v1"])).toStrictEqual([
+      "HEAD",
+      "main",
+      "origin/feat/y",
+      "tag: v1",
     ])
   })
 })

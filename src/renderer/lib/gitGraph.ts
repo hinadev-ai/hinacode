@@ -70,3 +70,10 @@ export const laneCount = (rows: ReadonlyArray<GraphRow>) => {
   }
   return count
 }
+
+/**
+ * The refs worth a chip. `<remote>/HEAD` and a remote branch that points at the same commit as its local
+ * branch add nothing to read.
+ */
+export const chipRefs = (refs: ReadonlyArray<string>) =>
+  refs.filter((ref) => !ref.endsWith("/HEAD") && !(ref.includes("/") && refs.includes(ref.slice(ref.indexOf("/") + 1))))
