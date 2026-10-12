@@ -12,6 +12,7 @@ import type {
   SecretRequest,
 } from "../../shared/agent.ts"
 import type { AccessMode, Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
+import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -57,6 +58,10 @@ export class AgentRunner extends Context.Service<
       attachments: ReadonlyArray<Attachment>,
     ) => Effect.Effect<void, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    readonly resumeAtReset: (
+      threadId: string,
+      enabled: boolean,
+    ) => Effect.Effect<Thread, AgentError | PersistenceError | NotFoundError | ThreadStartedError>
     /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
@@ -96,6 +101,8 @@ const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
     case "turn_completed":
     case "turn_failed":
       return "idle"
+    case "turn_limited":
+      return "limited"
     default:
       return undefined
   }
@@ -129,6 +136,7 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...messages.slice(0, -1), message]
 
 const make = Effect.gen(function* () {
+  const scope = yield* Effect.scope
   const threads = yield* Threads
   const worktrees = yield* Worktrees
   const messages = yield* Messages
@@ -163,7 +171,7 @@ const make = Effect.gen(function* () {
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
-    threads.update(input).pipe(Effect.flatMap((thread) => push.publish({ type: "thread.updated", thread })))
+    threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
 
   /**
    * Runs `effect` exclusively for the thread. Everything that changes a thread's transcript runs
@@ -229,7 +237,11 @@ const make = Effect.gen(function* () {
         const nextStatus = statusAfter(event)
         if (nextStatus !== undefined && nextStatus !== status) {
           status = nextStatus
-          yield* updateThread({ id: thread.id, status })
+          yield* updateThread({
+            id: thread.id,
+            status,
+            ...(event.type === "turn_limited" ? { usageLimit: event.limit } : {}),
+          })
         }
         if (dirty.size > 0 && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
       }).pipe(exclusive(thread.id))
@@ -263,7 +275,7 @@ const make = Effect.gen(function* () {
       const last = turnMessages.at(-1)!
       if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
       yield* persist
-      if (status !== "idle") yield* updateThread({ id: thread.id, status: "idle" })
+      if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
     }).pipe(
       Effect.catch((error) => Effect.logError("failed to finish turn", error)),
       Effect.ensuring(
@@ -348,6 +360,58 @@ const make = Effect.gen(function* () {
       )
     })
 
+  const resumeAtReset = (threadId: string, enabled: boolean) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const limit = thread.usageLimit
+      if (thread.status !== "limited" || limit?.kind !== "usage" || limit.reset === null) {
+        return yield* new AgentError({ provider: thread.provider, message: "This limit has no automatic reset" })
+      }
+      return yield* updateThread({
+        id: threadId,
+        usageLimit: { ...limit, reset: { ...limit.reset, autoResume: enabled } },
+      })
+    }).pipe(exclusive(threadId))
+
+  const consumeDueResume = (threadId: string, now: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const limit = thread.usageLimit
+      if (
+        busyThreads.has(thread.id) ||
+        thread.status !== "limited" ||
+        limit?.kind !== "usage" ||
+        !limit.reset?.autoResume ||
+        limit.reset.at > now
+      )
+        return
+      yield* updateThread({ id: thread.id, usageLimit: { ...limit, reset: { ...limit.reset, autoResume: false } } })
+      return (yield* messages.list(thread.id)).findLast((message) => message.role === "user")
+    }).pipe(exclusive(threadId))
+
+  const resumeDue = Effect.gen(function* () {
+    const now = yield* nowIso
+    for (const candidate of yield* threads.list) {
+      yield* Effect.gen(function* () {
+        const prompt = yield* consumeDueResume(candidate.id, now)
+        if (prompt === undefined) return
+        const text = prompt.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+        const attachments = prompt.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
+        yield* send(candidate.id, text, attachments)
+      }).pipe(Effect.catch((error) => Effect.logWarning("automatic resume failed", error)))
+    }
+  })
+
+  yield* Effect.forkIn(
+    Effect.forever(
+      resumeDue.pipe(
+        Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
+        Effect.andThen(Effect.sleep("1 second")),
+      ),
+    ),
+    scope,
+  )
+
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
@@ -385,6 +449,7 @@ const make = Effect.gen(function* () {
 
   return AgentRunner.of({
     send,
+    resumeAtReset,
     steer: (threadId, text, attachments) =>
       Effect.suspend(() => activeTurns.get(threadId)?.steer(text, attachments) ?? send(threadId, text, attachments)),
     interrupt: (threadId) =>

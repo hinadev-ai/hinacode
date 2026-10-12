@@ -16,6 +16,14 @@ Feature: Threads
     When I open the thread "Two" from the sidebar
     Then the thread "Two" is open
 
+  Scenario: Switching between threads replaces the open thread instead of stacking it
+    Given the project "demo" has a thread "One"
+    And the project "demo" has a thread "Two"
+    When I open the thread "One" from the sidebar
+    And I open the thread "Two" from the sidebar
+    And I open the thread "One" from the sidebar
+    Then the thread "One" is open
+
   Scenario: A project group collapses and expands its threads
     Given the project "demo" has a thread "One"
     When I collapse the threads of "demo"

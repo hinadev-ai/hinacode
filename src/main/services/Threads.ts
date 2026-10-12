@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
+import { UsageLimit } from "../../shared/limits.ts"
 import { type AccessMode, type Changes, type ChangesScope, Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
 import {
@@ -16,6 +17,7 @@ import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { Projects } from "./Projects.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
+import { Settings } from "./Settings.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
 
@@ -26,7 +28,11 @@ const MAX_LISTED_FILES = 50_000
 export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 
 /** The thread table row. SQLite has no boolean, so `fast_mode` is a bit. */
-const ThreadRow = Schema.Struct({ ...Thread.fields, fastMode: Schema.BooleanFromBit })
+const ThreadRow = Schema.Struct({
+  ...Thread.fields,
+  fastMode: Schema.BooleanFromBit,
+  usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
+})
 
 export interface CreateThread {
   readonly projectId: string
@@ -50,9 +56,14 @@ export interface UpdateThread {
   readonly fastMode?: boolean | undefined
   readonly accessMode?: AccessMode | undefined
   readonly status?: ThreadStatus | undefined
+  readonly usageLimit?: UsageLimit | null | undefined
   readonly sortIndex?: number | undefined
   readonly providerSessionId?: string | undefined
 }
+
+// Reordering in the sidebar is not activity, so it must not make a thread look fresh.
+const onlyReorders = (input: UpdateThread) =>
+  Object.entries(input).every(([key, value]) => key === "id" || key === "sortIndex" || value === undefined)
 
 export class Threads extends Context.Service<
   Threads,
@@ -111,6 +122,7 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects
   const worktrees = yield* Worktrees
   const git = yield* Git
+  const settings = yield* Settings
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
 
@@ -168,6 +180,7 @@ const make = Effect.gen(function* () {
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
         : undefined
       const { next } = yield* nextSortIndex(input.projectId).pipe(Effect.mapError(persistence("threads.create")))
+      const { defaultAccessMode } = yield* settings.get
       const now = yield* nowIso
       const thread: Thread = {
         id: randomUUID(),
@@ -175,9 +188,10 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort: null,
         fastMode: false,
-        accessMode: "supervised",
+        accessMode: defaultAccessMode,
         providerSessionId: null,
         status: "idle",
+        usageLimit: null,
         sortIndex: next,
         createdBy,
         createdAt: now,
@@ -208,16 +222,22 @@ const make = Effect.gen(function* () {
         fastMode: input.fastMode ?? current.fastMode,
         accessMode: input.accessMode ?? current.accessMode,
         status: input.status ?? current.status,
+        usageLimit:
+          input.status !== undefined && input.status !== "limited"
+            ? null
+            : input.usageLimit === undefined
+              ? current.usageLimit
+              : input.usageLimit,
         sortIndex: input.sortIndex ?? current.sortIndex,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
-        updatedAt: yield* nowIso,
+        updatedAt: onlyReorders(input) ? current.updatedAt : yield* nowIso,
       }
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
             fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
-            updated_at = ${next.updatedAt}
+            updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
       return next

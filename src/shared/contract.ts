@@ -103,6 +103,7 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, removeWorktree: Schema.optional(Schema.Boolean) }),
     Schema.Void,
   ),
+  "threads.resumeAtReset": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Thread),
 
   "worktrees.list": rpc(Schema.Void, Schema.Array(Worktree)),
   "worktrees.create": rpc(
@@ -134,6 +135,7 @@ export const RpcMethods = {
       automations: Schema.optional(Settings.fields.automations),
       appearance: Schema.optional(Settings.fields.appearance),
       textGenerationModel: Schema.optional(Settings.fields.textGenerationModel),
+      defaultAccessMode: Schema.optional(Settings.fields.defaultAccessMode),
     }),
     Settings,
   ),

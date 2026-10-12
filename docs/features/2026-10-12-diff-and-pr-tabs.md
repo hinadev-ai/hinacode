@@ -20,7 +20,7 @@ A developer who finishes reviewing a thread still has to leave kkcode for two th
 
 - Changes are computed by snapshotting the working tree into a tree object (`services/workingTree.ts`). The real index is copied to a temp file, then `git add -A` and `git write-tree` run against the copy. The diff is `git diff <base> <snapshot>`. One path serves both scopes and covers untracked files, which removed the old `ls-files` plus `--no-index` special case and the `untracked` file status.
   - Worktree scope: base is `merge-base(baseRef, HEAD)`.
-  - Turn scope: `AgentRunner.startTurn` snapshots the cwd before the agent runs and stores the tree in `thread.turn_base_tree` (migration 0006). Steering does not take a new snapshot. A cwd that is not a git checkout stores null.
+  - Turn scope: `AgentRunner.startTurn` snapshots the cwd before the agent runs and stores the tree in `thread.turn_base_tree` (migration 0007). Steering does not take a new snapshot. A cwd that is not a git checkout stores null.
 - rpc: `threads.changes({ threadId, scope })` returns `Changes | null`, where null means the scope has no base. It replaces `worktrees.changes`.
 - rpc: `github.pullRequestDetail`, `github.merge` and `github.close` run `gh` from the home directory, so gh never touches a local checkout. Merge never passes `--delete-branch`, because the branch is checked out in a worktree.
 - Trust boundary: those URLs come from the renderer and become `gh` argv. `requirePullRequestUrl` canonicalizes every one to `https://github.com/<owner>/<repo>/pull/<n>` first, so a value like `--admin` never reaches gh as a flag.

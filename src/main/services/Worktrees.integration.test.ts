@@ -15,6 +15,7 @@ import * as GitHub from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import * as ProjectsLayer from "./Projects.ts"
 import { Threads } from "./Threads.ts"
+import * as SettingsLayer from "./Settings.ts"
 import * as ThreadsLayer from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import * as WorktreesLayer from "./Worktrees.ts"
@@ -34,7 +35,7 @@ const makeLayer = (
   ThreadsLayer.layer.pipe(
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
-    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
+    Layer.provide(Layer.mergeAll(Git.layer, SettingsLayer.layer, GitHub.layer, Layer.succeed(Events, events))),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provideMerge(Layer.succeed(Pushes, pushes)),
     Layer.provide(NodeServices.layer),

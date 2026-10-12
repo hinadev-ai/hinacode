@@ -96,6 +96,7 @@ const handlers: Handlers = {
       return thread
     }),
   "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
+  "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
