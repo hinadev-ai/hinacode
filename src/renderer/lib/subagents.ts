@@ -6,7 +6,6 @@ type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 /** Claude's tool for spawning a sub-agent, named Task before it became Agent. */
 export const spawnsSubagent = (part: ToolCall) => part.name === "Agent" || part.name === "Task"
 
-/** A sub-agent's calls belong to its own view, opened from the call that spawned it. */
 export const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
 /** Opens a sub-agent's transcript by its `callId`, or the thread's own transcript when undefined. */

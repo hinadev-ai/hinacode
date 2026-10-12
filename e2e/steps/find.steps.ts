@@ -14,7 +14,7 @@ const currentMarkSelector = "mark[data-find-match][data-current]"
 const currentMark = (page: Page) => transcript(page).locator(currentMarkSelector)
 
 interface TurnRow {
-  readonly kind: string
+  readonly kind?: string
   readonly text?: string
   readonly description?: string
 }

@@ -16,15 +16,10 @@ let handledFocusRequest = 0
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
-/**
- * Scrolls the virtual list to the match's message, then the `ordinal`-th mark of the match's part to
- * the middle of the view. Resolves to the mark, or null when it never mounted.
- */
-async function scrollToMatch(list: LegendListRef, index: number, match: FindMatch, ordinal: number) {
+async function scrollToMountedPartMatch(list: LegendListRef, index: number, match: FindMatch, ordinal: number) {
   await list.scrollToIndex({ index, viewPosition: 0.5, animated: false })
   for (let frame = 0; frame < MOUNT_WAIT_FRAMES; frame++) {
     const row = list.getScrollableNode()?.querySelector(`[data-message-id="${CSS.escape(match.messageId)}"]`)
-    // A match behind a disclosure has no mark until the disclosure opens, a render or two later.
     const mark = row?.querySelectorAll<HTMLElement>(partMatchSelector(match.partIndex))[ordinal]
     if (mark) {
       mark.scrollIntoView({ block: "center", behavior: "instant" })
@@ -35,7 +30,6 @@ async function scrollToMatch(list: LegendListRef, index: number, match: FindMatc
   return null
 }
 
-/** Position of `matches[current]` among the matches in its own part. */
 const ordinalInPart = (matches: ReadonlyArray<FindMatch>, current: number) => {
   const target = matches[current]
   return matches
@@ -60,7 +54,7 @@ export function FindBar({
   const typed = useUi((state) => state.findQuery)
   const setQuery = useUi((state) => state.setFindQuery)
   const closeFind = useUi((state) => state.closeFind)
-  const setTarget = useUi((state) => state.setFindTarget)
+  const revealFindMatch = useUi((state) => state.revealFindMatch)
   const focusRequest = useUi((state) => state.findFocusRequest)
   const inputRef = useRef<HTMLInputElement>(null)
   const returnFocus = useRef<Element | null>(null)
@@ -84,12 +78,11 @@ export function FindBar({
     currentMark.current?.removeAttribute("data-current")
     currentMark.current = null
     const match = matches[index]
-    // A copy, so moving back to the same match opens a disclosure the reader closed since.
-    setTarget(match ? { ...match } : null)
+    revealFindMatch(match ?? null)
     const list = listRef.current
     const row = match ? messages.findIndex((message) => message.id === match.messageId) : -1
     if (!match || !list || row === -1) return
-    const mark = await scrollToMatch(list, row, match, ordinalInPart(matches, index))
+    const mark = await scrollToMountedPartMatch(list, row, match, ordinalInPart(matches, index))
     if (token !== revealToken.current || !mark) return
     mark.setAttribute("data-current", "")
     currentMark.current = mark
