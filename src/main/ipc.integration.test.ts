@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
@@ -20,6 +20,7 @@ import { eventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
+import * as Files from "./services/Files.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Git from "./services/Git.ts"
@@ -146,6 +147,7 @@ const makeLayer = (dbPath: string) => {
     Messages.layer,
     Attachments.layer,
     Search.layer,
+    Files.layer,
   )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
@@ -399,6 +401,20 @@ describe("projects, threads and settings over rpc", () => {
     expect(files).toContain("notes.txt")
     expect(files).toContain(".gitignore")
     expect(files).not.toContain("secret.env")
+  })
+
+  test("lists a folder only for the app frame, a known root, and a path inside it", async () => {
+    const { rootPath } = result(await invoke("projects.list", undefined))[0]!
+    mkdirSync(join(repo, "docs"), { recursive: true })
+    const listed = result(await invoke("fs.list", { root: rootPath, path: "" }))
+    expect(listed.find((entry) => entry.name === "docs")?.kind).toBe("dir")
+
+    const subframe = await invoke("fs.list", { root: rootPath, path: "" }, { url: appUrl, parent: mainFrame })
+    expect(failure(subframe).tag).toBe("UntrustedSender")
+    expect(failure(await invoke("fs.list", { root: dir, path: "" })).tag).toBe("FsAccessError")
+    expect(failure(await invoke("fs.list", { root: rootPath, path: ".." })).tag).toBe("FsAccessError")
+    expect(failure(await invoke("fs.watch", { root: dir, paths: [""] })).tag).toBe("FsAccessError")
+    expect(failure(await invoke("fs.read", { root: rootPath, path: "../kkcode.sqlite" })).tag).toBe("FsAccessError")
   })
 
   test("cloning into a folder that already holds that repository adds it without cloning", async () => {

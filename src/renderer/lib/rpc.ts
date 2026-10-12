@@ -78,6 +78,12 @@ export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+/** The start of the file `path` under `root`, keyed by `JSON.stringify([root, path])`. */
+export const fileContentAtom = Atom.family((key: string) => {
+  const [root, path] = JSON.parse(key) as [string, string]
+  return Atom.make(call("fs.read", { root, path }))
+})
+
 /** Keyed by `${threadId}\n${scope}`. Asked again when the window comes back, since agents edit files meanwhile. */
 export const threadChangesAtom = Atom.family((key: string) => {
   const [threadId = "", scope] = key.split("\n")

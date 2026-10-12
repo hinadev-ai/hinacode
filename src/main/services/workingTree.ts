@@ -6,11 +6,12 @@ import { Git } from "./Git.ts"
 const toChangedStatus = (letter: string): ChangedFileStatus => {
   if (letter === "A") return "added"
   if (letter === "D") return "deleted"
+  if (letter === "U") return "conflict"
   return "modified"
 }
 
 /** Parses `git diff --name-status -z`: alternating status letter and path. */
-const parseNameStatus = (output: string) => {
+export const parseNameStatus = (output: string) => {
   const fields = output.split("\0").filter(Boolean)
   const files: Array<{ path: string; status: ChangedFileStatus }> = []
   for (let i = 0; i + 1 < fields.length; i += 2) {

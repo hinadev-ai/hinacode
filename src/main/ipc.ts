@@ -14,6 +14,7 @@ import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Events } from "./services/Events.ts"
+import { Files } from "./services/Files.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
@@ -41,6 +42,7 @@ type AppServices =
   | Attachments
   | Automations
   | GitHub
+  | Files
   | Favicons
 
 interface HandlerError {
@@ -120,7 +122,9 @@ const handlers: Handlers = {
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
   "search.files": ({ threadId, query, limit }) => Search.use((search) => search.files(threadId, query, limit)),
-
+  "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
+  "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
+  "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {
       const window = BrowserWindow.fromWebContents(sender)
