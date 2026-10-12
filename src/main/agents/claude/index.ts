@@ -294,6 +294,7 @@ export const layer = Layer.effect(
           limitMessage: null,
           limitResetAt: null,
           subagents: new Map(),
+          lastRequest: null,
           sessionId: resume ?? null,
           turn: null,
           interrupted: false,
@@ -366,6 +367,7 @@ export const layer = Layer.effect(
           resetTurnLimits(session)
           session.interrupted = false
           session.pendingSteers = 0
+          session.lastRequest = null
           // A consumer that stops reading mid-turn means the turn should stop too.
           yield* Effect.addFinalizer(() =>
             session.turn === turn
