@@ -2,9 +2,10 @@ import { expect, layer } from "@effect/vitest"
 import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { Effect, Layer, Option } from "effect"
-import { SqlClient } from "effect/sql"
+import { Context, Effect, Layer, Option } from "effect"
 import type { McpConnection } from "../../shared/agent.ts"
+import * as Db from "../db/client.ts"
+import { seedThread } from "../db/testing.ts"
 import { PullRequests } from "../services/PullRequests.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { McpServer, layer as serverLayer } from "./server.ts"
@@ -12,10 +13,18 @@ import { McpServer, layer as serverLayer } from "./server.ts"
 vi.mock("electron", () => ({ BrowserWindow: {}, safeStorage: {} }))
 
 const listedThreads: Array<string> = []
-const existingThreads = new Set(["thread-a", "thread-b"])
 
-const threadLookup = (_: TemplateStringsArray, threadId: string) =>
-  Effect.succeed(existingThreads.has(threadId) ? [{}] : [])
+/** Two threads that exist in the database the server checks credentials against. */
+class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
+
+const seeded = Layer.effect(
+  Seeded,
+  Effect.gen(function* () {
+    const a = (yield* seedThread({ rootPath: "/repo-a" })).threadId
+    const b = (yield* seedThread({ rootPath: "/repo-b" })).threadId
+    return { a, b }
+  }),
+)
 
 const stubs = Layer.mergeAll(
   Layer.succeed(PullRequests, {
@@ -30,7 +39,10 @@ const stubs = Layer.mergeAll(
     set: () => Effect.void,
     clear: () => Effect.void,
   }),
-  Layer.succeed(SqlClient.SqlClient, threadLookup as unknown as SqlClient.SqlClient),
+)
+
+const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(stubs)), seeded).pipe(
+  Layer.provideMerge(Db.layer(":memory:")),
 )
 
 /** Calls `list_thread_pull_requests` and returns the thread ids the tool acted on. */
@@ -56,49 +68,53 @@ const withAuthorization = (connection: McpConnection, authorization: string) => 
 })
 
 // The HTTP server runs on the live clock; the test services would freeze its timeouts.
-layer(serverLayer.pipe(Layer.provide(stubs)), { excludeTestServices: true })("mcp server credentials", (it) => {
+layer(testLayer, { excludeTestServices: true })("mcp server credentials", (it) => {
   it.effect("a credential acts only as the thread it was issued for", () =>
     Effect.gen(function* () {
       const mcp = yield* McpServer
-      expect(yield* listAs(mcp.connectionFor("thread-a"))).toStrictEqual(["thread-a"])
-      expect(yield* listAs(mcp.connectionFor("thread-b"))).toStrictEqual(["thread-b"])
+      const { a, b } = yield* Seeded
+      expect(yield* listAs(mcp.connectionFor(a))).toStrictEqual([a])
+      expect(yield* listAs(mcp.connectionFor(b))).toStrictEqual([b])
     }),
   )
 
   it.effect("changing the thread parameter does not change identity", () =>
     Effect.gen(function* () {
       const mcp = yield* McpServer
-      const connection = mcp.connectionFor("thread-a")
+      const { a, b } = yield* Seeded
+      const connection = mcp.connectionFor(a)
       const forged = new URL(connection.url)
-      forged.searchParams.set("thread", "thread-b")
+      forged.searchParams.set("thread", b)
       const acted = yield* listAs({ ...connection, url: forged.toString() }).pipe(
         Effect.orElseSucceed((): Array<string> => []),
       )
-      expect(acted, `thread A's credential acted as ${acted.join(", ")}`).not.toContain("thread-b")
+      expect(acted, `thread A's credential acted as ${acted.join(", ")}`).not.toContain(b)
     }),
   )
 
   it.effect("a thread's secret does not authenticate another thread", () =>
     Effect.gen(function* () {
       const mcp = yield* McpServer
-      const a = mcp.connectionFor("thread-a")
-      mcp.connectionFor("thread-b")
-      const relabeled = a.headers.authorization.replace("thread-a.", "thread-b.")
-      yield* rejects(withAuthorization(a, relabeled))
+      const { a, b } = yield* Seeded
+      const connection = mcp.connectionFor(a)
+      mcp.connectionFor(b)
+      const relabeled = connection.headers.authorization.replace(`${a}.`, `${b}.`)
+      yield* rejects(withAuthorization(connection, relabeled))
     }),
   )
 
   it.effect("unknown credentials are rejected", () =>
     Effect.gen(function* () {
       const mcp = yield* McpServer
-      const a = mcp.connectionFor("thread-a")
-      yield* rejects(withAuthorization(a, "Bearer thread-a.not-the-secret"))
-      yield* rejects(withAuthorization(a, "Bearer no-such-thread.secret"))
-      yield* rejects(withAuthorization(a, ""))
+      const { a } = yield* Seeded
+      const connection = mcp.connectionFor(a)
+      yield* rejects(withAuthorization(connection, `Bearer ${a}.not-the-secret`))
+      yield* rejects(withAuthorization(connection, "Bearer no-such-thread.secret"))
+      yield* rejects(withAuthorization(connection, ""))
     }),
   )
 
-  it.effect("a deleted thread's credential is rejected", () =>
+  it.effect("a thread that is not in the database gets no access", () =>
     Effect.gen(function* () {
       const mcp = yield* McpServer
       yield* rejects(mcp.connectionFor("thread-gone"))
