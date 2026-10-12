@@ -283,6 +283,34 @@ describe("projects, threads and settings over rpc", () => {
     expect(files).not.toContain("secret.env")
   })
 
+  test("cloning into a folder that already holds that repository adds it without cloning", async () => {
+    const clone = join(dir, "myprofile")
+    execFileSync("git", ["init", "-q", clone])
+    execFileSync("git", ["-C", clone, "remote", "add", "origin", "git@github.com:kjj6198/myprofile.git"])
+    const project = result(
+      await invoke("projects.clone", {
+        repository: { owner: "kjj6198", name: "myprofile" },
+        rootPath: clone,
+        name: "myprofile",
+        setupScript: null,
+      }),
+    )
+    expect(project).toMatchObject({ name: "myprofile", rootPath: clone } satisfies Partial<Project>)
+  })
+
+  test("refuses a clone target that is not an absolute path, and a repository that is not owner/name", async () => {
+    const repository = { owner: "kjj6198", name: "myprofile" }
+    const relative = await invoke("projects.clone", { repository, rootPath: "code/x", name: "x", setupScript: null })
+    expect(failure(relative).tag).toBe("ProjectRootInvalidError")
+    const flag = await invoke("projects.clone", {
+      repository: { owner: "--upload-pack=x", name: "y" },
+      rootPath: join(dir, "y"),
+      name: "y",
+      setupScript: null,
+    })
+    expect(failure(flag).tag).toBe("SchemaError")
+  })
+
   test("settings written through rpc are what the next read returns", async () => {
     const saved = result(await invoke("settings.set", { locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } }))
     expect(saved).toMatchObject({ locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } })

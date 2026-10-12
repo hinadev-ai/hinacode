@@ -10,7 +10,7 @@ const addProjectDialog = async (
 ) => {
   await page.getByRole("button", { name: "Add project", exact: true }).first().click()
   const dialog = page.getByRole("dialog")
-  await dialog.getByLabel("Root path", { exact: true }).fill(rootPath)
+  await dialog.getByLabel("Folder or GitHub repository", { exact: true }).fill(rootPath)
   await dialog.getByLabel("Name", { exact: true }).fill(name)
   await dialog.getByRole("button", { name: "Add project", exact: true }).click()
   return dialog

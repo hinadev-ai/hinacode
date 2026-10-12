@@ -65,6 +65,7 @@ const handlers: Handlers = {
   "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
+  "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) => Projects.use((projects) => projects.remove(id)),
 

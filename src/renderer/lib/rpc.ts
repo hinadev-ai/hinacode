@@ -41,6 +41,10 @@ export const createProjectAtom = Atom.fn((input: RpcRequest<"projects.create">) 
   call("projects.create", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
+export const cloneProjectAtom = Atom.fn((input: RpcRequest<"projects.clone">) =>
+  call("projects.clone", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
+)
+
 export const updateProjectAtom = Atom.fn((input: RpcRequest<"projects.update">) =>
   call("projects.update", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
