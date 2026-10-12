@@ -1,5 +1,4 @@
-import assert from "node:assert/strict"
-import { beforeEach, test } from "node:test"
+import { beforeEach, expect, test } from "@effect/vitest"
 import type { AgentEvent, ApprovalRequest } from "../../shared/agent.ts"
 import type { TranscriptPush } from "../../shared/contract.ts"
 import type { Message } from "../../shared/domain.ts"
@@ -42,7 +41,7 @@ const event = (seq: number, agentEvent: AgentEvent): TranscriptPush => ({
 
 const ready = () => {
   const history = store().byThread[threadId]
-  assert.ok(history?.status === "ready")
+  if (history?.status !== "ready") throw new Error(`history is ${history?.status ?? "missing"}`)
   return history
 }
 
@@ -59,9 +58,11 @@ test("keeps pushes from before, during and after the snapshot exactly once", asy
   store().receive(event(5, { type: "turn_completed" }))
 
   const history = ready()
-  assert.deepEqual(history.messages[0]?.parts, [{ type: "text", text: "persisted prefix while loading after load" }])
-  assert.notEqual(history.messages[0]?.completedAt, null)
-  assert.deepEqual(history.approvals, [])
+  expect(history.messages[0]?.parts).toStrictEqual([
+    { type: "text", text: "persisted prefix while loading after load" },
+  ])
+  expect(history.messages[0]?.completedAt).not.toBe(null)
+  expect(history.approvals).toStrictEqual([])
 })
 
 test("replays message pushes buffered after the snapshot", async () => {
@@ -75,16 +76,13 @@ test("replays message pushes buffered after the snapshot", async () => {
   transcriptResponse.resolve({ result: { messages: [assistant("open")], approvals: [], seq: 6 } })
   await loading
 
-  assert.deepEqual(
-    ready().messages.map((message) => [message.id, message.parts]),
-    [
-      ["m1", [{ type: "text", text: "closed" }]],
-      ["m2", [{ type: "text", text: "" }]],
-    ],
-  )
+  expect(ready().messages.map((message) => [message.id, message.parts])).toStrictEqual([
+    ["m1", [{ type: "text", text: "closed" }]],
+    ["m2", [{ type: "text", text: "" }]],
+  ])
 })
 
 test("ignores pushes for threads that were never opened", () => {
   store().receive(event(1, { type: "text_delta", text: "unseen" }))
-  assert.deepEqual(store().byThread, {})
+  expect(store().byThread).toStrictEqual({})
 })

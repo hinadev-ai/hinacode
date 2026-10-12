@@ -1,8 +1,7 @@
-import assert from "node:assert/strict"
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
 import { setTimeout } from "node:timers/promises"
-import { test } from "node:test"
+import { expect, test } from "@effect/vitest"
 import { type McpServerConfig, query } from "@anthropic-ai/claude-agent-sdk"
 import { kkcodeMcpServer } from "./mcp.ts"
 
@@ -39,7 +38,7 @@ test("the kkcode MCP credential reaches neither the Claude CLI's argv nor its st
   const secret = "fixture-secret-0123456789"
   const connection = { url: "http://127.0.0.1:1/mcp", headers: { authorization: `Bearer thread-a.${secret}` } }
   const { args, stdin } = await cliInput({ kkcode: kkcodeMcpServer(connection) })
-  assert.match(stdin, /"kkcode"/)
-  assert.ok(!args.some((arg) => arg.includes(secret)))
-  assert.ok(!stdin.includes(secret))
+  expect(stdin).toMatch(/"kkcode"/)
+  expect(!args.some((arg) => arg.includes(secret))).toBeTruthy()
+  expect(!stdin.includes(secret)).toBeTruthy()
 })

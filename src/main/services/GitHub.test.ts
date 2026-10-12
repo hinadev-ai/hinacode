@@ -1,5 +1,4 @@
-import assert from "node:assert/strict"
-import { describe, test } from "node:test"
+import { describe, expect, test } from "@effect/vitest"
 import { parseAuthStatus, summarizeChecks, toPullRequest } from "./GitHub.ts"
 
 const account = (overrides: Partial<{ state: string; active: boolean; login: string }>) => ({
@@ -12,16 +11,16 @@ const account = (overrides: Partial<{ state: string; active: boolean; login: str
 
 describe("parseAuthStatus", () => {
   test("no hosts means signed out", () => {
-    assert.deepEqual(parseAuthStatus({ hosts: {} }), { type: "signedOut" })
+    expect(parseAuthStatus({ hosts: {} })).toStrictEqual({ type: "signedOut" })
   })
 
   test("prefers the active account over another verified one", () => {
     const hosts = { "github.com": [account({ active: false, login: "other" }), account({ login: "me" })] }
-    assert.deepEqual(parseAuthStatus({ hosts }), { type: "signedIn", host: "github.com", login: "me" })
+    expect(parseAuthStatus({ hosts })).toStrictEqual({ type: "signedIn", host: "github.com", login: "me" })
   })
 
   test("a login whose token failed to verify does not count", () => {
-    assert.deepEqual(parseAuthStatus({ hosts: { "github.com": [account({ state: "error" })] } }), {
+    expect(parseAuthStatus({ hosts: { "github.com": [account({ state: "error" })] } })).toStrictEqual({
       type: "signedOut",
     })
   })
@@ -32,25 +31,25 @@ const commitStatus = (state: string) => ({ state })
 
 describe("summarizeChecks", () => {
   test("no checks is null, not passing", () => {
-    assert.equal(summarizeChecks([]), null)
+    expect(summarizeChecks([])).toBe(null)
   })
 
   test("only skipped or neutral checks is null", () => {
-    assert.equal(summarizeChecks([run("COMPLETED", "SKIPPED"), run("COMPLETED", "NEUTRAL")]), null)
+    expect(summarizeChecks([run("COMPLETED", "SKIPPED"), run("COMPLETED", "NEUTRAL")])).toBe(null)
   })
 
   test("a failure wins over a running check", () => {
-    assert.equal(summarizeChecks([run("IN_PROGRESS"), run("COMPLETED", "FAILURE")]), "failing")
+    expect(summarizeChecks([run("IN_PROGRESS"), run("COMPLETED", "FAILURE")])).toBe("failing")
   })
 
   test("a running check wins over successes", () => {
-    assert.equal(summarizeChecks([run("COMPLETED", "SUCCESS"), run("QUEUED")]), "pending")
+    expect(summarizeChecks([run("COMPLETED", "SUCCESS"), run("QUEUED")])).toBe("pending")
   })
 
   test("commit statuses count like check runs", () => {
-    assert.equal(summarizeChecks([commitStatus("SUCCESS"), run("COMPLETED", "SKIPPED")]), "passing")
-    assert.equal(summarizeChecks([commitStatus("PENDING")]), "pending")
-    assert.equal(summarizeChecks([commitStatus("ERROR")]), "failing")
+    expect(summarizeChecks([commitStatus("SUCCESS"), run("COMPLETED", "SKIPPED")])).toBe("passing")
+    expect(summarizeChecks([commitStatus("PENDING")])).toBe("pending")
+    expect(summarizeChecks([commitStatus("ERROR")])).toBe("failing")
   })
 })
 
@@ -66,12 +65,12 @@ const json = {
 
 describe("toPullRequest", () => {
   test("an open draft is a draft, a closed draft is closed", () => {
-    assert.equal(toPullRequest({ ...json, isDraft: true }).status, "draft")
-    assert.equal(toPullRequest({ ...json, isDraft: true, state: "CLOSED" }).status, "closed")
+    expect(toPullRequest({ ...json, isDraft: true }).status).toBe("draft")
+    expect(toPullRequest({ ...json, isDraft: true, state: "CLOSED" }).status).toBe("closed")
   })
 
   test("maps the review decision and leaves an empty one null", () => {
-    assert.equal(toPullRequest({ ...json, reviewDecision: "CHANGES_REQUESTED" }).review, "changesRequested")
-    assert.equal(toPullRequest(json).review, null)
+    expect(toPullRequest({ ...json, reviewDecision: "CHANGES_REQUESTED" }).review).toBe("changesRequested")
+    expect(toPullRequest(json).review).toBe(null)
   })
 })
