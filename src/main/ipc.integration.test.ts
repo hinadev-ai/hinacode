@@ -148,6 +148,7 @@ const accountCalls = {
   turnHomes: [] as Array<string | null>,
   codes: [] as Array<string>,
   signedOut: [] as Array<string>,
+  signedIn: new Set<string>(),
   signIn: Promise.withResolvers<void>(),
 }
 
@@ -161,9 +162,9 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
         ? { type: "signedOut" }
         : { type: "subscription", email: `${basename(home)}@example.com`, plan: null, organization: null },
     ),
-  planLimits: () =>
+  planLimits: (home) =>
     id === "claude"
-      ? Effect.succeed(claudeLimits)
+      ? Effect.succeed(home === null || accountCalls.signedIn.has(home) ? claudeLimits : null)
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
   signIn: (home) =>
@@ -171,7 +172,9 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       url: `https://auth.example.com/login?home=${encodeURIComponent(home)}`,
       openedBrowser: false,
       submitCode: (code) => Effect.sync(() => void accountCalls.codes.push(code)),
-      completed: Effect.promise(() => accountCalls.signIn.promise),
+      completed: Effect.promise(() => accountCalls.signIn.promise).pipe(
+        Effect.tap(() => Effect.sync(() => void accountCalls.signedIn.add(home))),
+      ),
     }),
   signOut: (home) => Effect.sync(() => void accountCalls.signedOut.push(home)),
   listCommands: () => Effect.succeed([]),
@@ -690,7 +693,7 @@ describe("plan limits over rpc", () => {
     const listed = result(await invoke("limits.list", undefined))
     expect(listed.filter((entry) => [null, personal.id, work.id].includes(entry.accountId))).toStrictEqual([
       { provider: "claude", accountId: null, limits: claudeLimits },
-      { provider: "claude", accountId: personal.id, limits: claudeLimits },
+      { provider: "claude", accountId: personal.id, limits: null },
       { provider: "codex", accountId: null, limits: null },
       { provider: "codex", accountId: work.id, limits: null },
     ])
@@ -876,6 +879,9 @@ describe("agent accounts over rpc", () => {
 
   test("signs an account in through the browser and reports the outcome", async () => {
     const account = result(await invoke("accounts.create", { provider: "claude", name: "Personal" }))
+    const limitsOf = async () =>
+      result(await invoke("limits.list", undefined)).find((entry) => entry.accountId === account.id)?.limits
+    expect(await limitsOf()).toBeNull()
     electron.opened.length = 0
     const started = result(await invoke("accounts.signIn", { id: account.id }))
     expect(started).toStrictEqual({
@@ -890,6 +896,7 @@ describe("agent accounts over rpc", () => {
     await pushedEventually(
       (event) => event.type === "account.signIn" && event.accountId === account.id && event.error === null,
     )
+    expect(await limitsOf()).toStrictEqual(claudeLimits)
     expect(failure(await invoke("accounts.submitCode", { id: account.id, code: "late" })).tag).toBe("AgentError")
   })
 })
