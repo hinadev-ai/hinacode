@@ -14,6 +14,7 @@ import {
 } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
+import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
@@ -36,6 +37,8 @@ export function Sidebar({
   compact: boolean
   finalFocus: RefObject<HTMLButtonElement | null>
 }) {
+  // Loads every thread's pull request links once, for the PR numbers under each row.
+  useAtomValue(loadAllPullRequestsAtom)
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const overlayOpen = useUi((state) => state.sidebarOverlayOpen)
   const setOverlayOpen = useUi((state) => state.setSidebarOverlayOpen)
