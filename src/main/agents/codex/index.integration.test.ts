@@ -1,9 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { setTimeout as sleep } from "node:timers/promises"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, Stream } from "effect"
+import { Effect, Fiber, PubSub, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { CodexProvider } from "./index.ts"
@@ -37,14 +36,22 @@ const received = (): Array<Received> =>
     .filter(Boolean)
     .map((line) => JSON.parse(line))
 
-/** Waits in real time, so it also works under TestClock. */
-const waitFor = (description: string, predicate: () => boolean) =>
-  Effect.promise(async () => {
-    for (let attempt = 0; attempt < 250; attempt++) {
-      if (predicate()) return
-      await sleep(20)
+/**
+ * Resolves once the fake app-server's log satisfies `predicate`. The log file changing is the signal,
+ * so no clock is involved and the wait works under TestClock too.
+ */
+const waitFor = (predicate: () => boolean) =>
+  Effect.callback<void>((resume) => {
+    let done = false
+    const check = () => {
+      if (done || !predicate()) return
+      done = true
+      watcher.close()
+      resume(Effect.void)
     }
-    throw new Error(`timed out waiting for ${description}`)
+    const watcher = watch(logPath, check)
+    check()
+    return Effect.sync(() => watcher.close())
   })
 
 const countOf = (method: string) => received().filter((message) => message.method === method).length
@@ -63,21 +70,28 @@ const startTurn = (threadId: string) =>
   Effect.gen(function* () {
     const provider = yield* CodexProvider
     const events: Array<AgentEvent> = []
+    const arrived = yield* PubSub.unbounded<AgentEvent>()
     const fiber = yield* provider.runTurn(input(threadId)).pipe(
-      Stream.runForEach((event) => Effect.sync(() => events.push(event))),
+      Stream.runForEach((event) =>
+        Effect.sync(() => events.push(event)).pipe(Effect.andThen(PubSub.publish(arrived, event))),
+      ),
       Effect.forkChild,
     )
-    return { fiber, events }
+    return { fiber, events, arrived }
   })
 
-/** Real-time bound, so it also works under TestClock. */
-const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) =>
-  Effect.raceFirst(
-    Fiber.join(fiber),
-    Effect.promise((signal) => sleep(3000, undefined, { signal })).pipe(
-      Effect.andThen(Effect.die("run fiber is still running")),
-    ),
-  )
+type Turn = Effect.Success<ReturnType<typeof startTurn>>
+
+/** Resolves once the turn has received an event matching `predicate`; subscribing first means none is missed. */
+const untilEvent = (turn: Turn, predicate: (event: AgentEvent) => boolean) =>
+  Effect.gen(function* () {
+    const updates = yield* PubSub.subscribe(turn.arrived)
+    if (turn.events.some(predicate)) return
+    while (!predicate(yield* PubSub.take(updates))) continue
+  }).pipe(Effect.scoped)
+
+/** A run that never ends fails the test by its timeout; nothing here consults a clock. */
+const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) => Fiber.join(fiber)
 
 /** A fresh app-server per test, torn down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
@@ -91,7 +105,7 @@ describe("Codex Stop during startup", () => {
           const provider = yield* CodexProvider
           setControl({ stall: [phase] })
           const stopped = yield* startTurn("thread-a")
-          yield* waitFor(phase, () => countOf(phase) === 1)
+          yield* waitFor(() => countOf(phase) === 1)
 
           yield* provider.interrupt("thread-a")
           yield* finishesSoon(stopped.fiber)
@@ -112,12 +126,12 @@ describe("Codex Stop during startup", () => {
         const provider = yield* CodexProvider
         setControl({ stall: ["turn/start"], holdTurn: true })
         const stopped = yield* startTurn("thread-a")
-        yield* waitFor("turn/start", () => countOf("turn/start") === 1)
+        yield* waitFor(() => countOf("turn/start") === 1)
         yield* provider.interrupt("thread-a")
         yield* finishesSoon(stopped.fiber)
 
         setControl({ stall: ["turn/start"], holdTurn: true, release: true })
-        yield* waitFor("turn/interrupt for the late turn", () =>
+        yield* waitFor(() =>
           received().some((message) => message.method === "turn/interrupt" && message.params?.turnId === "turn-1"),
         )
       }),
@@ -130,7 +144,7 @@ describe("Codex Stop during startup", () => {
       Effect.gen(function* () {
         setControl({ stall: ["initialize"] })
         const { fiber, events } = yield* startTurn("thread-a")
-        yield* waitFor("initialize", () => countOf("initialize") === 1)
+        yield* waitFor(() => countOf("initialize") === 1)
         yield* TestClock.adjust("5 minutes")
         const error = yield* finishesSoon(fiber).pipe(Effect.flip)
         expect(error.message).toMatch(/initialize.*did not respond/)
@@ -147,11 +161,11 @@ describe("Codex Stop on a running turn", () => {
         const provider = yield* CodexProvider
         setControl({ holdTurn: true })
         const running = yield* startTurn("thread-b")
-        yield* waitFor("first delta", () => running.events.some((event) => event.type === "text_delta"))
+        yield* untilEvent(running, (event) => event.type === "text_delta")
 
         setControl({ holdTurn: true, stall: ["thread/start"] })
         const stopped = yield* startTurn("thread-a")
-        yield* waitFor("second thread/start", () => countOf("thread/start") === 2)
+        yield* waitFor(() => countOf("thread/start") === 2)
         yield* provider.interrupt("thread-a")
         yield* finishesSoon(stopped.fiber)
         expect(running.fiber.pollUnsafe()).toBe(undefined)
