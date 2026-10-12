@@ -54,19 +54,20 @@ $AB snapshot -i                                                # accessibility t
 $AB find role button click --name "New thread in demo" --exact # role + accessible name
 $AB find label "Root path" fill "$DATA/repo"
 $AB focus 'button[aria-label="Reorder first thread"]'          # CSS on aria-label when find has no action for it
-$AB wait '[role=dialog]'                                       # wait for UI, never a bare sleep after a click
+$AB wait 'h1'                                                  # wait for UI, never a bare sleep after a click
 $AB screenshot "$SHOTS/<feature>-<step>.png"
 ```
 
 Run `agent-browser skills get electron` once if you have not used agent-browser with Electron before. Always pass `--session`: the default session is shared with other agents.
 
-Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, textbox `Message`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
+Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), comboboxes `Agent` / `Model` / `Effort` / `Workspace`, toggle `Fast`, textbox `Base ref`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
 
 Rules that came out of real runs:
 
 - Pass `--exact` to `find`. The open thread's sidebar row is itself a `button` whose name contains `Actions for <title>` and `Reorder <title>`, so a substring match clicks the row instead.
-- `find` searches the whole page, including what sits behind a dialog. In a thread view the composer has a `Model` combobox too, so scope dialog controls with CSS: `$AB click '[role=dialog] #thread-model'`.
-- Selects are base-ui popups: click the combobox, `$AB wait '[role=option]'`, then `$AB find role option click --name "<label>" --exact`.
+- `find` searches the whole page, including what sits behind a dialog. Settings has comboboxes named after agents (`Claude Code`, `Codex`) and the composer has `Model`; scope with CSS when a name could match twice.
+- Selects are base-ui popups: click the combobox, `$AB wait '[role=option]'`, then `$AB find role option click --name "<label>" --exact`. Composer selects near the top of a short thread (`Agent` especially) can open upward under the header, where a click misses. Use the keyboard there: `$AB focus 'button[aria-label="Agent"]'`, `$AB press Enter`, `$AB press ArrowDown`, `$AB press Enter`, then check the combobox text.
+- A new thread has no title of its own. `New thread in <project>` and `Ctrl+N` create `thread-xxxxx` at once and focus `Message`. Read the title with `$AB get text h1`, or rename it from the sidebar menu when a fixed title matters. The first send renames it (and its worktree branch) in the background, so do not hard-code the placeholder past that point.
 - `find` does not wait, and menus, select popups (`[role=option]`), inline inputs and dialogs render a beat after the click. After opening wait for `[role=menu]`, `[role=option]`, `[role=dialog]`, `[role=alertdialog]` or the input; after closing a dialog wait with `$AB wait --fn '!document.querySelector("[role=dialog]")'`. A closed select keeps its options in the page, so wait on the combobox's `aria-expanded="false"` instead of on `[role=option]` disappearing. `snapshot` can lag an animation, so trust the wait, not one snapshot.
 - After `stop.sh` and a relaunch the agent-browser session loses its CDP attachment and opens a blank browser. Pass `--cdp $PORT` on every command after a relaunch (or on every command, which is simplest).
 - `find` supports `click`, `fill`, `check`, `hover`, `text`. For focus or keyboard work use `$AB focus '<css>'` and `$AB press <Key>`.
@@ -79,7 +80,8 @@ The renderer exposes `window.kkcode.rpc(method, payload)`. The method map with r
 ```sh
 $S/seed-repo.sh $DATA/repo                          # git repo on main + a gitignored .env
 $S/rpc.mjs $PORT projects.create "{\"name\":\"demo\",\"rootPath\":\"$DATA/repo\",\"setupScript\":null}"
-$S/rpc.mjs $PORT threads.create '{"projectId":"<id>","title":"t1","provider":"claude","model":"claude-sonnet-5-5"}'
+$S/rpc.mjs $PORT threads.create '{"projectId":"<id>"}'    # Claude Code, default model, title thread-xxxxx
+$S/rpc.mjs $PORT threads.update '{"id":"<id>","title":"t1","model":"claude-sonnet-5-5"}'   # also provider, effort (string or null), fastMode
 $S/rpc.mjs $PORT threads.transcript '{"threadId":"<id>"}'
 $S/rpc.mjs $PORT mcp.connection '{"threadId":"<id>"}'
 ```
@@ -125,16 +127,16 @@ Agent CLIs keep their own transcripts (`~/.claude/projects/`, `~/.codex/sessions
 
 ## Helpers
 
-| Script | Invocation | Purpose |
-| --- | --- | --- |
-| `launch.sh` | `$S/launch.sh <port> <data> [--no-build]` | Build, start an isolated instance, wait for rpc, move the webhook port |
-| `doctor.sh` | `$S/doctor.sh <port> <data>` | Read-only health check, exit 1 on any FAIL |
-| `rpc.mjs` | `$S/rpc.mjs <port> <method> ['<json>']` | Call `window.kkcode.rpc` over CDP |
-| `seed-repo.sh` | `$S/seed-repo.sh <dir>` | Throwaway git repo with a gitignored `.env` |
-| `mcp-call.mjs` | `$S/mcp-call.mjs '<connection json>' [tool] ['<json>']` | Act as an agent against the built-in MCP server |
-| `webhook.sh` | `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` | Signed webhook delivery |
-| `stop.sh` | `$S/stop.sh <data>` | Stop the instance and keep its data for a relaunch |
-| `cleanup.sh` | `$S/cleanup.sh <port> <data> [ab-session]` | Stop, close the browser session, delete `<data>` |
+| Script         | Invocation                                              | Purpose                                                                |
+| -------------- | ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `launch.sh`    | `$S/launch.sh <port> <data> [--no-build]`               | Build, start an isolated instance, wait for rpc, move the webhook port |
+| `doctor.sh`    | `$S/doctor.sh <port> <data>`                            | Read-only health check, exit 1 on any FAIL                             |
+| `rpc.mjs`      | `$S/rpc.mjs <port> <method> ['<json>']`                 | Call `window.kkcode.rpc` over CDP                                      |
+| `seed-repo.sh` | `$S/seed-repo.sh <dir>`                                 | Throwaway git repo with a gitignored `.env`                            |
+| `mcp-call.mjs` | `$S/mcp-call.mjs '<connection json>' [tool] ['<json>']` | Act as an agent against the built-in MCP server                        |
+| `webhook.sh`   | `$S/webhook.sh <url> <secret> '<json>' [delivery-id]`   | Signed webhook delivery                                                |
+| `stop.sh`      | `$S/stop.sh <data>`                                     | Stop the instance and keep its data for a relaunch                     |
+| `cleanup.sh`   | `$S/cleanup.sh <port> <data> [ab-session]`              | Stop, close the browser session, delete `<data>`                       |
 
 ## Feature map
 

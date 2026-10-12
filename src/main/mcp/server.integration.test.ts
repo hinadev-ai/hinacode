@@ -12,6 +12,7 @@ import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
+import { ThreadNaming } from "../services/ThreadNaming.ts"
 import { Events } from "../services/Events.ts"
 import * as Git from "../services/Git.ts"
 import * as GitHub from "../services/GitHub.ts"
@@ -46,6 +47,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
   return {
     id,
     listModels: Effect.succeed([]),
+    listCommands: () => Effect.succeed([]),
     runTurn: ({ threadId }) =>
       Stream.unwrap(
         Effect.map(Deferred.make<void>(), (done) => {
@@ -63,6 +65,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
 }
 
 const stubs = Layer.mergeAll(
+  Layer.succeed(ThreadNaming, ThreadNaming.of({ nameFromPrompt: () => Effect.void })),
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),

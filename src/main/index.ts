@@ -19,6 +19,7 @@ import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as Settings from "./services/Settings.ts"
+import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
@@ -48,7 +49,7 @@ const makeAppLayer = (dbPath: string) => {
     Messages.layer,
     Attachments.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, ThreadNaming.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(

@@ -31,12 +31,12 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 
 ## Features
 
-- [Projects and threads](./projects-and-threads.md): add project, new thread, sidebar grouping, keyboard reorder, rename, settle, delete, persistence. No agent cost. Proven end to end when this skill was created.
-- [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, restore and resume after relaunch.
-- [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for kkcode tools.
-- [Worktrees](./worktrees.md): setup script with `$KKCODE_ROOT_PATH`, setup log, failure state, changes and diffs, settle cleanup. No agent cost.
+- [Projects and threads](./projects-and-threads.md): add project, instant new thread with placeholder title, sidebar grouping, keyboard reorder, rename, settle, delete, persistence. No agent cost. Proven end to end when this skill was created.
+- [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, effort and fast mode, `/` and `@` completions, restore and resume after relaunch.
+- [Chat with Codex](./chat-codex.md): picking Codex in the composer, `$` skills, the same chat on Codex, including MCP elicitation approvals for kkcode tools.
+- [Worktrees](./worktrees.md): `Workspace` picker and `Base ref`, creation on first send, branch rename, setup script with `$KKCODE_ROOT_PATH`, setup log, failure state, changes and diffs, settle cleanup. One short Claude turn.
 - [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments.
 - [MCP tools and pull request links](./mcp-and-pull-requests.md): tool contract and auth, `review_changes`, `link_pull_request` from inside a turn, panel links with `gh` status, unlink, creating a pull request, `gh` sign-in states, Linear without a key, `request_secret` card, `create_thread`.
-- [Settings](./settings.md): language en and zh-TW, default models, keybinding recording, conflicts and reset, Linear and Slack secrets. No agent cost.
+- [Settings](./settings.md): language en and zh-TW, default models, thread naming model, keybinding recording, conflicts and reset, Linear and Slack secrets. No agent cost.
 - [Ports](./ports.md): listing workspace listeners and the two-click kill. No agent cost.
 - [Automations](./automations.md): signed webhook delivery, rejects, dedup, run now, listener port, pollers.

@@ -5,6 +5,8 @@ import type { Message } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { callPromise } from "../lib/rpc.ts"
 
+const STREAM_PUBLICATION_INTERVAL_MS = 100
+
 type ReadyHistory = {
   readonly status: "ready"
   readonly messages: ReadonlyArray<Message>
@@ -32,6 +34,17 @@ interface MessagesState {
  * first `load` reads a snapshot instead.
  */
 export const useMessages = create<MessagesState>()((set, get) => {
+  const pendingDeltas = new Map<
+    string,
+    { pushes: [TranscriptPush, ...TranscriptPush[]]; timer: ReturnType<typeof setTimeout> }
+  >()
+  const takePending = (threadId: string) => {
+    const pending = pendingDeltas.get(threadId)
+    if (pending === undefined) return []
+    clearTimeout(pending.timer)
+    pendingDeltas.delete(threadId)
+    return pending.pushes
+  }
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
     set((state) => {
       const history = state.byThread[threadId]
@@ -59,27 +72,57 @@ export const useMessages = create<MessagesState>()((set, get) => {
       }
     },
 
-    unload: (threadId) =>
+    unload: (threadId) => {
+      takePending(threadId)
       set((state) => {
         const { [threadId]: _dropped, ...byThread } = state.byThread
         return { byThread }
-      }),
+      })
+    },
 
-    receive: (push) =>
-      setHistory(pushThreadId(push), (history) => {
+    receive: (push) => {
+      const threadId = pushThreadId(push)
+      const type = deltaType(push)
+      const pending = pendingDeltas.get(threadId)
+      if (get().byThread[threadId]?.status === "ready" && type !== undefined) {
+        if (pending !== undefined && deltaType(pending.pushes[0]) === type) {
+          pending.pushes.push(push)
+          return
+        }
+        if (pending === undefined) {
+          // Start once per group; later deltas never postpone publication.
+          pendingDeltas.set(threadId, {
+            pushes: [push],
+            timer: setTimeout(() => {
+              const pushes = takePending(threadId)
+              setHistory(threadId, (history) =>
+                history?.status === "ready" ? pushes.reduce(applyPush, history) : history,
+              )
+            }, STREAM_PUBLICATION_INTERVAL_MS),
+          })
+          return
+        }
+      }
+      const pushes = takePending(threadId)
+      setHistory(threadId, (history) => {
         switch (history?.status) {
           case "loading":
             return { ...history, pending: [...history.pending, push] }
           case "ready":
-            return applyPush(history, push)
+            return applyPush(pushes.reduce(applyPush, history), push)
           default:
             return history
         }
-      }),
+      })
+    },
   }
 })
 
 const pushThreadId = (push: TranscriptPush) => (push.type === "thread.event" ? push.threadId : push.message.threadId)
+const deltaType = (push: TranscriptPush) =>
+  push.type === "thread.event" && (push.event.type === "text_delta" || push.event.type === "reasoning_delta")
+    ? push.event.type
+    : undefined
 
 function applyPush(history: ReadyHistory, push: TranscriptPush): ReadyHistory {
   switch (push.type) {

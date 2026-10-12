@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Semaphore, Stream } from "effect"
-import type { AgentEvent, ApprovalDecision, ModelInfo, RunTurnInput, TokenUsage } from "../../../shared/agent.ts"
+import type {
+  AgentCommand,
+  AgentEvent,
+  ApprovalDecision,
+  ModelInfo,
+  RunTurnInput,
+  TokenUsage,
+} from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
@@ -13,6 +20,9 @@ import type {
   ModelListResponse,
   ServerNotificationParams,
   ServerRequestParams,
+  SkillMetadata,
+  SkillsListParams,
+  SkillsListResponse,
   ThreadItem,
   ThreadResumeParams,
   ThreadStartParams,
@@ -25,6 +35,9 @@ import type {
 } from "./protocol.ts"
 
 const CLIENT_VERSION = "0.1.0"
+
+/** The service tier Codex labels "Fast". */
+const FAST_SERVICE_TIER = "priority"
 
 const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
   allow: "accept",
@@ -58,6 +71,12 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<
       : textInput(`Attached file: ${attachment.path}`),
   ),
 ]
+
+/** Codex expands a skill only when it arrives as its own input item next to the `$name` in the text. */
+const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<UserInput> =>
+  skills
+    .filter((skill) => skill.enabled && text.includes(`$${skill.name}`))
+    .map((skill) => ({ type: "skill", name: skill.name, path: skill.path }))
 
 const toolName = (item: ThreadItem): string | undefined => {
   switch (item.type) {
@@ -148,11 +167,42 @@ const make = Effect.gen(function* () {
     do {
       const params: ModelListParams = { cursor, limit: 100, includeHidden: false }
       const page: ModelListResponse = yield* client.request<ModelListResponse>("model/list", params)
-      for (const model of page.data) models.push({ id: model.id, label: model.displayName, provider: "codex" })
+      for (const model of page.data) {
+        models.push({
+          id: model.id,
+          label: model.displayName,
+          provider: "codex",
+          efforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
+          defaultEffort: model.defaultReasoningEffort,
+          fastMode: model.serviceTiers.some((tier) => tier.id === FAST_SERVICE_TIER),
+        })
+      }
       cursor = page.nextCursor
     } while (cursor)
     return models
   })
+
+  const listSkills = (cwd: string) =>
+    Effect.gen(function* () {
+      const client = yield* getClient
+      const params: SkillsListParams = { cwds: [cwd] }
+      const response = yield* client.request<SkillsListResponse>("skills/list", params)
+      return response.data.flatMap((entry) => entry.skills)
+    })
+
+  const listCommands = ({ cwd }: { readonly cwd: string }) =>
+    listSkills(cwd).pipe(
+      Effect.map((skills) =>
+        skills
+          .filter((skill) => skill.enabled)
+          .map((skill): AgentCommand => ({
+            trigger: "$",
+            name: skill.name,
+            description: skill.shortDescription ?? skill.description,
+            argumentHint: "",
+          })),
+      ),
+    )
 
   const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
     Stream.callback<AgentEvent, AgentError>((out) =>
@@ -192,10 +242,13 @@ const make = Effect.gen(function* () {
             : yield* client.request<ThreadStartResponse>("thread/start", overrides)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
+          const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd) : []
           const turnStart: TurnStartParams = {
             threadId: thread.id,
-            input: userInput(input.prompt, input.attachments),
+            input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
             cwd: input.cwd,
+            ...(input.effort === null ? {} : { effort: input.effort }),
+            serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
           }
           run.turnStart = yield* client.request<TurnStartResponse>("turn/start", turnStart).pipe(
             Effect.map(({ turn }): RemoteTurn => ({ threadId: thread.id, turnId: turn.id })),
@@ -468,7 +521,7 @@ const make = Effect.gen(function* () {
       return deferred ? Deferred.succeed(deferred, decision) : Effect.void
     }).pipe(Effect.asVoid)
 
-  return { id: "codex", listModels, runTurn, steer, interrupt, respondApproval } satisfies AgentProvider
+  return { id: "codex", listModels, listCommands, runTurn, steer, interrupt, respondApproval } satisfies AgentProvider
 })
 
 export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {

@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId, SecretRequest } from "./agent.ts"
+import { AgentCommand, AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId, SecretRequest } from "./agent.ts"
 import {
   Attachment,
   Automation,
@@ -57,22 +57,18 @@ export const RpcMethods = {
   "projects.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "threads.list": rpc(Schema.Void, Schema.Array(Thread)),
-  "threads.create": rpc(
-    Schema.Struct({
-      projectId: Schema.String,
-      title: Schema.String,
-      provider: ProviderId,
-      model: Schema.String,
-      /** Run the thread in a new worktree on `branch`, forked from `baseRef`. */
-      worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
-    }),
-    Thread,
-  ),
+  /** An empty thread with a placeholder title and the default agent, configured in the composer until its first message. */
+  "threads.create": rpc(Schema.Struct({ projectId: Schema.String }), Thread),
   "threads.update": rpc(
     Schema.Struct({
       id: Schema.String,
       title: Schema.optional(Schema.String),
+      /** Only before the first message. Switches to the agent's default model unless `model` is given. */
+      provider: Schema.optional(ProviderId),
       model: Schema.optional(Schema.String),
+      /** Null goes back to the model's default effort. */
+      effort: Schema.optional(Schema.NullOr(Schema.String)),
+      fastMode: Schema.optional(Schema.Boolean),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
     }),
@@ -111,11 +107,16 @@ export const RpcMethods = {
       defaultModel: Schema.optional(Settings.fields.defaultModel),
       automations: Schema.optional(Settings.fields.automations),
       appearance: Schema.optional(Settings.fields.appearance),
+      textGenerationModel: Schema.optional(Settings.fields.textGenerationModel),
     }),
     Settings,
   ),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
+  /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
+  "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
+  /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
+  "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
@@ -133,12 +134,17 @@ export const RpcMethods = {
       seq: Schema.Number,
     }),
   ),
-  /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
+  /**
+   * Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`.
+   * `worktree` is only accepted with the first message: the thread moves into a new worktree forked from
+   * `baseRef`, or from the project's current branch when it is empty.
+   */
   "threads.send": rpc(
     Schema.Struct({
       threadId: Schema.String,
       prompt: Schema.String,
       attachments: Schema.optional(Schema.Array(Attachment)),
+      worktree: Schema.optional(Schema.Struct({ baseRef: Schema.String })),
     }),
     Schema.Void,
   ),
