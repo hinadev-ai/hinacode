@@ -18,6 +18,7 @@ import {
   Worktree,
   WorktreeChanges,
 } from "./domain.ts"
+import { GitHubRepository } from "./github.ts"
 
 const AutomationInput = Schema.Struct({
   projectId: Schema.String,
@@ -41,6 +42,15 @@ export const RpcMethods = {
     Schema.Struct({
       name: Schema.String,
       rootPath: Schema.String,
+      setupScript: Schema.NullOr(Schema.String),
+    }),
+    Project,
+  ),
+  "projects.clone": rpc(
+    Schema.Struct({
+      repository: GitHubRepository,
+      rootPath: Schema.String,
+      name: Schema.String,
       setupScript: Schema.NullOr(Schema.String),
     }),
     Project,

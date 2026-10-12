@@ -14,7 +14,7 @@
   "sidebar_new_thread_in": "New thread in {project}",
   "sidebar_toggle_project": "Show or hide threads in {project}",
   "project_dialog_title": "Add project",
-  "project_dialog_description": "Point kkcode at a local repository.",
+  "project_dialog_description": "Add a local repository, or clone one from GitHub.",
   "project_name_label": "Name",
   "project_name_placeholder": "my-app",
   "project_root_label": "Root path",
@@ -370,5 +370,10 @@
   "settings_github_signed_out_before": "gh is installed but not signed in. Run",
   "settings_github_signed_out_after": "in a terminal.",
   "settings_github_check_again": "Check again",
-  "settings_github_hint": "kkcode uses your gh login to show pull request status, create pull requests, and poll GitHub issues for automations. Get gh at cli.github.com."
+  "settings_github_hint": "kkcode uses your gh login to show pull request status, create pull requests, and poll GitHub issues for automations. Get gh at cli.github.com.",
+  "project_source_label": "Folder or GitHub repository",
+  "project_github_repository": "Clones {repository} from GitHub.",
+  "project_clone_to_label": "Clone to",
+  "project_clone_submit": "Clone and add",
+  "project_cloning": "Cloning…"
 }

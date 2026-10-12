@@ -14,7 +14,7 @@
   "sidebar_new_thread_in": "在 {project} 建立討論串",
   "sidebar_toggle_project": "顯示或隱藏 {project} 的討論串",
   "project_dialog_title": "新增專案",
-  "project_dialog_description": "指定一個本機儲存庫給 kkcode。",
+  "project_dialog_description": "加入本機儲存庫，或從 GitHub 複製一個。",
   "project_name_label": "名稱",
   "project_name_placeholder": "my-app",
   "project_root_label": "根目錄路徑",
@@ -352,5 +352,10 @@
   "settings_github_signed_out_before": "已安裝 gh 但尚未登入。請在終端機執行",
   "settings_github_signed_out_after": "登入。",
   "settings_github_check_again": "重新檢查",
-  "settings_github_hint": "kkcode 會使用你的 gh 登入來顯示 pull request 狀態、建立 pull request，並為自動化輪詢 GitHub issue。可從 cli.github.com 取得 gh。"
+  "settings_github_hint": "kkcode 會使用你的 gh 登入來顯示 pull request 狀態、建立 pull request，並為自動化輪詢 GitHub issue。可從 cli.github.com 取得 gh。",
+  "project_source_label": "資料夾或 GitHub 儲存庫",
+  "project_github_repository": "將從 GitHub 複製 {repository}。",
+  "project_clone_to_label": "複製到",
+  "project_clone_submit": "複製並加入",
+  "project_cloning": "正在複製…"
 }
