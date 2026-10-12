@@ -224,6 +224,19 @@ export const Appearance = Schema.Struct({
 })
 export type Appearance = typeof Appearance.Type
 
+/** A thread change that can pull the user back: its turn finished, it is waiting on them, or it stopped short. */
+export const ThreadAlert = Schema.Literals(["completed", "needsInput", "failed"])
+export type ThreadAlert = typeof ThreadAlert.Type
+
+/** Which alerts raise a desktop notification, and whether a chime plays with it. */
+export const NotificationSettings = Schema.Struct({
+  completed: Schema.Boolean,
+  needsInput: Schema.Boolean,
+  failed: Schema.Boolean,
+  sound: Schema.Boolean,
+})
+export type NotificationSettings = typeof NotificationSettings.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
@@ -246,6 +259,7 @@ export const Settings = Schema.Struct({
   textGenerationModel: Schema.String,
   /** The access mode new threads start with. */
   defaultAccessMode: AccessMode,
+  notifications: NotificationSettings,
 })
 export type Settings = typeof Settings.Type
 
@@ -257,6 +271,7 @@ export const defaultSettings: Settings = {
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
+  notifications: { completed: true, needsInput: true, failed: true, sound: true },
 }
 
 export const PullRequestLink = Schema.Struct({

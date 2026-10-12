@@ -1,12 +1,21 @@
 import { type ComponentType, useState } from "react"
 import type { IconType } from "react-icons"
-import { RiCpuLine, RiFlashlightLine, RiKeyboardLine, RiPaletteLine, RiPlugLine, RiSettings3Line } from "react-icons/ri"
+import {
+  RiCpuLine,
+  RiFlashlightLine,
+  RiKeyboardLine,
+  RiNotification3Line,
+  RiPaletteLine,
+  RiPlugLine,
+  RiSettings3Line,
+} from "react-icons/ri"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
 import { GeneralSettings } from "../components/settings/GeneralSettings.tsx"
 import { IntegrationSettings } from "../components/settings/IntegrationSettings.tsx"
 import { KeybindingSettings } from "../components/settings/KeybindingSettings.tsx"
 import { ModelSettings } from "../components/settings/ModelSettings.tsx"
+import { NotificationSettings } from "../components/settings/NotificationSettings.tsx"
 import { m } from "../paraglide/messages.js"
 
 interface SettingsPage {
@@ -20,6 +29,12 @@ const pages: ReadonlyArray<SettingsPage> = [
   { id: "general", label: m.settings_general, icon: RiSettings3Line, component: GeneralSettings },
   { id: "appearance", label: m.settings_appearance, icon: RiPaletteLine, component: AppearanceSettings },
   { id: "models", label: m.settings_models, icon: RiCpuLine, component: ModelSettings },
+  {
+    id: "notifications",
+    label: m.settings_notifications,
+    icon: RiNotification3Line,
+    component: NotificationSettings,
+  },
   { id: "keybindings", label: m.settings_keybindings, icon: RiKeyboardLine, component: KeybindingSettings },
   { id: "integrations", label: m.settings_integrations, icon: RiPlugLine, component: IntegrationSettings },
   { id: "automations", label: m.settings_automations, icon: RiFlashlightLine, component: AutomationSettings },

@@ -517,5 +517,22 @@
         "countPlural=other": "{count} skipped"
       }
     }
-  ]
+  ],
+  "settings_notifications": "Notifications",
+  "settings_notifications_hint": "kkcode notifies you about threads you are not looking at.",
+  "settings_notifications_completed": "Finished turns",
+  "settings_notifications_completed_hint": "The agent finished its turn.",
+  "settings_notifications_needs_input": "Approvals and secrets",
+  "settings_notifications_needs_input_hint": "The agent is waiting for you to allow a tool or enter a secret.",
+  "settings_notifications_failed": "Failures and usage limits",
+  "settings_notifications_failed_hint": "A turn failed, was stopped, or hit a usage limit.",
+  "settings_notifications_sound": "Sound",
+  "settings_notifications_sound_hint": "Play a short chime with each notification. Each kind has its own.",
+  "settings_notifications_test": "Send test notification",
+  "notification_completed": "Finished",
+  "notification_approval": "Waiting for your approval",
+  "notification_secret": "Waiting for a secret",
+  "notification_failed": "Failed: {message}",
+  "notification_limited": "Stopped at the usage limit",
+  "notification_test": "Notifications are on."
 }

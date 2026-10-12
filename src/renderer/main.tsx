@@ -2,13 +2,14 @@ import "./index.css"
 import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
-import { AtomRegistry } from "effect/reactivity"
+import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { StrictMode, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { useSettings } from "./lib/settings.ts"
+import { notifyThreadEvent } from "./lib/threadNotifications.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
@@ -50,8 +51,12 @@ onPushEvent((event) => {
       return useThreads.getState().upsert(event.thread)
     case "message.created":
     case "message.updated":
-    case "thread.event":
       return useMessages.getState().receive(event)
+    case "thread.event": {
+      useMessages.getState().receive(event)
+      const { notifications } = AsyncResult.getOrElse(registry.get(settingsAtom), () => settings)
+      return notifyThreadEvent(event.threadId, event.event, notifications)
+    }
     case "worktree.updated":
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":
