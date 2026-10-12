@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -49,10 +50,23 @@ const electron = vi.hoisted(() => ({
   /** Called after every push, so a test can wait for the one it expects instead of polling. */
   watchers: new Set<() => void>(),
   shown: [] as Array<object>,
+  restored: [] as Array<object>,
+  focused: [] as Array<object>,
+  notifications: [] as Array<{ title: string; body: string; silent: boolean }>,
+  notificationOutcome: "show" as "show" | "failed",
   userData: "",
 }))
 
 vi.mock("electron", () => ({
+  Notification: class extends EventEmitter {
+    constructor(options: { title: string; body: string; silent: boolean }) {
+      super()
+      electron.notifications.push(options)
+    }
+    show() {
+      this.emit(electron.notificationOutcome)
+    }
+  },
   app: { getPath: () => electron.userData },
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
   BrowserWindow: {
@@ -67,6 +81,13 @@ vi.mock("electron", () => ({
       },
     ],
     fromWebContents: (sender: object) => ({
+      isMinimized: () => true,
+      restore: () => {
+        electron.restored.push(sender)
+      },
+      focus: () => {
+        electron.focused.push(sender)
+      },
       show: () => {
         electron.shown.push(sender)
       },
@@ -258,6 +279,32 @@ describe("rpc trust boundary", () => {
     expect(electron.shown).toStrictEqual([sender])
   })
 
+  test("only a valid app.focus call from the app frame restores and focuses its own window", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)
+    if (!handler) throw new Error("RPC handler is missing")
+    const sender = {}
+    const request = { method: "app.focus", payload: undefined }
+    electron.shown.length = 0
+    electron.restored.length = 0
+    electron.focused.length = 0
+    expect(
+      await handler({ sender, senderFrame: { url: "file:///tmp/probe.html", parent: null } }, request),
+    ).toMatchObject({ error: { tag: "UntrustedSender" } })
+    expect(await handler({ sender, senderFrame: { url: appUrl, parent: mainFrame } }, request)).toMatchObject({
+      error: { tag: "UntrustedSender" },
+    })
+    expect(await handler({ sender, senderFrame: mainFrame }, { method: 4, payload: undefined })).toMatchObject({
+      error: { tag: "SchemaError" },
+    })
+    expect(electron.shown).toStrictEqual([])
+    expect(electron.restored).toStrictEqual([])
+    expect(electron.focused).toStrictEqual([])
+    expect(await handler({ sender, senderFrame: mainFrame }, request)).toStrictEqual({ result: undefined })
+    expect(electron.shown).toStrictEqual([sender])
+    expect(electron.restored).toStrictEqual([sender])
+    expect(electron.focused).toStrictEqual([sender])
+  })
+
   test("refuses calls from documents that are not the app and from subframes", async () => {
     const foreign = await invoke("settings.get", undefined, { url: "file:///tmp/probe.html", parent: null })
     expect(failure(foreign).tag).toBe("UntrustedSender")
@@ -268,6 +315,39 @@ describe("rpc trust boundary", () => {
 })
 
 describe("rpc contract", () => {
+  test("notification permission requests validate payloads and reject foreign frames before showing anything", async () => {
+    electron.notifications.length = 0
+    const payload = { title: "kkcode", body: "Permission check" }
+    expect(
+      failure(await invoke("notifications.askPermission", payload, { url: "file:///tmp/probe.html", parent: null }))
+        .tag,
+    ).toBe("UntrustedSender")
+    expect(failure(await invoke("notifications.askPermission", payload, { url: appUrl, parent: mainFrame })).tag).toBe(
+      "UntrustedSender",
+    )
+    expect(
+      failure(await invoke("notifications.askPermission", { title: 4 as unknown as string, body: "invalid" })).tag,
+    ).toBe("SchemaError")
+    expect(electron.notifications).toStrictEqual([])
+  })
+
+  test("notification permission requests report the native result and always remain silent", async () => {
+    electron.notifications.length = 0
+    const payload = { title: "kkcode", body: "Permission check" }
+    electron.notificationOutcome = "show"
+    expect(result(await invoke("notifications.askPermission", payload))).toBe("shown")
+    electron.notificationOutcome = "failed"
+    expect(result(await invoke("notifications.askPermission", payload))).toBe("refused")
+    electron.notificationOutcome = "show"
+    expect(electron.notifications).toStrictEqual([
+      { ...payload, silent: true },
+      { ...payload, silent: true },
+    ])
+    expect(["unknown", "granted", "denied", "notDetermined"]).toContain(
+      result(await invoke("notifications.permission", undefined)),
+    )
+  })
+
   test("answers an unknown method and a payload outside the contract with a schema error", async () => {
     const unknown = await invoke("no.such.method" as RpcMethod, undefined as never)
     expect(failure(unknown).tag).toBe("SchemaError")
@@ -458,6 +538,18 @@ describe("projects, threads and settings over rpc", () => {
   test("settings written through rpc are what the next read returns", async () => {
     const saved = result(await invoke("settings.set", { locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } }))
     expect(saved).toMatchObject({ locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+  })
+
+  test("notification preferences persist through the derived settings patch", async () => {
+    const before = result(await invoke("settings.get", undefined))
+    const notifications = { completed: false, needsInput: true, failed: false, sound: false }
+    const saved = result(await invoke("settings.set", { notifications }))
+    expect(saved).toStrictEqual({ ...before, notifications })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+
+    const malformed = await invoke("settings.set", { notifications: { ...notifications, sound: "yes" } } as never)
+    expect(malformed).toMatchObject({ error: { tag: "SchemaError" } })
     expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
   })
 

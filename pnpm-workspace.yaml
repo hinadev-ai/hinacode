@@ -1,6 +1,7 @@
 allowBuilds:
   electron: true
   esbuild: true
+  "node-mac-permissions@git+https://github.com/codebytere/node-mac-permissions.git": true
   node-pty: true
 minimumReleaseAgeExclude:
   - effect@4.0.3

@@ -53,6 +53,7 @@
     "react-icons": "5.7.0",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
+    "sonner": "2.0.8",
     "tw-shimmer": "^0.4.13",
     "zustand": "5.0.15"
   },
@@ -68,6 +69,7 @@
     "@vitejs/plugin-react": "5.2.0",
     "electron": "44.7.0",
     "electron-vite": "5.0.0",
+    "node-gyp": "12.2.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "playwright-bdd": "9.2.1",
@@ -76,6 +78,9 @@
     "typescript": "6.0.3",
     "vite": "7.3.7",
     "vitest": "5.0.3"
+  },
+  "optionalDependencies": {
+    "node-mac-permissions": "github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37"
   },
   "packageManager": "pnpm@12.10.1"
 }
