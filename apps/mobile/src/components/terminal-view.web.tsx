@@ -28,6 +28,8 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(element)
+    // Chromium maps this to Android's NO_SUGGESTIONS; xterm only sets autocorrect and autocapitalize.
+    term.textarea?.setAttribute("autocomplete", "off")
     terminal.current = term
     let size = ""
     const resize = () => {

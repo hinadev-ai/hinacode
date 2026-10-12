@@ -28,6 +28,9 @@ const term = new Terminal({ fontSize: 13, fontFamily: "Menlo, monospace", cursor
 const fit = new FitAddon.FitAddon()
 term.loadAddon(fit)
 term.open(document.getElementById("terminal"))
+// xterm already turns autocorrect and autocapitalize off. Android keyboards still suggest and
+// rewrite words until the field also says autocomplete off, which Chromium maps to NO_SUGGESTIONS.
+term.textarea.setAttribute("autocomplete", "off")
 const post = (message) => window.ReactNativeWebView.postMessage(JSON.stringify(message))
 let size = ""
 const resize = () => {
