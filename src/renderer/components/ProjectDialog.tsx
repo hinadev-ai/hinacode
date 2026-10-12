@@ -1,8 +1,10 @@
-import { useAtomSet } from "@effect/atom-react"
+import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
-import { RiFolderOpenLine } from "react-icons/ri"
+import { RiFolderOpenLine, RiGithubFill } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
-import { callPromise, createProjectAtom, updateProjectAtom } from "../lib/rpc.ts"
+import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { callPromise, cloneProjectAtom, createProjectAtom, projectsAtom, updateProjectAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import {
@@ -44,21 +46,38 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
 }
 
 const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? ""
+const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
+
+/** Where a clone lands unless the user picks another folder: next to the newest project, else `~/code`. */
+function useDefaultCloneParent() {
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const newest = projects.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0)
+  return newest ? parentOf(newest.rootPath) : "~/code"
+}
 
 function ProjectForm({ project, onSaved }: { project: Project | undefined; onSaved: () => void }) {
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
+  const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
   const [name, setName] = useState(project?.name ?? "")
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
+  // An existing project's folder is always local; a new one may be typed as a GitHub repository.
+  const repository = project ? null : parseGitHubRepository(rootPath)
+  const [cloneTo, setCloneTo] = useState<string | null>(null)
+  const defaultCloneTo = `${useDefaultCloneParent()}/${repository?.name ?? ""}`
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
-    const fields = {
-      name: name.trim(),
-      rootPath: rootPath.trim(),
-      setupScript: String(form.get("setupScript") ?? "").trim() || null,
-    }
+    const setupScript = String(form.get("setupScript") ?? "").trim() || null
     try {
-      await (project ? updateProject({ id: project.id, ...fields }) : createProject(fields))
+      if (project) await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript })
+      else if (repository)
+        await cloneProject({
+          repository,
+          rootPath: (cloneTo ?? defaultCloneTo).trim(),
+          name: name.trim() || repository.name,
+          setupScript,
+        })
+      else await createProject({ name: name.trim(), rootPath: rootPath.trim(), setupScript })
     } catch (cause) {
       return errorMessage(cause)
     }
@@ -83,7 +102,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="project-root">{m.project_root_label()}</FieldLabel>
+          <FieldLabel htmlFor="project-root">{project ? m.project_root_label() : m.project_source_label()}</FieldLabel>
           <div className="flex gap-2">
             <Input
               id="project-root"
@@ -98,15 +117,17 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
               {m.project_root_browse()}
             </Button>
           </div>
+          {repository && <RepositoryNotice repository={repository} />}
         </Field>
+        {repository && <CloneTarget repository={repository} value={cloneTo ?? defaultCloneTo} onChange={setCloneTo} />}
         <Field>
           <FieldLabel htmlFor="project-name">{m.project_name_label()}</FieldLabel>
           <Input
             id="project-name"
-            required
+            required={!repository}
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder={m.project_name_placeholder()}
+            placeholder={repository?.name ?? m.project_name_placeholder()}
           />
         </Field>
         <Field>
@@ -141,9 +162,58 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
         <Button type="submit" disabled={isPending}>
-          {project ? m.project_save() : m.project_submit()}
+          {project
+            ? m.project_save()
+            : !repository
+              ? m.project_submit()
+              : isPending
+                ? m.project_cloning()
+                : m.project_clone_submit()}
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+function RepositoryNotice({ repository }: { repository: GitHubRepository }) {
+  return (
+    <FieldDescription className="flex items-center gap-1.5">
+      <RiGithubFill aria-hidden className="size-3.5 shrink-0" />
+      {m.project_github_repository({ repository: `${repository.owner}/${repository.name}` })}
+    </FieldDescription>
+  )
+}
+
+interface CloneTargetProps {
+  readonly repository: GitHubRepository
+  readonly value: string
+  readonly onChange: (path: string) => void
+}
+
+/** The folder the repository is cloned into. Browse picks its parent, since the clone creates the folder. */
+function CloneTarget({ repository, value, onChange }: CloneTargetProps) {
+  const browse = async () => {
+    const parent = await callPromise("dialog.pickFolder", undefined)
+    if (parent) onChange(`${parent}/${repository.name}`)
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor="project-clone-to">{m.project_clone_to_label()}</FieldLabel>
+      <div className="flex gap-2">
+        <Input
+          id="project-clone-to"
+          required
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          spellCheck={false}
+          className="font-mono"
+        />
+        <Button type="button" variant="outline" onClick={browse}>
+          <RiFolderOpenLine aria-hidden />
+          {m.project_root_browse()}
+        </Button>
+      </div>
+    </Field>
   )
 }

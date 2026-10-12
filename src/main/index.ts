@@ -49,9 +49,10 @@ const makeAppLayer = (dbPath: string) => {
     Messages.layer,
     Attachments.layer,
   )
-  const features = Layer.mergeAll(Mcp.layer, Ports.layer, ThreadNaming.layer).pipe(Layer.provide(domain))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, ThreadNaming.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
-  return Automations.layer.pipe(
+  // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
+  return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, eventsLayer)),
     Layer.provideMerge(GitHub.layer),

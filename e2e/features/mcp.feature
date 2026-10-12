@@ -9,7 +9,7 @@ Feature: Built-in MCP server
     And an agent connected to the thread "Agent"
 
   Scenario: The server lists its tools to the thread's agent and turns strangers away
-    Then the agent sees the tools "review_changes, link_pull_request, list_thread_pull_requests, unlink_pull_request, linear_get_issue, linear_search_issues, linear_create_comment, linear_update_issue_state"
+    Then the agent sees the tools "review_changes, link_pull_request, list_thread_pull_requests, unlink_pull_request, linear_get_issue, linear_search_issues, linear_create_comment, linear_update_issue_state, request_secret, create_thread"
     And a request with a wrong credential is rejected
 
   Scenario: review_changes reports what changed in the thread's workspace
@@ -30,3 +30,7 @@ Feature: Built-in MCP server
   Scenario: Linear tools explain what is missing without an API key
     When the agent calls "linear_get_issue" with '{"key":"ENG-1"}'
     Then the tool fails with "No Linear API key is configured"
+
+  Scenario: A secret request outside a running turn fails without showing a card
+    When the agent calls "request_secret" with '{"name":"demo.token","description":"Verification token"}'
+    Then the tool fails with "No turn is running on this thread."

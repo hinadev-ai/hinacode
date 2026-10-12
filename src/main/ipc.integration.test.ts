@@ -87,8 +87,9 @@ const makeLayer = (dbPath: string) => {
     Messages.layer,
     Attachments.layer,
   )
-  const features = Layer.mergeAll(Mcp.layer, Ports.layer).pipe(Layer.provide(domain))
-  return Layer.mergeAll(domain, features, agentStubs).pipe(
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const base = Layer.mergeAll(domain, features, agentStubs)
+  return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
     Layer.provideMerge(GitHub.layer),
     Layer.provide(Db.layer(dbPath)),
@@ -302,6 +303,34 @@ describe("projects, threads and settings over rpc", () => {
     expect(files).toContain("notes.txt")
     expect(files).toContain(".gitignore")
     expect(files).not.toContain("secret.env")
+  })
+
+  test("cloning into a folder that already holds that repository adds it without cloning", async () => {
+    const clone = join(dir, "myprofile")
+    execFileSync("git", ["init", "-q", clone])
+    execFileSync("git", ["-C", clone, "remote", "add", "origin", "git@github.com:kjj6198/myprofile.git"])
+    const project = result(
+      await invoke("projects.clone", {
+        repository: { owner: "kjj6198", name: "myprofile" },
+        rootPath: clone,
+        name: "myprofile",
+        setupScript: null,
+      }),
+    )
+    expect(project).toMatchObject({ name: "myprofile", rootPath: clone } satisfies Partial<Project>)
+  })
+
+  test("refuses a clone target that is not an absolute path, and a repository that is not owner/name", async () => {
+    const repository = { owner: "kjj6198", name: "myprofile" }
+    const relative = await invoke("projects.clone", { repository, rootPath: "code/x", name: "x", setupScript: null })
+    expect(failure(relative).tag).toBe("ProjectRootInvalidError")
+    const flag = await invoke("projects.clone", {
+      repository: { owner: "--upload-pack=x", name: "y" },
+      rootPath: join(dir, "y"),
+      name: "y",
+      setupScript: null,
+    })
+    expect(failure(flag).tag).toBe("SchemaError")
   })
 
   test("settings written through rpc are what the next read returns", async () => {

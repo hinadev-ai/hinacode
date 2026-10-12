@@ -40,7 +40,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for kkcode tools. Real turns only.
 - [Worktrees](./worktrees.md): setup services and panels automated; composer creation and branch naming need a real first turn, and the `PR <state>` badge needs a GitHub remote.
 - [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments. Real turns only.
-- [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; `link_pull_request` from inside a turn, `gh` status, creating a pull request and the `gh` sign-in states by hand.
+- [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; `link_pull_request` from inside a turn, `gh` status, creating a pull request, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand.
 - [Settings](./settings.md): automated except the Codex default model and the Slack token, which share code with the automated cases.
 - [Ports](./ports.md): automated except a listener spawned by an agent.
 - [Automations](./automations.md): creation and rejects automated; signed deliveries, dedup, run now, worktree runs, pollers and the listener port by hand, since each starts a thread.
