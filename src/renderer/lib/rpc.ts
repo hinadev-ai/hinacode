@@ -102,7 +102,11 @@ export const pullRequestStatusAtom = Atom.family((url: string) =>
   ),
 )
 
-export const gitHubAuthAtom = Atom.make(call("github.auth", undefined))
+/**
+ * Whether `gh` is signed in. Kept for 12 hours after the last screen showing it closes, since asking `gh`
+ * is slow and the answer rarely changes. Settings' Recheck asks again at once.
+ */
+export const gitHubAuthAtom = Atom.make(call("github.auth", undefined)).pipe(Atom.setIdleTTL("12 hours"))
 
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
 
