@@ -50,7 +50,7 @@ messages/     Paraglide catalogs, en.json and zh-TW.json
 
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
-- Icons come from `react-icons/ri` (Remix). `components.json` says lucide, but the code doesn't use it.
+- Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
 
