@@ -13,6 +13,7 @@ chmodSync(join(bin, "codex"), 0o755)
 process.env.PATH = `${bin}:${process.env.PATH}`
 
 type Control = {
+  accountResponse?: unknown
   stall?: Array<string>
   release?: boolean
   holdTurn?: boolean
@@ -298,6 +299,50 @@ describe("Codex questions", () => {
           text: "Posted question",
           questions: [{ id: "Which color?", allowsText: true }],
         })
+      }),
+    ),
+  )
+})
+
+describe("Codex account boundary", () => {
+  for (const response of [
+    {},
+    { account: { type: "futureAccount", apiKey: "synthetic-secret" }, requiresOpenaiAuth: true },
+    { account: { type: "chatgpt", email: "dev@example.com" }, requiresOpenaiAuth: true },
+    { account: { type: "chatgpt", email: 123, planType: "pro" }, requiresOpenaiAuth: true },
+  ]) {
+    it.live(`rejects malformed account responses: ${JSON.stringify(response)}`, () =>
+      withProvider(
+        Effect.gen(function* () {
+          setControl({ accountResponse: response })
+          const provider = yield* CodexProvider
+          const error = yield* provider.account.pipe(Effect.flip)
+          expect(error._tag).toBe("AgentError")
+          expect(error.message).toMatch(/invalid.*account|account.*invalid/i)
+          expect(error.message).not.toContain("synthetic-secret")
+        }),
+      ),
+    )
+  }
+
+  it.live("normalizes account metadata and drops credentials", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({
+          accountResponse: {
+            account: { type: "chatgpt", email: "dev@example.com", planType: "pro", accessToken: "synthetic-secret" },
+            requiresOpenaiAuth: true,
+            refreshToken: "synthetic-secret",
+          },
+        })
+        const provider = yield* CodexProvider
+        expect(yield* provider.account).toStrictEqual({
+          type: "subscription",
+          email: "dev@example.com",
+          plan: "ChatGPT Pro",
+          organization: null,
+        })
+        expect(countOf("turn/start")).toBe(0)
       }),
     ),
   )
