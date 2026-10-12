@@ -19,10 +19,16 @@ ws.send(
   JSON.stringify({
     id: 1,
     method: "Runtime.evaluate",
-    params: { expression: `window.kkcode.rpc(${JSON.stringify(method)}, ${payload})`, awaitPromise: true, returnByValue: true },
+    params: {
+      expression: `window.kkcode.rpc(${JSON.stringify(method)}, ${payload})`,
+      awaitPromise: true,
+      returnByValue: true,
+    },
   }),
 )
-const reply = await new Promise((resolve) => ws.addEventListener("message", (e) => resolve(JSON.parse(e.data)), { once: true }))
+const reply = await new Promise((resolve) =>
+  ws.addEventListener("message", (e) => resolve(JSON.parse(e.data)), { once: true }),
+)
 ws.close()
 const envelope = reply.result?.result?.value
 if (envelope === undefined) {
