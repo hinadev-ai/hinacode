@@ -21,7 +21,8 @@ interface Screen {
   paused: boolean
 }
 
-const SCROLLBACK_LINES = 10_000
+/** Ghostty takes a byte budget, with retained rows depending on terminal width. */
+const SCROLLBACK_BYTES = 4 * 1024 * 1024
 
 const screens = new Map<string, Screen>()
 /** Closed sessions, so output still in flight when a tab closes does not create a new screen. */
@@ -42,7 +43,7 @@ const screenFor = (id: string) => {
 const ignore = () => {}
 
 const start = async (id: string, screen: Screen) => {
-  const core = await GhosttyCore.load({ wasmPath: wasmUrl, scrollbackLimit: SCROLLBACK_LINES })
+  const core = await GhosttyCore.load({ wasmPath: wasmUrl, scrollbackLimit: SCROLLBACK_BYTES })
   const { element } = screen
   // wterm checks whether the view sits at the bottom only after the element has already shrunk, so a
   // smaller drawer would leave the prompt below the fold. Track it from the user's scrolling, ignore the
@@ -75,8 +76,8 @@ const start = async (id: string, screen: Screen) => {
   if (!screens.has(id)) return term.destroy()
   screen.term = term
   const replay = screen.backlog.drain()
-  if (replay.truncated) term.write(`\x1b[0m\x1b[2m${m.terminal_output_truncated()}\x1b[22m\r\n`)
   for (const data of replay.chunks) term.write(data)
+  if (replay.truncated) term.write(`\r\n\x1b[0m\x1b[2m${m.terminal_output_truncated()}\x1b[22m\r\n`)
   if (screen.wantsFocus) term.focus()
 }
 
