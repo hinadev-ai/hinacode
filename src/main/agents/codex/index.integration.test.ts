@@ -181,3 +181,18 @@ describe("Codex Stop on a running turn", () => {
     ),
   )
 })
+
+describe("Codex token usage", () => {
+  it.live("sums the turn's requests and reports the last one against the context window", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const turn = yield* startTurn("thread-a")
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events.at(-1)).toStrictEqual({
+          type: "turn_completed",
+          usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
+        })
+      }),
+    ),
+  )
+})

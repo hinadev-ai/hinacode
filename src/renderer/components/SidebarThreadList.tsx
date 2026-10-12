@@ -34,6 +34,7 @@ import {
   RiCheckLine,
   RiDeleteBinLine,
   RiDraggable,
+  RiErrorWarningLine,
   RiGitBranchLine,
   RiMoreFill,
   RiPencilLine,
@@ -42,8 +43,11 @@ import {
 import { useShallow } from "zustand/react/shallow"
 import type { PullRequestLink, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
+import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -210,7 +214,6 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const canSettle = thread.status !== "settled" || worktree !== undefined
   const meta = useThreadMeta(thread)
-  const rowGap = meta.branch === null && meta.links.length === 0 ? "pb-1.5" : "pb-0.5"
 
   const queue = (next: RowMode) => () => setQueued(next)
   const closeDialog = (open: boolean) => {
@@ -230,7 +233,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
       className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
     >
       {mode === "renaming" ? (
-        <RenameInput thread={thread} onDone={finishRename} rowGap={rowGap} />
+        <RenameInput thread={thread} onDone={finishRename} />
       ) : (
         <Link
           ref={linkRef}
@@ -242,7 +245,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
             setMenuOpen(true)
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
-          className={`flex cursor-grab items-center gap-2 rounded-md pt-1.5 pr-2 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring ${rowGap}`}
+          className="flex cursor-grab items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring"
         >
           <ProviderIcon provider={thread.provider} />
           <span
@@ -252,7 +255,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
           >
             {thread.title}
           </span>
-          {thread.status === "settled" ? <SettledMark /> : <StatusDot status={thread.status} />}
+          {thread.status === "settled" ? <SettledMark /> : <StatusIndicator status={thread.status} />}
         </Link>
       )}
       <ThreadMeta {...meta} />
@@ -320,7 +323,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
 /** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 
-function RenameInput({ thread, onDone, rowGap }: { thread: Thread; onDone: () => void; rowGap: string }) {
+function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void }) {
   const [draft, setDraft] = useState(thread.title)
   const [error, setError] = useState<string | null>(null)
   const errorId = `rename-error-${thread.id}`
@@ -350,7 +353,7 @@ function RenameInput({ thread, onDone, rowGap }: { thread: Thread; onDone: () =>
   // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
     <div className="flex flex-col gap-1">
-      <div className={`flex items-center gap-2 pt-1.5 pr-2 pl-2 ${rowGap}`}>
+      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-2">
         <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
@@ -440,8 +443,15 @@ const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: 
   awaiting_approval: { label: m.thread_status_awaiting_approval, className: "bg-amber-500" },
 }
 
-/** A dot for threads that need watching: pulsing while running, steady while waiting for approval. */
-function StatusDot({ status }: { status: ThreadStatus }): ReactNode {
+function StatusIndicator({ status }: { status: ThreadStatus }): ReactNode {
+  if (status === "limited") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-attention/10 px-1.5 py-0.5 text-xs whitespace-nowrap text-attention">
+        <RiErrorWarningLine aria-hidden className="size-3" />
+        {m.thread_status_limited()}
+      </span>
+    )
+  }
   const dot = statusDot[status]
   if (!dot) return null
   return (
@@ -474,15 +484,15 @@ function useThreadMeta(thread: Thread) {
     // A removed worktree's branch is struck through: the thread works in the project root now.
     removed: worktree?.status === "removed",
     links,
+    updatedAt: thread.updatedAt,
   }
 }
 
 const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
-function ThreadMeta({ branch, removed, links }: ReturnType<typeof useThreadMeta>) {
+function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
   const latest = links.at(-1)
-  if (branch === null && latest === undefined) return null
   return (
     <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
       {branch !== null && (
@@ -496,7 +506,23 @@ function ThreadMeta({ branch, removed, links }: ReturnType<typeof useThreadMeta>
         </span>
       )}
       {latest && <PullRequestNumber latest={latest} count={links.length} />}
+      <LastActive updatedAt={updatedAt} />
     </div>
+  )
+}
+
+/** Hidden while the row's actions are showing, so it does not sit under the reorder and menu buttons. */
+function LastActive({ updatedAt }: { updatedAt: string }) {
+  const now = useNow()
+  const locale = getLocale()
+  return (
+    <time
+      dateTime={updatedAt}
+      title={new Date(updatedAt).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" })}
+      className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+    >
+      {formatRelativeTime(updatedAt, now, locale)}
+    </time>
   )
 }
 

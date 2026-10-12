@@ -20,6 +20,7 @@ import * as Messages from "../services/Messages.ts"
 import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
+import * as Settings from "../services/Settings.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
@@ -73,7 +74,11 @@ const stubs = Layer.mergeAll(
 )
 
 const core = Layer.mergeAll(
-  threadsLayer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
+  threadsLayer.pipe(
+    Layer.provideMerge(Worktrees.layer),
+    Layer.provideMerge(Projects.layer),
+    Layer.provide(Settings.layer),
+  ),
   Messages.layer,
   secretsLayer,
   credentialsLayer,
