@@ -8,7 +8,7 @@ import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { Git } from "./Git.ts"
-import { parseNameStatus } from "./Worktrees.ts"
+import { parseNameStatus } from "./workingTree.ts"
 
 const reasons = {
   unknownRoot: "is not a project root or worktree",

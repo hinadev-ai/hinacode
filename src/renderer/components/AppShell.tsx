@@ -6,6 +6,7 @@ import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
+import { CommandPalette } from "./CommandPalette.tsx"
 import { Sidebar } from "./Sidebar.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
@@ -23,6 +24,7 @@ export function AppShell() {
       <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
       </main>
+      <CommandPalette />
     </div>
   )
 }

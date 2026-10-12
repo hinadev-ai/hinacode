@@ -17,7 +17,7 @@ import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
-import { isTerminal, mapMessage, type MapState } from "./mapMessage.ts"
+import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
@@ -163,7 +163,8 @@ export const layer = Layer.effect(
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
-      if (event.type === "turn_failed" && session.interrupted) event = { type: "turn_failed", message: "Interrupted" }
+      if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
+        event = { type: "turn_failed", message: "Interrupted" }
       Queue.offerUnsafe(session.turn, event)
       if (isTerminal(event)) {
         Queue.endUnsafe(session.turn)
@@ -192,11 +193,15 @@ export const layer = Layer.effect(
           Effect.sync(() => {
             // The CLI handles prompts in order, so everything up to an abandoned turn's result is stale.
             if (session.abandonedTurns > 0) {
-              if (message.type === "result") session.abandonedTurns--
+              if (message.type === "result") {
+                session.abandonedTurns--
+                resetTurnLimits(session)
+              }
               return
             }
             if (session.pendingSteers > 0 && !session.interrupted && isSteerAbort(message)) {
               session.pendingSteers--
+              resetTurnLimits(session)
               return
             }
             if (message.type === "result") session.pendingSteers = 0
@@ -286,7 +291,10 @@ export const layer = Layer.effect(
           sessionGrants: new Set(),
           attachmentPaths: new Set(),
           pendingEdits: new Map(),
+          limitMessage: null,
+          limitResetAt: null,
           subagents: new Map(),
+          lastRequest: null,
           sessionId: resume ?? null,
           turn: null,
           interrupted: false,
@@ -356,8 +364,10 @@ export const layer = Layer.effect(
           }
           yield* switchPermissionMode(session, input.accessMode)
           session.turn = turn
+          resetTurnLimits(session)
           session.interrupted = false
           session.pendingSteers = 0
+          session.lastRequest = null
           // A consumer that stops reading mid-turn means the turn should stop too.
           yield* Effect.addFinalizer(() =>
             session.turn === turn

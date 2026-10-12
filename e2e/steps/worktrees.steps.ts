@@ -47,7 +47,7 @@ When("I change {string} and add {string} in the worktree", async ({ app }, chang
 
 When("I refresh the changes", async ({ app }) => {
   const panel = await threadView(app.page, "Changes")
-  await panel.getByRole("button", { name: "Refresh changes", exact: true }).click()
+  await panel.getByRole("button", { name: "Refresh diff", exact: true }).click()
 })
 
 When("I open the diff of {string}", async ({ app }, file: string) => {
@@ -103,13 +103,11 @@ Then("git lists the worktree on the branch {string}", async ({ app, repo, names 
 })
 
 Then(
-  "the changes list {string} as modified and {string} as untracked",
-  async ({ app }, modified: string, untracked: string) => {
-    const changes = await threadView(app.page, "Changes")
-    await expect(changes.getByRole("button").filter({ hasText: modified }).getByTitle("Modified")).toBeVisible()
-    await expect(
-      changes.getByRole("button").filter({ hasText: untracked }).getByTitle("New, not tracked"),
-    ).toBeVisible()
+  "the changes list {string} as modified and {string} as added",
+  async ({ app }, modified: string, added: string) => {
+    const diff = await threadView(app.page, "Changes")
+    await expect(diff.getByRole("button").filter({ hasText: modified }).getByTitle("Modified")).toBeVisible()
+    await expect(diff.getByRole("button").filter({ hasText: added }).getByTitle("Added")).toBeVisible()
   },
 )
 

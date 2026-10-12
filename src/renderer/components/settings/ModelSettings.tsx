@@ -2,9 +2,11 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
+import { AccessMode } from "../../../shared/domain.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
+import { accessModes } from "../ComposerControls.tsx"
 import { ProviderIcon } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
@@ -23,6 +25,7 @@ export function ModelSettings() {
         {ProviderId.literals.map((provider) => (
           <DefaultModelField key={provider} provider={provider} />
         ))}
+        <DefaultAccessField />
         <TextGenerationModelField />
       </FieldGroup>
     </SettingsSection>
@@ -73,6 +76,52 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
         )
         .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
         .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
+function DefaultAccessField() {
+  const { defaultAccessMode } = useSettings()
+  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const inputId = "default-access-mode"
+  const items = AccessMode.literals.map((value) => ({ value, label: accessModes[value].label() }))
+  const Icon = accessModes[defaultAccessMode].icon
+
+  const save = async (next: AccessMode | null) => {
+    if (next === null || next === defaultAccessMode) return
+    setError(null)
+    try {
+      await updateSettings({ defaultAccessMode: next })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{m.settings_default_access()}</FieldLabel>
+      <div>
+        <Select items={items} value={defaultAccessMode} onValueChange={(next) => void save(next)}>
+          <SelectTrigger id={inputId} className="w-72">
+            <Icon aria-hidden />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {items.map((item) => {
+              const ItemIcon = accessModes[item.value].icon
+              return (
+                <SelectItem key={item.value} value={item.value}>
+                  <ItemIcon aria-hidden />
+                  {item.label}
+                </SelectItem>
+              )
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+      <FieldDescription>{m.settings_default_access_hint()}</FieldDescription>
       {error && <FieldError>{error}</FieldError>}
     </Field>
   )
