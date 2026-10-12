@@ -204,6 +204,25 @@ sequenceDiagram
   M-->>S: later pushes apply directly
 ```
 
+## Keybindings
+
+Shortcuts are renderer-only and run on [TanStack Hotkeys](https://tanstack.com/hotkeys/latest). `keybindings/commands.ts` is the registry: each `Command` has an id, a default chord string such as `mod+shift+n`, a title and `run(ctx)`. Settings stores only the user's overrides, keyed by command id.
+
+```mermaid
+flowchart LR
+  registry["commands.ts<br/>defaultKeys"] --> resolve["resolveKeymap<br/>normalizeHotkey"]
+  overrides["settings.keybindings<br/>overrides"] --> resolve
+  resolve --> keymap["keymap<br/>id -> Hotkey"]
+  keymap --> bind["useKeybindings<br/>useHotkeys on document"]
+  keymap --> show["ChordKeys<br/>formatForDisplay"]
+  recorder["Settings > Keybindings<br/>useHotkeyRecorder"] --> overrides
+```
+
+- **One normalization point.** `resolveKeymap` accepts any chord TanStack can parse: lowercase defaults, overrides saved before the switch, and recordings such as `Mod+Shift+[KeyK]`. The recorder stores physical keys, so a binding stays on the same key across layouts. Defaults are logical keys with a physical fallback.
+- **Conflicts** compare chords by their display label (`sameChord`), so a recorded physical key and a default on the same key count as one shortcut. `useKeybindings` binds each chord once, first command in registry order winning.
+- **Fields.** Plain keys and Shift or Alt combos typed into a field never run a command. Control and Meta chords do.
+- **Terminal scope.** `useTerminalScope(ref)` marks an element that owns every key without Control or Meta, including Escape. App commands skip those keys there and leave the event untouched. Control and Meta chords still run app commands when the element lets the keydown bubble, which `isAppChord(event)` decides for xterm's custom key handler.
+
 ## Data model
 
 ```mermaid

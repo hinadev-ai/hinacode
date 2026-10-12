@@ -153,7 +153,7 @@
   "settings_save": "Save",
   "settings_saved": "Saved",
   "settings_keybindings": "Keybindings",
-  "settings_keybindings_hint": "Select Record, then press the new shortcut. Escape cancels.",
+  "settings_keybindings_hint": "Select Record, then press the new shortcut. Escape cancels, Backspace removes the shortcut.",
   "settings_keybindings_command": "Command",
   "settings_keybindings_shortcut": "Shortcut",
   "settings_keybindings_actions": "Actions",
