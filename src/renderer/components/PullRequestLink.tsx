@@ -55,7 +55,11 @@ function PullRequestCard({ pullRequest: { owner, name, number } }: { pullRequest
       </p>
       {AsyncResult.builder(status)
         .onSuccess((details) => <PullRequestDetails pullRequest={details} />)
-        .onError((error) => <p className="text-muted-foreground">{errorMessage(error)}</p>)
+        .onError((error) => (
+          <p className="text-muted-foreground" title={errorMessage(error)}>
+            {m.pr_card_failed()}
+          </p>
+        ))
         .orElse(() => (
           <output aria-label={m.pr_card_loading()} className="flex flex-col gap-1.5">
             <Skeleton className="h-4 w-4/5" />
