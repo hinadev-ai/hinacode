@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import type { PushEvent } from "../../src/shared/contract.ts"
 import { rpc } from "./rpc.ts"
 
 export const projectRoot = resolve(import.meta.dirname, "..", "..")
@@ -20,6 +21,7 @@ export interface KkcodeApp {
   readonly restart: () => Promise<void>
   /** Reloads the renderer, which re-reads projects, threads and settings from main. */
   readonly reload: () => Promise<void>
+  readonly pushEvents: (events: ReadonlyArray<PushEvent>, intervalMs?: number) => Promise<void>
   readonly close: () => Promise<void>
 }
 
@@ -67,6 +69,19 @@ export const spawnApp = async (): Promise<KkcodeApp> => {
     reload: async () => {
       await current.page.reload()
       await waitForRenderer(current.page)
+    },
+    pushEvents: async (events, intervalMs = 0) => {
+      await current.app.evaluate(
+        async ({ BrowserWindow }, input) => {
+          const window = BrowserWindow.getAllWindows()[0]
+          if (!window) throw new Error("no app window for push events")
+          for (const event of input.events) {
+            if (input.intervalMs > 0) await new Promise<void>((done) => setTimeout(done, input.intervalMs))
+            window.webContents.send("event", event)
+          }
+        },
+        { events, intervalMs },
+      )
     },
     close: async () => {
       await current.app.close()
