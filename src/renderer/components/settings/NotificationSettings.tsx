@@ -101,7 +101,7 @@ const PERMISSION_POLL_MS = 2000
 function PermissionNotice() {
   const permission = AsyncResult.getOrElse(useAtomValue(notificationPermissionAtom), () => "unknown" as const)
   const refresh = useAtomRefresh(notificationPermissionAtom)
-  // macOS can refuse to even ask, as it does for a development build, and still report "not determined".
+  // macOS can refuse to even ask, as it does for an app on an external volume, and still report "not determined".
   const [askRefused, setAskRefused] = useState(false)
 
   const ask = async () => {
