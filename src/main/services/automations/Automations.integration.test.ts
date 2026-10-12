@@ -70,9 +70,12 @@ const unusedPort = Effect.promise(async () => {
 
 const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
-    Settings.layer,
     Secrets.layer,
     credentialsLayer,
   )
