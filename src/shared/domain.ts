@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { ProviderId, TokenUsage } from "./agent.ts"
+import { ProviderId, Question, TokenUsage } from "./agent.ts"
 import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
@@ -182,6 +182,8 @@ export const MessagePart = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("file_change"), path: Schema.String, diff: Schema.String }),
   Schema.Struct({ type: Schema.Literal("attachment"), attachment: Attachment }),
+  /** Questions the agent posted without waiting; `text` is how they read once answered. */
+  Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
 ])
 export type MessagePart = typeof MessagePart.Type
 

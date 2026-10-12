@@ -23,6 +23,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 export function MessagePartView({ part }: { part: MessagePart }) {
   switch (part.type) {
     case "text":
+    case "questions":
       return <Markdown text={part.text} />
     case "reasoning":
       return <ReasoningPart text={part.text} />

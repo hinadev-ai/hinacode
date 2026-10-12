@@ -20,6 +20,7 @@ import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import type {
   ApprovalDecisionWire,
+  AsyncUserInputQuestion,
   ElicitationActionWire,
   McpServerElicitationRequestParams,
   ModelListParams,
@@ -77,6 +78,16 @@ const toQuestion = (question: ToolRequestUserInputQuestion): Question => ({
   multiSelect: false,
   allowsText: question.isOther || question.options === null || question.options.length === 0,
   secret: question.isSecret,
+})
+
+const toPostedQuestion = (question: AsyncUserInputQuestion): Question => ({
+  id: question.title,
+  header: "",
+  question: question.title,
+  options: (question.options ?? []).map((label) => ({ label, description: "" })),
+  multiSelect: false,
+  allowsText: true,
+  secret: false,
 })
 
 const userInputResponse = (answers: QuestionAnswers): ToolRequestUserInputResponse => ({
@@ -505,6 +516,13 @@ const make = Effect.gen(function* () {
                 case "item/completed": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   yield* finishTool(params.item)
+                  if (params.item.type === "agentMessage" && params.item.questions) {
+                    yield* emit({
+                      type: "questions_posted",
+                      text: params.item.text,
+                      questions: params.item.questions.map(toPostedQuestion),
+                    })
+                  }
                   yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }

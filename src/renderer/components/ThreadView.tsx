@@ -101,7 +101,7 @@ function Transcript({ thread }: { thread: Thread }) {
       {history.messages.length === 0 ? (
         <EmptyThread providerLabel={label} />
       ) : (
-        <MessageList messages={history.messages} />
+        <MessageList messages={history.messages} providerLabel={label} />
       )}
       <div className="px-4">
         {history.approvals.map((request) => (

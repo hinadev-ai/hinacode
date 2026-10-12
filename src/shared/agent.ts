@@ -171,6 +171,8 @@ export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("approval_resolved"), requestId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("question_requested"), request: QuestionRequest }),
   Schema.Struct({ type: Schema.Literal("question_resolved"), requestId: Schema.String }),
+  /** Questions the user answers with their next message; the turn does not wait for them. */
+  Schema.Struct({ type: Schema.Literal("questions_posted"), text: Schema.String, questions: Schema.Array(Question) }),
   /** Carries the sub-agent's full current state, not a patch. Never part of the transcript. */
   Schema.Struct({ type: Schema.Literal("subagent_updated"), subagent: Subagent }),
   /** Raised by the built-in MCP server, not the provider, while a turn runs. */

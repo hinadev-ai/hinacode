@@ -163,8 +163,16 @@ export type ThreadItem =
       agentPath: string
       model: string | null
     }
-  | { type: "agentMessage"; id: string; text: string }
+  | {
+      type: "agentMessage"
+      id: string
+      text: string
+      /** Set by `request_user_input_async`: the user answers with their next message, and the item has no deltas. */
+      questions?: Array<AsyncUserInputQuestion> | null
+    }
   | { type: "reasoning" | "userMessage" | "plan" | "webSearch"; id: string }
+
+export type AsyncUserInputQuestion = { title: string; options: Array<string> | null }
 
 export type TokenUsageBreakdown = {
   totalTokens: number

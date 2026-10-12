@@ -40,6 +40,28 @@ export function QuestionRequestCard({ request, providerLabel }: { request: Quest
   )
 }
 
+/** Questions the agent posted without waiting. The answer goes back as the user's next message. */
+export function PostedQuestionsCard({
+  threadId,
+  questions,
+  providerLabel,
+}: {
+  threadId: string
+  questions: ReadonlyArray<Question>
+  providerLabel: string
+}) {
+  return (
+    <QuestionCard
+      questions={questions}
+      providerLabel={providerLabel}
+      onAnswer={(answers) => callPromise("threads.steer", { threadId, text: answerText(questions, answers) })}
+    />
+  )
+}
+
+const answerText = (questions: ReadonlyArray<Question>, answers: QuestionAnswers) =>
+  questions.map((question) => `${question.question}\n${answers[question.id]?.join(", ") ?? "(skipped)"}`).join("\n\n")
+
 /** Each question can be answered by picking options or typing; any left blank is skipped. */
 function QuestionCard({
   questions,
