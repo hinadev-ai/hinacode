@@ -1,8 +1,9 @@
 import { LegendList } from "@legendapp/list/react"
-import { memo } from "react"
+import { memo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
+import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
 
 const keyExtractor = (message: Message) => message.id
@@ -59,18 +60,40 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
   const streaming = message.completedAt === null
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && message.parts.length === 0) return null
+  const last = message.parts.at(-1)
+  const writing = streaming && last?.type === "text"
   return (
     <article aria-busy={streaming} className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed">
-      {message.parts.map((part, index) => (
+      {message.parts.map((part, index) =>
         // Parts only ever get appended or updated in place, so the index is a stable key.
-        <MessagePartView key={index} part={part} />
-      ))}
-      {streaming && message.parts.length === 0 && (
-        <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">{m.message_thinking()}</p>
+        part.type === "text" ? (
+          <ReplyText key={index} text={part.text} done={!(writing && index === message.parts.length - 1)} />
+        ) : (
+          <MessagePartView key={index} part={part} />
+        ),
+      )}
+      {streaming && (message.parts.length === 0 || writing) && (
+        <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
+          {writing ? m.message_writing() : m.message_thinking()}
+        </p>
       )}
     </article>
   )
 })
+
+/**
+ * Reply text appears whole once the agent has finished it, instead of word by word. Only text that
+ * finishes while on screen fades in, so opening a thread or scrolling the list back does not replay it.
+ */
+function ReplyText({ text, done }: { text: string; done: boolean }) {
+  const [finishedOnScreen] = useState(!done)
+  if (!done) return null
+  return (
+    <div className={finishedOnScreen ? "animate-fade-in" : undefined}>
+      <Markdown text={text} />
+    </div>
+  )
+}
 
 export function EmptyThread({ providerLabel }: { providerLabel: string }) {
   return (

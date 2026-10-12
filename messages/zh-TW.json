@@ -344,6 +344,7 @@
   "settings_github_signed_out_after": "登入。",
   "settings_github_check_again": "重新檢查",
   "settings_github_hint": "kkcode 會使用你的 gh 登入來顯示 pull request 狀態、建立 pull request，並為自動化輪詢 GitHub issue。可從 cli.github.com 取得 gh。",
+  "message_writing": "撰寫中…",
   "sidebar_pull_request": "開啟 pull request #{number}",
   "sidebar_pull_request_stack": "開啟 pull request #{number}，{count} 個連結中最新的一個",
   "thread_agent_picker": "代理",
