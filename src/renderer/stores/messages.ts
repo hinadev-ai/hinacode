@@ -173,6 +173,7 @@ function foldQuestions(questions: ReadonlyArray<QuestionRequest>, event: AgentEv
       return questions.filter((request) => request.id !== event.requestId)
     case "turn_completed":
     case "turn_failed":
+    case "turn_limited":
       return questions.length === 0 ? questions : []
     default:
       return questions
