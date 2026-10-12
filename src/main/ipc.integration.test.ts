@@ -450,6 +450,18 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
   })
 
+  test("notification preferences persist through the derived settings patch", async () => {
+    const before = result(await invoke("settings.get", undefined))
+    const notifications = { completed: false, needsInput: true, failed: false, sound: false }
+    const saved = result(await invoke("settings.set", { notifications }))
+    expect(saved).toStrictEqual({ ...before, notifications })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+
+    const malformed = await invoke("settings.set", { notifications: { ...notifications, sound: "yes" } } as never)
+    expect(malformed).toMatchObject({ error: { tag: "SchemaError" } })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+  })
+
   test("creating a worktree pushes its state changes to every window", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     writeFileSync(join(repo, "README.md"), "hello")
