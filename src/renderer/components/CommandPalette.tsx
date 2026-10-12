@@ -62,7 +62,7 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
     <Autocomplete.Item
       value={entry}
       onClick={() => onChoose(item)}
-      className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+      className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span>
       <span className="flex min-w-0 flex-1 items-baseline gap-2">

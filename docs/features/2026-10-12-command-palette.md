@@ -1,6 +1,6 @@
 # Command palette
 
-Status: Building
+Status: Implemented
 Date: 2026-10-12
 
 ## Problem
@@ -24,16 +24,17 @@ A developer with many projects and threads reaches them by scrolling the sidebar
 
 Renderer only. No new rpc method, table or service.
 
-- **Commands.** `palette.open` (`mod+p`) and `palette.commands` (`mod+shift+p`) join the registry in `keybindings/commands.ts`, so they are rebindable in Settings and checked for conflicts like every other command. Neither chord was bound before. The palette lists the whole registry and runs each entry through the same `Command.run(ctx)` that `useKeybindings` calls, with the chord from `useKeymap()` drawn by `ChordKeys`.
+- **Commands.** `palette.open` (`mod+p`) and `palette.commands` (`mod+shift+p`) join the registry in `keybindings/commands.ts`, so they are rebindable in Settings and checked for conflicts like every other command. Neither chord was bound before, and `mod+f` and `mod+shift+f` stay free for search. Shortcuts run on TanStack Hotkeys (see `docs/arch.md`, Keybindings). The palette lists the whole registry and runs each entry through the same `Command.run(ctx)` that `useKeybindings` calls, with the chord from `useKeymap()` drawn by `ChordKeys`. A command added to the registry shows up in the palette with no other change.
 - **Module.** `src/renderer/palette/`:
-  - `types.ts`: `PaletteItem` and `PaletteSource`.
-  - `sources.ts`: one source per group. Threads, projects and commands read the existing stores and registry. Files call the existing `files.list {threadId}` rpc.
+  - `types.ts`: `PaletteItem`, `PaletteSource`, `PaletteContext` and `PaletteMode`. A source receives a `PaletteContext`, which is the `CommandContext` plus the keymap and the threads, so sources stay plain objects and the dialog re-asks them when that state changes.
+  - `modes.ts`: the mode registry and group labels. A mode has a prefix (`""` for go to, `>` for commands), a placeholder and its sources. A new mode, such as global search, is one entry here plus its source; the dialog does not change. Code opens a mode with a prefilled query through `usePalette.getState().show(prefix + query)`.
+  - `sources.tsx`: one source per group. Threads, projects and commands read the palette context. Files call the existing `files.list {threadId}` rpc.
   - `rank.ts`: a pure function from items, query and recent ids to ranked groups with highlight indexes. Recent items that match come first in recency order, then the rest by fuzzy score. Each group shows at most 50 items, which keeps a 50k-file repo cheap to render without virtualization.
-  - `usePalette.ts`: zustand store for open state, the query and the recent ids.
+  - `usePalette.ts`: zustand store for open state, the field's text and the recent ids.
 - **Fuzzy matching.** `fuzzysort` 4 (8 kB gzip, maintained) over title, subtitle and keywords. It was picked over `fzf` (6 kB gzip, last release 2023). Measured on 50k synthetic paths: 4 to 20 ms per keystroke, so the query goes through `useDeferredValue` and no worker is needed.
 - **Files.** `files.list {threadId}` already lists `ls-files --cached --others --exclude-standard` in the thread's active workspace (worktree or project root), capped at 50k, for the composer's `@` mentions. Reusing it keeps the trust boundary where it is: the renderer names a thread, main resolves the path, and no renderer-supplied path reaches git. The palette caches the result per thread for 5 seconds so typing does not run git on every keystroke. Files are offered only for a non-empty query, since a list of arbitrary files is noise.
 - **Recent ids.** No settings field fits, so the last 20 run item ids are kept in `localStorage` through zustand `persist`. They are per machine and losing them costs nothing.
-- **UI.** `components/CommandPalette.tsx`, mounted once in `AppShell`. It is the Base UI `Dialog` with an inline Base UI `Autocomplete` (`open`, `inline`, `filter={null}`, `autoHighlight="always"`), which gives `role="combobox"` on the input, `role="listbox"` and `role="option"` on results, a labelled `role="group"` per group, arrow keys and Enter. shadcn's `command` component was not used because its `base-nova` variant wraps `cmdk`, which pulls in Radix and filters on its own. The popup fades and scales in over 150 ms with `--ease-out`, has no motion under `prefers-reduced-motion`, and closes without animation so the chosen action runs at once.
+- **UI.** `components/CommandPalette.tsx`, mounted once in `AppShell`. It is the Base UI `Dialog` with an inline Base UI `Autocomplete` (`open`, `inline`, `filter={null}`, `autoHighlight="always"`), which gives `role="combobox"` on the input, `role="listbox"` and `role="option"` on results, a labelled `role="group"` per group, arrow keys and Enter. The input closes the dialog on Escape itself, because the always-open list would otherwise keep Escape. shadcn's `command` component was not used because its `base-nova` variant wraps `cmdk`, which pulls in Radix and filters on its own. The popup fades and scales in over 150 ms with `--ease-out`, has no motion under `prefers-reduced-motion`, and closes without animation so the chosen action runs at once.
 
 ## Out of scope
 
