@@ -80,7 +80,7 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
   )
 }
 
-function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem) => void }) {
+function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boolean) => void }) {
   const query = usePalette((state) => state.query)
   const recent = usePalette((state) => state.recent)
   const commandContext = useCommandContext()
@@ -91,7 +91,11 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem) => void }) {
   const { mode, query: modeQuery } = modeOf(query)
   const search = useDeferredValue(modeQuery)
   const items = useSourceItems(mode.sources, search, ctx)
-  const groups = useMemo(() => rankPalette(items, search, recent), [items, search, recent])
+  const groups = useMemo(
+    () => (mode.rank ? mode.rank(items, search) : rankPalette(items, search, recent)),
+    [mode, items, search, recent],
+  )
+  const choose = (item: PaletteItem) => onChoose(item, mode.rank === undefined)
 
   return (
     <Autocomplete.Root
@@ -130,7 +134,7 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem) => void }) {
               {groupLabels[group.group]()}
             </Autocomplete.GroupLabel>
             <Autocomplete.Collection>
-              {(entry: RankedItem) => <PaletteResult key={entry.item.id} entry={entry} onChoose={onChoose} />}
+              {(entry: RankedItem) => <PaletteResult key={entry.item.id} entry={entry} onChoose={choose} />}
             </Autocomplete.Collection>
           </Autocomplete.Group>
         )}
@@ -142,20 +146,20 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem) => void }) {
 /** Quick open and command palette in one dialog. Mount once, in the app shell. */
 export function CommandPalette() {
   const open = usePalette((state) => state.open)
-  const chosen = useRef<PaletteItem | null>(null)
+  const chosen = useRef<{ item: PaletteItem; remember: boolean } | null>(null)
 
-  const choose = (item: PaletteItem) => {
-    chosen.current = item
+  const choose = (item: PaletteItem, remember: boolean) => {
+    chosen.current = { item, remember }
     usePalette.getState().hide()
   }
 
   // Runs after focus has gone back to where it was, so an item that focuses the composer keeps it.
   const runChosen = (isOpen: boolean) => {
-    const item = chosen.current
+    const choice = chosen.current
     chosen.current = null
-    if (isOpen || !item) return
-    usePalette.getState().remember(item.id)
-    item.run()
+    if (isOpen || !choice) return
+    if (choice.remember) usePalette.getState().remember(choice.item.id)
+    choice.item.run()
   }
 
   return (

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import type { Thread } from "../../shared/domain.ts"
 import type { CommandContext, Keymap } from "../keybindings/commands.ts"
+import type { RankedGroup } from "./rank.ts"
 
 export type PaletteGroup = "commands" | "threads" | "projects" | "files"
 
@@ -41,4 +42,9 @@ export interface PaletteMode {
   readonly prefix: string
   readonly placeholder: () => string
   readonly sources: ReadonlyArray<PaletteSource>
+  /**
+   * Orders and groups the sources' items. The default puts recently run items first, then ranks by
+   * fuzzy score, and only items run under the default are remembered as recent.
+   */
+  readonly rank?: (items: ReadonlyArray<PaletteItem>, query: string) => ReadonlyArray<RankedGroup>
 }

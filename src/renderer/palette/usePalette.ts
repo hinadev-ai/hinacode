@@ -4,6 +4,9 @@ import { persist } from "zustand/middleware"
 /** Typed first, it limits the palette to commands, as in VS Code. */
 export const COMMAND_PREFIX = ">"
 
+/** Typed first, it searches message text and the open thread's files, as `%` does in VS Code. */
+export const SEARCH_PREFIX = "%"
+
 const MAX_RECENT = 20
 
 interface PaletteState {

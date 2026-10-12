@@ -1,0 +1,122 @@
+import { RiChat3Line, RiErrorWarningLine, RiFileTextLine } from "react-icons/ri"
+import type { FileSearchHit, ThreadSearchHit } from "../../shared/domain.ts"
+import { ProviderIcon } from "../components/ProviderIcon.tsx"
+import { errorMessage } from "../lib/errorMessage.ts"
+import { findPattern } from "../lib/find.ts"
+import { callPromise, RpcError } from "../lib/rpc.ts"
+import { m } from "../paraglide/messages.js"
+import { useUi } from "../stores/ui.ts"
+import { MAX_ITEMS_PER_GROUP, type RankedGroup, type RankedItem } from "./rank.ts"
+import { mentionFile } from "./sources.tsx"
+import type { PaletteContext, PaletteGroup, PaletteItem, PaletteSource } from "./types.ts"
+
+const iconClass = "size-3.5 shrink-0 text-muted-foreground"
+
+/** Starting a ripgrep per keystroke would pile up processes, so file search waits for a pause. */
+const FILES_DEBOUNCE_MS = 150
+
+const threadItem = (hit: ThreadSearchHit, query: string, ctx: PaletteContext): PaletteItem => {
+  const provider = ctx.threads[hit.threadId]?.provider
+  return {
+    id: `message:${hit.messageId}`,
+    group: "threads",
+    title: hit.threadTitle,
+    subtitle: hit.snippet,
+    icon: provider ? <ProviderIcon provider={provider} /> : <RiChat3Line aria-hidden className={iconClass} />,
+    run: () => {
+      void ctx.navigate({ to: "/thread/$threadId", params: { threadId: hit.threadId } })
+      useUi.getState().openFind(hit.threadId, query, hit.messageId)
+    },
+  }
+}
+
+const fileItem = (hit: FileSearchHit, threadId: string): PaletteItem => ({
+  id: `match:${hit.path}:${hit.line}`,
+  group: "files",
+  title: `${hit.path.slice(hit.path.lastIndexOf("/") + 1)}:${hit.line}`,
+  subtitle: hit.text,
+  icon: <RiFileTextLine aria-hidden className={iconClass} />,
+  run: () => mentionFile(threadId, hit.path),
+})
+
+const ripgrepMissingItem = (): PaletteItem => ({
+  id: "match:ripgrep-missing",
+  group: "files",
+  title: m.search_ripgrep_missing(),
+  icon: <RiErrorWarningLine aria-hidden className={iconClass} />,
+  run: () => {},
+})
+
+const logFailure = (what: string) => (cause: unknown) => {
+  console.error(`${what}: ${errorMessage(cause)}`)
+  return []
+}
+
+/**
+ * The palette asks again whenever the threads it reads change, which they do on every streamed
+ * turn, so a repeat of the last question shares its answer.
+ */
+let lastThreads: { query: string; items: Promise<ReadonlyArray<ThreadSearchHit>> } | null = null
+let lastFiles: { key: string; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
+
+export const threadSearchSource: PaletteSource = {
+  group: "threads",
+  items: (query, ctx) => {
+    if (query === "") return []
+    if (lastThreads?.query !== query) {
+      lastThreads = { query, items: callPromise("search.threads", { query }).catch(logFailure("Search failed")) }
+    }
+    return lastThreads.items.then((hits) => hits.map((hit) => threadItem(hit, query, ctx)))
+  },
+}
+
+const searchFiles = async (threadId: string, query: string, key: string): Promise<ReadonlyArray<PaletteItem>> => {
+  await new Promise((resolve) => setTimeout(resolve, FILES_DEBOUNCE_MS))
+  if (lastFiles?.key !== key) return []
+  return callPromise("search.files", { threadId, query }).then(
+    (hits) => hits.map((hit) => fileItem(hit, threadId)),
+    (cause: unknown) =>
+      cause instanceof RpcError && cause.tag === "RipgrepMissingError"
+        ? [ripgrepMissingItem()]
+        : logFailure("File search failed")(cause),
+  )
+}
+
+/** Lines in the open thread's workspace. */
+export const fileSearchSource: PaletteSource = {
+  group: "files",
+  items: (query, ctx) => {
+    if (query === "" || !ctx.threadId) return []
+    const key = `${ctx.threadId}\0${query}`
+    if (lastFiles?.key !== key) lastFiles = { key, items: searchFiles(ctx.threadId, query, key) }
+    return lastFiles.items
+  },
+}
+
+const matchIndexes = (text: string, pattern: RegExp | null): Array<number> =>
+  pattern === null
+    ? []
+    : [...text.matchAll(pattern)].flatMap((match) =>
+        Array.from({ length: match[0].length }, (_, offset) => match.index + offset),
+      )
+
+/**
+ * Keeps the order main returned, newest message and ripgrep's order, and marks the literal query
+ * rather than fuzzy matched characters, since that is what matched.
+ */
+export function rankLiteral(items: ReadonlyArray<PaletteItem>, query: string): ReadonlyArray<RankedGroup> {
+  const pattern = findPattern(query)
+  const groups = new Map<PaletteGroup, Array<RankedItem>>()
+  for (const item of items) {
+    const group = groups.get(item.group) ?? []
+    if (group.length < MAX_ITEMS_PER_GROUP) {
+      group.push({
+        item,
+        titleMatches: matchIndexes(item.title, pattern),
+        subtitleMatches: matchIndexes(item.subtitle ?? "", pattern),
+      })
+    }
+    groups.set(item.group, group)
+  }
+  return [...groups].map(([group, entries]) => ({ group, items: entries }))
+}

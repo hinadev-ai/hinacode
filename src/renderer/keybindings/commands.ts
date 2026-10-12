@@ -3,7 +3,7 @@ import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
-import { COMMAND_PREFIX, usePalette } from "../palette/usePalette.ts"
+import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -118,6 +118,12 @@ export const commands = [
     run: (ctx) => {
       if (ctx.threadId) useUi.getState().openFind(ctx.threadId)
     },
+  },
+  {
+    id: "search.global",
+    defaultKeys: "mod+shift+f",
+    title: m.command_search_global,
+    run: () => usePalette.getState().show(SEARCH_PREFIX),
   },
   {
     id: "language.switch",
