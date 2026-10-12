@@ -1,55 +1,62 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { type Hotkey, useHotkeys } from "@tanstack/react-hotkeys"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useEffectEvent, useMemo } from "react"
-import { tinykeys } from "tinykeys"
+import { useMemo } from "react"
 import { projectsAtom, updateSettingsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
-import { toTinykeys } from "./chord.ts"
-import { type Command, commands, resolveKeymap } from "./commands.ts"
+import { type Command, type CommandContext, commands, type Keymap, resolveKeymap, sameChord } from "./commands.ts"
+import { isTerminalKey } from "./terminalScope.ts"
 
-const EDITABLE = "input, textarea, select, [contenteditable]"
-
-/**
- * tinykeys ignores every key typed into a field by default. App shortcuts carry a modifier, so let
- * modified chords through and keep bare keys (typing) out.
- */
-const ignore = (event: KeyboardEvent) => {
-  if (event.repeat || event.isComposing) return true
-  const typing = event.target instanceof Element && event.target.closest(EDITABLE) !== null
-  return typing && !(event.ctrlKey || event.metaKey || event.altKey)
-}
-
-/** The user's effective keymap: command id -> canonical chord, "" when unbound. */
-export const useKeymap = () => {
+/** The user's effective keymap: command id -> normalized chord, "" when unbound. */
+export const useKeymap = (): Keymap => {
   const { keybindings } = useSettings()
   return useMemo(() => resolveKeymap(keybindings), [keybindings])
 }
 
-/** Binds every command to its effective chord on window. Mount once, in the app shell. */
-export function useKeybindings() {
-  const keymap = useKeymap()
+/**
+ * One binding per chord, first command in registry order winning, so a chord bound twice runs one
+ * command as the keybindings page warns.
+ */
+const bindings = (keymap: Keymap) =>
+  commands.reduce<Array<{ hotkey: Hotkey; command: Command }>>((bound, command) => {
+    const hotkey = keymap[command.id]
+    if (hotkey && !bound.some((binding) => sameChord(binding.hotkey, hotkey))) bound.push({ hotkey, command })
+    return bound
+  }, [])
+
+/** What a command needs from the current route and app state to run. */
+export const useCommandContext = (): CommandContext => {
   const navigate = useNavigate()
-  const { threadId } = useParams({ strict: false })
+  const { threadId = null } = useParams({ strict: false })
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
-
-  const run = useEffectEvent((command: Command) =>
-    command.run({ navigate, threadId: threadId ?? null, projects, updateSettings }),
+  return useMemo(
+    () => ({ navigate, threadId, projects, updateSettings }),
+    [navigate, threadId, projects, updateSettings],
   )
+}
 
-  useEffect(() => {
-    const bindings = Object.fromEntries(
-      commands
-        .filter((command) => keymap[command.id])
-        .map((command) => [
-          toTinykeys(keymap[command.id] ?? ""),
-          (event: KeyboardEvent) => {
-            event.preventDefault()
-            run(command)
-          },
-        ]),
-    )
-    return tinykeys(window, bindings, { ignore })
-  }, [keymap])
+/**
+ * Binds every command to its effective chord on document. Mount once, in the app shell. TanStack
+ * Hotkeys skips plain keys typed into fields, lets Control and Meta chords fire there, and syncs
+ * callbacks every render, so they read the current route.
+ */
+export function useKeybindings() {
+  const keymap = useKeymap()
+  const ctx = useCommandContext()
+
+  useHotkeys(
+    bindings(keymap).map(({ hotkey, command }) => ({
+      hotkey,
+      callback: (event) => {
+        if (isTerminalKey(event)) return
+        event.preventDefault()
+        if (!event.repeat) command.run(ctx)
+      },
+    })),
+    // A terminal scope must get its keys untouched, so the default action is prevented only once it has passed.
+    // Not requireReset: popups such as dialogs can swallow the keyup it waits for, which leaves the chord dead.
+    { preventDefault: false, stopPropagation: false },
+  )
 }

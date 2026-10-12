@@ -1,7 +1,7 @@
 import { useAtomSet } from "@effect/atom-react"
-import { type KeyboardEvent, useState } from "react"
+import { useHotkeyRecorder } from "@tanstack/react-hotkeys"
+import { useState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
-import { chordFromEvent } from "../../keybindings/chord.ts"
 import { type Command, commands, conflictsOf } from "../../keybindings/commands.ts"
 import { useKeymap } from "../../keybindings/useKeybindings.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
@@ -41,6 +41,30 @@ export function KeybindingSettings() {
     void saveOverrides(rest)
   }
 
+  const recordingCommand = commands.find((command) => command.id === recordingId)
+  // Records the physical key, so a binding stays on the same key across keyboard layouts.
+  const recorder = useHotkeyRecorder({
+    onRecord: (hotkey) => {
+      setRecordingId(null)
+      if (recordingCommand) bind(recordingCommand, hotkey)
+    },
+    onClear: () => {
+      setRecordingId(null)
+      if (recordingCommand) bind(recordingCommand, "")
+    },
+    onCancel: () => setRecordingId(null),
+  })
+
+  const record = (command: Command) => {
+    setRecordingId(command.id)
+    recorder.startRecording()
+  }
+
+  const endRecording = () => {
+    recorder.stopRecording()
+    setRecordingId(null)
+  }
+
   return (
     <SettingsSection
       title={m.settings_keybindings()}
@@ -76,9 +100,8 @@ export function KeybindingSettings() {
               conflicts={conflictsOf(keymap, command.id)}
               overridden={command.id in overrides}
               recording={recordingId === command.id}
-              onRecord={() => setRecordingId(command.id)}
-              onRecordEnd={() => setRecordingId(null)}
-              onBind={(chord) => bind(command, chord)}
+              onRecord={() => record(command)}
+              onRecordEnd={endRecording}
               onReset={() => reset(command)}
             />
           ))}
@@ -96,27 +119,12 @@ interface KeybindingRowProps {
   readonly recording: boolean
   readonly onRecord: () => void
   readonly onRecordEnd: () => void
-  readonly onBind: (chord: string) => void
   readonly onReset: () => void
 }
 
 function KeybindingRow(props: KeybindingRowProps) {
-  const { command, chord, conflicts, overridden, recording, onRecord, onRecordEnd, onBind, onReset } = props
+  const { command, chord, conflicts, overridden, recording, onRecord, onRecordEnd, onReset } = props
   const title = command.title()
-
-  const captureChord = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!recording) return
-    // Plain Tab still moves focus, which ends recording, so keyboard users are never trapped.
-    if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) return
-    event.preventDefault()
-    // Keep the window-level keybindings from running the chord being recorded.
-    event.stopPropagation()
-    if (event.key === "Escape") return onRecordEnd()
-    const recorded = chordFromEvent(event.nativeEvent)
-    if (!recorded) return
-    onRecordEnd()
-    onBind(recorded)
-  }
 
   return (
     <TableRow data-recording={recording || undefined} className="data-recording:bg-muted/50">
@@ -145,8 +153,7 @@ function KeybindingRow(props: KeybindingRowProps) {
             size="xs"
             aria-label={m.settings_keybindings_record_for({ command: title })}
             aria-pressed={recording}
-            onClick={onRecord}
-            onKeyDown={captureChord}
+            onClick={() => (recording ? onRecordEnd() : onRecord())}
             onBlur={() => recording && onRecordEnd()}
           >
             {m.settings_keybindings_record()}
