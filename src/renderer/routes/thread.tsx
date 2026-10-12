@@ -40,7 +40,7 @@ export function ThreadRoute() {
             </>
           }
         />
-        <TerminalDrawer key={thread.id} threadId={thread.id} />
+        <TerminalDrawer threadId={thread.id} />
       </div>
       {docked && panelOpen ? <ThreadSidePanel key={thread.id} thread={thread} /> : null}
       {!docked && (
