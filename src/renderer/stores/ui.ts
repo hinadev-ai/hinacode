@@ -1,8 +1,22 @@
 import { create } from "zustand"
 import { getPanelLayout } from "../lib/panelLayout.ts"
-import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from "../lib/sidebarWidth.ts"
+import {
+  clampWidth,
+  loadWidth,
+  saveWidth,
+  SIDE_PANEL_BOUNDS,
+  SIDEBAR_BOUNDS,
+  SIDEBAR_DEFAULT_WIDTH,
+} from "../lib/panelWidth.ts"
 
 export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents"
+export type SidePanelSize = "normal" | "wide"
+
+const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
+const sidePanelWidthKeys: Record<SidePanelSize, string> = {
+  normal: "kkcode.sidePanelWidth",
+  wide: "kkcode.sidePanelWideWidth",
+}
 
 interface UiState {
   readonly sidebarOpen: boolean
@@ -15,6 +29,8 @@ interface UiState {
   readonly lastSidePanelView: SidePanelViewId
   /** A view asked for room, such as Files with a file open. */
   readonly sidePanelWide: boolean
+  /** Docked side panel width per size, remembered separately. Null keeps the size's CSS default. */
+  readonly sidePanelWidths: Readonly<Record<SidePanelSize, number | null>>
   /** Set by a view shortcut until the view takes focus. */
   readonly viewFocusRequest: SidePanelViewId | null
   /** The file whose diff the Changes view shows open. */
@@ -51,6 +67,8 @@ interface UiState {
   readonly setFindQuery: (query: string) => void
   /** Clamps, applies and persists the desktop sidebar width. */
   readonly setSidebarWidth: (width: number) => void
+  /** Clamps, applies and persists the docked side panel width for one size. Null restores its default. */
+  readonly setSidePanelWidth: (size: SidePanelSize, width: number | null) => void
 }
 
 /** Whether the side panel shows its content in the current layout, docked or as an overlay. */
@@ -69,13 +87,17 @@ const hidePanel = () => (getPanelLayout() === "wide" ? { sidePanelOpen: false } 
 /** App-wide UI state driven by keybindings and shared across components without prop drilling. */
 export const useUi = create<UiState>()((set, get) => ({
   sidebarOpen: true,
-  sidebarWidth: loadSidebarWidth(),
+  sidebarWidth: loadWidth(SIDEBAR_WIDTH_KEY, SIDEBAR_BOUNDS) ?? SIDEBAR_DEFAULT_WIDTH,
   sidePanelOpen: true,
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
   sidePanelViews: {},
   lastSidePanelView: "details",
   sidePanelWide: false,
+  sidePanelWidths: {
+    normal: loadWidth(sidePanelWidthKeys.normal, SIDE_PANEL_BOUNDS),
+    wide: loadWidth(sidePanelWidthKeys.wide, SIDE_PANEL_BOUNDS),
+  },
   viewFocusRequest: null,
   changesPath: null,
   composerFocusRequest: 0,
@@ -129,8 +151,13 @@ export const useUi = create<UiState>()((set, get) => ({
   closeFind: () => set({ findThreadId: null }),
   setFindQuery: (findQuery) => set({ findQuery, findMessageId: null }),
   setSidebarWidth: (width) => {
-    const sidebarWidth = clampSidebarWidth(width)
-    saveSidebarWidth(sidebarWidth)
+    const sidebarWidth = clampWidth(SIDEBAR_BOUNDS, width)
+    saveWidth(SIDEBAR_WIDTH_KEY, sidebarWidth)
     set({ sidebarWidth })
+  },
+  setSidePanelWidth: (size, width) => {
+    const clamped = width === null ? null : clampWidth(SIDE_PANEL_BOUNDS, width)
+    saveWidth(sidePanelWidthKeys[size], clamped)
+    set((state) => ({ sidePanelWidths: { ...state.sidePanelWidths, [size]: clamped } }))
   },
 }))
