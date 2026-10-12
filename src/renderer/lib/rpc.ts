@@ -2,6 +2,7 @@ import { Effect, Schedule, Schema, Stream } from "effect"
 import { Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
+import type { Thread } from "../../shared/domain.ts"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   tag: Schema.String,
@@ -53,6 +54,20 @@ export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
 export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
 )
+
+/**
+ * Identifies a thread together with its agent and workspace, since switching either changes what the
+ * composer can complete. Key for `commandsAtom` and `filesAtom`.
+ */
+export const completionKey = (thread: Pick<Thread, "id" | "provider" | "worktreeId">) =>
+  [thread.id, thread.provider, thread.worktreeId ?? ""].join("\n")
+const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
+
+export const commandsAtom = Atom.family((key: string) =>
+  Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
+)
+
+export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 
 export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })),

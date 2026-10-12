@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
+import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { RiAddLine, RiFolderAddLine } from "react-icons/ri"
 import { ChordKeys } from "../components/ChordKeys.tsx"
@@ -6,6 +7,7 @@ import { Button } from "../components/ui/button.tsx"
 import { commands } from "../keybindings/commands.ts"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { projectsAtom } from "../lib/rpc.ts"
+import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 
@@ -15,6 +17,7 @@ export function HomeRoute() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const keymap = useKeymap()
   const firstProject = projects[0]
+  const navigate = useNavigate()
 
   const addProject = (
     <Button
@@ -36,7 +39,7 @@ export function HomeRoute() {
       </div>
       <div className="flex flex-wrap justify-center gap-2">
         {firstProject && (
-          <Button size="lg" onClick={() => useUi.getState().setNewThreadProjectId(firstProject.id)}>
+          <Button size="lg" onClick={() => void startThread(firstProject.id, navigate)}>
             <RiAddLine aria-hidden />
             {commandTitle("thread.new")}
             {keymap["thread.new"] && <ChordKeys chord={keymap["thread.new"]} />}

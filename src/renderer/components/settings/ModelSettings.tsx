@@ -1,7 +1,7 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import { type ModelInfo, ProviderId } from "../../../shared/agent.ts"
+import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
@@ -23,6 +23,7 @@ export function ModelSettings() {
         {ProviderId.literals.map((provider) => (
           <DefaultModelField key={provider} provider={provider} />
         ))}
+        <TextGenerationModelField />
       </FieldGroup>
     </SettingsSection>
   )
@@ -77,13 +78,52 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
   )
 }
 
+/** Thread naming runs through the Claude Agent SDK, so only Claude models are offered. */
+function TextGenerationModelField() {
+  const models = useAtomValue(modelsAtom("claude"))
+  const { textGenerationModel } = useSettings()
+  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const inputId = "text-generation-model"
+
+  const save = async (model: string | null) => {
+    if (model === null) return
+    setError(null)
+    try {
+      await updateSettings({ textGenerationModel: model })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  const listed = AsyncResult.getOrElse(models, (): ReadonlyArray<ModelInfo> => [])
+  const items = listed.some((model) => model.id === textGenerationModel)
+    ? listed
+    : [unlistedModel(textGenerationModel, "claude"), ...listed]
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{m.settings_text_generation_model()}</FieldLabel>
+      <ModelSelect inputId={inputId} models={items} current={textGenerationModel} onSave={save} clearable={false} />
+      <FieldDescription>{m.settings_text_generation_model_hint()}</FieldDescription>
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
 interface ModelInputProps {
   readonly inputId: string
   readonly current: string | null
   readonly onSave: (model: string | null) => Promise<void>
 }
 
-function ModelSelect({ inputId, models, current, onSave }: ModelInputProps & { models: ReadonlyArray<ModelInfo> }) {
+function ModelSelect({
+  inputId,
+  models,
+  current,
+  onSave,
+  clearable = true,
+}: ModelInputProps & { models: ReadonlyArray<ModelInfo>; clearable?: boolean }) {
   const items = models.map((model) => ({ value: model.id, label: model.label }))
   return (
     <div className="flex items-center gap-2">
@@ -99,7 +139,7 @@ function ModelSelect({ inputId, models, current, onSave }: ModelInputProps & { m
           ))}
         </SelectContent>
       </Select>
-      {current !== null && (
+      {clearable && current !== null && (
         <Button variant="ghost" size="sm" onClick={() => void onSave(null)}>
           {m.settings_models_clear()}
         </Button>
