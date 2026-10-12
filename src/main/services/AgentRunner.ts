@@ -1,17 +1,25 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
-import type { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "../../shared/agent.ts"
+import type {
+  AgentEvent,
+  ApprovalDecision,
+  ApprovalRequest,
+  ModelInfo,
+  ProviderId,
+  SecretRequest,
+} from "../../shared/agent.ts"
 import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
-import { McpServer } from "../mcp/index.ts"
+import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
+import { Secrets } from "./Secrets.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
@@ -35,6 +43,20 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+    /**
+     * Shows the user a secret card in the thread and waits for their answer. Fails when no turn is
+     * running or the turn ends first. The value never passes through here: see `respondSecret`.
+     */
+    readonly requestSecret: (
+      threadId: string,
+      name: string,
+      description: string,
+    ) => Effect.Effect<"stored" | "declined", AgentError | PersistenceError | NotFoundError>
+    /** `value: null` declines; otherwise the value is stored under the request's name before the agent learns of it. */
+    readonly respondSecret: (
+      requestId: string,
+      value: string | null,
+    ) => Effect.Effect<void, PersistenceError | NotFoundError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
   }
@@ -44,8 +66,10 @@ export class AgentRunner extends Context.Service<
 const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
   switch (event.type) {
     case "approval_requested":
+    case "secret_requested":
       return "awaiting_approval"
     case "approval_resolved":
+    case "secret_resolved":
       return "running"
     case "turn_completed":
     case "turn_failed":
@@ -87,7 +111,8 @@ const make = Effect.gen(function* () {
   const worktrees = yield* Worktrees
   const messages = yield* Messages
   const push = yield* Events
-  const mcp = yield* McpServer
+  const mcp = yield* McpCredentials
+  const secrets = yield* Secrets
   const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
@@ -99,6 +124,10 @@ const make = Effect.gen(function* () {
   const busyThreads = new Set<string>()
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
+  const secretRequests = new Map<
+    string,
+    { readonly request: SecretRequest; readonly answer: Deferred.Deferred<"stored" | "declined", AgentError> }
+  >()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
   let seq = 0
 
@@ -187,6 +216,14 @@ const make = Effect.gen(function* () {
 
     const finish = Effect.gen(function* () {
       for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
+      for (const [id, { request, answer }] of secretRequests) {
+        if (request.threadId !== thread.id) continue
+        secretRequests.delete(id)
+        yield* Deferred.fail(
+          answer,
+          new AgentError({ provider: "kkcode", message: "The turn ended before the user answered." }),
+        )
+      }
       const last = turnMessages.at(-1)!
       if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
       yield* persist
@@ -204,24 +241,25 @@ const make = Effect.gen(function* () {
 
     /** Never fails: provider errors become turn_failed. */
     const run = (prompt: string, attachments: ReadonlyArray<Attachment>) =>
-      provider
-        .runTurn({
-          threadId: thread.id,
-          prompt,
-          attachments,
-          cwd,
-          model: thread.model,
-          resumeSessionId: thread.providerSessionId,
-          mcpServer: mcp.connectionFor(thread.id),
-        })
-        .pipe(
-          Stream.runForEach(handle),
-          Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
-          Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
-          Effect.ensuring(finish),
-        )
+      Effect.flatMap(mcp.connectionFor(thread.id), (mcpServer) =>
+        provider
+          .runTurn({
+            threadId: thread.id,
+            prompt,
+            attachments,
+            cwd,
+            model: thread.model,
+            resumeSessionId: thread.providerSessionId,
+            mcpServer,
+          })
+          .pipe(Stream.runForEach(handle)),
+      ).pipe(
+        Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
+        Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
+        Effect.ensuring(finish),
+      )
 
-    return { provider, steer, run, messages: () => turnMessages }
+    return { provider, steer, run, handle, messages: () => turnMessages }
   }
 
   const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
@@ -257,6 +295,41 @@ const make = Effect.gen(function* () {
       )
     })
 
+  const requestSecret = (threadId: string, name: string, description: string) =>
+    Effect.gen(function* () {
+      const turn = activeTurns.get(threadId)
+      if (turn === undefined) {
+        return yield* new AgentError({ provider: "kkcode", message: "No turn is running on this thread." })
+      }
+      const request: SecretRequest = { id: randomUUID(), threadId, name, description }
+      const answer = yield* Deferred.make<"stored" | "declined", AgentError>()
+      secretRequests.set(request.id, { request, answer })
+      yield* turn.handle({ type: "secret_requested", request })
+      return yield* Deferred.await(answer).pipe(
+        // The agent gave up waiting (disconnected, timed out): take the card away.
+        Effect.onInterrupt(() => resolveSecret(request.id)),
+      )
+    })
+
+  /** Forgets the request and tells the renderer, if its turn is still around to carry the event. */
+  const resolveSecret = (requestId: string) =>
+    Effect.suspend(() => {
+      const pending = secretRequests.get(requestId)
+      if (pending === undefined) return Effect.void
+      secretRequests.delete(requestId)
+      const turn = activeTurns.get(pending.request.threadId)
+      return turn?.handle({ type: "secret_resolved", requestId }) ?? Effect.void
+    })
+
+  const respondSecret = (requestId: string, value: string | null) =>
+    Effect.gen(function* () {
+      const pending = secretRequests.get(requestId)
+      if (pending === undefined) return
+      if (value !== null) yield* secrets.set(pending.request.name, value)
+      yield* resolveSecret(requestId)
+      yield* Deferred.succeed(pending.answer, value === null ? "declined" : "stored")
+    })
+
   return AgentRunner.of({
     send,
     steer: (threadId, text, attachments) =>
@@ -269,6 +342,8 @@ const make = Effect.gen(function* () {
         if (request === undefined) return Effect.void
         return providers[request.provider]?.respondApproval(requestId, decision) ?? Effect.void
       }),
+    requestSecret,
+    respondSecret,
     // The database lags a running turn by up to PERSIST_INTERVAL_MS, so its messages come from memory.
     transcript: (threadId) =>
       Effect.gen(function* () {
@@ -282,6 +357,9 @@ const make = Effect.gen(function* () {
         return {
           messages: persisted.map((message) => live.get(message.id) ?? message),
           approvals: [...approvals.values()].filter((request) => request.threadId === threadId),
+          secretRequests: [...secretRequests.values()]
+            .map(({ request }) => request)
+            .filter((request) => request.threadId === threadId),
           seq,
         }
       }).pipe(exclusive(threadId)),

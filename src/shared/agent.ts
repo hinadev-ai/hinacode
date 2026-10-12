@@ -40,6 +40,16 @@ export type ApprovalRequest = typeof ApprovalRequest.Type
 export const ApprovalDecision = Schema.Literals(["allow", "allow_for_session", "deny"])
 export type ApprovalDecision = typeof ApprovalDecision.Type
 
+/** An agent asked the user for a secret through the MCP `request_secret` tool. The value never travels with it. */
+export const SecretRequest = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  /** The `Secrets` name the value is stored under. */
+  name: Schema.String,
+  description: Schema.String,
+})
+export type SecretRequest = typeof SecretRequest.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
@@ -70,6 +80,9 @@ export const AgentEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("approval_requested"), request: ApprovalRequest }),
   Schema.Struct({ type: Schema.Literal("approval_resolved"), requestId: Schema.String }),
+  /** Raised by the built-in MCP server, not the provider, while a turn runs. */
+  Schema.Struct({ type: Schema.Literal("secret_requested"), request: SecretRequest }),
+  Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
   Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
 ])

@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
+import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId, SecretRequest } from "./agent.ts"
 import {
   Attachment,
   Automation,
@@ -121,12 +121,17 @@ export const RpcMethods = {
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
   /**
-   * The thread's live transcript and pending approvals as of push `seq`: it reflects every
-   * transcript push up to and including `seq`, and none after.
+   * The thread's live transcript and pending approvals and secret requests as of push `seq`: it
+   * reflects every transcript push up to and including `seq`, and none after.
    */
   "threads.transcript": rpc(
     Schema.Struct({ threadId: Schema.String }),
-    Schema.Struct({ messages: Schema.Array(Message), approvals: Schema.Array(ApprovalRequest), seq: Schema.Number }),
+    Schema.Struct({
+      messages: Schema.Array(Message),
+      approvals: Schema.Array(ApprovalRequest),
+      secretRequests: Schema.Array(SecretRequest),
+      seq: Schema.Number,
+    }),
   ),
   /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
   "threads.send": rpc(
@@ -143,6 +148,8 @@ export const RpcMethods = {
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
+  /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
+  "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
   /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. Returns the URL. */

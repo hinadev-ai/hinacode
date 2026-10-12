@@ -68,8 +68,9 @@ const makeLayer = (dbPath: string) => {
     Messages.layer,
     Attachments.layer,
   )
-  const features = Layer.mergeAll(Mcp.layer, Ports.layer).pipe(Layer.provide(domain))
-  return Layer.mergeAll(domain, features, agentStubs).pipe(
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const base = Layer.mergeAll(domain, features, agentStubs)
+  return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
     Layer.provideMerge(GitHub.layer),
     Layer.provide(Db.layer(dbPath)),
@@ -100,7 +101,7 @@ const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
 
 const createProject = async (name: string) =>
-  result(await invoke("projects.create", { name, rootPath: repo, setupScript: null, trusted: false }))
+  result(await invoke("projects.create", { name, rootPath: repo, setupScript: null }))
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kk-ipc-test-"))
@@ -158,7 +159,6 @@ describe("rpc contract", () => {
         name: "nope",
         rootPath: join(dir, "missing"),
         setupScript: null,
-        trusted: false,
       }),
     )
     expect(error.tag).toBe("ProjectRootInvalidError")
@@ -176,7 +176,6 @@ describe("projects, threads and settings over rpc", () => {
       name: "again",
       rootPath: repo,
       setupScript: null,
-      trusted: false,
     })
     expect(failure(duplicate).tag).toBe("ProjectPathTakenError")
   })

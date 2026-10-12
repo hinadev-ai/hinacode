@@ -36,7 +36,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for kkcode tools.
 - [Worktrees](./worktrees.md): setup script with `$KKCODE_ROOT_PATH`, setup log, failure state, changes and diffs, settle cleanup. No agent cost.
 - [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments.
-- [MCP tools and pull request links](./mcp-and-pull-requests.md): tool contract and auth, `review_changes`, `link_pull_request` from inside a turn, panel links with `gh` status, unlink, creating a pull request, `gh` sign-in states, Linear without a key.
+- [MCP tools and pull request links](./mcp-and-pull-requests.md): tool contract and auth, `review_changes`, `link_pull_request` from inside a turn, panel links with `gh` status, unlink, creating a pull request, `gh` sign-in states, Linear without a key, `request_secret` card, `create_thread`.
 - [Settings](./settings.md): language en and zh-TW, default models, keybinding recording, conflicts and reset, Linear and Slack secrets. No agent cost.
 - [Ports](./ports.md): listing workspace listeners and the two-click kill. No agent cost.
 - [Automations](./automations.md): signed webhook delivery, rejects, dedup, run now, listener port, pollers.
