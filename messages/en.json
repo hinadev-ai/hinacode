@@ -123,19 +123,9 @@
   "panel_setup_waiting": "Waiting for output…",
   "panel_setup_none": "No output.",
   "panel_setup_failed": "The setup script failed. See the exit code at the end of the log.",
-  "panel_changes": "Changes",
-  "panel_changes_base": "Against {baseRef}",
-  "panel_changes_refresh": "Refresh changes",
-  "panel_changes_loading": "Loading changes…",
-  "panel_changes_empty": "No changes yet.",
-  "panel_changes_failed": "Could not load changes: {message}",
-  "panel_changes_root": "Only threads that run in a worktree list changes.",
-  "panel_changes_removed": "The worktree was removed, so there is nothing to compare.",
   "file_status_added": "Added",
   "file_status_modified": "Modified",
   "file_status_deleted": "Deleted",
-  "file_status_untracked": "New, not tracked",
-  "panel_diff_missing": "No diff for this file.",
   "settle_dialog_title": "Settle this thread?",
   "settle_dialog_root": "Marks the thread settled. Nothing on disk changes.",
   "settle_dialog_worktree": "Marks the thread settled and deletes the worktree folder {path}, including uncommitted changes.",
@@ -459,5 +449,62 @@
   "access_auto_hint_claude": "Claude approves safe actions and asks about the rest",
   "access_auto_hint_claude_edits": "Edits run without asking; commands still ask",
   "access_auto_hint_codex": "Runs freely in the sandbox; asks to go beyond it",
-  "access_full_hint": "Runs everything without asking"
+  "access_full_hint": "Runs everything without asking",
+  "panel_tab_diff": "Diff",
+  "panel_tab_pr": "PR",
+  "diff_scope_label": "Compare",
+  "diff_scope_worktree": "Worktree",
+  "diff_scope_turn": "Latest turn",
+  "diff_base_worktree": "Changes against {baseRef}, committed or not",
+  "diff_base_turn": "Changes since the latest turn started",
+  "diff_refresh": "Refresh diff",
+  "diff_loading": "Loading changes…",
+  "diff_empty": "No changes.",
+  "diff_failed": "Could not load changes: {message}",
+  "diff_no_worktree": "This thread runs in the project root, so it has no worktree diff. Switch to Latest turn.",
+  "diff_no_turn": "No turn has started in a git checkout yet.",
+  "diff_line_counts": "{added} lines added, {removed} removed",
+  "diff_file_missing": "No diff for this file.",
+  "pr_check_skipped": "Skipped",
+  "pr_merge_squash": "Squash and merge",
+  "pr_merge_commit": "Create a merge commit",
+  "pr_merge_rebase": "Rebase and merge",
+  "pr_merge_method": "Choose merge method",
+  "pr_description": "Description",
+  "pr_description_empty": "No description.",
+  "pr_detail_loading": "Loading pull request…",
+  "pr_detail_failed": "Could not load the pull request: {message}",
+  "pr_branches": "{head} → {base}",
+  "pr_conflicts": "This branch has conflicts with {base}.",
+  "pr_resolve_conflicts": "Ask the agent to resolve",
+  "pr_checks_failing_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} check failing.",
+        "countPlural=other": "{count} checks failing."
+      }
+    }
+  ],
+  "pr_fix_checks": "Ask the agent to fix",
+  "pr_sent_to_agent": "Sent to the thread.",
+  "pr_merge_blocked_draft": "Drafts can't be merged. Mark it ready for review on GitHub first.",
+  "pr_merge_blocked_conflicts": "Resolve the conflicts before merging.",
+  "pr_close": "Close pull request",
+  "pr_close_title": "Close #{number}?",
+  "pr_close_body": "The pull request closes on GitHub without merging. You can reopen it there.",
+  "pr_merge_title": "{method} #{number}?",
+  "pr_merge_body": "Merges {head} into {base} on GitHub. The branch is kept.",
+  "pr_checks": "Checks",
+  "pr_checks_skipped_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} skipped",
+        "countPlural=other": "{count} skipped"
+      }
+    }
+  ]
 }

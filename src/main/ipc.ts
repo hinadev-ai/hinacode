@@ -103,9 +103,9 @@ const handlers: Handlers = {
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
-  "worktrees.changes": ({ id }) => Worktrees.use((worktrees) => worktrees.changes(id)),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
+  "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
@@ -145,6 +145,9 @@ const handlers: Handlers = {
   "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
+  "github.pullRequestDetail": ({ url }) => GitHub.use((github) => github.pullRequestDetail(url)),
+  "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
+  "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(
       Effect.flatMap(({ rootPath }) => GitHub.use((github) => github.repository(rootPath))),

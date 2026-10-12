@@ -238,6 +238,7 @@ erDiagram
     text provider_session_id
     text status
     int sort_index
+    text turn_base_tree "git tree at latest turn start"
   }
   message {
     text id PK
