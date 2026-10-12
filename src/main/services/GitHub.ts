@@ -14,7 +14,7 @@ import type {
   PullRequestStatus,
   ReviewStatus,
 } from "../../shared/domain.ts"
-import type { GitHubRepository } from "../../shared/github.ts"
+import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
 import { CommandError, makeExec } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
@@ -91,7 +91,8 @@ const RollupEntry = Schema.Struct({
 })
 type RollupEntry = typeof RollupEntry.Type
 
-export const PULL_REQUEST_FIELDS = "url,number,title,state,isDraft,reviewDecision,statusCheckRollup"
+export const PULL_REQUEST_FIELDS =
+  "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,author,headRefName,baseRefName,additions,deletions"
 
 const PullRequestFields = Schema.Struct({
   url: Schema.String,
@@ -101,17 +102,20 @@ const PullRequestFields = Schema.Struct({
   isDraft: Schema.Boolean,
   reviewDecision: Schema.String,
   statusCheckRollup: Schema.Array(RollupEntry),
+  author: Schema.Struct({ login: Schema.String }),
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  additions: Schema.Number,
+  deletions: Schema.Number,
 })
 const PullRequestJson = Schema.fromJsonString(PullRequestFields)
 
-const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,baseRefName,headRefName,mergeable`
+const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,mergeable`
 
 const PullRequestDetailJson = Schema.fromJsonString(
   Schema.Struct({
     ...PullRequestFields.fields,
     body: Schema.String,
-    baseRefName: Schema.String,
-    headRefName: Schema.String,
     mergeable: Schema.String,
   }),
 )
@@ -152,6 +156,11 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
     status,
     checks: summarizeChecks(json.statusCheckRollup),
     review: reviewStatus[json.reviewDecision] ?? null,
+    author: json.author.login,
+    headRefName: json.headRefName,
+    baseRefName: json.baseRefName,
+    additions: json.additions,
+    deletions: json.deletions,
   }
 }
 
@@ -219,6 +228,8 @@ export class GitHub extends Context.Service<
      * user's preferred protocol work; without a signed-in `gh` it falls back to `git` over https.
      */
     readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
+    /** The GitHub repository `origin` points at in the checkout at `cwd`, or null when it has none. Never fails. */
+    readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
 >()("kkcode/GitHub") {}
 
@@ -281,6 +292,12 @@ const make = Effect.gen(function* () {
   const ghByUrl = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
     Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
 
+  const repository = (cwd: string) =>
+    exec("git", ["-C", cwd, "remote", "get-url", "origin"], cwd).pipe(
+      Effect.map(parseGitHubRepository),
+      Effect.orElseSucceed(() => null),
+    )
+
   return GitHub.of({
     auth,
     run: gh,
@@ -295,6 +312,7 @@ const make = Effect.gen(function* () {
     branchPullRequest,
     createPullRequest,
     clone,
+    repository,
   })
 })
 

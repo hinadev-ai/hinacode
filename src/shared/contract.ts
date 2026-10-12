@@ -197,6 +197,10 @@ export const RpcMethods = {
   "github.pullRequestDetail": rpc(Schema.Struct({ url: Schema.String }), PullRequestDetail),
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
+  /** The GitHub repository the project's `origin` points at, or null. */
+  "github.repository": rpc(Schema.Struct({ projectId: Schema.String }), Schema.NullOr(GitHubRepository)),
+  /** The icon of the url's site as a data URL, or null. Main only ever GETs the origin root and the icon. */
+  "links.favicon": rpc(Schema.Struct({ url: Schema.String }), Schema.NullOr(Schema.String)),
   /** The built-in MCP server connection handed to agents running in this thread. */
   "mcp.connection": rpc(
     Schema.Struct({ threadId: Schema.String }),

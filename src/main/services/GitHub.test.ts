@@ -71,12 +71,27 @@ const json = {
   isDraft: false,
   reviewDecision: "",
   statusCheckRollup: [],
+  author: { login: "octocat" },
+  headRefName: "kk/fix",
+  baseRefName: "main",
+  additions: 3,
+  deletions: 1,
 }
 
 describe("toPullRequest", () => {
   test("an open draft is a draft, a closed draft is closed", () => {
     expect(toPullRequest({ ...json, isDraft: true }).status).toBe("draft")
     expect(toPullRequest({ ...json, isDraft: true, state: "CLOSED" }).status).toBe("closed")
+  })
+
+  test("carries the author's login, branches and size", () => {
+    expect(toPullRequest(json)).toMatchObject({
+      author: "octocat",
+      headRefName: "kk/fix",
+      baseRefName: "main",
+      additions: 3,
+      deletions: 1,
+    })
   })
 
   test("maps the review decision and leaves an empty one null", () => {

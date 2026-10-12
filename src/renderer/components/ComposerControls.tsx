@@ -21,7 +21,8 @@ interface ControlProps {
   readonly onError: (message: string) => void
 }
 
-const triggerClass = "border-0 text-xs"
+const triggerClass =
+  "rounded-full border-0 text-xs text-muted-foreground hover:bg-foreground/6 hover:text-foreground dark:bg-transparent dark:hover:bg-foreground/9"
 
 const update = async (patch: RpcRequest<"threads.update">, onError: (message: string) => void) => {
   try {
