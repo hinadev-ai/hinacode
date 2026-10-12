@@ -89,7 +89,7 @@ export function ModelPicker({ thread, onError }: ControlProps) {
 
   return (
     <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-0 flex-1 ${triggerClass}`}>
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-0 ${triggerClass}`}>
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
       <SelectContent>
