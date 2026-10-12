@@ -54,10 +54,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                           |
-| ------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `attachments.stage`, dialogs                 |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `automation.run` |
+| Channel | Direction       | Carries                                                                                                                                                                                               |
+| ------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `attachments.stage`, dialogs                                     |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run` |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
@@ -148,6 +148,11 @@ sequenceDiagram
     R->>AR: rpc approvals.respond
     AR->>P: respondApproval
   end
+  opt sub-agent spawned
+    P-->>AR: subagent_updated (full state)
+    AR->>AR: keep latest per thread, in memory
+    AR-->>R: push thread.subagents (not a transcript push)
+  end
   opt steer while running
     Dev->>R: send another message
     R->>AR: rpc threads.steer
@@ -160,6 +165,7 @@ sequenceDiagram
 ```
 
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
+- `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`.
 - Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
 - On boot, `resetInterrupted` and `closeInterrupted` mark anything a killed app left running as over.
 
