@@ -53,6 +53,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
+  respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
 })
 

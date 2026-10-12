@@ -70,6 +70,10 @@
   --color-vcs-modified: var(--vcs-modified);
   --color-vcs-added: var(--vcs-added);
   --color-syntax-token: var(--syntax-token);
+  /* Find matches tint the text background with the accent; the current one is stronger and outlined. */
+  --color-find-match: color-mix(in oklab, var(--syntax-token) 22%, transparent);
+  --color-find-match-current: color-mix(in oklab, var(--syntax-token) 45%, transparent);
+  --color-find-match-ring: var(--syntax-token);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);

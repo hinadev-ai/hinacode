@@ -30,6 +30,7 @@ import * as Ports from "./services/Ports.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
@@ -109,22 +110,31 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.fromIterable(
-      input.prompt === "simulate usage limit"
+      input.prompt === "simulate unanswered question"
         ? [
             {
-              type: "turn_limited",
-              limit: {
-                kind: "usage",
-                message: "Usage limit reached",
-                reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
-              },
+              type: "question_requested",
+              request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
             },
+            { type: "turn_failed", message: "Provider disconnected before the answer" },
           ]
-        : scriptedTurn,
+        : input.prompt === "simulate usage limit"
+          ? [
+              {
+                type: "turn_limited",
+                limit: {
+                  kind: "usage",
+                  message: "Usage limit reached",
+                  reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                },
+              },
+            ]
+          : scriptedTurn,
     ),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
+  respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
 })
 
@@ -146,6 +156,7 @@ const makeLayer = (dbPath: string) => {
     ),
     Messages.layer,
     Attachments.layer,
+    Search.layer,
     Files.layer,
   )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer).pipe(Layer.provide(domain))
@@ -617,5 +628,33 @@ describe("limited threads over rpc", () => {
       },
     )
     expect(response).toMatchObject({ error: { tag: "SchemaError" } })
+  })
+})
+
+describe("agent questions over rpc", () => {
+  test("forgets unanswered questions when a turn ends before question_resolved", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate unanswered question" }))
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("idle")
+    await expect
+      .poll(async () => result(await invoke("threads.transcript", { threadId: thread.id })).questions)
+      .toStrictEqual([])
+  })
+
+  test("decodes answers and refuses subframes before the question responder runs", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)!
+    const invalid = await handler(
+      { sender: {}, senderFrame: mainFrame },
+      { method: "questions.respond", payload: { requestId: "q", answers: { choice: 42 } } },
+    )
+    expect(failure(invalid as RpcEnvelope<unknown>).tag).toBe("SchemaError")
+    expect(
+      failure(await invoke("questions.respond", { requestId: "q", answers: {} }, { url: appUrl, parent: mainFrame }))
+        .tag,
+    ).toBe("UntrustedSender")
+    result(await invoke("questions.respond", { requestId: "unknown", answers: { choice: ["blue"] } }))
   })
 })

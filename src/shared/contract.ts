@@ -7,6 +7,8 @@ import {
   ModelInfo,
   ProviderId,
   Subagent,
+  QuestionAnswers,
+  QuestionRequest,
   SecretRequest,
 } from "./agent.ts"
 import {
@@ -16,6 +18,7 @@ import {
   Changes,
   ChangesScope,
   AutomationRun,
+  FileSearchHit,
   AutomationTrigger,
   FsEntry,
   FsFileContent,
@@ -32,6 +35,7 @@ import {
   Settings,
   TerminalSession,
   Thread,
+  ThreadSearchHit,
   ThreadStatus,
   Worktree,
 } from "./domain.ts"
@@ -156,6 +160,16 @@ export const RpcMethods = {
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
   "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
+  /** Messages across every thread containing `query`, newest first. */
+  "search.threads": rpc(
+    Schema.Struct({ query: Schema.String, limit: Schema.optional(Schema.Number) }),
+    Schema.Array(ThreadSearchHit),
+  ),
+  /** Lines containing `query` in the thread's active workspace, found with ripgrep. */
+  "search.files": rpc(
+    Schema.Struct({ threadId: Schema.String, query: Schema.String, limit: Schema.optional(Schema.Number) }),
+    Schema.Array(FileSearchHit),
+  ),
 
   /**
    * One level of a folder under `root`, folders first. `root` must be a project root or a live worktree
@@ -171,7 +185,7 @@ export const RpcMethods = {
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
   /**
-   * The thread's live transcript and pending approvals and secret requests as of push `seq`: it
+   * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
    * reflects every transcript push up to and including `seq`, and none after.
    */
   "threads.transcript": rpc(
@@ -179,6 +193,7 @@ export const RpcMethods = {
     Schema.Struct({
       messages: Schema.Array(Message),
       approvals: Schema.Array(ApprovalRequest),
+      questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
       seq: Schema.Number,
     }),
@@ -199,6 +214,7 @@ export const RpcMethods = {
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
+  "questions.respond": rpc(Schema.Struct({ requestId: Schema.String, answers: QuestionAnswers }), Schema.Void),
   /** Secrets never cross back to the renderer; it can only ask whether one is set. */
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
