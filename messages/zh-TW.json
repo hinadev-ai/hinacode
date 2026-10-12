@@ -182,7 +182,7 @@
   "settings_keybindings_conflict": "與「{commands}」重複，只有其中一個會執行。",
   "settings_integrations": "整合",
   "settings_linear_label": "Linear API 金鑰",
-  "settings_linear_hint": "請在 Linear 的「Settings > API」建立個人 API 金鑰。kkcode 會在這台電腦上加密儲存，之後不會再顯示。",
+  "settings_linear_hint": "請在 Linear 的「Settings > API」建立個人 API 金鑰。儲存後，代理可以使用 Linear 工具。若要自動啟動討論串，請到「設定 > 自動化」建立 Linear 議題自動化。kkcode 會在這台電腦上加密儲存金鑰，之後不會再顯示。",
   "settings_linear_placeholder": "lin_api_…",
   "settings_linear_stored": "已儲存金鑰。",
   "settings_linear_missing": "尚未儲存金鑰。",
