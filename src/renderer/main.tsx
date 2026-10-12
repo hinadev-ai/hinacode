@@ -2,10 +2,11 @@ import "./index.css"
 import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
-import { AtomRegistry } from "effect/reactivity"
+import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
+import { applyAppearance } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
@@ -32,6 +33,10 @@ const [settings, threads, worktrees] = await Promise.all([
   callPromise("worktrees.list", undefined),
 ])
 useLocale.getState().apply(settings.locale)
+applyAppearance(settings.appearance)
+registry.subscribe(settingsAtom, (result) => {
+  if (AsyncResult.isSuccess(result)) applyAppearance(result.value.appearance)
+})
 useThreads.getState().replaceAll(threads)
 useWorktrees.getState().replaceAll(worktrees)
 onPushEvent((event) => {

@@ -12,8 +12,10 @@ import {
   type Worktree,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
+import { themes } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom, worktreeChangesAtom } from "../lib/rpc.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -284,6 +286,7 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
   const diffId = useId()
   const mark = fileStatusMark[status]
   const filePatch = open ? patchForFile(patch, path) : undefined
+  const theme = themes[useSettings().appearance.theme]
 
   return (
     <li className="flex flex-col gap-1">
@@ -306,7 +309,13 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
           {filePatch ? (
             <PatchDiff
               patch={filePatch}
-              options={{ diffStyle: "unified", themeType: "dark", overflow: "wrap", disableFileHeader: true }}
+              options={{
+                diffStyle: "unified",
+                theme: theme.codeTheme,
+                themeType: theme.scheme,
+                overflow: "wrap",
+                disableFileHeader: true,
+              }}
             />
           ) : (
             <p className="p-2 text-muted-foreground">{m.panel_diff_missing()}</p>

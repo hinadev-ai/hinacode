@@ -10,10 +10,13 @@
     "preview": "electron-vite preview",
     "start:xvfb": "DISPLAY=:99 electron-vite preview -- --no-sandbox --disable-gpu --remote-debugging-port=9222",
     "paraglide": "paraglide-js compile --project ./project.inlang --outdir ./src/renderer/paraglide --strategy globalVariable baseLocale --silent",
-    "typecheck": "pnpm paraglide && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json",
+    "typecheck": "pnpm paraglide && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "oxlint",
     "format": "oxfmt",
-    "test": "node --test --experimental-test-module-mocks \"src/**/*.test.ts\""
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "bddgen -c e2e/playwright.config.ts && playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.296",
@@ -24,7 +27,10 @@
     "@effect/atom-react": "4.0.3",
     "@effect/platform-node": "4.0.3",
     "@effect/sql-sqlite-node": "4.0.3",
-    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource-variable/noto-sans-jp": "^5.3.0",
+    "@fontsource-variable/noto-sans-tc": "^5.3.0",
     "@formkit/auto-animate": "0.10.0",
     "@legendapp/list": "3.6.0",
     "@linear/sdk": "97.1.0",
@@ -45,7 +51,9 @@
   },
   "devDependencies": {
     "@effect/language-service": "0.87.4",
+    "@effect/vitest": "4.0.3",
     "@inlang/paraglide-js": "2.27.0",
+    "@playwright/test": "1.64.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "^24.19.2",
     "@types/react": "19.3.0",
@@ -55,10 +63,12 @@
     "electron-vite": "5.0.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
+    "playwright-bdd": "9.2.1",
     "shadcn": "4.21.4",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "7.3.7"
+    "vite": "7.3.7",
+    "vitest": "5.0.3"
   },
   "packageManager": "pnpm@12.10.1"
 }

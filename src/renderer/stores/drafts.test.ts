@@ -1,5 +1,4 @@
-import assert from "node:assert/strict"
-import { beforeEach, describe, test } from "node:test"
+import { beforeEach, describe, expect, test } from "@effect/vitest"
 import type { Attachment } from "../../shared/domain.ts"
 import { emptyDraft, useDrafts } from "./drafts.ts"
 
@@ -21,16 +20,16 @@ describe("useDrafts", () => {
     const { setText, addAttachments } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    assert.deepEqual(draftOf("a"), { text: "hello", attachments: [attachment("x")] })
-    assert.deepEqual(draftOf("b"), emptyDraft)
+    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")] })
+    expect(draftOf("b")).toStrictEqual(emptyDraft)
   })
 
   test("take empties the draft and returns what was in it", () => {
     const { setText, addAttachments, take } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    assert.deepEqual(take("a"), { text: "hello", attachments: [attachment("x")] })
-    assert.deepEqual(draftOf("a"), emptyDraft)
+    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")] })
+    expect(draftOf("a")).toStrictEqual(emptyDraft)
   })
 
   test("text typed while a send is pending survives the send", () => {
@@ -38,7 +37,7 @@ describe("useDrafts", () => {
     setText("a", "first")
     take("a")
     setText("a", "second")
-    assert.equal(draftOf("a").text, "second")
+    expect(draftOf("a").text).toBe("second")
   })
 
   test("restore puts a failed send back in front of anything typed since", () => {
@@ -49,7 +48,7 @@ describe("useDrafts", () => {
     setText("a", "second")
     addAttachments("a", [attachment("y")])
     restore("a", sent)
-    assert.deepEqual(draftOf("a"), { text: "first\nsecond", attachments: [attachment("x"), attachment("y")] })
+    expect(draftOf("a")).toStrictEqual({ text: "first\nsecond", attachments: [attachment("x"), attachment("y")] })
   })
 
   test("removing the last content and discarding both drop the entry", () => {
@@ -60,6 +59,6 @@ describe("useDrafts", () => {
     removeAttachment("b", "x")
     setText("c", "hello")
     discard("c")
-    assert.deepEqual(useDrafts.getState().byThreadId, {})
+    expect(useDrafts.getState().byThreadId).toStrictEqual({})
   })
 })
