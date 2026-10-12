@@ -63,7 +63,7 @@ const defaultModel = (provider: ProviderId) =>
     return models[0]?.id ?? ""
   })
 
-/** Shells sitting in a worktree would outlive it, so they end before the thread settles or goes away. */
+/** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const handlers: Handlers = {
@@ -72,7 +72,15 @@ const handlers: Handlers = {
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
-  "projects.delete": ({ id }) => Projects.use((projects) => projects.remove(id)),
+  "projects.delete": ({ id }) =>
+    Effect.gen(function* () {
+      const threads = yield* Threads.use((service) => service.list)
+      yield* Effect.forEach(
+        threads.filter((thread) => thread.projectId === id),
+        (thread) => closeTerminals(thread.id),
+      )
+      yield* Projects.use((projects) => projects.remove(id))
+    }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId }) =>
