@@ -1,0 +1,38 @@
+# kkcode mobile
+
+The phone app for kkcode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, merge pull requests, and run a shell in a thread's worktree. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+
+This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
+
+## Run
+
+```sh
+cd apps/mobile
+pnpm install
+npx expo start                  # scan the Expo QR code with Expo Go on the phone
+npx expo start --web --host lan # or open it in a browser
+```
+
+The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and keep the remote listener on its default `0.0.0.0` bind.
+
+The QR scanner (`expo-camera`) and the native terminal (`react-native-webview`) are in Expo Go. If you add a library with other native code, build a development client with `npx expo run:ios` or `npx expo run:android`.
+
+## Pair
+
+1. On the desktop, open Settings, Remote, and turn on Allow remote control.
+2. In the app, tap Scan QR code and point it at the QR code, or paste the `kkcode://connect?host=...&port=...&token=...` URL into Pairing URL and tap Connect. Opening that URL on the phone also pairs in a development or store build, which registers the `kkcode` scheme; Expo Go does not.
+
+The pairing is stored in the secure store (`localStorage` on web). Rotating the token on the desktop sends the app back to the pairing screen. Disconnect on the thread list forgets the pairing.
+
+## Scripts
+
+- `pnpm build:terminal` regenerates `src/terminal/terminal.html.ts`, the page the native terminal WebView loads, from the installed `@xterm/xterm`. Run it after upgrading xterm and commit the result.
+- `npx tsc --noEmit`, `npx expo lint`, `npx expo export --platform web`.
+
+## Out of scope
+
+- A relay or tunnel; the phone connects to the desktop directly.
+- Push notifications. The app is live only while it is open.
+- Attachments, the file explorer, git graph, settings, automations and secret requests from the phone.
+- Terminal scrollback from before the phone opened the session.
+- TLS. Use Tailscale for an encrypted path.

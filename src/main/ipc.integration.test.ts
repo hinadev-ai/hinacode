@@ -847,6 +847,7 @@ describe("remote mode", () => {
     expect(push.type).toBe("event")
 
     expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
+    expect(await paired.call("threads.interrupt", { threadId: thread.id })).toStrictEqual({})
     paired.socket.close()
   })
 

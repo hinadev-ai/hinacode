@@ -24,13 +24,16 @@ export type ClientFrame = typeof ClientFrame.Type
 
 const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
 
-/** Desktop -> phone. `result` answers one `call`; `event` is the same push the desktop renderer gets. */
+/**
+ * Desktop -> phone. `result` answers one `call`; `event` is the same push the desktop renderer gets.
+ * A method that returns nothing answers with `envelope: {}`, since JSON drops an undefined `result`.
+ */
 export const ServerFrame = Schema.Union([
   Schema.Struct({ type: Schema.Literal("ready"), version: Schema.Int }),
   Schema.Struct({
     type: Schema.Literal("result"),
     id: Schema.Int,
-    envelope: Schema.Union([Schema.Struct({ result: Schema.Unknown }), Schema.Struct({ error: Failure })]),
+    envelope: Schema.Union([Schema.Struct({ error: Failure }), Schema.Struct({ result: Schema.optionalKey(Schema.Unknown) })]),
   }),
   Schema.Struct({ type: Schema.Literal("event"), event: PushEvent }),
 ])
