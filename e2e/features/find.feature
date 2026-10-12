@@ -14,6 +14,17 @@ Feature: Find in thread
     When I find "kkcode_group_find_unique" in the thread
     Then Find counts "1 of 1"
     And the current match is in the command "printf kkcode_group_find_unique"
+    When I toggle the command row "Print marker"
+    Then the command "printf kkcode_group_find_unique" is hidden
+    When I go to the next match
+    Then Find counts "1 of 1"
+    And the current match is in the command "printf kkcode_group_find_unique"
+
+  Scenario: Find shows a match past the end of a long command's truncated row
+    Given the agent finished a turn in "Commands" running a command that prints 500 "x" then "kkcode_tail_find_unique"
+    When I find "kkcode_tail_find_unique" in the thread
+    Then Find counts "1 of 1"
+    And the current match is in an open command ending in "kkcode_tail_find_unique"
 
   Scenario: Find steps between a folded command and later reply text
     Given the agent finished a turn in "Commands" with

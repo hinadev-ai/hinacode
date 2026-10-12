@@ -4,6 +4,7 @@ import type { DataTable } from "playwright-bdd"
 import type { AgentEvent } from "../../src/shared/agent.ts"
 import type { PushEvent } from "../../src/shared/contract.ts"
 import type { Message } from "../../src/shared/domain.ts"
+import type { KkcodeApp } from "../support/app.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 
@@ -12,7 +13,18 @@ const findField = (page: Page) => page.getByRole("textbox", { name: "Find in thr
 const currentMarkSelector = "mark[data-find-match][data-current]"
 const currentMark = (page: Page) => transcript(page).locator(currentMarkSelector)
 
-Given("the agent finished a turn in {string} with", async ({ app, threadIds }, title: string, table: DataTable) => {
+interface TurnRow {
+  readonly kind: string
+  readonly text?: string
+  readonly description?: string
+}
+
+const finishTurn = async (
+  app: KkcodeApp,
+  threadIds: Map<string, string>,
+  title: string,
+  rows: ReadonlyArray<TurnRow>,
+) => {
   await expect(app.page.getByRole("heading", { name: "Start the conversation", exact: true })).toBeVisible()
   const threadId = threadIds.get(title)
   if (!threadId) throw new Error(`no seeded thread named ${title}`)
@@ -28,7 +40,7 @@ Given("the agent finished a turn in {string} with", async ({ app, threadIds }, t
   }
   const push = (event: AgentEvent): PushEvent => ({ type: "thread.event", threadId, seq: ++seq, event })
   const events: Array<PushEvent> = [{ type: "message.created", seq: ++seq, message }]
-  for (const [row, { kind, text = "", description = "" }] of table.hashes().entries()) {
+  for (const [row, { kind, text = "", description = "" }] of rows.entries()) {
     if (kind === "text") {
       events.push(push({ type: "text_delta", text }))
       continue
@@ -43,7 +55,21 @@ Given("the agent finished a turn in {string} with", async ({ app, threadIds }, t
   events.push(push({ type: "turn_completed" }))
   await app.pushEvents(events)
   await expect(transcript(app.page)).toHaveAttribute("aria-busy", "false")
+}
+
+Given("the agent finished a turn in {string} with", async ({ app, threadIds }, title: string, table: DataTable) => {
+  await finishTurn(app, threadIds, title, table.hashes())
 })
+
+Given(
+  "the agent finished a turn in {string} running a command that prints {int} {string} then {string}",
+  async ({ app, threadIds }, title: string, count: number, filler: string, tail: string) => {
+    await finishTurn(app, threadIds, title, [
+      { kind: "command", text: `printf ${filler.repeat(count)}${tail}` },
+      { kind: "command", text: "pwd" },
+    ])
+  },
+)
 
 When("I find {string} in the thread", async ({ app }, query: string) => {
   await app.page.keyboard.press("ControlOrMeta+f")
@@ -110,4 +136,27 @@ Then("the command row {string} is hidden", async ({ app }, label: string) => {
 
 Then("the command row {string} is shown", async ({ app }, label: string) => {
   await expect(transcript(app.page).getByRole("button", { name: label, exact: true })).toBeVisible()
+})
+
+When("I toggle the command row {string}", async ({ app }, label: string) => {
+  await transcript(app.page).getByRole("button", { name: label, exact: true }).click()
+})
+
+Then("the command {string} is hidden", async ({ app }, command: string) => {
+  await expect(transcript(app.page).locator("section pre").filter({ hasText: command })).toBeHidden()
+})
+
+Then("the current match is in an open command ending in {string}", async ({ app }, tail: string) => {
+  const row = transcript(app.page)
+    .locator("li")
+    .filter({ has: app.page.locator(currentMarkSelector) })
+  await expect(row.getByRole("button", { expanded: true })).toHaveCount(1)
+  const commandText = row
+    .locator("section")
+    .filter({ has: app.page.getByRole("heading", { name: "Command" }) })
+    .locator("pre")
+  await expect(commandText).toHaveText(new RegExp(`^printf x+${tail}$`))
+  await expect(commandText.locator(currentMarkSelector)).toHaveText(tail)
+  await expect(currentMark(app.page)).toHaveCount(1)
+  await expect(currentMark(app.page)).toBeInViewport()
 })
