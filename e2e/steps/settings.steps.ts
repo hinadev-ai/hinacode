@@ -122,3 +122,15 @@ Then("the secret {string} is stored", async ({ app }, name: string) => {
 Then("the secret {string} is not stored", async ({ app }, name: string) => {
   expect(await rpc(app.page, "secrets.has", { name })).toBe(false)
 })
+
+When("I turn on the setting {string}", async ({ app }, label: string) => {
+  const toggle = app.page.getByRole("switch", { name: label, exact: true })
+  await toggle.click()
+  await expect(toggle).toBeChecked()
+})
+
+Then("the archive settings are saved as both on", async ({ app }) => {
+  await expect
+    .poll(async () => (await rpc(app.page, "settings.get", undefined)).archive)
+    .toStrictEqual({ whenMerged: true, removeWorktree: true })
+})

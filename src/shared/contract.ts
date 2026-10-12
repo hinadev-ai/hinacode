@@ -134,9 +134,13 @@ export const RpcMethods = {
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   /** Null when the scope has no base: the thread has no live worktree, or no turn started in a git checkout. */
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
-  /** Marks the thread settled and removes its worktree. */
-  "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  /** Archives the thread, removing its worktree when `Settings.archive.removeWorktree` is on. */
+  "threads.archive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  /** Brings an archived thread back as idle. A removed worktree stays removed. */
+  "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** The project's own favicon as a data URL, or null when it has none. */
+  "projects.icon": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(Schema.String)),
   /**
    * Commits on every branch of the checkout at `root`, newest first in topological order. `root` must be
    * a project root or a live worktree path.

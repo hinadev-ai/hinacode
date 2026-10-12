@@ -3,12 +3,20 @@ import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema 
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
-import { type AccessMode, type Changes, type ChangesScope, Thread, type ThreadStatus } from "../../shared/domain.ts"
+import {
+  type AccessMode,
+  type Changes,
+  type ChangesScope,
+  isThreadBusy,
+  Thread,
+  type ThreadStatus,
+} from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
   type PersistenceError,
   persistence,
+  ThreadBusyError,
   ThreadStartedError,
   type WorktreeBusyError,
   type WorktreeTakenError,
@@ -18,6 +26,7 @@ import { type CommandError, Git } from "./Git.ts"
 import { Projects } from "./Projects.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { Settings } from "./Settings.ts"
+import { Terminals } from "./Terminals.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
 
@@ -93,11 +102,15 @@ export class Threads extends Context.Service<
       Thread,
       PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
     >
-    /** Marks the thread settled and removes its worktree, deleting the branch only if it is merged. */
-    readonly settle: (
+    /**
+     * Marks the thread archived and ends its terminals. With `Settings.archive.removeWorktree` on, it first
+     * removes the thread's worktree, deleting the branch only if it is merged. Refuses while a turn runs.
+     */
+    readonly archive: (
       id: string,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
-    /** `removeWorktree` first removes the thread's worktree the way settling does. */
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
+    readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    /** `removeWorktree` first removes the thread's worktree the way archiving does. */
     readonly remove: (
       id: string,
       options?: { readonly removeWorktree?: boolean | undefined },
@@ -123,6 +136,7 @@ const make = Effect.gen(function* () {
   const worktrees = yield* Worktrees
   const git = yield* Git
   const settings = yield* Settings
+  const terminals = yield* Terminals
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
 
@@ -297,11 +311,23 @@ const make = Effect.gen(function* () {
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
-  const settle = (id: string) =>
-    Effect.gen(function* () {
-      yield* removeOwnWorktree(yield* get(id))
-      return yield* write(yield* get(id), { id, status: "settled" })
-    })
+  const archive = (id: string) =>
+    worktrees.exclusive(
+      Effect.gen(function* () {
+        const thread = yield* get(id)
+        if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
+        if ((yield* settings.get).archive.removeWorktree && thread.worktreeId) {
+          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id)
+        }
+        yield* terminals.closeThread(id)
+        yield* sql`
+          UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
+        `.pipe(Effect.mapError(persistence("threads.archive")))
+        return yield* get(id)
+      }),
+    )
+
+  const unarchive = (id: string) => Effect.flatMap(get(id), (thread) => write(thread, { id, status: "idle" }))
 
   const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
     Effect.gen(function* () {
@@ -319,7 +345,8 @@ const make = Effect.gen(function* () {
     listFiles,
     changes,
     snapshotTurnBase,
-    settle,
+    archive,
+    unarchive,
     remove,
     resetInterrupted: sql`
       UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')

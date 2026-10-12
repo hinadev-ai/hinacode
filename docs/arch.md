@@ -74,10 +74,10 @@ flowchart BT
   node["NodeServices"]
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>Git, Events"]
-  domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports, Terminals"]
+  domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
+  features["McpCredentials, Ports"]
   runner["AgentRunner"]
-  autos["Automations"]
+  autos["Automations, AutoArchive"]
   mcp["MCP server"]
 
   node --> db --> domain
@@ -335,13 +335,14 @@ stateDiagram-v2
     running --> limited: turn_limited
     awaiting_approval --> limited: turn_limited
     limited --> running: send / scheduled reset retry
-    limited --> settled: settle
+    limited --> archived: archive
     awaiting_approval --> idle: interrupt
-    idle --> settled: settle
+    idle --> archived: archive
+    archived --> idle: unarchive
   }
 ```
 
-Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and settling clear the limit. Restart preserves limited threads and scheduled requests.
+Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and archiving clear the limit. Restart preserves limited threads and scheduled requests.
 
 ```mermaid
 stateDiagram-v2
@@ -350,16 +351,16 @@ stateDiagram-v2
     [*] --> preparing: git worktree add
     preparing --> ready: setup script exits 0
     preparing --> failed: script fails, or the app quit mid-setup
-    ready --> removed: settle / remove
+    ready --> removed: archive with removeWorktree / remove
     failed --> removed: remove
   }
 ```
 
 - **Setup scripts** run with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
-- **Settling** a thread removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so settling a large tree returns immediately. Creating the same branch again waits for that deletion.
+- **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
+- **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads whose links are all merged, and pushes `thread.updated`.
 - **Removal is refused** (`WorktreeBusyError`) while setup runs, while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
 - A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background, using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
-- `archived` exists in the schema but nothing sets it yet.
 
 ## Built-in MCP server
 
@@ -435,7 +436,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Navigation, external links, sender checks | `src/main/security.ts`                                     |
 | Turn orchestration                        | `src/main/services/AgentRunner.ts`                         |
 | Transcript folding (shared with renderer) | `src/shared/foldEvent.ts`                                  |
-| Worktree lifecycle, diff, settle          | `src/main/services/Worktrees.ts`, `Git.ts`, `workspace.ts` |
+| Worktree lifecycle, diff, archive         | `src/main/services/Worktrees.ts`, `Git.ts`, `workspace.ts` |
 | Commit graph (log, show, lane layout)     | `src/main/services/Git.ts`, `src/renderer/lib/gitGraph.ts` |
 | Providers                                 | `src/main/agents/claude/`, `src/main/agents/codex/`        |
 | MCP server and tools                      | `src/main/mcp/`                                            |

@@ -1,23 +1,23 @@
 # Worktrees
 
-A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the project's setup script in it with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, streams the script's output into the side panel, lists the worktree's changes with diffs, and removes the worktree when the thread is settled. The automated cases create the worktree through rpc without an agent turn. The composer creates it on the first send.
+A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the project's setup script in it with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, streams the script's output into the side panel, lists the worktree's changes with diffs, and removes the worktree when the thread is archived with `Remove the worktree when archiving` on. The automated cases create the worktree through rpc without an agent turn. The composer creates it on the first send.
 
 ## Automated coverage
 
-`e2e/features/worktrees.feature` creates threads with a worktree through rpc, then drives their panels and sidebar. It covers the setup script running with the variables and the log ending with its output, the copied `.env`, the branch and checkout in `git worktree list`, changed and untracked files with their diff after `Refresh changes`, a failing script ending in `Setup failed` with the exit code in the log, and settle removing the checkout while keeping a branch that has its own commit.
+`e2e/features/worktrees.feature` creates threads with a worktree through rpc, then drives their panels and sidebar. It covers the setup script running with the variables and the log ending with its output, the copied `.env`, the branch and checkout in `git worktree list`, changed and untracked files with their diff after `Refresh changes`, a failing script ending in `Setup failed` with the exit code in the log, and archiving with worktree removal on removing the checkout while keeping a branch that has its own commit.
 
 ## Sub-features
 
-- `setup-script`, `create` (rpc), `setup-log`, `changes`, `settle-cleanup` (e2e).
+- `setup-script`, `create` (rpc), `setup-log`, `changes`, `archive-cleanup` (e2e).
 - `workspace-pick` and `branch-rename` need a real first turn; use the manual recipe below.
-- `sidebar-branch` (e2e, indirectly) shows the worktree branch under the thread row and marks it removed after settle.
+- `sidebar-branch` (e2e, indirectly) shows the worktree branch under the thread row and marks it removed after archiving with worktree removal on.
 - `pr-badge` the `PR <state>` badge next to the branch comes from `gh pr view` for a branch with a pull request.
 
 ## How to get to it (user POV)
 
 - `Add project` dialog, `Setup script` field.
 - `New thread in <project>`, then the composer `Workspace` picker set to `New worktree` and the optional `Base ref` before the first send.
-- Thread details panel (`Ctrl+.`): `Workspace`, `Setup log`, `Changes`. Settle from the sidebar row menu `Settle…`.
+- Thread details panel (`Ctrl+.`): `Workspace`, `Setup log`, `Changes`. Archive from the sidebar row menu `Archive…` once Settings, Archive, `Remove the worktree when archiving` is on.
 
 ## Driving it with agent-browser
 
@@ -36,4 +36,4 @@ Preconditions:
 - Composer selects can open upward under the header; drive them with the keyboard as above rather than clicking options.
 - The setup script runs through `$SHELL -lc`, so the user's login profile runs first. A noisy profile shows up in the setup log.
 - The worktree lives next to the project root, not inside it. Keep scratch repos inside `$DATA` so cleanup removes their worktrees too.
-- A branch with no commits of its own counts as merged into the base ref, so settle deletes it. The e2e scenario commits first to prove the other branch of that rule.
+- A branch with no commits of its own counts as merged into the base ref, so archiving with worktree removal deletes it. The e2e scenario commits first to prove the other branch of that rule.

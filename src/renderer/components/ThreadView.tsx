@@ -32,7 +32,6 @@ const statusLabel = {
   running: m.thread_status_running,
   awaiting_approval: m.thread_status_awaiting_approval,
   limited: m.thread_status_limited,
-  settled: m.thread_status_settled,
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 

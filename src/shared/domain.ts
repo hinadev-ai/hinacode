@@ -156,7 +156,7 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "settled", "archived"])
+export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
@@ -293,6 +293,14 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
+export const ArchiveSettings = Schema.Struct({
+  /** Archive a thread once every pull request linked to it is merged. */
+  whenMerged: Schema.Boolean,
+  /** Archiving also deletes the thread's worktree folder, and its branch when merged into its base. */
+  removeWorktree: Schema.Boolean,
+})
+export type ArchiveSettings = typeof ArchiveSettings.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
@@ -316,6 +324,7 @@ export const Settings = Schema.Struct({
   /** The access mode new threads start with. */
   defaultAccessMode: AccessMode,
   notifications: NotificationSettings,
+  archive: ArchiveSettings,
 })
 export type Settings = typeof Settings.Type
 
@@ -328,6 +337,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  archive: { whenMerged: false, removeWorktree: false },
 }
 
 export const PullRequestLink = Schema.Struct({

@@ -7,8 +7,8 @@ A local desktop app for running Claude Code and Codex against your repositories.
 ## Features
 
 - Claude Code through the Agent SDK and Codex through the app-server protocol, selectable per thread, with the model picked from each agent's live list.
-- Threads grouped by project in the left sidebar. Drag to reorder, rename inline, settle or delete from the row menu.
-- Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Settling a thread removes the worktree and deletes the branch when it is merged.
+- Threads grouped by project in the left sidebar. Filter by title or project, drag to reorder, rename inline, archive or delete from the row menu. Archived threads live in their own tab and can be brought back.
+- Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Archiving a thread can remove the worktree too, deleting the branch when it is merged. Threads can archive themselves once every linked pull request merges.
 - CLAUDE.md, AGENTS.md and skills load from the project and your home directory, as they do in the CLIs.
 - Approvals for commands, edits and MCP tool calls appear inline. Steer a running turn by sending another message.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.

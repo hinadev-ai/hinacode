@@ -1,7 +1,7 @@
 Feature: Worktrees
   A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the
   project's setup script there with the kkcode variables set, shows the script's output and the
-  worktree's changes, and removes the checkout when the thread is settled.
+  worktree's changes, and removes the checkout when the thread is archived with worktree removal on.
 
   Scenario: A worktree thread runs the setup script with the project variables
     Given a project "wt" for my repository with the setup script "cp \"$KKCODE_ROOT_PATH/.env\" .env && echo \"setup ok on $KKCODE_BRANCH\""
@@ -27,10 +27,11 @@ Feature: Worktrees
     Then the workspace status becomes "Setup failed"
     And the setup log reports that the script exited with code 3
 
-  Scenario: Settling a worktree thread deletes its checkout and keeps the unmerged branch
+  Scenario: Archiving with worktree removal on deletes the checkout and keeps the unmerged branch
     Given a project "wt" for my repository
-    When I create a thread titled "wt settle" in "wt" in a new worktree
+    And archiving removes worktrees
+    When I create a thread titled "wt archive" in "wt" in a new worktree
     And the workspace status becomes "Ready"
     And I commit a change in the worktree
-    And I settle the thread and clean up its worktree
+    And I archive the thread and delete its worktree
     Then the worktree is removed from disk but its branch is kept

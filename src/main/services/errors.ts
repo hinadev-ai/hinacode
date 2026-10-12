@@ -62,6 +62,15 @@ export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()
   }
 }
 
+/** A turn or approval is in flight, and archiving would hide it from the active sidebar. */
+export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("ThreadBusyError", {
+  id: Schema.String,
+}) {
+  override get message(): string {
+    return "This thread is still running. Stop it or wait for it to finish before archiving."
+  }
+}
+
 const busyReasons = {
   setup: "its setup script is still running",
   turn: "a thread is still running in it",
