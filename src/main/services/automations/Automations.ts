@@ -334,11 +334,8 @@ const make = Effect.gen(function* () {
   const pollOnce = (id: string) =>
     Effect.gen(function* () {
       const automation = yield* getRow(id)
-      if (automation.cursor === null) {
-        // First poll of a new automation: start from now instead of replaying old events.
-        return yield* savePollState(id, initialCursor(automation.trigger, new Date()))
-      }
-      const { events: polled, cursor } = yield* pollSource(automation, automation.cursor)
+      const previousCursor = automation.cursor ?? initialCursor(automation.trigger, new Date(automation.createdAt))
+      const { events: polled, cursor } = yield* pollSource(automation, previousCursor)
       yield* Effect.forEach(polled, (event) => startRun(automation, event.key, event.payload), { discard: true })
       yield* savePollState(id, cursor)
     }).pipe(
@@ -434,7 +431,7 @@ const make = Effect.gen(function* () {
         name: input.name.trim(),
         model: input.model.trim(),
         id: randomUUID(),
-        cursor: null,
+        cursor: input.enabled && input.trigger.type !== "webhook" ? initialCursor(input.trigger, new Date(now)) : null,
         polledAt: null,
         createdAt: now,
         updatedAt: now,
@@ -456,7 +453,16 @@ const make = Effect.gen(function* () {
         })
       }
       const definedPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined))
-      const next: AutomationRow = { ...current, ...definedPatch, updatedAt: yield* nowIso }
+      const now = yield* nowIso
+      const next: AutomationRow = {
+        ...current,
+        ...definedPatch,
+        updatedAt: now,
+        cursor:
+          !current.enabled && patch.enabled === true && current.cursor === null && current.trigger.type !== "webhook"
+            ? initialCursor(current.trigger, new Date(now))
+            : current.cursor,
+      }
       yield* validate(next)
       const encoded = yield* encodeRow(next).pipe(Effect.mapError(persistence("automations.update")))
       yield* sql`
@@ -464,7 +470,7 @@ const make = Effect.gen(function* () {
         SET name = ${encoded.name}, enabled = ${encoded.enabled}, trigger = ${encoded.trigger},
             prompt_template = ${encoded.promptTemplate}, provider = ${encoded.provider}, model = ${encoded.model},
             run_in_worktree = ${encoded.runInWorktree}, branch_template = ${encoded.branchTemplate},
-            updated_at = ${encoded.updatedAt}
+            cursor = COALESCE(cursor, ${encoded.cursor}), updated_at = ${encoded.updatedAt}
         WHERE id = ${id}
       `.pipe(Effect.mapError(persistence("automations.update")))
       yield* supervise(next)

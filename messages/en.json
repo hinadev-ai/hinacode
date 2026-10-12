@@ -189,7 +189,7 @@
   "settings_keybindings_conflict": "Also bound to {commands}. Only one of them will run.",
   "settings_integrations": "Integrations",
   "settings_linear_label": "Linear API key",
-  "settings_linear_hint": "Create a personal API key in Linear under Settings > API. kkcode encrypts it on this machine and never shows it again.",
+  "settings_linear_hint": "Create a personal API key in Linear under Settings > API. This enables Linear tools for agents. To start threads automatically, create a Linear issue automation in Settings > Automations. kkcode encrypts the key on this machine and never shows it again.",
   "settings_linear_placeholder": "lin_api_…",
   "settings_linear_stored": "A key is stored.",
   "settings_linear_missing": "No key stored.",
