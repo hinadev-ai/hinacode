@@ -3,18 +3,28 @@ import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema 
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
-import { type AccessMode, type Changes, type ChangesScope, Thread, type ThreadStatus } from "../../shared/domain.ts"
+import {
+  type AccessMode,
+  type Changes,
+  type ChangesScope,
+  Thread,
+  type ThreadStatus,
+  type WorktreeSource,
+} from "../../shared/domain.ts"
+import { parseGitHubRepository } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
   type PersistenceError,
   persistence,
+  PullRequestElsewhereError,
   ThreadStartedError,
   type WorktreeBusyError,
   type WorktreeTakenError,
 } from "./errors.ts"
 import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
+import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { Settings } from "./Settings.ts"
@@ -83,15 +93,23 @@ export class Threads extends Context.Service<
     /** Whether the thread has any message yet. */
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
     /**
-     * Moves a thread that has not started into a new worktree forked from `baseRef`, or from the project's
-     * current branch when `baseRef` is empty. The branch is named after the thread's title.
+     * Moves a thread that has not started into a new worktree. A `branch` source forks a branch named after
+     * the thread's title from `baseRef`, or from the project's current branch when it is empty. A
+     * `pullRequest` source checks out that pull request, and `pullRequestUrl` names it so it can be linked.
      */
     readonly attachWorktree: (
       id: string,
-      baseRef: string,
+      source: WorktreeSource,
     ) => Effect.Effect<
-      Thread,
-      PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
+      { readonly thread: Thread; readonly pullRequestUrl: string | null },
+      | PersistenceError
+      | NotFoundError
+      | CommandError
+      | WorktreeTakenError
+      | ThreadStartedError
+      | GitHubError
+      | Schema.SchemaError
+      | PullRequestElsewhereError
     >
     /** Marks the thread settled and removes its worktree, deleting the branch only if it is merged. */
     readonly settle: (
@@ -122,6 +140,7 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects
   const worktrees = yield* Worktrees
   const git = yield* Git
+  const github = yield* GitHub
   const settings = yield* Settings
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
@@ -243,20 +262,43 @@ const make = Effect.gen(function* () {
       return next
     })
 
-  const attachWorktree = (id: string, baseRef: string) =>
+  const pullRequestWorktree = (projectId: string, selector: string) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const head = yield* github.pullRequestHead(rootPath, selector)
+      // gh resolves a URL wherever it points, but the head is fetched from this project's origin.
+      const origin = yield* github.repository(rootPath)
+      const target = parseGitHubRepository(head.url)
+      if (
+        origin &&
+        target &&
+        `${origin.owner}/${origin.name}`.toLowerCase() !== `${target.owner}/${target.name}`.toLowerCase()
+      ) {
+        return yield* new PullRequestElsewhereError({ url: head.url, repository: `${origin.owner}/${origin.name}` })
+      }
+      return { worktree: yield* worktrees.createFromPullRequest(projectId, head), pullRequestUrl: head.url }
+    })
+
+  const attachWorktree = (id: string, source: WorktreeSource) =>
     Effect.gen(function* () {
       const thread = yield* get(id)
       if (thread.worktreeId !== null || (yield* started(id))) return yield* new ThreadStartedError({ id })
-      const worktree = yield* worktrees.create({
-        projectId: thread.projectId,
-        branch: `kk/${slugifyBranch(thread.title) || randomName()}`,
-        baseRef: baseRef.trim() || (yield* worktrees.currentBranch(thread.projectId)),
-      })
+      const { worktree, pullRequestUrl } =
+        source._tag === "pullRequest"
+          ? yield* pullRequestWorktree(thread.projectId, source.selector)
+          : {
+              worktree: yield* worktrees.create({
+                projectId: thread.projectId,
+                branch: `kk/${slugifyBranch(thread.title) || randomName()}`,
+                baseRef: source.baseRef.trim() || (yield* worktrees.currentBranch(thread.projectId)),
+              }),
+              pullRequestUrl: null,
+            }
       const updatedAt = yield* nowIso
       yield* sql`UPDATE thread SET worktree_id = ${worktree.id}, updated_at = ${updatedAt} WHERE id = ${id}`.pipe(
         Effect.mapError(persistence("threads.attachWorktree")),
       )
-      return { ...thread, worktreeId: worktree.id, updatedAt }
+      return { thread: { ...thread, worktreeId: worktree.id, updatedAt }, pullRequestUrl }
     })
 
   const listFiles = (id: string) =>

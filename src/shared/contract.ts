@@ -41,6 +41,8 @@ import {
   ThreadSearchHit,
   ThreadStatus,
   Worktree,
+  WorktreeSource,
+  OpenPullRequest,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
 
@@ -137,6 +139,12 @@ export const RpcMethods = {
   /** Marks the thread settled and removes its worktree. */
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** The ref a new worktree forks from unless the user picks another: origin's default branch, else `main`. */
+  "projects.defaultBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** Local branches, most recently committed first, then `origin/*` branches that have no local copy. */
+  "projects.branches": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(Schema.String)),
+  /** Open pull requests of the project's repository, newest first. Empty when `gh` is missing or signed out. */
+  "projects.pullRequests": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(OpenPullRequest)),
   /**
    * Commits on every branch of the checkout at `root`, newest first in topological order. `root` must be
    * a project root or a live worktree path.
@@ -218,7 +226,7 @@ export const RpcMethods = {
       threadId: Schema.String,
       prompt: Schema.String,
       attachments: Schema.optional(Schema.Array(Attachment)),
-      worktree: Schema.optional(Schema.Struct({ baseRef: Schema.String })),
+      worktree: Schema.optional(WorktreeSource),
     }),
     Schema.Void,
   ),

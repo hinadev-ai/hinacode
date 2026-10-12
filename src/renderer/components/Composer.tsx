@@ -17,7 +17,7 @@ import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { emptyDraft, useDrafts } from "../stores/drafts.ts"
+import { emptyDraft, toWorktreeSource, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import {
@@ -96,7 +96,7 @@ export function Composer({ thread }: { thread: Thread }) {
               threadId: thread.id,
               prompt,
               attachments: sent.attachments,
-              worktree: unstarted ? (sent.worktree ?? undefined) : undefined,
+              worktree: unstarted && sent.worktree ? toWorktreeSource(sent.worktree.ref) : undefined,
             }))
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)

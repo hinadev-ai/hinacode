@@ -16,7 +16,7 @@ A thread can run in its own git worktree. kkcode creates the branch and checkout
 ## How to get to it (user POV)
 
 - `Add project` dialog, `Setup script` field.
-- `New thread in <project>`, then the composer `Workspace` picker set to `New worktree` and the optional `Base ref` before the first send.
+- `New thread in <project>`, then tick `Worktree` under the composer and edit `Branch or pull request` (prefilled with the default branch) before the first send. It takes a branch, a PR number such as `#98`, or a PR URL, and suggests open PRs and branches.
 - Thread details panel (`Ctrl+.`): `Workspace`, `Setup log`, `Changes`. Settle from the sidebar row menu `Settle…`.
 
 ## Driving it with agent-browser
@@ -26,12 +26,13 @@ Preconditions:
 - Instance launched, doctor passes, a project on a repository that has a GitHub remote and a branch with an open pull request, and `gh` signed in. This touches GitHub read-only.
 - `AB="agent-browser --session kkv-$PORT-worktrees"`, connected.
 
-- **Composer creation and naming.** Start a new thread, choose `New worktree` under `Workspace`, enter `main` in `Base ref`, and send `Reply with the single word: ok`. `worktrees.list` reports the checkout while setup streams into the panel. After the reply, the placeholder title and branch change together; read the checkout path and branch from rpc before inspecting git.
+- **Composer creation and naming.** Start a new thread, tick `Worktree`, keep `main` in `Branch or pull request`, and send `Reply with the single word: ok`. `worktrees.list` reports the checkout while setup streams into the panel. After the reply, the placeholder title and branch change together; read the checkout path and branch from rpc before inspecting git.
 - **PR badge.** Open a thread on a worktree branch with a pull request. The `Workspace` row shows `PR open` linking to the pull request. Screenshot `worktrees-01-pr-badge.png`.
 
 ## Gotchas
 
-- Nothing is created until the first send. Picking `New worktree` and leaving the thread unsent leaves no branch or folder.
+- Nothing is created until the first send. Ticking `Worktree` and leaving the thread unsent leaves no branch or folder.
+- **From a pull request.** Use a project cloned from a GitHub repo with open PRs and start the app with `KKCODE_MOCK_CLAUDE=usage-limit`, so the send creates the worktree without a real turn. `#<n>` or the PR URL checks out the PR's head branch tracking `origin` and links the PR; a PR URL of another repository is refused with an error under the composer. Type into the field after selecting its text through the DOM (`el.select()`), because `fill` may append to the prefilled `main`.
 - `Workspace` and `Agent` exist only before the first message. To test them again, start a new thread.
 - Composer selects can open upward under the header; drive them with the keyboard as above rather than clicking options.
 - The setup script runs through `$SHELL -lc`, so the user's login profile runs first. A noisy profile shows up in the setup log.

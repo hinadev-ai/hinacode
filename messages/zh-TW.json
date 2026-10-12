@@ -110,7 +110,6 @@
   "secret_request_hint": "密鑰只儲存在這台電腦上，不會顯示給代理。",
   "common_retry": "重試",
   "thread_worktree_label": "在新的 worktree 中執行",
-  "thread_base_ref_label": "基準 ref",
   "panel_label": "討論串詳細資訊",
   "panel_show": "顯示討論串詳細資訊",
   "panel_hide": "隱藏討論串詳細資訊",
@@ -479,9 +478,6 @@
   "sidebar_pull_request_stack": "開啟 pull request #{number}，{count} 個連結中最新的一個",
   "thread_agent_picker": "代理",
   "thread_workspace_picker": "工作區",
-  "thread_workspace_local": "本機",
-  "thread_workspace_worktree": "新的 worktree",
-  "thread_base_ref_prefix": "基於",
   "settings_text_generation_model": "討論串命名",
   "settings_text_generation_model_hint": "根據第一則訊息為討論串與分支命名。",
   "settings_default_access": "預設存取權限",
@@ -614,5 +610,11 @@
   "settings_notifications_not_determined": "通知需要你的許可",
   "settings_notifications_not_determined_hint": "macOS 會在 kkcode 第一次傳送通知時詢問。現在就允許，才不會錯過第一則通知。",
   "settings_notifications_allow": "允許通知",
-  "notification_open": "開啟"
+  "notification_open": "開啟",
+  "thread_worktree_toggle": "工作樹",
+  "thread_worktree_ref_label": "分支或 pull request",
+  "thread_worktree_ref_placeholder": "main、#123 或 pull request 網址",
+  "thread_worktree_ref_pull_requests": "Pull requests",
+  "thread_worktree_ref_branches": "分支",
+  "thread_worktree_ref_draft": "草稿"
 }

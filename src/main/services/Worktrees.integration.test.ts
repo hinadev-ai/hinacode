@@ -435,3 +435,95 @@ describe("thread changes", () => {
     ),
   )
 })
+
+const commit = (cwd: string, message: string) => {
+  git(cwd, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", message)
+  return git(cwd, "rev-parse", "HEAD").trim()
+}
+
+/**
+ * Gives the repo an `origin` holding a pull request branch and a fork's pull request, which GitHub only
+ * serves as `refs/pull/<n>/head`. Neither exists locally, as for a pull request someone else opened.
+ */
+const withOrigin = (root: string) => {
+  const origin = join(dirname(root), "origin.git")
+  execFileSync("git", ["init", "-q", "--bare", origin])
+  git(root, "remote", "add", "origin", origin)
+  git(root, "push", "-q", "origin", "main")
+  git(root, "switch", "-q", "-c", "feature/login")
+  const branchHead = commit(root, "fix login")
+  git(root, "push", "-q", "origin", "feature/login")
+  git(root, "switch", "-q", "-c", "fork-work", "main")
+  const forkHead = commit(root, "fork change")
+  git(root, "push", "-q", "origin", "fork-work:refs/pull/8/head")
+  git(root, "switch", "-q", "main")
+  git(root, "branch", "-q", "-D", "feature/login", "fork-work")
+  git(root, "update-ref", "-d", "refs/remotes/origin/feature/login")
+  return { branchHead, forkHead }
+}
+
+const pullRequestHead = (overrides: Partial<GitHub.PullRequestHead>): GitHub.PullRequestHead => ({
+  url: "https://github.com/acme/repo/pull/7",
+  number: 7,
+  headRefName: "feature/login",
+  baseRefName: "main",
+  isCrossRepository: false,
+  ...overrides,
+})
+
+describe("worktrees from pull requests", () => {
+  it.live("checks out the pull request's branch, tracking origin so pushes update the pull request", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const { branchHead } = withOrigin(root)
+        const worktree = yield* Worktrees.use((worktrees) =>
+          worktrees.createFromPullRequest(projectId, pullRequestHead({})),
+        )
+        expect({ branch: worktree.branch, baseRef: worktree.baseRef }).toStrictEqual({
+          branch: "feature/login",
+          baseRef: "main",
+        })
+        expect(git(worktree.path, "rev-parse", "HEAD").trim()).toBe(branchHead)
+        expect(git(worktree.path, "rev-parse", "--abbrev-ref", "@{upstream}").trim()).toBe("origin/feature/login")
+      }),
+    ),
+  )
+
+  it.live("checks out a fork's pull request on a local kk/pr-<number> branch", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const { forkHead } = withOrigin(root)
+        const worktree = yield* Worktrees.use((worktrees) =>
+          worktrees.createFromPullRequest(
+            projectId,
+            pullRequestHead({ number: 8, headRefName: "fork-work", isCrossRepository: true }),
+          ),
+        )
+        expect(worktree.branch).toBe("kk/pr-8")
+        expect(git(worktree.path, "rev-parse", "HEAD").trim()).toBe(forkHead)
+      }),
+    ),
+  )
+})
+
+describe("branch suggestions", () => {
+  it.live("lists local branches newest first, then origin's branches that have no local copy", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        git(root, "fetch", "-q", "origin")
+        git(root, "switch", "-q", "-c", "kk/recent")
+        execFileSync(
+          "git",
+          ["-C", root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "recent"],
+          {
+            env: { ...process.env, GIT_COMMITTER_DATE: "2030-01-01T00:00:00" },
+          },
+        )
+        git(root, "switch", "-q", "main")
+        const branches = yield* Worktrees.use((worktrees) => worktrees.branches(projectId))
+        expect(branches).toStrictEqual(["kk/recent", "main", "origin/feature/login"])
+      }),
+    ),
+  )
+})
