@@ -23,6 +23,7 @@ import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
 import * as Secrets from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
+import * as Terminals from "./Terminals.ts"
 import * as ThreadNaming from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
@@ -99,6 +100,7 @@ const observedNaming = (named: Deferred.Deferred<void>) =>
 const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Deferred.Deferred<void>) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(Settings.layer),
