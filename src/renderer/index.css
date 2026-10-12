@@ -4,6 +4,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/noto-sans-tc";
 @import "@fontsource-variable/noto-sans-jp";
+@import "tw-shimmer";
 
 @custom-variant dark (&:is(.dark *));
 
