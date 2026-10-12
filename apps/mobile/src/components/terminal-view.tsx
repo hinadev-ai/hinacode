@@ -1,7 +1,7 @@
 import { useImperativeHandle, useRef } from "react"
 import { WebView } from "react-native-webview"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
-import { TERMINAL_HTML } from "@/terminal/terminal.html"
+import { TERMINAL_HTML } from "@/terminal/terminal-page"
 
 type PageMessage = { type: "input"; data: string } | { type: "size"; cols: number; rows: number }
 
