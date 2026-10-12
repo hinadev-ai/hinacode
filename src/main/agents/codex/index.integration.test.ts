@@ -219,9 +219,9 @@ const question = {
 } satisfies import("./protocol.ts").ToolRequestUserInputQuestion
 
 const pendingQuestion = (turn: Turn) => {
-  const event = turn.events.find((event) => event.type === "question_requested")
-  if (event?.type !== "question_requested") throw new Error("No pending question")
-  return event.request
+  const requested = turn.events.find((event) => event.type === "question_requested")
+  if (requested?.type !== "question_requested") throw new Error("No pending question")
+  return requested.request
 }
 
 describe("Codex questions", () => {

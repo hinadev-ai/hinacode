@@ -15,11 +15,11 @@ const setup = () => {
   const questions = makeQuestions((_session, event) => events.push(event))
   const session = { threadId: "thread", turn: {} }
   const abort = new AbortController()
-  const options = { signal: abort.signal, toolUseID: "tool-use" }
+  const options = { signal: abort.signal, toolUseID: "tool-use", requestId: "request" }
   const request = (): QuestionRequest => {
-    const event = events.find((event) => event.type === "question_requested")
-    if (event?.type !== "question_requested") throw new Error("No question request")
-    return event.request
+    const requested = events.find((event) => event.type === "question_requested")
+    if (requested?.type !== "question_requested") throw new Error("No question request")
+    return requested.request
   }
   return { events, questions, session, abort, options, request }
 }

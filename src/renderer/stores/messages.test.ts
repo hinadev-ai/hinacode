@@ -462,3 +462,19 @@ test("unload cancels pending deltas and reload uses the authoritative snapshot",
   expect(store().byThread[threadId]).toBeUndefined()
   expect(vi.getTimerCount()).toBe(0)
 })
+
+test("reconciles pending questions across snapshot, resolution, and turn failure", async () => {
+  const request = { id: "q1", threadId, provider: "codex" as const, questions: [] }
+  const loading = store().load(threadId)
+  transcriptResponse.resolve({
+    result: { messages: [assistant("")], approvals: [], questions: [request], secretRequests: [], seq: 1 },
+  })
+  await loading
+  expect(ready().questions).toStrictEqual([request])
+  store().receive(event(2, { type: "question_resolved", requestId: request.id }))
+  expect(ready().questions).toStrictEqual([])
+  store().receive(event(3, { type: "question_requested", request }))
+  expect(ready().questions).toStrictEqual([request])
+  store().receive(event(4, { type: "turn_failed", message: "Interrupted" }))
+  expect(ready().questions).toStrictEqual([])
+})
