@@ -33,6 +33,7 @@ export type ThreadStartParams = {
   approvalPolicy?: AskForApproval | null
   sandbox?: SandboxMode | null
   config?: { [key in string]?: unknown } | null
+  developerInstructions?: string | null
 }
 
 export type ThreadResumeParams = ThreadStartParams & {

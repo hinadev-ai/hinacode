@@ -16,6 +16,7 @@ import type {
 import type { Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
@@ -287,6 +288,7 @@ const make = Effect.gen(function* () {
                 kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
               },
             },
+            developerInstructions: AGENT_INSTRUCTIONS,
           } satisfies ThreadStartParams
           const { thread, sandbox } = input.resumeSessionId
             ? yield* client.request<ThreadStartResponse>("thread/resume", {
