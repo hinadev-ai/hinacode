@@ -2,7 +2,10 @@ import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { createContext, type ReactNode, useContext } from "react"
 import { RiGlobalLine } from "react-icons/ri"
+import { parsePullRequestUrl, pullRequestLabel } from "../lib/pullRequestRefs.ts"
 import { faviconAtom } from "../lib/rpc.ts"
+import { useThreadRepository } from "../lib/threadRepository.ts"
+import { PullRequestLink } from "./PullRequestLink.tsx"
 
 /** Whether `href` is a web url, the only kind that gets a favicon. */
 export const isWebUrl = (href: string | undefined): href is string => /^https?:\/\//i.test(href ?? "")
@@ -35,9 +38,19 @@ function FetchedFavicon({ origin }: { origin: string }) {
 
 /**
  * A link that opens in the system browser with its site's favicon in front. A bare url (text equal to
- * its href) is shown without a trailing slash.
+ * its href) is shown without a trailing slash. A GitHub pull request gets the GitHub mark, a hover card,
+ * and a short name when its text is bare: `#n` in the thread's repository, `owner/repo#n` elsewhere.
  */
 export function WebLink({ href, children }: { href: string; children: ReactNode }) {
+  const repository = useThreadRepository()
+  const pullRequest = parsePullRequestUrl(href)
+  if (pullRequest) {
+    return (
+      <PullRequestLink href={href} pullRequest={pullRequest}>
+        {children === href ? pullRequestLabel(pullRequest, repository) : children}
+      </PullRequestLink>
+    )
+  }
   const label = children === href ? href.replace(/\/$/, "") : children
   return (
     // target=_blank routes the click through the main process, which opens it in the system browser.
