@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from "expo-router"
 import { useState } from "react"
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native"
+import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Chat } from "@/components/chat"
 import { PullRequests } from "@/components/pull-requests"
@@ -89,7 +89,8 @@ export default function ThreadScreen() {
           </Text>
         </View>
       ) : (
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
+        <KeyboardAvoidingView style={styles.flex} behavior="padding">
           <View style={[styles.flex, tab !== "chat" && styles.hidden]}>
             <Chat thread={thread} />
           </View>

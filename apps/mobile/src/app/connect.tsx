@@ -1,6 +1,7 @@
 import { CameraView, useCameraPermissions } from "expo-camera"
+import { useHeaderHeight } from "expo-router/react-navigation"
 import { useState } from "react"
-import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { parsePairingUrl } from "@shared/remote.ts"
 import { pair } from "@/components/connection-provider"
@@ -27,63 +28,67 @@ export default function ConnectScreen() {
   }
 
   const native = Platform.OS !== "web"
+  // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
+  const headerHeight = useHeaderHeight()
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <View style={[styles.mark, { backgroundColor: theme.primary }]}>
-        <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
-      </View>
-      <Text style={[styles.lead, { color: theme.textMuted }]}>
-        On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
-        the pairing URL.
-      </Text>
-      {refused !== null && <Notice text={refused} tone="danger" />}
-      {native && (
-        <Button
-          testID="scan-qr-button"
-          label="Scan QR code"
-          icon="RiQrScanLine"
-          variant="primary"
-          onPress={() => setScanning(true)}
-        />
-      )}
-      <View style={styles.field}>
-        <Text nativeID="pairing-url-label" style={[styles.label, { color: theme.text }]}>
-          Pairing URL
+    <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <View style={[styles.mark, { backgroundColor: theme.primary }]}>
+          <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
+        </View>
+        <Text style={[styles.lead, { color: theme.textMuted }]}>
+          On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
+          the pairing URL.
         </Text>
-        <TextInput
-          testID="pairing-url-input"
-          accessibilityLabel="Pairing URL"
-          accessibilityLabelledBy="pairing-url-label"
-          value={text}
-          onChangeText={(value) => {
-            setText(value)
-            setInvalid(false)
-          }}
-          placeholder="kkcode://connect?host=...&port=...&token=..."
-          placeholderTextColor={theme.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          multiline
-          style={[
-            styles.input,
-            { color: theme.text, backgroundColor: theme.surface, borderColor: invalid ? theme.danger : theme.border },
-          ]}
-        />
-        {invalid && (
-          <Text accessibilityRole="alert" style={{ color: theme.danger }}>
-            This is not a kkcode pairing URL. Copy it again from Settings, Remote.
-          </Text>
+        {refused !== null && <Notice text={refused} tone="danger" />}
+        {native && (
+          <Button
+            testID="scan-qr-button"
+            label="Scan QR code"
+            icon="RiQrScanLine"
+            variant="primary"
+            onPress={() => setScanning(true)}
+          />
         )}
-      </View>
-      <Button
-        testID="connect-button"
-        label="Connect"
-        variant={native ? "secondary" : "primary"}
-        onPress={() => void submit(text)}
-      />
-      {scanning && <Scanner onClose={() => setScanning(false)} onScan={submit} />}
-    </ScrollView>
+        <View style={styles.field}>
+          <Text nativeID="pairing-url-label" style={[styles.label, { color: theme.text }]}>
+            Pairing URL
+          </Text>
+          <TextInput
+            testID="pairing-url-input"
+            accessibilityLabel="Pairing URL"
+            accessibilityLabelledBy="pairing-url-label"
+            value={text}
+            onChangeText={(value) => {
+              setText(value)
+              setInvalid(false)
+            }}
+            placeholder="kkcode://connect?host=...&port=...&token=..."
+            placeholderTextColor={theme.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+            style={[
+              styles.input,
+              { color: theme.text, backgroundColor: theme.surface, borderColor: invalid ? theme.danger : theme.border },
+            ]}
+          />
+          {invalid && (
+            <Text accessibilityRole="alert" style={{ color: theme.danger }}>
+              This is not a kkcode pairing URL. Copy it again from Settings, Remote.
+            </Text>
+          )}
+        </View>
+        <Button
+          testID="connect-button"
+          label="Connect"
+          variant={native ? "secondary" : "primary"}
+          onPress={() => void submit(text)}
+        />
+        {scanning && <Scanner onClose={() => setScanning(false)} onScan={submit} />}
+      </ScrollView>
+    </KeyboardAvoidingView>
   )
 }
 
@@ -125,6 +130,7 @@ function Scanner({ onClose, onScan }: { onClose: () => void; onScan: (data: stri
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: { padding: 20, gap: 16 },
   mark: {
     width: 56,
