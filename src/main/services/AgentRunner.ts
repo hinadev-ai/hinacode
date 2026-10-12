@@ -9,6 +9,8 @@ import type {
   ApprovalRequest,
   ModelInfo,
   ProviderId,
+  QuestionAnswers,
+  QuestionRequest,
   Subagent,
   SecretRequest,
 } from "../../shared/agent.ts"
@@ -66,6 +68,7 @@ export class AgentRunner extends Context.Service<
     /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+    readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
     /**
      * Shows the user a secret card in the thread and waits for their answer. Fails when no turn is
      * running or the turn ends first. The value never passes through here: see `respondSecret`.
@@ -95,9 +98,11 @@ export class AgentRunner extends Context.Service<
 const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
   switch (event.type) {
     case "approval_requested":
+    case "question_requested":
     case "secret_requested":
       return "awaiting_approval"
     case "approval_resolved":
+    case "question_resolved":
     case "secret_resolved":
       return "running"
     case "turn_completed":
@@ -157,6 +162,7 @@ const make = Effect.gen(function* () {
   const busyThreads = new Set<string>()
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
+  const questions = new Map<string, QuestionRequest>()
   const secretRequests = new Map<
     string,
     { readonly request: SecretRequest; readonly answer: Deferred.Deferred<"stored" | "declined", AgentError> }
@@ -233,6 +239,8 @@ const make = Effect.gen(function* () {
 
         if (event.type === "approval_requested") approvals.set(event.request.id, event.request)
         if (event.type === "approval_resolved") approvals.delete(event.requestId)
+        if (event.type === "question_requested") questions.set(event.request.id, event.request)
+        if (event.type === "question_resolved") questions.delete(event.requestId)
         if (event.type === "session_bound" && event.providerSessionId !== thread.providerSessionId) {
           yield* updateThread({ id: thread.id, providerSessionId: event.providerSessionId })
         }
@@ -266,6 +274,7 @@ const make = Effect.gen(function* () {
 
     const finish = Effect.gen(function* () {
       for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
+      for (const [id, request] of questions) if (request.threadId === thread.id) questions.delete(id)
       for (const [id, { request, answer }] of secretRequests) {
         if (request.threadId !== thread.id) continue
         secretRequests.delete(id)
@@ -464,6 +473,12 @@ const make = Effect.gen(function* () {
         if (request === undefined) return Effect.void
         return providers[request.provider]?.respondApproval(requestId, decision) ?? Effect.void
       }),
+    respondQuestion: (requestId, answers) =>
+      Effect.suspend(() => {
+        const request = questions.get(requestId)
+        if (request === undefined) return Effect.void
+        return providers[request.provider].respondQuestion(requestId, answers)
+      }),
     requestSecret,
     respondSecret,
     // The database lags a running turn by up to PERSIST_INTERVAL_MS, so its messages come from memory.
@@ -479,6 +494,7 @@ const make = Effect.gen(function* () {
         return {
           messages: persisted.map((message) => live.get(message.id) ?? message),
           approvals: [...approvals.values()].filter((request) => request.threadId === threadId),
+          questions: [...questions.values()].filter((request) => request.threadId === threadId),
           secretRequests: [...secretRequests.values()]
             .map(({ request }) => request)
             .filter((request) => request.threadId === threadId),

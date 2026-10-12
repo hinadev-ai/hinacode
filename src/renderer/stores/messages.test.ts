@@ -59,7 +59,7 @@ const loadReady = async (
 ) => {
   transcriptResponse = Promise.withResolvers()
   const loading = store().load(id)
-  transcriptResponse.resolve({ result: { messages, approvals, secretRequests: [], seq: 0 } })
+  transcriptResponse.resolve({ result: { messages, approvals, questions: [], secretRequests: [], seq: 0 } })
   await loading
   vi.useFakeTimers()
 }
@@ -72,7 +72,13 @@ test("keeps pushes from before, during and after the snapshot exactly once", asy
   // Published after the snapshot was captured.
   store().receive(event(3, { type: "text_delta", text: "while loading " }))
   transcriptResponse.resolve({
-    result: { messages: [assistant("persisted prefix ")], approvals: [approval], secretRequests: [], seq: 2 },
+    result: {
+      messages: [assistant("persisted prefix ")],
+      approvals: [approval],
+      questions: [],
+      secretRequests: [],
+      seq: 2,
+    },
   })
   await loading
   store().receive(event(4, { type: "text_delta", text: "after load" }))
@@ -94,7 +100,9 @@ test("replays message pushes buffered after the snapshot", async () => {
     seq: 8,
     message: { ...assistant("closed"), completedAt: "2026-10-12T00:00:01.000Z" },
   })
-  transcriptResponse.resolve({ result: { messages: [assistant("open")], approvals: [], secretRequests: [], seq: 6 } })
+  transcriptResponse.resolve({
+    result: { messages: [assistant("open")], approvals: [], questions: [], secretRequests: [], seq: 6 },
+  })
   await loading
 
   expect(ready().messages.map((message) => [message.id, message.parts])).toStrictEqual([
@@ -110,7 +118,9 @@ test("ignores pushes for threads that were never opened", () => {
 
 test("keeps a secret request until it is resolved or the turn ends", async () => {
   const loading = store().load(threadId)
-  transcriptResponse.resolve({ result: { messages: [assistant("")], approvals: [], secretRequests: [], seq: 0 } })
+  transcriptResponse.resolve({
+    result: { messages: [assistant("")], approvals: [], questions: [], secretRequests: [], seq: 0 },
+  })
   await loading
   store().receive(event(1, { type: "secret_requested", request: secretRequest }))
   expect(ready().secretRequests).toStrictEqual([secretRequest])
@@ -125,7 +135,7 @@ test("keeps a secret request until it is resolved or the turn ends", async () =>
 test("batches sustained text deltas and publishes the complete turn immediately", async () => {
   const loading = store().load(threadId)
   transcriptResponse.resolve({
-    result: { messages: [assistant("")], approvals: [approval], secretRequests: [], seq: 0 },
+    result: { messages: [assistant("")], approvals: [approval], questions: [], secretRequests: [], seq: 0 },
   })
   await loading
 
@@ -416,6 +426,7 @@ test("loading keeps raw text and reasoning pushes until snapshot sequence filter
         },
       ],
       approvals: [],
+      questions: [],
       secretRequests: [],
       seq: 2,
     },
@@ -450,4 +461,29 @@ test("unload cancels pending deltas and reload uses the authoritative snapshot",
   vi.runAllTimers()
   expect(store().byThread[threadId]).toBeUndefined()
   expect(vi.getTimerCount()).toBe(0)
+})
+
+test("reconciles pending questions across snapshot, resolution, and turn failure", async () => {
+  const request = { id: "q1", threadId, provider: "codex" as const, questions: [] }
+  const loading = store().load(threadId)
+  transcriptResponse.resolve({
+    result: { messages: [assistant("")], approvals: [], questions: [request], secretRequests: [], seq: 1 },
+  })
+  await loading
+  expect(ready().questions).toStrictEqual([request])
+  store().receive(event(2, { type: "question_resolved", requestId: request.id }))
+  expect(ready().questions).toStrictEqual([])
+  store().receive(event(3, { type: "question_requested", request }))
+  expect(ready().questions).toStrictEqual([request])
+  store().receive(event(4, { type: "turn_failed", message: "Interrupted" }))
+  expect(ready().questions).toStrictEqual([])
+})
+
+test("clears pending questions immediately when a turn reaches a usage limit", async () => {
+  await loadReady()
+  const request = { id: "q-limit", threadId, provider: "codex" as const, questions: [] }
+  store().receive(event(1, { type: "question_requested", request }))
+  expect(ready().questions).toStrictEqual([request])
+  store().receive(event(2, { type: "turn_limited", limit: { kind: "org_spend", message: "Usage exhausted" } }))
+  expect(ready().questions).toStrictEqual([])
 })

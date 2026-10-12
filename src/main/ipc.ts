@@ -175,6 +175,8 @@ const handlers: Handlers = {
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
+  "questions.respond": ({ requestId, answers }) =>
+    AgentRunner.use((runner) => runner.respondQuestion(requestId, answers)),
   "secrets.respond": ({ requestId, value }) => AgentRunner.use((runner) => runner.respondSecret(requestId, value)),
 
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),

@@ -20,6 +20,7 @@ import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
+import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
 
@@ -199,6 +200,7 @@ export const layer = Layer.effect(
     }
 
     const approvals = makeApprovals(emit)
+    const questions = makeQuestions(emit)
 
     const closeSession = (session: Session) =>
       Effect.sync(() => {
@@ -289,7 +291,10 @@ export const layer = Layer.effect(
                 // One-line "what it is doing now" for each sub-agent in the Agents tab.
                 agentProgressSummaries: true,
                 // Only invoked after the first prompt, by which time `session` is assigned.
-                canUseTool: (toolName, toolInput, options) => approvals.ask(session, toolName, toolInput, options),
+                canUseTool: (toolName, toolInput, options) =>
+                  toolName === QUESTION_TOOL
+                    ? questions.ask(session, toolInput, options)
+                    : approvals.ask(session, toolName, toolInput, options),
                 mcpServers: { kkcode: kkcodeMcpServer(input.mcpServer) },
                 abortController: abort,
                 // Same as the SDK's default spawn, plus the pid so the thread's open ports can be found.
@@ -500,6 +505,7 @@ export const layer = Layer.effect(
         return session === undefined ? Effect.void : interruptQuery(session)
       },
       respondApproval: approvals.respond,
+      respondQuestion: questions.respond,
       setAccessMode: (threadId, accessMode) => {
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : switchPermissionMode(session, accessMode)

@@ -7,6 +7,7 @@ import type {
   ApprovalDecision,
   ModelInfo,
   ProviderId,
+  QuestionAnswers,
   RunTurnInput,
 } from "../../shared/agent.ts"
 
@@ -39,6 +40,7 @@ export interface AgentProvider {
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
   readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+  readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
   /** Applies a new access mode to a live session. Providers without one pick it up on the next turn. */
   readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
 }
