@@ -203,6 +203,38 @@
   "pr_links_loading": "Loading pull requests…",
   "pr_links_empty": "None linked yet. Create one from this branch, or ask an agent to open one.",
   "pr_links_failed": "Could not load pull requests: {message}",
+  "panel_tab_details": "Details",
+  "panel_tab_agents": "Agents",
+  "agents_running_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} running",
+        "countPlural=other": "{count} running"
+      }
+    }
+  ],
+  "agents_list_label": "Sub-agents",
+  "agents_loading": "Loading sub-agents…",
+  "agents_failed": "Could not load sub-agents: {message}",
+  "agents_empty": "Sub-agents this thread spawns appear here.",
+  "agents_status_running": "Running",
+  "agents_status_completed": "Completed",
+  "agents_status_failed": "Failed",
+  "agents_status_stopped": "Stopped",
+  "agents_last_tool": "Last tool: {tool}",
+  "agents_tools": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} tool",
+        "countPlural=other": "{count} tools"
+      }
+    }
+  ],
+  "agents_tokens": "{tokens} tokens",
   "pr_links_unlink": "Unlink {name}",
   "sidebar_thread_actions": "Actions for {title}",
   "sidebar_thread_rename": "Rename",

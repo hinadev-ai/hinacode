@@ -85,6 +85,28 @@ export type McpToolCallStatus = "inProgress" | "completed" | "failed"
 export type PatchChangeKind = { type: "add" } | { type: "delete" } | { type: "update"; move_path: string | null }
 export type FileUpdateChange = { path: string; kind: PatchChangeKind; diff: string }
 
+export type CollabAgentTool =
+  | "spawnAgent"
+  | "sendInput"
+  | "resumeAgent"
+  | "wait"
+  | "closeAgent"
+  | "sendMessage"
+  | "followupTask"
+  | "interruptAgent"
+  | "listAgents"
+export type CollabAgentToolCallStatus = "inProgress" | "completed" | "failed" | "interrupted"
+export type CollabAgentStatus =
+  | "pendingInit"
+  | "running"
+  | "interrupted"
+  | "completed"
+  | "errored"
+  | "shutdown"
+  | "notFound"
+export type CollabAgentState = { status: CollabAgentStatus; message: string | null }
+export type SubAgentActivityKind = "started" | "interacted" | "interrupted" | "completed"
+
 export type ThreadItem =
   | {
       type: "commandExecution"
@@ -106,7 +128,28 @@ export type ThreadItem =
       result: { content: Array<unknown>; structuredContent: unknown } | null
       error: { message: string } | null
     }
-  | { type: "agentMessage" | "reasoning" | "userMessage" | "plan" | "webSearch"; id: string }
+  | {
+      type: "collabAgentToolCall"
+      id: string
+      tool: CollabAgentTool
+      status: CollabAgentToolCallStatus
+      senderThreadId: string
+      /** For spawnAgent, the newly spawned agent's thread. */
+      receiverThreadIds: Array<string>
+      prompt: string | null
+      model: string | null
+      agentsStates: { [key in string]?: CollabAgentState }
+    }
+  | {
+      type: "subAgentActivity"
+      id: string
+      kind: SubAgentActivityKind
+      agentThreadId: string
+      agentPath: string
+      model: string | null
+    }
+  | { type: "agentMessage"; id: string; text: string }
+  | { type: "reasoning" | "userMessage" | "plan" | "webSearch"; id: string }
 
 export type TokenUsageBreakdown = {
   totalTokens: number

@@ -1,22 +1,41 @@
-import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk"
-import type { AgentEvent, TokenUsage } from "../../../shared/agent.ts"
+import type {
+  SDKMessage,
+  SDKResultMessage,
+  SDKTaskNotificationMessage,
+  SDKTaskProgressMessage,
+  SDKTaskStartedMessage,
+} from "@anthropic-ai/claude-agent-sdk"
+import type { AgentEvent, Subagent, TokenUsage } from "../../../shared/agent.ts"
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 
 /**
  * Per-session state the mapper needs across messages: edit tool calls whose result has not arrived
- * yet, so `file_changed` is only emitted once the edit actually succeeded.
+ * yet, so `file_changed` is only emitted once the edit actually succeeded, and the sub-agents seen
+ * so far, since task progress messages only carry what changed.
  */
 export interface MapState {
   readonly pendingEdits: Map<string, string>
+  readonly subagents: Map<string, Subagent>
 }
 
 export const isTerminal = (event: AgentEvent) => event.type === "turn_completed" || event.type === "turn_failed"
 
-export function mapMessage(message: SDKMessage, state: MapState): ReadonlyArray<AgentEvent> {
+export function mapMessage(message: SDKMessage, state: MapState, now: string): ReadonlyArray<AgentEvent> {
   switch (message.type) {
     case "system":
-      return message.subtype === "init" ? [{ type: "session_bound", providerSessionId: message.session_id }] : []
+      switch (message.subtype) {
+        case "init":
+          return [{ type: "session_bound", providerSessionId: message.session_id }]
+        case "task_started":
+          return subagentStarted(message, state, now)
+        case "task_progress":
+          return subagentProgress(message, state)
+        case "task_notification":
+          return subagentEnded(message, state, now)
+        default:
+          return []
+      }
 
     case "stream_event": {
       // Subagent output is not streamed into the main transcript; its tool calls still show up below.
@@ -66,6 +85,58 @@ export function mapMessage(message: SDKMessage, state: MapState): ReadonlyArray<
     default:
       return []
   }
+}
+
+/** Only spawned agents count; background shells, monitors and housekeeping tasks are not sub-agents. */
+const isSubagent = (message: SDKTaskStartedMessage) =>
+  message.task_type === "local_agent" && message.ambient !== true && message.skip_transcript !== true
+
+function subagentStarted(message: SDKTaskStartedMessage, state: MapState, now: string): Array<AgentEvent> {
+  if (!isSubagent(message)) return []
+  return updateSubagent(state, {
+    id: message.task_id,
+    label: message.description,
+    kind: message.subagent_type ?? "agent",
+    status: "running",
+    summary: null,
+    lastTool: null,
+    toolUses: 0,
+    tokens: 0,
+    startedAt: now,
+    endedAt: null,
+  })
+}
+
+function subagentProgress(message: SDKTaskProgressMessage, state: MapState): Array<AgentEvent> {
+  const current = state.subagents.get(message.task_id)
+  if (current === undefined) return []
+  // Without agentProgressSummaries' `summary`, the CLI still rewrites `description` into what the agent is doing now.
+  const activity = message.description !== current.label ? message.description : null
+  return updateSubagent(state, {
+    ...current,
+    summary: message.summary ?? activity ?? current.summary,
+    lastTool: message.last_tool_name ?? current.lastTool,
+    toolUses: message.usage.tool_uses,
+    tokens: message.usage.total_tokens,
+  })
+}
+
+function subagentEnded(message: SDKTaskNotificationMessage, state: MapState, now: string): Array<AgentEvent> {
+  const current = state.subagents.get(message.task_id)
+  if (current === undefined) return []
+  return updateSubagent(state, {
+    ...current,
+    status: message.status,
+    summary: message.summary === "" ? current.summary : message.summary,
+    toolUses: message.usage?.tool_uses ?? current.toolUses,
+    tokens: message.usage?.total_tokens ?? current.tokens,
+    endedAt: now,
+  })
+}
+
+function updateSubagent(state: MapState, subagent: Subagent): Array<AgentEvent> {
+  state.subagents.set(subagent.id, subagent)
+  return [{ type: "subagent_updated", subagent }]
 }
 
 function mapResult(result: SDKResultMessage): AgentEvent {
