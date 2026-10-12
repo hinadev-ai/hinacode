@@ -336,14 +336,19 @@ describe("projects, threads and settings over rpc", () => {
     )
   })
 
-  test("a thread starts supervised and keeps the access mode it is switched to", async () => {
+  test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
-    expect(thread.accessMode).toBe("supervised")
+    expect(thread.accessMode).toBe("full")
 
-    result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
+    result(await invoke("settings.set", { defaultAccessMode: "auto" }))
+    const next = result(await invoke("threads.create", { projectId: project.id }))
+    expect(next.accessMode).toBe("auto")
+    result(await invoke("settings.set", { defaultAccessMode: "full" }))
+
+    result(await invoke("threads.update", { id: thread.id, accessMode: "supervised" }))
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
-    expect(listed?.accessMode).toBe("full")
+    expect(listed?.accessMode).toBe("supervised")
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
