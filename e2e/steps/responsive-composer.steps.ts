@@ -45,13 +45,11 @@ When(
 )
 
 When("I compose a long draft", async ({ app }) => {
-  await app.page
-    .getByRole("textbox", { name: "Message", exact: true })
-    .fill("A draft that remains editable.\n".repeat(30))
+  await app.page.getByLabel("Message", { exact: true }).fill("A draft that remains editable.\n".repeat(30))
 })
 
 When("I paste {int} images into the message", async ({ app }, count: number) => {
-  await app.page.getByRole("textbox", { name: "Message", exact: true }).evaluate((node, imageCount) => {
+  await app.page.getByLabel("Message", { exact: true }).evaluate((node, imageCount) => {
     const png = Uint8Array.from(
       atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6DboAAAAASUVORK5CYII="),
       (character) => character.charCodeAt(0),
@@ -67,7 +65,7 @@ When("I paste {int} images into the message", async ({ app }, count: number) => 
 
 Then("the message field and {word} action fit inside the window", async ({ app }, action: string) => {
   const page = app.page
-  const textarea = page.getByRole("textbox", { name: "Message", exact: true })
+  const textarea = page.getByLabel("Message", { exact: true })
   const button = page.getByRole("button", { name: action, exact: true })
   await expect(button).toBeEnabled()
   await expect
