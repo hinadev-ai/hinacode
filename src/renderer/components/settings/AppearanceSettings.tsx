@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import { type Appearance, ThemeId } from "../../../shared/domain.ts"
-import { installedFontsAtom, themes } from "../../lib/appearance.ts"
+import { installedFontsAtom, themes, useTheme } from "../../lib/appearance.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -103,17 +103,15 @@ function ThemePicker({ current, onPick }: { current: ThemeId; onPick: (theme: Th
   )
 }
 
-/**
- * A miniature window drawn with the theme's own tokens. data-theme scopes them to this element;
- * the default theme has no data-theme, so its dark tokens are scoped with the dark class instead.
- */
 function ThemePreview({ id }: { id: ThemeId }) {
+  const theme = useTheme(id)
+  const neutral = id === "default" || id === "system" || id === "light"
   return (
     <div
-      data-theme={id === "default" ? undefined : id}
+      data-theme={neutral ? (theme.scheme === "light" ? "light" : undefined) : id}
       aria-hidden
       className={cn(
-        id === "default" && "dark",
+        theme.scheme === "dark" && "dark",
         "flex h-20 overflow-hidden rounded-lg border border-border bg-background ring-offset-2 ring-offset-background transition-shadow duration-150 ease-out group-hover/theme:ring-2 group-hover/theme:ring-ring/40 peer-checked:ring-2 peer-checked:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-ring",
       )}
     >
