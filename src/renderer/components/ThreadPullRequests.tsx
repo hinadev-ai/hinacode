@@ -41,20 +41,20 @@ export const pullRequestStatusLabel = {
   closed: m.pr_state_closed,
 } satisfies Record<PullRequestStatus, () => string>
 
-const statusColor = {
+export const statusColor = {
   draft: "text-muted-foreground",
   open: "text-emerald-500",
   merged: "text-violet-500",
   closed: "text-destructive",
 } satisfies Record<PullRequestStatus, string>
 
-const reviewLabel = {
+export const reviewLabel = {
   approved: m.pr_review_approved,
   changesRequested: m.pr_review_changes_requested,
   reviewRequired: m.pr_review_required,
 } satisfies Record<ReviewStatus, () => string>
 
-const checksIndicator = {
+export const checksIndicator = {
   passing: { Icon: RiCheckboxCircleFill, className: "text-emerald-500", label: m.pr_checks_passing },
   failing: { Icon: RiCloseCircleFill, className: "text-destructive", label: m.pr_checks_failing },
   pending: { Icon: RiTimeLine, className: "text-amber-500", label: m.pr_checks_pending },

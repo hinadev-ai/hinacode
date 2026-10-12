@@ -2,6 +2,7 @@ import { LegendList } from "@legendapp/list/react"
 import { memo, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
+import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { Markdown } from "./Markdown.tsx"
@@ -48,6 +49,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
 })
 
 function MessageBody({ message }: { message: Message }) {
+  const repository = useThreadRepository()
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -65,7 +67,7 @@ function MessageBody({ message }: { message: Message }) {
         )}
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
-            {linkify(text).map((segment, index) =>
+            {linkify(text, repository).map((segment, index) =>
               segment.type === "link" ? (
                 <WebLink key={index} href={segment.href}>
                   {segment.text}

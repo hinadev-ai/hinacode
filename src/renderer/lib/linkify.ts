@@ -1,3 +1,6 @@
+import type { GitHubRepository } from "../../shared/github.ts"
+import { linkPullRequestNumbers } from "./pullRequestRefs.ts"
+
 export type Segment =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "link"; readonly text: string; readonly href: string }
@@ -16,18 +19,26 @@ const trimTrailing = (url: string) => {
   return end
 }
 
-/** Splits plain text into text and http(s) url segments. Joining every segment's text gives back `text`. */
-export const linkify = (text: string): Array<Segment> => {
+/**
+ * Splits plain text into text and link segments: http(s) urls, and `#n` pull request numbers when the
+ * thread's `repository` is known. Joining every segment's text gives back `text`.
+ */
+export const linkify = (text: string, repository: GitHubRepository | null = null): Array<Segment> => {
   const segments: Array<Segment> = []
+  const pushText = (piece: string) => {
+    if (piece === "") return
+    if (repository) segments.push(...linkPullRequestNumbers(piece, repository))
+    else segments.push({ type: "text", text: piece })
+  }
   let last = 0
   for (const match of text.matchAll(URL_PATTERN)) {
     const url = trimTrailing(match[0])
     if (!/^https?:\/\/./i.test(url)) continue
-    if (match.index > last) segments.push({ type: "text", text: text.slice(last, match.index) })
+    pushText(text.slice(last, match.index))
     segments.push({ type: "link", text: url, href: url })
     last = match.index + url.length
   }
-  if (last < text.length) segments.push({ type: "text", text: text.slice(last) })
+  pushText(text.slice(last))
   return segments
 }
 

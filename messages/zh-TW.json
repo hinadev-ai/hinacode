@@ -371,6 +371,8 @@
   "pr_checks_passing": "檢查通過",
   "pr_checks_failing": "檢查失敗",
   "pr_checks_pending": "檢查進行中",
+  "pr_card_loading": "正在載入 pull request…",
+  "pr_card_size": "新增 {additions} 行，刪除 {deletions} 行",
   "pr_create": "建立 pull request",
   "pr_creating": "正在建立 pull request…",
   "pr_gh_missing": "安裝 GitHub CLI（gh）即可查看 pull request 狀態並建立 pull request。",
