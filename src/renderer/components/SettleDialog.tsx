@@ -1,4 +1,4 @@
-import { type ReactNode, startTransition, useActionState } from "react"
+import { startTransition, useActionState } from "react"
 import { isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -27,12 +27,10 @@ interface SettleDialogProps {
   readonly thread: Thread
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** An `AlertDialogTrigger`, when the dialog is not opened from elsewhere. */
-  readonly children?: ReactNode
 }
 
 /** Confirms settling a thread, which also deletes its worktree folder when it has one. */
-export function SettleDialog({ thread, open, onOpenChange, children }: SettleDialogProps) {
+export function SettleDialog({ thread, open, onOpenChange }: SettleDialogProps) {
   const worktree = useActiveWorktree(thread)
 
   const [error, settle, isPending] = useActionState(async () => {
@@ -47,7 +45,6 @@ export function SettleDialog({ thread, open, onOpenChange, children }: SettleDia
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      {children}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{m.settle_dialog_title()}</AlertDialogTitle>
