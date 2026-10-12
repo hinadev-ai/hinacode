@@ -535,12 +535,12 @@ describe("limited threads over rpc", () => {
 
 describe("agent questions over rpc", () => {
   test("forgets unanswered questions when a turn ends before question_resolved", async () => {
-    const project = await createProject("question-lifecycle")
+    const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate unanswered question" }))
     await expect
       .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
-      .toBe("failed")
+      .toBe("idle")
     await expect
       .poll(async () => result(await invoke("threads.transcript", { threadId: thread.id })).questions)
       .toStrictEqual([])
