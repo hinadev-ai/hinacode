@@ -11,6 +11,7 @@ import type {
 } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
+import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import type {
   ApprovalDecisionWire,
@@ -175,6 +176,8 @@ const make = Effect.gen(function* () {
           efforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
           defaultEffort: model.defaultReasoningEffort,
           fastMode: model.serviceTiers.some((tier) => tier.id === FAST_SERVICE_TIER),
+          // `on-request` lets Codex run sandboxed work and decide itself when to ask.
+          autoMode: true,
         })
       }
       cursor = page.nextCursor
@@ -224,11 +227,10 @@ const make = Effect.gen(function* () {
           const overrides = {
             cwd: input.cwd,
             model: input.model,
-            approvalPolicy: "on-request",
-            sandbox: "workspace-write",
+            ...threadAccess(input.accessMode),
             config: { mcp_servers: { kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers } } },
           } satisfies ThreadStartParams
-          const { thread } = input.resumeSessionId
+          const { thread, sandbox } = input.resumeSessionId
             ? yield* client.request<ThreadStartResponse>("thread/resume", {
                 ...overrides,
                 threadId: input.resumeSessionId,
@@ -244,6 +246,7 @@ const make = Effect.gen(function* () {
             cwd: input.cwd,
             ...(input.effort === null ? {} : { effort: input.effort }),
             serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
+            ...turnAccess(input.accessMode, sandbox),
           }
           run.turnStart = yield* client.request<TurnStartResponse>("turn/start", turnStart).pipe(
             Effect.map(({ turn }): RemoteTurn => ({ threadId: thread.id, turnId: turn.id })),
@@ -516,7 +519,17 @@ const make = Effect.gen(function* () {
       return deferred ? Deferred.succeed(deferred, decision) : Effect.void
     }).pipe(Effect.asVoid)
 
-  return { id: "codex", listModels, listCommands, runTurn, steer, interrupt, respondApproval } satisfies AgentProvider
+  return {
+    id: "codex",
+    listModels,
+    listCommands,
+    runTurn,
+    steer,
+    interrupt,
+    respondApproval,
+    // Codex takes a new approval policy and sandbox with the next turn/start.
+    setAccessMode: () => Effect.void,
+  } satisfies AgentProvider
 })
 
 export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {

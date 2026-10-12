@@ -58,6 +58,7 @@ const mainFrame: Frame = { url: appUrl, parent: null }
 // Agents and automations are not exercised here: their handlers only forward to these services.
 const runnerStub: Partial<typeof AgentRunner.Service> = {
   listModels: (provider) => Effect.succeed([unlistedModel(`${provider}-model`, provider)]),
+  setAccessMode: () => Effect.void,
 }
 const agentStubs = Layer.mergeAll(
   Layer.succeed(AgentRunner, runnerStub as typeof AgentRunner.Service),
@@ -222,6 +223,16 @@ describe("projects, threads and settings over rpc", () => {
     expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
       "ThreadStartedError",
     )
+  })
+
+  test("a thread starts supervised and keeps the access mode it is switched to", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.accessMode).toBe("supervised")
+
+    result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed?.accessMode).toBe("full")
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {

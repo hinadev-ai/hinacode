@@ -9,7 +9,7 @@ import type {
   ModelInfo,
   ProviderId,
 } from "../../shared/agent.ts"
-import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -54,6 +54,8 @@ export class AgentRunner extends Context.Service<
       attachments: ReadonlyArray<Attachment>,
     ) => Effect.Effect<void, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
+    readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
@@ -237,6 +239,7 @@ const make = Effect.gen(function* () {
           model: thread.model,
           effort: thread.effort,
           fastMode: thread.fastMode,
+          accessMode: thread.accessMode,
           resumeSessionId: thread.providerSessionId,
           mcpServer: mcp.connectionFor(thread.id),
         })
@@ -302,6 +305,8 @@ const make = Effect.gen(function* () {
       Effect.suspend(() => activeTurns.get(threadId)?.steer(text, attachments) ?? send(threadId, text, attachments)),
     interrupt: (threadId) =>
       Effect.suspend(() => activeTurns.get(threadId)?.provider.interrupt(threadId) ?? Effect.void),
+    setAccessMode: (threadId, accessMode) =>
+      Effect.suspend(() => activeTurns.get(threadId)?.provider.setAccessMode(threadId, accessMode) ?? Effect.void),
     respondApproval: (requestId, decision) =>
       Effect.suspend(() => {
         const request = approvals.get(requestId)

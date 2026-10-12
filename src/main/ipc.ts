@@ -78,11 +78,20 @@ const handlers: Handlers = {
   // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
-      if (input.provider === undefined) return yield* Threads.use((threads) => threads.update(input))
-      const model = input.model ?? (yield* defaultModel(input.provider))
-      return yield* Threads.use((threads) =>
-        threads.update({ ...input, model, effort: input.effort ?? null, fastMode: input.fastMode ?? false }),
-      )
+      const patch =
+        input.provider === undefined
+          ? input
+          : {
+              ...input,
+              model: input.model ?? (yield* defaultModel(input.provider)),
+              effort: input.effort ?? null,
+              fastMode: input.fastMode ?? false,
+            }
+      const thread = yield* Threads.use((threads) => threads.update(patch))
+      if (input.accessMode !== undefined) {
+        yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
+      }
+      return thread
     }),
   "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
 

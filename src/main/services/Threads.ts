@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
-import { Thread, type ThreadStatus } from "../../shared/domain.ts"
+import { type AccessMode, Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
@@ -47,6 +47,7 @@ export interface UpdateThread {
   /** Null goes back to the model's default effort. */
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
+  readonly accessMode?: AccessMode | undefined
   readonly status?: ThreadStatus | undefined
   readonly sortIndex?: number | undefined
   readonly providerSessionId?: string | undefined
@@ -156,6 +157,7 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort: null,
         fastMode: false,
+        accessMode: "supervised",
         providerSessionId: null,
         status: "idle",
         sortIndex: next,
@@ -186,6 +188,7 @@ const make = Effect.gen(function* () {
         model: input.model ?? current.model,
         effort: input.effort === undefined ? current.effort : input.effort,
         fastMode: input.fastMode ?? current.fastMode,
+        accessMode: input.accessMode ?? current.accessMode,
         status: input.status ?? current.status,
         sortIndex: input.sortIndex ?? current.sortIndex,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
@@ -194,7 +197,7 @@ const make = Effect.gen(function* () {
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
-            fast_mode = ${next.fastMode ? 1 : 0}, status = ${next.status},
+            fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}
         WHERE id = ${next.id}

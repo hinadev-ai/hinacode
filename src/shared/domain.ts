@@ -78,6 +78,13 @@ export type ThreadStatus = typeof ThreadStatus.Type
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
 export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
 
+/**
+ * How much an agent may do without asking. `supervised` asks before commands and edits, `auto` lets
+ * routine work through and asks for the rest, `full` never asks.
+ */
+export const AccessMode = Schema.Literals(["supervised", "auto", "full"])
+export type AccessMode = typeof AccessMode.Type
+
 export const Thread = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
@@ -90,6 +97,8 @@ export const Thread = Schema.Struct({
   effort: Schema.NullOr(Schema.String),
   /** Run turns on the model's faster, pricier service tier. */
   fastMode: Schema.Boolean,
+  /** Applies from the next turn, or right away on a live Claude session. */
+  accessMode: AccessMode,
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,

@@ -3,6 +3,7 @@ import { Migrator } from "effect/sql"
 import init from "./migrations/0001_init.ts"
 import automations from "./migrations/0002_automations.ts"
 import threadEffort from "./migrations/0004_thread_effort.ts"
+import threadAccessMode from "./migrations/0005_thread_access_mode.ts"
 
 const run = Migrator.make({})
 
@@ -15,5 +16,6 @@ export const runMigrations = run({
     "1_init": init,
     "2_automations": automations,
     "4_thread_effort": threadEffort,
+    "5_thread_access_mode": threadAccessMode,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

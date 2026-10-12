@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { AgentCommand, AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
 import {
+  AccessMode,
   Attachment,
   Automation,
   AutomationRun,
@@ -69,6 +70,7 @@ export const RpcMethods = {
       /** Null goes back to the model's default effort. */
       effort: Schema.optional(Schema.NullOr(Schema.String)),
       fastMode: Schema.optional(Schema.Boolean),
+      accessMode: Schema.optional(AccessMode),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
     }),
