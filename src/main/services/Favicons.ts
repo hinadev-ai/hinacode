@@ -1,4 +1,4 @@
-import { Cache, Context, Effect, Equal, Hash, Layer, Semaphore } from "effect"
+import { Cache, Context, Duration, Effect, Equal, Exit, Hash, Layer, Semaphore } from "effect"
 
 /** Per GET, redirects included. */
 const REQUEST_TIMEOUT_MS = 5000
@@ -11,6 +11,8 @@ const ICON_LIMIT_BYTES = 100 * 1024
 const MAX_CONCURRENT_LOOKUPS = 4
 /** Hosts remembered; the oldest is forgotten first. */
 const CACHE_CAPACITY = 500
+/** A miss is retried after this, so a network blip does not hide a site's icon until restart. */
+const MISS_TTL = "5 minutes"
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
@@ -136,15 +138,18 @@ class Host implements Equal.Equal {
 
 const make = Effect.gen(function* () {
   const lookups = yield* Semaphore.make(MAX_CONCURRENT_LOOKUPS)
-  // Misses are cached too, and concurrent gets for one host share a lookup.
-  const icons = yield* Cache.make({
-    lookup: (host: Host) =>
+  // Concurrent gets for one host share a lookup.
+  const icons = yield* Cache.makeWith(
+    (host: Host) =>
       Semaphore.withPermit(
         lookups,
         Effect.promise(() => lookup(host.origin).catch(() => null)),
       ),
-    capacity: CACHE_CAPACITY,
-  })
+    {
+      capacity: CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) && exit.value !== null ? Duration.infinity : MISS_TTL),
+    },
+  )
 
   return Favicons.of({
     favicon: (url) => {
