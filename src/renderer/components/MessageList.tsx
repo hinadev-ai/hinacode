@@ -1,8 +1,9 @@
-import { LegendList } from "@legendapp/list/react"
-import { memo, useState } from "react"
+import { LegendList, type LegendListRef } from "@legendapp/list/react"
+import { memo, type Ref, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
+import { Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
 
@@ -15,9 +16,10 @@ const edgeSpacer = <div className="h-4" />
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
  * viewport is already near the end, so scrolling up to read stops the auto-scroll.
  */
-export function MessageList({ messages }: { messages: ReadonlyArray<Message> }) {
+export function MessageList({ messages, listRef }: { messages: ReadonlyArray<Message>; listRef?: Ref<LegendListRef> }) {
   return (
     <LegendList
+      ref={listRef}
       data={messages}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
@@ -40,6 +42,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
     return (
       <article
         aria-label={m.message_you()}
+        data-message-id={message.id}
         className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
@@ -51,7 +54,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
         )}
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
-            {text}
+            <Highlighted text={text} />
           </div>
         )}
       </article>
@@ -63,7 +66,11 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
   const last = message.parts.at(-1)
   const writing = streaming && last?.type === "text"
   return (
-    <article aria-busy={streaming} className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed">
+    <article
+      aria-busy={streaming}
+      data-message-id={message.id}
+      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
+    >
       {message.parts.map((part, index) =>
         // Parts only ever get appended or updated in place, so the index is a stable key.
         part.type === "text" ? (

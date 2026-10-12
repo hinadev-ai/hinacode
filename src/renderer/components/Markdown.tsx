@@ -1,5 +1,5 @@
 import type { Mermaid, MermaidConfig } from "mermaid"
-import { isValidElement, memo, type ReactNode, useEffect, useId, useState } from "react"
+import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import type { Appearance } from "../../shared/domain.ts"
@@ -7,6 +7,7 @@ import { resolveColor, useTheme } from "../lib/appearance.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
+import { Highlighted, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
 
 const remarkPlugins = [remarkGfm]
 
@@ -57,8 +58,10 @@ const components: Components = {
 
 /** Agent markdown with GFM. Memoized because streaming re-renders the message on every delta. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
+  const pattern = useFindPattern()
+  const rehypePlugins = useMemo(() => (pattern === null ? [] : [rehypeFindMarks(pattern)]), [pattern])
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
       {text}
     </ReactMarkdown>
   )
@@ -80,7 +83,9 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
   return (
     <CodeFigure label={language} code={code}>
       <pre className="overflow-x-auto p-3 font-mono text-xs">
-        <code>{code}</code>
+        <code>
+          <Highlighted text={code} />
+        </code>
       </pre>
     </CodeFigure>
   )

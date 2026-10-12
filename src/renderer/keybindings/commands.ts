@@ -112,6 +112,14 @@ export const commands = [
     run: (ctx) => goToSiblingThread(ctx, -1),
   },
   {
+    id: "search.find",
+    defaultKeys: "mod+f",
+    title: m.command_search_find,
+    run: (ctx) => {
+      if (ctx.threadId) useUi.getState().openFind(ctx.threadId)
+    },
+  },
+  {
     id: "language.switch",
     defaultKeys: "",
     title: m.command_language_switch,
