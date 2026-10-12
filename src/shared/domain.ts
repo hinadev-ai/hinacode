@@ -94,7 +94,10 @@ export const Thread = Schema.Struct({
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
   sortIndex: Schema.Number,
-  /** `user`, or `automation:<automationId>` for threads an automation started. */
+  /**
+   * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,
+   * or `thread:<threadId>` for threads an agent started with the MCP `create_thread` tool.
+   */
   createdBy: Schema.String,
   createdAt: Timestamp,
   updatedAt: Timestamp,

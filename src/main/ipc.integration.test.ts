@@ -78,8 +78,9 @@ const makeLayer = (dbPath: string) => {
     Messages.layer,
     Attachments.layer,
   )
-  const features = Layer.mergeAll(Mcp.layer, Ports.layer).pipe(Layer.provide(domain))
-  return Layer.mergeAll(domain, features, agentStubs).pipe(
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const base = Layer.mergeAll(domain, features, agentStubs)
+  return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
     Layer.provideMerge(GitHub.layer),
     Layer.provide(Db.layer(dbPath)),
