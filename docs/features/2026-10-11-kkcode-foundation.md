@@ -5,7 +5,7 @@ Date: 2026-10-11
 
 ## Problem
 
-A developer running Claude Code and Codex at the same time ends up with a pile of terminals. Each one has its own checkout, its own approvals, and its own idea of which PR it opened. Nothing shows which agent needs attention, which port it left open, or whether its branch merged. t3code solves part of this, but as a server plus a web client, and it doesn't cover worktree cleanup, review tools or issue triggers the way we want.
+A developer running Claude Code and Codex at the same time ends up with a pile of terminals. Each one has its own checkout, its own approvals, and its own idea of which PR it opened. Nothing shows which agent needs attention, which port it left open, or whether its branch merged. Existing harnesses solve part of this, but as a server plus a web client, and they don't cover worktree cleanup, review tools or issue triggers the way we want.
 
 kkcode is a local desktop app that puts both agents into one sidebar. Each thread can have its own worktree, and the app cleans up after the work is merged. Remote machines are out of scope.
 
@@ -52,7 +52,7 @@ The system map is in [`../arch.md`](../arch.md), and decisions that are costly t
 ## Out of scope
 
 - **Remote machines.** kkcode drives agents on the machine it runs on.
-- **A separate server process.** t3code's server plus WebSocket split solves remote access, which we don't need.
+- **A separate server process.** A server plus WebSocket split solves remote access, which we don't need.
 - **An integrated terminal** (xterm plus node-pty). We researched it and didn't build it. Agents run commands; the ports panel covers the "what is still running" question.
 - **Editing, branching or regenerating earlier messages.** The agent sessions own their history, so the UI can't rewrite it ([0011](../adr/0011-no-assistant-ui.md)).
 

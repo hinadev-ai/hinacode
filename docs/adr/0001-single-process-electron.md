@@ -5,7 +5,7 @@ Date: 2026-10-11
 
 ## Context
 
-t3code runs a standalone Node server and talks to its web client over WebSocket, which pays off when the agent runs on another machine. kkcode is local only.
+Harnesses that run a standalone Node server and talk to a web client over WebSocket pay off when the agent runs on another machine. kkcode is local only.
 
 ## Decision
 

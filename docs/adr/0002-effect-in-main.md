@@ -9,7 +9,7 @@ The main process juggles child processes, streams, timeouts, interruption, locks
 
 ## Decision
 
-The main process is one Effect 4 `ManagedRuntime` built from a layer graph. Each service is a `Context.Service` with a `make` effect and a `layer` export, following t3code's pattern. Effect v3 satellite packages are excluded.
+The main process is one Effect 4 `ManagedRuntime` built from a layer graph. Each service is a `Context.Service` with a `make` effect and a `layer` export. Effect v3 satellite packages are excluded.
 
 ## Consequences
 
