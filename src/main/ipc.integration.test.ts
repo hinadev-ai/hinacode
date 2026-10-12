@@ -122,8 +122,11 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 /** The production composition from `index.ts`, with scripted agent providers and a stubbed Automations. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-    Settings.layer,
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
     Attachments.layer,
   )
@@ -337,14 +340,19 @@ describe("projects, threads and settings over rpc", () => {
     )
   })
 
-  test("a thread starts supervised and keeps the access mode it is switched to", async () => {
+  test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
-    expect(thread.accessMode).toBe("supervised")
+    expect(thread.accessMode).toBe("full")
 
-    result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
+    result(await invoke("settings.set", { defaultAccessMode: "auto" }))
+    const next = result(await invoke("threads.create", { projectId: project.id }))
+    expect(next.accessMode).toBe("auto")
+    result(await invoke("settings.set", { defaultAccessMode: "full" }))
+
+    result(await invoke("threads.update", { id: thread.id, accessMode: "supervised" }))
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
-    expect(listed?.accessMode).toBe("full")
+    expect(listed?.accessMode).toBe("supervised")
   })
 
   test("reordering a thread keeps its updatedAt", async () => {

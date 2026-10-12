@@ -15,6 +15,7 @@ import {
 import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { Projects } from "./Projects.ts"
+import { Settings } from "./Settings.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
 
@@ -104,6 +105,7 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects
   const worktrees = yield* Worktrees
   const git = yield* Git
+  const settings = yield* Settings
   const activeWorkspace = yield* makeActiveWorkspace
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
@@ -154,6 +156,7 @@ const make = Effect.gen(function* () {
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
         : undefined
       const { next } = yield* nextSortIndex(input.projectId).pipe(Effect.mapError(persistence("threads.create")))
+      const { defaultAccessMode } = yield* settings.get
       const now = yield* nowIso
       const thread: Thread = {
         id: randomUUID(),
@@ -161,7 +164,7 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort: null,
         fastMode: false,
-        accessMode: "supervised",
+        accessMode: defaultAccessMode,
         providerSessionId: null,
         status: "idle",
         sortIndex: next,
