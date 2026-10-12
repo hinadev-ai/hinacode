@@ -43,6 +43,14 @@ Run a built app with its own data directory, for example to keep a test profile 
 KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron out/main/index.js
 ```
 
+Simulate an exhausted Claude account without using the account:
+
+```sh
+KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit pnpm dev
+```
+
+The first message in each thread reaches the limit. The next attempt succeeds. The callout offers **Resume at reset**, which retries once at the provider's reset time and survives restart. Set `KKCODE_MOCK_RESET_MS=5000` for a five-second reset. Use `KKCODE_MOCK_CLAUDE=org-spend-limit` to simulate the organization monthly spend cap and its `/usage-credits` guidance. That case has no automatic reset action.
+
 Headless verification on a machine without a display uses Xvfb and Chrome DevTools:
 
 ```sh

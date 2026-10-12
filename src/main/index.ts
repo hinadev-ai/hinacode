@@ -4,6 +4,7 @@ import { NodeServices } from "@effect/platform-node"
 import { app, BrowserWindow, net, protocol, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
+import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
@@ -29,6 +30,13 @@ app.setName("kkcode")
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
+const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
+if (mockClaude !== undefined && mockClaude !== "usage-limit" && mockClaude !== "org-spend-limit")
+  throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit or org-spend-limit")
+if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires KKCODE_USER_DATA")
+const mockResetMs = Number(process.env["KKCODE_MOCK_RESET_MS"] ?? 60000)
+if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
+  throw new Error("KKCODE_MOCK_RESET_MS must be between 0 and 3600000")
 
 protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } }])
 
@@ -45,17 +53,25 @@ const serveAttachments = () =>
 
 const makeAppLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-    Settings.layer,
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
     Attachments.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, ThreadNaming.layer).pipe(Layer.provide(domain))
+  const naming =
+    mockClaude === undefined
+      ? ThreadNaming.layer
+      : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
+  const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
     Layer.provideMerge(agents),
-    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, eventsLayer)),
+    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, Git.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
