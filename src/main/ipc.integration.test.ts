@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import type { AgentEvent, Subagent } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
@@ -344,6 +345,23 @@ describe("projects, threads and settings over rpc", () => {
     result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
     expect(listed?.accessMode).toBe("full")
+  })
+
+  test("reordering a thread keeps its updatedAt", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const created = result(await invoke("threads.create", { projectId: project.id }))
+    // Last touched at the epoch, so a reorder that bumps updatedAt to the real clock cannot go unnoticed.
+    const thread = await runtime.runPromise(
+      Threads.Threads.use((threads) => threads.update({ id: created.id, title: "old" })).pipe(
+        Effect.provide(TestClock.layer()),
+      ),
+    )
+    expect(thread.updatedAt).toBe("1970-01-01T00:00:00.000Z")
+
+    const moved = result(await invoke("threads.update", { id: thread.id, sortIndex: thread.sortIndex + 10 }))
+    expect(moved.updatedAt).toBe(thread.updatedAt)
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed).toMatchObject({ sortIndex: thread.sortIndex + 10, updatedAt: thread.updatedAt })
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
