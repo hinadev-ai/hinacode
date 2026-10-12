@@ -281,7 +281,7 @@ describe("rpc trust boundary", () => {
     expect(await handler({ sender, senderFrame: { url: appUrl, parent: mainFrame } }, request)).toMatchObject({
       error: { tag: "UntrustedSender" },
     })
-    expect(await handler({ sender, senderFrame: mainFrame }, { ...request, payload: {} })).toMatchObject({
+    expect(await handler({ sender, senderFrame: mainFrame }, { method: 4, payload: undefined })).toMatchObject({
       error: { tag: "SchemaError" },
     })
     expect(electron.shown).toStrictEqual([])
