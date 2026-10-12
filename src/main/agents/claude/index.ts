@@ -11,7 +11,7 @@ import {
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
+import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Schema, Stream } from "effect"
 import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
@@ -83,6 +83,25 @@ const externalServices: Record<Exclude<NonNullable<AccountInfo["apiProvider"]>, 
   mantle: "Mantle",
   gateway: "an enterprise gateway",
 }
+
+const AccountInfoSchema = Schema.Struct({
+  email: Schema.optionalKey(Schema.String),
+  organization: Schema.optionalKey(Schema.String),
+  subscriptionType: Schema.optionalKey(Schema.String),
+  apiKeySource: Schema.optionalKey(Schema.String),
+  apiProvider: Schema.optionalKey(
+    Schema.Literals([
+      "firstParty",
+      "bedrock",
+      "vertex",
+      "foundry",
+      "anthropicAws",
+      "anthropicGoogleCloud",
+      "mantle",
+      "gateway",
+    ]),
+  ),
+})
 
 const toAccount = (info: AccountInfo): AgentAccount => {
   if (info.apiProvider !== undefined && info.apiProvider !== "firstParty") {
@@ -471,7 +490,15 @@ export const layer = Layer.effect(
         settingSources: ["user", "project", "local"],
       })
 
-    const account = probe((cli) => cli.accountInfo(), "Failed to read the Claude account").pipe(Effect.map(toAccount))
+    const account = probe((cli) => cli.accountInfo(), "Failed to read the Claude account").pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(AccountInfoSchema)),
+      Effect.catchTag("SchemaError", () =>
+        Effect.fail(
+          new AgentError({ provider: "claude", message: "Failed to read the Claude account: invalid response" }),
+        ),
+      ),
+      Effect.map(toAccount),
+    )
     const probedCommands = yield* Cache.make({
       lookup: probeCommands,
       capacity: 32,
