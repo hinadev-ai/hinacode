@@ -51,6 +51,8 @@ export const updateProjectAtom = Atom.fn((input: RpcRequest<"projects.update">) 
 
 export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom.keepAlive)
 
+export const notificationPermissionAtom = Atom.make(call("notifications.permission", undefined))
+
 export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
   call("settings.set", patch).pipe(Effect.tap(() => Atom.refresh(settingsAtom))),
 )

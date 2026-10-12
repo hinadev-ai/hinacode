@@ -23,6 +23,8 @@ import {
   CommitDiff,
   GitCommit,
   MergeMethod,
+  NotificationPermission,
+  PermissionRequestOutcome,
   Message,
   OpenPort,
   Project,
@@ -151,6 +153,11 @@ export const RpcMethods = {
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
+  "notifications.permission": rpc(Schema.Void, NotificationPermission),
+  "notifications.askPermission": rpc(
+    Schema.Struct({ title: Schema.String, body: Schema.String }),
+    PermissionRequestOutcome,
+  ),
   "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),

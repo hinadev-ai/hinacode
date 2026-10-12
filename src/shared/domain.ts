@@ -281,6 +281,14 @@ export const NotificationSettings = Schema.Struct({
 })
 export type NotificationSettings = typeof NotificationSettings.Type
 
+/** Whether the OS lets kkcode show notifications. `unknown` where kkcode cannot ask, which is everywhere but macOS. */
+export const NotificationPermission = Schema.Literals(["granted", "denied", "notDetermined", "unknown"])
+export type NotificationPermission = typeof NotificationPermission.Type
+
+/** `noAnswer` while the macOS prompt waits for the user. */
+export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
+export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.

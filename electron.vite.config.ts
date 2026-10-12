@@ -5,7 +5,10 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
 
 export default defineConfig({
-  main: {},
+  main: {
+    // Optional dependencies are bundled by default, which breaks this native module's binding lookup.
+    build: { externalizeDeps: { include: ["node-mac-permissions"] } },
+  },
   preload: {
     build: {
       // Sandboxed preload scripts cannot be ES modules.
