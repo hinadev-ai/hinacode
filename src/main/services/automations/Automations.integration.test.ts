@@ -218,6 +218,10 @@ describe("automation polling lifecycle", () => {
         expect(firstRuns.map((run) => run.eventKey)).toStrictEqual(["linear:issue-33"])
         expect(linear.filters[0]?.createdAt.gt.toISOString()).toBe("2026-10-12T03:00:10.000Z")
 
+        yield* automations
+          .get(automation.id)
+          .pipe(Effect.repeat({ until: (current) => current.cursor === "2026-10-12T03:00:11.000Z" }))
+
         yield* automations.update({ id: automation.id, enabled: false })
         addIssue(new Date(savedAt.getTime() + 20_000), 34)
         yield* advanceTo(25_000)
