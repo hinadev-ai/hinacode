@@ -10,6 +10,11 @@ Feature: Projects
     When I try to add a project named "ghost" at a path that does not exist
     Then the add project dialog shows the error "That path is not a folder. Pick an existing folder."
 
+  Scenario: A folder another project already uses is refused with a reason
+    Given a project "demo" for my repository
+    When I try to add another project named "dup" for my repository
+    Then the add project dialog shows the error "Another project already uses this folder."
+
   Scenario: Projects and their threads survive a restart
     Given a project "demo" for my repository
     And the project "demo" has a thread "Fix login"

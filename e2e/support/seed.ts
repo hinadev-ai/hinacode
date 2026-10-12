@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite"
 export interface SeedProject {
   readonly name: string
   readonly rootPath: string
+  readonly setupScript?: string | null
 }
 
 export interface SeedThread {
@@ -33,15 +34,15 @@ export class Seed {
     }
   }
 
-  project({ name, rootPath }: SeedProject): string {
+  project({ name, rootPath, setupScript = null }: SeedProject): string {
     const id = randomUUID()
     const now = new Date().toISOString()
     this.#with((db) =>
       db
         .prepare(
-          `INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, ?)`,
+          `INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
         )
-        .run(id, name, rootPath, now, now),
+        .run(id, name, rootPath, setupScript, now, now),
     )
     return id
   }
