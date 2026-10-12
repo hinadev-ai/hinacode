@@ -155,6 +155,8 @@ function useFitInComposer(menuRef: RefObject<HTMLDivElement | null>, align: "sta
     observer.observe(bounds)
     observer.observe(menu)
     return () => observer.disconnect()
+    // `align` moves the menu without resizing it, so the observer alone would miss the change.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [menuRef, align])
 
   return fit

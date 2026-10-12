@@ -1,6 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react", "react-perf", "jsx-a11y", "import", "unicorn"],
+  "jsPlugins": [
+    {
+      "name": "react-doctor",
+      "specifier": "oxlint-plugin-react-doctor"
+    }
+  ],
   "categories": {
     "correctness": "error",
     "suspicious": "warn"
@@ -19,6 +25,37 @@
     ]
   },
   "overrides": [
+    {
+      "files": ["src/renderer/**"],
+      "rules": {
+        "react/refs": "error",
+        "react/purity": "error",
+        "react/immutability": "error",
+        "react/set-state-in-effect": "error",
+        "react/set-state-in-render": "error",
+        "react/static-components": "error",
+        "react/use-memo": "error",
+        "react/void-use-memo": "error",
+        "react/preserve-manual-memoization": "error",
+        "react/incompatible-library": "error",
+        "react/globals": "error",
+        "react/unsupported-syntax": "error",
+        "react/error-boundaries": "error",
+        "react/hooks": "error",
+        "react/exhaustive-effect-dependencies": "error",
+        "react-doctor/no-async-effect-callback": "error",
+        "react-doctor/effect-listener-cleanup-mismatch": "error",
+        "react-doctor/effect-observer-needs-disconnect": "error",
+        "react-doctor/effect-raf-loop-needs-cancel": "error",
+        "react-doctor/no-derived-state": "error",
+        "react-doctor/no-derived-state-effect": "error",
+        "react-doctor/no-did-mount-set-state": "error",
+        "react-doctor/no-cascading-set-state": "error",
+        "react-doctor/no-direct-mutation-state": "error",
+        "react-doctor/no-controlled-input-value-without-state-update": "error",
+        "react-doctor/no-collapse-request-error-to-empty-state": "error"
+      }
+    },
     {
       "files": ["src/main/**", "src/preload/**", "src/shared/**"],
       "rules": {
