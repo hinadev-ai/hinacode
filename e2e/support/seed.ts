@@ -11,7 +11,7 @@ export interface SeedThread {
   readonly projectId: string
   readonly title: string
   readonly provider?: "claude" | "codex"
-  readonly worktreeId?: string | null;
+  readonly worktreeId?: string | null
   readonly status?: "idle" | "running"
 }
 
