@@ -33,3 +33,14 @@ Feature: Appearance
     When the app restarts
     Then the app uses the "light" appearance
     And the existing named theme and font preference is preserved
+
+  Scenario Outline: Default appearances keep text and keyboard focus readable
+    When I open settings
+    And I open appearance settings
+    And I choose the theme "<theme>"
+    Then text and keyboard focus meet contrast requirements
+
+    Examples:
+      | theme |
+      | Light |
+      | Dark  |
