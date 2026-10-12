@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, TokenUsage } from "./agent.ts"
+import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -72,7 +73,7 @@ export const PullRequest = Schema.Struct({
 })
 export type PullRequest = typeof PullRequest.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "settled", "archived"])
+export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "settled", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
@@ -102,6 +103,7 @@ export const Thread = Schema.Struct({
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
+  usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
   /**
    * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,

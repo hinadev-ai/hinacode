@@ -42,6 +42,12 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         parts: [...failRunningTools(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
         completedAt: now,
       }
+    case "turn_limited":
+      return {
+        ...message,
+        parts: [...failRunningTools(message.parts), { type: "text", text: event.limit.message }],
+        completedAt: now,
+      }
     default:
       return message
   }
@@ -69,7 +75,7 @@ export function foldTranscript(
   let next = messages
   const folded = foldEvent(messages[target]!, event, now)
   if (folded !== messages[target]) next = next.with(target, folded)
-  if (event.type === "turn_completed" || event.type === "turn_failed") {
+  if (event.type === "turn_completed" || event.type === "turn_failed" || event.type === "turn_limited") {
     next = next.map((message, index) => {
       if (index === target) return message
       const parts = failRunningTools(message.parts)

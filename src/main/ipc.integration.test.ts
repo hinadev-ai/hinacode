@@ -103,7 +103,21 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
   listCommands: () => Effect.succeed([]),
-  runTurn: () => Stream.fromIterable(scriptedTurn),
+  runTurn: (input) =>
+    Stream.fromIterable(
+      input.prompt === "simulate usage limit"
+        ? [
+            {
+              type: "turn_limited",
+              limit: {
+                kind: "usage",
+                message: "Usage limit reached",
+                reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+              },
+            },
+          ]
+        : scriptedTurn,
+    ),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
@@ -443,5 +457,42 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+})
+
+describe("limited threads over rpc", () => {
+  test("persists a limit, schedules and cancels once, then allows a normal retry", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate usage limit" }))
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("limited")
+    const scheduled = result(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true }))
+    expect(scheduled.usageLimit).toMatchObject({ kind: "usage", reset: { autoResume: true } })
+    const cancelled = result(await invoke("threads.resumeAtReset", { id: thread.id, enabled: false }))
+    expect(cancelled.usageLimit).toMatchObject({ kind: "usage", reset: { autoResume: false } })
+    await expect
+      .poll(
+        async () => result(await invoke("threads.transcript", { threadId: thread.id })).messages.at(-1)?.completedAt,
+      )
+      .not.toBeNull()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "retry" }))
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("idle")
+    expect(result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.usageLimit).toBeNull()
+    expect(failure(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true })).tag).toBe("AgentError")
+  })
+
+  test("decodes the schedule request before the handler sees it", async () => {
+    const response = await electron.handlers.get(RPC_CHANNEL)!(
+      { sender: {}, senderFrame: mainFrame },
+      {
+        method: "threads.resumeAtReset",
+        payload: { id: "thread", enabled: "true" },
+      },
+    )
+    expect(response).toMatchObject({ error: { tag: "SchemaError" } })
   })
 })
