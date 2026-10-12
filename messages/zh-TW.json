@@ -206,6 +206,38 @@
   "pr_links_loading": "正在載入 pull request…",
   "pr_links_empty": "尚未連結。可以從這個分支建立，或請代理開一個。",
   "pr_links_failed": "無法載入 pull request：{message}",
+  "panel_tab_details": "詳細資訊",
+  "panel_tab_agents": "代理",
+  "agents_running_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個執行中",
+        "countPlural=other": "{count} 個執行中"
+      }
+    }
+  ],
+  "agents_list_label": "子代理",
+  "agents_loading": "正在載入子代理…",
+  "agents_failed": "無法載入子代理：{message}",
+  "agents_empty": "這個討論串產生的子代理會顯示在這裡。",
+  "agents_status_running": "執行中",
+  "agents_status_completed": "已完成",
+  "agents_status_failed": "失敗",
+  "agents_status_stopped": "已停止",
+  "agents_last_tool": "最後使用的工具：{tool}",
+  "agents_tools": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個工具",
+        "countPlural=other": "{count} 個工具"
+      }
+    }
+  ],
+  "agents_tokens": "{tokens} tokens",
   "pr_links_unlink": "取消連結 {name}",
   "sidebar_thread_actions": "「{title}」的操作",
   "sidebar_thread_rename": "重新命名",
