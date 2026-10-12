@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test"
-import { appendFileSync } from "node:fs"
-import { join } from "node:path"
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
 
 const fileTree = (page: import("@playwright/test").Page) => page.getByRole("tree", { name: "Workspace files" })
@@ -37,4 +37,22 @@ Then("the file viewer shows {string} with {string}", async ({ app }, path: strin
 
 Then("the file viewer is closed", async ({ app }) => {
   await expect(app.page.getByRole("separator", { name: "Resize file viewer" })).toBeHidden()
+})
+
+Given("the file {string} contains {string} in my repository", ({ repo }, path: string, text: string) => {
+  const file = join(repo, path)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, `${text}\n`)
+})
+
+When("I open Files in the activity bar", async ({ app }) => {
+  await app.page.getByRole("tab", { name: "Files", exact: true }).click()
+})
+
+When("I click {string} in the file tree", async ({ app }, name: string) => {
+  await fileTree(app.page).getByRole("treeitem", { name, exact: true }).click()
+})
+
+When("I append {string} to {string} while browsing files", ({ repo }, text: string, path: string) => {
+  appendFileSync(join(repo, path), `${text}\n`)
 })
