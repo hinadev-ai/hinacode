@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from "@effect/vitest"
+import { beforeEach, expect, test, vi } from "@effect/vitest"
 import type { AgentEvent, ApprovalRequest } from "../../shared/agent.ts"
 import type { TranscriptPush } from "../../shared/contract.ts"
 import type { Message } from "../../shared/domain.ts"
@@ -85,4 +85,45 @@ test("replays message pushes buffered after the snapshot", async () => {
 test("ignores pushes for threads that were never opened", () => {
   store().receive(event(1, { type: "text_delta", text: "unseen" }))
   expect(store().byThread).toStrictEqual({})
+})
+
+test("batches sustained text deltas and publishes the complete turn immediately", async () => {
+  const loading = store().load(threadId)
+  transcriptResponse.resolve({ result: { messages: [assistant("")], approvals: [approval], seq: 0 } })
+  await loading
+
+  vi.useFakeTimers()
+  let publications = 0
+  const unsubscribe = useMessages.subscribe(() => publications++)
+  try {
+    store().receive(event(1, { type: "text_delta", text: "a" }))
+    vi.advanceTimersByTime(20)
+    store().receive(event(2, { type: "text_delta", text: "b" }))
+    vi.advanceTimersByTime(20)
+    store().receive(event(3, { type: "text_delta", text: "c" }))
+    vi.advanceTimersByTime(10)
+
+    const firstWindowPublications = publications
+    expect.soft(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abc" }])
+
+    vi.advanceTimersByTime(10)
+    store().receive(event(4, { type: "text_delta", text: "d" }))
+    vi.advanceTimersByTime(20)
+    store().receive(event(5, { type: "text_delta", text: "e" }))
+    const beforeCompletionPublications = publications
+    store().receive(event(6, { type: "turn_completed" }))
+
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abcde" }])
+    expect(ready().messages[0]?.completedAt).toEqual(expect.any(String))
+    expect(ready().approvals).toStrictEqual([])
+    const completedPublications = publications
+    vi.runAllTimers()
+    expect(publications).toBe(completedPublications)
+    expect([firstWindowPublications, beforeCompletionPublications, completedPublications]).toStrictEqual([1, 1, 2])
+  } finally {
+    unsubscribe()
+    store().unload(threadId)
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  }
 })
