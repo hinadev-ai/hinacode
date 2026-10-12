@@ -5,6 +5,7 @@ import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { StrictMode, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
+import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
@@ -34,6 +35,8 @@ function App() {
   return (
     <TooltipProvider key={locale}>
       <RouterProvider router={router} />
+      {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
+      <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>
   )
 }

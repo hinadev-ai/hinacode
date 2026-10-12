@@ -63,6 +63,12 @@ Given("the window has focus", async ({ app }) => {
   })
 })
 
+Given("the window does not have focus", async ({ app }) => {
+  await app.page.evaluate(() => {
+    document.hasFocus = () => false
+  })
+})
+
 When("the agent in {string} emits {string}", async ({ app, threadIds }, title: string, type: string) => {
   const threadId = threadIds.get(title)
   if (!threadId) throw new Error(`no seeded thread titled ${title}`)
@@ -92,3 +98,22 @@ Then(
     await expect.poll(() => captured(app.page)).toEqual([{ title: names.of(title), body }])
   },
 )
+
+const toasts = (page: Page) => page.locator("[data-sonner-toast]")
+
+Then("the only toast is for {string} and reads {string}", async ({ app, names }, title: string, body: string) => {
+  await expect(toasts(app.page)).toHaveCount(1)
+  await expect(toasts(app.page).locator("[data-title]")).toHaveText(names.of(title))
+  await expect(toasts(app.page).locator("[data-description]")).toHaveText(body)
+})
+
+Then("no desktop notification was shown", async ({ app }) => {
+  expect(await captured(app.page)).toEqual([])
+})
+
+When("I open the toast for {string}", async ({ app, names }, title: string) => {
+  await toasts(app.page)
+    .filter({ hasText: names.of(title) })
+    .getByRole("button", { name: "Open", exact: true })
+    .click()
+})

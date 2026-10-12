@@ -55,7 +55,7 @@ export function NotificationSettings() {
   }
 
   const sendTest = () =>
-    notify({ alert: "completed", title: "kkcode", body: m.notification_test(), sound: notifications.sound })
+    notify("desktop", { alert: "completed", title: "kkcode", body: m.notification_test(), sound: notifications.sound })
 
   return (
     <SettingsSection

@@ -1,4 +1,6 @@
+import { toast } from "sonner"
 import type { ThreadAlert } from "../../shared/domain.ts"
+import { m } from "../paraglide/messages.js"
 
 /** Hz per note. Rising for done, repeated for a request, falling for a failure, so the kind is audible. */
 const chimes: Record<ThreadAlert, ReadonlyArray<number>> = {
@@ -29,6 +31,18 @@ const playChime = (alert: ThreadAlert) => {
   })
 }
 
+/** `desktop` when the user is in another app, `toast` when they are in kkcode looking at something else. */
+export type Surface = "desktop" | "toast"
+
+/** Status shows as the icon only: amber when it needs the user, red when it failed. */
+const showToast: Record<ThreadAlert, typeof toast.warning> = {
+  completed: toast,
+  needsInput: toast.warning,
+  failed: toast.error,
+}
+/** A request or failure waits for the user, so it outlasts a plain "finished". */
+const LINGERING_TOAST_MS = 10_000
+
 interface Notice {
   readonly alert: ThreadAlert
   readonly title: string
@@ -39,12 +53,21 @@ interface Notice {
   readonly onClick?: () => void
 }
 
-/** Shows a desktop notification. Its chime is ours, so the system sound stays off. */
-export const notify = ({ alert, title, body, sound, tag, onClick }: Notice) => {
-  const notification = new Notification(title, { body, silent: true, ...(tag === undefined ? {} : { tag }) })
-  notification.addEventListener("click", () => {
-    window.focus()
-    onClick?.()
-  })
+/** Shows a notice with its chime. Desktop notifications keep the system sound off, since the chime is ours. */
+export const notify = (surface: Surface, { alert, title, body, sound, tag, onClick }: Notice) => {
+  if (surface === "desktop") {
+    const notification = new Notification(title, { body, silent: true, ...(tag === undefined ? {} : { tag }) })
+    notification.addEventListener("click", () => {
+      window.focus()
+      onClick?.()
+    })
+  } else {
+    showToast[alert](title, {
+      description: body,
+      ...(tag === undefined ? {} : { id: tag }),
+      ...(alert === "completed" ? {} : { duration: LINGERING_TOAST_MS }),
+      ...(onClick === undefined ? {} : { action: { label: m.notification_open(), onClick } }),
+    })
+  }
   if (sound) playChime(alert)
 }

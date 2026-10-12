@@ -3,7 +3,7 @@ import type { NotificationSettings, ThreadAlert } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { router } from "../router.tsx"
 import { useThreads } from "../stores/threads.ts"
-import { notify } from "./notify.ts"
+import { notify, type Surface } from "./notify.ts"
 
 const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly body: string } | undefined => {
   switch (event.type) {
@@ -22,8 +22,13 @@ const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly bo
   }
 }
 
-const isOnScreen = (threadId: string) =>
-  document.hasFocus() && router.matchRoute({ to: "/thread/$threadId", params: { threadId } }) !== false
+const isOpen = (threadId: string) => router.matchRoute({ to: "/thread/$threadId", params: { threadId } }) !== false
+
+/** Where the user's attention is decides the surface. The thread they are looking at needs no notice. */
+const surfaceFor = (threadId: string): Surface | null => {
+  if (!document.hasFocus()) return "desktop"
+  return isOpen(threadId) ? null : "toast"
+}
 
 const openThread = (threadId: string) => void router.navigate({ to: "/thread/$threadId", params: { threadId } })
 
@@ -31,8 +36,10 @@ const openThread = (threadId: string) => void router.navigate({ to: "/thread/$th
 export const notifyThreadEvent = (threadId: string, event: AgentEvent, settings: NotificationSettings) => {
   const raised = alertFor(event)
   const thread = useThreads.getState().byId[threadId]
-  if (raised === undefined || thread === undefined || !settings[raised.alert] || isOnScreen(threadId)) return
-  notify({
+  if (raised === undefined || thread === undefined || !settings[raised.alert]) return
+  const surface = surfaceFor(threadId)
+  if (surface === null) return
+  notify(surface, {
     ...raised,
     title: thread.title,
     sound: settings.sound,

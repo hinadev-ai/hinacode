@@ -591,5 +591,6 @@
   "settings_notifications_denied_hint": "請在「系統設定」的「通知」中允許 kkcode。音效仍會播放。",
   "settings_notifications_not_determined": "通知需要你的許可",
   "settings_notifications_not_determined_hint": "macOS 會在 kkcode 第一次傳送通知時詢問。現在就允許，才不會錯過第一則通知。",
-  "settings_notifications_allow": "允許通知"
+  "settings_notifications_allow": "允許通知",
+  "notification_open": "開啟"
 }
