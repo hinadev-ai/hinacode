@@ -15,6 +15,21 @@ npx expo start --web --host lan # or open it in a browser
 
 The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and keep the remote listener on its default `0.0.0.0` bind.
 
+### Run on a phone over USB
+
+With USB debugging on, `adb reverse` makes the desktop's ports reachable as `127.0.0.1` on the phone, so no network is needed:
+
+```sh
+adb reverse tcp:8081 tcp:8081      # Metro
+adb reverse tcp:48081 tcp:48081    # the remote listener
+npx expo start
+adb shell am start -a android.intent.action.VIEW -d exp://127.0.0.1:8081
+```
+
+Pair with a URL whose host is `127.0.0.1`. Expo Go does not register the `kkcode` scheme, so paste the URL rather than opening it.
+
+The bundle runs on Hermes, which has none of the ES2023 array methods such as `toSorted`. `tsconfig.json` pins `lib` to ES2022 so `npx tsc --noEmit` catches them; `src/hermes.d.ts` adds back the two Hermes does have.
+
 The QR scanner (`expo-camera`) and the native terminal (`react-native-webview`) are in Expo Go. If you add a library with other native code, build a development client with `npx expo run:ios` or `npx expo run:android`.
 
 ## Pair
