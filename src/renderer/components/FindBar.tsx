@@ -127,7 +127,7 @@ export function FindBar({
   const close = () => {
     closeFind()
     const target = returnFocus.current
-    if (target instanceof HTMLElement && target.isConnected) target.focus()
+    if (target instanceof HTMLElement && target.isConnected && target !== document.body) target.focus()
     else useUi.getState().requestComposerFocus()
   }
 
