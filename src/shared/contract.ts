@@ -110,6 +110,7 @@ export const RpcMethods = {
       keybindings: Schema.optional(Settings.fields.keybindings),
       defaultModel: Schema.optional(Settings.fields.defaultModel),
       automations: Schema.optional(Settings.fields.automations),
+      appearance: Schema.optional(Settings.fields.appearance),
     }),
     Settings,
   ),
