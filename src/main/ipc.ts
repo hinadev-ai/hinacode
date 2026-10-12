@@ -22,6 +22,7 @@ import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { Terminals } from "./services/Terminals.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
@@ -35,6 +36,7 @@ type AppServices =
   | PullRequests
   | Secrets
   | Ports
+  | Terminals
   | Attachments
   | Automations
   | GitHub
@@ -60,6 +62,9 @@ const defaultModel = (provider: ProviderId) =>
     const models = yield* AgentRunner.use((runner) => runner.listModels(provider))
     return models[0]?.id ?? ""
   })
+
+/** Shells sitting in a worktree would outlive it, so they end before the thread settles or goes away. */
+const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const handlers: Handlers = {
   "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
@@ -95,7 +100,8 @@ const handlers: Handlers = {
       }
       return thread
     }),
-  "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
+  "threads.delete": ({ id, removeWorktree }) =>
+    closeTerminals(id).pipe(Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree })))),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
@@ -103,7 +109,8 @@ const handlers: Handlers = {
   "worktrees.changes": ({ id }) => Worktrees.use((worktrees) => worktrees.changes(id)),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
-  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "threads.settle": ({ threadId }) =>
+    closeTerminals(threadId).pipe(Effect.andThen(Threads.use((threads) => threads.settle(threadId)))),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
 
@@ -145,6 +152,11 @@ const handlers: Handlers = {
   "mcp.connection": ({ threadId }) => McpCredentials.use((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
+  "terminal.open": (input) => Terminals.use((terminals) => terminals.open(input)),
+  "terminal.write": ({ id, data }) => Terminals.use((terminals) => terminals.write(id, data)),
+  "terminal.resize": ({ id, cols, rows }) => Terminals.use((terminals) => terminals.resize(id, cols, rows)),
+  "terminal.close": ({ id }) => Terminals.use((terminals) => terminals.close(id)),
+  "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "dialog.pickFiles": (_, sender) =>
