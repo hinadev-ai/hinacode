@@ -40,8 +40,9 @@ The system map is in [`../arch.md`](../arch.md), and decisions that are costly t
 - **Ports** come from `/proc/net/tcp{,6}`. A port belongs to a thread when its process runs in the thread's workspace or descends from the thread's agent. Kill sends SIGTERM, then SIGKILL after 3 s, and only to processes that own a listening socket.
 - **Automations.**
   - The webhook server listens on 127.0.0.1:48080 by default, separate from the MCP server. It accepts an HMAC in `x-kkcode-signature` or GitHub's `x-hub-signature-256`.
-  - Pollers run every 60 s from a cursor. The first poll only sets the cursor.
+  - Pollers run every 60 s from a cursor established when an enabled automation is saved, or when a disabled automation is first enabled. The first poll fetches new events. Re-enabling keeps the saved cursor.
   - Runs are deduplicated by event key.
+  - Saving a Linear API key enables agent tools. Starting threads automatically requires an enabled Linear issue automation under Settings > Automations.
 - **UI.**
   - Stack: shadcn on Base UI, Remix icons, `@legendapp/list` for the transcript, `@pierre/diffs`, dnd-kit for the sidebar, TanStack Router (memory history), zustand stores fed by pushes.
   - Copy: every string is a typed Paraglide message in English and 繁體中文.
@@ -67,7 +68,8 @@ The system map is in [`../arch.md`](../arch.md), and decisions that are costly t
 - **Steering and stop:**
   - Steering Claude doesn't interrupt a running Bash tool.
   - Stop pressed within a tick of Send does nothing.
-- **Untested:** Linear and Slack pollers have only been tested against fakes.
+- **Linear:** verified with KAL-32 through the real API in an isolated app profile, including a Codex reply. Cursor lifecycle coverage uses a scripted external Linear transport with real SQLite, automation, thread, and runner services.
+- **Untested:** Slack pollers have only been tested against fakes.
 
 ## Verification
 

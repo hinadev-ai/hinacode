@@ -35,7 +35,6 @@ const linear = vi.hoisted(() => ({
   filters: [] as Array<LinearIssueFilter>,
 }))
 
-// Only the external Linear transport is scripted; polling and cursor persistence run unchanged.
 vi.mock("@linear/sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@linear/sdk")>()),
   LinearClient: class {
@@ -106,17 +105,46 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
 const savedAt = new Date("2026-10-12T03:00:00.000Z")
 const issueAt = new Date("2026-10-12T03:00:01.000Z")
 
-const addIssue = () => {
+const addIssue = (createdAt = issueAt, number = 32) => {
   linear.issues.push({
-    id: "issue-32",
-    identifier: "KAL-32",
-    number: 32,
+    id: `issue-${number}`,
+    identifier: `KAL-${number}`,
+    number,
     title: "Just test issue",
     description: "Check Linear integration",
     url: "https://linear.app/kalan/issue/KAL-32/just-test-issue",
-    createdAt: issueAt,
+    createdAt,
   })
 }
+
+const initialize = Effect.gen(function* () {
+  const { projectId } = yield* seedThread({ rootPath: "/repo" })
+  yield* Secrets.Secrets.use((secrets) => secrets.set(LINEAR_API_KEY_SECRET, "test-api-key"))
+  yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
+  return projectId
+})
+
+const createAutomation = (projectId: string, enabled = true) =>
+  Automations.use((automations) =>
+    automations.create({
+      projectId,
+      name: "Linear issues",
+      enabled,
+      trigger: { type: "linear.issue", teamKey: "KAL" },
+      promptTemplate: "Investigate {{issue.identifier}}: {{issue.title}}",
+      provider: "claude",
+      model: "test-model",
+      runInWorktree: false,
+      branchTemplate: null,
+    }),
+  )
+
+const advanceTo = (millisAfterSave: number) =>
+  Effect.gen(function* () {
+    const millis = savedAt.getTime() + millisAfterSave
+    vi.setSystemTime(new Date(millis))
+    yield* TestClock.setTime(millis)
+  })
 
 afterEach(() => vi.useRealTimers())
 
@@ -134,28 +162,14 @@ describe("automation polling lifecycle", () => {
           const port = yield* unusedPort
           yield* Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient
-            const { projectId } = yield* seedThread({ rootPath: "/repo" })
-            yield* Secrets.Secrets.use((secrets) => secrets.set(LINEAR_API_KEY_SECRET, "test-api-key"))
-            yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
+            const projectId = yield* initialize
             const automations = yield* Automations
-            const { automation } = yield* automations.create({
-              projectId,
-              name: "Linear issues",
-              enabled: true,
-              trigger: { type: "linear.issue", teamKey: "KAL" },
-              promptTemplate: "Investigate {{issue.identifier}}: {{issue.title}}",
-              provider: "claude",
-              model: "test-model",
-              runInWorktree: false,
-              branchTemplate: null,
-            })
+            const { automation } = yield* createAutomation(projectId)
             if (legacyCursor) yield* sql`UPDATE automation SET cursor = NULL WHERE id = ${automation.id}`
+            addIssue(new Date(savedAt.getTime() - 1_000), 31)
             addIssue()
-            // A fixed random source gives the initial poll a five-second delay.
-            vi.setSystemTime(new Date(savedAt.getTime() + 5_000))
-            yield* TestClock.adjust("5 seconds")
-            vi.setSystemTime(new Date(savedAt.getTime() + 65_000))
-            yield* TestClock.adjust("60 seconds")
+            yield* advanceTo(5_000)
+            yield* advanceTo(65_000)
 
             const runs = yield* automations.runs(automation.id, 10)
             expect(runs).toHaveLength(1)
@@ -178,4 +192,39 @@ describe("automation polling lifecycle", () => {
         }).pipe(Effect.provideService(Random.Random, { nextIntUnsafe: () => 0, nextDoubleUnsafe: () => 0.5 })),
     )
   }
+
+  it.effect("starts at first enable time and keeps the existing cursor when re-enabled", () =>
+    Effect.gen(function* () {
+      vi.useFakeTimers({ toFake: ["Date"], now: savedAt })
+      yield* TestClock.setTime(savedAt.getTime())
+      linear.issues.length = 0
+      linear.filters.length = 0
+      const pushes: Array<PushEvent> = []
+      const port = yield* unusedPort
+      yield* Effect.gen(function* () {
+        const projectId = yield* initialize
+        const automations = yield* Automations
+        const { automation } = yield* createAutomation(projectId, false)
+        addIssue()
+        yield* advanceTo(10_000)
+        expect(linear.filters).toHaveLength(0)
+        yield* automations.update({ id: automation.id, enabled: true })
+        addIssue(new Date(savedAt.getTime() + 11_000), 33)
+        yield* advanceTo(15_000)
+        const firstRuns = yield* automations.runs(automation.id, 10)
+        expect(firstRuns.map((run) => run.eventKey)).toStrictEqual(["linear:issue-33"])
+        expect(linear.filters[0]?.createdAt.gt.toISOString()).toBe("2026-10-12T03:00:10.000Z")
+
+        yield* automations.update({ id: automation.id, enabled: false })
+        addIssue(new Date(savedAt.getTime() + 20_000), 34)
+        yield* advanceTo(25_000)
+        yield* automations.update({ id: automation.id, enabled: true })
+        yield* advanceTo(30_000)
+        const runs = yield* automations.runs(automation.id, 10)
+        expect(runs.map((run) => run.eventKey)).toStrictEqual(["linear:issue-34", "linear:issue-33"])
+        expect(runs.every((run) => run.status === "started")).toBe(true)
+        expect(linear.filters.at(-1)?.createdAt.gt.toISOString()).toBe("2026-10-12T03:00:11.000Z")
+      }).pipe(Effect.provide(makeLayer(pushes, port)))
+    }).pipe(Effect.provideService(Random.Random, { nextIntUnsafe: () => 0, nextDoubleUnsafe: () => 0.5 })),
+  )
 })
