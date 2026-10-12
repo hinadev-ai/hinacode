@@ -190,6 +190,7 @@
   "settings_models_hint": "新討論串會使用該代理的預設模型。",
   "settings_models_loading": "正在載入模型…",
   "settings_models_pick": "選擇模型",
+  "settings_default_model": "預設模型",
   "settings_models_unlisted": "{provider} 沒有提供模型清單，請直接輸入模型 ID。",
   "settings_models_failed": "無法取得 {provider} 的模型清單：{message}。請直接輸入模型 ID。",
   "settings_models_clear": "清除預設",

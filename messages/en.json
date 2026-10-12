@@ -190,6 +190,7 @@
   "settings_models_hint": "New threads start with the default model of their agent.",
   "settings_models_loading": "Loading models…",
   "settings_models_pick": "Pick a model",
+  "settings_default_model": "Default model",
   "settings_models_unlisted": "{provider} did not list its models. Enter a model id instead.",
   "settings_models_failed": "Could not list {provider} models: {message}. Enter a model id instead.",
   "settings_models_clear": "Clear default",

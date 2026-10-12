@@ -9,7 +9,7 @@ import { m } from "../../paraglide/messages.js"
 import { accessModes } from "../ComposerControls.tsx"
 import { ProviderIcon } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { AccountList, DefaultAccountField, providerLabel } from "./AccountSettings.tsx"
@@ -57,28 +57,31 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
   )
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>
+    <FieldSet>
+      <FieldLegend variant="label" className="flex items-center gap-2">
         <ProviderIcon provider={provider} />
         {label}
-      </FieldLabel>
+      </FieldLegend>
       <AccountList provider={provider} />
       <DefaultAccountField provider={provider} />
-      {AsyncResult.builder(models)
-        .onInitial(() => (
-          <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
-        ))
-        .onSuccess((list) =>
-          list.length > 0 ? (
-            <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
-          ) : (
-            textFallback(m.settings_models_unlisted({ provider: label }))
-          ),
-        )
-        .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
-        .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
-      {error && <FieldError>{error}</FieldError>}
-    </Field>
+      <Field>
+        <FieldLabel htmlFor={inputId}>{m.settings_default_model()}</FieldLabel>
+        {AsyncResult.builder(models)
+          .onInitial(() => (
+            <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
+          ))
+          .onSuccess((list) =>
+            list.length > 0 ? (
+              <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
+            ) : (
+              textFallback(m.settings_models_unlisted({ provider: label }))
+            ),
+          )
+          .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
+          .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
+        {error && <FieldError>{error}</FieldError>}
+      </Field>
+    </FieldSet>
   )
 }
 
