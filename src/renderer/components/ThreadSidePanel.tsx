@@ -1,25 +1,16 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { PatchDiff } from "@pierre/diffs/react"
+import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { type ReactNode, type RefObject, useId, useState } from "react"
-import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
-import {
-  type ChangedFileStatus,
-  type PullRequest,
-  type Thread,
-  type Worktree,
-  type WorktreeStatus,
-} from "../../shared/domain.ts"
-import { useTheme } from "../lib/appearance.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
-import { branchPullRequestAtom, callPromise, projectsAtom, worktreeChangesAtom } from "../lib/rpc.ts"
-import { useSettings } from "../lib/settings.ts"
+import { type ReactNode, type RefObject, useId } from "react"
+import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiSideBarFill } from "react-icons/ri"
+import type { PullRequest, Thread, Worktree, WorktreeStatus } from "../../shared/domain.ts"
+import { branchPullRequestAtom, callPromise, projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ThreadAgents, useRunningSubagentCount } from "./ThreadAgents.tsx"
+import { ThreadDiff } from "./ThreadDiff.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
 import { pullRequestStatusLabel, ThreadPullRequests } from "./ThreadPullRequests.tsx"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
@@ -34,8 +25,8 @@ const returnFocusToComposer = (panel: HTMLElement | null) => () => {
 }
 
 /**
- * Right-hand panel of the thread route. Details: where the thread runs, its setup log, changes, ports
- * and pull requests. Agents: the sub-agents its agent spawned.
+ * Right-hand panel of the thread route. Details: where the thread runs, its setup log and ports. Diff: what
+ * it changed. PR: its pull requests. Agents: the sub-agents its agent spawned.
  */
 export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
@@ -52,6 +43,8 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
         <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
           <TabsList>
             <TabsTrigger value="details">{m.panel_tab_details()}</TabsTrigger>
+            <TabsTrigger value="diff">{m.panel_tab_diff()}</TabsTrigger>
+            <TabsTrigger value="pr">{m.panel_tab_pr()}</TabsTrigger>
             <TabsTrigger value="agents">
               {m.panel_tab_agents()}
               <RunningSubagentsBadge threadId={thread.id} />
@@ -70,13 +63,21 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
                   <WorktreeSetupLog worktree={worktree} />
                 </Section>
               )}
-              <ChangesSection worktree={worktree} />
               <Section title={m.ports_title()}>
                 <ThreadPorts threadId={thread.id} />
               </Section>
-              <Section title={m.pr_links_title()}>
-                <ThreadPullRequests thread={thread} />
-              </Section>
+            </div>
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="diff" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <ThreadDiff thread={thread} />
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="pr" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-4">
+              <ThreadPullRequests thread={thread} />
             </div>
           </ScrollArea>
         </TabsContent>
@@ -231,144 +232,3 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
 /** The GitHub pull request for the worktree's branch, or null when there is none or `gh` cannot tell. */
 const useBranchPullRequest = (worktreeId: string | undefined) =>
   AsyncResult.getOrElse(useAtomValue(branchPullRequestAtom(worktreeId ?? null)), () => null)
-
-function ChangesSection({ worktree }: { worktree: Worktree | undefined }) {
-  if (!worktree) {
-    return (
-      <Section title={m.panel_changes()}>
-        <p className="text-xs text-muted-foreground">{m.panel_changes_root()}</p>
-      </Section>
-    )
-  }
-  if (worktree.status === "removed") {
-    return (
-      <Section title={m.panel_changes()}>
-        <p className="text-xs text-muted-foreground">{m.panel_changes_removed()}</p>
-      </Section>
-    )
-  }
-  return <WorktreeChanges worktreeId={worktree.id} />
-}
-
-const fileStatusLabel = {
-  added: m.file_status_added,
-  modified: m.file_status_modified,
-  deleted: m.file_status_deleted,
-  untracked: m.file_status_untracked,
-} satisfies Record<ChangedFileStatus, () => string>
-
-const fileStatusMark = {
-  added: { letter: "A", className: "text-emerald-500" },
-  modified: { letter: "M", className: "text-amber-500" },
-  deleted: { letter: "D", className: "text-destructive" },
-  untracked: { letter: "U", className: "text-sky-500" },
-} satisfies Record<ChangedFileStatus, { letter: string; className: string }>
-
-/** The single-file section of a combined `git diff`, found by its `diff --git a/… b/<path>` header. */
-const patchForFile = (patch: string, path: string) =>
-  patch.split(/^(?=diff --git )/m).find((chunk) => chunk.slice(0, chunk.indexOf("\n")).endsWith(` b/${path}`))
-
-function WorktreeChanges({ worktreeId }: { worktreeId: string }) {
-  const changesAtom = worktreeChangesAtom(worktreeId)
-  const changes = useAtomValue(changesAtom)
-  const refresh = useAtomRefresh(changesAtom)
-  const [openPath, setOpenPath] = useState<string | null>(null)
-
-  const refreshButton = (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={m.panel_changes_refresh()}
-      title={m.panel_changes_refresh()}
-      onClick={refresh}
-    >
-      <RiRefreshLine aria-hidden className={changes.waiting ? "animate-spin motion-reduce:animate-none" : undefined} />
-    </Button>
-  )
-
-  return (
-    <Section title={m.panel_changes()} action={refreshButton}>
-      {AsyncResult.builder(changes)
-        .onInitial(() => <p className="text-xs text-muted-foreground">{m.panel_changes_loading()}</p>)
-        .onSuccess(({ baseRef, files, patch }) => (
-          <div className="flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground">{m.panel_changes_base({ baseRef })}</p>
-            {files.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{m.panel_changes_empty()}</p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {files.map((file) => (
-                  <ChangedFileRow
-                    key={file.path}
-                    path={file.path}
-                    status={file.status}
-                    patch={patch}
-                    open={openPath === file.path}
-                    onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-        ))
-        .onError((error) => (
-          <p role="alert" className="text-xs text-destructive">
-            {m.panel_changes_failed({ message: errorMessage(error) })}
-          </p>
-        ))
-        .orElse(() => null)}
-    </Section>
-  )
-}
-
-interface ChangedFileRowProps {
-  readonly path: string
-  readonly status: ChangedFileStatus
-  readonly patch: string
-  readonly open: boolean
-  readonly onToggle: () => void
-}
-
-function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowProps) {
-  const diffId = useId()
-  const mark = fileStatusMark[status]
-  const filePatch = open ? patchForFile(patch, path) : undefined
-  const theme = useTheme(useSettings().appearance.theme)
-
-  return (
-    <li className="flex flex-col gap-1">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={diffId}
-        onClick={onToggle}
-        className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
-      >
-        <abbr title={fileStatusLabel[status]()} className={`w-3 shrink-0 font-mono no-underline ${mark.className}`}>
-          {mark.letter}
-        </abbr>
-        <span className="truncate font-mono" title={path}>
-          {path}
-        </span>
-      </button>
-      {open && (
-        <div id={diffId} className="overflow-hidden rounded-md border border-border text-xs">
-          {filePatch ? (
-            <PatchDiff
-              patch={filePatch}
-              options={{
-                diffStyle: "unified",
-                theme: theme.codeTheme,
-                themeType: theme.scheme,
-                overflow: "wrap",
-                disableFileHeader: true,
-              }}
-            />
-          ) : (
-            <p className="p-2 text-muted-foreground">{m.panel_diff_missing()}</p>
-          )}
-        </div>
-      )}
-    </li>
-  )
-}

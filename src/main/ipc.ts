@@ -14,6 +14,7 @@ import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Events } from "./services/Events.ts"
+import { Favicons } from "./services/Favicons.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpCredentials } from "./mcp/index.ts"
@@ -40,6 +41,7 @@ type AppServices =
   | Attachments
   | Automations
   | GitHub
+  | Favicons
 
 interface HandlerError {
   readonly _tag: string
@@ -111,12 +113,14 @@ const handlers: Handlers = {
   "threads.delete": ({ id, removeWorktree }) =>
     closeTerminals(id).pipe(Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree })))),
 
+  "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
+
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
-  "worktrees.changes": ({ id }) => Worktrees.use((worktrees) => worktrees.changes(id)),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
+  "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.settle": ({ threadId }) =>
     closeTerminals(threadId).pipe(Effect.andThen(Threads.use((threads) => threads.settle(threadId)))),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
@@ -157,6 +161,14 @@ const handlers: Handlers = {
   "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
+  "github.pullRequestDetail": ({ url }) => GitHub.use((github) => github.pullRequestDetail(url)),
+  "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
+  "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
+  "github.repository": ({ projectId }) =>
+    Projects.use((projects) => projects.get(projectId)).pipe(
+      Effect.flatMap(({ rootPath }) => GitHub.use((github) => github.repository(rootPath))),
+    ),
+  "links.favicon": ({ url }) => Favicons.use((favicons) => favicons.favicon(url)),
   "mcp.connection": ({ threadId }) => McpCredentials.use((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),

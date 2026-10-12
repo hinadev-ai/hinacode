@@ -173,7 +173,11 @@ export type TokenUsageBreakdown = {
   outputTokens: number
   reasoningOutputTokens: number
 }
-export type ThreadTokenUsage = { total: TokenUsageBreakdown; last: TokenUsageBreakdown }
+export type ThreadTokenUsage = {
+  total: TokenUsageBreakdown
+  last: TokenUsageBreakdown
+  modelContextWindow: number | null
+}
 
 /** Params of the server notifications kkcode handles, keyed by method. */
 export type ServerNotificationParams = {
