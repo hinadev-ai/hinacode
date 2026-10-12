@@ -105,34 +105,32 @@ const windowReturnSignal = Atom.readable((get) => {
 })
 
 /**
- * The pull request for a worktree's branch, or null when there is none. Re-asked every minute while
- * shown and when the window comes back, so a merge on GitHub shows up. A null worktree id resolves
- * to null without asking `gh`.
+ * A `gh` lookup per key that outlives the screen showing it, since every `gh` call is a network round trip.
+ * Showing a key again within 10 minutes renders the last answer at once and asks `gh` again only when that
+ * answer is over 30 seconds old. While shown, it is re-asked every minute and when the window comes back,
+ * so a merge on GitHub shows up.
  */
-export const branchPullRequestAtom = Atom.family((worktreeId: string | null) =>
-  worktreeId
-    ? Atom.make(call("worktrees.pullRequest", { id: worktreeId })).pipe(
-        Atom.withRefresh("60 seconds"),
-        Atom.makeRefreshOnSignal(windowReturnSignal),
-      )
-    : Atom.make(Effect.succeed(null)),
+const gitHubLookup = <K, A>(lookup: (key: K) => Effect.Effect<A, RpcError>) => {
+  // Its own family: the wrapper below is dropped on unmount, and a family only holds its atoms weakly.
+  const cached = Atom.family((key: K) => Atom.make(lookup(key)).pipe(Atom.setIdleTTL("10 minutes")))
+  return Atom.family((key: K) =>
+    cached(key).pipe(
+      Atom.swr({ staleTime: "30 seconds", revalidateOnFocus: true, focusSignal: windowReturnSignal }),
+      Atom.withRefresh("60 seconds"),
+    ),
+  )
+}
+
+/** The pull request for a worktree's branch, or null when there is none. A null worktree id never asks `gh`. */
+export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) =>
+  worktreeId ? call("worktrees.pullRequest", { id: worktreeId }) : Effect.succeed(null),
 )
 
-/** A linked pull request's status, refreshed like `branchPullRequestAtom`. */
-export const pullRequestStatusAtom = Atom.family((url: string) =>
-  Atom.make(call("github.pullRequest", { url })).pipe(
-    Atom.withRefresh("60 seconds"),
-    Atom.makeRefreshOnSignal(windowReturnSignal),
-  ),
-)
+/** A linked pull request's status. */
+export const pullRequestStatusAtom = gitHubLookup((url: string) => call("github.pullRequest", { url }))
 
-/** Everything the PR tab shows about one pull request, refreshed like `pullRequestStatusAtom`. */
-export const pullRequestDetailAtom = Atom.family((url: string) =>
-  Atom.make(call("github.pullRequestDetail", { url })).pipe(
-    Atom.withRefresh("60 seconds"),
-    Atom.makeRefreshOnSignal(windowReturnSignal),
-  ),
-)
+/** Everything the PR tab shows about one pull request. */
+export const pullRequestDetailAtom = gitHubLookup((url: string) => call("github.pullRequestDetail", { url }))
 
 /**
  * Whether `gh` is signed in. Kept for 12 hours after the last screen showing it closes, since asking `gh`
