@@ -2,7 +2,8 @@ import type { Mermaid, MermaidConfig } from "mermaid"
 import { isValidElement, memo, type ReactNode, useEffect, useId, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { resolveColor, themes } from "../lib/appearance.ts"
+import type { Appearance } from "../../shared/domain.ts"
+import { resolveColor, useTheme } from "../lib/appearance.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
@@ -91,11 +92,14 @@ let mermaidLoader: Promise<Mermaid> | undefined
 const loadMermaid = () => (mermaidLoader ??= import("mermaid").then(({ default: mermaid }) => mermaid))
 
 /** Mermaid derives shades from these with its own color math, so they are passed as resolved hex. */
-const mermaidConfig = (scheme: "dark" | "light"): MermaidConfig => ({
+const mermaidConfig = (appearance: Appearance, scheme: "dark" | "light"): MermaidConfig => ({
   startOnLoad: false,
   theme: "base",
   securityLevel: "strict",
-  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans"),
+  fontFamily:
+    appearance.uiFont === null
+      ? getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans")
+      : JSON.stringify(appearance.uiFont),
   themeVariables: {
     darkMode: scheme === "dark",
     fontSize: "12px",
@@ -121,12 +125,13 @@ function MermaidDiagram({ code }: { code: string }) {
   const id = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, "")}`
   const [diagram, setDiagram] = useState<Diagram>({ status: "rendering" })
   const { appearance } = useSettings()
+  const theme = useTheme(appearance.theme)
 
   useEffect(() => {
     let cancelled = false
     const render = async (): Promise<Diagram> => {
       const mermaid = await loadMermaid()
-      mermaid.initialize(mermaidConfig(themes[appearance.theme].scheme))
+      mermaid.initialize(mermaidConfig(appearance, theme.scheme))
       // Checking first keeps an invalid source from leaving mermaid's error graphic in the document.
       if (!(await mermaid.parse(code, { suppressErrors: true }))) return { status: "failed" }
       const { svg } = await mermaid.render(id, code)
@@ -141,7 +146,7 @@ function MermaidDiagram({ code }: { code: string }) {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [code, id, appearance])
+  }, [code, id, appearance, theme.scheme])
 
   return (
     <CodeFigure label="mermaid" code={code}>

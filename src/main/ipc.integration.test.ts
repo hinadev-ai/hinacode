@@ -34,6 +34,7 @@ interface Frame {
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<{ channel: string; payload: unknown }>,
+  shown: [] as Array<object>,
   userData: "",
 }))
 
@@ -44,7 +45,11 @@ vi.mock("electron", () => ({
     getAllWindows: () => [
       { webContents: { send: (channel: string, payload: unknown) => electron.pushes.push({ channel, payload }) } },
     ],
-    fromWebContents: () => null,
+    fromWebContents: (sender: object) => ({
+      show: () => {
+        electron.shown.push(sender)
+      },
+    }),
   },
   dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
   shell: { showItemInFolder: () => undefined },
@@ -130,6 +135,26 @@ afterAll(async () => {
 })
 
 describe("rpc trust boundary", () => {
+  test("only a trusted, valid app.ready call shows its sender's window", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)
+    if (!handler) throw new Error("RPC handler is missing")
+    const sender = {}
+    const request = { method: "app.ready", payload: undefined }
+    electron.shown.length = 0
+    expect(
+      await handler({ sender, senderFrame: { url: "file:///tmp/probe.html", parent: null } }, request),
+    ).toMatchObject({ error: { tag: "UntrustedSender" } })
+    expect(await handler({ sender, senderFrame: { url: appUrl, parent: mainFrame } }, request)).toMatchObject({
+      error: { tag: "UntrustedSender" },
+    })
+    expect(await handler({ sender, senderFrame: mainFrame }, { method: 4, payload: undefined })).toMatchObject({
+      error: { tag: "SchemaError" },
+    })
+    expect(electron.shown).toStrictEqual([])
+    expect(await handler({ sender, senderFrame: mainFrame }, request)).toStrictEqual({ result: undefined })
+    expect(electron.shown).toStrictEqual([sender])
+  })
+
   test("refuses calls from documents that are not the app and from subframes", async () => {
     const foreign = await invoke("settings.get", undefined, { url: "file:///tmp/probe.html", parent: null })
     expect(failure(foreign).tag).toBe("UntrustedSender")

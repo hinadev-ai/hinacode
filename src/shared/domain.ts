@@ -146,6 +146,8 @@ export const Locale = Schema.Literals(["en", "zh-TW"])
 export type Locale = typeof Locale.Type
 
 export const ThemeId = Schema.Literals([
+  "system",
+  "light",
   "default",
   "catppuccin-mocha",
   "catppuccin-latte",
@@ -191,7 +193,7 @@ export const defaultSettings: Settings = {
   keybindings: {},
   defaultModel: { claude: null, codex: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
-  appearance: { theme: "default", fontSize: 16, uiFont: null, monoFont: null },
+  appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
 }
 
 export const PullRequestLink = Schema.Struct({
