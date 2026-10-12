@@ -98,6 +98,8 @@ const createWindow = () => {
     backgroundColor: "#0a0a0a",
     title: "kkcode",
     icon,
+    // The renderer draws its own title bar around the traffic lights (see TitleBar.tsx).
+    ...(process.platform === "darwin" && { titleBarStyle: "hidden", trafficLightPosition: { x: 14, y: 13 } }),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       sandbox: true,
