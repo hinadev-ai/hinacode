@@ -59,7 +59,7 @@ export function PostedQuestionsCard({
   )
 }
 
-const answerText = (questions: ReadonlyArray<Question>, answers: QuestionAnswers) =>
+export const answerText = (questions: ReadonlyArray<Question>, answers: QuestionAnswers) =>
   questions.map((question) => `${question.question}\n${answers[question.id]?.join(", ") ?? "(skipped)"}`).join("\n\n")
 
 /** Each question can be answered by picking options or typing; any left blank is skipped. */
