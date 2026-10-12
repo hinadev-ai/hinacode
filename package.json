@@ -9,7 +9,8 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start:xvfb": "DISPLAY=:99 electron-vite preview -- --no-sandbox --disable-gpu --remote-debugging-port=9222",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json && tsc --noEmit -p tsconfig.e2e.json",
+    "paraglide": "paraglide-js compile --project ./project.inlang --outdir ./src/renderer/paraglide --strategy globalVariable baseLocale --silent",
+    "typecheck": "pnpm paraglide && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "oxlint",
     "format": "oxfmt",
     "test": "vitest run",
@@ -68,5 +69,6 @@
     "typescript": "6.0.3",
     "vite": "7.3.7",
     "vitest": "5.0.3"
-  }
+  },
+  "packageManager": "pnpm@12.10.1"
 }
