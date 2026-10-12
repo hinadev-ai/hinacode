@@ -131,6 +131,7 @@ export const RpcMethods = {
       automations: Schema.optional(Settings.fields.automations),
       appearance: Schema.optional(Settings.fields.appearance),
       textGenerationModel: Schema.optional(Settings.fields.textGenerationModel),
+      defaultAccessMode: Schema.optional(Settings.fields.defaultAccessMode),
     }),
     Settings,
   ),

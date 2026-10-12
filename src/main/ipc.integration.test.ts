@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import type { AgentEvent, Subagent } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
@@ -135,8 +136,11 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 /** The production composition from `index.ts`, with scripted agent providers and a stubbed Automations. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-    Settings.layer,
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
     Attachments.layer,
   )
@@ -350,14 +354,36 @@ describe("projects, threads and settings over rpc", () => {
     )
   })
 
-  test("a thread starts supervised and keeps the access mode it is switched to", async () => {
+  test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
-    expect(thread.accessMode).toBe("supervised")
+    expect(thread.accessMode).toBe("full")
 
-    result(await invoke("threads.update", { id: thread.id, accessMode: "full" }))
+    result(await invoke("settings.set", { defaultAccessMode: "auto" }))
+    const next = result(await invoke("threads.create", { projectId: project.id }))
+    expect(next.accessMode).toBe("auto")
+    result(await invoke("settings.set", { defaultAccessMode: "full" }))
+
+    result(await invoke("threads.update", { id: thread.id, accessMode: "supervised" }))
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
-    expect(listed?.accessMode).toBe("full")
+    expect(listed?.accessMode).toBe("supervised")
+  })
+
+  test("reordering a thread keeps its updatedAt", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const created = result(await invoke("threads.create", { projectId: project.id }))
+    // Last touched at the epoch, so a reorder that bumps updatedAt to the real clock cannot go unnoticed.
+    const thread = await runtime.runPromise(
+      Threads.Threads.use((threads) => threads.update({ id: created.id, title: "old" })).pipe(
+        Effect.provide(TestClock.layer()),
+      ),
+    )
+    expect(thread.updatedAt).toBe("1970-01-01T00:00:00.000Z")
+
+    const moved = result(await invoke("threads.update", { id: thread.id, sortIndex: thread.sortIndex + 10 }))
+    expect(moved.updatedAt).toBe(thread.updatedAt)
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed).toMatchObject({ sortIndex: thread.sortIndex + 10, updatedAt: thread.updatedAt })
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {

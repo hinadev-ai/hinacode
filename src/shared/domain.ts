@@ -205,6 +205,8 @@ export const Settings = Schema.Struct({
   appearance: Appearance,
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
+  /** The access mode new threads start with. */
+  defaultAccessMode: AccessMode,
 })
 export type Settings = typeof Settings.Type
 
@@ -215,6 +217,7 @@ export const defaultSettings: Settings = {
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
+  defaultAccessMode: "full",
 }
 
 export const PullRequestLink = Schema.Struct({
