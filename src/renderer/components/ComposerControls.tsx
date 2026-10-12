@@ -87,8 +87,8 @@ export function ModelPicker({ thread, onError }: ControlProps) {
 
   return (
     <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={triggerClass}>
-        <SelectValue />
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-0 flex-1 ${triggerClass}`}>
+        <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
       <SelectContent>
         {items.map((item) => (
@@ -187,7 +187,7 @@ export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree
   const setWorktree = (next: Draft["worktree"]) => useDrafts.getState().setWorktree(thread.id, next)
 
   return (
-    <div className="mx-auto mt-1 flex max-w-3xl items-center gap-1 px-1 text-xs text-muted-foreground">
+    <div className="mx-auto mt-1 flex max-w-3xl flex-wrap items-center gap-1 px-1 text-xs text-muted-foreground">
       <Select
         items={workspaces}
         value={worktree === null ? "local" : "worktree"}
@@ -205,7 +205,7 @@ export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree
         </SelectContent>
       </Select>
       {worktree !== null && (
-        <label className="flex items-center gap-1.5">
+        <label className="flex min-w-0 flex-1 items-center gap-1.5">
           {m.thread_base_ref_prefix()}
           <Input
             aria-label={m.thread_base_ref_label()}
@@ -214,7 +214,7 @@ export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree
             placeholder={currentBranch}
             spellCheck={false}
             autoComplete="off"
-            className="h-7 w-48 font-mono text-xs"
+            className="h-7 w-48 min-w-0 font-mono text-xs"
           />
         </label>
       )}

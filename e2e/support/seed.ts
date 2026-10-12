@@ -10,6 +10,7 @@ export interface SeedThread {
   readonly projectId: string
   readonly title: string
   readonly provider?: "claude" | "codex"
+  readonly status?: "idle" | "running"
 }
 
 /**
@@ -46,17 +47,17 @@ export class Seed {
     return id
   }
 
-  thread({ projectId, title, provider = "claude" }: SeedThread): string {
+  thread({ projectId, title, provider = "claude", status = "idle" }: SeedThread): string {
     const id = randomUUID()
     const now = new Date().toISOString()
     this.#with((db) =>
       db
         .prepare(
           `INSERT INTO thread (id, project_id, worktree_id, title, provider, model, provider_session_id, status, sort_index, created_at, updated_at)
-           VALUES (?, ?, NULL, ?, ?, 'claude-sonnet-5-5', NULL, 'idle',
+           VALUES (?, ?, NULL, ?, ?, 'claude-sonnet-5-5', NULL, ?,
                    (SELECT COALESCE(MAX(sort_index) + 1, 0) FROM thread WHERE project_id = ?), ?, ?)`,
         )
-        .run(id, projectId, title, provider, projectId, now, now),
+        .run(id, projectId, title, provider, status, projectId, now, now),
     )
     return id
   }
