@@ -20,6 +20,7 @@ import * as Mcp from "./mcp/index.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
+import * as Favicons from "./services/Favicons.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
@@ -134,7 +135,7 @@ const makeLayer = (dbPath: string) => {
   const base = Layer.mergeAll(agents, automationsStub)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
-    Layer.provideMerge(GitHub.layer),
+    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )

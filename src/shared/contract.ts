@@ -188,6 +188,8 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
+  /** The icon of the url's site as a data URL, or null. Main only ever GETs the origin root and the icon. */
+  "links.favicon": rpc(Schema.Struct({ url: Schema.String }), Schema.NullOr(Schema.String)),
   /** The built-in MCP server connection handed to agents running in this thread. */
   "mcp.connection": rpc(
     Schema.Struct({ threadId: Schema.String }),

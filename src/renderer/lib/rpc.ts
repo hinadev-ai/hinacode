@@ -128,6 +128,11 @@ export const pullRequestStatusAtom = Atom.family((url: string) =>
  */
 export const gitHubAuthAtom = Atom.make(call("github.auth", undefined)).pipe(Atom.setIdleTTL("12 hours"))
 
+/** A site's icon as a data URL, or null. Keyed by origin and kept, so scrolling back to a link never asks again. */
+export const faviconAtom = Atom.family((origin: string) =>
+  Atom.make(call("links.favicon", { url: origin })).pipe(Atom.keepAlive),
+)
+
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
 
 /** Re-lists the thread's open ports every 2s while something subscribes. */

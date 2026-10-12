@@ -12,6 +12,7 @@ import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
+import * as Favicons from "./services/Favicons.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
@@ -55,7 +56,7 @@ const makeAppLayer = (dbPath: string) => {
   return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, eventsLayer)),
-    Layer.provideMerge(GitHub.layer),
+    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )

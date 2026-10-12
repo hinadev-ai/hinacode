@@ -1,10 +1,12 @@
 import { LegendList } from "@legendapp/list/react"
 import { memo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
+import { linkify } from "../lib/linkify.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
+import { WebLink } from "./WebLink.tsx"
 
 const keyExtractor = (message: Message) => message.id
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
@@ -51,7 +53,15 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
         )}
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
-            {text}
+            {linkify(text).map((segment, index) =>
+              segment.type === "link" ? (
+                <WebLink key={index} href={segment.href}>
+                  {segment.text}
+                </WebLink>
+              ) : (
+                segment.text
+              ),
+            )}
           </div>
         )}
       </article>
