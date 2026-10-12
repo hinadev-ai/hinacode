@@ -53,6 +53,10 @@ export interface UpdateThread {
   readonly providerSessionId?: string | undefined
 }
 
+// Reordering in the sidebar is not activity, so it must not make a thread look fresh.
+const onlyReorders = (input: UpdateThread) =>
+  Object.entries(input).every(([key, value]) => key === "id" || key === "sortIndex" || value === undefined)
+
 export class Threads extends Context.Service<
   Threads,
   {
@@ -192,7 +196,7 @@ const make = Effect.gen(function* () {
         status: input.status ?? current.status,
         sortIndex: input.sortIndex ?? current.sortIndex,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
-        updatedAt: yield* nowIso,
+        updatedAt: onlyReorders(input) ? current.updatedAt : yield* nowIso,
       }
       yield* sql`
         UPDATE thread
