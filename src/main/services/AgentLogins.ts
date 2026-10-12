@@ -4,6 +4,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { AgentError, type AgentProvider, type SignIn } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
+import { AgentRunner } from "./AgentRunner.ts"
 import type { AccountInUseError, NotFoundError, PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
 
@@ -42,6 +43,7 @@ interface Pending {
 const make = Effect.gen(function* () {
   const layerScope = yield* Effect.scope
   const accounts = yield* AgentAccounts
+  const runner = yield* AgentRunner
   const push = yield* Events
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
@@ -83,6 +85,7 @@ const make = Effect.gen(function* () {
           orElse: () => Effect.fail(new AgentError({ provider: provider.id, message: "The sign-in timed out" })),
         }),
         Effect.match({ onSuccess: () => null, onFailure: (error) => error.message }),
+        Effect.tap(() => runner.forgetLimits(provider.id, accountId)),
         Effect.flatMap((error) => push.publish({ type: "account.signIn", accountId, error })),
         Effect.ensuring(
           Effect.suspend(() => {
@@ -113,7 +116,11 @@ const make = Effect.gen(function* () {
     signIn,
     submitCode,
     cancelSignIn,
-    signOut: (accountId) => homeOf(accountId).pipe(Effect.flatMap(({ provider, home }) => provider.signOut(home))),
+    signOut: (accountId) =>
+      homeOf(accountId).pipe(
+        Effect.flatMap(({ provider, home }) => provider.signOut(home).pipe(Effect.as(provider.id))),
+        Effect.flatMap((provider) => runner.forgetLimits(provider, accountId)),
+      ),
     remove: (accountId) =>
       cancelSignIn(accountId).pipe(
         Effect.andThen(

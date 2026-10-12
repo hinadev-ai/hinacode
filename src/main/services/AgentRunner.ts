@@ -92,6 +92,8 @@ export class AgentRunner extends Context.Service<
      * reports null limits.
      */
     readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
+    /** Drops an account's cached limits, so a sign-in or sign-out shows on the next read. */
+    readonly forgetLimits: (provider: ProviderId, accountId: string | null) => Effect.Effect<void>
     /** Null until the thread's first turn binds an agent session. */
     readonly usage: (
       threadId: string,
@@ -543,6 +545,8 @@ const make = Effect.gen(function* () {
         concurrency: "unbounded",
       })
     }),
+    forgetLimits: (provider, accountId) =>
+      Cache.invalidate(cachedLimits, JSON.stringify({ provider, accountId } satisfies LimitsKey)),
     usage: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
