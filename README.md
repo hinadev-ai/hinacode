@@ -22,7 +22,7 @@ A local desktop app for running Claude Code and Codex against your repositories.
 
 ## Development
 
-Requires Node 24 or later, pnpm, and the `claude` and `codex` CLIs on your PATH and logged in.
+Requires Node 24 or later, pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
 
 ```sh
 pnpm install

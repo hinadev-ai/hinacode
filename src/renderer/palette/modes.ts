@@ -1,7 +1,8 @@
 import { m } from "../paraglide/messages.js"
+import { fileSearchSource, rankLiteral, threadSearchSource } from "./search.tsx"
 import { commandsSource, filesSource, projectsSource, threadsSource } from "./sources.tsx"
 import type { PaletteGroup, PaletteMode } from "./types.ts"
-import { COMMAND_PREFIX } from "./usePalette.ts"
+import { COMMAND_PREFIX, SEARCH_PREFIX } from "./usePalette.ts"
 
 const goTo: PaletteMode = {
   id: "goto",
@@ -13,6 +14,13 @@ const goTo: PaletteMode = {
 /** Every mode the palette offers. The one with the longest matching prefix wins, so `goTo` catches the rest. */
 export const paletteModes: ReadonlyArray<PaletteMode> = [
   { id: "commands", prefix: COMMAND_PREFIX, placeholder: m.palette_commands_placeholder, sources: [commandsSource] },
+  {
+    id: "search",
+    prefix: SEARCH_PREFIX,
+    placeholder: m.palette_search_placeholder,
+    sources: [threadSearchSource, fileSearchSource],
+    rank: rankLiteral,
+  },
   goTo,
 ]
 

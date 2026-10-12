@@ -27,8 +27,10 @@ import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
+import * as Terminals from "./services/Terminals.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
@@ -145,9 +147,10 @@ const makeLayer = (dbPath: string) => {
     ),
     Messages.layer,
     Attachments.layer,
+    Search.layer,
     Files.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
@@ -476,6 +479,16 @@ describe("projects, threads and settings over rpc", () => {
       "ready",
     ])
     result(await invoke("worktrees.remove", { id: worktree.id, deleteBranch: "force" }))
+  })
+
+  test("deleting a project ends the shells of its threads", async () => {
+    const root = join(dir, "doomed")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "doomed", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("terminal.open", { threadId: thread.id, cols: 80, rows: 24 }))
+    result(await invoke("projects.delete", { id: project.id }))
+    expect(result(await invoke("terminal.list", { threadId: thread.id }))).toStrictEqual([])
   })
 })
 
