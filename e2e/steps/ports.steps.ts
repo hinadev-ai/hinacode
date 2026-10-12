@@ -2,10 +2,10 @@ import { expect } from "@playwright/test"
 import { tmpdir } from "node:os"
 import { Then, When } from "../support/fixtures.ts"
 import { isAlive, listenFrom } from "../support/listener.ts"
-import { threadDetails } from "../support/ui.ts"
+import { threadView } from "../support/ui.ts"
 
 const portsRegion = async (page: import("@playwright/test").Page) =>
-  (await threadDetails(page)).getByRole("region", { name: "Ports" })
+  (await threadView(page, "Details")).getByRole("region", { name: "Ports" })
 
 When("a server starts listening from my repository", async ({ repo, listeners }) => {
   listeners.set("repository", await listenFrom(repo))

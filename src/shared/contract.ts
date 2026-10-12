@@ -19,6 +19,8 @@ import {
   ChangesScope,
   AutomationRun,
   AutomationTrigger,
+  FsEntry,
+  FsFileContent,
   Locale,
   MergeMethod,
   Message,
@@ -147,6 +149,16 @@ export const RpcMethods = {
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
   "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
+
+  /**
+   * One level of a folder under `root`, folders first. `root` must be a project root or a live worktree
+   * path, and `path` is relative to it ("" for the root itself).
+   */
+  "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
+  /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
+  "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
+  "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
@@ -322,6 +334,8 @@ export const PushEvent = Schema.Union([
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
   }),
+  /** Something changed directly inside a folder `fs.watch` asked for. */
+  Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
 ])

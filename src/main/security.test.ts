@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { externalUrl, isAppDocument, isTrustedSender } from "./security.ts"
+import { externalUrl, isAppDocument, isInside, isTrustedSender } from "./security.ts"
 
 const packagedDocument = "file:///opt/kkcode/resources/app.asar/out/renderer/index.html"
 const resolved = (href: string) => new URL(href, packagedDocument).href
@@ -82,5 +82,20 @@ describe("isTrustedSender", () => {
     expect(isTrustedSender(mainFrame("file:///tmp/kkcode-audit/probe.html"), packagedDocument)).toBe(false)
     expect(isTrustedSender(mainFrame("https://example.com/"), devServer)).toBe(false)
     expect(isTrustedSender(null, packagedDocument)).toBe(false)
+  })
+})
+
+describe("isInside", () => {
+  test("accepts the root itself and paths under it", () => {
+    expect(isInside("/repo", "/repo")).toBe(true)
+    expect(isInside("/repo", "/repo/src/a.ts")).toBe(true)
+    expect(isInside("/repo", "/repo/..hidden")).toBe(true)
+  })
+
+  test("rejects parents, siblings sharing a prefix, and relative paths", () => {
+    expect(isInside("/repo", "/")).toBe(false)
+    expect(isInside("/repo", "/repo-other/a.ts")).toBe(false)
+    expect(isInside("/repo", "/repo/../etc/passwd")).toBe(false)
+    expect(isInside("/repo", "src/a.ts")).toBe(false)
   })
 })

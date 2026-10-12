@@ -13,6 +13,8 @@ export const emptyDraft: Draft = { text: "", attachments: [], worktree: null }
 interface DraftsState {
   readonly byThreadId: Readonly<Record<string, Draft>>
   readonly setText: (threadId: string, text: string) => void
+  /** Adds `@path ` at the end of the text, as if typed there. */
+  readonly appendMention: (threadId: string, path: string) => void
   readonly addAttachments: (threadId: string, attachments: ReadonlyArray<Attachment>) => void
   readonly removeAttachment: (threadId: string, attachmentId: string) => void
   readonly setWorktree: (threadId: string, worktree: Draft["worktree"]) => void
@@ -43,6 +45,11 @@ export const useDrafts = create<DraftsState>()((set, get) => {
   return {
     byThreadId: {},
     setText: (threadId, text) => update(threadId, (draft) => ({ ...draft, text })),
+    appendMention: (threadId, path) =>
+      update(threadId, (draft) => ({
+        ...draft,
+        text: `${draft.text}${draft.text === "" || /\s$/.test(draft.text) ? "" : " "}@${path} `,
+      })),
     addAttachments: (threadId, attachments) =>
       update(threadId, (draft) => ({ ...draft, attachments: [...draft.attachments, ...attachments] })),
     removeAttachment: (threadId, attachmentId) =>
