@@ -369,18 +369,25 @@ const make = Effect.gen(function* () {
               )
             })
 
-          const startTool = (item: ThreadItem) => {
+          /** `parentCallId` is the sub-agent's thread id when one of its tools runs. */
+          const startTool = (item: ThreadItem, parentCallId?: string) => {
             const name = toolName(item)
             if (name === undefined || startedTools.has(item.id)) return Effect.void
             startedTools.add(item.id)
             openTools.add(item.id)
-            return emit({ type: "tool_call_started", callId: item.id, name, input: toolInput(item) })
+            return emit({
+              type: "tool_call_started",
+              callId: item.id,
+              name,
+              input: toolInput(item),
+              ...(parentCallId !== undefined && { parentCallId }),
+            })
           }
 
-          const finishTool = (item: ThreadItem) =>
+          const finishTool = (item: ThreadItem, parentCallId?: string) =>
             Effect.gen(function* () {
               if (toolName(item) === undefined) return
-              yield* startTool(item)
+              yield* startTool(item, parentCallId)
               const result = toolResult(item, commandOutput.get(item.id))
               commandOutput.delete(item.id)
               openTools.delete(item.id)
@@ -457,6 +464,22 @@ const make = Effect.gen(function* () {
               )
             })
 
+          const handleChildTool = (childThreadId: string, method: string, params: unknown) => {
+            switch (method) {
+              case "item/started":
+                return startTool((params as ServerNotificationParams["item/started"]).item, childThreadId)
+              case "item/completed":
+                return finishTool((params as ServerNotificationParams["item/completed"]).item, childThreadId)
+              case "item/commandExecution/outputDelta": {
+                const { itemId, delta } = params as ServerNotificationParams["item/commandExecution/outputDelta"]
+                commandOutput.set(itemId, (commandOutput.get(itemId) ?? "") + delta)
+                return Effect.void
+              }
+              default:
+                return Effect.void
+            }
+          }
+
           const belongsToTurn = (params: unknown) => {
             const scope = params as { threadId?: string; turnId?: string; turn?: { id: string } } | undefined
             return scope?.threadId === thread.id && (scope.turnId ?? scope.turn?.id ?? turn.turnId) === turn.turnId
@@ -468,6 +491,7 @@ const make = Effect.gen(function* () {
               if (message.kind === "exit") return yield* Effect.fail(message.error)
               const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
               if (message.kind === "notification" && childThreadId !== undefined && subagents.has(childThreadId)) {
+                yield* handleChildTool(childThreadId, message.method, message.params)
                 const changed = applyChildNotification(
                   subagents,
                   childThreadId,
