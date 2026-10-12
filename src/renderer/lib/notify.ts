@@ -1,6 +1,7 @@
 import { toast } from "sonner"
 import type { ThreadAlert } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
+import { callPromise } from "./rpc.ts"
 
 /** Hz per note. Rising for done, repeated for a request, falling for a failure, so the kind is audible. */
 const chimes: Record<ThreadAlert, ReadonlyArray<number>> = {
@@ -58,7 +59,7 @@ export const notify = (surface: Surface, { alert, title, body, sound, tag, onCli
   if (surface === "desktop") {
     const notification = new Notification(title, { body, silent: true, ...(tag === undefined ? {} : { tag }) })
     notification.addEventListener("click", () => {
-      window.focus()
+      void callPromise("app.focus", undefined)
       onClick?.()
     })
   } else {

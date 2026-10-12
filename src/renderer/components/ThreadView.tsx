@@ -16,6 +16,7 @@ import { Composer } from "./Composer.tsx"
 import { FindBar } from "./FindBar.tsx"
 import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
+import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
@@ -115,11 +116,14 @@ function Transcript({ thread }: { thread: Thread }) {
       {history.messages.length === 0 ? (
         <EmptyThread providerLabel={label} />
       ) : (
-        <MessageList messages={history.messages} listRef={listRef} />
+        <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />
       )}
       <div className="px-4">
         {history.approvals.map((request) => (
           <ApprovalCard key={request.id} request={request} providerLabel={label} />
+        ))}
+        {history.questions.map((request) => (
+          <QuestionRequestCard key={request.id} request={request} providerLabel={label} />
         ))}
         {history.secretRequests.map((request) => (
           <SecretRequestCard key={request.id} request={request} providerLabel={label} />

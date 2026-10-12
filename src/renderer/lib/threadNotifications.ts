@@ -11,6 +11,8 @@ const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly bo
       return { alert: "completed", body: m.notification_completed() }
     case "approval_requested":
       return { alert: "needsInput", body: m.notification_approval() }
+    case "question_requested":
+      return { alert: "needsInput", body: m.notification_question() }
     case "secret_requested":
       return { alert: "needsInput", body: m.notification_secret() }
     case "turn_failed":

@@ -7,6 +7,8 @@ import {
   ModelInfo,
   ProviderId,
   Subagent,
+  QuestionAnswers,
+  QuestionRequest,
   SecretRequest,
 } from "./agent.ts"
 import {
@@ -61,6 +63,7 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 /** Every renderer -> main call. Both sides decode what they receive with these schemas. */
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
+  "app.focus": rpc(Schema.Void, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -190,7 +193,7 @@ export const RpcMethods = {
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
   /**
-   * The thread's live transcript and pending approvals and secret requests as of push `seq`: it
+   * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
    * reflects every transcript push up to and including `seq`, and none after.
    */
   "threads.transcript": rpc(
@@ -198,6 +201,7 @@ export const RpcMethods = {
     Schema.Struct({
       messages: Schema.Array(Message),
       approvals: Schema.Array(ApprovalRequest),
+      questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
       seq: Schema.Number,
     }),
@@ -218,6 +222,7 @@ export const RpcMethods = {
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
+  "questions.respond": rpc(Schema.Struct({ requestId: Schema.String, answers: QuestionAnswers }), Schema.Void),
   /** Secrets never cross back to the renderer; it can only ask whether one is set. */
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),

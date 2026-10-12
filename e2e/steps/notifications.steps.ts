@@ -21,6 +21,25 @@ const eventsByType = (threadId: string): Record<string, AgentEvent> => ({
     type: "approval_requested",
     request: { id: "approval-1", threadId, provider: "claude", kind: "command", title: "Run pnpm test", detail: "" },
   },
+  question_requested: {
+    type: "question_requested",
+    request: {
+      id: "question-1",
+      threadId,
+      provider: "claude",
+      questions: [
+        {
+          id: "target",
+          header: "Target",
+          question: "Which branch should I use?",
+          options: [{ label: "main", description: "Main branch" }],
+          multiSelect: false,
+          allowsText: true,
+          secret: false,
+        },
+      ],
+    },
+  },
   secret_requested: {
     type: "secret_requested",
     request: { id: "secret-1", threadId, name: "NPM_TOKEN", description: "Publish the package" },
@@ -116,4 +135,13 @@ When("I open the toast for {string}", async ({ app, names }, title: string) => {
     .filter({ hasText: names.of(title) })
     .getByRole("button", { name: "Open", exact: true })
     .click()
+})
+
+When("I minimize the notification window", async ({ app }) => {
+  await app.minimize()
+  await expect.poll(() => app.windowState()).toMatchObject({ minimized: true })
+})
+
+Then("the notification window is restored and focused", async ({ app }) => {
+  await expect.poll(() => app.windowState()).toStrictEqual({ minimized: false, focused: true })
 })

@@ -12,9 +12,9 @@ const require = createRequire(import.meta.url)
 export const notificationPermission: Effect.Effect<NotificationPermission> = Effect.sync(() => {
   if (process.platform !== "darwin") return "unknown"
   // CommonJS without named exports Node can detect, so an ESM import would see none.
-  const { getAuthStatus } = require("node-mac-permissions") as typeof import("node-mac-permissions")
-  // The types omit `provisional`, which the README documents for notifications.
-  const status: string = getAuthStatus("notifications")
+  // Keep the optional, darwin-only package out of TypeScript resolution on Linux and Windows.
+  const { getAuthStatus } = require("node-mac-permissions") as { getAuthStatus(type: "notifications"): string }
+  const status = getAuthStatus("notifications")
   switch (status) {
     case "authorized":
     case "provisional":

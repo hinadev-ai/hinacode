@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -49,10 +50,23 @@ const electron = vi.hoisted(() => ({
   /** Called after every push, so a test can wait for the one it expects instead of polling. */
   watchers: new Set<() => void>(),
   shown: [] as Array<object>,
+  restored: [] as Array<object>,
+  focused: [] as Array<object>,
+  notifications: [] as Array<{ title: string; body: string; silent: boolean }>,
+  notificationOutcome: "show" as "show" | "failed",
   userData: "",
 }))
 
 vi.mock("electron", () => ({
+  Notification: class extends EventEmitter {
+    constructor(options: { title: string; body: string; silent: boolean }) {
+      super()
+      electron.notifications.push(options)
+    }
+    show() {
+      this.emit(electron.notificationOutcome)
+    }
+  },
   app: { getPath: () => electron.userData },
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
   BrowserWindow: {
@@ -67,6 +81,13 @@ vi.mock("electron", () => ({
       },
     ],
     fromWebContents: (sender: object) => ({
+      isMinimized: () => true,
+      restore: () => {
+        electron.restored.push(sender)
+      },
+      focus: () => {
+        electron.focused.push(sender)
+      },
       show: () => {
         electron.shown.push(sender)
       },
@@ -110,22 +131,31 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.fromIterable(
-      input.prompt === "simulate usage limit"
+      input.prompt === "simulate unanswered question"
         ? [
             {
-              type: "turn_limited",
-              limit: {
-                kind: "usage",
-                message: "Usage limit reached",
-                reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
-              },
+              type: "question_requested",
+              request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
             },
+            { type: "turn_failed", message: "Provider disconnected before the answer" },
           ]
-        : scriptedTurn,
+        : input.prompt === "simulate usage limit"
+          ? [
+              {
+                type: "turn_limited",
+                limit: {
+                  kind: "usage",
+                  message: "Usage limit reached",
+                  reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                },
+              },
+            ]
+          : scriptedTurn,
     ),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
+  respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
 })
 
@@ -249,6 +279,32 @@ describe("rpc trust boundary", () => {
     expect(electron.shown).toStrictEqual([sender])
   })
 
+  test("only a valid app.focus call from the app frame restores and focuses its own window", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)
+    if (!handler) throw new Error("RPC handler is missing")
+    const sender = {}
+    const request = { method: "app.focus", payload: undefined }
+    electron.shown.length = 0
+    electron.restored.length = 0
+    electron.focused.length = 0
+    expect(
+      await handler({ sender, senderFrame: { url: "file:///tmp/probe.html", parent: null } }, request),
+    ).toMatchObject({ error: { tag: "UntrustedSender" } })
+    expect(await handler({ sender, senderFrame: { url: appUrl, parent: mainFrame } }, request)).toMatchObject({
+      error: { tag: "UntrustedSender" },
+    })
+    expect(await handler({ sender, senderFrame: mainFrame }, { method: 4, payload: undefined })).toMatchObject({
+      error: { tag: "SchemaError" },
+    })
+    expect(electron.shown).toStrictEqual([])
+    expect(electron.restored).toStrictEqual([])
+    expect(electron.focused).toStrictEqual([])
+    expect(await handler({ sender, senderFrame: mainFrame }, request)).toStrictEqual({ result: undefined })
+    expect(electron.shown).toStrictEqual([sender])
+    expect(electron.restored).toStrictEqual([sender])
+    expect(electron.focused).toStrictEqual([sender])
+  })
+
   test("refuses calls from documents that are not the app and from subframes", async () => {
     const foreign = await invoke("settings.get", undefined, { url: "file:///tmp/probe.html", parent: null })
     expect(failure(foreign).tag).toBe("UntrustedSender")
@@ -259,6 +315,39 @@ describe("rpc trust boundary", () => {
 })
 
 describe("rpc contract", () => {
+  test("notification permission requests validate payloads and reject foreign frames before showing anything", async () => {
+    electron.notifications.length = 0
+    const payload = { title: "kkcode", body: "Permission check" }
+    expect(
+      failure(await invoke("notifications.askPermission", payload, { url: "file:///tmp/probe.html", parent: null }))
+        .tag,
+    ).toBe("UntrustedSender")
+    expect(failure(await invoke("notifications.askPermission", payload, { url: appUrl, parent: mainFrame })).tag).toBe(
+      "UntrustedSender",
+    )
+    expect(
+      failure(await invoke("notifications.askPermission", { title: 4 as unknown as string, body: "invalid" })).tag,
+    ).toBe("SchemaError")
+    expect(electron.notifications).toStrictEqual([])
+  })
+
+  test("notification permission requests report the native result and always remain silent", async () => {
+    electron.notifications.length = 0
+    const payload = { title: "kkcode", body: "Permission check" }
+    electron.notificationOutcome = "show"
+    expect(result(await invoke("notifications.askPermission", payload))).toBe("shown")
+    electron.notificationOutcome = "failed"
+    expect(result(await invoke("notifications.askPermission", payload))).toBe("refused")
+    electron.notificationOutcome = "show"
+    expect(electron.notifications).toStrictEqual([
+      { ...payload, silent: true },
+      { ...payload, silent: true },
+    ])
+    expect(["unknown", "granted", "denied", "notDetermined"]).toContain(
+      result(await invoke("notifications.permission", undefined)),
+    )
+  })
+
   test("answers an unknown method and a payload outside the contract with a schema error", async () => {
     const unknown = await invoke("no.such.method" as RpcMethod, undefined as never)
     expect(failure(unknown).tag).toBe("SchemaError")
@@ -452,6 +541,18 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
   })
 
+  test("notification preferences persist through the derived settings patch", async () => {
+    const before = result(await invoke("settings.get", undefined))
+    const notifications = { completed: false, needsInput: true, failed: false, sound: false }
+    const saved = result(await invoke("settings.set", { notifications }))
+    expect(saved).toStrictEqual({ ...before, notifications })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+
+    const malformed = await invoke("settings.set", { notifications: { ...notifications, sound: "yes" } } as never)
+    expect(malformed).toMatchObject({ error: { tag: "SchemaError" } })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+  })
+
   test("creating a worktree pushes its state changes to every window", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     writeFileSync(join(repo, "README.md"), "hello")
@@ -607,5 +708,33 @@ describe("limited threads over rpc", () => {
       },
     )
     expect(response).toMatchObject({ error: { tag: "SchemaError" } })
+  })
+})
+
+describe("agent questions over rpc", () => {
+  test("forgets unanswered questions when a turn ends before question_resolved", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate unanswered question" }))
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("idle")
+    await expect
+      .poll(async () => result(await invoke("threads.transcript", { threadId: thread.id })).questions)
+      .toStrictEqual([])
+  })
+
+  test("decodes answers and refuses subframes before the question responder runs", async () => {
+    const handler = electron.handlers.get(RPC_CHANNEL)!
+    const invalid = await handler(
+      { sender: {}, senderFrame: mainFrame },
+      { method: "questions.respond", payload: { requestId: "q", answers: { choice: 42 } } },
+    )
+    expect(failure(invalid as RpcEnvelope<unknown>).tag).toBe("SchemaError")
+    expect(
+      failure(await invoke("questions.respond", { requestId: "q", answers: {} }, { url: appUrl, parent: mainFrame }))
+        .tag,
+    ).toBe("UntrustedSender")
+    result(await invoke("questions.respond", { requestId: "unknown", answers: { choice: ["blue"] } }))
   })
 })

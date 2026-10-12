@@ -21,6 +21,7 @@ export const findPattern = (query: string): RegExp | null =>
 export function searchableText(part: MessagePart): string {
   switch (part.type) {
     case "text":
+    case "questions":
       return part.text
     case "tool_call": {
       const { name, summary } = describeToolCall(part)
