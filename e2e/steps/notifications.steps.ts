@@ -21,6 +21,25 @@ const eventsByType = (threadId: string): Record<string, AgentEvent> => ({
     type: "approval_requested",
     request: { id: "approval-1", threadId, provider: "claude", kind: "command", title: "Run pnpm test", detail: "" },
   },
+  question_requested: {
+    type: "question_requested",
+    request: {
+      id: "question-1",
+      threadId,
+      provider: "claude",
+      questions: [
+        {
+          id: "target",
+          header: "Target",
+          question: "Which branch should I use?",
+          options: [{ label: "main", description: "Main branch" }],
+          multiSelect: false,
+          allowsText: true,
+          secret: false,
+        },
+      ],
+    },
+  },
   secret_requested: {
     type: "secret_requested",
     request: { id: "secret-1", threadId, name: "NPM_TOKEN", description: "Publish the package" },
