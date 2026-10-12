@@ -2,8 +2,18 @@ import type { Project, Thread } from "@shared/domain.ts"
 import { router, Stack } from "expo-router"
 import { useMemo, useState } from "react"
 import { Alert, Pressable, SectionList, StyleSheet, Text, View } from "react-native"
-import { Button, ConnectionBadge, Notice, Pill, threadStatusLabel, ThreadStatusPill } from "@/components/ui"
-import { HIT } from "@/constants/theme"
+import { Icon } from "@/components/icon"
+import {
+  Button,
+  ConnectionBadge,
+  EmptyState,
+  IconButton,
+  Notice,
+  ProviderLabel,
+  threadStatusLabel,
+  ThreadStatusPill,
+} from "@/components/ui"
+import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, disconnect, useConnection } from "@/lib/connection"
 import { clearTarget } from "@/lib/storage"
@@ -32,10 +42,10 @@ export default function ThreadListScreen() {
             </View>
           ),
           headerRight: () => (
-            <Button
+            <IconButton
               testID="disconnect-button"
-              label="Disconnect"
-              variant="ghost"
+              icon="RiLinkUnlinkM"
+              accessibilityLabel="Disconnect"
               onPress={() => void clearTarget().then(disconnect)}
             />
           ),
@@ -52,9 +62,7 @@ export default function ThreadListScreen() {
         }
         ListEmptyComponent={
           loadStatus === "ready" ? (
-            <Text style={[styles.empty, { color: theme.textMuted }]}>
-              No projects yet. Add one on the desktop first.
-            </Text>
+            <EmptyState icon="RiFolderLine" title="No projects yet" hint="Add one on the desktop first." />
           ) : null
         }
         renderSectionHeader={({ section }) => <ProjectHeader project={section.project} empty={section.data.length === 0} />}
@@ -82,14 +90,19 @@ function ProjectHeader({ project, empty }: { project: Project; empty: boolean })
   return (
     <View style={styles.projectHeader}>
       <View style={styles.projectTitle}>
-        <Text accessibilityRole="header" numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
-          {project.name}
-        </Text>
+        <View style={styles.projectNameRow}>
+          <Icon name="RiFolderLine" size={16} color={theme.textMuted} />
+          <Text accessibilityRole="header" numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
+            {project.name}
+          </Text>
+        </View>
         {empty && <Text style={{ color: theme.textMuted, fontSize: 13 }}>No threads</Text>}
       </View>
       <Button
         testID={`new-thread-${project.id}`}
         label="New thread"
+        icon="RiAddLine"
+        style={styles.compact}
         accessibilityLabel={`New thread in ${project.name}`}
         busy={creating}
         onPress={() => void create()}
@@ -111,13 +124,16 @@ function ThreadRow({ thread }: { thread: Thread }) {
         { backgroundColor: pressed ? theme.surfaceStrong : theme.surface, borderColor: theme.border },
       ]}
     >
-      <Text numberOfLines={2} style={[styles.rowTitle, { color: theme.text }]}>
-        {thread.title || "Untitled"}
-      </Text>
-      <View style={styles.rowMeta}>
-        <ThreadStatusPill status={thread.status} />
-        <Pill label={thread.provider} tone="neutral" />
+      <View style={styles.rowBody}>
+        <Text numberOfLines={2} style={[styles.rowTitle, { color: theme.text }]}>
+          {thread.title || "Untitled"}
+        </Text>
+        <View style={styles.rowMeta}>
+          <ThreadStatusPill status={thread.status} />
+          <ProviderLabel provider={thread.provider} />
+        </View>
       </View>
+      <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
     </Pressable>
   )
 }
@@ -125,19 +141,24 @@ function ThreadRow({ thread }: { thread: Thread }) {
 const styles = StyleSheet.create({
   headerSide: { paddingHorizontal: 12 },
   list: { padding: 16, gap: 8 },
-  empty: { fontSize: 15, padding: 20, textAlign: "center" },
   projectHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 16, paddingBottom: 4 },
   projectTitle: { flex: 1, gap: 2 },
-  projectName: { fontSize: 15, fontWeight: "700" },
+  projectNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  projectName: { flexShrink: 1, fontSize: 15, fontWeight: "700" },
+  compact: { paddingHorizontal: 10 },
   row: {
     minHeight: HIT + 12,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingLeft: 14,
+    paddingRight: 10,
+    paddingVertical: 12,
     marginTop: 8,
   },
+  rowBody: { flex: 1, gap: 8 },
   rowTitle: { fontSize: 15, fontWeight: "500" },
-  rowMeta: { flexDirection: "row", gap: 6 },
+  rowMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
 })

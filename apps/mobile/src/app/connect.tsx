@@ -4,8 +4,9 @@ import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "
 import { SafeAreaView } from "react-native-safe-area-context"
 import { parsePairingUrl } from "@shared/remote.ts"
 import { pair } from "@/components/connection-provider"
+import { Icon } from "@/components/icon"
 import { Button, Notice } from "@/components/ui"
-import { mono } from "@/constants/theme"
+import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 
@@ -25,13 +26,27 @@ export default function ConnectScreen() {
     return true
   }
 
+  const native = Platform.OS !== "web"
+
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={[styles.mark, { backgroundColor: theme.primary }]}>
+        <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
+      </View>
       <Text style={[styles.lead, { color: theme.textMuted }]}>
         On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
         the pairing URL.
       </Text>
       {refused !== null && <Notice text={refused} tone="danger" />}
+      {native && (
+        <Button
+          testID="scan-qr-button"
+          label="Scan QR code"
+          icon="RiQrScanLine"
+          variant="primary"
+          onPress={() => setScanning(true)}
+        />
+      )}
       <View style={styles.field}>
         <Text nativeID="pairing-url-label" style={[styles.label, { color: theme.text }]}>
           Pairing URL
@@ -61,8 +76,12 @@ export default function ConnectScreen() {
           </Text>
         )}
       </View>
-      <Button testID="connect-button" label="Connect" variant="primary" onPress={() => void submit(text)} />
-      {Platform.OS !== "web" && <Button testID="scan-qr-button" label="Scan QR code" onPress={() => setScanning(true)} />}
+      <Button
+        testID="connect-button"
+        label="Connect"
+        variant={native ? "secondary" : "primary"}
+        onPress={() => void submit(text)}
+      />
       {scanning && <Scanner onClose={() => setScanning(false)} onScan={submit} />}
     </ScrollView>
   )
@@ -92,13 +111,14 @@ function Scanner({ onClose, onScan }: { onClose: () => void; onScan: (data: stri
           />
         ) : (
           <View style={styles.permission}>
-            <Text style={{ color: theme.text, fontSize: 16 }}>
+            <Icon name="RiCameraLine" size={28} color={theme.textMuted} />
+            <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
               kkcode needs the camera to read the pairing QR code.
             </Text>
             <Button label="Allow camera" variant="primary" onPress={() => void requestPermission()} />
           </View>
         )}
-        <Button label="Cancel" onPress={onClose} style={styles.cancel} />
+        <Button label="Cancel" icon="RiCloseLine" onPress={onClose} style={styles.cancel} />
       </SafeAreaView>
     </Modal>
   )
@@ -106,13 +126,21 @@ function Scanner({ onClose, onScan }: { onClose: () => void; onScan: (data: stri
 
 const styles = StyleSheet.create({
   container: { padding: 20, gap: 16 },
+  mark: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
   lead: { fontSize: 15, lineHeight: 22 },
   field: { gap: 8 },
   label: { fontSize: 14, fontWeight: "600" },
   input: {
     minHeight: 96,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: radius.md,
     padding: 12,
     fontFamily: mono,
     fontSize: 13,
@@ -120,6 +148,6 @@ const styles = StyleSheet.create({
   },
   scanner: { flex: 1 },
   camera: { flex: 1 },
-  permission: { flex: 1, padding: 20, gap: 16, justifyContent: "center" },
+  permission: { flex: 1, padding: 20, gap: 16, alignItems: "center", justifyContent: "center" },
   cancel: { margin: 20 },
 })

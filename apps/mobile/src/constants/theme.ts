@@ -43,3 +43,6 @@ export const mono = Platform.select({ ios: "Menlo", android: "monospace", defaul
 
 /** Minimum touch target. */
 export const HIT = 44
+
+/** Outer radius = inner radius + padding, so nested corners stay concentric. */
+export const radius = { sm: 6, md: 10, lg: 14, xl: 24, full: 999 } as const

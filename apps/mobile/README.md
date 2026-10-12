@@ -27,6 +27,7 @@ The pairing is stored in the secure store (`localStorage` on web). Rotating the 
 ## Scripts
 
 - `pnpm build:terminal` regenerates `src/terminal/terminal.html.ts`, the page the native terminal WebView loads, from the installed `@xterm/xterm`. Run it after upgrading xterm and commit the result.
+- `pnpm build:icons` renders the app icons from the desktop's `assets/icon.svg` with `rsvg-convert`. Run it when the mark changes and commit the result.
 - `npx tsc --noEmit`, `npx expo lint`, `npx expo export --platform web`.
 
 ## Out of scope

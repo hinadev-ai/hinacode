@@ -2,7 +2,9 @@ import type { PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
 import { openURL } from "expo-linking"
 import { useEffect, useState } from "react"
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
-import { Button, Notice, Pill } from "@/components/ui"
+import { Icon, type IconName } from "@/components/icon"
+import { Button, EmptyState, Notice, Pill } from "@/components/ui"
+import { type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent, useConnection } from "@/lib/connection"
 
@@ -49,18 +51,22 @@ export function PullRequests({ thread }: { thread: Thread }) {
       {links === null ? (
         error === null && <ActivityIndicator color={theme.textMuted} accessibilityLabel="Loading pull requests" />
       ) : links.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={{ color: theme.textMuted, fontSize: 15 }}>No pull request is linked to this thread.</Text>
-          {thread.worktreeId !== null && (
-            <Button
-              testID="create-pull-request"
-              label="Create pull request"
-              variant="primary"
-              busy={creating}
-              onPress={() => void create()}
-            />
-          )}
-        </View>
+        <EmptyState
+          icon="RiGitPullRequestLine"
+          title="No pull request is linked to this thread."
+          action={
+            thread.worktreeId !== null && (
+              <Button
+                testID="create-pull-request"
+                label="Create pull request"
+                icon="RiGitPullRequestLine"
+                variant="primary"
+                busy={creating}
+                onPress={() => void create()}
+              />
+            )
+          }
+        />
       ) : (
         links.map((link) => <PullRequestCard key={link.id} url={link.url} />)
       )}
@@ -72,6 +78,13 @@ const statusTone = { open: "running", draft: "neutral", merged: "neutral", close
 const statusLabel = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" } as const
 const checksLabel = { passing: "Checks passing", failing: "Checks failing", pending: "Checks running" } as const
 const checksTone = { passing: "running", failing: "danger", pending: "attention" } as const
+const checksIcon = { passing: "RiCheckLine", failing: "RiErrorWarningLine", pending: "RiLoader4Line" } as const
+const statusIcon = (theme: Palette): Record<PullRequest["status"], { name: IconName; color: string }> => ({
+  open: { name: "RiGitPullRequestLine", color: theme.running },
+  draft: { name: "RiGitPullRequestLine", color: theme.textMuted },
+  merged: { name: "RiGitMergeLine", color: theme.textMuted },
+  closed: { name: "RiCloseLine", color: theme.danger },
+})
 const reviewLabel = { approved: "Approved", changesRequested: "Changes requested", reviewRequired: "Review required" }
 
 function PullRequestCard({ url }: { url: string }) {
@@ -129,15 +142,22 @@ function PullRequestCard({ url }: { url: string }) {
         </Text>
       ) : (
         <>
-          <Text style={[styles.title, { color: theme.text }]}>
-            {pr.title} <Text style={{ color: theme.textMuted }}>#{pr.number}</Text>
-          </Text>
+          <View style={styles.titleRow}>
+            <View style={styles.titleIcon}>
+              <Icon {...statusIcon(theme)[pr.status]} size={18} />
+            </View>
+            <Text style={[styles.title, { color: theme.text }]}>
+              {pr.title} <Text style={{ color: theme.textMuted }}>#{pr.number}</Text>
+            </Text>
+          </View>
           <Text numberOfLines={1} style={{ color: theme.textMuted, fontSize: 13 }}>
             {pr.headRefName} into {pr.baseRefName}, +{pr.additions} -{pr.deletions}
           </Text>
           <View style={styles.pills}>
             <Pill label={statusLabel[pr.status]} tone={statusTone[pr.status]} />
-            {pr.checks !== null && <Pill label={checksLabel[pr.checks]} tone={checksTone[pr.checks]} />}
+            {pr.checks !== null && (
+              <Pill label={checksLabel[pr.checks]} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
+            )}
             {pr.review !== null && (
               <Pill label={reviewLabel[pr.review]} tone={pr.review === "changesRequested" ? "attention" : "neutral"} />
             )}
@@ -146,9 +166,16 @@ function PullRequestCard({ url }: { url: string }) {
       )}
       {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
       <View style={styles.actions}>
-        <Button label="Open on GitHub" onPress={() => void openURL(url)} />
+        <Button label="Open on GitHub" icon="RiExternalLinkLine" onPress={() => void openURL(url)} />
         {pr?.status === "open" && (
-          <Button testID="pull-request-merge" label="Merge" variant="primary" busy={merging} onPress={confirmMerge} />
+          <Button
+            testID="pull-request-merge"
+            label="Merge"
+            icon="RiGitMergeLine"
+            variant="primary"
+            busy={merging}
+            onPress={confirmMerge}
+          />
         )}
       </View>
     </View>
@@ -157,9 +184,10 @@ function PullRequestCard({ url }: { url: string }) {
 
 const styles = StyleSheet.create({
   list: { padding: 16, gap: 12 },
-  empty: { gap: 16, alignItems: "flex-start" },
-  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 14, gap: 8 },
-  title: { fontSize: 16, fontWeight: "600" },
+  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: 14, gap: 8 },
+  titleRow: { flexDirection: "row", gap: 8 },
+  titleIcon: { paddingTop: 2 },
+  title: { flex: 1, fontSize: 16, fontWeight: "600", lineHeight: 22 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
 })

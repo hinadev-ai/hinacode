@@ -23,6 +23,7 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-webview": "13.16.1",
     "react-native-worklets": "0.10.1",
@@ -40,7 +41,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:terminal": "node ./scripts/build-terminal-html.mjs"
+    "build:terminal": "node ./scripts/build-terminal-html.mjs",
+    "build:icons": "./scripts/build-app-icons.sh"
   },
   "private": true
 }

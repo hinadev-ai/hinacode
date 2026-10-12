@@ -2,6 +2,7 @@ import type { PushEvent } from "@shared/contract.ts"
 import { useEffect, useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { Notice } from "@/components/ui"
+import { radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent } from "@/lib/connection"
 import type { TerminalViewHandle } from "./terminal-types"
@@ -89,11 +90,19 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
       {exitCode !== undefined && (
         <Notice text={`Shell exited${exitCode === null ? "" : ` with code ${exitCode}`}.`} />
       )}
-      <TerminalView ref={view} theme={theme} onInput={onInput} onSize={onSize} />
+      <View style={[styles.surface, { borderColor: theme.border }]}>
+        <TerminalView ref={view} theme={theme} onInput={onInput} onSize={onSize} />
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, gap: 8 },
+  container: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
+  surface: {
+    flex: 1,
+    overflow: "hidden",
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
 })

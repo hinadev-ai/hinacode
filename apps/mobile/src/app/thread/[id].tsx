@@ -5,16 +5,17 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { Chat } from "@/components/chat"
 import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
-import { Button, Notice, Pill, ThreadStatusPill } from "@/components/ui"
-import { HIT } from "@/constants/theme"
+import { Icon } from "@/components/icon"
+import { IconButton, Notice, ProviderLabel, ThreadStatusPill } from "@/components/ui"
+import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { useThreads } from "@/stores/threads"
 
 const tabs = [
-  { id: "chat", label: "Chat" },
-  { id: "prs", label: "PRs" },
-  { id: "terminal", label: "Terminal" },
+  { id: "chat", label: "Chat", icon: "RiChat1Line" },
+  { id: "prs", label: "PRs", icon: "RiGitPullRequestLine" },
+  { id: "terminal", label: "Terminal", icon: "RiTerminalBoxLine" },
 ] as const
 type Tab = (typeof tabs)[number]["id"]
 
@@ -37,25 +38,28 @@ export default function ThreadScreen() {
     <SafeAreaView edges={["top", "bottom"]} style={[styles.screen, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { borderColor: theme.border }]}>
-        <Button
+        <IconButton
           testID="back-button"
-          label="Back"
-          variant="ghost"
+          icon="RiArrowLeftSLine"
+          accessibilityLabel="Back"
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
         />
-        <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-          {thread?.title || "Thread"}
-        </Text>
+        <View style={styles.titleColumn}>
+          <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
+            {thread?.title || "Thread"}
+          </Text>
+          {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
+        </View>
         {thread !== undefined && (
-          <View style={styles.meta}>
+          <View style={styles.status}>
             <ThreadStatusPill status={thread.status} />
-            <Pill label={thread.provider} tone="neutral" />
           </View>
         )}
       </View>
       <View accessibilityRole="tablist" style={[styles.tabs, { backgroundColor: theme.surface }]}>
         {tabs.map((item) => {
           const selected = item.id === tab
+          const color = selected ? theme.text : theme.textMuted
           return (
             <Pressable
               key={item.id}
@@ -66,7 +70,8 @@ export default function ThreadScreen() {
               onPress={() => select(item.id)}
               style={[styles.tab, selected && { backgroundColor: theme.background, borderColor: theme.border }]}
             >
-              <Text style={{ color: selected ? theme.text : theme.textMuted, fontWeight: "600" }}>{item.label}</Text>
+              <Icon name={item.icon} size={16} color={color} />
+              <Text style={{ color, fontWeight: "600" }}>{item.label}</Text>
             </Pressable>
           )
         })}
@@ -107,19 +112,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingVertical: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  title: { flex: 1, fontSize: 16, fontWeight: "600" },
-  meta: { flexDirection: "row", gap: 6, paddingRight: 8 },
-  tabs: { flexDirection: "row", margin: 12, padding: 3, borderRadius: 10, gap: 3 },
+  titleColumn: { flex: 1, gap: 2 },
+  title: { fontSize: 16, fontWeight: "600" },
+  status: { paddingRight: 8 },
+  tabs: { flexDirection: "row", margin: 12, padding: 3, borderRadius: radius.md + 3, gap: 3 },
   tab: {
     flex: 1,
     minHeight: HIT,
+    flexDirection: "row",
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "transparent",
   },
