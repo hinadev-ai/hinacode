@@ -291,6 +291,33 @@ describe("worktree ownership", () => {
         }),
       ),
     )
+
+    it.live(`archiving refuses a ${status} thread that keeps its worktree`, () =>
+      withRepo(({ projectId }) =>
+        Effect.gen(function* () {
+          const thread = yield* createThread(projectId, "busy", "kk/busy")
+          yield* waitUntilSetUp(thread.worktreeId)
+          yield* Threads.use((threads) => threads.update({ id: thread.id, status }))
+
+          const archived = yield* Effect.exit(Threads.use((threads) => threads.archive(thread.id)))
+          expect(archived._tag).toBe("Failure")
+          expect((yield* Threads.use((threads) => threads.get(thread.id))).status).toBe(status)
+        }),
+      ),
+    )
+
+    it.live(`archiving with worktree removal refuses a ${status} thread in the project root`, () =>
+      withRepo(({ projectId }) =>
+        Effect.gen(function* () {
+          const thread = yield* createThread(projectId, "busy")
+          yield* Threads.use((threads) => threads.update({ id: thread.id, status }))
+
+          const archived = yield* Effect.exit(archiveRemovingWorktree(thread.id))
+          expect(archived._tag).toBe("Failure")
+          expect((yield* Threads.use((threads) => threads.get(thread.id))).status).toBe(status)
+        }),
+      ),
+    )
   }
 
   it.live("deleting a thread with its worktree refuses while another open thread uses it", () =>
