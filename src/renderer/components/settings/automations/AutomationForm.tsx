@@ -498,7 +498,9 @@ function ModelField({ provider, value, onChange }: ModelFieldProps) {
           className="font-mono"
         />
       )}
-      {AsyncResult.isInitial(models) && <FieldDescription>{m.settings_models_loading()}</FieldDescription>}
+      {AsyncResult.isInitial(models) && (
+        <FieldDescription className="animate-reveal">{m.settings_models_loading()}</FieldDescription>
+      )}
     </Field>
   )
 }

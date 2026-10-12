@@ -98,7 +98,7 @@ function Transcript({ thread }: { thread: Thread }) {
   }
 
   if (history === undefined || history.status === "loading") {
-    return <p className="m-auto text-sm text-muted-foreground">{m.thread_loading()}</p>
+    return <p className="m-auto animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
   }
   if (history.status === "error") {
     return (
