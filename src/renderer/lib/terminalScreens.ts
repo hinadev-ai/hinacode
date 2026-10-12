@@ -74,7 +74,9 @@ const start = async (id: string, screen: Screen) => {
   void callPromise("terminal.resize", { id, cols: term.cols, rows: term.rows }).catch(ignore)
   if (!screens.has(id)) return term.destroy()
   screen.term = term
-  for (const data of screen.backlog.drain().chunks) term.write(data)
+  const replay = screen.backlog.drain()
+  if (replay.truncated) term.write(`\x1b[0m\x1b[2m${m.terminal_output_truncated()}\x1b[22m\r\n`)
+  for (const data of replay.chunks) term.write(data)
   if (screen.wantsFocus) term.focus()
 }
 
