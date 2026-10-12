@@ -30,3 +30,17 @@ export const linkify = (text: string): Array<Segment> => {
   if (last < text.length) segments.push({ type: "text", text: text.slice(last) })
   return segments
 }
+
+/** How many sites one message may ask favicons for, so a message full of links cannot flood the network. */
+const FAVICONS_PER_MESSAGE = 20
+
+/** The origins of the first `limit` distinct sites linked across `texts`, in reading order. */
+export const faviconOrigins = (texts: ReadonlyArray<string>, limit = FAVICONS_PER_MESSAGE): ReadonlySet<string> => {
+  const origins = new Set<string>()
+  for (const segment of texts.flatMap((text) => linkify(text))) {
+    if (origins.size === limit) break
+    const origin = segment.type === "link" ? URL.parse(segment.href)?.origin : undefined
+    if (origin) origins.add(origin)
+  }
+  return origins
+}

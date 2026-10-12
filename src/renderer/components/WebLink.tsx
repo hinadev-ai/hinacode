@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import type { ReactNode } from "react"
+import { createContext, type ReactNode, useContext } from "react"
 import { RiGlobalLine } from "react-icons/ri"
 import { faviconAtom } from "../lib/rpc.ts"
 
@@ -9,13 +9,27 @@ export const isWebUrl = (href: string | undefined): href is string => /^https?:\
 
 const originOf = (href: string) => URL.parse(href)?.origin ?? ""
 
+/**
+ * The sites the surrounding message may ask favicons for (see `faviconOrigins`). Links to any other
+ * site keep the placeholder and never ask main. Empty outside a message.
+ */
+export const FaviconOrigins = createContext<ReadonlySet<string>>(new Set())
+
+// Same size as the favicon, so the text does not shift when the icon arrives.
+const placeholder = (
+  <RiGlobalLine aria-hidden className="mr-1 inline-block size-3.5 align-[-0.125em] text-muted-foreground" />
+)
+
 function Favicon({ origin }: { origin: string }) {
+  return useContext(FaviconOrigins).has(origin) ? <FetchedFavicon origin={origin} /> : placeholder
+}
+
+function FetchedFavicon({ origin }: { origin: string }) {
   const icon = AsyncResult.getOrElse(useAtomValue(faviconAtom(origin)), () => null)
-  // Both branches are the same size, so the text does not shift when the icon arrives.
   return icon ? (
     <img src={icon} alt="" aria-hidden className="mr-1 inline-block size-3.5 rounded-sm align-[-0.125em]" />
   ) : (
-    <RiGlobalLine aria-hidden className="mr-1 inline-block size-3.5 align-[-0.125em] text-muted-foreground" />
+    placeholder
   )
 }
 

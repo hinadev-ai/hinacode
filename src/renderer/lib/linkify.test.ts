@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { linkify } from "./linkify.ts"
+import { faviconOrigins, linkify } from "./linkify.ts"
 
 const links = (text: string) => linkify(text).flatMap((segment) => (segment.type === "link" ? [segment.href] : []))
 
@@ -37,5 +37,20 @@ describe("linkify", () => {
   test("text without urls is one text segment", () => {
     expect(linkify("plain")).toStrictEqual([{ type: "text", text: "plain" }])
     expect(linkify("")).toStrictEqual([])
+  })
+})
+
+describe("faviconOrigins", () => {
+  test("keeps the first distinct origins in reading order, up to the limit", () => {
+    const texts = ["https://a.dev/1 https://b.dev https://a.dev/2", "[c](https://c.dev/x) https://d.dev"]
+    expect([...faviconOrigins(texts, 3)]).toStrictEqual(["https://a.dev", "https://b.dev", "https://c.dev"])
+  })
+
+  test("allows 20 origins by default", () => {
+    const text = Array.from({ length: 25 }, (_, index) => `https://site${index}.dev`).join(" ")
+    const origins = faviconOrigins([text])
+    expect(origins.size).toBe(20)
+    expect(origins.has("https://site19.dev")).toBe(true)
+    expect(origins.has("https://site20.dev")).toBe(false)
   })
 })

@@ -1,12 +1,12 @@
 import { LegendList } from "@legendapp/list/react"
-import { memo, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
-import { linkify } from "../lib/linkify.ts"
+import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
-import { WebLink } from "./WebLink.tsx"
+import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 
 const keyExtractor = (message: Message) => message.id
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
@@ -36,6 +36,18 @@ export function MessageList({ messages }: { messages: ReadonlyArray<Message> }) 
 }
 
 const MessageItem = memo(function MessageItem({ message }: { message: Message }) {
+  const faviconSites = useMemo(
+    () => faviconOrigins(message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))),
+    [message.parts],
+  )
+  return (
+    <FaviconOrigins value={faviconSites}>
+      <MessageBody message={message} />
+    </FaviconOrigins>
+  )
+})
+
+function MessageBody({ message }: { message: Message }) {
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -89,7 +101,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
       )}
     </article>
   )
-})
+}
 
 /**
  * Reply text appears whole once the agent has finished it, instead of word by word. Only text that
