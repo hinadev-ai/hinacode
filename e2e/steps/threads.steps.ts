@@ -74,7 +74,8 @@ When("I delete the thread {string} from its menu", async ({ app, names }, title:
 })
 
 Then("the thread {string} is open", async ({ app, names }, title: string) => {
-  await expect(app.page.getByRole("heading", { level: 1, name: names.of(title) })).toBeVisible()
+  // Exactly one: a thread view left behind by an earlier navigation stays mounted below the open one.
+  await expect(app.page.getByRole("heading", { level: 1 })).toHaveText([names.of(title)])
 })
 
 Then("the sidebar lists the thread {string}", async ({ app, names }, title: string) => {

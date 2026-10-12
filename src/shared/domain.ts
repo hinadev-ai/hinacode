@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, TokenUsage } from "./agent.ts"
+import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -30,17 +31,20 @@ export const Worktree = Schema.Struct({
 })
 export type Worktree = typeof Worktree.Type
 
-export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted", "untracked"])
+export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted"])
 export type ChangedFileStatus = typeof ChangedFileStatus.Type
 
-/** What a worktree changed since it forked from its base ref, committed or not. */
-export const WorktreeChanges = Schema.Struct({
-  baseRef: Schema.String,
+/** What the working tree changed since a base, committed or not, new files included. */
+export const Changes = Schema.Struct({
   files: Schema.Array(Schema.Struct({ path: Schema.String, status: ChangedFileStatus })),
   /** One unified diff covering every file in `files`. */
   patch: Schema.String,
 })
-export type WorktreeChanges = typeof WorktreeChanges.Type
+export type Changes = typeof Changes.Type
+
+/** `worktree`: since the worktree forked from its base ref. `turn`: since the thread's latest turn started. */
+export const ChangesScope = Schema.Literals(["worktree", "turn"])
+export type ChangesScope = typeof ChangesScope.Type
 
 /** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
 export const GitHubAuth = Schema.Union([
@@ -69,10 +73,46 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** The author's login. */
+  author: Schema.String,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  additions: Schema.Number,
+  deletions: Schema.Number,
 })
 export type PullRequest = typeof PullRequest.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "settled", "archived"])
+export const CheckRunStatus = Schema.Literals(["passing", "failing", "pending", "skipped"])
+export type CheckRunStatus = typeof CheckRunStatus.Type
+
+/** One entry of a pull request's check rollup: a check run or a commit status. */
+export const CheckRun = Schema.Struct({
+  name: Schema.String,
+  status: CheckRunStatus,
+  /** Where the run's logs live, when GitHub reports one. */
+  url: Schema.NullOr(Schema.String),
+})
+export type CheckRun = typeof CheckRun.Type
+
+/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
+export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
+export type Mergeable = typeof Mergeable.Type
+
+/** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
+export const PullRequestDetail = Schema.Struct({
+  ...PullRequest.fields,
+  body: Schema.String,
+  baseRef: Schema.String,
+  headRef: Schema.String,
+  mergeable: Mergeable,
+  checkRuns: Schema.Array(CheckRun),
+})
+export type PullRequestDetail = typeof PullRequestDetail.Type
+
+export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
+export type MergeMethod = typeof MergeMethod.Type
+
+export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "settled", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
@@ -102,6 +142,7 @@ export const Thread = Schema.Struct({
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
+  usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
   /**
    * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,
@@ -203,6 +244,8 @@ export const Settings = Schema.Struct({
   appearance: Appearance,
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
+  /** The access mode new threads start with. */
+  defaultAccessMode: AccessMode,
 })
 export type Settings = typeof Settings.Type
 
@@ -213,6 +256,7 @@ export const defaultSettings: Settings = {
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
+  defaultAccessMode: "full",
 }
 
 export const PullRequestLink = Schema.Struct({

@@ -1,23 +1,27 @@
 import type { Mermaid, MermaidConfig } from "mermaid"
-import { isValidElement, memo, type ReactNode, useEffect, useId, useState } from "react"
+import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import type { Appearance } from "../../shared/domain.ts"
 import { resolveColor, useTheme } from "../lib/appearance.ts"
+import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { useSettings } from "../lib/settings.ts"
+import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
-
-const remarkPlugins = [remarkGfm]
+import { isWebUrl, WebLink } from "./WebLink.tsx"
 
 const components: Components = {
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
-  // target=_blank routes the click through the main process, which opens it in the system browser.
-  a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-      {children}
-    </a>
-  ),
+  a: ({ children, href }) =>
+    isWebUrl(href) ? (
+      <WebLink href={href}>{children}</WebLink>
+    ) : (
+      // target=_blank routes the click through the main process, which opens it in the system browser.
+      <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+        {children}
+      </a>
+    ),
   ul: ({ children }) => <ul className="my-2 list-disc pl-5">{children}</ul>,
   ol: ({ children, start }) => (
     <ol start={start} className="my-2 list-decimal pl-5">
@@ -57,6 +61,11 @@ const components: Components = {
 
 /** Agent markdown with GFM. Memoized because streaming re-renders the message on every delta. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
+  const repository = useThreadRepository()
+  const remarkPlugins = useMemo(
+    () => (repository ? [remarkGfm, remarkPullRequests(repository)] : [remarkGfm]),
+    [repository],
+  )
   return (
     <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
       {text}

@@ -52,12 +52,28 @@ const freePort = () =>
 const waitForRenderer = (page: Page) =>
   page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)
 
-const launch = async (userData: string): Promise<{ app: ElectronApplication; page: Page } & StartupAppearance> => {
+interface SpawnAppOptions {
+  readonly mockClaude?: "usage-limit" | "org-spend-limit"
+  readonly mockResetMs?: number
+}
+
+const launch = async (
+  userData: string,
+  options: SpawnAppOptions,
+): Promise<{ app: ElectronApplication; page: Page } & StartupAppearance> => {
+  const env = { ...process.env }
+  // Electron-based agent hosts may export this; the test instance must launch its GUI.
+  delete env.ELECTRON_RUN_AS_NODE
   const app = await electron.launch({
     executablePath,
     args: ["--no-sandbox", "--disable-gpu", join(projectRoot, "out/main/index.js")],
     cwd: projectRoot,
-    env: { ...process.env, KKCODE_USER_DATA: userData },
+    env: {
+      ...env,
+      KKCODE_USER_DATA: userData,
+      ...(options.mockClaude === undefined ? {} : { KKCODE_MOCK_CLAUDE: options.mockClaude }),
+      ...(options.mockResetMs === undefined ? {} : { KKCODE_MOCK_RESET_MS: String(options.mockResetMs) }),
+    },
   })
   const startup = Schema.decodeUnknownSync(StartupAppearance)(
     await app.evaluate(
@@ -101,9 +117,9 @@ const launch = async (userData: string): Promise<{ app: ElectronApplication; pag
   return { app, page, ...startup }
 }
 
-export const spawnApp = async (): Promise<KkcodeApp> => {
+export const spawnApp = async (options: SpawnAppOptions = {}): Promise<KkcodeApp> => {
   const userData = mkdtempSync(join(tmpdir(), "kk-e2e-"))
-  let current = await launch(userData)
+  let current = await launch(userData, options)
   // A fresh profile listens for automation webhooks on a fixed port that other instances may hold.
   await rpc(current.page, "settings.set", { automations: { bindHost: "127.0.0.1", port: await freePort() } })
   return {
@@ -120,7 +136,7 @@ export const spawnApp = async (): Promise<KkcodeApp> => {
     },
     restart: async () => {
       await current.app.close()
-      current = await launch(userData)
+      current = await launch(userData, options)
     },
     reload: async () => {
       await current.page.reload()
