@@ -478,3 +478,12 @@ test("reconciles pending questions across snapshot, resolution, and turn failure
   store().receive(event(4, { type: "turn_failed", message: "Interrupted" }))
   expect(ready().questions).toStrictEqual([])
 })
+
+test("clears pending questions immediately when a turn reaches a usage limit", async () => {
+  await loadReady()
+  const request = { id: "q-limit", threadId, provider: "codex" as const, questions: [] }
+  store().receive(event(1, { type: "question_requested", request }))
+  expect(ready().questions).toStrictEqual([request])
+  store().receive(event(2, { type: "turn_limited", limit: { kind: "org_spend", message: "Usage exhausted" } }))
+  expect(ready().questions).toStrictEqual([])
+})
