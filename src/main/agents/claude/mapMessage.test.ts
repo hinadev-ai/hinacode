@@ -3,7 +3,7 @@ import { describe, expect, test } from "@effect/vitest"
 import type { AgentEvent } from "../../../shared/agent.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
-const newState = (): MapState => ({ pendingEdits: new Map(), subagents: new Map() })
+const newState = (): MapState => ({ pendingEdits: new Map(), subagents: new Map(), lastRequest: null })
 
 // Shapes recorded from a Claude Code run that spawned two parallel sub-agents.
 const started = {

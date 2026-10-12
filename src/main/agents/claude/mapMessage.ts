@@ -12,11 +12,13 @@ const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 /**
  * Per-session state the mapper needs across messages: edit tool calls whose result has not arrived
  * yet, so `file_changed` is only emitted once the edit actually succeeded, and the sub-agents seen
- * so far, since task progress messages only carry what changed.
+ * so far, since task progress messages only carry what changed. `lastRequest` is the main loop's
+ * latest model request, which the turn's result needs to report context window usage.
  */
 export interface MapState {
   readonly pendingEdits: Map<string, string>
   readonly subagents: Map<string, Subagent>
+  lastRequest: { readonly model: string; readonly usedTokens: number } | null
 }
 
 export const isTerminal = (event: AgentEvent) => event.type === "turn_completed" || event.type === "turn_failed"
@@ -51,7 +53,18 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
       return []
     }
 
-    case "assistant":
+    case "assistant": {
+      if (message.parent_tool_use_id === null) {
+        const usage = message.message.usage
+        state.lastRequest = {
+          model: message.message.model,
+          usedTokens:
+            usage.input_tokens +
+            (usage.cache_creation_input_tokens ?? 0) +
+            (usage.cache_read_input_tokens ?? 0) +
+            usage.output_tokens,
+        }
+      }
       return message.message.content.flatMap((block): Array<AgentEvent> => {
         if (block.type !== "tool_use") return []
         const input = block.input as Record<string, unknown> | null
@@ -61,6 +74,7 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
         }
         return [{ type: "tool_call_started", callId: block.id, name: block.name, input: block.input }]
       })
+    }
 
     case "user": {
       if ("isReplay" in message && message.isReplay) return []
@@ -80,7 +94,7 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
     }
 
     case "result":
-      return [mapResult(message)]
+      return [mapResult(message, state)]
 
     default:
       return []
@@ -139,21 +153,24 @@ function updateSubagent(state: MapState, subagent: Subagent): Array<AgentEvent> 
   return [{ type: "subagent_updated", subagent }]
 }
 
-function mapResult(result: SDKResultMessage): AgentEvent {
+function mapResult(result: SDKResultMessage, state: MapState): AgentEvent {
   if (result.subtype !== "success") {
     const reason = result.errors.length > 0 ? result.errors.join("\n") : result.subtype
     return { type: "turn_failed", message: reason }
   }
   // API failures (auth, overload, ...) arrive as a "success" result flagged is_error.
   if (result.is_error) return { type: "turn_failed", message: result.result || "Claude returned an error" }
-  return { type: "turn_completed", usage: toUsage(result) }
+  return { type: "turn_completed", usage: toUsage(result, state) }
 }
 
-function toUsage(result: SDKResultMessage): TokenUsage {
+function toUsage(result: SDKResultMessage, state: MapState): TokenUsage {
   const usage = result.usage
+  const request = state.lastRequest
+  const maxTokens = request === null ? undefined : result.modelUsage[request.model]?.contextWindow
   return {
     inputTokens: usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens,
     outputTokens: usage.output_tokens,
     costUsd: result.total_cost_usd,
+    ...(request !== null && maxTokens !== undefined && { context: { usedTokens: request.usedTokens, maxTokens } }),
   }
 }
