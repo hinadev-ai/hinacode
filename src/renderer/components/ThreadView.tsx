@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { type ReactNode, useEffect } from "react"
 import { isThreadBusy, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
@@ -21,22 +21,25 @@ const statusLabel = {
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 
-export function ThreadView({ thread }: { thread: Thread }) {
+export function ThreadView({ thread, actions }: { thread: Thread; actions?: ReactNode }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
-        <h1 className="truncate text-sm font-semibold" title={thread.title}>
+      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold" title={thread.title}>
           {thread.title}
         </h1>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
           <ProviderIcon provider={thread.provider} />
           {providerLabel[thread.provider]()}
         </span>
-        <span className="ml-auto rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
           {statusLabel[thread.status]()}
         </span>
+        {actions}
       </header>
-      <Transcript thread={thread} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <Transcript thread={thread} />
+      </div>
       <Composer thread={thread} />
     </div>
   )

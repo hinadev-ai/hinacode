@@ -81,7 +81,6 @@ const createWindow = () => {
       contextIsolation: true,
     },
   })
-  window.once("ready-to-show", () => window.show())
   window.webContents.setWindowOpenHandler(({ url }) => {
     const external = externalUrl(url)
     if (external) void shell.openExternal(external)

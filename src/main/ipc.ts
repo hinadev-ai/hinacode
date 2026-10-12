@@ -62,6 +62,7 @@ const defaultModel = (provider: ProviderId) =>
   })
 
 const handlers: Handlers = {
+  "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),

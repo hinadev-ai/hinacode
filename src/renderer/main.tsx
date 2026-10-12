@@ -2,12 +2,13 @@ import "./index.css"
 import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
-import { AsyncResult, AtomRegistry } from "effect/reactivity"
-import { StrictMode } from "react"
+import { AtomRegistry } from "effect/reactivity"
+import { StrictMode, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
-import { applyAppearance } from "./lib/appearance.ts"
+import { applyAppearance, useTheme } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
+import { useSettings } from "./lib/settings.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
@@ -19,6 +20,12 @@ const registry = AtomRegistry.make()
 
 function App() {
   const locale = useLocale((state) => state.locale)
+  const { appearance } = useSettings()
+  const theme = useTheme(appearance.theme)
+  useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  useLayoutEffect(() => {
+    void callPromise("app.ready", undefined)
+  }, [])
   // Remount on locale change so every message function runs again; router and atoms live outside.
   return (
     <TooltipProvider key={locale}>
@@ -34,9 +41,6 @@ const [settings, threads, worktrees] = await Promise.all([
 ])
 useLocale.getState().apply(settings.locale)
 applyAppearance(settings.appearance)
-registry.subscribe(settingsAtom, (result) => {
-  if (AsyncResult.isSuccess(result)) applyAppearance(result.value.appearance)
-})
 useThreads.getState().replaceAll(threads)
 useWorktrees.getState().replaceAll(worktrees)
 onPushEvent((event) => {

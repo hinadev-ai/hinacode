@@ -75,5 +75,7 @@ AfterScenario(async ({ app, $testInfo }) => {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
   }
   await rpc(app.page, "settings.set", { locale: "en", keybindings: {} })
+  await app.setWindow({ width: 1280, height: 820, zoom: 1 })
+  await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
 })
