@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Schema, Struct } from "effect"
 import {
   AgentCommand,
   AgentEvent,
@@ -17,7 +17,6 @@ import {
   ChangesScope,
   AutomationRun,
   AutomationTrigger,
-  Locale,
   MergeMethod,
   Message,
   OpenPort,
@@ -127,18 +126,7 @@ export const RpcMethods = {
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
-  "settings.set": rpc(
-    Schema.Struct({
-      locale: Schema.optional(Locale),
-      keybindings: Schema.optional(Settings.fields.keybindings),
-      defaultModel: Schema.optional(Settings.fields.defaultModel),
-      automations: Schema.optional(Settings.fields.automations),
-      appearance: Schema.optional(Settings.fields.appearance),
-      textGenerationModel: Schema.optional(Settings.fields.textGenerationModel),
-      defaultAccessMode: Schema.optional(Settings.fields.defaultAccessMode),
-    }),
-    Settings,
-  ),
+  "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
