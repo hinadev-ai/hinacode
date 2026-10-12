@@ -322,7 +322,10 @@ const make = Effect.gen(function* () {
           yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id)
         }
         yield* terminals.closeThread(id)
-        return yield* write(thread, { id, status: "archived" })
+        yield* sql`
+          UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
+        `.pipe(Effect.mapError(persistence("threads.archive")))
+        return yield* get(id)
       }),
     )
 
