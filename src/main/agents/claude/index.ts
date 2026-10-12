@@ -21,6 +21,7 @@ import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
+import { claudeHome, makeTranscriptUsage } from "./transcripts.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
 
@@ -499,6 +500,13 @@ export const layer = Layer.effect(
       ),
       Effect.map(toAccount),
     )
+    const transcriptUsage = makeTranscriptUsage(claudeHome())
+    const usage = (sessionId: string) =>
+      Effect.tryPromise({
+        try: () => transcriptUsage(sessionId),
+        catch: agentError("Failed to read Claude transcripts"),
+      })
+
     const probedCommands = yield* Cache.make({
       lookup: probeCommands,
       capacity: 32,
@@ -524,6 +532,7 @@ export const layer = Layer.effect(
       id: "claude",
       listModels,
       account,
+      usage,
       listCommands,
       runTurn,
       steer,

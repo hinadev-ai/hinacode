@@ -11,6 +11,7 @@ import {
   QuestionAnswers,
   QuestionRequest,
   SecretRequest,
+  ThreadUsage,
 } from "./agent.ts"
 import {
   AccessMode,
@@ -231,6 +232,8 @@ export const RpcMethods = {
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   /** Sub-agents the thread's agent spawned since the app started, newest first. */
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
+  /** Tokens the thread spent, read from its agent's transcripts. Null before the first turn or once they are gone. */
+  "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
   /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
   "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),

@@ -18,6 +18,7 @@ import { nowIso } from "../../services/clock.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
+import { codexHome, makeRolloutUsage } from "./rollouts.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import { GetAccountResponse } from "./protocol.ts"
 import type {
@@ -237,6 +238,14 @@ const make = Effect.gen(function* () {
     )
     return toAccount(response.account)
   })
+
+  const rolloutUsage = makeRolloutUsage(codexHome())
+  const readUsage = (threadId: string) =>
+    Effect.tryPromise({
+      try: () => rolloutUsage(threadId),
+      catch: (cause) =>
+        new AgentError({ provider: "codex", message: `Failed to read Codex rollouts: ${String(cause)}` }),
+    })
 
   const listSkills = (cwd: string) =>
     Effect.gen(function* () {
@@ -651,6 +660,7 @@ const make = Effect.gen(function* () {
     id: "codex",
     listModels,
     account,
+    usage: readUsage,
     listCommands,
     runTurn,
     steer,
