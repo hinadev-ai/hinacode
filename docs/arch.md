@@ -213,7 +213,7 @@ The right edge of the thread route is an activity bar: one icon per view, and th
 
 ```mermaid
 flowchart LR
-  registry["sidePanel/views.ts<br/>details, files, changes,<br/>git, pullRequests, agents"]
+  registry["sidePanel/views.ts<br/>details, files, changes,<br/>git, pullRequests, agents, browser"]
   registry --> bar["ActivityBar<br/>tablist, badges, chords"]
   registry --> content["ThreadSidePanel<br/>tabpanel for the selected view"]
   registry --> commands["view.* commands"]
@@ -236,6 +236,22 @@ sequenceDiagram
   E->>F: fs.list again
   F-->>V: same push for the file's folder
   V->>F: fs.read again
+```
+
+The Browser view is a `<webview>` in the `persist:browser` session (ADR 0014). Picking runs a self-contained script in the page and turns the result into an image attachment that carries the element.
+
+```mermaid
+sequenceDiagram
+  participant B as BrowserView
+  participant P as Page (webview)
+  participant M as Main
+  B->>P: executeJavaScript(pickElement)
+  P-->>B: {element, rect} on click or Enter, null on Escape
+  B->>B: decode PagePick
+  B->>P: capturePage(rect)
+  B->>M: attachments.stage {dataUrl}
+  B->>B: draft gets {...attachment, element}
+  B->>M: threads.send, the provider adds the image and elementContext text
 ```
 
 ## Keybindings
@@ -421,10 +437,11 @@ flowchart TB
   agents["Agent processes<br/>run user-approved code"] -- "MCP: loopback,<br/>per-thread bearer" --> main
   net["Internet"] -- "webhook: HMAC + dedup" --> main
   main -- "openExternal: http(s) only" --> browser["System browser"]
+  page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
 ```
 
-Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, and [0009](adr/0009-scoped-session-approvals.md) for session approvals. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
+Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, and [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
 
 ## Where things live
 
