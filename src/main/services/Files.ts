@@ -7,8 +7,7 @@ import type { ChangedFileStatus, FsEntry, FsEntryKind, FsFileContent } from "../
 import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { Git } from "./Git.ts"
-import { parseNameStatus } from "./Worktrees.ts"
+import { Git, parseNameStatus } from "./Git.ts"
 
 const reasons = {
   unknownRoot: "is not a project root or worktree",

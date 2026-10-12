@@ -4,7 +4,6 @@ import { Context, Effect, Fiber, Layer, Option, Schema, Semaphore, Stream } from
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { SqlClient, SqlSchema } from "effect/sql"
 import {
-  type ChangedFileStatus,
   isThreadBusy,
   type Project,
   type PullRequest,
@@ -16,7 +15,7 @@ import {
 import { nowIso } from "./clock.ts"
 import { NotFoundError, type PersistenceError, persistence, WorktreeBusyError, WorktreeTakenError } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { type CommandError, Git, type RunOptions } from "./Git.ts"
+import { type CommandError, Git, parseNameStatus, type RunOptions } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 
@@ -88,23 +87,6 @@ const parseCheckouts = (output: string) =>
       return { path: value("worktree") ?? "", ref: value("branch") ?? null }
     })
     .filter((checkout) => checkout.path !== "")
-
-const toChangedStatus = (letter: string): ChangedFileStatus => {
-  if (letter === "A") return "added"
-  if (letter === "D") return "deleted"
-  if (letter === "U") return "conflict"
-  return "modified"
-}
-
-/** Parses `git diff --name-status -z`: alternating status letter and path. */
-export const parseNameStatus = (output: string) => {
-  const fields = output.split("\0").filter(Boolean)
-  const files: Array<{ path: string; status: ChangedFileStatus }> = []
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    files.push({ path: fields[i + 1] ?? "", status: toChangedStatus(fields[i]?.charAt(0) ?? "") })
-  }
-  return files
-}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient

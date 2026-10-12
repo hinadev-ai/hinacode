@@ -13,8 +13,10 @@ import {
 import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { UnknownRootError } from "./services/errors.ts"
 import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
+import { Git } from "./services/Git.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpCredentials } from "./mcp/index.ts"
@@ -38,6 +40,7 @@ type AppServices =
   | Ports
   | Attachments
   | Automations
+  | Git
   | GitHub
   | Files
 
@@ -61,6 +64,18 @@ const defaultModel = (provider: ProviderId) =>
     if (preferred !== null) return preferred
     const models = yield* AgentRunner.use((runner) => runner.listModels(provider))
     return models[0]?.id ?? ""
+  })
+
+/** Git history is only read from a checkout kkcode recorded, never from a path the renderer made up. */
+const knownRoot = (root: string) =>
+  Effect.gen(function* () {
+    const projects = yield* Projects.use((service) => service.list)
+    const worktrees = yield* Worktrees.use((service) => service.list)
+    const known =
+      projects.some((project) => project.rootPath === root) ||
+      worktrees.some((worktree) => worktree.path === root && worktree.status !== "removed")
+    if (!known) return yield* new UnknownRootError({ root })
+    return root
   })
 
 const handlers: Handlers = {
@@ -107,6 +122,9 @@ const handlers: Handlers = {
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
+  "git.log": ({ root, limit = 200 }) =>
+    knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
+  "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
 
   "settings.get": () => Settings.use((settings) => settings.get),

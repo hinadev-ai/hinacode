@@ -17,6 +17,8 @@ import {
   AutomationTrigger,
   FsEntry,
   FsFileContent,
+  CommitDiff,
+  GitCommit,
   Locale,
   Message,
   OpenPort,
@@ -120,6 +122,22 @@ export const RpcMethods = {
   /** Marks the thread settled and removes its worktree. */
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /**
+   * Commits on every branch of the checkout at `root`, newest first in topological order. `root` must be
+   * a project root or a live worktree path.
+   */
+  "git.log": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000 }))),
+    }),
+    Schema.Array(GitCommit),
+  ),
+  /** One commit's diff against its first parent. Hex only, so a hash can never be read as an option. */
+  "git.show": rpc(
+    Schema.Struct({ root: Schema.String, hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{7,64}$/)) }),
+    CommitDiff,
+  ),
   /** Shows the path in the OS file manager. */
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
 

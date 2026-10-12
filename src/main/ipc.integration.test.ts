@@ -135,8 +135,8 @@ const makeLayer = (dbPath: string) => {
   )
   const base = Layer.mergeAll(agents, automationsStub)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
-    Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
-    Layer.provideMerge(GitHub.layer),
+    Layer.provide(eventsLayer),
+    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
@@ -459,5 +459,62 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+})
+
+const history = () => join(dir, "history")
+const inHistory = (...args: Array<string>) =>
+  execFileSync("git", ["-C", history(), "-c", "user.email=t@t", "-c", "user.name=Kalan", ...args], {
+    encoding: "utf8",
+  }).trim()
+const commitInHistory = (file: string, message: string) => {
+  writeFileSync(join(history(), file), message)
+  inHistory("add", file)
+  inHistory("commit", "-q", "-m", message)
+  return inHistory("rev-parse", "HEAD")
+}
+
+describe("git history over rpc", () => {
+  test("lists a branch, a merge and a tag, and shows a merge against its first parent", async () => {
+    execFileSync("git", ["init", "-q", "-b", "main", history()])
+    const base = commitInHistory("a.txt", "init")
+    inHistory("switch", "-q", "-c", "feat/x")
+    const feature = commitInHistory("b.txt", "feat: add b")
+    inHistory("switch", "-q", "main")
+    const mainline = commitInHistory("c.txt", "fix: add c")
+    inHistory("merge", "-q", "--no-ff", "-m", "Merge branch 'feat/x'", "feat/x")
+    const merge = inHistory("rev-parse", "HEAD")
+    inHistory("tag", "v1")
+    result(await invoke("projects.create", { name: "history", rootPath: history(), setupScript: null }))
+
+    const commits = result(await invoke("git.log", { root: history() }))
+    expect(commits).toHaveLength(4)
+    expect(commits[0]).toMatchObject({
+      hash: merge,
+      parents: [mainline, feature],
+      subject: "Merge branch 'feat/x'",
+      author: "Kalan",
+      refs: ["HEAD", "main", "tag: v1"],
+    })
+    expect(commits.find((item) => item.hash === feature)?.refs).toStrictEqual(["feat/x"])
+    expect(commits.at(-1)).toMatchObject({ hash: base, parents: [] })
+    expect(result(await invoke("git.log", { root: history(), limit: 2 }))).toHaveLength(2)
+
+    const diff = result(await invoke("git.show", { root: history(), hash: merge }))
+    expect(diff.files).toStrictEqual([{ path: "b.txt", status: "added" }])
+    expect(diff.patch).toContain("diff --git a/b.txt b/b.txt")
+  })
+
+  test("reads a live worktree but refuses removed ones, unknown paths and option-like hashes", async () => {
+    const project = result(await invoke("projects.list", undefined)).find((item) => item.rootPath === history())!
+    const worktree = result(
+      await invoke("worktrees.create", { projectId: project.id, branch: "kk/history", baseRef: "main" }),
+    )
+    expect(result(await invoke("git.log", { root: worktree.path }))[0]?.refs).toContain("kk/history")
+
+    result(await invoke("worktrees.remove", { id: worktree.id, deleteBranch: "force" }))
+    expect(failure(await invoke("git.log", { root: worktree.path })).tag).toBe("UnknownRootError")
+    expect(failure(await invoke("git.log", { root: dir })).tag).toBe("UnknownRootError")
+    expect(failure(await invoke("git.show", { root: history(), hash: "--output=/tmp/x" })).tag).toBe("SchemaError")
   })
 })

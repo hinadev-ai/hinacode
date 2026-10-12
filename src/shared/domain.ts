@@ -68,6 +68,24 @@ export const FsFileContent = Schema.Struct({
 })
 export type FsFileContent = typeof FsFileContent.Type
 
+export const GitCommit = Schema.Struct({
+  hash: Schema.String,
+  parents: Schema.Array(Schema.String),
+  subject: Schema.String,
+  author: Schema.String,
+  authoredAt: Timestamp,
+  /** Decorations as `git log` prints them, e.g. `HEAD`, `main`, `origin/main`, `tag: v1`. */
+  refs: Schema.Array(Schema.String),
+})
+export type GitCommit = typeof GitCommit.Type
+
+/** One commit's changes against its first parent. */
+export const CommitDiff = Schema.Struct({
+  patch: Schema.String,
+  files: Schema.Array(Schema.Struct({ path: Schema.String, status: ChangedFileStatus })),
+})
+export type CommitDiff = typeof CommitDiff.Type
+
 /** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
 export const GitHubAuth = Schema.Union([
   Schema.Struct({ type: Schema.Literal("missing") }),

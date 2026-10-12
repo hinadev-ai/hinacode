@@ -53,8 +53,8 @@ const makeAppLayer = (dbPath: string) => {
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
     Layer.provideMerge(agents),
-    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, Git.layer, eventsLayer)),
-    Layer.provideMerge(GitHub.layer),
+    Layer.provide(Layer.mergeAll(ClaudeProvider.layer, CodexProvider.layer, eventsLayer)),
+    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
