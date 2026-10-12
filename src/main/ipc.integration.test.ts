@@ -121,8 +121,11 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 /** The production composition from `index.ts`, with scripted agent providers and a stubbed Automations. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-    Settings.layer,
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
     Attachments.layer,
   )

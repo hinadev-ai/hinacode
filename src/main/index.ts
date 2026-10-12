@@ -44,8 +44,11 @@ const serveAttachments = () =>
 
 const makeAppLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
-    Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
-    Settings.layer,
+    Threads.layer.pipe(
+      Layer.provideMerge(Worktrees.layer),
+      Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(Settings.layer),
+    ),
     Messages.layer,
     Attachments.layer,
   )
