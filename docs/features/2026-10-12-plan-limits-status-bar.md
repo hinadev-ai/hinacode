@@ -21,8 +21,8 @@ A developer on a Claude or ChatGPT subscription runs out of the 5-hour or weekly
   - `LimitWindow { window, usedPercent, resetsAt }`. `window` is `{ kind: "session" }` (5 hours), `{ kind: "weekly" }`, `{ kind: "model", name }` (a per-model weekly bucket such as "Fable"), or `{ kind: "minutes", minutes }` for a duration Codex reports that is neither of the others.
   - `PlanLimits { windows, readAt }`.
 - `AgentProvider.planLimits` returns `PlanLimits | null`.
-  - Claude reads the SDK's experimental `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })` through the existing `probe`. It is decoded with a schema, and any failure becomes null, so an SDK change hides the group instead of breaking the bar. `five_hour` maps to session, `seven_day` to weekly, and each `model_scoped` entry to model.
-  - Codex reads `account/rateLimits/read` from `rateLimitsByLimitId`, falling back to `rateLimits`. Windows are named by `windowDurationMins`: 300 is session, 10080 is weekly.
+  - Claude reads the SDK's experimental `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })` through the existing `probe`. It is decoded with a schema, and any failure becomes null, so an SDK change hides the group instead of breaking the bar. `five_hour` maps to session, `seven_day` to weekly, and each `model_scoped` entry to model. `model_scoped` carries the server's current bucket names (a Team account reports "Fable" there while `seven_day_opus` and `seven_day_sonnet` are null), so those two fixed fields are read only when `model_scoped` is absent.
+  - Codex reads `account/rateLimits/read` from `rateLimitsByLimitId`, falling back to `rateLimits`. Windows are named by `windowDurationMins`: 300 is session, 10080 is weekly. A window without a duration is left out, since it can't be labeled.
 - rpc `limits.list` returns one entry per account, `{ provider, accountId, limits }`. Until multiple accounts land, there is one entry per provider with `accountId: null`.
 - Main caches each account's limits for 60 seconds, because a Claude read spawns a CLI. The renderer polls every 2 minutes and refreshes when any turn ends.
 
