@@ -3,6 +3,7 @@ import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
+import { COMMAND_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -39,6 +40,18 @@ const goToSiblingThread = (ctx: CommandContext, step: 1 | -1) => {
 }
 
 export const commands = [
+  {
+    id: "palette.open",
+    defaultKeys: "mod+p",
+    title: m.command_palette_open,
+    run: () => usePalette.getState().show(""),
+  },
+  {
+    id: "palette.commands",
+    defaultKeys: "mod+shift+p",
+    title: m.command_palette_commands,
+    run: () => usePalette.getState().show(COMMAND_PREFIX),
+  },
   {
     id: "settings.open",
     defaultKeys: "mod+,",

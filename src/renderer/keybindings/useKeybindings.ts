@@ -5,7 +5,7 @@ import { AsyncResult } from "effect/reactivity"
 import { useMemo } from "react"
 import { projectsAtom, updateSettingsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
-import { type Command, commands, type Keymap, resolveKeymap, sameChord } from "./commands.ts"
+import { type Command, type CommandContext, commands, type Keymap, resolveKeymap, sameChord } from "./commands.ts"
 import { isTerminalKey } from "./terminalScope.ts"
 
 /** The user's effective keymap: command id -> normalized chord, "" when unbound. */
@@ -25,6 +25,18 @@ const bindings = (keymap: Keymap) =>
     return bound
   }, [])
 
+/** What a command needs from the current route and app state to run. */
+export const useCommandContext = (): CommandContext => {
+  const navigate = useNavigate()
+  const { threadId = null } = useParams({ strict: false })
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
+  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  return useMemo(
+    () => ({ navigate, threadId, projects, updateSettings }),
+    [navigate, threadId, projects, updateSettings],
+  )
+}
+
 /**
  * Binds every command to its effective chord on document. Mount once, in the app shell. TanStack
  * Hotkeys skips plain keys typed into fields, lets Control and Meta chords fire there, and syncs
@@ -32,10 +44,7 @@ const bindings = (keymap: Keymap) =>
  */
 export function useKeybindings() {
   const keymap = useKeymap()
-  const navigate = useNavigate()
-  const { threadId } = useParams({ strict: false })
-  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const ctx = useCommandContext()
 
   useHotkeys(
     bindings(keymap).map(({ hotkey, command }) => ({
@@ -43,7 +52,7 @@ export function useKeybindings() {
       callback: (event) => {
         if (isTerminalKey(event)) return
         event.preventDefault()
-        if (!event.repeat) command.run({ navigate, threadId: threadId ?? null, projects, updateSettings })
+        if (!event.repeat) command.run(ctx)
       },
     })),
     // A terminal scope must get its keys untouched, so the default action is prevented only once it has passed.
