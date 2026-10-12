@@ -9,7 +9,7 @@ import {
   SIDEBAR_DEFAULT_WIDTH,
 } from "../lib/panelWidth.ts"
 
-export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents"
+export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser"
 export type SidePanelSize = "normal" | "wide"
 
 const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
@@ -35,6 +35,8 @@ interface UiState {
   readonly viewFocusRequest: SidePanelViewId | null
   /** The file whose diff the Changes view shows open. */
   readonly changesPath: string | null
+  /** The page each thread's Browser view shows. Threads not in here have not opened one. */
+  readonly browserUrls: Readonly<Record<string, string>>
   /** Bumped to ask the composer to take focus. Subscribers react to changes, the value is meaningless. */
   readonly composerFocusRequest: number
   /** Bumped to ask the open thread to interrupt its running turn. */
@@ -58,6 +60,7 @@ interface UiState {
   readonly clearViewFocusRequest: () => void
   readonly setSidePanelWide: (wide: boolean) => void
   readonly setChangesPath: (path: string | null) => void
+  readonly setBrowserUrl: (threadId: string, url: string) => void
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
   readonly setAddProjectOpen: (open: boolean) => void
@@ -100,6 +103,7 @@ export const useUi = create<UiState>()((set, get) => ({
   },
   viewFocusRequest: null,
   changesPath: null,
+  browserUrls: {},
   composerFocusRequest: 0,
   interruptRequest: 0,
   addProjectOpen: false,
@@ -138,6 +142,7 @@ export const useUi = create<UiState>()((set, get) => ({
   clearViewFocusRequest: () => set({ viewFocusRequest: null }),
   setSidePanelWide: (sidePanelWide) => set({ sidePanelWide }),
   setChangesPath: (changesPath) => set({ changesPath }),
+  setBrowserUrl: (threadId, url) => set((state) => ({ browserUrls: { ...state.browserUrls, [threadId]: url } })),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
   setAddProjectOpen: (addProjectOpen) => set({ addProjectOpen }),

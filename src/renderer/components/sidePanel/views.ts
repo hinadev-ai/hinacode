@@ -7,6 +7,7 @@ import {
   RiInformationLine,
   RiRobot2Line,
   RiFileEditLine,
+  RiGlobalLine,
 } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
@@ -14,6 +15,7 @@ import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { GitGraphView } from "../GitGraphView.tsx"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
+import { BrowserView } from "./BrowserView.tsx"
 import { ChangesView } from "./ChangesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { FilesView } from "./FilesView.tsx"
@@ -57,6 +59,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     component: AgentsView,
     badge: useRunningSubagentCount,
   },
+  { id: "browser", icon: RiGlobalLine, title: m.panel_tab_browser, commandId: "view.browser", component: BrowserView },
 ]
 
 export const viewById = (id: SidePanelViewId) => sidePanelViews.find((view) => view.id === id) ?? sidePanelViews[0]!
