@@ -157,6 +157,7 @@ export const RpcMethods = {
   /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
   "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
+  "pullRequests.all": rpc(Schema.Void, Schema.Array(PullRequestLink)),
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
   /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. Returns the URL. */
   "pullRequests.create": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
