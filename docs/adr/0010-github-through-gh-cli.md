@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Context
 
-kkcode called `gh` from three places and ignored its errors. A linked PR showed only its URL. t3code's GitHub package takes a token from `gh auth token`, then calls REST and GraphQL itself, with ETags, token caching, remote resolution and stacks.
+kkcode called `gh` from three places and ignored its errors. A linked PR showed only its URL. The alternative is to take a token from `gh auth token` and call REST and GraphQL directly, with ETags, token caching, remote resolution and stacks.
 
 ## Decision
 

@@ -5,7 +5,7 @@ Date: 2026-10-11
 
 ## Context
 
-Claude (Agent SDK) and Codex (app-server JSON-RPC) speak different protocols. t3code keeps an event-sourced orchestrator in front of them. We need both agents in one transcript, and a restart must not lose that transcript.
+Claude (Agent SDK) and Codex (app-server JSON-RPC) speak different protocols. One option is an event-sourced orchestrator in front of them. We need both agents in one transcript, and a restart must not lose that transcript.
 
 ## Decision
 
