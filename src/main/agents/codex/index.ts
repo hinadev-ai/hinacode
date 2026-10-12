@@ -6,6 +6,8 @@ import type {
   AgentEvent,
   ApprovalDecision,
   ModelInfo,
+  Question,
+  QuestionAnswers,
   RunTurnInput,
   Subagent,
   TokenUsage,
@@ -18,6 +20,7 @@ import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import type {
   ApprovalDecisionWire,
+  AsyncUserInputQuestion,
   ElicitationActionWire,
   McpServerElicitationRequestParams,
   ModelListParams,
@@ -34,6 +37,9 @@ import type {
   TurnInterruptParams,
   TurnStartParams,
   TurnStartResponse,
+  ToolRequestUserInputParams,
+  ToolRequestUserInputQuestion,
+  ToolRequestUserInputResponse,
   TurnSteerParams,
   UserInput,
 } from "./protocol.ts"
@@ -63,6 +69,30 @@ const resolveCodexBinary = (): string => {
   }
   return "codex"
 }
+
+const toQuestion = (question: ToolRequestUserInputQuestion): Question => ({
+  id: question.id,
+  header: question.header,
+  question: question.question,
+  options: question.options ?? [],
+  multiSelect: false,
+  allowsText: question.isOther || question.options === null || question.options.length === 0,
+  secret: question.isSecret,
+})
+
+const toPostedQuestion = (question: AsyncUserInputQuestion): Question => ({
+  id: question.title,
+  header: "",
+  question: question.title,
+  options: (question.options ?? []).map((label) => ({ label, description: "" })),
+  multiSelect: false,
+  allowsText: true,
+  secret: false,
+})
+
+const userInputResponse = (answers: QuestionAnswers): ToolRequestUserInputResponse => ({
+  answers: Object.fromEntries(Object.entries(answers).map(([id, values]) => [id, { answers: [...values] }])),
+})
 
 const textInput = (text: string): UserInput => ({ type: "text", text, text_elements: [] })
 
@@ -154,6 +184,8 @@ const make = Effect.gen(function* () {
 
   /** Pending approvals keyed by the kkcode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
+  /** Pending `request_user_input` calls keyed by the kkcode question id handed to the UI. */
+  const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
   /** In-flight runs keyed by kkcode threadId, for steer and interrupt. */
   const runs = new Map<string, Run>()
   /** Keyed by kkcode threadId; a sub-agent can outlive the turn that spawned it. */
@@ -269,6 +301,7 @@ const make = Effect.gen(function* () {
           const startedTools = new Set<string>()
           const openTools = new Set<string>()
           const approvalIdByRpcId = new Map<string | number, string>()
+          const questionIdByRpcId = new Map<string | number, string>()
           let subagents = subagentsByThread.get(input.threadId)
           if (subagents === undefined) subagentsByThread.set(input.threadId, (subagents = new Map()))
           const emitSubagents = (changed: ReadonlyArray<Subagent>) =>
@@ -282,6 +315,9 @@ const make = Effect.gen(function* () {
               for (const [rpcId, approvalId] of approvalIdByRpcId) {
                 if (approvals.delete(approvalId)) yield* client.respond(rpcId, { decision: "cancel" })
               }
+              for (const [rpcId, questionId] of questionIdByRpcId) {
+                if (questions.delete(questionId)) yield* client.respond(rpcId, userInputResponse({}))
+              }
             }),
           )
 
@@ -289,6 +325,33 @@ const make = Effect.gen(function* () {
             Effect.suspend(() =>
               approvals.delete(approvalId) ? emit({ type: "approval_resolved", requestId: approvalId }) : Effect.void,
             )
+
+          const resolveQuestion = (questionId: string) =>
+            Effect.suspend(() =>
+              questions.delete(questionId) ? emit({ type: "question_resolved", requestId: questionId }) : Effect.void,
+            )
+
+          const requestUserInput = (rpcId: string | number, params: ToolRequestUserInputParams) =>
+            Effect.gen(function* () {
+              const questionId = randomUUID()
+              const answers = yield* Deferred.make<QuestionAnswers>()
+              questions.set(questionId, answers)
+              questionIdByRpcId.set(rpcId, questionId)
+              yield* emit({
+                type: "question_requested",
+                request: {
+                  id: questionId,
+                  threadId: input.threadId,
+                  provider: "codex",
+                  questions: params.questions.map(toQuestion),
+                },
+              })
+              yield* Deferred.await(answers).pipe(
+                Effect.flatMap((chosen) => client.respond(rpcId, userInputResponse(chosen))),
+                Effect.andThen(resolveQuestion(questionId)),
+                Effect.forkScoped,
+              )
+            })
 
           const startTool = (item: ThreadItem) => {
             const name = toolName(item)
@@ -411,6 +474,8 @@ const make = Effect.gen(function* () {
                     message.method,
                     message.params as ServerRequestParams[typeof message.method],
                   )
+                } else if (message.method === "item/tool/requestUserInput") {
+                  yield* requestUserInput(message.id, message.params as ToolRequestUserInputParams)
                 } else if (message.method === "mcpServer/elicitation/request") {
                   const params = message.params as McpServerElicitationRequestParams
                   if (params._meta?.codex_approval_kind === "mcp_tool_call") {
@@ -451,6 +516,13 @@ const make = Effect.gen(function* () {
                 case "item/completed": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   yield* finishTool(params.item)
+                  if (params.item.type === "agentMessage" && params.item.questions) {
+                    yield* emit({
+                      type: "questions_posted",
+                      text: params.item.text,
+                      questions: params.item.questions.map(toPostedQuestion),
+                    })
+                  }
                   yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }
@@ -494,6 +566,8 @@ const make = Effect.gen(function* () {
                     const { requestId } = message.params as { requestId: string | number }
                     const approvalId = approvalIdByRpcId.get(requestId)
                     if (approvalId) yield* resolveApproval(approvalId)
+                    const questionId = questionIdByRpcId.get(requestId)
+                    if (questionId) yield* resolveQuestion(questionId)
                   }
                   return false
                 }
@@ -551,6 +625,12 @@ const make = Effect.gen(function* () {
       return deferred ? Deferred.succeed(deferred, decision) : Effect.void
     }).pipe(Effect.asVoid)
 
+  const respondQuestion = (requestId: string, answers: QuestionAnswers) =>
+    Effect.suspend(() => {
+      const deferred = questions.get(requestId)
+      return deferred ? Deferred.succeed(deferred, answers) : Effect.void
+    }).pipe(Effect.asVoid)
+
   return {
     id: "codex",
     listModels,
@@ -559,6 +639,7 @@ const make = Effect.gen(function* () {
     steer,
     interrupt,
     respondApproval,
+    respondQuestion,
     // Codex takes a new approval policy and sandbox with the next turn/start.
     setAccessMode: () => Effect.void,
   } satisfies AgentProvider

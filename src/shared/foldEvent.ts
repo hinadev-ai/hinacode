@@ -34,6 +34,11 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         ...message,
         parts: [...message.parts, { type: "file_change", path: event.path, diff: event.diff ?? "" }],
       }
+    case "questions_posted":
+      return {
+        ...message,
+        parts: [...message.parts, { type: "questions", text: event.text, questions: event.questions }],
+      }
     case "turn_completed":
       return { ...message, parts: failRunningTools(message.parts), completedAt: now, usage: event.usage ?? null }
     case "turn_failed":

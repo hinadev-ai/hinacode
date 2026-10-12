@@ -12,8 +12,20 @@ writeFileSync(join(bin, "codex"), `#!/bin/sh\nexec node ${join(import.meta.dirna
 chmodSync(join(bin, "codex"), 0o755)
 process.env.PATH = `${bin}:${process.env.PATH}`
 
-type Control = { stall?: Array<string>; release?: boolean; holdTurn?: boolean }
-type Received = { method: string; params?: { turnId?: string } }
+type Control = {
+  stall?: Array<string>
+  release?: boolean
+  holdTurn?: boolean
+  question?: Array<import("./protocol.ts").ToolRequestUserInputQuestion>
+  postedQuestions?: Array<import("./protocol.ts").AsyncUserInputQuestion>
+  cancelQuestion?: boolean
+}
+type Received = {
+  method?: string
+  params?: { turnId?: string }
+  id?: number
+  result?: import("./protocol.ts").ToolRequestUserInputResponse
+}
 
 let logPath = ""
 let controlPath = ""
@@ -191,6 +203,100 @@ describe("Codex token usage", () => {
         expect(turn.events.at(-1)).toStrictEqual({
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
+        })
+      }),
+    ),
+  )
+})
+
+const question = {
+  id: "color",
+  header: "Color",
+  question: "Which color?",
+  isOther: true,
+  isSecret: false,
+  options: [{ label: "blue", description: "Cool" }],
+} satisfies import("./protocol.ts").ToolRequestUserInputQuestion
+
+const pendingQuestion = (turn: Turn) => {
+  const requested = turn.events.find((event) => event.type === "question_requested")
+  if (requested?.type !== "question_requested") throw new Error("No pending question")
+  return requested.request
+}
+
+describe("Codex questions", () => {
+  it.live("maps blocking questions and returns option and typed answers on the request id", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ question: [question] })
+        const turn = yield* startTurn("question-thread")
+        yield* untilEvent(turn, (event) => event.type === "question_requested")
+        const request = pendingQuestion(turn)
+        expect(request.questions).toMatchObject([{ id: "color", allowsText: true, multiSelect: false, secret: false }])
+        yield* provider.respondQuestion(request.id, { color: ["green"] })
+        yield* finishesSoon(turn.fiber)
+        expect(received().find((message) => message.id === 901)).toStrictEqual({
+          id: 901,
+          result: { answers: { color: { answers: ["green"] } } },
+        })
+        expect(turn.events.some((event) => event.type === "question_resolved" && event.requestId === request.id)).toBe(
+          true,
+        )
+      }),
+    ),
+  )
+
+  it.live("Stop cancels a pending question with empty answers and leaves the next turn usable", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ question: [question] })
+        const turn = yield* startTurn("question-thread")
+        yield* untilEvent(turn, (event) => event.type === "question_requested")
+        const request = pendingQuestion(turn)
+        yield* provider.interrupt("question-thread")
+        yield* finishesSoon(turn.fiber)
+        yield* waitFor(() => received().some((message) => message.id === 901))
+        expect(received().find((message) => message.id === 901)).toStrictEqual({ id: 901, result: { answers: {} } })
+        yield* provider.respondQuestion(request.id, { color: ["late"] })
+        setControl({})
+        const next = yield* startTurn("question-thread")
+        yield* finishesSoon(next.fiber)
+        expect(next.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.live("server cancellation removes the pending card without sending a stale answer", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ question: [question] })
+        const turn = yield* startTurn("question-thread")
+        yield* untilEvent(turn, (event) => event.type === "question_requested")
+        const request = pendingQuestion(turn)
+        setControl({ cancelQuestion: true })
+        yield* finishesSoon(turn.fiber)
+        yield* provider.respondQuestion(request.id, { color: ["late"] })
+        expect(turn.events.some((event) => event.type === "question_resolved" && event.requestId === request.id)).toBe(
+          true,
+        )
+        expect(received().filter((message) => message.id === 901)).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.live("keeps asynchronous questions in the transcript after turn completion", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ postedQuestions: [{ title: "Which color?", options: ["blue", "green"] }] })
+        const turn = yield* startTurn("posted-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events.find((event) => event.type === "questions_posted")).toMatchObject({
+          type: "questions_posted",
+          text: "Posted question",
+          questions: [{ id: "Which color?", allowsText: true }],
         })
       }),
     ),
