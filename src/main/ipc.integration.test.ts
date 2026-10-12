@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -51,10 +52,21 @@ const electron = vi.hoisted(() => ({
   shown: [] as Array<object>,
   restored: [] as Array<object>,
   focused: [] as Array<object>,
+  notifications: [] as Array<{ title: string; body: string; silent: boolean }>,
+  notificationOutcome: "show" as "show" | "failed",
   userData: "",
 }))
 
 vi.mock("electron", () => ({
+  Notification: class extends EventEmitter {
+    constructor(options: { title: string; body: string; silent: boolean }) {
+      super()
+      electron.notifications.push(options)
+    }
+    show() {
+      this.emit(electron.notificationOutcome)
+    }
+  },
   app: { getPath: () => electron.userData },
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
   BrowserWindow: {
@@ -303,6 +315,39 @@ describe("rpc trust boundary", () => {
 })
 
 describe("rpc contract", () => {
+  test("notification permission requests validate payloads and reject foreign frames before showing anything", async () => {
+    electron.notifications.length = 0
+    const payload = { title: "kkcode", body: "Permission check" }
+    expect(
+      failure(await invoke("notifications.askPermission", payload, { url: "file:///tmp/probe.html", parent: null }))
+        .tag,
+    ).toBe("UntrustedSender")
+    expect(failure(await invoke("notifications.askPermission", payload, { url: appUrl, parent: mainFrame })).tag).toBe(
+      "UntrustedSender",
+    )
+    expect(
+      failure(await invoke("notifications.askPermission", { title: 4 as unknown as string, body: "invalid" })).tag,
+    ).toBe("SchemaError")
+    expect(electron.notifications).toStrictEqual([])
+  })
+
+  test("notification permission requests report the native result and always remain silent", async () => {
+    electron.notifications.length = 0
+    const payload = { title: "kkcode", body: "Permission check" }
+    electron.notificationOutcome = "show"
+    expect(result(await invoke("notifications.askPermission", payload))).toBe("shown")
+    electron.notificationOutcome = "failed"
+    expect(result(await invoke("notifications.askPermission", payload))).toBe("refused")
+    electron.notificationOutcome = "show"
+    expect(electron.notifications).toStrictEqual([
+      { ...payload, silent: true },
+      { ...payload, silent: true },
+    ])
+    expect(["unknown", "granted", "denied", "notDetermined"]).toContain(
+      result(await invoke("notifications.permission", undefined)),
+    )
+  })
+
   test("answers an unknown method and a payload outside the contract with a schema error", async () => {
     const unknown = await invoke("no.such.method" as RpcMethod, undefined as never)
     expect(failure(unknown).tag).toBe("SchemaError")
