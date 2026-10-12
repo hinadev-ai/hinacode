@@ -58,7 +58,7 @@ export const commandsSource: PaletteSource = {
 }
 
 /** Adds `@path` to the thread's draft, the same mention the composer's `@` completion inserts. */
-const mentionFile = (threadId: string, path: string) => {
+export const mentionFile = (threadId: string, path: string) => {
   const { text } = useDrafts.getState().byThreadId[threadId] ?? emptyDraft
   const separator = text === "" || /\s$/.test(text) ? "" : " "
   useDrafts.getState().setText(threadId, `${text}${separator}@${path} `)

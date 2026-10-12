@@ -16,6 +16,7 @@ import {
   Changes,
   ChangesScope,
   AutomationRun,
+  FileSearchHit,
   AutomationTrigger,
   FsEntry,
   FsFileContent,
@@ -33,6 +34,7 @@ import {
   Settings,
   TerminalSession,
   Thread,
+  ThreadSearchHit,
   ThreadStatus,
   Worktree,
 } from "./domain.ts"
@@ -168,6 +170,16 @@ export const RpcMethods = {
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
   "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
+  /** Messages across every thread containing `query`, newest first. */
+  "search.threads": rpc(
+    Schema.Struct({ query: Schema.String, limit: Schema.optional(Schema.Number) }),
+    Schema.Array(ThreadSearchHit),
+  ),
+  /** Lines containing `query` in the thread's active workspace, found with ripgrep. */
+  "search.files": rpc(
+    Schema.Struct({ threadId: Schema.String, query: Schema.String, limit: Schema.optional(Schema.Number) }),
+    Schema.Array(FileSearchHit),
+  ),
 
   /**
    * One level of a folder under `root`, folders first. `root` must be a project root or a live worktree

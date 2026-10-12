@@ -21,6 +21,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
@@ -59,6 +60,7 @@ const makeAppLayer = (dbPath: string) => {
     ),
     Messages.layer,
     Attachments.layer,
+    Search.layer,
     Files.layer,
   )
   const naming =

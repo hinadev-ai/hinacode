@@ -1,10 +1,11 @@
-import { LegendList } from "@legendapp/list/react"
-import { memo, useMemo, useState } from "react"
+import { LegendList, type LegendListRef } from "@legendapp/list/react"
+import { memo, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
+import { Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessagePartView } from "./MessagePart.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
@@ -18,9 +19,10 @@ const edgeSpacer = <div className="h-4" />
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
  * viewport is already near the end, so scrolling up to read stops the auto-scroll.
  */
-export function MessageList({ messages }: { messages: ReadonlyArray<Message> }) {
+export function MessageList({ messages, listRef }: { messages: ReadonlyArray<Message>; listRef?: Ref<LegendListRef> }) {
   return (
     <LegendList
+      ref={listRef}
       data={messages}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
@@ -56,6 +58,7 @@ function MessageBody({ message }: { message: Message }) {
     return (
       <article
         aria-label={m.message_you()}
+        data-message-id={message.id}
         className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
@@ -70,10 +73,10 @@ function MessageBody({ message }: { message: Message }) {
             {linkify(text, repository).map((segment, index) =>
               segment.type === "link" ? (
                 <WebLink key={index} href={segment.href}>
-                  {segment.text}
+                  <Highlighted text={segment.text} />
                 </WebLink>
               ) : (
-                segment.text
+                <Highlighted key={index} text={segment.text} />
               ),
             )}
           </div>
@@ -87,7 +90,11 @@ function MessageBody({ message }: { message: Message }) {
   const last = message.parts.at(-1)
   const writing = streaming && last?.type === "text"
   return (
-    <article aria-busy={streaming} className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed">
+    <article
+      aria-busy={streaming}
+      data-message-id={message.id}
+      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
+    >
       {message.parts.map((part, index) =>
         // Parts only ever get appended or updated in place, so the index is a stable key.
         part.type === "text" ? (

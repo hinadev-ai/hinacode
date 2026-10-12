@@ -24,6 +24,7 @@ import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
+import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Terminals } from "./services/Terminals.ts"
@@ -38,6 +39,7 @@ type AppServices =
   | AgentRunner
   | McpCredentials
   | PullRequests
+  | Search
   | Secrets
   | Ports
   | Terminals
@@ -151,10 +153,11 @@ const handlers: Handlers = {
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
+  "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
+  "search.files": ({ threadId, query, limit }) => Search.use((search) => search.files(threadId, query, limit)),
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
-
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {
       const window = BrowserWindow.fromWebContents(sender)

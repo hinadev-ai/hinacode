@@ -30,6 +30,7 @@ import * as Ports from "./services/Ports.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
@@ -146,6 +147,7 @@ const makeLayer = (dbPath: string) => {
     ),
     Messages.layer,
     Attachments.layer,
+    Search.layer,
     Files.layer,
   )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer).pipe(Layer.provide(domain))
