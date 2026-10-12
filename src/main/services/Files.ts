@@ -146,19 +146,45 @@ const make = Effect.gen(function* () {
       return rows.find((row) => row.baseRef !== null)?.baseRef ?? null
     })
 
-  /** Entries of `entries` that git ignores. One `check-ignore` for the folder and all of its entries. */
-  const ignoredPaths = (root: string, path: string, entries: ReadonlyArray<{ readonly path: string }>) => {
-    const asked = path === "" ? entries.map((entry) => entry.path) : [path, ...entries.map((entry) => entry.path)]
-    if (asked.length === 0) return Effect.succeed(new Set<string>())
-    return git.run(root, ["check-ignore", "--stdin", "-z"], { stdin: `${asked.join("\0")}\0`, okExitCodes: [1] }).pipe(
-      Effect.map((output) => {
-        const ignored = new Set(output.split("\0").filter(Boolean))
-        return path !== "" && ignored.has(path) ? new Set(asked) : ignored
-      }),
-      // Outside a git repository nothing is ignored.
-      Effect.orElseSucceed(() => new Set<string>()),
+  /**
+   * Whether git ignores an entry of the folder `path`. `check-ignore` on every entry took 180 ms for a
+   * 5,000-entry folder, so it only asks about the folder itself, and one `ls-files` lists the ignored
+   * entries, stopping at ignored folders. Outside a git repository nothing is ignored.
+   */
+  const ignoredIn = (root: string, path: string) =>
+    Effect.all(
+      [
+        path === ""
+          ? Effect.succeed(false)
+          : git.run(root, ["check-ignore", "--", path], { okExitCodes: [1] }).pipe(
+              Effect.map((output) => output.trim() !== ""),
+              Effect.orElseSucceed(() => false),
+            ),
+        // Fails inside an ignored folder, where the folder check already answers.
+        git
+          .run(root, [
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+            "-z",
+            "--",
+            path || ".",
+          ])
+          .pipe(
+            Effect.map((output) => new Set(output.split("\0").map((ignored) => ignored.replace(/\/$/, "")))),
+            Effect.orElseSucceed(() => new Set<string>()),
+          ),
+      ],
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.map(
+        ([folderIgnored, ignored]) =>
+          (entryPath: string) =>
+            folderIgnored || ignored.has(entryPath),
+      ),
     )
-  }
 
   /** What the agent committed on the worktree's branch, relative to `root`, so the tree agrees with the Changes list. */
   const committed = (root: string, pathspec: string, baseRef: string | null) =>
@@ -211,12 +237,11 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const baseRef = yield* knownRoot(root)
       const entries = yield* readEntries(root, path, yield* resolveDir(root, path))
-      const [ignored, changed] = yield* Effect.all(
-        [ignoredPaths(root, path, entries), changedPaths(root, path, baseRef)],
-        { concurrency: "unbounded" },
-      )
+      const [isIgnored, changed] = yield* Effect.all([ignoredIn(root, path), changedPaths(root, path, baseRef)], {
+        concurrency: "unbounded",
+      })
       return entries
-        .map((entry) => ({ ...entry, ignored: ignored.has(entry.path), gitStatus: statusOf(entry.path, changed) }))
+        .map((entry) => ({ ...entry, ignored: isIgnored(entry.path), gitStatus: statusOf(entry.path, changed) }))
         .toSorted(byKindThenName)
     })
 

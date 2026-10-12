@@ -1,5 +1,4 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { PatchDiff } from "@pierre/diffs/react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
@@ -12,13 +11,13 @@ import {
   type Worktree,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
-import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom, worktreeChangesAtom } from "../lib/rpc.ts"
-import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
-import { useUi } from "../stores/ui.ts"
+import { type SidePanelTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { FileExplorer } from "./FileExplorer.tsx"
+import { FilePatch, fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
 import { ThreadAgents, useRunningSubagentCount } from "./ThreadAgents.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
 import { pullRequestStatusLabel, ThreadPullRequests } from "./ThreadPullRequests.tsx"
@@ -35,11 +34,13 @@ const returnFocusToComposer = (panel: HTMLElement | null) => () => {
 
 /**
  * Right-hand panel of the thread route. Details: where the thread runs, its setup log, changes, ports
- * and pull requests. Agents: the sub-agents its agent spawned.
+ * and pull requests. Agents: the sub-agents its agent spawned. Files: the tree of its working directory.
  */
 export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
+  const tab = useUi((state) => state.sidePanelTab)
+  const setTab = useUi((state) => state.setSidePanelTab)
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
 
   return (
@@ -48,7 +49,7 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
       aria-label={m.panel_label()}
       className={compact ? "flex min-h-0 w-full flex-1 flex-col" : "flex w-96 shrink-0 flex-col border-l border-border"}
     >
-      <Tabs defaultValue="details" className="min-h-0 flex-1 gap-0">
+      <Tabs value={tab} onValueChange={(value: SidePanelTab) => setTab(value)} className="min-h-0 flex-1 gap-0">
         <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
           <TabsList>
             <TabsTrigger value="details">{m.panel_tab_details()}</TabsTrigger>
@@ -56,6 +57,7 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
               {m.panel_tab_agents()}
               <RunningSubagentsBadge threadId={thread.id} />
             </TabsTrigger>
+            <TabsTrigger value="files">{m.panel_tab_files()}</TabsTrigger>
           </TabsList>
           <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
         </header>
@@ -87,9 +89,23 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
             </div>
           </ScrollArea>
         </TabsContent>
+        <TabsContent value="files" className="flex min-h-0 flex-col">
+          <FilesTab thread={thread} worktree={worktree} />
+        </TabsContent>
       </Tabs>
     </aside>
   )
+}
+
+/** The tree of where the thread works now: its worktree, or the project root once the worktree is removed. */
+function FilesTab({ thread, worktree }: { thread: Thread; worktree: Worktree | undefined }) {
+  const projects = useAtomValue(projectsAtom)
+  const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === thread.projectId)
+  const live = worktree?.status === "removed" ? undefined : worktree
+  const root = live?.path ?? project?.rootPath
+  // Until worktrees load, a worktree thread would briefly list the project root instead.
+  if (root === undefined || (thread.worktreeId !== null && worktree === undefined)) return null
+  return <FileExplorer key={root} thread={thread} root={root} worktreeId={live?.id ?? null} />
 }
 
 function RunningSubagentsBadge({ threadId }: { threadId: string }) {
@@ -250,26 +266,6 @@ function ChangesSection({ worktree }: { worktree: Worktree | undefined }) {
   return <WorktreeChanges worktreeId={worktree.id} />
 }
 
-const fileStatusLabel = {
-  added: m.file_status_added,
-  modified: m.file_status_modified,
-  deleted: m.file_status_deleted,
-  untracked: m.file_status_untracked,
-  conflict: m.file_status_conflict,
-} satisfies Record<ChangedFileStatus, () => string>
-
-const fileStatusMark = {
-  added: { letter: "A", className: "text-emerald-500" },
-  modified: { letter: "M", className: "text-amber-500" },
-  deleted: { letter: "D", className: "text-destructive" },
-  untracked: { letter: "U", className: "text-sky-500" },
-  conflict: { letter: "C", className: "text-destructive" },
-} satisfies Record<ChangedFileStatus, { letter: string; className: string }>
-
-/** The single-file section of a combined `git diff`, found by its `diff --git a/… b/<path>` header. */
-const patchForFile = (patch: string, path: string) =>
-  patch.split(/^(?=diff --git )/m).find((chunk) => chunk.slice(0, chunk.indexOf("\n")).endsWith(` b/${path}`))
-
 function WorktreeChanges({ worktreeId }: { worktreeId: string }) {
   const changesAtom = worktreeChangesAtom(worktreeId)
   const changes = useAtomValue(changesAtom)
@@ -334,8 +330,6 @@ interface ChangedFileRowProps {
 function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowProps) {
   const diffId = useId()
   const mark = fileStatusMark[status]
-  const filePatch = open ? patchForFile(patch, path) : undefined
-  const theme = useTheme(useSettings().appearance.theme)
 
   return (
     <li className="flex flex-col gap-1">
@@ -355,20 +349,7 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
       </button>
       {open && (
         <div id={diffId} className="overflow-hidden rounded-md border border-border text-xs">
-          {filePatch ? (
-            <PatchDiff
-              patch={filePatch}
-              options={{
-                diffStyle: "unified",
-                theme: theme.codeTheme,
-                themeType: theme.scheme,
-                overflow: "wrap",
-                disableFileHeader: true,
-              }}
-            />
-          ) : (
-            <p className="p-2 text-muted-foreground">{m.panel_diff_missing()}</p>
-          )}
+          <FilePatch patch={patch} path={path} />
         </div>
       )}
     </li>

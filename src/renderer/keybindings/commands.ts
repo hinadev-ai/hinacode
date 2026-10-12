@@ -80,6 +80,14 @@ export const commands = [
     run: () => useUi.getState().requestComposerFocus(),
   },
   {
+    id: "explorer.focus",
+    defaultKeys: "mod+shift+e",
+    title: m.command_explorer_focus,
+    run: (ctx) => {
+      if (ctx.threadId) useUi.getState().requestExplorerFocus()
+    },
+  },
+  {
     id: "turn.interrupt",
     defaultKeys: "mod+shift+c",
     title: m.command_turn_interrupt,

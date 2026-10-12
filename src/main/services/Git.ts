@@ -16,8 +16,6 @@ export class CommandError extends Schema.TaggedError<CommandError>()("CommandErr
 export interface RunOptions {
   /** Exit codes treated as success besides 0, e.g. 1 for `git diff --no-index` when files differ. */
   readonly okExitCodes?: ReadonlyArray<number>
-  /** Written to the command's stdin, which is otherwise closed. */
-  readonly stdin?: string
 }
 
 interface ExecOptions extends RunOptions {
@@ -30,9 +28,8 @@ export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
   (command: string, args: ReadonlyArray<string>, cwd: string, options?: ExecOptions) =>
     Effect.gen(function* () {
-      const stdin = options?.stdin === undefined ? "ignore" : Stream.make(new TextEncoder().encode(options.stdin))
       const handle = yield* spawner.spawn(
-        ChildProcess.make(command, args, { cwd, stdin, env: options?.env, extendEnv: true }),
+        ChildProcess.make(command, args, { cwd, stdin: "ignore", env: options?.env, extendEnv: true }),
       )
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [

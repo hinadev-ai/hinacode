@@ -1,11 +1,16 @@
 import { create } from "zustand"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 
+export type SidePanelTab = "details" | "agents" | "files"
+
 interface UiState {
   readonly sidebarOpen: boolean
   readonly sidePanelOpen: boolean
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
+  readonly sidePanelTab: SidePanelTab
+  /** Set until the file tree mounts and takes focus. */
+  readonly explorerFocusRequested: boolean
   /** Bumped to ask the composer to take focus. Subscribers react to changes, the value is meaningless. */
   readonly composerFocusRequest: number
   /** Bumped to ask the open thread to interrupt its running turn. */
@@ -18,6 +23,10 @@ interface UiState {
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
   readonly setAddProjectOpen: (open: boolean) => void
+  readonly setSidePanelTab: (tab: SidePanelTab) => void
+  /** Shows the side panel on the Files tab and asks the tree to take focus. */
+  readonly requestExplorerFocus: () => void
+  readonly clearExplorerFocusRequest: () => void
 }
 
 /** App-wide UI state driven by keybindings and shared across components without prop drilling. */
@@ -26,6 +35,8 @@ export const useUi = create<UiState>()((set) => ({
   sidePanelOpen: true,
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
+  sidePanelTab: "details",
+  explorerFocusRequested: false,
   composerFocusRequest: 0,
   interruptRequest: 0,
   addProjectOpen: false,
@@ -48,4 +59,14 @@ export const useUi = create<UiState>()((set) => ({
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
   setAddProjectOpen: (addProjectOpen) => set({ addProjectOpen }),
+  setSidePanelTab: (sidePanelTab) => set({ sidePanelTab }),
+  requestExplorerFocus: () =>
+    set({
+      sidePanelTab: "files",
+      explorerFocusRequested: true,
+      ...(getPanelLayout() === "wide"
+        ? { sidePanelOpen: true }
+        : { sidePanelOverlayOpen: true, sidebarOverlayOpen: false }),
+    }),
+  clearExplorerFocusRequest: () => set({ explorerFocusRequested: false }),
 }))
