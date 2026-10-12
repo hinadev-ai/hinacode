@@ -3,6 +3,7 @@ import { GhosttyCore } from "@wterm/ghostty"
 import wasmUrl from "@wterm/ghostty/ghostty-vt.wasm?url"
 import { m } from "../paraglide/messages.js"
 import { callPromise } from "./rpc.ts"
+import { TerminalBacklog } from "./terminalBacklog.ts"
 
 /**
  * One libghostty screen per terminal session, kept outside React so a session keeps its screen and
@@ -13,7 +14,7 @@ interface Screen {
   readonly element: HTMLDivElement
   term: WTerm | null
   /** Output that arrived before the screen was first shown and measured. */
-  readonly backlog: Array<string>
+  readonly backlog: TerminalBacklog
   /** Focus asked for before the screen was ready. */
   wantsFocus: boolean
   /** Hidden tabs and drawers keep parsing output but skip painting. */
@@ -31,7 +32,7 @@ const screenFor = (id: string) => {
   if (!screen) {
     const element = document.createElement("div")
     element.className = "terminal-screen"
-    screen = { element, term: null, backlog: [], wantsFocus: false, paused: false }
+    screen = { element, term: null, backlog: new TerminalBacklog(), wantsFocus: false, paused: false }
     screens.set(id, screen)
   }
   return screen
@@ -73,7 +74,7 @@ const start = async (id: string, screen: Screen) => {
   void callPromise("terminal.resize", { id, cols: term.cols, rows: term.rows }).catch(ignore)
   if (!screens.has(id)) return term.destroy()
   screen.term = term
-  for (const data of screen.backlog.splice(0)) term.write(data)
+  for (const data of screen.backlog.drain().chunks) term.write(data)
   if (screen.wantsFocus) term.focus()
 }
 
@@ -108,7 +109,7 @@ export function writeTerminal(id: string, data: string) {
   if (disposed.has(id)) return
   const screen = screenFor(id)
   if (screen.term) screen.term.write(data)
-  else screen.backlog.push(data)
+  else screen.backlog.append(data)
 }
 
 export function terminalExited(id: string, exitCode: number | null) {
