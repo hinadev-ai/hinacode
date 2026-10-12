@@ -1,6 +1,6 @@
 # Remote mode
 
-Status: Building
+Status: Shipped
 Date: 2026-10-12
 
 ## Problem
@@ -91,5 +91,6 @@ The listener is reachable from the network when `bindHost` is not loopback. The 
 
 ## Verification
 
-- `src/main/remote/server.integration.test.ts`: a real listener on a free port; unauthenticated frames are refused, a bad token is refused, a good token gets `ready`, `projects.list` round trips, `thread.updated` arrives as an event, `dialog.pickFolder` returns `DesktopOnly`, and rotating the token closes the socket.
-- `verify-kkcode`: enable remote in Settings, screenshot the QR code, then run the Expo web build against that instance in agent-browser at a phone viewport: pair, list threads, open one, send a prompt, approve a command, open the terminal and run `pwd`.
+- `src/main/ipc.integration.test.ts`, "remote mode": a real listener on a random port; a call before auth and a wrong token are closed with 4001, a good token gets `ready`, `projects.list` round trips, `threads.create` arrives back as a `thread.updated` event, `dialog.pickFolder` answers `DesktopOnly`, a void method answers with an empty envelope, rotating the token closes the socket with 4002 and the old token stops working, and turning the switch off closes the listener.
+- `verify-kkcode` plus the phone app's web export (`npx expo export --platform web`, served with any static server) driven by agent-browser at a 390x844 viewport: pair with the URL from Settings > Remote, create a thread from the phone and watch it appear in the desktop sidebar without a reload, send a prompt, allow the command the agent asks about, open the Terminal tab and run `pwd` in the worktree.
+- Not covered by a machine: the QR scanner, the WebView terminal and the keyboard on a real phone. Those need Expo Go on a device.
