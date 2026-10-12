@@ -145,6 +145,10 @@ const handlers: Handlers = {
   "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
+  "github.repository": ({ projectId }) =>
+    Projects.use((projects) => projects.get(projectId)).pipe(
+      Effect.flatMap(({ rootPath }) => GitHub.use((github) => github.repository(rootPath))),
+    ),
   "links.favicon": ({ url }) => Favicons.use((favicons) => favicons.favicon(url)),
   "mcp.connection": ({ threadId }) => McpCredentials.use((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),

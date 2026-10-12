@@ -133,6 +133,11 @@ export const faviconAtom = Atom.family((origin: string) =>
   Atom.make(call("links.favicon", { url: origin })).pipe(Atom.keepAlive),
 )
 
+/** The GitHub repository a project's origin points at, or null. Asked once per project per session. */
+export const repositoryAtom = Atom.family((projectId: string) =>
+  Atom.make(call("github.repository", { projectId })).pipe(Atom.keepAlive),
+)
+
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
 
 /** Re-lists the thread's open ports every 2s while something subscribes. */

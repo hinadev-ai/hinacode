@@ -190,6 +190,8 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
+  /** The GitHub repository the project's `origin` points at, or null. */
+  "github.repository": rpc(Schema.Struct({ projectId: Schema.String }), Schema.NullOr(GitHubRepository)),
   /** The icon of the url's site as a data URL, or null. Main only ever GETs the origin root and the icon. */
   "links.favicon": rpc(Schema.Struct({ url: Schema.String }), Schema.NullOr(Schema.String)),
   /** The built-in MCP server connection handed to agents running in this thread. */
