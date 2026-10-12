@@ -9,11 +9,13 @@ export interface ExplorerTree {
   /** Listings by folder path, filled as folders are expanded. */
   readonly children: Readonly<Record<string, ReadonlyArray<FsEntry>>>
   readonly selected: string | null
+  /** The file the viewer shows. */
+  readonly opened: string | null
   /** Why the root itself could not be listed. */
   readonly error: string | null
 }
 
-export const emptyTree: ExplorerTree = { expanded: new Set(), children: {}, selected: null, error: null }
+export const emptyTree: ExplorerTree = { expanded: new Set(), children: {}, selected: null, opened: null, error: null }
 
 export interface TreeRow {
   readonly entry: FsEntry
@@ -58,6 +60,8 @@ interface ExplorerState {
   readonly collapse: (root: string, path: string) => void
   readonly collapseAll: (root: string) => void
   readonly select: (root: string, path: string | null) => void
+  /** Shows `path` in the file viewer, or closes the viewer. */
+  readonly open: (root: string, path: string | null) => void
 }
 
 /** Kept per root for the whole session, so switching threads or tabs keeps what was open. */
@@ -97,5 +101,6 @@ export const useExplorer = create<ExplorerState>()((set, get) => {
       }),
     collapseAll: (root) => update(root, () => ({ expanded: new Set() })),
     select: (root, selected) => update(root, () => ({ selected })),
+    open: (root, opened) => update(root, () => ({ opened })),
   }
 })

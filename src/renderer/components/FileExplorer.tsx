@@ -1,14 +1,11 @@
 // oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/interactive-supports-focus -- the WAI-ARIA tree with aria-activedescendant: focus stays on the tree, which handles the keys for every row, so rows that scroll out of the virtual list never hold focus.
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { cn } from "cn"
-import { AsyncResult } from "effect/reactivity"
 import { createElement, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
   RiAtLine,
-  RiCloseLine,
   RiContractUpDownLine,
   RiFileCodeLine,
   RiFileCopyLine,
@@ -22,13 +19,12 @@ import {
   RiRefreshLine,
 } from "react-icons/ri"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise, onPushEvent, worktreeChangesAtom } from "../lib/rpc.ts"
+import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { emptyTree, flattenTree, parentOf, type TreeRow, useExplorer } from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
-import { FilePatch, fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
+import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
 import { Button } from "./ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
@@ -85,9 +81,9 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const collapse = useExplorer((state) => state.collapse)
   const collapseAll = useExplorer((state) => state.collapseAll)
   const select = useExplorer((state) => state.select)
+  const openFile = useExplorer((state) => state.open)
   const rows = useMemo(() => flattenTree(tree), [tree])
   const selectedIndex = rows.findIndex((row) => row.entry.path === tree.selected)
-  const [diffPath, setDiffPath] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState("")
   const treeRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<LegendListRef>(null)
@@ -125,11 +121,11 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   }, [busy, refresh, root])
 
   // The tree element only exists once the root is listed, so a request made on mount waits for that.
-  const focusRequested = useUi((state) => state.explorerFocusRequested)
+  const focusRequested = useUi((state) => state.viewFocusRequest === "files")
   const loaded = tree.children[""] !== undefined || tree.error !== null
   useEffect(() => {
     if (!focusRequested || !loaded) return
-    useUi.getState().clearExplorerFocusRequest()
+    useUi.getState().clearViewFocusRequest()
     // After the side panel dialog, if any, has placed its own initial focus.
     requestAnimationFrame(() => treeRef.current?.focus())
   }, [focusRequested, loaded])
@@ -150,10 +146,11 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const toggle = (entry: FsEntry) =>
     tree.expanded.has(entry.path) ? collapse(root, entry.path) : expand(root, entry.path)
 
-  const open = (entry: FsEntry) => {
-    if (entry.kind === "dir") toggle(entry)
-    else if (hasDiff(entry)) setDiffPath(entry.path)
-    else mention(entry)
+  const open = (entry: FsEntry) => (entry.kind === "dir" ? toggle(entry) : openFile(root, entry.path))
+
+  const showChanges = (entry: FsEntry) => {
+    useUi.getState().setChangesPath(entry.path)
+    useUi.getState().showView(thread.id, "changes")
   }
 
   const moveTo = (index: number) => {
@@ -201,13 +198,12 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         else if (entry && parentOf(entry.path) !== "") select(root, parentOf(entry.path))
         break
       case "Enter":
-        if (entry && event.shiftKey) mention(entry)
-        else if (entry) open(entry)
+        if (entry) open(entry)
         break
       case "Escape":
-        if (diffPath === null) return
-        setDiffPath(null)
-        // Closing the diff must not also close the side panel dialog around it.
+        if (tree.opened === null) return
+        openFile(root, null)
+        // Closing the file must not also close the side panel dialog around it.
         event.stopPropagation()
         break
       default:
@@ -224,7 +220,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const onRowClick = (entry: FsEntry) => {
     select(root, entry.path)
     treeRef.current?.focus()
-    if (entry.kind === "dir") toggle(entry)
+    open(entry)
   }
 
   const renderItem = ({ item, index }: { item: TreeRow; index: number }) => (
@@ -234,7 +230,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       selected={index === selectedIndex}
       expanded={tree.expanded.has(item.entry.path)}
       onClick={onRowClick}
-      onDoubleClick={(entry) => entry.kind !== "dir" && open(entry)}
       onContextMenu={(entry) => select(root, entry.path)}
     />
   )
@@ -298,7 +293,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                 {m.explorer_mention()}
               </DropdownMenuItem>
               {hasDiff(selectedEntry) && (
-                <DropdownMenuItem onClick={() => setDiffPath(selectedEntry.path)}>
+                <DropdownMenuItem onClick={() => showChanges(selectedEntry)}>
                   <RiFileTextLine aria-hidden />
                   {m.explorer_show_changes()}
                 </DropdownMenuItem>
@@ -316,9 +311,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
             </ContextMenuContent>
           )}
         </ContextMenu>
-      )}
-      {worktreeId !== null && diffPath !== null && (
-        <DiffPane key={diffPath} worktreeId={worktreeId} path={diffPath} onClose={() => setDiffPath(null)} />
       )}
       <p aria-live="polite" className="sr-only">
         {announcement}
@@ -341,11 +333,10 @@ interface TreeItemProps {
   readonly selected: boolean
   readonly expanded: boolean
   readonly onClick: (entry: FsEntry) => void
-  readonly onDoubleClick: (entry: FsEntry) => void
   readonly onContextMenu: (entry: FsEntry) => void
 }
 
-function TreeItem({ row, id, selected, expanded, onClick, onDoubleClick, onContextMenu }: TreeItemProps) {
+function TreeItem({ row, id, selected, expanded, onClick, onContextMenu }: TreeItemProps) {
   const { entry, depth } = row
   const isDir = entry.kind === "dir"
   const mark = entry.gitStatus === null ? null : fileStatusMark[entry.gitStatus]
@@ -364,7 +355,6 @@ function TreeItem({ row, id, selected, expanded, onClick, onDoubleClick, onConte
       aria-expanded={isDir ? expanded : undefined}
       aria-describedby={description ? `${id}-status` : undefined}
       onClick={() => onClick(entry)}
-      onDoubleClick={() => onDoubleClick(entry)}
       onContextMenu={() => onContextMenu(entry)}
       style={{ paddingLeft: 8 + depth * INDENT }}
       className="relative mx-1 flex h-6 cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
@@ -410,37 +400,5 @@ function TreeItem({ row, id, selected, expanded, onClick, onDoubleClick, onConte
         </span>
       )}
     </div>
-  )
-}
-
-function DiffPane({ worktreeId, path, onClose }: { worktreeId: string; path: string; onClose: () => void }) {
-  const changesAtom = worktreeChangesAtom(worktreeId)
-  const changes = useAtomValue(changesAtom)
-  const refreshChanges = useAtomRefresh(changesAtom)
-
-  // The Changes list may have loaded this a while ago; a file opened from the tree should show its diff now.
-  useEffect(() => refreshChanges(), [refreshChanges])
-
-  return (
-    <section aria-label={path} className="flex max-h-[55%] min-h-0 shrink-0 flex-col border-t border-border">
-      <header className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-3">
-        <span className="min-w-0 flex-1 truncate font-mono text-xs" title={path}>
-          {path}
-        </span>
-        <HeaderButton label={m.explorer_diff_close()} onClick={onClose} icon={RiCloseLine} />
-      </header>
-      <div className="min-h-0 overflow-auto text-xs">
-        {AsyncResult.builder(changes)
-          .onSuccess(({ patch }) => <FilePatch patch={patch} path={path} />)
-          .onError((error) => (
-            <p role="alert" className="p-3 text-destructive">
-              {m.panel_changes_failed({ message: errorMessage(error) })}
-            </p>
-          ))
-          .orElse(() => (
-            <p className="p-3 text-muted-foreground">{m.panel_changes_loading()}</p>
-          ))}
-      </div>
-    </section>
   )
 }

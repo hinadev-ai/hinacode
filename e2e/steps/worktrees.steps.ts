@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
-import { threadDetails, threadMenu } from "../support/ui.ts"
+import { threadMenu, threadView } from "../support/ui.ts"
 
 const branchOf = (title: string) => `kk/${title.replace(/\s+/g, "-")}`
 
@@ -46,13 +46,13 @@ When("I change {string} and add {string} in the worktree", async ({ app }, chang
 })
 
 When("I refresh the changes", async ({ app }) => {
-  const panel = await threadDetails(app.page)
+  const panel = await threadView(app.page, "Changes")
   await panel.getByRole("button", { name: "Refresh changes", exact: true }).click()
 })
 
 When("I open the diff of {string}", async ({ app }, file: string) => {
-  const panel = await threadDetails(app.page)
-  await panel.getByRole("region", { name: "Changes" }).getByRole("button").filter({ hasText: file }).click()
+  const changes = await threadView(app.page, "Changes")
+  await changes.getByRole("button").filter({ hasText: file }).click()
 })
 
 When("I settle the thread and clean up its worktree", async ({ app }) => {
@@ -66,12 +66,12 @@ When("I settle the thread and clean up its worktree", async ({ app }) => {
 })
 
 Then("the workspace status becomes {string}", async ({ app }, status: string) => {
-  const panel = await threadDetails(app.page)
+  const panel = await threadView(app.page, "Details")
   await expect(panel.getByRole("region", { name: "Workspace" }).getByText(status, { exact: true })).toBeVisible()
 })
 
 Then("the setup log ends with the branch of {string}", async ({ app, names }, title: string) => {
-  const panel = await threadDetails(app.page)
+  const panel = await threadView(app.page, "Details")
   const log = panel.getByRole("log", { name: "Setup log" })
   await expect
     .poll(async () => (await log.textContent())?.trimEnd())
@@ -85,7 +85,7 @@ When("I commit a change in the worktree", async ({ app }) => {
 })
 
 Then("the setup log reports that the script exited with code {int}", async ({ app }, code: number) => {
-  const panel = await threadDetails(app.page)
+  const panel = await threadView(app.page, "Details")
   await expect(panel.getByRole("alert")).toContainText("The setup script failed")
   await expect(panel.getByRole("log", { name: "Setup log" })).toContainText(`exited with code ${code}`)
 })
@@ -105,8 +105,7 @@ Then("git lists the worktree on the branch {string}", async ({ app, repo, names 
 Then(
   "the changes list {string} as modified and {string} as untracked",
   async ({ app }, modified: string, untracked: string) => {
-    const panel = await threadDetails(app.page)
-    const changes = panel.getByRole("region", { name: "Changes" })
+    const changes = await threadView(app.page, "Changes")
     await expect(changes.getByRole("button").filter({ hasText: modified }).getByTitle("Modified")).toBeVisible()
     await expect(
       changes.getByRole("button").filter({ hasText: untracked }).getByTitle("New, not tracked"),
@@ -115,14 +114,12 @@ Then(
 )
 
 Then("the diff of {string} shows {string}", async ({ app }, file: string, text: string) => {
-  const panel = await threadDetails(app.page)
-  await expect(
-    panel.getByRole("region", { name: "Changes" }).getByRole("listitem").filter({ hasText: file }),
-  ).toContainText(text)
+  const changes = await threadView(app.page, "Changes")
+  await expect(changes.getByRole("listitem").filter({ hasText: file })).toContainText(text)
 })
 
 Then("the worktree is removed from disk but its branch is kept", async ({ app, repo }) => {
-  const panel = await threadDetails(app.page)
+  const panel = await threadView(app.page, "Details")
   await expect(panel.getByText("The worktree was removed. New runs use the project root.")).toBeVisible()
   const { path, branch } = await openWorktree(app.page)
   // Deletion of the checkout finishes in the background after the row is marked removed.

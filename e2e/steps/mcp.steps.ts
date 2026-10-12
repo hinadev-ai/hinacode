@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { callTool, listTools, postAs } from "../support/mcp.ts"
 import { rpc } from "../support/rpc.ts"
-import { threadDetails } from "../support/ui.ts"
+import { threadView } from "../support/ui.ts"
 
 const connected = (agent: { connection: { url: string; headers: { authorization: string } } | null }) => {
   if (!agent.connection) throw new Error("no agent is connected; add the Given step")
@@ -34,7 +34,7 @@ When("the agent calls {string} with {string}", async ({ agent }, tool: string, a
 })
 
 When("I unlink {string} in the pull requests panel", async ({ app }, name: string) => {
-  const panel = await threadDetails(app.page)
+  const panel = await threadView(app.page, "Pull requests")
   await panel.getByRole("button", { name: `Unlink ${name}`, exact: true }).click()
 })
 
@@ -58,13 +58,13 @@ Then("the tool fails with {string}", ({ agent }, text: string) => {
 })
 
 Then("the pull requests panel lists {string}", async ({ app }, name: string) => {
-  const panel = await threadDetails(app.page)
-  await expect(panel.getByRole("region", { name: "Pull requests" }).getByRole("link", { name })).toBeVisible()
+  const panel = await threadView(app.page, "Pull requests")
+  await expect(panel.getByRole("link", { name })).toBeVisible()
 })
 
 Then("the pull requests panel is empty", async ({ app, agent, threadIds }) => {
-  const panel = await threadDetails(app.page)
-  await expect(panel.getByRole("region", { name: "Pull requests" })).toContainText("None linked yet")
+  const panel = await threadView(app.page, "Pull requests")
+  await expect(panel).toContainText("None linked yet")
   const [threadId] = threadIds.values()
   if (agent.connection && threadId) expect(await rpc(app.page, "pullRequests.list", { threadId })).toStrictEqual([])
 })
