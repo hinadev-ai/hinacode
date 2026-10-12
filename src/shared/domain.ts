@@ -320,6 +320,18 @@ export const OpenPort = Schema.Struct({
 })
 export type OpenPort = typeof OpenPort.Type
 
+/** An integrated terminal: a shell in the thread's workspace. Lives in memory and ends with the app. */
+export const TerminalSession = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  cwd: Schema.String,
+  cols: Schema.Number,
+  rows: Schema.Number,
+  status: Schema.Literals(["running", "exited"]),
+  exitCode: Schema.NullOr(Schema.Number),
+})
+export type TerminalSession = typeof TerminalSession.Type
+
 /**
  * What starts an automation. A webhook's HMAC secret lives in Secrets, never in this shape,
  * so the renderer only ever sees it once, in the `automations.create` response.

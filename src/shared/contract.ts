@@ -31,6 +31,7 @@ import {
   PullRequestDetail,
   PullRequestLink,
   Settings,
+  TerminalSession,
   Thread,
   ThreadStatus,
   Worktree,
@@ -49,6 +50,8 @@ const AutomationInput = Schema.Struct({
   branchTemplate: Schema.NullOr(Schema.String),
 })
 export type AutomationInput = typeof AutomationInput.Type
+
+const TerminalSize = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000 }))
 
 const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, response: Res) => ({ request, response })
 
@@ -240,6 +243,18 @@ export const RpcMethods = {
   "ports.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(OpenPort)),
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
 
+  /** Starts a login shell in the thread's worktree, or in the project root when it has none. */
+  "terminal.open": rpc(
+    Schema.Struct({ threadId: Schema.String, cols: TerminalSize, rows: TerminalSize }),
+    TerminalSession,
+  ),
+  /** Input for the shell. Ignored once the session has exited. */
+  "terminal.write": rpc(Schema.Struct({ id: Schema.String, data: Schema.String }), Schema.Void),
+  "terminal.resize": rpc(Schema.Struct({ id: Schema.String, cols: TerminalSize, rows: TerminalSize }), Schema.Void),
+  /** Ends the shell if it still runs and forgets the session. */
+  "terminal.close": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "terminal.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(TerminalSession)),
+
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
     Schema.Struct({
@@ -352,6 +367,10 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  /** Shell output, batched to about one push per frame. */
+  Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
+  /** Sent after the session's last `terminal.data`. */
+  Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
 ])
 export type PushEvent = typeof PushEvent.Type
 
