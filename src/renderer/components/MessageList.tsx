@@ -7,7 +7,8 @@ import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { MessagePartView } from "./MessagePart.tsx"
+import { groupCommands } from "../lib/toolCall.ts"
+import { CommandGroup, MessagePartView } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 
@@ -125,9 +126,12 @@ function MessageBody({ message }: { message: Message }) {
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {parts.map((part, index) =>
-        // Parts only ever get appended or updated in place, so the index is a stable key.
-        part.type === "text" ? (
+      {groupCommands(parts).map((block) => {
+        // Parts only ever get appended or updated in place, so the first part's index is a stable key.
+        const { index } = block
+        if (block.type === "commands") return <CommandGroup key={index} calls={block.calls} />
+        const { part } = block
+        return part.type === "text" ? (
           <ReplyText key={index} text={part.text} done={!(writing && index === parts.length - 1)} />
         ) : part.type === "questions" && message.id === lastMessageId ? (
           <PostedQuestionsCard
@@ -138,8 +142,8 @@ function MessageBody({ message }: { message: Message }) {
           />
         ) : (
           <MessagePartView key={index} part={part} />
-        ),
-      )}
+        )
+      })}
       {streaming && (parts.length === 0 || writing) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
           {writing ? m.message_writing() : m.message_thinking()}

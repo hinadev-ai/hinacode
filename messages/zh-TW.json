@@ -614,5 +614,36 @@
   "settings_notifications_not_determined": "通知需要你的許可",
   "settings_notifications_not_determined_hint": "macOS 會在 kkcode 第一次傳送通知時詢問。現在就允許，才不會錯過第一則通知。",
   "settings_notifications_allow": "允許通知",
-  "notification_open": "開啟"
+  "notification_open": "開啟",
+  "tool_commands_ran": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已執行 {count} 個指令",
+        "countPlural=other": "已執行 {count} 個指令"
+      }
+    }
+  ],
+  "tool_commands_running": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "正在執行 {count} 個指令",
+        "countPlural=other": "正在執行 {count} 個指令"
+      }
+    }
+  ],
+  "tool_commands_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個失敗",
+        "countPlural=other": "{count} 個失敗"
+      }
+    }
+  ],
+  "tool_command": "指令"
 }

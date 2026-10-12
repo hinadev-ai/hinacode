@@ -17,7 +17,7 @@ import {
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
-import { describeToolCall } from "../lib/toolCall.ts"
+import { describeCommand, describeToolCall } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
@@ -163,6 +163,78 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
       </span>
       <RiArrowRightSLine aria-hidden className="size-3.5 shrink-0" />
     </button>
+  )
+}
+
+type ToolCall = Extract<MessagePart, { type: "tool_call" }>
+
+/** Back-to-back shell commands as one line that opens into a list of them, each opening into its output. */
+export function CommandGroup({ calls }: { calls: ReadonlyArray<ToolCall> }) {
+  const count = calls.length
+  const running = calls.findLast((call) => call.status === "running")
+  const failed = calls.filter((call) => call.status === "error").length
+
+  return (
+    <Collapsible className="my-1">
+      <CollapsibleTrigger className={disclosureTrigger}>
+        <Chevron />
+        <RiTerminalBoxLine aria-hidden className="size-3.5 shrink-0" />
+        <span className="shrink-0 font-medium text-foreground">
+          {running ? m.tool_commands_running({ count }) : m.tool_commands_ran({ count })}
+        </span>
+        {running && (
+          <span className="min-w-0 flex-1 truncate">
+            <Highlighted text={describeCommand(running)} />
+          </span>
+        )}
+        {failed > 0 && (
+          <span className="flex shrink-0 items-center gap-1 text-destructive">
+            <RiErrorWarningLine aria-hidden className="size-3.5" />
+            {m.tool_commands_failed({ count: failed })}
+          </span>
+        )}
+        {running && <span className="ml-auto shrink-0">{statusIcon.running}</span>}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-1 ml-7 overflow-hidden rounded-lg border border-border">
+        <ul className="divide-y divide-border">
+          {calls.map((call) => (
+            <li key={call.callId}>
+              <CommandRow call={call} />
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function CommandRow({ call }: { call: ToolCall }) {
+  const { summary: command } = describeToolCall(call)
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-1 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+        <span className="min-w-0 truncate" title={command}>
+          <Highlighted text={describeCommand(call)} />
+        </span>
+        <RiArrowRightSLine
+          aria-hidden
+          className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
+        />
+        {call.status !== "done" && (
+          <span className="ml-auto shrink-0" title={statusLabel[call.status]()}>
+            {statusIcon[call.status]}
+            <span className="sr-only">{statusLabel[call.status]()}</span>
+          </span>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-2 px-3 pb-2 text-xs">
+        <ToolSection label={m.tool_command()} text={command} />
+        <ToolSection
+          label={m.tool_output()}
+          text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
+        />
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
