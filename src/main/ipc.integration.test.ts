@@ -5,15 +5,19 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import type { AgentEvent, Subagent } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
+import { ClaudeProvider } from "./agents/claude/index.ts"
+import { CodexProvider } from "./agents/codex/index.ts"
+import type { AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
-import { AgentRunner } from "./services/AgentRunner.ts"
+import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import * as Git from "./services/Git.ts"
@@ -24,6 +28,7 @@ import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
+import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
@@ -70,16 +75,49 @@ vi.mock("electron", () => ({
 const appUrl = "file:///opt/kkcode/out/renderer/index.html"
 const mainFrame: Frame = { url: appUrl, parent: null }
 
-// Agents and automations are not exercised here: their handlers only forward to these services.
-const runnerStub: Partial<typeof AgentRunner.Service> = {
-  listModels: (provider) => Effect.succeed([unlistedModel(`${provider}-model`, provider)]),
+const subagent: Subagent = {
+  id: "task-1",
+  label: "Count repo files",
+  kind: "general-purpose",
+  status: "running",
+  summary: null,
+  lastTool: null,
+  toolUses: 0,
+  tokens: 0,
+  startedAt: "2026-10-12T10:00:00.000Z",
+  endedAt: null,
 }
-const agentStubs = Layer.mergeAll(
-  Layer.succeed(AgentRunner, runnerStub as typeof AgentRunner.Service),
-  Layer.succeed(Automations, {} as typeof Automations.Service),
+
+/** What the scripted provider answers every turn with: a sub-agent that runs and completes. */
+const scriptedTurn: ReadonlyArray<AgentEvent> = [
+  { type: "subagent_updated", subagent },
+  { type: "text_delta", text: "Spawned one sub-agent." },
+  {
+    type: "subagent_updated",
+    subagent: { ...subagent, status: "completed", summary: "218 files", lastTool: "Bash", toolUses: 1, tokens: 14310 },
+  },
+  { type: "turn_completed" },
+]
+
+const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
+  id,
+  listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
+  listCommands: () => Effect.succeed([]),
+  runTurn: () => Stream.fromIterable(scriptedTurn),
+  steer: () => Effect.void,
+  interrupt: () => Effect.void,
+  respondApproval: () => Effect.void,
+})
+
+const providers = Layer.mergeAll(
+  Layer.succeed(ClaudeProvider, scriptedProvider("claude")),
+  Layer.succeed(CodexProvider, scriptedProvider("codex")),
 )
 
-/** The production composition from `index.ts`, with the agent layers replaced by stubs. */
+// Automations are not exercised here: their handlers only forward to the service.
+const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Service)
+
+/** The production composition from `index.ts`, with scripted agent providers and a stubbed Automations. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(Layer.provideMerge(Worktrees.layer), Layer.provideMerge(Projects.layer)),
@@ -88,7 +126,11 @@ const makeLayer = (dbPath: string) => {
     Attachments.layer,
   )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
-  const base = Layer.mergeAll(domain, features, agentStubs)
+  const agents = AgentRunner.layer.pipe(
+    Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
+    Layer.provideMerge(Layer.mergeAll(domain, features)),
+  )
+  const base = Layer.mergeAll(agents, automationsStub)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(Layer.mergeAll(Git.layer, eventsLayer)),
     Layer.provideMerge(GitHub.layer),
@@ -366,5 +408,29 @@ describe("projects, threads and settings over rpc", () => {
       "ready",
     ])
     result(await invoke("worktrees.remove", { id: worktree.id, deleteBranch: "force" }))
+  })
+})
+
+describe("sub-agents over rpc", () => {
+  test("sub-agent progress is pushed and listed but stays out of the transcript", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    electron.pushes.length = 0
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "spawn one" }))
+    await expect
+      .poll(async () => result(await invoke("subagents.list", { threadId: thread.id }))[0]?.status)
+      .toBe("completed")
+
+    expect(result(await invoke("subagents.list", { threadId: thread.id }))).toStrictEqual([
+      { ...subagent, status: "completed", summary: "218 files", lastTool: "Bash", toolUses: 1, tokens: 14310 },
+    ])
+    const pushes = pushed().filter((event) => event.type === "thread.subagents")
+    expect(pushes.map((event) => event.type === "thread.subagents" && event.subagents[0]?.status)).toStrictEqual([
+      "running",
+      "completed",
+    ])
+    const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
+    expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
+    expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
   })
 })

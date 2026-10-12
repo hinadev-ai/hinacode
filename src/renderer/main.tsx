@@ -13,6 +13,7 @@ import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
 import { usePullRequests } from "./stores/pullRequests.ts"
+import { useSubagents } from "./stores/subagents.ts"
 import { useThreads } from "./stores/threads.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
@@ -57,6 +58,8 @@ onPushEvent((event) => {
       return useWorktrees.getState().appendSetupLog(event.id, event.chunk)
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
+    case "thread.subagents":
+      return useSubagents.getState().replace(event.threadId, event.subagents)
   }
 })
 

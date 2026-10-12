@@ -8,6 +8,7 @@ import type {
   ApprovalRequest,
   ModelInfo,
   ProviderId,
+  Subagent,
   SecretRequest,
 } from "../../shared/agent.ts"
 import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
@@ -73,6 +74,8 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
+    /** Sub-agents the thread's agent spawned since the app started, newest first. */
+    readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
@@ -147,6 +150,8 @@ const make = Effect.gen(function* () {
     { readonly request: SecretRequest; readonly answer: Deferred.Deferred<"stored" | "declined", AgentError> }
   >()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
+  /** Latest state of each sub-agent per thread, in spawn order. Kept in memory only, so it ends with the app. */
+  const subagents = new Map<string, Map<string, Subagent>>()
   let seq = 0
 
   // Nothing runs at boot, so whatever a killed app left running is over.
@@ -169,6 +174,16 @@ const make = Effect.gen(function* () {
       if (lock === undefined) threadLocks.set(threadId, (lock = Semaphore.makeUnsafe(1)))
       return Semaphore.withPermit(lock, effect)
     }
+
+  const listSubagents = (threadId: string) => [...(subagents.get(threadId)?.values() ?? [])].toReversed()
+
+  /** Sub-agent progress has its own push instead of the transcript, so it never lands in the chat. */
+  const updateSubagent = (threadId: string, subagent: Subagent) => {
+    let byId = subagents.get(threadId)
+    if (byId === undefined) subagents.set(threadId, (byId = new Map()))
+    byId.set(subagent.id, subagent)
+    return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
+  }
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
 
@@ -200,6 +215,7 @@ const make = Effect.gen(function* () {
 
     const handle = (event: AgentEvent) =>
       Effect.gen(function* () {
+        if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
@@ -397,6 +413,7 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
+    subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
