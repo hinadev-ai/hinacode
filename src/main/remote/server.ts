@@ -1,4 +1,4 @@
-import { createServer } from "node:http"
+import { createServer, type Server } from "node:http"
 import { Cause, Effect, Fiber, FiberHandle, Layer, Option, Schema, Stream } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
 import { desktopOnlyMethods, type RpcEnvelope } from "../../shared/contract.ts"
@@ -105,17 +105,19 @@ const make = Effect.gen(function* () {
 
   const listen = (address: SettingsValue["remote"]) =>
     Effect.acquireRelease(
-      Effect.callback<WebSocketServer, Error>((resume) => {
+      Effect.callback<Server, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
         const wss = new WebSocketServer({ server, path: REMOTE_PATH, maxPayload: 1024 * 1024 })
         wss.on("connection", accept)
         server.once("error", (error) => resume(Effect.fail(error)))
-        server.listen(address.port, address.bindHost, () => resume(Effect.succeed(wss)))
+        server.listen(address.port, address.bindHost, () => resume(Effect.succeed(server)))
       }),
-      (wss) =>
+      // ws leaves an external http server running, so the port is released here, not by wss.close().
+      (server) =>
         Effect.sync(() => {
           closeAll(CLOSE_LISTENER_STOPPED, "listener stopped")
-          wss.close()
+          server.closeAllConnections()
+          server.close()
         }),
     ).pipe(
       Effect.andThen(access.report({ listening: true, listenError: null })),
