@@ -19,7 +19,7 @@ import { emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import { PendingAttachment } from "./AttachmentView.tsx"
-import { AgentPicker, ModelPicker, WorkspacePicker } from "./ComposerControls.tsx"
+import { AgentPicker, EffortPicker, FastModeToggle, ModelPicker, WorkspacePicker } from "./ComposerControls.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Textarea } from "./ui/textarea.tsx"
@@ -179,6 +179,8 @@ export function Composer({ thread }: { thread: Thread }) {
           <AttachButton onClick={pickFiles} disabled={isStaging} />
           {unstarted && <AgentPicker thread={thread} onError={setError} />}
           <ModelPicker thread={thread} onError={setError} />
+          <EffortPicker thread={thread} onError={setError} />
+          <FastModeToggle thread={thread} onError={setError} />
           <div className="ml-auto flex items-center gap-2">
             {busy && (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>

@@ -1,6 +1,13 @@
 import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
-import { query, type Options, type Query, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import {
+  type EffortLevel,
+  query,
+  type Options,
+  type Query,
+  type SDKMessage,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk"
 import { Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
 import type { AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
@@ -12,12 +19,25 @@ import { kkcodeMcpServer } from "./mcp.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
 
+const fallbackModel = (id: string, label: string): ModelInfo => ({
+  id,
+  label,
+  provider: "claude",
+  efforts: [],
+  defaultEffort: null,
+  fastMode: false,
+})
+
 const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
-  { id: "claude-opus-5-5", label: "Opus 5.5", provider: "claude" },
-  { id: "claude-fable-5-1", label: "Fable 5.1", provider: "claude" },
-  { id: "claude-sonnet-5-5", label: "Sonnet 5.5", provider: "claude" },
-  { id: "claude-haiku-5-5", label: "Haiku 5.5", provider: "claude" },
+  fallbackModel("claude-opus-5-5", "Opus 5.5"),
+  fallbackModel("claude-fable-5-1", "Fable 5.1"),
+  fallbackModel("claude-sonnet-5-5", "Sonnet 5.5"),
+  fallbackModel("claude-haiku-5-5", "Haiku 5.5"),
 ]
+
+const EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
+const isEffortLevel = (effort: string | null): effort is EffortLevel =>
+  effort !== null && EFFORT_LEVELS.includes(effort)
 
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
@@ -29,6 +49,8 @@ interface Session extends MapState, ApprovalSession {
   readonly abort: AbortController
   readonly query: Query
   model: string
+  effort: string | null
+  fastMode: boolean
   sessionId: string | null
   turn: TurnQueue | null
   interrupted: boolean
@@ -200,6 +222,8 @@ export const layer = Layer.effect(
                 ...baseOptions(),
                 cwd: input.cwd,
                 model: input.model,
+                ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
+                settings: { fastMode: input.fastMode },
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
@@ -226,6 +250,8 @@ export const layer = Layer.effect(
           threadId: input.threadId,
           cwd: input.cwd,
           model: input.model,
+          effort: input.effort,
+          fastMode: input.fastMode,
           prompts,
           abort,
           query: handle,
@@ -276,6 +302,18 @@ export const layer = Layer.effect(
             })
             session.model = input.model
           }
+          if (session.effort !== input.effort || session.fastMode !== input.fastMode) {
+            yield* Effect.tryPromise({
+              try: () =>
+                session.query.applyFlagSettings({
+                  effortLevel: isEffortLevel(input.effort) ? input.effort : null,
+                  fastMode: input.fastMode,
+                }),
+              catch: agentError("Failed to switch effort or fast mode"),
+            })
+            session.effort = input.effort
+            session.fastMode = input.fastMode
+          }
           session.turn = turn
           session.interrupted = false
           session.pendingSteers = 0
@@ -319,7 +357,15 @@ export const layer = Layer.effect(
       for (const model of models) {
         if (model.value === "default") continue
         const id = model.resolvedModel ?? model.value
-        if (!byId.has(id)) byId.set(id, { id, label: model.displayName, provider: "claude" })
+        if (byId.has(id)) continue
+        byId.set(id, {
+          id,
+          label: model.displayName,
+          provider: "claude",
+          efforts: model.supportsEffort ? (model.supportedEffortLevels ?? []) : [],
+          defaultEffort: null,
+          fastMode: model.supportsFastMode ?? false,
+        })
       }
       return [...byId.values()]
     }).pipe(Effect.orElseSucceed(() => FALLBACK_MODELS))

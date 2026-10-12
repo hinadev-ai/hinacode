@@ -75,12 +75,14 @@ const handlers: Handlers = {
         threads.create({ projectId, title: randomName(), provider: "claude", model }),
       )
     }),
-  // Another agent starts from its own default model, not the one picked for the last one.
+  // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
       if (input.provider === undefined) return yield* Threads.use((threads) => threads.update(input))
       const model = input.model ?? (yield* defaultModel(input.provider))
-      return yield* Threads.use((threads) => threads.update({ ...input, model }))
+      return yield* Threads.use((threads) =>
+        threads.update({ ...input, model, effort: input.effort ?? null, fastMode: input.fastMode ?? false }),
+      )
     }),
   "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
 

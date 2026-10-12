@@ -225,6 +225,8 @@ const make = Effect.gen(function* () {
           attachments,
           cwd,
           model: thread.model,
+          effort: thread.effort,
+          fastMode: thread.fastMode,
           resumeSessionId: thread.providerSessionId,
           mcpServer: mcp.connectionFor(thread.id),
         })

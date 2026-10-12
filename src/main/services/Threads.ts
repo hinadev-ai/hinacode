@@ -20,6 +20,9 @@ import { Worktrees } from "./Worktrees.ts"
 /** A placeholder title for a thread nobody has described yet. It doubles as its branch name. */
 export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 
+/** The thread table row. SQLite has no boolean, so `fast_mode` is a bit. */
+const ThreadRow = Schema.Struct({ ...Thread.fields, fastMode: Schema.BooleanFromBit })
+
 export interface CreateThread {
   readonly projectId: string
   readonly title: string
@@ -37,6 +40,9 @@ export interface UpdateThread {
   /** Refused once the thread has a message. */
   readonly provider?: ProviderId | undefined
   readonly model?: string | undefined
+  /** Null goes back to the model's default effort. */
+  readonly effort?: string | null | undefined
+  readonly fastMode?: boolean | undefined
   readonly status?: ThreadStatus | undefined
   readonly sortIndex?: number | undefined
   readonly providerSessionId?: string | undefined
@@ -85,14 +91,16 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects
   const worktrees = yield* Worktrees
 
+  const encodeRow = Schema.encodeEffect(ThreadRow)
+
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
-    Result: Thread,
+    Result: ThreadRow,
     execute: () => sql`SELECT * FROM thread ORDER BY project_id, sort_index`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,
-    Result: Thread,
+    Result: ThreadRow,
     execute: (id) => sql`SELECT * FROM thread WHERE id = ${id}`,
   })
   const nextSortIndex = SqlSchema.findOne({
@@ -136,6 +144,8 @@ const make = Effect.gen(function* () {
         id: randomUUID(),
         ...input,
         worktreeId: worktree?.id ?? null,
+        effort: null,
+        fastMode: false,
         providerSessionId: null,
         status: "idle",
         sortIndex: next,
@@ -143,7 +153,8 @@ const make = Effect.gen(function* () {
         createdAt: now,
         updatedAt: now,
       }
-      yield* sql`INSERT INTO thread ${sql.insert(thread)}`.pipe(Effect.mapError(persistence("threads.create")))
+      const row = yield* encodeRow(thread).pipe(Effect.mapError(persistence("threads.create")))
+      yield* sql`INSERT INTO thread ${sql.insert(row)}`.pipe(Effect.mapError(persistence("threads.create")))
       return thread
     })
 
@@ -163,6 +174,8 @@ const make = Effect.gen(function* () {
         title: input.title ?? current.title,
         provider: input.provider ?? current.provider,
         model: input.model ?? current.model,
+        effort: input.effort === undefined ? current.effort : input.effort,
+        fastMode: input.fastMode ?? current.fastMode,
         status: input.status ?? current.status,
         sortIndex: input.sortIndex ?? current.sortIndex,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
@@ -170,7 +183,8 @@ const make = Effect.gen(function* () {
       }
       yield* sql`
         UPDATE thread
-        SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, status = ${next.status},
+        SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
+            fast_mode = ${next.fastMode ? 1 : 0}, status = ${next.status},
             sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}
         WHERE id = ${next.id}

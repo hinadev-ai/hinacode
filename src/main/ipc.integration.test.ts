@@ -194,11 +194,17 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).not.toContain(thread.id)
   })
 
-  test("a thread switches agent, and that agent's default model, only until its first message", async () => {
+  test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.update", { id: thread.id, effort: "max", fastMode: true }))
     const switched = result(await invoke("threads.update", { id: thread.id, provider: "codex" }))
-    expect(switched).toMatchObject({ provider: "codex", model: "codex-model" } satisfies Partial<Thread>)
+    expect(switched).toMatchObject({
+      provider: "codex",
+      model: "codex-model",
+      effort: null,
+      fastMode: false,
+    } satisfies Partial<Thread>)
 
     await runtime.runPromise(
       Messages.Messages.use((messages) =>

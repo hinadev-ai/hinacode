@@ -66,6 +66,9 @@ export const RpcMethods = {
       /** Only before the first message. Switches to the agent's default model unless `model` is given. */
       provider: Schema.optional(ProviderId),
       model: Schema.optional(Schema.String),
+      /** Null goes back to the model's default effort. */
+      effort: Schema.optional(Schema.NullOr(Schema.String)),
+      fastMode: Schema.optional(Schema.Boolean),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
     }),

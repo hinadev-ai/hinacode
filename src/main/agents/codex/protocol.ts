@@ -40,6 +40,10 @@ export type TurnStartParams = {
   input: Array<UserInput>
   cwd?: string | null
   model?: string | null
+  /** Omitted keeps the thread's effort. */
+  effort?: string | null
+  /** Omitted keeps the thread's tier; null goes back to the standard one. */
+  serviceTier?: string | null
 }
 
 export type TurnStatus = "completed" | "interrupted" | "failed" | "inProgress"
@@ -51,7 +55,16 @@ export type TurnInterruptParams = { threadId: string; turnId: string }
 export type TurnSteerParams = { threadId: string; input: Array<UserInput>; expectedTurnId: string }
 
 export type ModelListParams = { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }
-export type Model = { id: string; model: string; displayName: string; hidden: boolean; isDefault: boolean }
+export type Model = {
+  id: string
+  model: string
+  displayName: string
+  hidden: boolean
+  isDefault: boolean
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>
+  defaultReasoningEffort: string
+  serviceTiers: Array<{ id: string; name: string; description: string }>
+}
 export type ModelListResponse = { data: Array<Model>; nextCursor: string | null }
 
 export type CommandExecutionStatus = "inProgress" | "completed" | "failed" | "declined"

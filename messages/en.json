@@ -369,5 +369,17 @@
   "thread_workspace_worktree": "New worktree",
   "thread_base_ref_prefix": "from",
   "settings_text_generation_model": "Thread naming",
-  "settings_text_generation_model_hint": "Names a thread and its branch from its first message."
+  "settings_text_generation_model_hint": "Names a thread and its branch from its first message.",
+  "thread_effort_picker": "Effort",
+  "thread_effort_default": "Default effort",
+  "thread_effort_default_named": "Default ({effort})",
+  "effort_minimal": "Minimal",
+  "effort_low": "Low",
+  "effort_medium": "Medium",
+  "effort_high": "High",
+  "effort_xhigh": "Extra high",
+  "effort_max": "Max",
+  "effort_ultra": "Ultra",
+  "thread_fast_mode": "Fast",
+  "thread_fast_mode_hint": "Faster responses that use more of your plan"
 }

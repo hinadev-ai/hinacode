@@ -35,3 +35,7 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 - `ipc.integration.test.ts`: a thread is created with the default agent and model, and switches agent only before its first message.
 - `Worktrees.integration.test.ts`: `attachWorktree` branches from the title and `renameBranch` moves the checkout's branch.
 - `verify-kkcode`: create a thread, switch to `New worktree`, send a message, and see the title and branch change in the sidebar and side panel.
+
+## Effort and fast mode
+
+The thread stores `effort` (null means the model's default) and `fastMode` (migration `0004`). `models.list` reports each model's `efforts`, `defaultEffort` and `fastMode`, so the composer only shows the controls a model supports. Changing model drops values the new model can't honor, and switching agent resets both. Claude gets them as the `effort` option and `settings.fastMode` at session start, and through `applyFlagSettings` when they change. Codex gets `effort` and `serviceTier: "priority"` (its "Fast" tier) on `turn/start`.

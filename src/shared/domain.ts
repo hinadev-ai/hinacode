@@ -86,6 +86,10 @@ export const Thread = Schema.Struct({
   title: Schema.String,
   provider: ProviderId,
   model: Schema.String,
+  /** Reasoning effort for the next turn. Null leaves the model's default. */
+  effort: Schema.NullOr(Schema.String),
+  /** Run turns on the model's faster, pricier service tier. */
+  fastMode: Schema.Boolean,
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,

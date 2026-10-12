@@ -26,6 +26,9 @@ import type {
 
 const CLIENT_VERSION = "0.1.0"
 
+/** The service tier Codex labels "Fast". */
+const FAST_SERVICE_TIER = "priority"
+
 const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
   allow: "accept",
   allow_for_session: "acceptForSession",
@@ -148,7 +151,16 @@ const make = Effect.gen(function* () {
     do {
       const params: ModelListParams = { cursor, limit: 100, includeHidden: false }
       const page: ModelListResponse = yield* client.request<ModelListResponse>("model/list", params)
-      for (const model of page.data) models.push({ id: model.id, label: model.displayName, provider: "codex" })
+      for (const model of page.data) {
+        models.push({
+          id: model.id,
+          label: model.displayName,
+          provider: "codex",
+          efforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
+          defaultEffort: model.defaultReasoningEffort,
+          fastMode: model.serviceTiers.some((tier) => tier.id === FAST_SERVICE_TIER),
+        })
+      }
       cursor = page.nextCursor
     } while (cursor)
     return models
@@ -191,6 +203,8 @@ const make = Effect.gen(function* () {
             threadId: thread.id,
             input: userInput(input.prompt, input.attachments),
             cwd: input.cwd,
+            ...(input.effort === null ? {} : { effort: input.effort }),
+            serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
           }
           run.turnStart = yield* client.request<TurnStartResponse>("turn/start", turnStart).pipe(
             Effect.map(({ turn }): RemoteTurn => ({ threadId: thread.id, turnId: turn.id })),
