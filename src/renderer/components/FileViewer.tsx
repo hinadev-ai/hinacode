@@ -1,5 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { File, Virtualizer } from "@pierre/diffs/react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type KeyboardEvent, useEffect } from "react"
 import { RiCloseLine, RiFileCopyLine } from "react-icons/ri"
@@ -87,12 +88,12 @@ export function FileViewer({ root, path, onClose }: FileViewerProps) {
           </p>
         ))
         .orElse(() => (
-          <Note text={m.viewer_loading()} />
+          <Note text={m.viewer_loading()} className="animate-reveal" />
         ))}
     </section>
   )
 }
 
-function Note({ text }: { text: string }) {
-  return <p className="shrink-0 px-3 py-2 text-xs text-muted-foreground">{text}</p>
+function Note({ text, className }: { text: string; className?: string }) {
+  return <p className={cn("shrink-0 px-3 py-2 text-xs text-muted-foreground", className)}>{text}</p>
 }

@@ -82,12 +82,12 @@ function ChangesList({ thread, scope, baseLabel }: { thread: Thread; scope: Chan
         <Button variant="ghost" size="icon-xs" aria-label={m.diff_refresh()} title={m.diff_refresh()} onClick={refresh}>
           <RiRefreshLine
             aria-hidden
-            className={changes.waiting ? "animate-spin motion-reduce:animate-none" : undefined}
+            className={changes.waiting ? "animate-spin-late motion-reduce:animate-none" : undefined}
           />
         </Button>
       </div>
       {AsyncResult.builder(changes)
-        .onInitial(() => <p className="text-xs text-muted-foreground">{m.diff_loading()}</p>)
+        .onInitial(() => <p className="animate-reveal text-xs text-muted-foreground">{m.diff_loading()}</p>)
         .onSuccess((result) => {
           if (result === null) {
             return (

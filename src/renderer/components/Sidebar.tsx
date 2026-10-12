@@ -226,7 +226,7 @@ function ProjectList({ onAddProject, focusAfterDelete }: ProjectListProps) {
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
 
   return AsyncResult.builder(projects)
-    .onInitial(() => <p className="px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
+    .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
     .onSuccess((list) =>
       list.length === 0 ? (
         <div className="flex flex-col items-start gap-2 px-3 py-4">

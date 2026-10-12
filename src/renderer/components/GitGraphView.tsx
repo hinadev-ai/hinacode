@@ -90,11 +90,14 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
           title={m.git_graph_refresh()}
           onClick={refresh}
         >
-          <RiRefreshLine aria-hidden className={log.waiting ? "animate-spin motion-reduce:animate-none" : undefined} />
+          <RiRefreshLine
+            aria-hidden
+            className={log.waiting ? "animate-spin-late motion-reduce:animate-none" : undefined}
+          />
         </Button>
       </div>
       {AsyncResult.builder(log)
-        .onInitial(() => <Notice>{m.git_graph_loading()}</Notice>)
+        .onInitial(() => <Notice className="animate-reveal">{m.git_graph_loading()}</Notice>)
         .onSuccess((loaded) =>
           loaded.length === 0 ? (
             <Notice>{m.git_graph_empty()}</Notice>
@@ -108,11 +111,11 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
   )
 }
 
-function Notice({ children, alert = false }: { children: string; alert?: boolean }) {
+function Notice({ children, alert = false, className }: { children: string; alert?: boolean; className?: string }) {
   return (
     <p
       role={alert ? "alert" : undefined}
-      className={cn("p-3 text-xs", alert ? "text-destructive" : "text-muted-foreground")}
+      className={cn("p-3 text-xs", alert ? "text-destructive" : "text-muted-foreground", className)}
     >
       {children}
     </p>
@@ -432,7 +435,7 @@ function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
       </div>
       <ScrollArea className="min-h-0 flex-1">
         {AsyncResult.builder(diff)
-          .onInitial(() => <Notice>{m.git_graph_diff_loading()}</Notice>)
+          .onInitial(() => <Notice className="animate-reveal">{m.git_graph_diff_loading()}</Notice>)
           .onSuccess((loaded) => <CommitFiles hash={commit.hash} diff={loaded} />)
           .onError((error) => <Notice alert>{m.git_graph_diff_failed({ message: errorMessage(error) })}</Notice>)
           .orElse(() => null)}
