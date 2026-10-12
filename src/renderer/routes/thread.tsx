@@ -30,9 +30,7 @@ export function ThreadRoute() {
           key={thread.id}
           thread={thread}
           actions={
-            docked ? undefined : (
-              <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />
-            )
+            docked ? undefined : <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />
           }
         />
       </div>

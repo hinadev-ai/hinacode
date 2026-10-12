@@ -1,7 +1,17 @@
 // oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/interactive-supports-focus -- the WAI-ARIA tree with aria-activedescendant: focus stays on the tree, which handles the keys for every row, so rows that scroll out of the virtual list never hold focus.
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { cn } from "cn"
-import { createElement, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react"
+import {
+  createElement,
+  type KeyboardEvent,
+  type PointerEvent,
+  type RefObject,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -25,6 +35,7 @@ import { useDrafts } from "../stores/drafts.ts"
 import { emptyTree, flattenTree, parentOf, type TreeRow, useExplorer } from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
 import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
+import { FileViewer } from "./FileViewer.tsx"
 import { Button } from "./ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
@@ -32,6 +43,8 @@ import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
+const DEFAULT_TREE_HEIGHT = 240
+const MIN_PANE_HEIGHT = 96
 
 const iconsByExtension: Readonly<Record<string, IconType>> = {
   md: RiMarkdownLine,
@@ -88,6 +101,8 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const treeRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<LegendListRef>(null)
   const typeahead = useRef({ text: "", at: 0 })
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [treeHeight, setTreeHeight] = useState(DEFAULT_TREE_HEIGHT)
   const rowId = `${useId()}-row-`
 
   useEffect(() => {
@@ -147,6 +162,18 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     tree.expanded.has(entry.path) ? collapse(root, entry.path) : expand(root, entry.path)
 
   const open = (entry: FsEntry) => (entry.kind === "dir" ? toggle(entry) : openFile(root, entry.path))
+
+  const closeFile = () => {
+    openFile(root, null)
+    treeRef.current?.focus()
+  }
+
+  // A file needs the room an editor gets.
+  const fileOpen = tree.opened !== null
+  useEffect(() => {
+    useUi.getState().setSidePanelWide(fileOpen)
+    return () => useUi.getState().setSidePanelWide(false)
+  }, [fileOpen])
 
   const showChanges = (entry: FsEntry) => {
     useUi.getState().setChangesPath(entry.path)
@@ -238,7 +265,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const rootName = root.slice(root.lastIndexOf("/") + 1)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={root}>
           {rootName}
@@ -251,66 +278,77 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         />
         <HeaderButton label={m.explorer_refresh()} onClick={() => void refresh(root)} icon={RiRefreshLine} />
       </header>
-      {tree.error !== null ? (
-        <p role="alert" className="p-3 text-xs text-destructive">
-          {m.explorer_failed({ message: tree.error })}
-        </p>
-      ) : listed === undefined ? (
-        <p className="p-3 text-xs text-muted-foreground">{m.explorer_loading()}</p>
-      ) : listed.length === 0 ? (
-        <p className="p-3 text-xs text-muted-foreground">{m.explorer_empty()}</p>
-      ) : (
-        <ContextMenu>
-          <ContextMenuTrigger
-            render={
-              <div
-                ref={treeRef}
-                role="tree"
-                tabIndex={0}
-                aria-label={m.explorer_tree()}
-                aria-activedescendant={selectedIndex >= 0 ? `${rowId}${selectedIndex}` : undefined}
-                onKeyDown={onKeyDown}
-                onFocus={onFocus}
-                className="group/tree flex min-h-0 flex-1 flex-col py-1 outline-none"
+      <div
+        className={cn("flex min-h-0 flex-col", tree.opened === null ? "flex-1" : "shrink-0")}
+        style={tree.opened === null ? undefined : { height: treeHeight }}
+      >
+        {tree.error !== null ? (
+          <p role="alert" className="p-3 text-xs text-destructive">
+            {m.explorer_failed({ message: tree.error })}
+          </p>
+        ) : listed === undefined ? (
+          <p className="p-3 text-xs text-muted-foreground">{m.explorer_loading()}</p>
+        ) : listed.length === 0 ? (
+          <p className="p-3 text-xs text-muted-foreground">{m.explorer_empty()}</p>
+        ) : (
+          <ContextMenu>
+            <ContextMenuTrigger
+              render={
+                <div
+                  ref={treeRef}
+                  role="tree"
+                  tabIndex={0}
+                  aria-label={m.explorer_tree()}
+                  aria-activedescendant={selectedIndex >= 0 ? `${rowId}${selectedIndex}` : undefined}
+                  onKeyDown={onKeyDown}
+                  onFocus={onFocus}
+                  className="group/tree flex min-h-0 flex-1 flex-col py-1 outline-none"
+                />
+              }
+            >
+              <LegendList
+                ref={listRef}
+                data={rows}
+                keyExtractor={(row) => row.entry.path}
+                renderItem={renderItem}
+                extraData={tree}
+                estimatedItemSize={ROW_HEIGHT}
+                getFixedItemSize={() => ROW_HEIGHT}
+                className="min-h-0 flex-1"
               />
-            }
-          >
-            <LegendList
-              ref={listRef}
-              data={rows}
-              keyExtractor={(row) => row.entry.path}
-              renderItem={renderItem}
-              extraData={tree}
-              estimatedItemSize={ROW_HEIGHT}
-              getFixedItemSize={() => ROW_HEIGHT}
-              className="min-h-0 flex-1"
-            />
-          </ContextMenuTrigger>
-          {selectedEntry && (
-            <ContextMenuContent>
-              <DropdownMenuItem onClick={() => mention(selectedEntry)}>
-                <RiAtLine aria-hidden />
-                {m.explorer_mention()}
-              </DropdownMenuItem>
-              {hasDiff(selectedEntry) && (
-                <DropdownMenuItem onClick={() => showChanges(selectedEntry)}>
-                  <RiFileTextLine aria-hidden />
-                  {m.explorer_show_changes()}
+            </ContextMenuTrigger>
+            {selectedEntry && (
+              <ContextMenuContent>
+                <DropdownMenuItem onClick={() => mention(selectedEntry)}>
+                  <RiAtLine aria-hidden />
+                  {m.explorer_mention()}
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selectedEntry.path)}>
-                <RiFileCopyLine aria-hidden />
-                {m.explorer_copy_path()}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => void callPromise("shell.reveal", { path: `${root}/${selectedEntry.path}` })}
-              >
-                <RiFolderOpenLine aria-hidden />
-                {m.panel_reveal()}
-              </DropdownMenuItem>
-            </ContextMenuContent>
-          )}
-        </ContextMenu>
+                {hasDiff(selectedEntry) && (
+                  <DropdownMenuItem onClick={() => showChanges(selectedEntry)}>
+                    <RiFileTextLine aria-hidden />
+                    {m.explorer_show_changes()}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selectedEntry.path)}>
+                  <RiFileCopyLine aria-hidden />
+                  {m.explorer_copy_path()}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void callPromise("shell.reveal", { path: `${root}/${selectedEntry.path}` })}
+                >
+                  <RiFolderOpenLine aria-hidden />
+                  {m.panel_reveal()}
+                </DropdownMenuItem>
+              </ContextMenuContent>
+            )}
+          </ContextMenu>
+        )}
+      </div>
+      {tree.opened !== null && (
+        <>
+          <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
+          <FileViewer key={tree.opened} root={root} path={tree.opened} onClose={closeFile} />
+        </>
       )}
       <p aria-live="polite" className="sr-only">
         {announcement}
@@ -324,6 +362,58 @@ function HeaderButton({ label, icon: Icon, onClick }: { label: string; icon: Ico
     <Button variant="ghost" size="icon-xs" aria-label={label} title={label} onClick={onClick}>
       <Icon aria-hidden />
     </Button>
+  )
+}
+
+interface SplitHandleProps {
+  readonly height: number
+  readonly onResize: (height: number) => void
+  /** The explorer, whose height bounds the tree's. */
+  readonly container: RefObject<HTMLDivElement | null>
+}
+
+/** The WAI-ARIA window splitter between the tree and the file viewer, dragged or moved with Up and Down. */
+function SplitHandle({ height, onResize, container }: SplitHandleProps) {
+  const max = () => Math.max(MIN_PANE_HEIGHT, (container.current?.clientHeight ?? 0) - MIN_PANE_HEIGHT * 2)
+  const resize = (next: number) => onResize(Math.round(Math.min(Math.max(next, MIN_PANE_HEIGHT), max())))
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const startY = event.clientY
+    const startHeight = height
+    const handle = event.currentTarget
+    handle.setPointerCapture(event.pointerId)
+    const move = (moveEvent: globalThis.PointerEvent) => resize(startHeight + moveEvent.clientY - startY)
+    const stop = () => {
+      handle.removeEventListener("pointermove", move)
+      handle.removeEventListener("pointerup", stop)
+      handle.removeEventListener("pointercancel", stop)
+    }
+    handle.addEventListener("pointermove", move)
+    handle.addEventListener("pointerup", stop)
+    handle.addEventListener("pointercancel", stop)
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowUp: -ROW_HEIGHT, ArrowDown: ROW_HEIGHT }[event.key]
+    if (step === undefined) return
+    event.preventDefault()
+    resize(height + step)
+  }
+
+  return (
+    <div
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a focusable window splitter, which <hr> is not.
+      role="separator"
+      tabIndex={0}
+      aria-orientation="horizontal"
+      aria-label={m.viewer_resize()}
+      aria-valuenow={height}
+      aria-valuemin={MIN_PANE_HEIGHT}
+      aria-valuemax={max()}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      className="relative h-px shrink-0 cursor-row-resize touch-none bg-border outline-none before:absolute before:inset-x-0 before:-inset-y-1 hover:bg-ring focus-visible:bg-ring focus-visible:ring-2 focus-visible:ring-ring"
+    />
   )
 }
 
