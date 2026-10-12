@@ -77,7 +77,8 @@ const run = <A, E>(
     return yield* Files.use(() => effect)
   }).pipe(
     Effect.provide(
-      FilesLayer.layer.pipe(
+      // Each run supplies its own event sink, so it must not reuse an earlier Files service.
+      Layer.fresh(FilesLayer.layer).pipe(
         Layer.provide(Layer.mergeAll(Git.layer, Layer.succeed(Events, events))),
         Layer.provideMerge(Db.layer(":memory:")),
         Layer.provide(NodeServices.layer),
