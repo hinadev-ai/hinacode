@@ -70,6 +70,12 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** The author's login. */
+  author: Schema.String,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  additions: Schema.Number,
+  deletions: Schema.Number,
 })
 export type PullRequest = typeof PullRequest.Type
 
