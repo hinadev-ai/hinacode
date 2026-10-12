@@ -122,8 +122,7 @@ const handlers: Handlers = {
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
-  "git.log": ({ root, limit = 200 }) =>
-    knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
+  "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
   "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
 
