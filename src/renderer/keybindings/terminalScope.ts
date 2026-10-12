@@ -10,9 +10,8 @@ const hasCommandModifier = (event: KeyboardEvent) => event.ctrlKey || event.meta
  *
  * Inside it, keys without Control or Meta (plain keys, Shift and Alt combos, Escape) never run an app
  * command and are left untouched, even if the user bound one of them. Control and Meta chords still
- * run app commands, as long as the element lets the keydown bubble to `document`. xterm consumes
- * the keys it handles, so return `false` from its `attachCustomKeyEventHandler` when
- * `isAppChord(event)` is true.
+ * run app commands, as long as the element lets the keydown bubble to `document`. The terminal
+ * engine must not consume or stop a keydown when `isAppChord(event)` is true, so the app sees it.
  */
 export function useTerminalScope(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {

@@ -221,7 +221,7 @@ flowchart LR
 - **One normalization point.** `resolveKeymap` accepts any chord TanStack can parse: lowercase defaults, overrides saved before the switch, and recordings such as `Mod+Shift+[KeyK]`. The recorder stores physical keys, so a binding stays on the same key across layouts. Defaults are logical keys with a physical fallback.
 - **Conflicts** compare chords by their display label (`sameChord`), so a recorded physical key and a default on the same key count as one shortcut. `useKeybindings` binds each chord once, first command in registry order winning.
 - **Fields.** Plain keys and Shift or Alt combos typed into a field never run a command. Control and Meta chords do.
-- **Terminal scope.** `useTerminalScope(ref)` marks an element that owns every key without Control or Meta, including Escape. App commands skip those keys there and leave the event untouched. Control and Meta chords still run app commands when the element lets the keydown bubble, which `isAppChord(event)` decides for xterm's custom key handler.
+- **Terminal scope.** `useTerminalScope(ref)` marks an element that owns every key without Control or Meta, including Escape. App commands skip those keys there and leave the event untouched. Control and Meta chords still run app commands when the element lets the keydown bubble, so the terminal engine lets every keydown for which `isAppChord(event)` is true reach the app.
 
 ## Data model
 
