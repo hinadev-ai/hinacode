@@ -31,7 +31,7 @@ export const Worktree = Schema.Struct({
 })
 export type Worktree = typeof Worktree.Type
 
-export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted"])
+export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted", "untracked", "conflict"])
 export type ChangedFileStatus = typeof ChangedFileStatus.Type
 
 /** What the working tree changed since a base, committed or not, new files included. */
@@ -42,9 +42,35 @@ export const Changes = Schema.Struct({
 })
 export type Changes = typeof Changes.Type
 
-/** `worktree`: since the worktree forked from its base ref. `turn`: since the thread's latest turn started. */
+/** Worktree fork or latest turn baseline. */
 export const ChangesScope = Schema.Literals(["worktree", "turn"])
 export type ChangesScope = typeof ChangesScope.Type
+
+export const FsEntryKind = Schema.Literals(["file", "dir", "symlink"])
+export type FsEntryKind = typeof FsEntryKind.Type
+
+/** One entry of a folder listing in a thread's working directory. */
+export const FsEntry = Schema.Struct({
+  name: Schema.String,
+  /** Relative to the listed root, `/`-separated. */
+  path: Schema.String,
+  kind: FsEntryKind,
+  /** Gitignored, itself or through a parent folder. */
+  ignored: Schema.Boolean,
+  /** For a folder, the most notable status among the files under it. */
+  gitStatus: Schema.NullOr(ChangedFileStatus),
+})
+export type FsEntry = typeof FsEntry.Type
+
+/** The start of a file, as the file viewer shows it. */
+export const FsFileContent = Schema.Struct({
+  /** Empty for a binary file. */
+  content: Schema.String,
+  /** The file is longer than what `content` holds. */
+  truncated: Schema.Boolean,
+  binary: Schema.Boolean,
+})
+export type FsFileContent = typeof FsFileContent.Type
 
 /** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
 export const GitHubAuth = Schema.Union([

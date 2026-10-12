@@ -2,18 +2,14 @@ import type { Page } from "@playwright/test"
 
 export const sidebar = (page: Page) => page.getByRole("navigation", { name: "Projects and threads" })
 
-/** The thread details panel, opened first if the user had hidden it. */
-export const threadDetails = async (page: Page) => {
+/** A view of the thread side panel, picked in its activity bar after the overlay is opened if there is one. */
+export const threadView = async (page: Page, name: "Details" | "Changes" | "Pull requests") => {
   const show = page.getByRole("button", { name: "Show thread details" })
   if (await show.isVisible()) await show.click()
-  return page.getByRole("complementary", { name: "Thread details" })
-}
-
-/** Opens a tab of the thread details panel and returns its panel. */
-export const threadDetailsTab = async (page: Page, tab: "Details" | "Diff" | "PR" | "Agents") => {
-  const panel = await threadDetails(page)
-  await panel.getByRole("tab", { name: tab, exact: true }).click()
-  return panel.getByRole("tabpanel", { name: tab, exact: true })
+  const panel = page.getByRole("complementary", { name: "Thread details" })
+  const tab = panel.getByRole("tab", { name, exact: true })
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click()
+  return panel.getByRole("tabpanel", { name, exact: true })
 }
 
 /** Opens the row menu of a sidebar thread and picks an item. */
