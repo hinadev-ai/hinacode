@@ -54,12 +54,14 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                           |
-| ------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `attachments.stage`, dialogs                 |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `automation.run` |
+| Channel | Direction       | Carries                                                                                                                                                                                          |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `automation.run`                |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
+
+Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
 
 The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document, diffs, and Mermaid; the selected theme remains in SQLite.
 
@@ -132,6 +134,9 @@ sequenceDiagram
   Dev->>R: send prompt
   R->>AR: rpc threads.send
   AR->>AR: claim busyThreads (reject a second send)
+  opt first message with worktree
+    AR->>WT: Threads.attachWorktree (branch kk/<placeholder title>)
+  end
   AR->>WT: exclusive(resolve cwd)
   Note over AR,WT: Resolving the cwd and marking the thread running happen in one critical section, so a worktree removal can't delete the directory mid-start
   AR->>DB: insert user message + open assistant message
@@ -275,6 +280,7 @@ stateDiagram-v2
 - **Setup scripts** run with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
 - **Settling** a thread removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so settling a large tree returns immediately. Creating the same branch again waits for that deletion.
 - **Removal is refused** (`WorktreeBusyError`) while setup runs, while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
+- A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background, using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
 - `archived` exists in the schema but nothing sets it yet.
 
 ## Built-in MCP server

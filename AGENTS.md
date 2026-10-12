@@ -20,6 +20,7 @@ pnpm typecheck    # node, web and web-test tsconfigs
 pnpm lint         # oxlint
 pnpm format       # oxfmt (no semicolons, width 120)
 pnpm test         # node --test, *.test.ts next to source
+pnpm check:specs  # TLC over specs/*.cfg, needs Java 11+ (see specs/README.md)
 ```
 
 Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. There is no CI, so nothing else runs these checks.

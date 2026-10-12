@@ -1,6 +1,6 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { Link } from "@tanstack/react-router"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type RefObject, useRef, useState } from "react"
 import {
@@ -13,11 +13,11 @@ import {
 } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
+import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { useUi } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
-import { NewThreadDialog } from "./NewThreadDialog.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
@@ -128,9 +128,8 @@ interface ProjectGroupProps {
 }
 
 function ProjectGroup({ project, focusAfterDelete }: ProjectGroupProps) {
-  const newThreadOpen = useUi((state) => state.newThreadProjectId === project.id)
-  const setNewThreadProjectId = useUi((state) => state.setNewThreadProjectId)
-  const setNewThreadOpen = (open: boolean) => setNewThreadProjectId(open ? project.id : null)
+  const navigate = useNavigate()
+  const newThread = () => void startThread(project.id, navigate)
   const newThreadButtonRef = useRef<HTMLButtonElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -164,7 +163,7 @@ function ProjectGroup({ project, focusAfterDelete }: ProjectGroupProps) {
             size="icon-xs"
             className="opacity-0 group-hover/project:opacity-100 group-data-[menu-open=true]/project:opacity-100 focus:opacity-100"
             aria-label={m.sidebar_new_thread_in({ project: project.name })}
-            onClick={() => setNewThreadOpen(true)}
+            onClick={newThread}
           >
             <RiAddLine aria-hidden />
           </Button>
@@ -172,7 +171,7 @@ function ProjectGroup({ project, focusAfterDelete }: ProjectGroupProps) {
             project={project}
             open={menuOpen}
             onOpenChange={setMenuOpen}
-            onNewThread={() => setNewThreadOpen(true)}
+            onNewThread={newThread}
             focusAfterDelete={focusAfterDelete}
           />
         </div>
@@ -180,7 +179,6 @@ function ProjectGroup({ project, focusAfterDelete }: ProjectGroupProps) {
           <SidebarThreadList projectId={project.id} newThreadButtonRef={newThreadButtonRef} />
         </CollapsibleContent>
       </Collapsible>
-      <NewThreadDialog project={project} open={newThreadOpen} onOpenChange={setNewThreadOpen} />
     </li>
   )
 }
