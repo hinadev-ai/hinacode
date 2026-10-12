@@ -16,7 +16,7 @@ Feature: Streaming Markdown
 
       [earlier]: https://example.com/earlier
       """
-    Then the unresolved reference "[Forward][later]" is shown as text
+    Then the reply shows Writing while its trailing text is incomplete
     When the agent appends Markdown
       """
 
@@ -27,6 +27,8 @@ Feature: Streaming Markdown
 
       [Backward][earlier]
       """
+    Then the reply shows Writing while its trailing text is incomplete
+    When the agent finishes its reply
     Then the Markdown link "Forward" points to "https://example.com/later"
     And the Markdown link "Backward" points to "https://example.com/earlier"
     And the completed Markdown exactly matches its full snapshot
@@ -37,7 +39,7 @@ Feature: Streaming Markdown
       ```ts
       const answer =
       """
-    Then the code block contains "const answer ="
+    Then the reply shows Writing while its trailing text is incomplete
     When the agent appends Markdown
       """
        42
@@ -45,22 +47,24 @@ Feature: Streaming Markdown
 
       | Name | Value |
       """
-    Then the code block contains "const answer = 42"
-    And there is no Markdown table yet
+    Then the reply shows Writing while its trailing text is incomplete
     When the agent appends Markdown
       """
 
       | --- | --- |
       | answer | 4
       """
-    Then the Markdown table has a row "answer" with value "4"
+    Then the reply shows Writing while its trailing text is incomplete
     When the agent appends Markdown
       """
       2 |
 
       Finished **exactly**.
       """
-    Then the Markdown table has a row "answer" with value "42"
+    Then the reply shows Writing while its trailing text is incomplete
+    When the agent finishes its reply
+    Then the code block contains "const answer = 42"
+    And the Markdown table has a row "answer" with value "42"
     And the completed Markdown exactly matches its full snapshot
 
   Scenario: A turn finishes with an open code fence
@@ -69,6 +73,8 @@ Feature: Streaming Markdown
       ```ts
       const answer =
       """
+    Then the reply shows Writing while its trailing text is incomplete
+    When the agent finishes its reply
     Then the code block contains "const answer ="
     And the completed Markdown exactly matches its full snapshot
 
@@ -79,12 +85,14 @@ Feature: Streaming Markdown
       | --- | --- |
       | answer | 4
       """
+    Then the reply shows Writing while its trailing text is incomplete
+    When the agent finishes its reply
     Then the Markdown table has a row "answer" with value "4"
     And the completed Markdown exactly matches its full snapshot
 
-  Scenario: Tools and approvals publish the text that precedes them
+  Scenario: Tools reveal finished text while approvals leave trailing text incomplete
     When the agent requests a tool and approval behind queued text
-    Then the approval first appears with the preceding text already rendered
+    Then the approval first appears with finished text and Writing for the trailing text
     And the transcript keeps text on both sides of the tool and reasoning
     When the tool and approval finish
     Then the tool result is inspectable and the approval disappears
