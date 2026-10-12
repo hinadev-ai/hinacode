@@ -7,7 +7,7 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
-import { eventsLayer, registerIpc } from "./ipc.ts"
+import { makeEventsLayer, registerIpc } from "./ipc.ts"
 import { externalUrl, isAppDocument, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
@@ -21,6 +21,9 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as RemoteAccess from "./remote/access.ts"
+import * as RemoteServer from "./remote/server.ts"
+import * as Secrets from "./services/Secrets.ts"
 import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
@@ -68,14 +71,18 @@ const makeAppLayer = (dbPath: string) => {
       ? ThreadNaming.layer
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer, naming).pipe(
+  const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer, naming, remoteAccess).pipe(
     Layer.provide(domain),
   )
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
-    Layer.provideMerge(agents),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
+  const services = Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(Layer.provideMerge(agents))
+  // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
+  return RemoteServer.layer.pipe(
+    Layer.provideMerge(services),
+    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer)),
+    Layer.provideMerge(makeEventsLayer()),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),

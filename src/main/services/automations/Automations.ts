@@ -407,7 +407,7 @@ const make = Effect.gen(function* () {
   const initial = yield* settings.get
   let address = initial.automations
   yield* listen(address)
-  yield* settings.changes.pipe(
+  yield* (yield* settings.changes).pipe(
     Stream.runForEach((next) => {
       if (next.automations.bindHost === address.bindHost && next.automations.port === address.port) {
         return Effect.void

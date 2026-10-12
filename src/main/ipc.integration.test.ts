@@ -7,17 +7,19 @@ import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, Subagent } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
+import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import type { AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
-import { eventsLayer, registerIpc } from "./ipc.ts"
+import { makeEventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
@@ -28,6 +30,9 @@ import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
+import * as RemoteAccess from "./remote/access.ts"
+import * as RemoteServer from "./remote/server.ts"
+import * as Secrets from "./services/Secrets.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
@@ -181,14 +186,19 @@ const makeLayer = (dbPath: string) => {
     Search.layer,
     Files.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer).pipe(Layer.provide(domain))
+  const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer, remoteAccess).pipe(
+    Layer.provide(domain),
+  )
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const base = Layer.mergeAll(agents, automationsStub)
-  return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
-    Layer.provide(eventsLayer),
+  const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
+  return RemoteServer.layer.pipe(
+    Layer.provideMerge(app),
+    Layer.provideMerge(makeEventsLayer()),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
@@ -751,5 +761,114 @@ describe("agent accounts over rpc", () => {
       failure(await invoke("agents.account", { provider: "claude" }, { url: appUrl, parent: mainFrame })).tag,
     ).toBe("UntrustedSender")
     expect(result(await invoke("agents.account", { provider: "claude" }))).toStrictEqual({ type: "signedOut" })
+  })
+})
+
+/** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
+const phone = (port: number) => {
+  const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }))
+  const frames: Array<ServerFrame> = []
+  const watchers = new Set<() => void>()
+  let closed: { code: number; reason: string } | null = null
+  socket.on("message", (raw) => {
+    frames.push(JSON.parse(String(raw)) as ServerFrame)
+    for (const notify of watchers) notify()
+  })
+  socket.on("close", (code, reason) => {
+    closed = { code, reason: String(reason) }
+    for (const notify of watchers) notify()
+  })
+  const until = <A>(pick: () => A | undefined) =>
+    new Promise<A>((resolve) => {
+      const check = () => {
+        const found = pick()
+        if (found === undefined) return
+        watchers.delete(check)
+        resolve(found)
+      }
+      watchers.add(check)
+      check()
+    })
+  const opened = new Promise<void>((resolve) => socket.once("open", resolve))
+  let nextId = 1
+  return {
+    send: async (frame: ClientFrame) => {
+      await opened
+      socket.send(JSON.stringify(frame))
+    },
+    call: async <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>) => {
+      const id = nextId++
+      await opened
+      socket.send(JSON.stringify({ type: "call", id, method, payload } satisfies ClientFrame))
+      const frame = await until(() => frames.find((f) => f.type === "result" && f.id === id) ?? closed ?? undefined)
+      if (!("type" in frame)) throw new Error(`socket closed before the answer: ${frame.code} ${frame.reason}`)
+      return (frame as Extract<ServerFrame, { type: "result" }>).envelope as RpcEnvelope<RpcResponseEncoded<M>>
+    },
+    ready: () => until(() => frames.find((f) => f.type === "ready")),
+    event: (predicate: (event: PushEvent) => boolean) =>
+      until(() => frames.find((f) => f.type === "event" && predicate(f.event as PushEvent))),
+    closed: () => until(() => closed ?? undefined),
+    socket,
+  }
+}
+
+describe("remote mode", () => {
+  const port = 40000 + Math.floor(Math.random() * 20000)
+
+  beforeAll(async () => {
+    result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+  })
+
+  test("refuses a call before auth and a wrong token", async () => {
+    const early = phone(port)
+    await early.send({ type: "call", id: 1, method: "projects.list", payload: undefined })
+    expect((await early.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+
+    const wrong = phone(port)
+    await wrong.send({ type: "auth", token: "not-the-token" })
+    expect((await wrong.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+  })
+
+  test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {
+    const pairing = result(await invoke("remote.pairing", undefined))
+    expect(pairing.port).toBe(port)
+    expect(pairing.hosts).toEqual(["127.0.0.1"])
+
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: pairing.token })
+    await paired.ready()
+    expect(result(await invoke("remote.status", undefined)).connected).toBe(1)
+
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-project"))
+
+    const thread = result(await paired.call("threads.create", { projectId: project.id }))
+    const push = await paired.event((event) => event.type === "thread.updated" && event.thread.id === thread.id)
+    expect(push.type).toBe("event")
+
+    expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
+    paired.socket.close()
+  })
+
+  test("rotating the token disconnects every phone and the old token stops working", async () => {
+    const before = result(await invoke("remote.pairing", undefined))
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: before.token })
+    await paired.ready()
+
+    const after = result(await invoke("remote.rotateToken", undefined))
+    expect(after.token).not.toBe(before.token)
+    expect((await paired.closed()).code).toBe(RemoteServer.CLOSE_TOKEN_ROTATED)
+
+    const stale = phone(port)
+    await stale.send({ type: "auth", token: before.token })
+    expect((await stale.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+  })
+
+  test("turning remote off closes the listener", async () => {
+    result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
+    const nobody = phone(port)
+    await new Promise<void>((resolve) => nobody.socket.once("error", () => resolve()))
   })
 })
