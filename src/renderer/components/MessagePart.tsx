@@ -1,3 +1,4 @@
+import { useParams } from "@tanstack/react-router"
 import type { ReactNode } from "react"
 import type { IconType } from "react-icons"
 import {
@@ -15,11 +16,14 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
+import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { describeToolCall } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
+import { useThreads } from "../stores/threads.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
+import { ProviderIcon } from "./ProviderIcon.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
@@ -79,7 +83,7 @@ const toolIcons: Record<string, IconType> = {
 }
 
 /** Tool results are a string or a list of content blocks; only the text blocks are worth showing. */
-function formatOutput(output: unknown): string {
+export function formatOutput(output: unknown): string {
   if (typeof output === "string") return output
   if (Array.isArray(output)) {
     return output
@@ -105,6 +109,7 @@ const statusLabel = {
 } satisfies Record<ToolCallStatus, () => string>
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
+  if (spawnsSubagent(part)) return <SubagentCallPart part={part} />
   const Icon = toolIcons[part.name] ?? RiToolsLine
   const { name, summary } = describeToolCall(part)
 
@@ -132,6 +137,32 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
         />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+/** A sub-agent's work lives in its own view, so its row opens that view instead of expanding. */
+function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
+  const { threadId } = useParams({ from: "/thread/$threadId" })
+  const provider = useThreads((state) => state.byId[threadId]?.provider)
+  const open = useOpenSubagent(threadId)
+  const { name, summary } = describeToolCall(part)
+
+  return (
+    <button type="button" onClick={() => open(part.callId)} className={`my-1 ${disclosureTrigger}`}>
+      <span className="size-3.5 shrink-0" />
+      {provider ? <ProviderIcon provider={provider} /> : <RiToolsLine aria-hidden className="size-3.5 shrink-0" />}
+      <span className="shrink-0 font-medium text-foreground">
+        <Highlighted text={name} />
+      </span>
+      <span className="min-w-0 flex-1 truncate" title={summary}>
+        <Highlighted text={summary} />
+      </span>
+      <span className="shrink-0" title={statusLabel[part.status]()}>
+        {statusIcon[part.status]}
+        <span className="sr-only">{statusLabel[part.status]()}</span>
+      </span>
+      <RiArrowRightSLine aria-hidden className="size-3.5 shrink-0" />
+    </button>
   )
 }
 
