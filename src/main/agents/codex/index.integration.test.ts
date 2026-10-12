@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
@@ -437,6 +437,37 @@ describe("Codex accounts", () => {
         expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
         expect(yield* provider.account(work)).toMatchObject({ email: "work@example.com" })
         expect(countOf("initialize")).toBe(3)
+      }),
+    ),
+  )
+
+  it.live("reads a thread's tokens from the rollouts in its account's home", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const { work, personal } = homes()
+        const threadId = "01a0c6f7-8e77-75b1-9d6a-f583fa33e0da"
+        const day = join(work, "sessions", "2026", "10", "12")
+        mkdirSync(day, { recursive: true })
+        const lines = [
+          { type: "session_meta", payload: { session_id: threadId, id: threadId } },
+          { type: "turn_context", payload: { model: "gpt-6-astra" } },
+          {
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+              info: { total_token_usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 7 } },
+            },
+          },
+        ]
+        writeFileSync(
+          join(day, `rollout-2026-10-12T09-00-00-${threadId}.jsonl`),
+          lines.map((line) => `${JSON.stringify(line)}\n`).join(""),
+        )
+        const provider = yield* CodexProvider
+        expect((yield* provider.usage(threadId, work))?.models).toStrictEqual([
+          { model: "gpt-6-astra", inputTokens: 60, cacheWriteTokens: 0, cacheReadTokens: 40, outputTokens: 7 },
+        ])
+        expect(yield* provider.usage(threadId, personal)).toBeNull()
       }),
     ),
   )

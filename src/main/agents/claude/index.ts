@@ -17,6 +17,7 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
@@ -529,10 +530,10 @@ export const layer = Layer.effect(
       Effect.orElseSucceed(() => null),
     )
 
-    const transcriptUsage = makeTranscriptUsage(claudeHome())
-    const usage = (sessionId: string) =>
+    const transcriptUsage = perHome(makeTranscriptUsage)
+    const usage = (sessionId: string, home: string | null) =>
       Effect.tryPromise({
-        try: () => transcriptUsage(sessionId),
+        try: () => transcriptUsage(home ?? claudeHome())(sessionId),
         catch: agentError("Failed to read Claude transcripts"),
       })
 

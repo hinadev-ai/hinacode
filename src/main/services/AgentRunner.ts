@@ -529,7 +529,8 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
         if (thread.providerSessionId === null) return null
-        return yield* providers[thread.provider].usage(thread.providerSessionId)
+        const home = yield* accounts.home(thread.accountId)
+        return yield* providers[thread.provider].usage(thread.providerSessionId, home)
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     listCommands: (threadId) =>

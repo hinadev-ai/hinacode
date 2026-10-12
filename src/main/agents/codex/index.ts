@@ -17,6 +17,7 @@ import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, makeRolloutUsage } from "./rollouts.ts"
@@ -256,10 +257,10 @@ const make = Effect.gen(function* () {
     return toPlanLimits(response, yield* nowIso)
   })
 
-  const rolloutUsage = makeRolloutUsage(codexHome())
-  const readUsage = (threadId: string) =>
+  const rolloutUsage = perHome(makeRolloutUsage)
+  const readUsage = (threadId: string, home: string | null) =>
     Effect.tryPromise({
-      try: () => rolloutUsage(threadId),
+      try: () => rolloutUsage(home ?? codexHome())(threadId),
       catch: (cause) =>
         new AgentError({ provider: "codex", message: `Failed to read Codex rollouts: ${String(cause)}` }),
     })

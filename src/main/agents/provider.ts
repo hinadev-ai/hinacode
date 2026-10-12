@@ -49,8 +49,11 @@ export interface AgentProvider {
   readonly signOut: (home: string) => Effect.Effect<void, AgentError>
   /** The signed-in account's plan allowance windows. Null when it has none, such as with an API key. */
   readonly planLimits: Effect.Effect<PlanLimits | null, AgentError>
-  /** Tokens the session and every agent it started spent, read from disk. Null when there is no transcript. */
-  readonly usage: (sessionId: string) => Effect.Effect<ThreadUsage | null, AgentError>
+  /**
+   * Tokens the session and every agent it started spent, read from the agent home `home` (the CLI's own for
+   * null). Null when there is no transcript.
+   */
+  readonly usage: (sessionId: string, home: string | null) => Effect.Effect<ThreadUsage | null, AgentError>
   /** Commands and skills the agent would load for a thread working in `cwd` on the account in `home`. */
   readonly listCommands: (input: {
     readonly threadId: string
