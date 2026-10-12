@@ -399,6 +399,8 @@
   "thread_base_ref_prefix": "基於",
   "settings_text_generation_model": "討論串命名",
   "settings_text_generation_model_hint": "根據第一則訊息為討論串與分支命名。",
+  "settings_default_access": "預設存取權限",
+  "settings_default_access_hint": "新討論串會以此設定開始。可在訊息輸入框為單一討論串調整。",
   "thread_effort_picker": "推理強度",
   "thread_effort_default": "預設強度",
   "thread_effort_default_named": "預設（{effort}）",

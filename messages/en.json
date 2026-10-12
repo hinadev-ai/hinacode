@@ -417,6 +417,8 @@
   "thread_base_ref_prefix": "from",
   "settings_text_generation_model": "Thread naming",
   "settings_text_generation_model_hint": "Names a thread and its branch from its first message.",
+  "settings_default_access": "Default access",
+  "settings_default_access_hint": "New threads start with this. Change it for one thread from the composer.",
   "thread_effort_picker": "Effort",
   "thread_effort_default": "Default effort",
   "thread_effort_default_named": "Default ({effort})",
