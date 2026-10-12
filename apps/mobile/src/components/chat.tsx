@@ -1,14 +1,17 @@
 import type { ApprovalDecision, ApprovalRequest, Question, QuestionAnswers, QuestionRequest } from "@shared/agent.ts"
-import { isThreadBusy, type Message, type MessagePart, type Thread } from "@shared/domain.ts"
+import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { Composer, errorText } from "@/components/composer"
+import { Icon, type IconName } from "@/components/icon"
 import { Button, Notice, Pill } from "@/components/ui"
-import { HIT, mono } from "@/constants/theme"
+import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { useMessages } from "@/stores/messages"
 
-const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
+/** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
+const CARD_PADDING = 12
 
 export function Chat({ thread }: { thread: Thread }) {
   const theme = useTheme()
@@ -95,27 +98,46 @@ function PartView({ part }: { part: MessagePart }) {
     case "tool_call":
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
+          <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.toolName, { color: theme.text }]}>
             {part.name}
             {summarize(part.input) && <Text style={{ color: theme.textMuted }}> {summarize(part.input)}</Text>}
           </Text>
-          <Pill
-            label={part.status === "running" ? "Running" : part.status === "error" ? "Failed" : "Done"}
-            tone={part.status === "running" ? "running" : part.status === "error" ? "danger" : "neutral"}
-          />
+          <ToolStatus status={part.status} />
         </View>
       )
     case "file_change":
       return (
-        <Text numberOfLines={1} style={[styles.toolName, { color: theme.textMuted }]}>
-          Edited <Text style={{ color: theme.text }}>{part.path}</Text>
-        </Text>
+        <View style={styles.fileChange}>
+          <Icon name="RiPencilLine" size={14} color={theme.textMuted} />
+          <Text numberOfLines={1} style={[styles.toolName, { color: theme.textMuted }]}>
+            Edited <Text style={{ color: theme.text }}>{part.path}</Text>
+          </Text>
+        </View>
       )
     case "attachment":
       return <Text style={{ color: theme.textMuted }}>Attached {part.attachment.name}</Text>
     case "questions":
       return <Text style={[styles.text, { color: theme.text }]}>{part.text}</Text>
   }
+}
+
+const toolStatus = {
+  running: { label: "Running", tone: "running", icon: "RiLoader4Line" },
+  error: { label: "Failed", tone: "danger", icon: "RiErrorWarningLine" },
+  done: { label: "Done", tone: "neutral", icon: "RiCheckLine" },
+} as const satisfies Record<ToolCallStatus, { label: string; tone: "running" | "danger" | "neutral"; icon: IconName }>
+
+function ToolStatus({ status }: { status: ToolCallStatus }) {
+  const theme = useTheme()
+  const { label, tone, icon } = toolStatus[status]
+  const color = tone === "running" ? theme.running : tone === "danger" ? theme.danger : theme.textMuted
+  return (
+    <View style={styles.status}>
+      <Icon name={icon} size={14} color={color} />
+      <Pill label={label} tone={tone} />
+    </View>
+  )
 }
 
 /** The one field that says what a tool call touched, when its input has one. */
@@ -141,6 +163,7 @@ function Reasoning({ text }: { text: string }) {
         onPress={() => setOpen(!open)}
         style={styles.disclosure}
       >
+        <Icon name={open ? "RiArrowDownSLine" : "RiArrowRightSLine"} size={16} color={theme.textMuted} />
         <Text style={{ color: theme.textMuted, fontSize: 13 }}>{open ? "Hide reasoning" : "Reasoning"}</Text>
       </Pressable>
       {open && <Text style={[styles.text, { color: theme.textMuted }]}>{text}</Text>}
@@ -295,64 +318,12 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
   )
 }
 
-function Composer({ thread }: { thread: Thread }) {
-  const theme = useTheme()
-  const [text, setText] = useState("")
-  const { busy, error, run } = useAction()
-  const running = isThreadBusy(thread.status)
-  const prompt = text.trim()
-
-  const submit = async () => {
-    const sent = await run(() =>
-      running
-        ? call("threads.steer", { threadId: thread.id, text: prompt })
-        : call("threads.send", { threadId: thread.id, prompt }),
-    )
-    if (sent) setText("")
-  }
-
-  return (
-    <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.background }]}>
-      {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
-      <TextInput
-        testID="composer-input"
-        accessibilityLabel="Message"
-        value={text}
-        onChangeText={setText}
-        placeholder={running ? "Steer the running turn" : "Ask the agent"}
-        placeholderTextColor={theme.textMuted}
-        multiline
-        style={[styles.input, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-      />
-      <View style={styles.actions}>
-        {running && (
-          <Button
-            testID="composer-stop"
-            label="Stop"
-            variant="danger"
-            onPress={() => void run(() => call("threads.interrupt", { threadId: thread.id }))}
-          />
-        )}
-        <Button
-          testID={running ? "composer-steer" : "composer-send"}
-          label={running ? "Steer" : "Send"}
-          variant="primary"
-          busy={busy}
-          disabled={prompt === ""}
-          onPress={() => void submit()}
-          style={styles.send}
-        />
-      </View>
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
-  message: { gap: 6, borderRadius: 10, padding: 12 },
+  message: { gap: 6, borderRadius: radius.lg, padding: 12 },
   role: { fontSize: 12, fontWeight: "600" },
   text: { fontSize: 15, lineHeight: 22 },
   tool: {
@@ -360,21 +331,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 6,
+    borderRadius: radius.md,
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
   toolName: { flex: 1, fontFamily: mono, fontSize: 13 },
-  disclosure: { minHeight: HIT, justifyContent: "center" },
-  card: { marginHorizontal: 12, marginBottom: 8, borderWidth: 1, borderRadius: 10, padding: 12, gap: 10 },
+  fileChange: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8 },
+  status: { flexDirection: "row", alignItems: "center", gap: 4 },
+  disclosure: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 4 },
+  card: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderRadius: radius.sm + CARD_PADDING,
+    padding: CARD_PADDING,
+    gap: 10,
+  },
   cardTitle: { fontSize: 15, fontWeight: "600" },
-  detail: { fontFamily: mono, fontSize: 12, padding: 8, borderRadius: 6 },
+  detail: { fontFamily: mono, fontSize: 12, padding: 8, borderRadius: radius.sm },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
   options: { gap: 6 },
-  option: { minHeight: HIT, borderWidth: 1, borderRadius: 8, padding: 10, justifyContent: "center", gap: 2 },
-  answer: { minHeight: HIT, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10 },
-  composer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 8 },
-  input: { minHeight: HIT, maxHeight: 160, borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 15 },
-  send: { minWidth: 88 },
+  option: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, padding: 10, justifyContent: "center", gap: 2 },
+  answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10 },
 })
