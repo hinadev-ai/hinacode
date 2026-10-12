@@ -24,6 +24,9 @@ type Draft = { readonly picked: ReadonlyArray<string>; readonly text: string }
 
 const EMPTY_DRAFT: Draft = { picked: [], text: "" }
 
+const draftFor = (drafts: Readonly<Record<string, Draft>>, id: string): Draft =>
+  Object.hasOwn(drafts, id) ? (drafts[id] ?? EMPTY_DRAFT) : EMPTY_DRAFT
+
 const draftAnswer = (draft: Draft) => {
   const text = draft.text.trim()
   return text === "" ? draft.picked : [...draft.picked, text]
@@ -60,7 +63,12 @@ export function PostedQuestionsCard({
 }
 
 export const answerText = (questions: ReadonlyArray<Question>, answers: QuestionAnswers) =>
-  questions.map((question) => `${question.question}\n${answers[question.id]?.join(", ") ?? "(skipped)"}`).join("\n\n")
+  questions
+    .map((question) => {
+      const answer = Object.hasOwn(answers, question.id) ? answers[question.id] : undefined
+      return `${question.question}\n${answer?.join(", ") ?? "(skipped)"}`
+    })
+    .join("\n\n")
 
 /** Each question can be answered by picking options or typing; any left blank is skipped. */
 function QuestionCard({
@@ -85,7 +93,7 @@ function QuestionCard({
 
   const answers: QuestionAnswers = Object.fromEntries(
     questions
-      .map((question) => [question.id, draftAnswer(drafts[question.id] ?? EMPTY_DRAFT)] as const)
+      .map((question) => [question.id, draftAnswer(draftFor(drafts, question.id))] as const)
       .filter(([, answer]) => answer.length > 0),
   )
   const answeredCount = Object.keys(answers).length
@@ -113,7 +121,7 @@ function QuestionCard({
           <QuestionField
             key={question.id}
             question={question}
-            draft={drafts[question.id] ?? EMPTY_DRAFT}
+            draft={draftFor(drafts, question.id)}
             disabled={isPending}
             onChange={(draft) => setDrafts((current) => ({ ...current, [question.id]: draft }))}
           />
