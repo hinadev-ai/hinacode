@@ -116,3 +116,61 @@ describe("mapMessage sub-agent tasks", () => {
     expect(mapMessage(notification, state, now)).toEqual([])
   })
 })
+
+const assistantWithUsage = (parentToolUseId: string | null, usage: Record<string, number>) =>
+  ({
+    type: "assistant",
+    parent_tool_use_id: parentToolUseId,
+    message: { model: "claude-opus-4-7", content: [{ type: "text", text: "ok" }], usage },
+    uuid: "c1f4f8b2-1a7e-4c55-9d3e-0f4a1b2c3d4e",
+    session_id: "ba5016ca-1ee2-487b-8b1c-bc680f339ec3",
+  }) as unknown as SDKMessage
+
+const successResult = (modelUsage: Record<string, { contextWindow: number }>) =>
+  ({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: "done",
+    total_cost_usd: 0.5,
+    usage: { input_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 5 },
+    modelUsage,
+  }) as unknown as SDKMessage
+
+const completedUsage = (events: ReadonlyArray<AgentEvent>) => {
+  const [event] = events
+  if (event?.type !== "turn_completed") throw new Error(`expected turn_completed, got ${event?.type}`)
+  return event.usage
+}
+
+describe("mapMessage context window", () => {
+  const now = "2026-10-12T10:00:00.000Z"
+
+  test("reports the main loop's latest request against the model's context window", () => {
+    const state = newState()
+    const main = {
+      input_tokens: 1_000,
+      cache_creation_input_tokens: 2_000,
+      cache_read_input_tokens: 40_000,
+      output_tokens: 500,
+    }
+    const subagent = {
+      input_tokens: 90_000,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      output_tokens: 9_000,
+    }
+    mapMessage(assistantWithUsage(null, main), state, now)
+    mapMessage(assistantWithUsage("toolu_01DoGmNCXkV2M8SMNaE7E3XJ", subagent), state, now)
+    const result = successResult({ "claude-opus-4-7": { contextWindow: 200_000 } })
+    expect(completedUsage(mapMessage(result, state, now))?.context).toEqual({ usedTokens: 43_500, maxTokens: 200_000 })
+  })
+
+  test("omits the context when the result has no usage for that model", () => {
+    const state = newState()
+    mapMessage(assistantWithUsage(null, { input_tokens: 1_000, output_tokens: 500 }), state, now)
+    const usage = completedUsage(mapMessage(successResult({}), state, now))
+    expect(usage).toBeDefined()
+    expect(usage?.context).toBeUndefined()
+  })
+})

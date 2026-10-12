@@ -81,10 +81,15 @@ export const SecretRequest = Schema.Struct({
 })
 export type SecretRequest = typeof SecretRequest.Type
 
+/** How much of the model's context window the conversation fills, as of its latest model request. */
+export const ContextWindow = Schema.Struct({ usedTokens: Schema.Number, maxTokens: Schema.Number })
+export type ContextWindow = typeof ContextWindow.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
   costUsd: Schema.optional(Schema.Number),
+  context: Schema.optional(ContextWindow),
 })
 export type TokenUsage = typeof TokenUsage.Type
 
