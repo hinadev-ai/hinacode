@@ -151,6 +151,7 @@ export const RpcMethods = {
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
+  "pullRequests.all": rpc(Schema.Void, Schema.Array(PullRequestLink)),
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
   /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. Returns the URL. */
   "pullRequests.create": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
