@@ -139,6 +139,8 @@ export const RpcMethods = {
   /** Brings an archived thread back as idle. A removed worktree stays removed. */
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** The project's own favicon as a data URL, or null when it has none. */
+  "projects.icon": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(Schema.String)),
   /**
    * Commits on every branch of the checkout at `root`, newest first in topological order. `root` must be
    * a project root or a live worktree path.

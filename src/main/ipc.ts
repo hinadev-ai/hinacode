@@ -153,6 +153,7 @@ const handlers: Handlers = {
     closeTerminals(threadId).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId)))),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
+  "projects.icon": ({ id }) => Projects.use((projects) => projects.icon(id)),
   "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
   "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),

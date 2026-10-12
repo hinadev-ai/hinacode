@@ -14,7 +14,7 @@ import {
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, Thread } from "../../shared/domain.ts"
-import { projectsAtom } from "../lib/rpc.ts"
+import { projectIconAtom, projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
 import { startThread } from "../lib/startThread.ts"
@@ -180,6 +180,16 @@ function useFilteredProjects(projects: ReadonlyArray<Project>) {
   return picked.length === 0 ? projects : picked
 }
 
+/** The project's own favicon, or a folder when it has none. */
+function ProjectIcon({ projectId }: { projectId: string }) {
+  const icon = AsyncResult.getOrElse(useAtomValue(projectIconAtom(projectId)), () => null)
+  return icon === null ? (
+    <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+  ) : (
+    <img src={icon} alt="" className="size-4 shrink-0 rounded-sm object-contain" />
+  )
+}
+
 function ProjectFilterMenu() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const ids = useUi((state) => state.sidebarProjectIds)
@@ -215,6 +225,7 @@ function ProjectFilterMenu() {
               setIds(checked ? [...ids, project.id] : ids.filter((id) => id !== project.id))
             }
           >
+            <ProjectIcon projectId={project.id} />
             <span className="truncate">{project.name}</span>
           </DropdownMenuCheckboxItem>
         ))}
