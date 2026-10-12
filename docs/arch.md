@@ -61,6 +61,8 @@ flowchart LR
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
+Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
+
 ## Main-process layers
 
 The main process is one Effect layer graph, built in `src/main/index.ts` before the window can call in.
