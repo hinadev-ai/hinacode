@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
-import { type AccessMode, Thread, type ThreadStatus } from "../../shared/domain.ts"
+import { type AccessMode, type Changes, type ChangesScope, Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
@@ -15,6 +15,7 @@ import {
 import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { Projects } from "./Projects.ts"
+import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
 
@@ -90,6 +91,16 @@ export class Threads extends Context.Service<
       id: string,
       options?: { readonly removeWorktree?: boolean | undefined },
     ) => Effect.Effect<void, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
+    /**
+     * What changed in the thread's working tree: since its worktree forked (`worktree`), or since its
+     * latest turn started (`turn`). Null when the scope has no base: no live worktree, or no turn snapshot.
+     */
+    readonly changes: (
+      id: string,
+      scope: ChangesScope,
+    ) => Effect.Effect<Changes | null, PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError>
+    /** Records `cwd` as it is now as the base of the `turn` scope. Outside a git checkout the base is cleared. */
+    readonly snapshotTurnBase: (id: string, cwd: string) => Effect.Effect<void, PersistenceError>
     /** Turns do not survive a restart, so threads left mid-turn by a crash go back to idle. */
     readonly resetInterrupted: Effect.Effect<void, PersistenceError>
   }
@@ -101,6 +112,7 @@ const make = Effect.gen(function* () {
   const worktrees = yield* Worktrees
   const git = yield* Git
   const activeWorkspace = yield* makeActiveWorkspace
+  const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
 
@@ -119,6 +131,12 @@ const make = Effect.gen(function* () {
     Result: Schema.Struct({ next: Schema.Number }),
     execute: (projectId) =>
       sql`SELECT COALESCE(MAX(sort_index) + 1, 0) AS next FROM thread WHERE project_id = ${projectId}`,
+  })
+
+  const findTurnBase = SqlSchema.findOneOption({
+    Request: Schema.String,
+    Result: Schema.Struct({ turnBaseTree: Schema.NullOr(Schema.String) }),
+    execute: (id) => sql`SELECT turn_base_tree FROM thread WHERE id = ${id}`,
   })
 
   const findStarted = SqlSchema.findOne({
@@ -231,6 +249,31 @@ const make = Effect.gen(function* () {
         .slice(0, MAX_LISTED_FILES)
     })
 
+  const changes = (id: string, scope: ChangesScope) =>
+    Effect.gen(function* () {
+      if (scope === "worktree") {
+        const { worktreeId } = yield* get(id)
+        return worktreeId === null ? null : yield* worktrees.changes(worktreeId)
+      }
+      const row = yield* findTurnBase(id).pipe(Effect.mapError(persistence("threads.turnBase")))
+      if (Option.isNone(row)) return yield* new NotFoundError({ entity: "thread", id })
+      const { turnBaseTree } = row.value
+      if (turnBaseTree === null) return null
+      const { cwd } = yield* activeWorkspace(id)
+      return yield* diffWorkingTree(cwd, turnBaseTree).pipe(Effect.provideContext(gitContext))
+    })
+
+  const snapshotTurnBase = (id: string, cwd: string) =>
+    Effect.gen(function* () {
+      const tree = yield* snapshotWorkingTree(cwd).pipe(
+        Effect.provideContext(gitContext),
+        Effect.orElseSucceed(() => null),
+      )
+      yield* sql`UPDATE thread SET turn_base_tree = ${tree} WHERE id = ${id}`.pipe(
+        Effect.mapError(persistence("threads.snapshotTurnBase")),
+      )
+    })
+
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
@@ -254,6 +297,8 @@ const make = Effect.gen(function* () {
     started,
     attachWorktree,
     listFiles,
+    changes,
+    snapshotTurnBase,
     settle,
     remove,
     resetInterrupted: sql`

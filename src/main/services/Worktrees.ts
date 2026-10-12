@@ -1,24 +1,35 @@
 import { randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
-import { Context, Effect, Fiber, Layer, Option, Schema, Semaphore, Stream } from "effect"
+import {
+  Context,
+  Effect,
+  Fiber,
+  FileSystem,
+  Layer,
+  Option,
+  type PlatformError,
+  Schema,
+  Semaphore,
+  Stream,
+} from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { SqlClient, SqlSchema } from "effect/sql"
 import {
-  type ChangedFileStatus,
+  type Changes,
   isThreadBusy,
   type Project,
   type PullRequest,
   ThreadStatus,
   Worktree,
-  type WorktreeChanges,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
 import { NotFoundError, type PersistenceError, persistence, WorktreeBusyError, WorktreeTakenError } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { type CommandError, Git, type RunOptions } from "./Git.ts"
+import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
+import { diffWorkingTree } from "./workingTree.ts"
 
 export interface CreateWorktree {
   readonly projectId: string
@@ -61,7 +72,8 @@ export class Worktrees extends Context.Service<
     readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
     /** Renames the worktree's branch in place; its checkout path keeps the old name. */
     readonly renameBranch: (id: string, branch: string) => Effect.Effect<Worktree, Failure>
-    readonly changes: (id: string) => Effect.Effect<WorktreeChanges, Failure>
+    /** Everything the worktree changed since it forked from its base ref, or null once it is removed. */
+    readonly changes: (id: string) => Effect.Effect<Changes | null, Failure | PlatformError.PlatformError>
     /** The branch's GitHub pull request, or null when there is none. */
     readonly pullRequest: (
       id: string,
@@ -89,22 +101,6 @@ const parseCheckouts = (output: string) =>
     })
     .filter((checkout) => checkout.path !== "")
 
-const toChangedStatus = (letter: string): ChangedFileStatus => {
-  if (letter === "A") return "added"
-  if (letter === "D") return "deleted"
-  return "modified"
-}
-
-/** Parses `git diff --name-status -z`: alternating status letter and path. */
-const parseNameStatus = (output: string) => {
-  const fields = output.split("\0").filter(Boolean)
-  const files: Array<{ path: string; status: ChangedFileStatus }> = []
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    files.push({ path: fields[i + 1] ?? "", status: toChangedStatus(fields[i]?.charAt(0) ?? "") })
-  }
-  return files
-}
-
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
@@ -112,6 +108,7 @@ const make = Effect.gen(function* () {
   const github = yield* GitHub
   const events = yield* Events
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -354,46 +351,10 @@ const make = Effect.gen(function* () {
   const changes = (id: string) =>
     Effect.gen(function* () {
       const worktree = yield* get(id)
-      if (worktree.status === "removed") return { baseRef: worktree.baseRef, files: [], patch: "" }
-
-      const cwd = worktree.path
-      // Pin the output format against user config (diff.mnemonicPrefix, color.ui, quoted non-ASCII paths)
-      // so the renderer can find each file's section by its `a/… b/…` header.
-      const diff = (args: ReadonlyArray<string>, options?: RunOptions) =>
-        git.run(
-          cwd,
-          [
-            "-c",
-            "core.quotePath=false",
-            "diff",
-            "--no-renames",
-            "--no-color",
-            "--no-ext-diff",
-            "--src-prefix=a/",
-            "--dst-prefix=b/",
-            ...args,
-          ],
-          options,
-        )
-
-      const mergeBase = (yield* git.run(cwd, ["merge-base", worktree.baseRef, "HEAD"])).trim()
-      // Diffing the merge base against the working tree covers both commits and uncommitted edits.
-      const tracked = parseNameStatus(yield* diff(["--name-status", "-z", mergeBase]))
-      const trackedPatch = yield* diff([mergeBase])
-      const untracked = (yield* git.run(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]))
-        .split("\0")
-        .filter(Boolean)
-      // Exit code 1 means the files differ, which is always true against /dev/null.
-      const untrackedPatches = yield* Effect.forEach(untracked, (path) =>
-        diff(["--no-index", "--", "/dev/null", path], { okExitCodes: [1] }),
-      )
-
-      return {
-        baseRef: worktree.baseRef,
-        files: [...tracked, ...untracked.map((path) => ({ path, status: "untracked" as const }))],
-        patch: [trackedPatch, ...untrackedPatches].join(""),
-      }
-    })
+      if (worktree.status === "removed") return null
+      const mergeBase = (yield* git.run(worktree.path, ["merge-base", worktree.baseRef, "HEAD"])).trim()
+      return yield* diffWorkingTree(worktree.path, mergeBase)
+    }).pipe(Effect.provideContext(gitContext))
 
   const pullRequest = (id: string) =>
     Effect.gen(function* () {

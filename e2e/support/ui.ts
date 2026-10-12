@@ -9,6 +9,13 @@ export const threadDetails = async (page: Page) => {
   return page.getByRole("complementary", { name: "Thread details" })
 }
 
+/** Opens a tab of the thread details panel and returns its panel. */
+export const threadDetailsTab = async (page: Page, tab: "Details" | "Diff" | "PR" | "Agents") => {
+  const panel = await threadDetails(page)
+  await panel.getByRole("tab", { name: tab, exact: true }).click()
+  return panel.getByRole("tabpanel", { name: tab, exact: true })
+}
+
 /** Opens the row menu of a sidebar thread and picks an item. */
 export const threadMenu = async (page: Page, title: string, item: string) => {
   await sidebar(page)

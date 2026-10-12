@@ -378,3 +378,58 @@ describe("startup", () => {
     ),
   )
 })
+
+describe("thread changes", () => {
+  it.live("the worktree scope covers commits, edits and new files since the fork, and is null once removed", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "diff", "kk/diff")
+        yield* waitUntilSetUp(thread.worktreeId)
+        const { path } = yield* worktreeOf(thread.worktreeId)
+        writeFileSync(join(path, "committed.txt"), "one\n")
+        git(path, "add", "committed.txt")
+        git(path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
+        writeFileSync(join(path, "new.txt"), "fresh\n")
+
+        const changes = yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))
+        expect(changes?.files).toStrictEqual([
+          { path: "committed.txt", status: "added" },
+          { path: "new.txt", status: "added" },
+        ])
+        expect(changes?.patch).toContain("diff --git a/new.txt b/new.txt")
+        expect(changes?.patch).toContain("+fresh")
+
+        yield* Threads.use((threads) => threads.settle(thread.id))
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))).toBeNull()
+      }),
+    ),
+  )
+
+  it.live("the worktree scope is null for a thread working in the project root", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "root")
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))).toBeNull()
+      }),
+    ),
+  )
+
+  it.live("the turn scope diffs against the stored turn base, and is null without one", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "turn")
+        writeFileSync(join(root, "before-turn.txt"), "old\n")
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
+
+        yield* Threads.use((threads) => threads.snapshotTurnBase(thread.id, root))
+        writeFileSync(join(root, "during-turn.txt"), "new\n")
+
+        const changes = yield* Threads.use((threads) => threads.changes(thread.id, "turn"))
+        expect(changes?.files).toStrictEqual([{ path: "during-turn.txt", status: "added" }])
+
+        yield* Threads.use((threads) => threads.snapshotTurnBase(thread.id, join(root, "missing")))
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
+      }),
+    ),
+  )
+})

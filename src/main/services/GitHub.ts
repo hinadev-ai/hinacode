@@ -2,7 +2,18 @@ import { homedir } from "node:os"
 import { dirname } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { ChildProcessSpawner } from "effect/process"
-import type { ChecksStatus, GitHubAuth, PullRequest, PullRequestStatus, ReviewStatus } from "../../shared/domain.ts"
+import type {
+  CheckRun,
+  CheckRunStatus,
+  ChecksStatus,
+  GitHubAuth,
+  Mergeable,
+  MergeMethod,
+  PullRequest,
+  PullRequestDetail,
+  PullRequestStatus,
+  ReviewStatus,
+} from "../../shared/domain.ts"
 import type { GitHubRepository } from "../../shared/github.ts"
 import { CommandError, makeExec } from "./Git.ts"
 
@@ -19,6 +30,33 @@ export class GitHubSignedOutError extends Schema.TaggedError<GitHubSignedOutErro
 }
 
 export type GitHubError = GitHubCliMissingError | GitHubSignedOutError | CommandError
+
+export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUrlInvalidError>()(
+  "PullRequestUrlInvalidError",
+  { url: Schema.String },
+) {
+  override get message(): string {
+    return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>)`
+  }
+}
+
+/** Canonical `https://github.com/<owner>/<repo>/pull/<n>`, dropping sub-pages like `/files` and any query or hash. */
+export const parseGitHubPullRequestUrl = (raw: string): string | undefined => {
+  if (!URL.canParse(raw)) return undefined
+  const url = new URL(raw)
+  if (url.protocol !== "https:" || (url.hostname !== "github.com" && url.hostname !== "www.github.com"))
+    return undefined
+  const match = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\/.*)?$/.exec(url.pathname)
+  if (!match) return undefined
+  const [, owner, repo, number] = match
+  return `https://github.com/${owner}/${repo}/pull/${number}`
+}
+
+/** The canonical pull request URL, safe to pass to `gh` as an argument: it can never be read as a flag. */
+export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
+  const url = parseGitHubPullRequestUrl(raw.trim())
+  return url === undefined ? Effect.fail(new PullRequestUrlInvalidError({ url: raw })) : Effect.succeed(url)
+}
 
 const AuthStatusJson = Schema.fromJsonString(
   Schema.Struct({
@@ -45,20 +83,36 @@ const RollupEntry = Schema.Struct({
   status: Schema.optionalKey(Schema.String),
   conclusion: Schema.optionalKey(Schema.String),
   state: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(Schema.String),
+  workflowName: Schema.optionalKey(Schema.String),
+  detailsUrl: Schema.optionalKey(Schema.String),
+  context: Schema.optionalKey(Schema.String),
+  targetUrl: Schema.optionalKey(Schema.String),
 })
 type RollupEntry = typeof RollupEntry.Type
 
 export const PULL_REQUEST_FIELDS = "url,number,title,state,isDraft,reviewDecision,statusCheckRollup"
 
-const PullRequestJson = Schema.fromJsonString(
+const PullRequestFields = Schema.Struct({
+  url: Schema.String,
+  number: Schema.Number,
+  title: Schema.String,
+  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+  isDraft: Schema.Boolean,
+  reviewDecision: Schema.String,
+  statusCheckRollup: Schema.Array(RollupEntry),
+})
+const PullRequestJson = Schema.fromJsonString(PullRequestFields)
+
+const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,baseRefName,headRefName,mergeable`
+
+const PullRequestDetailJson = Schema.fromJsonString(
   Schema.Struct({
-    url: Schema.String,
-    number: Schema.Number,
-    title: Schema.String,
-    state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
-    isDraft: Schema.Boolean,
-    reviewDecision: Schema.String,
-    statusCheckRollup: Schema.Array(RollupEntry),
+    ...PullRequestFields.fields,
+    body: Schema.String,
+    baseRefName: Schema.String,
+    headRefName: Schema.String,
+    mergeable: Schema.String,
   }),
 )
 
@@ -101,8 +155,38 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
   }
 }
 
+const CHECK_RUN_ORDER: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
+
+const toCheckRun = (entry: RollupEntry): CheckRun => {
+  const { name, workflowName } = entry
+  return {
+    name:
+      name === undefined
+        ? (entry.context ?? "")
+        : workflowName && workflowName !== name
+          ? `${workflowName} / ${name}`
+          : name,
+    status: checkOutcome(entry) ?? "skipped",
+    url: entry.detailsUrl || entry.targetUrl || null,
+  }
+}
+
+const mergeable: Record<string, Mergeable> = { MERGEABLE: "mergeable", CONFLICTING: "conflicting" }
+
+export const toPullRequestDetail = (json: typeof PullRequestDetailJson.Type): PullRequestDetail => ({
+  ...toPullRequest(json),
+  body: json.body,
+  baseRef: json.baseRefName,
+  headRef: json.headRefName,
+  mergeable: mergeable[json.mergeable] ?? "unknown",
+  checkRuns: json.statusCheckRollup
+    .map(toCheckRun)
+    .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
+})
+
 const decodeAuthStatus = Schema.decodeUnknownEffect(AuthStatusJson)
 const decodePullRequest = Schema.decodeUnknownEffect(PullRequestJson)
+const decodePullRequestDetail = Schema.decodeUnknownEffect(PullRequestDetailJson)
 
 /** GitHub as the user's `gh` login sees it. Every call runs `gh` without prompts. */
 export class GitHub extends Context.Service<
@@ -111,7 +195,15 @@ export class GitHub extends Context.Service<
     readonly auth: Effect.Effect<GitHubAuth, CommandError | Schema.SchemaError>
     /** Runs `gh ...args` in `cwd` and returns stdout. */
     readonly run: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, GitHubError>
-    readonly pullRequest: (url: string) => Effect.Effect<PullRequest, GitHubError | Schema.SchemaError>
+    readonly pullRequest: (
+      url: string,
+    ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly pullRequestDetail: (
+      url: string,
+    ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    /** Never deletes the branch: it is usually checked out in a local worktree. */
+    readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
+    readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     /** The newest pull request whose head is `branch` in the repository at `cwd`, or null when there is none. */
     readonly branchPullRequest: (
       cwd: string,
@@ -185,10 +277,21 @@ const make = Effect.gen(function* () {
     )
   }
 
+  // Run from the home directory so gh acts on the URL alone, never on a local checkout of the repository.
+  const ghByUrl = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
+    Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
+
   return GitHub.of({
     auth,
     run: gh,
-    pullRequest: (url) => view(homedir(), url),
+    pullRequest: (raw) => Effect.flatMap(requirePullRequestUrl(raw), (url) => view(homedir(), url)),
+    pullRequestDetail: (raw) =>
+      ghByUrl(raw, (url) => ["pr", "view", url, "--json", PULL_REQUEST_DETAIL_FIELDS]).pipe(
+        Effect.flatMap(decodePullRequestDetail),
+        Effect.map(toPullRequestDetail),
+      ),
+    merge: (raw, method) => ghByUrl(raw, (url) => ["pr", "merge", url, `--${method}`]).pipe(Effect.asVoid),
+    close: (raw) => ghByUrl(raw, (url) => ["pr", "close", url]).pipe(Effect.asVoid),
     branchPullRequest,
     createPullRequest,
     clone,

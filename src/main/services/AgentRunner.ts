@@ -315,6 +315,7 @@ const make = Effect.gen(function* () {
       const turn = yield* worktrees.exclusive(
         Effect.gen(function* () {
           const { cwd } = yield* activeWorkspace(thread.id)
+          yield* threads.snapshotTurnBase(threadId, cwd)
           const now = yield* nowIso
           const assistant = openAssistantMessage(threadId, now)
           yield* insertMessage(userMessage(threadId, prompt, attachments, now))

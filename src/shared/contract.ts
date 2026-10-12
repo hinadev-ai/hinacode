@@ -13,20 +13,23 @@ import {
   AccessMode,
   Attachment,
   Automation,
+  Changes,
+  ChangesScope,
   AutomationRun,
   AutomationTrigger,
   Locale,
+  MergeMethod,
   Message,
   OpenPort,
   Project,
   GitHubAuth,
   PullRequest,
+  PullRequestDetail,
   PullRequestLink,
   Settings,
   Thread,
   ThreadStatus,
   Worktree,
-  WorktreeChanges,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
 
@@ -111,10 +114,11 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, deleteBranch: Schema.Literals(["keep", "ifMerged", "force"]) }),
     Worktree,
   ),
-  "worktrees.changes": rpc(Schema.Struct({ id: Schema.String }), WorktreeChanges),
   "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   /** The branch's GitHub pull request via `gh`, or null when there is none. */
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
+  /** Null when the scope has no base: the thread has no live worktree, or no turn started in a git checkout. */
+  "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
   /** Marks the thread settled and removes its worktree. */
   "threads.settle": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
@@ -188,6 +192,9 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
+  "github.pullRequestDetail": rpc(Schema.Struct({ url: Schema.String }), PullRequestDetail),
+  "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
+  "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   /** The built-in MCP server connection handed to agents running in this thread. */
   "mcp.connection": rpc(
     Schema.Struct({ threadId: Schema.String }),
