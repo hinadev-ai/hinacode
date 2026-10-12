@@ -31,6 +31,7 @@ import {
   WorkspacePicker,
 } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
+import { ContextRing } from "./ContextRing.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
@@ -209,6 +210,7 @@ export function Composer({ thread }: { thread: Thread }) {
           <FastModeToggle thread={thread} onError={setError} />
           <AccessPicker thread={thread} onError={setError} />
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <ContextRing threadId={thread.id} />
             {busy && (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>
                 <RiStopFill aria-hidden />
