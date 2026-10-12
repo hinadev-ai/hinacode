@@ -14,6 +14,7 @@ import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import * as ProjectsLayer from "./Projects.ts"
+import * as Terminals from "./Terminals.ts"
 import { Threads } from "./Threads.ts"
 import { Settings } from "./Settings.ts"
 import * as SettingsLayer from "./Settings.ts"
@@ -34,6 +35,7 @@ const makeLayer = (
   events: Events["Service"] = Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
 ) =>
   ThreadsLayer.layer.pipe(
+    Layer.provide(Terminals.layer),
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
     Layer.provideMerge(SettingsLayer.layer),
@@ -285,7 +287,7 @@ describe("worktree ownership", () => {
           yield* Threads.use((threads) => threads.update({ id: thread.id, status }))
 
           const error = yield* Effect.flip(archiveRemovingWorktree(thread.id))
-          expect(error._tag).toBe("WorktreeBusyError")
+          expect(error._tag).toBe("ThreadBusyError")
           expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
           expect((yield* Threads.use((threads) => threads.get(thread.id))).status).toBe(status)
         }),

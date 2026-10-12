@@ -149,8 +149,7 @@ const handlers: Handlers = {
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
-  "threads.archive": ({ threadId }) =>
-    closeTerminals(threadId).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId)))),
+  "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.icon": ({ id }) => Projects.use((projects) => projects.icon(id)),

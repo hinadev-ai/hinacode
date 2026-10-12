@@ -56,6 +56,7 @@ const serveAttachments = () =>
 const makeAppLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(Settings.layer),
@@ -70,9 +71,7 @@ const makeAppLayer = (dbPath: string) => {
       ? ThreadNaming.layer
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer, naming).pipe(
-    Layer.provide(domain),
-  )
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer).pipe(

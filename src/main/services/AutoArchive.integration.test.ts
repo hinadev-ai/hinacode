@@ -38,12 +38,13 @@ const gitHub = Layer.mock(GitHub, {
 })
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(settingsLayer),
 )
 const testLayer = autoArchiveLayer.pipe(
-  Layer.provideMerge(Layer.mergeAll(pullRequestsLayer, Terminals.layer)),
+  Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
   Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),

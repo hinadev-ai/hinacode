@@ -4,7 +4,6 @@ import { Events } from "./Events.ts"
 import { GitHub } from "./GitHub.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Settings } from "./Settings.ts"
-import { Terminals } from "./Terminals.ts"
 import { Threads } from "./Threads.ts"
 
 const SWEEP_INTERVAL = "3 minutes"
@@ -19,7 +18,6 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads
   const pullRequests = yield* PullRequests
   const github = yield* GitHub
-  const terminals = yield* Terminals
   const events = yield* Events
 
   const archiveIfMerged = (threadId: string, links: ReadonlyArray<PullRequestLink>) =>
@@ -30,7 +28,6 @@ const make = Effect.gen(function* () {
         Effect.map((found) => found.every((pullRequest) => pullRequest.status === "merged")),
       )
       if (!merged) return
-      yield* terminals.closeThread(threadId)
       yield* events.publish({ type: "thread.updated", thread: yield* threads.archive(threadId) })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto archive skipped a thread", threadId, cause)))
 
