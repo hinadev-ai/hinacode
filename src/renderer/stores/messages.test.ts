@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "@effect/vitest"
-import type { AgentEvent, ApprovalRequest } from "../../shared/agent.ts"
+import type { AgentEvent, ApprovalRequest, SecretRequest } from "../../shared/agent.ts"
 import type { TranscriptPush } from "../../shared/contract.ts"
 import type { Message } from "../../shared/domain.ts"
 
@@ -21,6 +21,8 @@ const approval: ApprovalRequest = {
   title: "Run ls",
   detail: "ls",
 }
+
+const secretRequest: SecretRequest = { id: "s1", threadId, name: "demo.token", description: "Demo token" }
 
 let transcriptResponse = Promise.withResolvers<unknown>()
 Object.assign(globalThis, { window: { kkcode: { rpc: () => transcriptResponse.promise } } })
@@ -57,7 +59,7 @@ const loadReady = async (
 ) => {
   transcriptResponse = Promise.withResolvers()
   const loading = store().load(id)
-  transcriptResponse.resolve({ result: { messages, approvals, seq: 0 } })
+  transcriptResponse.resolve({ result: { messages, approvals, secretRequests: [], seq: 0 } })
   await loading
   vi.useFakeTimers()
 }
@@ -69,7 +71,9 @@ test("keeps pushes from before, during and after the snapshot exactly once", asy
   store().receive(event(2, { type: "approval_requested", request: approval }))
   // Published after the snapshot was captured.
   store().receive(event(3, { type: "text_delta", text: "while loading " }))
-  transcriptResponse.resolve({ result: { messages: [assistant("persisted prefix ")], approvals: [approval], seq: 2 } })
+  transcriptResponse.resolve({
+    result: { messages: [assistant("persisted prefix ")], approvals: [approval], secretRequests: [], seq: 2 },
+  })
   await loading
   store().receive(event(4, { type: "text_delta", text: "after load" }))
   store().receive(event(5, { type: "turn_completed" }))
@@ -90,7 +94,7 @@ test("replays message pushes buffered after the snapshot", async () => {
     seq: 8,
     message: { ...assistant("closed"), completedAt: "2026-10-12T00:00:01.000Z" },
   })
-  transcriptResponse.resolve({ result: { messages: [assistant("open")], approvals: [], seq: 6 } })
+  transcriptResponse.resolve({ result: { messages: [assistant("open")], approvals: [], secretRequests: [], seq: 6 } })
   await loading
 
   expect(ready().messages.map((message) => [message.id, message.parts])).toStrictEqual([
@@ -104,9 +108,25 @@ test("ignores pushes for threads that were never opened", () => {
   expect(store().byThread).toStrictEqual({})
 })
 
+test("keeps a secret request until it is resolved or the turn ends", async () => {
+  const loading = store().load(threadId)
+  transcriptResponse.resolve({ result: { messages: [assistant("")], approvals: [], secretRequests: [], seq: 0 } })
+  await loading
+  store().receive(event(1, { type: "secret_requested", request: secretRequest }))
+  expect(ready().secretRequests).toStrictEqual([secretRequest])
+  store().receive(event(2, { type: "secret_resolved", requestId: "s1" }))
+  expect(ready().secretRequests).toStrictEqual([])
+
+  store().receive(event(3, { type: "secret_requested", request: { ...secretRequest, id: "s2" } }))
+  store().receive(event(4, { type: "turn_failed", message: "boom" }))
+  expect(ready().secretRequests).toStrictEqual([])
+})
+
 test("batches sustained text deltas and publishes the complete turn immediately", async () => {
   const loading = store().load(threadId)
-  transcriptResponse.resolve({ result: { messages: [assistant("")], approvals: [approval], seq: 0 } })
+  transcriptResponse.resolve({
+    result: { messages: [assistant("")], approvals: [approval], secretRequests: [], seq: 0 },
+  })
   await loading
 
   vi.useFakeTimers()
@@ -396,6 +416,7 @@ test("loading keeps raw text and reasoning pushes until snapshot sequence filter
         },
       ],
       approvals: [],
+      secretRequests: [],
       seq: 2,
     },
   })

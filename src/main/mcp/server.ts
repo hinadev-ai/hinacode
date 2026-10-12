@@ -1,31 +1,22 @@
-import { randomBytes, timingSafeEqual } from "node:crypto"
 import { createServer } from "node:http"
 import { NodeHttpServer } from "@effect/platform-node"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { McpProtocol, McpSchema, McpServer as AiMcpServer, Tool } from "effect/ai"
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
 import { SqlClient } from "effect/sql"
-import type { McpConnection } from "../../shared/agent.ts"
+import { ProviderId } from "../../shared/agent.ts"
+import { AgentRunner } from "../services/AgentRunner.ts"
+import { Events } from "../services/Events.ts"
 import { PullRequests } from "../services/PullRequests.ts"
 import { Secrets } from "../services/Secrets.ts"
+import { Threads } from "../services/Threads.ts"
 import { makeActiveWorkspace } from "../services/workspace.ts"
+import { McpCredentials } from "./credentials.ts"
 import { type Linear, makeLinear } from "./linear.ts"
 import { reviewChanges } from "./reviewChanges.ts"
 
 const MCP_PATH = "/mcp"
 export const LINEAR_API_KEY_SECRET = "linear.apiKey"
-
-/**
- * The built-in MCP server agents call back into. One HTTP listener on 127.0.0.1 for the whole app;
- * each thread gets its own bearer credential, and the credential alone decides which thread a call acts as.
- */
-export class McpServer extends Context.Service<
-  McpServer,
-  {
-    /** Issues the thread's credential on first use; it stays valid while the thread exists. */
-    readonly connectionFor: (threadId: string) => McpConnection
-  }
->()("kkcode/McpServer") {}
 
 interface ToolFailure {
   readonly message: string
@@ -57,42 +48,26 @@ const NoParams = Tool.EmptyParams
 const text = (value: string, isError = false) =>
   new McpSchema.CallToolResult({ content: [{ type: "text", text: value }], isError })
 
-/** Thread id to its secret. A credential is `<threadId>.<secret>`. */
-type CredentialStore = Map<string, Buffer>
-
-class Credentials extends Context.Service<Credentials, CredentialStore>()("kkcode/McpServer/Credentials") {}
-
-const BEARER = "Bearer "
-
-/** The thread the request's credential was issued for; the comparison is constant-time per thread. */
-const authenticate = (credentials: CredentialStore, request: HttpServerRequest.HttpServerRequest) => {
-  const authorization = request.headers["authorization"]
-  if (authorization === undefined || !authorization.startsWith(BEARER)) return Option.none()
-  const credential = authorization.slice(BEARER.length)
-  const separator = credential.lastIndexOf(".")
-  if (separator <= 0) return Option.none()
-  const threadId = credential.slice(0, separator)
-  const expected = credentials.get(threadId)
-  const presented = Buffer.from(credential.slice(separator + 1))
-  const valid = expected !== undefined && presented.length === expected.length && timingSafeEqual(presented, expected)
-  return valid ? Option.some(threadId) : Option.none()
-}
-
 /**
  * McpServer runs tool handlers inside the HTTP request fiber but does not declare that in their type,
  * hence `serviceOption`.
  */
-const callingThreadId = (credentials: CredentialStore) =>
+const callingThreadId = (credentials: typeof McpCredentials.Service) =>
   Effect.map(Effect.serviceOption(HttpServerRequest.HttpServerRequest), (request) =>
-    Option.flatMap(request, (current) => authenticate(credentials, current)),
+    Option.flatMap(request, (current) => credentials.authenticate(current.headers["authorization"])),
   )
+
+const failure = (error: { readonly message: string }): ToolFailure => ({ message: error.message })
 
 const registerTools = Layer.effectDiscard(
   Effect.gen(function* () {
     const server = yield* AiMcpServer.McpServer
     const pullRequests = yield* PullRequests
     const secrets = yield* Secrets
-    const credentials = yield* Credentials
+    const credentials = yield* McpCredentials
+    const runner = yield* AgentRunner
+    const threads = yield* Threads
+    const events = yield* Events
 
     const activeWorkspace = yield* makeActiveWorkspace
 
@@ -114,7 +89,72 @@ const registerTools = Layer.effectDiscard(
       description: "GitHub pull request URL, for example https://github.com/owner/repo/pull/123",
     })
 
+    const SecretName = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)).annotate({
+      description:
+        "Name the value is stored under, for example stripe.apiKey. Letters, digits, dots, dashes and underscores.",
+    })
+
     const tools = [
+      tool({
+        name: "request_secret",
+        description:
+          "Ask the user for a secret (API key, token, password). kkcode shows them a masked input in this thread and stores what they enter under `name`. The value is never returned to you: tell the user where the stored secret is needed instead of asking them to paste it into the chat. Blocks until they answer or the turn ends.",
+        parameters: Schema.Struct({
+          name: SecretName,
+          description: Schema.String.annotate({ description: "What the secret is for, shown to the user." }),
+        }),
+        run: ({ name, description }, threadId) =>
+          runner.requestSecret(threadId, name, description).pipe(
+            Effect.mapError(failure),
+            Effect.flatMap((outcome) =>
+              outcome === "stored"
+                ? Effect.succeed(
+                    `Stored secret "${name}". The value is never returned to you; tell the user which setting or environment variable needs it.`,
+                  )
+                : Effect.fail({ message: `The user declined to provide secret "${name}".` }),
+            ),
+          ),
+      }),
+      tool({
+        name: "create_thread",
+        description:
+          "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model. Pass `worktree` to run it in a new git worktree.",
+        parameters: Schema.Struct({
+          title: Schema.String.annotate({ description: "Shown in the sidebar." }),
+          prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
+          provider: Schema.optionalKey(ProviderId),
+          model: Schema.optionalKey(Schema.String.annotate({ description: "Model id for that provider." })),
+          worktree: Schema.optionalKey(
+            Schema.Struct({
+              branch: Schema.String.annotate({ description: "Branch to create for the worktree." }),
+              baseRef: Schema.String.annotate({ description: "Ref the branch forks from, for example main." }),
+            }),
+          ),
+        }),
+        run: ({ title, prompt, provider, model, worktree }, threadId) =>
+          Effect.gen(function* () {
+            const caller = yield* threads.get(threadId)
+            const sameProvider = provider === undefined || provider === caller.provider
+            if (model === undefined && !sameProvider) {
+              return yield* Effect.fail({ message: "Pass `model` when `provider` differs from this thread's." })
+            }
+            const thread = yield* threads.create({
+              projectId: caller.projectId,
+              title,
+              provider: provider ?? caller.provider,
+              model: model ?? caller.model,
+              worktree,
+              createdBy: `thread:${threadId}`,
+            })
+            yield* events.publish({ type: "thread.updated", thread })
+            yield* runner.send(thread.id, prompt, []).pipe(
+              Effect.mapError((error) => ({
+                message: `Created thread ${thread.id} but could not start its first turn: ${error.message}`,
+              })),
+            )
+            return `Created thread ${thread.id} "${thread.title}" and sent it the prompt.`
+          }).pipe(Effect.mapError(failure)),
+      }),
       tool({
         name: "review_changes",
         description:
@@ -215,67 +255,57 @@ const registerTools = Layer.effectDiscard(
 )
 
 /** Rejects requests without a credential for an existing thread, so other local processes cannot act as a thread. */
-const requireCredential = (credentials: CredentialStore) =>
-  HttpRouter.middleware(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient
-      const threadExists = (threadId: string) =>
-        sql`SELECT 1 FROM thread WHERE id = ${threadId}`.pipe(
-          Effect.map((rows) => rows.length > 0),
-          Effect.orElseSucceed(() => false),
-        )
-      return (httpEffect) =>
-        Effect.gen(function* () {
-          const threadId = authenticate(credentials, yield* HttpServerRequest.HttpServerRequest)
-          if (Option.isNone(threadId) || !(yield* threadExists(threadId.value))) {
-            return HttpServerResponse.jsonUnsafe({ error: "invalid_token" }, { status: 401 })
-          }
-          return yield* httpEffect
-        })
-    }),
-    { global: true },
-  )
+const requireCredential = HttpRouter.middleware(
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const credentials = yield* McpCredentials
+    const threadExists = (threadId: string) =>
+      sql`SELECT 1 FROM thread WHERE id = ${threadId}`.pipe(
+        Effect.map((rows) => rows.length > 0),
+        Effect.orElseSucceed(() => false),
+      )
+    return (httpEffect) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const threadId = credentials.authenticate(request.headers["authorization"])
+        if (Option.isNone(threadId) || !(yield* threadExists(threadId.value))) {
+          return HttpServerResponse.jsonUnsafe({ error: "invalid_token" }, { status: 401 })
+        }
+        return yield* httpEffect
+      })
+  }),
+  { global: true },
+)
 
-const httpServer = (credentials: CredentialStore) =>
-  HttpRouter.serve(
-    Layer.mergeAll(registerTools, requireCredential(credentials)).pipe(
-      Layer.provideMerge(
-        AiMcpServer.layerHttp({
-          name: "kkcode",
-          version: "0.1.0",
-          path: MCP_PATH,
-          protocols: [McpProtocol.v2025_11_25, McpProtocol.v2025_06_18, McpProtocol.v2025_03_26],
-          allowSessionTermination: true,
-        }),
-      ),
+const httpServer = HttpRouter.serve(
+  Layer.mergeAll(registerTools, requireCredential).pipe(
+    Layer.provideMerge(
+      AiMcpServer.layerHttp({
+        name: "kkcode",
+        version: "0.1.0",
+        path: MCP_PATH,
+        protocols: [McpProtocol.v2025_11_25, McpProtocol.v2025_06_18, McpProtocol.v2025_03_26],
+        allowSessionTermination: true,
+      }),
     ),
-    { disableListenLog: true, disableLogger: true },
-  ).pipe(
-    Layer.provide(Layer.succeed(Credentials, credentials)),
-    Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 0, host: "127.0.0.1" })),
-  )
+  ),
+  { disableListenLog: true, disableLogger: true },
+).pipe(Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 0, host: "127.0.0.1" })))
 
-const make = (credentials: CredentialStore) =>
+/** Tells the credential store where the server listens, so turns can be handed a connection. */
+const announce = Layer.effectDiscard(
   Effect.gen(function* () {
     const { address } = yield* HttpServer.HttpServer
     if (address._tag === "UnixPathAddress") return yield* Effect.die("MCP server must listen on TCP")
     const url = `http://127.0.0.1:${address.port}${MCP_PATH}`
     yield* Effect.logInfo("mcp server listening", url)
-    return McpServer.of({
-      connectionFor: (threadId) => {
-        let secret = credentials.get(threadId)
-        if (secret === undefined) {
-          secret = Buffer.from(randomBytes(32).toString("base64url"))
-          credentials.set(threadId, secret)
-        }
-        return { url, headers: { authorization: `${BEARER}${threadId}.${secret.toString()}` } }
-      },
-    })
-  })
-
-export const layer = Layer.unwrap(
-  Effect.sync(() => {
-    const credentials: CredentialStore = new Map()
-    return Layer.effect(McpServer, make(credentials)).pipe(Layer.provide(httpServer(credentials)))
+    yield* (yield* McpCredentials).listening(url)
   }),
 )
+
+/**
+ * The built-in MCP server agents call back into. One HTTP listener on 127.0.0.1 for the whole app;
+ * each thread gets its own bearer credential from `McpCredentials`, and the credential alone decides
+ * which thread a call acts as.
+ */
+export const layer = announce.pipe(Layer.provide(httpServer))
