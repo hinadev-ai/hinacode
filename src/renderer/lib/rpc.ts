@@ -186,6 +186,25 @@ export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
 )
 
+const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
+
+/**
+ * Tokens the thread spent, read from its agent's transcripts. Asked again when a turn ends or a sub-agent
+ * changes, since workflow agents keep spending after the turn's result.
+ */
+export const threadUsageAtom = Atom.family((threadId: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent((event) => {
+        const turnEnded = event.type === "thread.event" && event.threadId === threadId && turnEnds.has(event.event.type)
+        const subagentChanged = event.type === "thread.subagents" && event.threadId === threadId
+        if (turnEnded || subagentChanged) get.refreshSelf()
+      }),
+    )
+    return call("threads.usage", { threadId })
+  }),
+)
+
 const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
 

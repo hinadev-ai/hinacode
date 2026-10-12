@@ -8,6 +8,7 @@ import { usePanelLayout } from "../lib/panelLayout.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { Sidebar } from "./Sidebar.tsx"
+import { StatusBar } from "./StatusBar.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -18,12 +19,15 @@ export function AppShell() {
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
-    <div className="flex h-dvh bg-background text-foreground">
-      <Sidebar compact={compact} finalFocus={sidebarButtonRef} />
-      {(compact || !sidebarOpen) && <SidebarRail buttonRef={sidebarButtonRef} />}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <Outlet />
-      </main>
+    <div className="flex h-dvh flex-col bg-background text-foreground">
+      <div className="flex min-h-0 flex-1">
+        <Sidebar compact={compact} finalFocus={sidebarButtonRef} />
+        {(compact || !sidebarOpen) && <SidebarRail buttonRef={sidebarButtonRef} />}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <Outlet />
+        </main>
+      </div>
+      <StatusBar />
       <CommandPalette />
     </div>
   )

@@ -610,5 +610,24 @@
   "settings_notifications_not_determined": "通知需要你的許可",
   "settings_notifications_not_determined_hint": "macOS 會在 kkcode 第一次傳送通知時詢問。現在就允許，才不會錯過第一則通知。",
   "settings_notifications_allow": "允許通知",
-  "notification_open": "開啟"
+  "notification_open": "開啟",
+  "status_bar_label": "狀態列",
+  "usage_tokens": "{tokens} tokens",
+  "usage_label": "此討論串已使用 {tokens} tokens",
+  "usage_model": "模型",
+  "usage_input": "輸入",
+  "usage_cache_write": "快取寫入",
+  "usage_cache_read": "快取讀取",
+  "usage_output": "輸出",
+  "usage_main_session_only": "僅主工作階段，沒有子代理",
+  "usage_main_session_and_agents": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "主工作階段與 {count} 個子代理",
+        "countPlural=other": "主工作階段與 {count} 個子代理"
+      }
+    }
+  ]
 }
