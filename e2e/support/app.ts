@@ -66,7 +66,7 @@ const launch = async (
   delete env.ELECTRON_RUN_AS_NODE
   const app = await electron.launch({
     executablePath,
-    args: ["--no-sandbox", "--disable-gpu", join(projectRoot, "out/main/index.js")],
+    args: ["--no-sandbox", "--disable-gpu", "--mute-audio", join(projectRoot, "out/main/index.js")],
     cwd: projectRoot,
     env: {
       ...env,
