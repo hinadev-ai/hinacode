@@ -42,6 +42,7 @@ export function makeQuestions<S extends QuestionSession>(emit: (session: S, even
     input: Record<string, unknown>,
     options: Parameters<CanUseTool>[2],
   ): Promise<PermissionResult> => {
+    if (options.signal.aborted) return { behavior: "deny", message: "The question request was cancelled" }
     if (session.turn === null) return { behavior: "deny", message: "No active turn to ask the user in" }
     const decoded = decodeInput(input)
     if (Option.isNone(decoded)) return { behavior: "deny", message: "kkcode could not read these questions" }

@@ -272,6 +272,7 @@ const make = Effect.gen(function* () {
 
     const finish = Effect.gen(function* () {
       for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
+      for (const [id, request] of questions) if (request.threadId === thread.id) questions.delete(id)
       for (const [id, { request, answer }] of secretRequests) {
         if (request.threadId !== thread.id) continue
         secretRequests.delete(id)
