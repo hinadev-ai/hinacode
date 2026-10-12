@@ -11,7 +11,7 @@ import {
   type Worktree,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
-import { themes } from "../lib/appearance.ts"
+import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom, worktreeChangesAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -313,7 +313,7 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
   const diffId = useId()
   const mark = fileStatusMark[status]
   const filePatch = open ? patchForFile(patch, path) : undefined
-  const theme = themes[useSettings().appearance.theme]
+  const theme = useTheme(useSettings().appearance.theme)
 
   return (
     <li className="flex flex-col gap-1">
