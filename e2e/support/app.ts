@@ -20,6 +20,7 @@ export interface KkcodeApp {
   readonly restart: () => Promise<void>
   /** Reloads the renderer, which re-reads projects, threads and settings from main. */
   readonly reload: () => Promise<void>
+  readonly setWindow: (size: { width: number; height: number; zoom: number }) => Promise<void>
   readonly close: () => Promise<void>
 }
 
@@ -67,6 +68,14 @@ export const spawnApp = async (): Promise<KkcodeApp> => {
     reload: async () => {
       await current.page.reload()
       await waitForRenderer(current.page)
+    },
+    setWindow: async (size) => {
+      await current.app.evaluate(({ BrowserWindow }, { width, height, zoom }) => {
+        const window = BrowserWindow.getAllWindows()[0]
+        if (!window) throw new Error("kkcode window is missing")
+        window.setSize(width, height)
+        window.webContents.setZoomFactor(zoom)
+      }, size)
     },
     close: async () => {
       await current.app.close()

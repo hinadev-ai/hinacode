@@ -1,6 +1,10 @@
 import { getRouteApi } from "@tanstack/react-router"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { useRef } from "react"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
+import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
+import { usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -12,6 +16,10 @@ export function ThreadRoute() {
   const thread = useThreads((state) => state.byId[threadId])
   const panelOpen = useUi((state) => state.sidePanelOpen)
   const togglePanel = useUi((state) => state.toggleSidePanel)
+  const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
+  const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
+  const docked = usePanelLayout() === "wide"
+  const toggleRef = useRef<HTMLButtonElement>(null)
 
   if (!thread) {
     return <p className="m-auto text-sm text-muted-foreground">{m.thread_not_found()}</p>
@@ -19,14 +27,30 @@ export function ThreadRoute() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <ThreadView key={thread.id} thread={thread} />
+        <ThreadView
+          key={thread.id}
+          thread={thread}
+          actions={
+            !docked || !panelOpen ? (
+              <PanelToggle buttonRef={toggleRef} expanded={!docked && overlayOpen} onToggle={togglePanel} />
+            ) : undefined
+          }
+        />
       </div>
-      {panelOpen ? (
-        <ThreadSidePanel key={thread.id} thread={thread} />
-      ) : (
-        <div className="flex h-12 shrink-0 items-center border-b border-l border-border px-2">
-          <PanelToggle expanded={false} onToggle={togglePanel} />
-        </div>
+      {docked && panelOpen ? <ThreadSidePanel key={thread.id} thread={thread} /> : null}
+      {!docked && (
+        <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
+          <DialogPortal>
+            <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-background/60" />
+            <DialogPrimitive.Popup
+              finalFocus={toggleRef}
+              className="fixed inset-y-0 right-0 z-50 flex w-96 max-w-full flex-col overflow-hidden border-l border-border bg-background outline-none"
+            >
+              <DialogTitle className="sr-only">{m.panel_label()}</DialogTitle>
+              <ThreadSidePanel key={thread.id} thread={thread} compact />
+            </DialogPrimitive.Popup>
+          </DialogPortal>
+        </Dialog>
       )}
     </div>
   )
