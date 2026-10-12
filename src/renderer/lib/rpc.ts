@@ -54,8 +54,9 @@ export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
 )
 
+/** The branch checked out in the project root. Asked again when the window comes back, in case it changed. */
 export const currentBranchAtom = Atom.family((projectId: string) =>
-  Atom.make(call("projects.currentBranch", { id: projectId })),
+  Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
 export const worktreeChangesAtom = Atom.family((worktreeId: string) =>

@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Layer, ManagedRuntime } from "effect"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
@@ -20,6 +20,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -193,6 +194,28 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).toContain(thread.id)
     result(await invoke("threads.delete", { id: thread.id, removeWorktree: false }))
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).not.toContain(thread.id)
+  })
+
+  test("lists every thread's linked pull requests in one call", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const threadOf = async (title: string) =>
+      result(await invoke("threads.create", { projectId: project.id, title, provider: "claude", model: "m" }))
+    const [first, second] = [await threadOf("one"), await threadOf("two")]
+    await runtime.runPromise(
+      PullRequests.PullRequests.use((pullRequests) =>
+        Effect.all([
+          pullRequests.link(first.id, "https://github.com/kjj6198/kkcode/pull/48"),
+          pullRequests.link(first.id, "https://github.com/kjj6198/kkcode/pull/49"),
+          pullRequests.link(second.id, "https://github.com/kjj6198/kkcode/pull/55"),
+        ]),
+      ),
+    )
+    const links = result(await invoke("pullRequests.all", undefined))
+    expect(links.map((link) => [link.threadId, link.url])).toStrictEqual([
+      [first.id, "https://github.com/kjj6198/kkcode/pull/48"],
+      [first.id, "https://github.com/kjj6198/kkcode/pull/49"],
+      [second.id, "https://github.com/kjj6198/kkcode/pull/55"],
+    ])
   })
 
   test("settings written through rpc are what the next read returns", async () => {

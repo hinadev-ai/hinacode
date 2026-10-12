@@ -29,6 +29,7 @@ const seeded = Layer.effect(
 const stubs = Layer.mergeAll(
   Layer.succeed(PullRequests, {
     list: (threadId) => Effect.sync(() => (listedThreads.push(threadId), [])),
+    listAll: Effect.succeed([]),
     link: (_, url) => Effect.succeed(url),
     unlink: () => Effect.void,
     create: () => Effect.die("not used"),

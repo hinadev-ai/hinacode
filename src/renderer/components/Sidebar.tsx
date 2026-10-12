@@ -13,6 +13,7 @@ import {
 } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
+import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { useUi } from "../stores/ui.ts"
@@ -28,6 +29,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 /** Stays mounted while hidden so its dialogs, opened by keybindings, still render. */
 export function Sidebar() {
+  // Loads every thread's pull request links once, for the PR numbers under each row.
+  useAtomValue(loadAllPullRequestsAtom)
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const toggleSidebar = useUi((state) => state.toggleSidebar)
   const addProjectOpen = useUi((state) => state.addProjectOpen)
