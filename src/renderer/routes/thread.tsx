@@ -1,6 +1,7 @@
 import { getRouteApi } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { useRef } from "react"
+import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
@@ -31,11 +32,15 @@ export function ThreadRoute() {
           key={thread.id}
           thread={thread}
           actions={
-            !docked || !panelOpen ? (
-              <PanelToggle buttonRef={toggleRef} expanded={!docked && overlayOpen} onToggle={togglePanel} />
-            ) : undefined
+            <>
+              <TerminalToggle threadId={thread.id} />
+              {(!docked || !panelOpen) && (
+                <PanelToggle buttonRef={toggleRef} expanded={!docked && overlayOpen} onToggle={togglePanel} />
+              )}
+            </>
           }
         />
+        <TerminalDrawer key={thread.id} threadId={thread.id} />
       </div>
       {docked && panelOpen ? <ThreadSidePanel key={thread.id} thread={thread} /> : null}
       {!docked && (

@@ -4,6 +4,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/noto-sans-tc";
 @import "@fontsource-variable/noto-sans-jp";
+@import "@wterm/dom/css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -295,6 +296,60 @@
       scale: 0.97;
     }
   }
+}
+
+/*
+ * The integrated terminal (wterm). Background, foreground and font follow the app theme; the 16 ANSI colors
+ * have a light and a dark set, tuned for 4.5:1 against the neutral backgrounds. Light "white" is a mid gray
+ * because programs print it as ordinary text.
+ */
+.terminal-screen.wterm {
+  --term-fg: var(--foreground);
+  --term-bg: var(--background);
+  --term-cursor: var(--foreground);
+  --term-font-family: var(--app-font-mono);
+  --term-font-size: 12px;
+  --term-line-height: 1.35;
+  --term-selection-bg: color-mix(in oklch, var(--foreground) 20%, transparent);
+  --term-color-0: oklch(0.2 0 0);
+  --term-color-1: oklch(0.53 0.2 27);
+  --term-color-2: oklch(0.5 0.13 150);
+  --term-color-3: oklch(0.55 0.12 80);
+  --term-color-4: oklch(0.5 0.18 260);
+  --term-color-5: oklch(0.5 0.2 320);
+  --term-color-6: oklch(0.52 0.09 210);
+  --term-color-7: oklch(0.45 0 0);
+  --term-color-8: oklch(0.5 0 0);
+  --term-color-9: oklch(0.56 0.21 27);
+  --term-color-10: oklch(0.54 0.14 150);
+  --term-color-11: oklch(0.56 0.13 80);
+  --term-color-12: oklch(0.55 0.18 260);
+  --term-color-13: oklch(0.55 0.2 320);
+  --term-color-14: oklch(0.55 0.1 210);
+  --term-color-15: oklch(0.56 0 0);
+  height: 100%;
+  padding: 4px 12px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dark .terminal-screen.wterm {
+  --term-color-0: oklch(0.35 0 0);
+  --term-color-1: oklch(0.7 0.17 25);
+  --term-color-2: oklch(0.76 0.15 150);
+  --term-color-3: oklch(0.83 0.13 90);
+  --term-color-4: oklch(0.72 0.13 255);
+  --term-color-5: oklch(0.74 0.15 320);
+  --term-color-6: oklch(0.8 0.1 200);
+  --term-color-7: oklch(0.87 0 0);
+  --term-color-8: oklch(0.6 0 0);
+  --term-color-9: oklch(0.77 0.15 25);
+  --term-color-10: oklch(0.83 0.14 150);
+  --term-color-11: oklch(0.89 0.12 95);
+  --term-color-12: oklch(0.8 0.11 255);
+  --term-color-13: oklch(0.81 0.13 320);
+  --term-color-14: oklch(0.87 0.09 200);
+  --term-color-15: oklch(0.985 0 0);
 }
 
 /* Base UI popups enter and exit by scale and opacity. Reduced motion keeps the fade and drops the scale. */

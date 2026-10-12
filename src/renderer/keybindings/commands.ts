@@ -4,6 +4,7 @@ import type { Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
+import { useTerminals } from "../stores/terminals.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 
@@ -96,6 +97,25 @@ export const commands = [
     defaultKeys: "mod+shift+[",
     title: m.command_thread_previous,
     run: (ctx) => goToSiblingThread(ctx, -1),
+  },
+  {
+    id: "terminal.toggle",
+    defaultKeys: "mod+j",
+    title: m.command_terminal_toggle,
+    run: (ctx) => {
+      if (!ctx.threadId) return
+      const open = useTerminals.getState().byThreadId[ctx.threadId]?.open ?? false
+      void useTerminals.getState().toggle(ctx.threadId)
+      if (open) useUi.getState().requestComposerFocus()
+    },
+  },
+  {
+    id: "terminal.new",
+    defaultKeys: "mod+shift+`",
+    title: m.command_terminal_new,
+    run: (ctx) => {
+      if (ctx.threadId) void useTerminals.getState().openSession(ctx.threadId)
+    },
   },
   {
     id: "language.switch",

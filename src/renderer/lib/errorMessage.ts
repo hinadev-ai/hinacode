@@ -17,6 +17,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   CommandError: (detail) => m.error_command({ detail }),
   GitCommandError: (detail) => m.error_command({ detail }),
   PortsError: (detail) => m.error_ports({ detail }),
+  TerminalError: (detail) => m.error_terminal({ detail }),
   Defect: (detail) => m.error_unexpected({ detail }),
 }
 
