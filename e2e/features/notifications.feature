@@ -25,6 +25,7 @@ Feature: Notifications
   Scenario: The open thread stays quiet while the window has focus
     Given the window has focus
     When the agent in "Foreground" emits "turn_completed"
+    And the agent in "Foreground" emits "question_requested"
     And the agent in "Background" emits "turn_completed"
     Then the only notification is for "Background" and reads "Finished"
 
@@ -47,3 +48,11 @@ Feature: Notifications
     And I click the notification for "Background"
     Then the thread "Background" is open
     And the notification window is restored and focused
+
+  Scenario: Questions respect the needs-input notification setting
+    When I open settings
+    And I open the settings section "Notifications"
+    And I turn off the setting "Needs your input"
+    And the agent in "Background" emits "question_requested"
+    And the agent in "Background" emits "turn_failed"
+    Then the only notification is for "Background" and reads "Failed: Turn interrupted"

@@ -9,7 +9,7 @@ A developer starts a few agents and goes back to other work. The sidebar shows w
 
 ## User flow
 
-1. A thread's turn finishes, fails, hits a usage limit, or asks for an approval or a secret.
+1. A thread's turn finishes, fails, hits a usage limit, or asks for an approval, an answer or a secret.
 2. If the developer is not looking at that thread, kkcode shows a desktop notification titled with the thread name, and plays a short chime. The chime rises for a finished turn, repeats for a request, and falls for a failure, so the kind is clear without reading.
 3. Clicking the notification brings kkcode forward and opens the thread.
 4. In Settings, Notifications, the developer turns each kind on or off, turns the chime off, and sends a test notification.
@@ -21,7 +21,7 @@ A developer starts a few agents and goes back to other work. The sidebar shows w
 The renderer already receives every turn event as a `thread.event` push, knows the open route, and knows whether the window has focus. The notifier lives there, with no new service or table. Clicking a notification calls the validated `app.focus` rpc to restore, show and focus only the window belonging to the sending app frame. The renderer then opens the thread.
 
 - `Settings.notifications` holds one boolean per `ThreadAlert` (`completed`, `needsInput`, `failed`) plus `sound`. It is a settings row like any other, so defaults fill in for existing profiles and no migration is needed.
-- `lib/notifications.ts` maps an `AgentEvent` to an alert and a body in one table: `turn_completed` is `completed`, `approval_requested` and `secret_requested` are `needsInput`, `turn_failed` and `turn_limited` are `failed`. Other events map to nothing.
+- `lib/threadNotifications.ts` maps an `AgentEvent` to an alert and a body in one table: `turn_completed` is `completed`, `approval_requested`, `question_requested` and `secret_requested` are `needsInput`, `turn_failed` and `turn_limited` are `failed`. Other events map to nothing.
 - `main.tsx` hands each `thread.event` to the notifier, which checks the setting and whether the thread is on screen, then creates an HTML `Notification` with `silent: true` and plays the chime itself. The `tag` is the thread id, so a newer alert replaces an older one from the same thread.
 - The chime is synthesized with Web Audio. No audio asset ships, and the CSP needs no `media-src`.
 
