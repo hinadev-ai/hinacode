@@ -17,7 +17,7 @@ A developer with many projects and threads reaches them by scrolling the sidebar
 6. Running an item closes the palette, then:
    - a thread opens it,
    - a project starts a new thread there and focuses the composer,
-   - a file inserts `@path` into the open thread's draft, the same mention the composer's `@` completion inserts, and focuses the composer,
+   - a file opens in the file viewer of the open thread's Files panel,
    - a command runs exactly as its shortcut would.
 
 ## Design
@@ -39,7 +39,7 @@ Renderer only. No new rpc method, table or service.
 ## Out of scope
 
 - Directory browsing. A separate change adds `fs.list` for a file explorer.
-- Opening a file in an editor or previewing it. Selecting a file only mentions it.
+- Opening a file in an external editor. Mentioning a file stays with the composer's `@` completion and the file tree's context menu.
 - Searching message content across threads.
 - Syncing recent items across machines.
 
@@ -47,4 +47,4 @@ Renderer only. No new rpc method, table or service.
 
 - `palette/rank.test.ts` covers ranking: recent first, then fuzzy score, empty query order, the per-group cap and highlight indexes.
 - `e2e/features/command-palette.feature` opens the palette with the shortcut, filters, and runs a command.
-- With `verify-kkcode`: seed a project with threads, press `mod+p`, type part of a thread title and press Enter; open a thread, press `mod+p`, type part of a file name and check the composer draft; press `mod+shift+p` and check that the shortcuts match Settings. Screenshots in light and dark.
+- With `verify-kkcode`: seed a project with threads, press `mod+p`, type part of a thread title and press Enter; open a thread, press `mod+p`, type part of a file name and check the file viewer shows it; press `mod+shift+p` and check that the shortcuts match Settings. Screenshots in light and dark.

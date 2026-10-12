@@ -14,13 +14,13 @@ Feature: Command palette
     Then the thread "Fix login redirect" is open
     And the palette is closed
 
-  Scenario: Choosing a file mentions it in the open thread's message
+  Scenario: Choosing a file shows it in the file viewer
     When I open the thread "Add palette" from the sidebar
     And I press "ControlOrMeta+p"
     And I type "readme" into the palette
     Then the first palette result reads "README.md"
     When I press "Enter"
-    Then the message reads "@README.md "
+    Then the file viewer shows "README.md" with "# e2e"
 
   Scenario: The commands mode runs a command
     When I press "ControlOrMeta+Shift+p"
