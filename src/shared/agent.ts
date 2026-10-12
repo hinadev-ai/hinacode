@@ -11,6 +11,9 @@ export const ModelInfo = Schema.Struct({
 })
 export type ModelInfo = typeof ModelInfo.Type
 
+/** A model the agent no longer lists, such as a thread's saved model or a typed id. */
+export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({ id, label: id, provider })
+
 export const ApprovalKind = Schema.Literals(["tool", "command", "patch"])
 export type ApprovalKind = typeof ApprovalKind.Type
 

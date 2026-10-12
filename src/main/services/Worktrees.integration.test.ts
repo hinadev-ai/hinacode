@@ -268,3 +268,24 @@ describe("startup", () => {
     ),
   )
 })
+
+describe("starting a thread in a worktree", () => {
+  it.live("moves an unstarted thread into a worktree branched from its title, then renames the branch", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const created = yield* createThread(projectId, "thread-abcde")
+        const thread = yield* Threads.use((threads) => threads.attachWorktree(created.id, ""))
+        const worktree = yield* worktreeOf(thread.worktreeId)
+        expect(worktree).toMatchObject({ branch: "kk/thread-abcde", baseRef: "main" } satisfies Partial<Worktree>)
+
+        const renamed = yield* Worktrees.use((worktrees) => worktrees.renameBranch(worktree.id, "kk/fix-login"))
+        expect(renamed.branch).toBe("kk/fix-login")
+        expect(git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("kk/fix-login")
+        expect(git(root, "branch", "--list", "kk/thread-abcde")).toBe("")
+
+        const again = yield* Threads.use((threads) => threads.attachWorktree(created.id, "main")).pipe(Effect.flip)
+        expect(again._tag).toBe("ThreadStartedError")
+      }),
+    ),
+  )
+})

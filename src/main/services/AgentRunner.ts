@@ -10,29 +10,42 @@ import { McpServer } from "../mcp/index.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
-import type { NotFoundError, PersistenceError } from "./errors.ts"
+import type { NotFoundError, PersistenceError, ThreadStartedError, WorktreeTakenError } from "./errors.ts"
+import type { CommandError } from "./Git.ts"
 import { Messages } from "./Messages.ts"
+import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
 
+export interface SendOptions {
+  /** Only with the first message: moves the thread into a new worktree forked from `baseRef` first. */
+  readonly worktree?: { readonly baseRef: string } | undefined
+}
+
+type SendError = AgentError | PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
+
 export class AgentRunner extends Context.Service<
   AgentRunner,
   {
-    /** Starts a turn in the background. Fails if the thread already has one in flight. */
+    /**
+     * Starts a turn in the background. Fails if the thread already has one in flight.
+     * The first message of a thread a user created also names the thread and its branch in the background.
+     */
     readonly send: (
       threadId: string,
       prompt: string,
       attachments: ReadonlyArray<Attachment>,
-    ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+      options?: SendOptions,
+    ) => Effect.Effect<void, SendError>
     /** Adds input to the thread's running turn, or starts a turn when none is running. */
     readonly steer: (
       threadId: string,
       text: string,
       attachments: ReadonlyArray<Attachment>,
-    ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+    ) => Effect.Effect<void, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
@@ -88,6 +101,7 @@ const make = Effect.gen(function* () {
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpServer
+  const naming = yield* ThreadNaming
   const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
@@ -224,9 +238,14 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, messages: () => turnMessages }
   }
 
-  const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
+  const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions) =>
     Effect.gen(function* () {
-      const thread = yield* threads.get(threadId)
+      let thread = yield* threads.get(threadId)
+      const first = !(yield* threads.started(threadId))
+      if (options.worktree) {
+        thread = yield* threads.attachWorktree(threadId, options.worktree.baseRef)
+        yield* push.publish({ type: "thread.updated", thread })
+      }
       const provider = yield* providerFor(thread.provider)
       // Marking the thread running in the same critical section as resolving its cwd stops a
       // worktree removal from deleting the directory this turn is about to run in.
@@ -243,16 +262,24 @@ const make = Effect.gen(function* () {
       )
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
+      // Automations title their threads from their own template.
+      if (first && thread.createdBy === "user" && prompt.trim() !== "")
+        yield* Effect.forkDetach(naming.nameFromPrompt(thread, prompt))
     }).pipe(exclusive(threadId))
 
-  const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
+  const send = (
+    threadId: string,
+    prompt: string,
+    attachments: ReadonlyArray<Attachment>,
+    options: SendOptions = {},
+  ): Effect.Effect<void, SendError> =>
     Effect.gen(function* () {
       if (busyThreads.has(threadId)) {
         return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
       }
       // Claimed before the first await so two quick sends cannot both start a turn.
       busyThreads.add(threadId)
-      yield* startTurn(threadId, prompt, attachments).pipe(
+      yield* startTurn(threadId, prompt, attachments, options).pipe(
         Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
       )
     })

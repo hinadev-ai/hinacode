@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron"
 import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
+import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import {
   PushEvent,
@@ -21,7 +22,7 @@ import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
-import { Threads } from "./services/Threads.ts"
+import { randomName, Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 type AppServices =
@@ -50,6 +51,16 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
+/** The model a new thread starts with: the user's default for the agent, else the first one it lists. */
+const defaultModel = (provider: ProviderId) =>
+  Effect.gen(function* () {
+    const { defaultModel: preferredModels } = yield* Settings.use((settings) => settings.get)
+    const preferred = preferredModels[provider]
+    if (preferred !== null) return preferred
+    const models = yield* AgentRunner.use((runner) => runner.listModels(provider))
+    return models[0]?.id ?? ""
+  })
+
 const handlers: Handlers = {
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
@@ -57,8 +68,20 @@ const handlers: Handlers = {
   "projects.delete": ({ id }) => Projects.use((projects) => projects.remove(id)),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  "threads.create": (input) => Threads.use((threads) => threads.create(input)),
-  "threads.update": (input) => Threads.use((threads) => threads.update(input)),
+  "threads.create": ({ projectId }) =>
+    Effect.gen(function* () {
+      const model = yield* defaultModel("claude")
+      return yield* Threads.use((threads) =>
+        threads.create({ projectId, title: randomName(), provider: "claude", model }),
+      )
+    }),
+  // Another agent starts from its own default model, not the one picked for the last one.
+  "threads.update": (input) =>
+    Effect.gen(function* () {
+      if (input.provider === undefined) return yield* Threads.use((threads) => threads.update(input))
+      const model = input.model ?? (yield* defaultModel(input.provider))
+      return yield* Threads.use((threads) => threads.update({ ...input, model }))
+    }),
   "threads.delete": ({ id, removeWorktree }) => Threads.use((threads) => threads.remove(id, { removeWorktree })),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
@@ -85,8 +108,8 @@ const handlers: Handlers = {
     }),
 
   "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
-  "threads.send": ({ threadId, prompt, attachments = [] }) =>
-    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments)),
+  "threads.send": ({ threadId, prompt, attachments = [], worktree }) =>
+    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { worktree })),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),

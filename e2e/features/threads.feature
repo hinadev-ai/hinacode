@@ -4,10 +4,10 @@ Feature: Threads
   Background:
     Given a project "demo" for my repository
 
-  Scenario: Creating a thread opens it and lists it under its project
-    When I create a thread titled "Write tests" in "demo"
-    Then the thread "Write tests" is open
-    And the sidebar lists the thread "Write tests"
+  Scenario: Starting a thread opens it at once, ready for the first message
+    When I start a new thread in "demo"
+    Then a new thread is open with the composer focused
+    And the sidebar lists the open thread
 
   Scenario: Opening a thread from the sidebar shows its title
     Given the project "demo" has a thread "One"

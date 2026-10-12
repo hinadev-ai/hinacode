@@ -8,12 +8,17 @@ import {
   NotFoundError,
   type PersistenceError,
   persistence,
+  ThreadStartedError,
   type WorktreeBusyError,
   type WorktreeTakenError,
 } from "./errors.ts"
+import { slugifyBranch } from "./automations/template.ts"
 import type { CommandError } from "./Git.ts"
 import { Projects } from "./Projects.ts"
 import { Worktrees } from "./Worktrees.ts"
+
+/** A placeholder title for a thread nobody has described yet. It doubles as its branch name. */
+export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 
 export interface CreateThread {
   readonly projectId: string
@@ -29,6 +34,8 @@ export interface CreateThread {
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
+  /** Refused once the thread has a message. */
+  readonly provider?: ProviderId | undefined
   readonly model?: string | undefined
   readonly status?: ThreadStatus | undefined
   readonly sortIndex?: number | undefined
@@ -43,7 +50,22 @@ export class Threads extends Context.Service<
     readonly create: (
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
-    readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly update: (
+      input: UpdateThread,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadStartedError>
+    /** Whether the thread has any message yet. */
+    readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
+    /**
+     * Moves a thread that has not started into a new worktree forked from `baseRef`, or from the project's
+     * current branch when `baseRef` is empty. The branch is named after the thread's title.
+     */
+    readonly attachWorktree: (
+      id: string,
+      baseRef: string,
+    ) => Effect.Effect<
+      Thread,
+      PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
+    >
     /** Marks the thread settled and removes its worktree, deleting the branch only if it is merged. */
     readonly settle: (
       id: string,
@@ -79,6 +101,17 @@ const make = Effect.gen(function* () {
     execute: (projectId) =>
       sql`SELECT COALESCE(MAX(sort_index) + 1, 0) AS next FROM thread WHERE project_id = ${projectId}`,
   })
+
+  const findStarted = SqlSchema.findOne({
+    Request: Schema.String,
+    Result: Schema.Struct({ started: Schema.Number }),
+    execute: (id) => sql`SELECT EXISTS (SELECT 1 FROM message WHERE thread_id = ${id}) AS started`,
+  })
+  const started = (id: string) =>
+    findStarted(id).pipe(
+      Effect.map((row) => row.started === 1),
+      Effect.mapError(persistence("threads.started")),
+    )
 
   const get = (id: string) =>
     findById(id).pipe(
@@ -117,9 +150,18 @@ const make = Effect.gen(function* () {
   const update = (input: UpdateThread) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
+      if (input.provider !== undefined && input.provider !== current.provider && (yield* started(input.id))) {
+        return yield* new ThreadStartedError({ id: input.id })
+      }
+      return yield* write(current, input)
+    })
+
+  const write = (current: Thread, input: UpdateThread) =>
+    Effect.gen(function* () {
       const next: Thread = {
         ...current,
         title: input.title ?? current.title,
+        provider: input.provider ?? current.provider,
         model: input.model ?? current.model,
         status: input.status ?? current.status,
         sortIndex: input.sortIndex ?? current.sortIndex,
@@ -128,12 +170,28 @@ const make = Effect.gen(function* () {
       }
       yield* sql`
         UPDATE thread
-        SET title = ${next.title}, model = ${next.model}, status = ${next.status},
+        SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, status = ${next.status},
             sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
       return next
+    })
+
+  const attachWorktree = (id: string, baseRef: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (thread.worktreeId !== null || (yield* started(id))) return yield* new ThreadStartedError({ id })
+      const worktree = yield* worktrees.create({
+        projectId: thread.projectId,
+        branch: `kk/${slugifyBranch(thread.title) || randomName()}`,
+        baseRef: baseRef.trim() || (yield* worktrees.currentBranch(thread.projectId)),
+      })
+      const updatedAt = yield* nowIso
+      yield* sql`UPDATE thread SET worktree_id = ${worktree.id}, updated_at = ${updatedAt} WHERE id = ${id}`.pipe(
+        Effect.mapError(persistence("threads.attachWorktree")),
+      )
+      return { ...thread, worktreeId: worktree.id, updatedAt }
     })
 
   const removeOwnWorktree = (thread: Thread) =>
@@ -142,7 +200,7 @@ const make = Effect.gen(function* () {
   const settle = (id: string) =>
     Effect.gen(function* () {
       yield* removeOwnWorktree(yield* get(id))
-      return yield* update({ id, status: "settled" })
+      return yield* write(yield* get(id), { id, status: "settled" })
     })
 
   const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
@@ -156,6 +214,8 @@ const make = Effect.gen(function* () {
     get,
     create,
     update,
+    started,
+    attachWorktree,
     settle,
     remove,
     resetInterrupted: sql`

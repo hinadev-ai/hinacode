@@ -1,5 +1,3 @@
-import { useAtomValue } from "@effect/atom-react"
-import { AsyncResult } from "effect/reactivity"
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -12,19 +10,18 @@ import {
   useTransition,
 } from "react"
 import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
-import type { ModelInfo } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise, modelsAtom } from "../lib/rpc.ts"
+import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, useDrafts } from "../stores/drafts.ts"
-import { useThreads } from "../stores/threads.ts"
+import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import { PendingAttachment } from "./AttachmentView.tsx"
+import { AgentPicker, ModelPicker, WorkspacePicker } from "./ComposerControls.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -50,7 +47,12 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread }: { thread: Thread }) {
-  const { text, attachments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, worktree } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  // Agent and workspace stay open to change until the first message.
+  const unstarted = useMessages((state) => {
+    const history = state.byThread[thread.id]
+    return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
+  })
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
@@ -67,7 +69,12 @@ export function Composer({ thread }: { thread: Thread }) {
       try {
         await (busy
           ? callPromise("threads.steer", { threadId: thread.id, text: prompt, attachments: sent.attachments })
-          : callPromise("threads.send", { threadId: thread.id, prompt, attachments: sent.attachments }))
+          : callPromise("threads.send", {
+              threadId: thread.id,
+              prompt,
+              attachments: sent.attachments,
+              worktree: unstarted ? (sent.worktree ?? undefined) : undefined,
+            }))
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
@@ -170,6 +177,7 @@ export function Composer({ thread }: { thread: Thread }) {
         />
         <div className="flex items-center gap-2">
           <AttachButton onClick={pickFiles} disabled={isStaging} />
+          {unstarted && <AgentPicker thread={thread} onError={setError} />}
           <ModelPicker thread={thread} onError={setError} />
           <div className="ml-auto flex items-center gap-2">
             {busy && (
@@ -182,6 +190,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </div>
         </div>
       </div>
+      {unstarted && <WorkspacePicker thread={thread} worktree={worktree} />}
       {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
     </form>
   )
@@ -222,39 +231,5 @@ function SendButton({ steer, disabled }: { steer: boolean; disabled: boolean }) 
       />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
-  )
-}
-
-function ModelPicker({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
-  const result = useAtomValue(modelsAtom(thread.provider))
-  const listed = AsyncResult.getOrElse(result, (): ReadonlyArray<ModelInfo> => [])
-  // Keep the thread's model selectable even when the provider no longer lists it.
-  const models = listed.some((model) => model.id === thread.model)
-    ? listed
-    : [{ id: thread.model, label: thread.model, provider: thread.provider }, ...listed]
-  const items = models.map((model) => ({ value: model.id, label: model.label }))
-
-  const change = async (model: string | null) => {
-    if (model === null || model === thread.model) return
-    try {
-      useThreads.getState().upsert(await callPromise("threads.update", { id: thread.id, model }))
-    } catch (cause) {
-      onError(errorMessage(cause))
-    }
-  }
-
-  return (
-    <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className="border-0 text-xs">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   )
 }

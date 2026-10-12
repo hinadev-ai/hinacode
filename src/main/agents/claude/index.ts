@@ -48,7 +48,7 @@ const agentError = (message: string) => (cause: unknown) =>
  * GUI-launched Electron apps (notably on macOS) get a minimal PATH, so fall back to a login shell
  * to find the user's `claude` install.
  */
-function resolveClaudeExecutable(): string | undefined {
+export function resolveClaudeExecutable(): string | undefined {
   const attempts: Array<[string, Array<string>]> = [
     ["which", ["claude"]],
     [process.env.SHELL ?? "/bin/sh", ["-lc", "command -v claude"]],

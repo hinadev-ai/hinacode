@@ -183,6 +183,8 @@ export const Settings = Schema.Struct({
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   }),
   appearance: Appearance,
+  /** Claude model that names a thread and its branch from the first message. */
+  textGenerationModel: Schema.String,
 })
 export type Settings = typeof Settings.Type
 
@@ -192,6 +194,7 @@ export const defaultSettings: Settings = {
   defaultModel: { claude: null, codex: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "default", fontSize: 16, uiFont: null, monoFont: null },
+  textGenerationModel: "claude-sonnet-5-5",
 }
 
 export const PullRequestLink = Schema.Struct({

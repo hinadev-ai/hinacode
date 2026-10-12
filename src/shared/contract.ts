@@ -57,21 +57,14 @@ export const RpcMethods = {
   "projects.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "threads.list": rpc(Schema.Void, Schema.Array(Thread)),
-  "threads.create": rpc(
-    Schema.Struct({
-      projectId: Schema.String,
-      title: Schema.String,
-      provider: ProviderId,
-      model: Schema.String,
-      /** Run the thread in a new worktree on `branch`, forked from `baseRef`. */
-      worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
-    }),
-    Thread,
-  ),
+  /** An empty thread with a placeholder title and the default agent, configured in the composer until its first message. */
+  "threads.create": rpc(Schema.Struct({ projectId: Schema.String }), Thread),
   "threads.update": rpc(
     Schema.Struct({
       id: Schema.String,
       title: Schema.optional(Schema.String),
+      /** Only before the first message. Switches to the agent's default model unless `model` is given. */
+      provider: Schema.optional(ProviderId),
       model: Schema.optional(Schema.String),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
@@ -111,6 +104,7 @@ export const RpcMethods = {
       defaultModel: Schema.optional(Settings.fields.defaultModel),
       automations: Schema.optional(Settings.fields.automations),
       appearance: Schema.optional(Settings.fields.appearance),
+      textGenerationModel: Schema.optional(Settings.fields.textGenerationModel),
     }),
     Settings,
   ),
@@ -128,12 +122,17 @@ export const RpcMethods = {
     Schema.Struct({ threadId: Schema.String }),
     Schema.Struct({ messages: Schema.Array(Message), approvals: Schema.Array(ApprovalRequest), seq: Schema.Number }),
   ),
-  /** Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`. */
+  /**
+   * Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`.
+   * `worktree` is only accepted with the first message: the thread moves into a new worktree forked from
+   * `baseRef`, or from the project's current branch when it is empty.
+   */
   "threads.send": rpc(
     Schema.Struct({
       threadId: Schema.String,
       prompt: Schema.String,
       attachments: Schema.optional(Schema.Array(Attachment)),
+      worktree: Schema.optional(Schema.Struct({ baseRef: Schema.String })),
     }),
     Schema.Void,
   ),
