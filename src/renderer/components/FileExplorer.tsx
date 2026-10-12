@@ -350,7 +350,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer key={tree.opened} root={root} path={tree.opened} onClose={closeFile} />
+          <FileViewer root={root} path={tree.opened} onClose={closeFile} />
         </>
       )}
       <p aria-live="polite" className="sr-only">

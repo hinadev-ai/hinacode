@@ -1,7 +1,9 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-react"
 import { PatchDiff } from "@pierre/diffs/react"
+import { cn } from "cn"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useId, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useId, useRef, useState } from "react"
 import { RiRefreshLine } from "react-icons/ri"
 import type { ChangedFileStatus, ChangesScope, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
@@ -34,6 +36,8 @@ export function ThreadDiff({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const hasWorktree = worktree !== undefined && worktree.status !== "removed"
   const [scope, setScope] = useState<ChangesScope>(hasWorktree ? "worktree" : "turn")
+  // Switching scope keeps the last list on screen until the other one loads.
+  const shownScope = useDeferredValue(scope)
 
   return (
     <div className="flex flex-col gap-3 p-4">
@@ -44,28 +48,31 @@ export function ThreadDiff({ thread }: { thread: Thread }) {
         </TabsList>
       </Tabs>
       <ChangesList
-        key={scope}
         thread={thread}
-        scope={scope}
+        scope={shownScope}
+        stale={shownScope !== scope}
         baseLabel={
-          scope === "worktree" && worktree ? m.diff_base_worktree({ baseRef: worktree.baseRef }) : m.diff_base_turn()
+          shownScope === "worktree" && worktree
+            ? m.diff_base_worktree({ baseRef: worktree.baseRef })
+            : m.diff_base_turn()
         }
       />
     </div>
   )
 }
 
-function ChangesList({ thread, scope, baseLabel }: { thread: Thread; scope: ChangesScope; baseLabel: string }) {
+interface ChangesListProps {
+  readonly thread: Thread
+  readonly scope: ChangesScope
+  /** The other scope is still loading behind this one. */
+  readonly stale: boolean
+  readonly baseLabel: string
+}
+
+function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
   const changesAtom = threadChangesAtom(`${thread.id}\n${scope}`)
   const changes = useAtomValue(changesAtom)
   const refresh = useAtomRefresh(changesAtom)
-  const openPath = useUi((state) => state.changesPath)
-  const setOpenPath = useUi((state) => state.setChangesPath)
-
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(openPath !== null)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [openPath])
 
   // A turn starting or ending is when the diff moves; ask again then instead of polling.
   const lastStatus = useRef(thread.status)
@@ -76,7 +83,10 @@ function ChangesList({ thread, scope, baseLabel }: { thread: Thread; scope: Chan
   }, [thread.status, refresh])
 
   return (
-    <section aria-label={baseLabel} className="flex flex-col gap-2">
+    <section
+      aria-label={baseLabel}
+      className={cn("flex flex-col gap-2 transition-opacity", stale && "opacity-60 delay-150")}
+    >
       <div className="flex min-h-6 items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">{baseLabel}</p>
         <Button variant="ghost" size="icon-xs" aria-label={m.diff_refresh()} title={m.diff_refresh()} onClick={refresh}>
@@ -86,39 +96,50 @@ function ChangesList({ thread, scope, baseLabel }: { thread: Thread; scope: Chan
           />
         </Button>
       </div>
-      {AsyncResult.builder(changes)
-        .onInitial(() => <p className="animate-reveal text-xs text-muted-foreground">{m.diff_loading()}</p>)
-        .onSuccess((result) => {
-          if (result === null) {
-            return (
-              <p className="text-xs text-muted-foreground">
-                {scope === "worktree" ? m.diff_no_worktree() : m.diff_no_turn()}
-              </p>
-            )
-          }
-          if (result.files.length === 0) return <p className="text-xs text-muted-foreground">{m.diff_empty()}</p>
-          return (
-            <ul className="flex flex-col gap-0.5">
-              {result.files.map((file) => (
-                <ChangedFileRow
-                  key={file.path}
-                  path={file.path}
-                  status={file.status}
-                  filePatch={patchForFile(result.patch, file.path)}
-                  open={openPath === file.path}
-                  onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
-                />
-              ))}
-            </ul>
-          )
-        })
-        .onError((error) => (
-          <p role="alert" className="text-xs text-destructive">
-            {m.diff_failed({ message: errorMessage(error) })}
-          </p>
-        ))
-        .orElse(() => null)}
+      <Suspense fallback={<p className="animate-reveal text-xs text-muted-foreground">{m.diff_loading()}</p>}>
+        <ChangedFiles key={scope} threadId={thread.id} scope={scope} />
+      </Suspense>
     </section>
+  )
+}
+
+function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesScope }) {
+  const changes = useAtomSuspense(threadChangesAtom(`${threadId}\n${scope}`), { includeFailure: true })
+  const openPath = useUi((state) => state.changesPath)
+  const setOpenPath = useUi((state) => state.setChangesPath)
+
+  useEffect(() => {
+    useUi.getState().setSidePanelWide(openPath !== null)
+    return () => useUi.getState().setSidePanelWide(false)
+  }, [openPath])
+
+  if (AsyncResult.isFailure(changes)) {
+    return (
+      <p role="alert" className="text-xs text-destructive">
+        {m.diff_failed({ message: errorMessage(Cause.squash(changes.cause)) })}
+      </p>
+    )
+  }
+  const result = changes.value
+  if (result === null) {
+    return (
+      <p className="text-xs text-muted-foreground">{scope === "worktree" ? m.diff_no_worktree() : m.diff_no_turn()}</p>
+    )
+  }
+  if (result.files.length === 0) return <p className="text-xs text-muted-foreground">{m.diff_empty()}</p>
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {result.files.map((file) => (
+        <ChangedFileRow
+          key={file.path}
+          path={file.path}
+          status={file.status}
+          filePatch={patchForFile(result.patch, file.path)}
+          open={openPath === file.path}
+          onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
+        />
+      ))}
+    </ul>
   )
 }
 
