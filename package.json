@@ -42,6 +42,7 @@
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "effect": "4.0.3",
+    "fuzzysort": "4.0.2",
     "mermaid": "12.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
