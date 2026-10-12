@@ -307,9 +307,7 @@ const make = Effect.gen(function* () {
       if (users.some((thread) => isThreadBusy(thread.status))) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "turn" })
       }
-      const othersOpen = users.some(
-        (thread) => thread.id !== owner && thread.status !== "settled" && thread.status !== "archived",
-      )
+      const othersOpen = users.some((thread) => thread.id !== owner && thread.status !== "archived")
       if (owner !== undefined && othersOpen) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "shared" })
       }

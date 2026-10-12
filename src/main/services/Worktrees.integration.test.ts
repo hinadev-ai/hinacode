@@ -15,6 +15,7 @@ import * as GitHub from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import * as ProjectsLayer from "./Projects.ts"
 import { Threads } from "./Threads.ts"
+import { Settings } from "./Settings.ts"
 import * as SettingsLayer from "./Settings.ts"
 import * as ThreadsLayer from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
@@ -22,7 +23,7 @@ import * as WorktreesLayer from "./Worktrees.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
 
-type Services = Threads | Worktrees | Projects | SqlClient.SqlClient | Pushes
+type Services = Threads | Worktrees | Projects | Settings | SqlClient.SqlClient | Pushes
 
 /** What the service would push to the renderer; tests wait on these instead of polling the database. */
 class Pushes extends Context.Service<Pushes, PubSub.PubSub<PushEvent>>()("test/Pushes") {}
@@ -35,7 +36,8 @@ const makeLayer = (
   ThreadsLayer.layer.pipe(
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
-    Layer.provide(Layer.mergeAll(Git.layer, SettingsLayer.layer, GitHub.layer, Layer.succeed(Events, events))),
+    Layer.provideMerge(SettingsLayer.layer),
+    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provideMerge(Layer.succeed(Pushes, pushes)),
     Layer.provide(NodeServices.layer),
@@ -128,6 +130,11 @@ const createThread = (projectId: string, title: string, branch?: string) =>
       model: "claude-sonnet-5-5",
       worktree: branch === undefined ? undefined : { branch, baseRef: "main" },
     }),
+  )
+
+const archiveRemovingWorktree = (threadId: string) =>
+  Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: true } })).pipe(
+    Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
   )
 
 /** Rows written before ownership was enforced can point two threads at one checkout. */
@@ -250,7 +257,7 @@ describe("worktree ownership", () => {
     ),
   )
 
-  it.live("settling does not remove a checkout another open thread still uses", () =>
+  it.live("archiving does not remove a checkout another open thread still uses", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
         const first = yield* createThread(projectId, "first", "kk/legacy")
@@ -260,7 +267,7 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(first.worktreeId)
         writeFileSync(join(worktree.path, "sentinel"), "work in progress")
 
-        const error = yield* Effect.flip(Threads.use((threads) => threads.settle(first.id)))
+        const error = yield* Effect.flip(archiveRemovingWorktree(first.id))
         expect(error._tag).toBe("WorktreeBusyError")
         expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
       }),
@@ -268,7 +275,7 @@ describe("worktree ownership", () => {
   )
 
   for (const status of ["running", "awaiting_approval"] as const) {
-    it.live(`settling refuses while the thread is ${status}`, () =>
+    it.live(`archiving with worktree removal refuses while the thread is ${status}`, () =>
       withRepo(({ projectId }) =>
         Effect.gen(function* () {
           const thread = yield* createThread(projectId, "busy", "kk/busy")
@@ -277,7 +284,7 @@ describe("worktree ownership", () => {
           writeFileSync(join(worktree.path, "sentinel"), "work in progress")
           yield* Threads.use((threads) => threads.update({ id: thread.id, status }))
 
-          const error = yield* Effect.flip(Threads.use((threads) => threads.settle(thread.id)))
+          const error = yield* Effect.flip(archiveRemovingWorktree(thread.id))
           expect(error._tag).toBe("WorktreeBusyError")
           expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
           expect((yield* Threads.use((threads) => threads.get(thread.id))).status).toBe(status)
@@ -302,13 +309,30 @@ describe("worktree ownership", () => {
     ),
   )
 
-  it.live("settling an idle thread removes its own checkout", () =>
+  it.live("archiving keeps the checkout unless the settings remove it, and unarchiving brings the thread back", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "paused", "kk/paused")
+        yield* waitUntilSetUp(thread.worktreeId)
+        const archived = yield* Threads.use((threads) => threads.archive(thread.id))
+        expect(archived.status).toBe("archived")
+        const worktree = yield* worktreeOf(thread.worktreeId)
+        expect(worktree.status).toBe("ready")
+        expect(existsSync(worktree.path)).toBe(true)
+
+        const restored = yield* Threads.use((threads) => threads.unarchive(thread.id))
+        expect(restored.status).toBe("idle")
+      }),
+    ),
+  )
+
+  it.live("archiving an idle thread with worktree removal on removes its own checkout", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
         const thread = yield* createThread(projectId, "done", "kk/done")
         yield* waitUntilSetUp(thread.worktreeId)
-        const settled = yield* Threads.use((threads) => threads.settle(thread.id))
-        expect(settled.status).toBe("settled")
+        const archived = yield* archiveRemovingWorktree(thread.id)
+        expect(archived.status).toBe("archived")
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.status).toBe("removed")
         yield* waitUntilDeleted(worktree.path)
@@ -316,12 +340,12 @@ describe("worktree ownership", () => {
     ),
   )
 
-  it.live("a settled branch can start a new thread without reviving the old one's worktree", () =>
+  it.live("an archived branch can start a new thread without reviving the old one's worktree", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
         const old = yield* createThread(projectId, "old", "kk/again")
         yield* waitUntilSetUp(old.worktreeId)
-        yield* Threads.use((threads) => threads.settle(old.id))
+        yield* archiveRemovingWorktree(old.id)
 
         const fresh = yield* createThread(projectId, "fresh", "kk/again")
         expect(fresh.worktreeId).not.toBe(old.worktreeId)
@@ -400,7 +424,7 @@ describe("thread changes", () => {
         expect(changes?.patch).toContain("diff --git a/new.txt b/new.txt")
         expect(changes?.patch).toContain("+fresh")
 
-        yield* Threads.use((threads) => threads.settle(thread.id))
+        yield* archiveRemovingWorktree(thread.id)
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "worktree"))).toBeNull()
       }),
     ),

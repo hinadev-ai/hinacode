@@ -93,11 +93,15 @@ export class Threads extends Context.Service<
       Thread,
       PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
     >
-    /** Marks the thread settled and removes its worktree, deleting the branch only if it is merged. */
-    readonly settle: (
+    /**
+     * Marks the thread archived. With `Settings.archive.removeWorktree` on, it first removes the thread's
+     * worktree, deleting the branch only if it is merged.
+     */
+    readonly archive: (
       id: string,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
-    /** `removeWorktree` first removes the thread's worktree the way settling does. */
+    readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    /** `removeWorktree` first removes the thread's worktree the way archiving does. */
     readonly remove: (
       id: string,
       options?: { readonly removeWorktree?: boolean | undefined },
@@ -297,11 +301,13 @@ const make = Effect.gen(function* () {
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
-  const settle = (id: string) =>
+  const archive = (id: string) =>
     Effect.gen(function* () {
-      yield* removeOwnWorktree(yield* get(id))
-      return yield* write(yield* get(id), { id, status: "settled" })
+      if ((yield* settings.get).archive.removeWorktree) yield* removeOwnWorktree(yield* get(id))
+      return yield* write(yield* get(id), { id, status: "archived" })
     })
+
+  const unarchive = (id: string) => Effect.flatMap(get(id), (thread) => write(thread, { id, status: "idle" }))
 
   const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
     Effect.gen(function* () {
@@ -319,7 +325,8 @@ const make = Effect.gen(function* () {
     listFiles,
     changes,
     snapshotTurnBase,
-    settle,
+    archive,
+    unarchive,
     remove,
     resetInterrupted: sql`
       UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')

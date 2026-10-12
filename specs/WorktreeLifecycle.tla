@@ -24,11 +24,11 @@ VARIABLES
   createPc, awaited, newBranch, setupRunning,
   threadStatus, busyThreads, turnPc, cwd,
   sentWhileLive, \* history: was the thread's row live when send was called
-  settlePc
+  archivePc
 
 wtVars == <<worktreeStatus, dirs, branches, lock, removals, deletions>>
 createVars == <<createPc, awaited, newBranch, setupRunning>>
-turnVars == <<threadStatus, busyThreads, turnPc, cwd, sentWhileLive, settlePc>>
+turnVars == <<threadStatus, busyThreads, turnPc, cwd, sentWhileLive, archivePc>>
 vars == <<wtVars, createVars, turnVars>>
 
 DeletionPcs == {"unused", "list", "remove", "prune", "branchCheck", "branchD", "restore", "cleanup", "done"}
@@ -38,7 +38,7 @@ TypeOK ==
   /\ dirs \subseteq Rows /\ branches \subseteq {Branch}
   /\ lock \in Threads \cup {"free"} /\ removals \in Fibers \cup {0}
   /\ deletions \in [Fibers -> [row : Rows \cup {"none"}, pc : DeletionPcs, old : Live \cup {"none"}]]
-  /\ threadStatus \in [Threads -> {"none", "idle", "running", "settled"}]
+  /\ threadStatus \in [Threads -> {"none", "idle", "running", "archived"}]
   /\ busyThreads \subseteq Threads
   /\ turnPc \in [Threads -> {"none", "start", "running", "completed"}]
   /\ cwd \in [Threads -> Rows \cup {Root, "none"}]
@@ -59,7 +59,7 @@ Init ==
   /\ turnPc = [t \in Threads |-> "none"]
   /\ cwd = [t \in Threads |-> "none"]
   /\ sentWhileLive = [t \in Threads |-> FALSE]
-  /\ settlePc = [t \in Threads |-> "none"]
+  /\ archivePc = [t \in Threads |-> "none"]
 
 SetPc(t, pc) == createPc' = [createPc EXCEPT ![t] = pc]
 FailCreate(t) == lock' = "free" /\ SetPc(t, "idle")
@@ -106,7 +106,7 @@ CreateInsert(t) ==
 ThreadInsert(t) ==
   /\ createPc[t] = "thread"
   /\ threadStatus' = [threadStatus EXCEPT ![t] = "idle"] /\ SetPc(t, "done")
-  /\ UNCHANGED <<wtVars, awaited, newBranch, setupRunning, busyThreads, turnPc, cwd, sentWhileLive, settlePc>>
+  /\ UNCHANGED <<wtVars, awaited, newBranch, setupRunning, busyThreads, turnPc, cwd, sentWhileLive, archivePc>>
 
 \* Worktrees.ts:216-231 setup ends ready or failed
 SetupDone(r) ==
@@ -137,11 +137,12 @@ RemoveWorktree(r) ==
   /\ CanRemove(r) /\ worktreeStatus[r] /= "removed" /\ StartRemoval(r)
   /\ UNCHANGED <<dirs, branches, lock, createVars, turnVars>>
 
-\* Threads.ts:139-146 settle removes the worktree with the thread as owner, then updates the thread
-Settle(t) ==
-  /\ threadStatus[t] \in {"idle", "running"} /\ settlePc[t] = "none" /\ CanRemove(t) /\ Remove(t)
-  /\ settlePc' = [settlePc EXCEPT ![t] = "done"]
-  /\ threadStatus' = [threadStatus EXCEPT ![t] = "settled"]
+\* Threads.ts archive with Settings.archive.removeWorktree on removes the worktree with the thread as owner,
+\* then updates the thread. With the setting off it only updates the thread, which races with nothing.
+Archive(t) ==
+  /\ threadStatus[t] \in {"idle", "running"} /\ archivePc[t] = "none" /\ CanRemove(t) /\ Remove(t)
+  /\ archivePc' = [archivePc EXCEPT ![t] = "done"]
+  /\ threadStatus' = [threadStatus EXCEPT ![t] = "archived"]
   /\ UNCHANGED <<dirs, branches, lock, createVars, busyThreads, turnPc, cwd, sentWhileLive>>
 
 SetDel(f, pc) == deletions' = [deletions EXCEPT ![f].pc = pc]
@@ -199,7 +200,7 @@ Send(t) ==
   /\ busyThreads' = busyThreads \cup {t}
   /\ sentWhileLive' = [sentWhileLive EXCEPT ![t] = worktreeStatus[t] \in Live]
   /\ turnPc' = [turnPc EXCEPT ![t] = "start"]
-  /\ UNCHANGED <<wtVars, createVars, threadStatus, cwd, settlePc>>
+  /\ UNCHANGED <<wtVars, createVars, threadStatus, cwd, archivePc>>
 
 \* AgentRunner.ts:233-243 startTurn under the worktree lock: resolve cwd (workspace.ts:23-26 falls back to
 \* the project root for a removed row) and mark the thread running.
@@ -207,26 +208,26 @@ StartTurn(t) ==
   /\ turnPc[t] = "start" /\ lock = "free"
   /\ cwd' = [cwd EXCEPT ![t] = IF worktreeStatus[t] = "removed" THEN Root ELSE t]
   /\ threadStatus' = [threadStatus EXCEPT ![t] = "running"] /\ turnPc' = [turnPc EXCEPT ![t] = "running"]
-  /\ UNCHANGED <<wtVars, createVars, busyThreads, sentWhileLive, settlePc>>
+  /\ UNCHANGED <<wtVars, createVars, busyThreads, sentWhileLive, archivePc>>
 
 \* AgentRunner.ts:44-56,164-168 handle(turn_completed | turn_failed) sets the thread idle
 TurnCompleted(t) ==
   /\ turnPc[t] = "running"
   /\ threadStatus' = [threadStatus EXCEPT ![t] = "idle"] /\ turnPc' = [turnPc EXCEPT ![t] = "completed"]
-  /\ UNCHANGED <<wtVars, createVars, busyThreads, cwd, sentWhileLive, settlePc>>
+  /\ UNCHANGED <<wtVars, createVars, busyThreads, cwd, sentWhileLive, archivePc>>
 
 \* AgentRunner.ts:188-203 finish releases busyThreads, outside the worktree lock
 Finish(t) ==
   /\ turnPc[t] = "completed"
   /\ busyThreads' = busyThreads \ {t} /\ turnPc' = [turnPc EXCEPT ![t] = "none"]
   /\ cwd' = [cwd EXCEPT ![t] = "none"]
-  /\ UNCHANGED <<wtVars, createVars, threadStatus, sentWhileLive, settlePc>>
+  /\ UNCHANGED <<wtVars, createVars, threadStatus, sentWhileLive, archivePc>>
 
 Next ==
   \/ \E t \in Threads :
        \/ CreateBegin(t) \/ CreateFindLive(t) \/ CreateBranchExists(t) \/ CreateGitAdd(t)
        \/ CreateInsert(t) \/ ThreadInsert(t) \/ SetupDone(t) \/ RemoveWorktree(t)
-       \/ Settle(t) \/ Send(t) \/ StartTurn(t) \/ TurnCompleted(t) \/ Finish(t)
+       \/ Archive(t) \/ Send(t) \/ StartTurn(t) \/ TurnCompleted(t) \/ Finish(t)
   \/ \E f \in Fibers :
        \/ DelList(f) \/ DelRemove(f) \/ DelPrune(f) \/ DelBranchCheck(f)
        \/ DelBranchD(f) \/ DelRestore(f) \/ DelCleanup(f)

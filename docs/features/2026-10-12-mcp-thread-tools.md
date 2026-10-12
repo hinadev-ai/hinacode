@@ -38,7 +38,7 @@ Both tools run on the built-in MCP server, so the calling thread comes from the 
 `create_thread` is `Threads.create` plus `AgentRunner.send`, the same two calls an automation makes:
 
 - Defaults come from the calling thread: its project, provider and model. `worktree` is passed through unchanged.
-- The thread is created with `created_by = thread:<callerId>`. The child is an ordinary thread of the project. It has its own worktree or none, its own turns and its own lifecycle. Settling or deleting the parent does nothing to the child. `created_by` is provenance, not ownership: it answers "where did this thread come from" in the same way `automation:<id>` does.
+- The thread is created with `created_by = thread:<callerId>`. The child is an ordinary thread of the project. It has its own worktree or none, its own turns and its own lifecycle. Archiving or deleting the parent does nothing to the child. `created_by` is provenance, not ownership: it answers "where did this thread come from" in the same way `automation:<id>` does.
 - The runner publishes `thread.updated` before starting the turn, so the sidebar shows the thread in the moment it is created.
 
 Services: `AgentRunner` now depends on `Secrets`. The MCP server now depends on `AgentRunner`, `Threads` and `Events`. The runner used to depend on the server for a thread's credential, which would make a cycle, so the credential store moves into its own service, `McpCredentials` (`src/main/mcp/credentials.ts`). It issues credentials, authenticates requests and learns the server URL once the listener is up. The server's HTTP layer and the runner both depend on it and not on each other.
@@ -49,7 +49,7 @@ Codex times MCP tool calls out after 60 seconds by default. The kkcode server is
 
 - Reading another thread's transcript or sending it a message. `create_thread` starts a thread with a brief and returns its id. Whether the creator needs to follow up is a separate question, see the pull request.
 - Per-thread or per-project secrets. Secrets stay global, keyed by name, exactly as Settings stores them.
-- Cascading lifecycle for child threads. A parent that settles leaves its children alone.
+- Cascading lifecycle for child threads. A parent that is archived leaves its children alone.
 - Limits on how many threads an agent may start. The user sees every one of them in the sidebar.
 
 ## Verification
