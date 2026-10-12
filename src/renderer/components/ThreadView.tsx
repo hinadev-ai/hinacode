@@ -1,7 +1,10 @@
+import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useMemo, useRef } from "react"
 import { isThreadBusy, type Thread, type ThreadStatus } from "../../shared/domain.ts"
+import { findPattern } from "../lib/find.ts"
+import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
@@ -10,12 +13,16 @@ import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
+import { FindBar } from "./FindBar.tsx"
+import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { Button } from "./ui/button.tsx"
+
+const FIND_DEBOUNCE_MS = 100
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex }
 
@@ -66,6 +73,13 @@ function Transcript({ thread }: { thread: Thread }) {
   const load = useMessages((state) => state.load)
   const unload = useMessages((state) => state.unload)
   const label = providerLabel[thread.provider]()
+  const findOpen = useUi((state) => state.findThreadId === thread.id)
+  const findQuery = useDebouncedValue(
+    useUi((state) => state.findQuery),
+    FIND_DEBOUNCE_MS,
+  )
+  const pattern = useMemo(() => (findOpen ? findPattern(findQuery) : null), [findOpen, findQuery])
+  const listRef = useRef<LegendListRef>(null)
 
   useEffect(() => {
     void load(thread.id)
@@ -97,11 +111,12 @@ function Transcript({ thread }: { thread: Thread }) {
     )
   }
   return (
-    <>
+    <FindPatternContext value={pattern}>
+      {findOpen && <FindBar messages={history.messages} query={findQuery} listRef={listRef} />}
       {history.messages.length === 0 ? (
         <EmptyThread providerLabel={label} />
       ) : (
-        <MessageList messages={history.messages} providerLabel={label} />
+        <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />
       )}
       <div className="px-4">
         {history.approvals.map((request) => (
@@ -114,6 +129,6 @@ function Transcript({ thread }: { thread: Thread }) {
           <SecretRequestCard key={request.id} request={request} providerLabel={label} />
         ))}
       </div>
-    </>
+    </FindPatternContext>
   )
 }

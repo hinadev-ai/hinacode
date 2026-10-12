@@ -15,8 +15,10 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
+import { describeToolCall } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
+import { Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
@@ -76,33 +78,6 @@ const toolIcons: Record<string, IconType> = {
   WebSearch: RiGlobalLine,
 }
 
-const SUMMARY_KEYS = ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]
-
-/** The one input field that best says what a tool call does, for the collapsed row. */
-function summarizeInput(input: unknown): string {
-  if (typeof input !== "object" || input === null) return ""
-  for (const key of SUMMARY_KEYS) {
-    const value: unknown = Reflect.get(input, key)
-    if (typeof value === "string") return value
-  }
-  return JSON.stringify(input)
-}
-
-/**
- * Codex MCP calls carry the whole `mcpToolCall` item as input and only the bare tool as name, so
- * name them `server/tool` and summarize their arguments rather than the item.
- */
-function describeToolCall(part: Extract<MessagePart, { type: "tool_call" }>): { name: string; summary: string } {
-  const { input } = part
-  if (typeof input === "object" && input !== null && Reflect.get(input, "type") === "mcpToolCall") {
-    return {
-      name: `${String(Reflect.get(input, "server"))}/${String(Reflect.get(input, "tool"))}`,
-      summary: summarizeInput(Reflect.get(input, "arguments")),
-    }
-  }
-  return { name: part.name, summary: summarizeInput(input) }
-}
-
 /** Tool results are a string or a list of content blocks; only the text blocks are worth showing. */
 function formatOutput(output: unknown): string {
   if (typeof output === "string") return output
@@ -138,9 +113,11 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">{name}</span>
+        <span className="shrink-0 font-medium text-foreground">
+          <Highlighted text={name} />
+        </span>
         <span className="min-w-0 flex-1 truncate font-mono" title={summary}>
-          {summary}
+          <Highlighted text={summary} />
         </span>
         <span className="shrink-0" title={statusLabel[part.status]()}>
           {statusIcon[part.status]}
@@ -175,7 +152,7 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
       <RiFileEditLine aria-hidden className="size-3.5 shrink-0 text-emerald-500" />
       <span className="shrink-0">{m.file_change_label()}</span>
       <span className="min-w-0 truncate font-mono text-foreground" title={path}>
-        {path}
+        <Highlighted text={path} />
       </span>
     </>
   )
