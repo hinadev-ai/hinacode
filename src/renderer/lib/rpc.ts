@@ -72,6 +72,25 @@ export const accountAtom = Atom.family((key: string) => {
 /** `accountId` null is the CLI's own login. */
 export const accountKey = (provider: ProviderId, accountId: string | null) => JSON.stringify([provider, accountId])
 
+/** Accounts added in kkcode, of every agent. */
+export const accountsAtom = Atom.make(call("accounts.list", undefined)).pipe(Atom.keepAlive)
+
+export const createAccountAtom = Atom.fn((input: RpcRequest<"accounts.create">) =>
+  call("accounts.create", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+)
+
+export const renameAccountAtom = Atom.fn((input: RpcRequest<"accounts.rename">) =>
+  call("accounts.rename", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+)
+
+/** Removing the default account also clears it from the settings. */
+export const deleteAccountAtom = Atom.fn((id: string) =>
+  call("accounts.delete", { id }).pipe(
+    Effect.tap(() => Atom.refresh(accountsAtom)),
+    Effect.tap(() => Atom.refresh(settingsAtom)),
+  ),
+)
+
 /**
  * Identifies a thread together with its agent and workspace, since switching either changes what the
  * composer can complete. Key for `commandsAtom` and `filesAtom`.
