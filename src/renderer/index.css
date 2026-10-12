@@ -67,6 +67,8 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
   --color-working: var(--working);
+  --color-vcs-modified: var(--vcs-modified);
+  --color-vcs-added: var(--vcs-added);
   --color-syntax-token: var(--syntax-token);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
@@ -115,6 +117,9 @@
   --primary-foreground: oklch(0.985 0 0);
   /* Brand violet, reserved for "an agent is working". */
   --working: oklch(0.541 0.247 293.009);
+  /* Changed files: amber modified, emerald added. Conflicts and deletions use --destructive. */
+  --vcs-modified: oklch(0.555 0.163 48.998);
+  --vcs-added: oklch(0.508 0.118 165.612);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -152,6 +157,8 @@
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --working: oklch(0.702 0.183 293.541);
+  --vcs-modified: oklch(0.828 0.189 84.429);
+  --vcs-added: oklch(0.765 0.177 163.223);
   --syntax-token: #a78bfa;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);

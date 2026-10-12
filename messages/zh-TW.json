@@ -126,6 +126,7 @@
   "file_status_added": "新增",
   "file_status_modified": "修改",
   "file_status_deleted": "刪除",
+  "file_status_conflict": "衝突",
   "settle_dialog_title": "要將這個討論串標記為完成嗎？",
   "settle_dialog_root": "討論串會標記為已完成，磁碟上的檔案不會變動。",
   "settle_dialog_worktree": "討論串會標記為已完成，並刪除 worktree 資料夾 {path}，包含尚未提交的變更。",
@@ -142,6 +143,12 @@
   "command_sidebar_toggle": "顯示或隱藏側邊欄",
   "command_side_panel_toggle": "顯示或隱藏側邊面板",
   "command_composer_focus": "聚焦訊息輸入框",
+  "command_view_details": "顯示詳細資訊",
+  "command_view_files": "顯示檔案",
+  "command_view_changes": "顯示變更",
+  "command_view_git": "顯示 git 歷史",
+  "command_view_pull_requests": "顯示 pull request",
+  "command_view_agents": "顯示代理",
   "command_turn_interrupt": "中斷執行中的回合",
   "command_thread_next": "下一個討論串",
   "command_thread_previous": "上一個討論串",
@@ -228,6 +235,7 @@
   "error_command": "指令執行失敗：{detail}",
   "error_ports": "無法檢查或停止程序：{detail}",
   "error_terminal": "終端機無法執行：{detail}",
+  "error_fs_access": "無法讀取這個資料夾，它可能已被移動或刪除。",
   "error_unexpected": "發生非預期的錯誤：{detail}",
   "panel_pr_badge": "PR {state}",
   "pr_links_title": "Pull request",
@@ -236,6 +244,27 @@
   "pr_links_failed": "無法載入 pull request：{message}",
   "panel_tab_details": "詳細資訊",
   "panel_tab_agents": "代理",
+  "panel_tab_files": "檔案",
+  "panel_tab_git": "Git",
+  "panel_views": "討論串檢視",
+  "git_view_empty": "這個分支的 git 歷史會顯示在這裡。",
+  "viewer_loading": "正在載入檔案…",
+  "viewer_failed": "無法開啟檔案：{message}",
+  "viewer_binary": "這是二進位檔案，不會顯示。",
+  "viewer_truncated": "只顯示這個檔案的前 1 MB。",
+  "viewer_close": "關閉檔案",
+  "viewer_resize": "調整檔案檢視器大小",
+  "explorer_tree": "工作區檔案",
+  "explorer_collapse_all": "收合所有資料夾",
+  "explorer_refresh": "重新整理檔案",
+  "explorer_loading": "正在載入檔案…",
+  "explorer_empty": "這個資料夾是空的。",
+  "explorer_failed": "無法列出檔案：{message}",
+  "explorer_ignored": "已忽略",
+  "explorer_mention": "在訊息中提及",
+  "explorer_show_changes": "顯示變更",
+  "explorer_copy_path": "複製路徑",
+  "explorer_mentioned": "已將 {path} 加入訊息。",
   "agents_running_count": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -515,5 +544,7 @@
         "countPlural=other": "略過 {count} 個"
       }
     }
-  ]
+  ],
+  "file_status_untracked": "新檔案，尚未追蹤",
+  "panel_changes": "變更"
 }
