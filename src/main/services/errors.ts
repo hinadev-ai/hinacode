@@ -34,6 +34,15 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+/** The renderer asked to read a checkout that is neither a project root nor a live worktree. */
+export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("UnknownRootError", {
+  root: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.root} is not a project or worktree kkcode knows`
+  }
+}
+
 /** A thread asked for a branch whose checkout another thread already owns. */
 export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()("WorktreeTakenError", {
   branch: Schema.String,
