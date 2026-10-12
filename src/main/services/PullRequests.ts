@@ -43,6 +43,8 @@ export class PullRequests extends Context.Service<
   PullRequests,
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
+    /** Every thread's links, oldest first, so the sidebar can show them without one call per thread. */
+    readonly listAll: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
     /** Returns the canonical URL. Linking the same pull request twice is a no-op. */
     readonly link: (
       threadId: string,
@@ -73,6 +75,11 @@ const make = Effect.gen(function* () {
     execute: (threadId) => sql`SELECT * FROM pull_request_link WHERE thread_id = ${threadId} ORDER BY created_at`,
   })
   const list = (threadId: string) => findByThread(threadId).pipe(Effect.mapError(persistence("pullRequests.list")))
+  const findAll = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: PullRequestLink,
+    execute: () => sql`SELECT * FROM pull_request_link ORDER BY created_at, rowid`,
+  })
 
   const broadcast = (threadId: string) =>
     Effect.flatMap(list(threadId), (links) => events.publish({ type: "thread.pullRequests", threadId, links }))
@@ -112,7 +119,13 @@ const make = Effect.gen(function* () {
       return yield* link(threadId, url)
     })
 
-  return PullRequests.of({ list, link, unlink, create })
+  return PullRequests.of({
+    list,
+    listAll: findAll(undefined).pipe(Effect.mapError(persistence("pullRequests.listAll"))),
+    link,
+    unlink,
+    create,
+  })
 })
 
 export const layer = Layer.effect(PullRequests, make)
