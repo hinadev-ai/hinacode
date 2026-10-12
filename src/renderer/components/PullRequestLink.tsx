@@ -61,7 +61,7 @@ function PullRequestCard({ pullRequest: { owner, name, number } }: { pullRequest
           </p>
         ))
         .orElse(() => (
-          <output aria-label={m.pr_card_loading()} className="flex flex-col gap-1.5">
+          <output aria-label={m.pr_card_loading()} className="flex animate-reveal flex-col gap-1.5">
             <Skeleton className="h-4 w-4/5" />
             <Skeleton className="h-3 w-1/2" />
             <Skeleton className="h-3 w-2/3" />

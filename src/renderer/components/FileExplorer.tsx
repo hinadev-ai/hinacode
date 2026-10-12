@@ -290,7 +290,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
             {m.explorer_failed({ message: tree.error })}
           </p>
         ) : listed === undefined ? (
-          <p className="p-3 text-xs text-muted-foreground">{m.explorer_loading()}</p>
+          <p className="animate-reveal p-3 text-xs text-muted-foreground">{m.explorer_loading()}</p>
         ) : listed.length === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">{m.explorer_empty()}</p>
         ) : (
@@ -350,7 +350,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer key={tree.opened} root={root} path={tree.opened} onClose={closeFile} />
+          <FileViewer root={root} path={tree.opened} onClose={closeFile} />
         </>
       )}
       <p aria-live="polite" className="sr-only">
