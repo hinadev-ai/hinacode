@@ -33,7 +33,7 @@ export function WebhookUrlField({ automationId }: { automationId: string }) {
     <Field>
       <FieldLabel htmlFor={id}>{m.automations_webhook_url_label()}</FieldLabel>
       {AsyncResult.builder(result)
-        .onInitial(() => <p className="text-sm text-muted-foreground">{m.automations_loading()}</p>)
+        .onInitial(() => <p className="animate-reveal text-sm text-muted-foreground">{m.automations_loading()}</p>)
         .onSuccess(({ url, listenError }) => (
           <>
             <CopyField id={id} value={url} copyLabel={m.automations_copy_url()} />

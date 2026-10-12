@@ -28,6 +28,9 @@
   --animate-spin: spin 0.6s linear infinite;
   /* Opacity only, so reduced motion keeps it. */
   --animate-fade-in: fade-in 150ms var(--ease-out);
+  /* Loading states wait 150ms before they show, so a fast load never flashes one. */
+  --animate-reveal: fade-in 200ms var(--ease-out) 150ms both;
+  --animate-spin-late: spin 0.6s linear 150ms infinite;
 
   @keyframes fade-in {
     from {
