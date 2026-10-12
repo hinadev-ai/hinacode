@@ -2,7 +2,8 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { PatchDiff } from "@pierre/diffs/react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
-import { type ReactNode, useId, useState } from "react"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { type ReactNode, type RefObject, useId, useState } from "react"
 import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
 import {
   type ChangedFileStatus,
@@ -36,7 +37,7 @@ const returnFocusToComposer = (panel: HTMLElement | null) => () => {
  * Right-hand panel of the thread route. Details: where the thread runs, its setup log, changes, ports
  * and pull requests. Agents: the sub-agents its agent spawned.
  */
-export function ThreadSidePanel({ thread }: { thread: Thread }) {
+export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
@@ -45,7 +46,7 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
     <aside
       ref={returnFocusToComposer}
       aria-label={m.panel_label()}
-      className="flex w-96 shrink-0 flex-col border-l border-border"
+      className={compact ? "flex min-h-0 w-full flex-1 flex-col" : "flex w-96 shrink-0 flex-col border-l border-border"}
     >
       <Tabs defaultValue="details" className="min-h-0 flex-1 gap-0">
         <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
@@ -56,7 +57,7 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
               <RunningSubagentsBadge threadId={thread.id} />
             </TabsTrigger>
           </TabsList>
-          <PanelToggle expanded onToggle={toggleSidePanel} />
+          <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
         </header>
         <TabsContent value="details" className="flex min-h-0 flex-col">
           <ScrollArea className="min-h-0 flex-1">
@@ -102,13 +103,32 @@ function RunningSubagentsBadge({ threadId }: { threadId: string }) {
   )
 }
 
-export function PanelToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+export function PanelToggle({
+  expanded,
+  onToggle,
+  buttonRef,
+  closeDialog = false,
+}: {
+  expanded: boolean
+  onToggle: () => void
+  buttonRef?: RefObject<HTMLButtonElement | null>
+  closeDialog?: boolean
+}) {
   const label = expanded ? m.panel_hide() : m.panel_show()
-  return (
-    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} aria-expanded={expanded} onClick={onToggle}>
+  const button = (
+    <Button
+      ref={buttonRef}
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      title={label}
+      aria-expanded={expanded}
+      onClick={closeDialog ? undefined : onToggle}
+    >
       <RiSideBarFill aria-hidden className="-scale-x-100" />
     </Button>
   )
+  return closeDialog ? <DialogPrimitive.Close render={button} /> : button
 }
 
 function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {

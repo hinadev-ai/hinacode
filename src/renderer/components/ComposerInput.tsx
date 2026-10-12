@@ -151,7 +151,7 @@ export function ComposerInput({
 
   return (
     <>
-      <div className="grid">
+      <div className="grid min-h-0">
         <div ref={highlightRef} aria-hidden className={cn(textLayout, "pointer-events-none overflow-hidden")}>
           {segments.map((segment, index) => (
             <span key={index} className={syntaxClass[segment.kind]}>
