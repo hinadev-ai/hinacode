@@ -34,6 +34,7 @@ import {
   RiCheckLine,
   RiDeleteBinLine,
   RiDraggable,
+  RiErrorWarningLine,
   RiGitBranchLine,
   RiMoreFill,
   RiPencilLine,
@@ -254,7 +255,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
           >
             {thread.title}
           </span>
-          {thread.status === "settled" ? <SettledMark /> : <StatusDot status={thread.status} />}
+          {thread.status === "settled" ? <SettledMark /> : <StatusIndicator status={thread.status} />}
         </Link>
       )}
       <ThreadMeta {...meta} />
@@ -442,8 +443,15 @@ const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: 
   awaiting_approval: { label: m.thread_status_awaiting_approval, className: "bg-amber-500" },
 }
 
-/** A dot for threads that need watching: pulsing while running, steady while waiting for approval. */
-function StatusDot({ status }: { status: ThreadStatus }): ReactNode {
+function StatusIndicator({ status }: { status: ThreadStatus }): ReactNode {
+  if (status === "limited") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-attention/10 px-1.5 py-0.5 text-xs whitespace-nowrap text-attention">
+        <RiErrorWarningLine aria-hidden className="size-3" />
+        {m.thread_status_limited()}
+      </span>
+    )
+  }
   const dot = statusDot[status]
   if (!dot) return null
   return (

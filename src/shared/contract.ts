@@ -100,6 +100,7 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, removeWorktree: Schema.optional(Schema.Boolean) }),
     Schema.Void,
   ),
+  "threads.resumeAtReset": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Thread),
 
   "worktrees.list": rpc(Schema.Void, Schema.Array(Worktree)),
   "worktrees.create": rpc(

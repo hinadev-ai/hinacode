@@ -26,7 +26,7 @@ export interface AgentProvider {
     readonly threadId: string
     readonly cwd: string
   }) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError>
-  /** Streams events for one turn. Ends after turn_completed or turn_failed. */
+  /** Streams events for one turn. Ends after turn_completed, turn_failed or turn_limited. */
   readonly runTurn: (input: RunTurnInput) => Stream.Stream<AgentEvent, AgentError>
   /** Adds user input to the running turn; its output keeps flowing into that turn's stream. Fails when no turn is running. */
   readonly steer: (

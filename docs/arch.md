@@ -121,7 +121,7 @@ classDiagram
   AgentProvider <|.. CodexProvider
 ```
 
-Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `turn_completed` and `turn_failed`. Everything after the provider is agent-agnostic. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
+Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
 Adding a backend means one `AgentProvider` implementation in `src/main/agents/`, one entry in the `providers` record in `AgentRunner.ts`, and one literal in `ProviderId`.
 
@@ -278,10 +278,16 @@ stateDiagram-v2
     running --> awaiting_approval: approval_requested / secret_requested
     awaiting_approval --> running: approval_resolved / secret_resolved
     running --> idle: turn_completed / turn_failed
+    running --> limited: turn_limited
+    awaiting_approval --> limited: turn_limited
+    limited --> running: send / scheduled reset retry
+    limited --> settled: settle
     awaiting_approval --> idle: interrupt
     idle --> settled: settle
   }
 ```
+
+Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and settling clear the limit. Restart preserves limited threads and scheduled requests.
 
 ```mermaid
 stateDiagram-v2

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ProviderId } from "../../shared/agent.ts"
+import { UsageLimit } from "../../shared/limits.ts"
 import { type AccessMode, Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
 import {
@@ -26,7 +27,11 @@ const MAX_LISTED_FILES = 50_000
 export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 
 /** The thread table row. SQLite has no boolean, so `fast_mode` is a bit. */
-const ThreadRow = Schema.Struct({ ...Thread.fields, fastMode: Schema.BooleanFromBit })
+const ThreadRow = Schema.Struct({
+  ...Thread.fields,
+  fastMode: Schema.BooleanFromBit,
+  usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
+})
 
 export interface CreateThread {
   readonly projectId: string
@@ -50,6 +55,7 @@ export interface UpdateThread {
   readonly fastMode?: boolean | undefined
   readonly accessMode?: AccessMode | undefined
   readonly status?: ThreadStatus | undefined
+  readonly usageLimit?: UsageLimit | null | undefined
   readonly sortIndex?: number | undefined
   readonly providerSessionId?: string | undefined
 }
@@ -167,6 +173,7 @@ const make = Effect.gen(function* () {
         accessMode: defaultAccessMode,
         providerSessionId: null,
         status: "idle",
+        usageLimit: null,
         sortIndex: next,
         createdBy,
         createdAt: now,
@@ -197,6 +204,12 @@ const make = Effect.gen(function* () {
         fastMode: input.fastMode ?? current.fastMode,
         accessMode: input.accessMode ?? current.accessMode,
         status: input.status ?? current.status,
+        usageLimit:
+          input.status !== undefined && input.status !== "limited"
+            ? null
+            : input.usageLimit === undefined
+              ? current.usageLimit
+              : input.usageLimit,
         sortIndex: input.sortIndex ?? current.sortIndex,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
         updatedAt: onlyReorders(input) ? current.updatedAt : yield* nowIso,
@@ -206,7 +219,7 @@ const make = Effect.gen(function* () {
         SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
             fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
-            updated_at = ${next.updatedAt}
+            updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
       return next
