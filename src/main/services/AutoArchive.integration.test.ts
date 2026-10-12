@@ -22,7 +22,6 @@ import * as Worktrees from "./Worktrees.ts"
 const pushes: Array<PushEvent> = []
 const statuses = new Map<string, PullRequestStatus>()
 
-/** Lookups of these URLs announce themselves on `asked`, then wait for the test to `release` them. */
 const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
 
 const gitHub = Layer.mock(GitHub, {
@@ -54,7 +53,6 @@ const testLayer = autoArchiveLayer.pipe(
 
 const pullRequestUrl = (name: string, index = 0) => `https://github.com/o/${name}/pull/${index + 1}`
 
-// Terminals start a real shell, so each project root is a real directory.
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-auto-archive-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 

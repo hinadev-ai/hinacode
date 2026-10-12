@@ -311,8 +311,6 @@ const make = Effect.gen(function* () {
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
-  // A turn marks its thread running inside `worktrees.exclusive`, so checking and archiving inside it
-  // cannot interleave with a turn starting.
   const archive = (id: string) =>
     worktrees.exclusive(
       Effect.gen(function* () {
