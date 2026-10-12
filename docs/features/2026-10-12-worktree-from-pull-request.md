@@ -19,6 +19,7 @@ Starting a thread in a worktree meant picking "New worktree" from a menu and typ
 - The draft keeps the raw text, `worktree: { ref } | null`. On send, `parsePullRequestSelector` (shared) turns it into `WorktreeSource`, either `branch { baseRef }` or `pullRequest { selector }`, and `threads.send` validates it again.
 - `Threads.attachWorktree` resolves a pull request with `gh pr view` and refuses one whose URL is not in the repository `origin` points at, since its head is fetched from `origin`.
 - `Worktrees.createFromPullRequest` fetches `refs/heads/<head>` into `refs/remotes/origin/<head>`, or a fork's `refs/pull/<n>/head` into `refs/kkcode/pull/<n>`, and creates the worktree from it with the pull request's base as `baseRef`.
+- First-message naming renames only the title of a thread linked to a pull request. Renaming its branch would leave it tracking the old upstream, so a plain `git push` fails and a new pull request would be opened instead.
 - Suggestions come from two RPCs, `projects.branches` (git, instant) and `projects.pullRequests` (`gh pr list`, empty without `gh`), so branches never wait on the network.
 
 ## Out of scope
@@ -28,5 +29,6 @@ Starting a thread in a worktree meant picking "New worktree" from a menu and typ
 
 ## Verification
 
+- `ThreadNaming.integration.test.ts` sends a first message on a pull request checkout, a fork's, a resend after the checkout was attached, and a new-task branch, and checks which branches naming renamed.
 - `Worktrees.integration.test.ts` checks out a same-repository pull request with its upstream set, a fork's pull request from `refs/pull/<n>/head`, and the branch suggestion order, against a real bare `origin`.
 - In the real app, against a clone of this repository, threads were started from `main`, from `#98` and from a pull request URL, and a pull request of another repository was refused.
