@@ -20,7 +20,7 @@ describe("useDrafts", () => {
     const { setText, addAttachments } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")] })
+    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null })
     expect(draftOf("b")).toStrictEqual(emptyDraft)
   })
 
@@ -28,7 +28,7 @@ describe("useDrafts", () => {
     const { setText, addAttachments, take } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")] })
+    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null })
     expect(draftOf("a")).toStrictEqual(emptyDraft)
   })
 
@@ -48,7 +48,11 @@ describe("useDrafts", () => {
     setText("a", "second")
     addAttachments("a", [attachment("y")])
     restore("a", sent)
-    expect(draftOf("a")).toStrictEqual({ text: "first\nsecond", attachments: [attachment("x"), attachment("y")] })
+    expect(draftOf("a")).toStrictEqual({
+      text: "first\nsecond",
+      attachments: [attachment("x"), attachment("y")],
+      worktree: null,
+    })
   })
 
   test("removing the last content and discarding both drop the entry", () => {

@@ -59,6 +59,8 @@ export class Worktrees extends Context.Service<
      * directory and marks its thread running inside this, so a removal cannot slip in between.
      */
     readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
+    /** Renames the worktree's branch in place; its checkout path keeps the old name. */
+    readonly renameBranch: (id: string, branch: string) => Effect.Effect<Worktree, Failure>
     readonly changes: (id: string) => Effect.Effect<WorktreeChanges, Failure>
     /** The branch's GitHub pull request, or null when there is none. */
     readonly pullRequest: (
@@ -288,6 +290,17 @@ const make = Effect.gen(function* () {
       return worktree
     }).pipe(exclusive)
 
+  const renameBranch = (id: string, branch: string) =>
+    Effect.gen(function* () {
+      const worktree = yield* get(id)
+      const { rootPath } = yield* projects.get(worktree.projectId)
+      yield* git.run(rootPath, ["branch", "-m", worktree.branch, branch])
+      yield* sql`UPDATE worktree SET branch = ${branch} WHERE id = ${id}`.pipe(
+        Effect.mapError(persistence("worktrees.renameBranch")),
+      )
+      return yield* publishCurrent(id)
+    }).pipe(exclusive)
+
   const ensureRemovable = (worktree: Worktree, owner: string | undefined) =>
     Effect.gen(function* () {
       if (worktree.status === "preparing") {
@@ -404,6 +417,7 @@ const make = Effect.gen(function* () {
     changes,
     pullRequest,
     currentBranch,
+    renameBranch,
   })
 })
 

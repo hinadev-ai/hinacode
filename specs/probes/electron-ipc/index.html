@@ -1,0 +1,22 @@
+<!doctype html>
+<script>
+  const trials = Number(new URLSearchParams(location.search).get("trials"))
+  let maxPush = 0
+  let outOfOrderPushes = 0
+  window.probe.onEvent((seq) => {
+    if (seq < maxPush) outOfOrderPushes++
+    maxPush = Math.max(maxPush, seq)
+  })
+  ;(async () => {
+    let overtaken = 0
+    let worstGap = 0
+    for (let i = 0; i < trials; i++) {
+      const { seq } = await window.probe.rpc()
+      if (seq > maxPush) {
+        overtaken++
+        worstGap = Math.max(worstGap, seq - maxPush)
+      }
+    }
+    await window.probe.done({ repliesThatOvertookEarlierPushes: overtaken, worstGap, outOfOrderPushes })
+  })()
+</script>

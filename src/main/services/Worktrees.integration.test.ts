@@ -6,7 +6,8 @@ import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { SqlClient } from "effect/sql"
-import type { Worktree } from "../../shared/domain.ts"
+import type { PushEvent } from "../../shared/contract.ts"
+import type { Thread, Worktree } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
@@ -22,13 +23,11 @@ const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", 
 
 type Services = Threads | Worktrees | Projects | SqlClient.SqlClient
 
-const makeLayer = (dbPath: string) =>
+const makeLayer = (dbPath: string, events: Events["Service"] = Events.of({ publish: () => Effect.void })) =>
   ThreadsLayer.layer.pipe(
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
-    Layer.provide(
-      Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, Events.of({ publish: () => Effect.void }))),
-    ),
+    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
   )
@@ -113,6 +112,107 @@ const shareWorktree = (threadId: string, worktreeId: string | null) =>
     const sql = yield* SqlClient.SqlClient
     yield* sql`UPDATE thread SET worktree_id = ${worktreeId} WHERE id = ${threadId}`
   })
+
+const withinDeadline = async <A>(promise: Promise<A>) => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("worktree request or setup did not finish")), 5_000)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+describe("background setup", () => {
+  for (const exitCode of [0, 7]) {
+    const status = exitCode === 0 ? "ready" : "failed"
+    it(`returns from thread creation before setup finishes, then streams logs and becomes ${status}`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "kk-worktrees-background-test-"))
+      const root = join(dir, "repo")
+      execFileSync("git", ["init", "-q", "-b", "main", root])
+      git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+      const releasePath = join(root, "setup-release")
+      const events: Array<PushEvent> = []
+      const started = Promise.withResolvers<void>()
+      const finished = Promise.withResolvers<Worktree>()
+      const runtime = ManagedRuntime.make(
+        makeLayer(
+          join(dir, "kkcode.sqlite"),
+          Events.of({
+            publish: (event) =>
+              Effect.sync(() => {
+                events.push(event)
+                if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
+                if (event.type === "worktree.updated" && event.worktree.status !== "preparing") {
+                  finished.resolve(event.worktree)
+                }
+              }),
+          }),
+        ),
+      )
+      let creation: Promise<Thread> | undefined
+      try {
+        const project = await runtime.runPromise(
+          Projects.use((projects) =>
+            projects.create({
+              name: "repo",
+              rootPath: root,
+              setupScript: [
+                'printf "setup started\\n"',
+                "attempt=0",
+                'while [ ! -f "$KKCODE_ROOT_PATH/setup-release" ]; do',
+                "  attempt=$((attempt + 1))",
+                '  if [ "$attempt" -ge 1000 ]; then exit 70; fi',
+                "  sleep 0.02",
+                "done",
+                'printf "setup finished\\n"',
+                `exit ${exitCode}`,
+              ].join("\n"),
+            }),
+          ),
+        )
+        creation = runtime.runPromise(createThread(project.id, "background", "kk/background"))
+        const thread = await withinDeadline(creation)
+        expect(existsSync(releasePath)).toBe(false)
+        expect(thread.worktreeId).not.toBeNull()
+        expect(await runtime.runPromise(Threads.use((threads) => threads.get(thread.id)))).toStrictEqual(thread)
+        const preparing = await runtime.runPromise(worktreeOf(thread.worktreeId))
+        expect(preparing.status).toBe("preparing")
+        expect(existsSync(join(preparing.path, ".git"))).toBe(true)
+
+        await withinDeadline(started.promise)
+        expect(await runtime.runPromise(Worktrees.use((worktrees) => worktrees.get(preparing.id)))).toMatchObject({
+          status: "preparing",
+          setupLog: "setup started\n",
+        })
+        writeFileSync(releasePath, "")
+        const completed = await withinDeadline(finished.promise)
+        const expectedLog = `setup started\nsetup finished\n${exitCode === 0 ? "" : `\nSetup script exited with code ${exitCode}\n`}`
+        expect(completed).toMatchObject({ id: preparing.id, status, setupLog: expectedLog })
+        expect(await runtime.runPromise(worktreeOf(thread.worktreeId))).toStrictEqual(completed)
+        const streamedLog = events
+          .flatMap((event) => (event.type === "worktree.setupLog" && event.id === preparing.id ? [event.chunk] : []))
+          .join("")
+        expect(streamedLog).toBe(expectedLog)
+      } finally {
+        writeFileSync(releasePath, "")
+        try {
+          if (creation) {
+            await withinDeadline(creation)
+            await withinDeadline(finished.promise)
+          }
+        } finally {
+          await runtime.dispose()
+          rmSync(dir, { recursive: true, force: true })
+        }
+      }
+    })
+  }
+})
 
 describe("worktree ownership", () => {
   it.live("a second thread on the same branch is refused instead of sharing the checkout", () =>
@@ -264,6 +364,27 @@ describe("startup", () => {
 
         const [second] = yield* restart
         expect(second).toStrictEqual(first)
+      }),
+    ),
+  )
+})
+
+describe("starting a thread in a worktree", () => {
+  it.live("moves an unstarted thread into a worktree branched from its title, then renames the branch", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const created = yield* createThread(projectId, "thread-abcde")
+        const thread = yield* Threads.use((threads) => threads.attachWorktree(created.id, ""))
+        const worktree = yield* worktreeOf(thread.worktreeId)
+        expect(worktree).toMatchObject({ branch: "kk/thread-abcde", baseRef: "main" } satisfies Partial<Worktree>)
+
+        const renamed = yield* Worktrees.use((worktrees) => worktrees.renameBranch(worktree.id, "kk/fix-login"))
+        expect(renamed.branch).toBe("kk/fix-login")
+        expect(git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("kk/fix-login")
+        expect(git(root, "branch", "--list", "kk/thread-abcde")).toBe("")
+
+        const again = yield* Threads.use((threads) => threads.attachWorktree(created.id, "main")).pipe(Effect.flip)
+        expect(again._tag).toBe("ThreadStartedError")
       }),
     ),
   )

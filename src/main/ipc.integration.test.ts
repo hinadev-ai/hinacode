@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime } from "effect"
+import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
@@ -56,8 +57,11 @@ const appUrl = "file:///opt/kkcode/out/renderer/index.html"
 const mainFrame: Frame = { url: appUrl, parent: null }
 
 // Agents and automations are not exercised here: their handlers only forward to these services.
+const runnerStub: Partial<typeof AgentRunner.Service> = {
+  listModels: (provider) => Effect.succeed([unlistedModel(`${provider}-model`, provider)]),
+}
 const agentStubs = Layer.mergeAll(
-  Layer.succeed(AgentRunner, {} as typeof AgentRunner.Service),
+  Layer.succeed(AgentRunner, runnerStub as typeof AgentRunner.Service),
   Layer.succeed(Automations, {} as typeof Automations.Service),
 )
 
@@ -144,12 +148,7 @@ describe("rpc contract", () => {
   test("answers an unknown method and a payload outside the contract with a schema error", async () => {
     const unknown = await invoke("no.such.method" as RpcMethod, undefined as never)
     expect(failure(unknown).tag).toBe("SchemaError")
-    const payload = await invoke("threads.create", {
-      projectId: "p",
-      title: "t",
-      provider: "gpt" as "claude",
-      model: "m",
-    })
+    const payload = await invoke("threads.update", { id: "t", provider: "gpt" as "claude" })
     expect(failure(payload).tag).toBe("SchemaError")
   })
 
@@ -180,17 +179,17 @@ describe("projects, threads and settings over rpc", () => {
     expect(failure(duplicate).tag).toBe("ProjectPathTakenError")
   })
 
-  test("a thread is created idle in its project and removed on delete", async () => {
+  test("a thread is created idle in its project with the default agent and removed on delete", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
-    const thread = result(
-      await invoke("threads.create", { projectId: project.id, title: "hello", provider: "claude", model: "m" }),
-    )
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
     expect(thread).toMatchObject({
       projectId: project.id,
-      title: "hello",
+      provider: "claude",
+      model: "claude-model",
       status: "idle",
       worktreeId: null,
     } satisfies Partial<Thread>)
+    expect(thread.title).toMatch(/^thread-/)
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).toContain(thread.id)
     result(await invoke("threads.delete", { id: thread.id, removeWorktree: false }))
     expect(result(await invoke("threads.list", undefined)).map((item) => item.id)).not.toContain(thread.id)
@@ -198,9 +197,8 @@ describe("projects, threads and settings over rpc", () => {
 
   test("lists every thread's linked pull requests in one call", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
-    const threadOf = async (title: string) =>
-      result(await invoke("threads.create", { projectId: project.id, title, provider: "claude", model: "m" }))
-    const [first, second] = [await threadOf("one"), await threadOf("two")]
+    const threadOf = async () => result(await invoke("threads.create", { projectId: project.id }))
+    const [first, second] = [await threadOf(), await threadOf()]
     await runtime.runPromise(
       PullRequests.PullRequests.use((pullRequests) =>
         Effect.all([
@@ -216,6 +214,48 @@ describe("projects, threads and settings over rpc", () => {
       [first.id, "https://github.com/kjj6198/kkcode/pull/49"],
       [second.id, "https://github.com/kjj6198/kkcode/pull/55"],
     ])
+  })
+
+  test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.update", { id: thread.id, effort: "max", fastMode: true }))
+    const switched = result(await invoke("threads.update", { id: thread.id, provider: "codex" }))
+    expect(switched).toMatchObject({
+      provider: "codex",
+      model: "codex-model",
+      effort: null,
+      fastMode: false,
+    } satisfies Partial<Thread>)
+
+    await runtime.runPromise(
+      Messages.Messages.use((messages) =>
+        messages.insert({
+          id: "m1",
+          threadId: thread.id,
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+          createdAt: "2026-10-12T00:00:00.000Z",
+          completedAt: "2026-10-12T00:00:00.000Z",
+          usage: null,
+        }),
+      ),
+    )
+    expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
+      "ThreadStartedError",
+    )
+  })
+
+  test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    writeFileSync(join(repo, ".gitignore"), "secret.env\n")
+    writeFileSync(join(repo, "secret.env"), "TOKEN=1")
+    writeFileSync(join(repo, "notes.txt"), "hello")
+    const files = result(await invoke("files.list", { threadId: thread.id }))
+    expect(files).toContain("notes.txt")
+    expect(files).toContain(".gitignore")
+    expect(files).not.toContain("secret.env")
   })
 
   test("settings written through rpc are what the next read returns", async () => {
