@@ -116,5 +116,7 @@ AfterScenario(async ({ app, $testInfo }) => {
     keybindings: {},
     defaultModel: { claude: null, codex: null },
   })
+  await app.setWindow({ width: 1280, height: 820, zoom: 1 })
+  await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
 })
