@@ -2,7 +2,7 @@ import { expect } from "@playwright/test"
 import { execFileSync } from "node:child_process"
 import { appendFileSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { Then, When } from "../support/fixtures.ts"
+import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 import { threadMenu, threadView } from "../support/ui.ts"
 
@@ -55,13 +55,18 @@ When("I open the diff of {string}", async ({ app }, file: string) => {
   await changes.getByRole("button").filter({ hasText: file }).click()
 })
 
-When("I settle the thread and clean up its worktree", async ({ app }) => {
+Given("archiving removes worktrees", async ({ app }) => {
+  await rpc(app.page, "settings.set", { archive: { whenMerged: false, removeWorktree: true } })
+  await app.reload()
+})
+
+When("I archive the thread and delete its worktree", async ({ app }) => {
   const title = await app.page.getByRole("heading", { level: 1 }).textContent()
   if (!title) throw new Error("no open thread title")
-  await threadMenu(app.page, title, "Settle…")
+  await threadMenu(app.page, title, "Archive…")
   const dialog = app.page.getByRole("alertdialog")
-  await expect(dialog).toContainText("Settle this thread?")
-  await dialog.getByRole("button", { name: "Settle and delete worktree", exact: true }).click()
+  await expect(dialog).toContainText("Archive this thread?")
+  await dialog.getByRole("button", { name: "Archive and delete worktree", exact: true }).click()
   await expect(dialog).toBeHidden()
 })
 

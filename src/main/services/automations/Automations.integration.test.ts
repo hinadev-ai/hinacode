@@ -26,6 +26,7 @@ import * as Settings from "../Settings.ts"
 import * as ThreadNaming from "../ThreadNaming.ts"
 import * as Threads from "../Threads.ts"
 import * as Worktrees from "../Worktrees.ts"
+import * as Terminals from "../Terminals.ts"
 import { Automations, layer as automationsLayer } from "./Automations.ts"
 import type { LinearIssueFilter, LinearIssueNode } from "./pollers.ts"
 
@@ -74,6 +75,7 @@ const unusedPort = Effect.promise(async () => {
 const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(Settings.layer),

@@ -76,6 +76,12 @@ export class Worktrees extends Context.Service<
       deleteBranch: DeleteBranch,
       owner?: string,
     ) => Effect.Effect<Worktree, Failure | WorktreeBusyError>
+    /** `remove` for a caller already inside `exclusive`, which is not reentrant. */
+    readonly removeWhileExclusive: (
+      id: string,
+      deleteBranch: DeleteBranch,
+      owner?: string,
+    ) => Effect.Effect<Worktree, Failure | WorktreeBusyError>
     /**
      * Runs `effect` while no worktree is being created or removed. A turn resolves its working
      * directory and marks its thread running inside this, so a removal cannot slip in between.
@@ -332,9 +338,7 @@ const make = Effect.gen(function* () {
       if (users.some((thread) => isThreadBusy(thread.status))) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "turn" })
       }
-      const othersOpen = users.some(
-        (thread) => thread.id !== owner && thread.status !== "settled" && thread.status !== "archived",
-      )
+      const othersOpen = users.some((thread) => thread.id !== owner && thread.status !== "archived")
       if (owner !== undefined && othersOpen) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "shared" })
       }
@@ -361,7 +365,7 @@ const make = Effect.gen(function* () {
       Effect.ensuring(Effect.sync(() => removals.delete(removalKey(worktree.projectId, worktree.branch)))),
     )
 
-  const remove = (id: string, deleteBranch: DeleteBranch, owner?: string) =>
+  const removeWhileExclusive = (id: string, deleteBranch: DeleteBranch, owner?: string) =>
     Effect.gen(function* () {
       const worktree = yield* get(id)
       if (worktree.status === "removed") return worktree
@@ -371,7 +375,10 @@ const make = Effect.gen(function* () {
       const deletion = yield* Effect.forkDetach(deleteFiles(rootPath, worktree, deleteBranch))
       removals.set(removalKey(worktree.projectId, worktree.branch), deletion)
       return removed
-    }).pipe(exclusive)
+    })
+
+  const remove = (id: string, deleteBranch: DeleteBranch, owner?: string) =>
+    exclusive(removeWhileExclusive(id, deleteBranch, owner))
 
   const changes = (id: string) =>
     Effect.gen(function* () {
@@ -432,6 +439,7 @@ const make = Effect.gen(function* () {
     create,
     createFromPullRequest,
     remove,
+    removeWhileExclusive,
     exclusive,
     changes,
     pullRequest,
