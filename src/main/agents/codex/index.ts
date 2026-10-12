@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
   AgentAccount,
   AgentCommand,
@@ -19,12 +19,12 @@ import { AgentError, type AgentProvider } from "../provider.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
+import { GetAccountResponse } from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
   ElicitationActionWire,
   GetAccountParams,
-  GetAccountResponse,
   McpServerElicitationRequestParams,
   ModelListParams,
   ModelListResponse,
@@ -229,7 +229,12 @@ const make = Effect.gen(function* () {
   const account = Effect.gen(function* () {
     const client = yield* getClient
     const params: GetAccountParams = { refreshToken: false }
-    const response = yield* client.request<GetAccountResponse>("account/read", params)
+    const raw = yield* client.request<unknown>("account/read", params)
+    const response = yield* Schema.decodeUnknownEffect(GetAccountResponse)(raw).pipe(
+      Effect.mapError(
+        () => new AgentError({ provider: "codex", message: "Failed to read the Codex account: invalid response" }),
+      ),
+    )
     return toAccount(response.account)
   })
 
