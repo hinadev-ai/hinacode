@@ -27,6 +27,7 @@ import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
+import icon from "../../assets/icon.png?asset"
 
 // Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves.
 app.setName("kkcode")
@@ -96,6 +97,7 @@ const createWindow = () => {
     show: false,
     backgroundColor: "#0a0a0a",
     title: "kkcode",
+    icon,
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       sandbox: true,
@@ -121,6 +123,7 @@ app.whenReady().then(async () => {
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
   registerIpc(runtime, appUrl)
+  app.dock?.setIcon(icon)
   serveAttachments()
   let disposed = false
   app.on("before-quit", (event) => {
