@@ -1,5 +1,6 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test"
-import electronBinary from "electron"
+import electronBinary, { type BrowserWindow as ElectronWindow } from "electron"
+import { Schema } from "effect"
 import { mkdtempSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -12,15 +13,27 @@ export const projectRoot = resolve(import.meta.dirname, "..", "..")
 // The package's types describe the Electron API, but its main export at runtime is the binary path.
 const executablePath = electronBinary as unknown as string
 
+const AppearanceSnapshot = Schema.Struct({
+  scheme: Schema.Literals(["light", "dark"]),
+  rendered: Schema.Boolean,
+  background: Schema.String,
+})
+type AppearanceSnapshot = typeof AppearanceSnapshot.Type
+const StartupAppearance = Schema.Struct({ firstVisible: AppearanceSnapshot, firstPaint: AppearanceSnapshot })
+type StartupAppearance = typeof StartupAppearance.Type
+
 export interface KkcodeApp {
   readonly userData: string
   readonly dbPath: string
   /** The current window. Replaced by `restart`, so read it when needed rather than caching it. */
   readonly page: Page
+  readonly firstVisible: AppearanceSnapshot
+  readonly firstPaint: AppearanceSnapshot
   /** Quits and starts the app again on the same user data, as a user relaunching it would. */
   readonly restart: () => Promise<void>
   /** Reloads the renderer, which re-reads projects, threads and settings from main. */
   readonly reload: () => Promise<void>
+  readonly setWindow: (size: { width: number; height: number; zoom: number }) => Promise<void>
   readonly pushEvents: (events: ReadonlyArray<PushEvent>, intervalMs?: number) => Promise<void>
   readonly close: () => Promise<void>
 }
@@ -39,16 +52,53 @@ const freePort = () =>
 const waitForRenderer = (page: Page) =>
   page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)
 
-const launch = async (userData: string): Promise<{ app: ElectronApplication; page: Page }> => {
+const launch = async (userData: string): Promise<{ app: ElectronApplication; page: Page } & StartupAppearance> => {
   const app = await electron.launch({
     executablePath,
     args: ["--no-sandbox", "--disable-gpu", join(projectRoot, "out/main/index.js")],
     cwd: projectRoot,
     env: { ...process.env, KKCODE_USER_DATA: userData },
   })
+  const startup = Schema.decodeUnknownSync(StartupAppearance)(
+    await app.evaluate(
+      ({ app: electronApp, BrowserWindow }) =>
+        new Promise<unknown>((done, fail) => {
+          const observe = (nativeWindow: ElectronWindow) => {
+            if (nativeWindow.isVisible()) {
+              fail(new Error("The window became visible before startup observation"))
+              return
+            }
+            nativeWindow.once("show", () => {
+              void nativeWindow.webContents
+                .executeJavaScript(`(() => {
+                  const snapshot = () => ({
+                    scheme: document.documentElement.classList.contains("dark") ? "dark" : "light",
+                    rendered: (document.getElementById("root")?.childElementCount ?? 0) > 0,
+                    background: getComputedStyle(document.body).backgroundColor
+                  })
+                  const firstVisible = snapshot()
+                  return new Promise(done => {
+                    const observer = new PerformanceObserver(list => {
+                      if (list.getEntries().some(entry => entry.name === "first-contentful-paint")) {
+                        observer.disconnect()
+                        done({ firstVisible, firstPaint: snapshot() })
+                      }
+                    })
+                    observer.observe({ type: "paint", buffered: true })
+                  })
+                })()`)
+                .then(done, fail)
+            })
+          }
+          const existingWindow = BrowserWindow.getAllWindows()[0]
+          if (existingWindow) observe(existingWindow)
+          else electronApp.once("browser-window-created", (_, createdWindow) => observe(createdWindow))
+        }),
+    ),
+  )
   const page = await app.firstWindow()
   await waitForRenderer(page)
-  return { app, page }
+  return { app, page, ...startup }
 }
 
 export const spawnApp = async (): Promise<KkcodeApp> => {
@@ -62,6 +112,12 @@ export const spawnApp = async (): Promise<KkcodeApp> => {
     get page() {
       return current.page
     },
+    get firstVisible() {
+      return current.firstVisible
+    },
+    get firstPaint() {
+      return current.firstPaint
+    },
     restart: async () => {
       await current.app.close()
       current = await launch(userData)
@@ -69,6 +125,14 @@ export const spawnApp = async (): Promise<KkcodeApp> => {
     reload: async () => {
       await current.page.reload()
       await waitForRenderer(current.page)
+    },
+    setWindow: async (size) => {
+      await current.app.evaluate(({ BrowserWindow }, { width, height, zoom }) => {
+        const window = BrowserWindow.getAllWindows()[0]
+        if (!window) throw new Error("kkcode window is missing")
+        window.setSize(width, height)
+        window.webContents.setZoomFactor(zoom)
+      }, size)
     },
     pushEvents: async (events, intervalMs = 0) => {
       await current.app.evaluate(
