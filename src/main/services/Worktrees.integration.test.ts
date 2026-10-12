@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Context, Effect, Layer, ManagedRuntime, PubSub } from "effect"
+import { Context, Deferred, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
@@ -98,7 +98,10 @@ const waitForAllSetups = Worktrees.use((worktrees) => worktrees.list).pipe(
  * it. The layer is torn down only after background setups finish, so none of them writes to a closed
  * database.
  */
-const withRepo = <A, E>(f: (repo: Repo) => Effect.Effect<A, E, Services>) =>
+const withRepo = <A, E>(
+  f: (repo: Repo) => Effect.Effect<A, E, Services>,
+  events?: (pushes: PubSub.PubSub<PushEvent>) => Events["Service"],
+) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
       Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
@@ -120,7 +123,7 @@ const withRepo = <A, E>(f: (repo: Repo) => Effect.Effect<A, E, Services>) =>
         projects.create({ name: "repo", rootPath: root, setupScript: null }),
       )
       return yield* f({ root, projectId: project.id, restart })
-    }).pipe(Effect.ensuring(waitForAllSetups), Effect.provide(makeLayer(dbPath, pushes)))
+    }).pipe(Effect.ensuring(waitForAllSetups), Effect.provide(makeLayer(dbPath, pushes, events?.(pushes))))
   })
 
 const createThread = (projectId: string, title: string, branch?: string) =>
@@ -367,6 +370,50 @@ describe("worktree ownership", () => {
         yield* waitUntilDeleted(worktree.path)
       }),
     ),
+  )
+
+  it.live("archiving keeps the title, model and access mode saved while it removed the worktree", () =>
+    Effect.gen(function* () {
+      const removed = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const holdRemoval = (pushes: PubSub.PubSub<PushEvent>) =>
+        Events.of({
+          publish: (event) =>
+            Effect.gen(function* () {
+              if (event.type === "worktree.updated" && event.worktree.status === "removed") {
+                yield* Deferred.succeed(removed, undefined)
+                yield* Deferred.await(release)
+              }
+              yield* PubSub.publish(pushes, event)
+            }),
+        })
+      yield* withRepo(
+        ({ projectId }) =>
+          Effect.gen(function* () {
+            const thread = yield* createThread(projectId, "before", "kk/renamed")
+            yield* waitUntilSetUp(thread.worktreeId)
+            const archiving = yield* archiveRemovingWorktree(thread.id).pipe(Effect.forkChild)
+            yield* Deferred.await(removed)
+            yield* Threads.use((threads) =>
+              threads.update({ id: thread.id, title: "after", model: "claude-opus-5-5", accessMode: "supervised" }),
+            )
+            yield* Deferred.succeed(release, undefined)
+
+            const archived = yield* Fiber.join(archiving)
+            const saved = yield* Threads.use((threads) => threads.get(thread.id))
+            for (const result of [archived, saved]) {
+              expect(result).toMatchObject({
+                status: "archived",
+                title: "after",
+                model: "claude-opus-5-5",
+                accessMode: "supervised",
+              })
+            }
+            yield* waitUntilDeleted((yield* worktreeOf(thread.worktreeId)).path)
+          }),
+        holdRemoval,
+      )
+    }),
   )
 
   it.live("an archived branch can start a new thread without reviving the old one's worktree", () =>
