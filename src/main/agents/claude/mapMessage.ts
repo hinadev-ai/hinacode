@@ -17,9 +17,18 @@ const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 export interface MapState {
   readonly pendingEdits: Map<string, string>
   readonly subagents: Map<string, Subagent>
+  lastRequest: { readonly model: string; readonly usedTokens: number } | null
+  limitMessage: string | null
+  limitResetAt: string | null
 }
 
-export const isTerminal = (event: AgentEvent) => event.type === "turn_completed" || event.type === "turn_failed"
+export const isTerminal = (event: AgentEvent) =>
+  event.type === "turn_completed" || event.type === "turn_failed" || event.type === "turn_limited"
+
+export function resetTurnLimits(state: MapState): void {
+  state.limitMessage = null
+  state.limitResetAt = null
+}
 
 export function mapMessage(message: SDKMessage, state: MapState, now: string): ReadonlyArray<AgentEvent> {
   switch (message.type) {
@@ -51,7 +60,40 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
       return []
     }
 
+    case "rate_limit_event": {
+      const info = message.rate_limit_info
+      if (
+        info.status === "rejected" &&
+        info.overageStatus !== "allowed" &&
+        info.overageStatus !== "allowed_warning" &&
+        !info.isUsingOverage &&
+        !info.overageInUse
+      ) {
+        state.limitMessage = "Claude usage limit reached"
+        const resetMs = (info.resetsAt ?? Number.NaN) * 1000
+        state.limitResetAt =
+          Number.isFinite(resetMs) && Math.abs(resetMs) <= 8.64e15 ? new Date(resetMs).toISOString() : null
+      }
+      return []
+    }
+
     case "assistant":
+      if (message.parent_tool_use_id === null) {
+        const usage = message.message.usage
+        state.lastRequest = {
+          model: message.message.model,
+          usedTokens:
+            usage.input_tokens +
+            (usage.cache_creation_input_tokens ?? 0) +
+            (usage.cache_read_input_tokens ?? 0) +
+            usage.output_tokens,
+        }
+      }
+      if (message.parent_tool_use_id === null && message.error === "rate_limit") {
+        state.limitMessage =
+          message.message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n") ||
+          "Claude usage limit reached"
+      }
       return message.message.content.flatMap((block): Array<AgentEvent> => {
         if (block.type !== "tool_use") return []
         const input = block.input as Record<string, unknown> | null
@@ -79,8 +121,12 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
       })
     }
 
-    case "result":
-      return [mapResult(message)]
+    case "result": {
+      const limitMessage = state.limitMessage
+      const resetAt = state.limitResetAt
+      resetTurnLimits(state)
+      return [mapResult(message, limitMessage, resetAt, state)]
+    }
 
     default:
       return []
@@ -139,21 +185,48 @@ function updateSubagent(state: MapState, subagent: Subagent): Array<AgentEvent> 
   return [{ type: "subagent_updated", subagent }]
 }
 
-function mapResult(result: SDKResultMessage): AgentEvent {
-  if (result.subtype !== "success") {
-    const reason = result.errors.length > 0 ? result.errors.join("\n") : result.subtype
-    return { type: "turn_failed", message: reason }
+const limitErrorText =
+  /^(?:error:\s*)?(?:you['’]ve hit your (?:(?:usage )?limit|org['’]s monthly spend limit)|usage limit reached|(?:claude(?: api)? )?rate limit reached|api error:\s*429\b)/i
+const orgSpendLimitText = /^(?:error:\s*)?you['’]ve hit your org['’]s monthly spend limit/i
+
+function mapResult(
+  result: SDKResultMessage,
+  limitMessage: string | null,
+  resetAt: string | null,
+  state: MapState,
+): AgentEvent {
+  if (result.subtype !== "success" || result.is_error) {
+    const reason = result.subtype === "success" ? result.result : result.errors.join("\n")
+    const limited =
+      limitMessage !== null ||
+      ("api_error_status" in result && result.api_error_status === 429) ||
+      limitErrorText.test(reason)
+    const message =
+      limitMessage && limitMessage !== "Claude usage limit reached"
+        ? limitMessage
+        : reason || limitMessage || (result.subtype === "success" ? "Claude returned an error" : result.subtype)
+    if (limited) {
+      return {
+        type: "turn_limited",
+        limit:
+          orgSpendLimitText.test(reason) || orgSpendLimitText.test(limitMessage ?? "")
+            ? { kind: "org_spend", message }
+            : { kind: "usage", message, reset: resetAt === null ? null : { at: resetAt, autoResume: false } },
+      }
+    }
+    return { type: "turn_failed", message }
   }
-  // API failures (auth, overload, ...) arrive as a "success" result flagged is_error.
-  if (result.is_error) return { type: "turn_failed", message: result.result || "Claude returned an error" }
-  return { type: "turn_completed", usage: toUsage(result) }
+  return { type: "turn_completed", usage: toUsage(result, state) }
 }
 
-function toUsage(result: SDKResultMessage): TokenUsage {
+function toUsage(result: SDKResultMessage, state: MapState): TokenUsage {
   const usage = result.usage
+  const request = state.lastRequest
+  const maxTokens = request === null ? undefined : result.modelUsage[request.model]?.contextWindow
   return {
     inputTokens: usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens,
     outputTokens: usage.output_tokens,
     costUsd: result.total_cost_usd,
+    ...(request !== null && maxTokens !== undefined && { context: { usedTokens: request.usedTokens, maxTokens } }),
   }
 }

@@ -1,10 +1,12 @@
 import { create } from "zustand"
 import { getPanelLayout } from "../lib/panelLayout.ts"
+import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from "../lib/sidebarWidth.ts"
 
 export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents"
 
 interface UiState {
   readonly sidebarOpen: boolean
+  readonly sidebarWidth: number
   readonly sidePanelOpen: boolean
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
@@ -36,6 +38,8 @@ interface UiState {
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
   readonly setAddProjectOpen: (open: boolean) => void
+  /** Clamps, applies and persists the desktop sidebar width. */
+  readonly setSidebarWidth: (width: number) => void
 }
 
 /** Whether the side panel shows its content in the current layout, docked or as an overlay. */
@@ -54,6 +58,7 @@ const hidePanel = () => (getPanelLayout() === "wide" ? { sidePanelOpen: false } 
 /** App-wide UI state driven by keybindings and shared across components without prop drilling. */
 export const useUi = create<UiState>()((set, get) => ({
   sidebarOpen: true,
+  sidebarWidth: loadSidebarWidth(),
   sidePanelOpen: true,
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
@@ -99,4 +104,9 @@ export const useUi = create<UiState>()((set, get) => ({
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
   setAddProjectOpen: (addProjectOpen) => set({ addProjectOpen }),
+  setSidebarWidth: (width) => {
+    const sidebarWidth = clampSidebarWidth(width)
+    saveSidebarWidth(sidebarWidth)
+    set({ sidebarWidth })
+  },
 }))

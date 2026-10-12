@@ -1,7 +1,9 @@
+import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
 import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
+import { COMMAND_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -17,7 +19,7 @@ export interface CommandContext {
 
 export interface Command {
   readonly id: string
-  /** Canonical chord, or "" for unbound by default. */
+  /** A chord such as "mod+shift+n", or "" for unbound by default. `resolveKeymap` normalizes it. */
   readonly defaultKeys: string
   readonly title: () => string
   readonly run: (ctx: CommandContext) => void
@@ -43,6 +45,18 @@ const showView = (ctx: CommandContext, view: SidePanelViewId) => {
 }
 
 export const commands = [
+  {
+    id: "palette.open",
+    defaultKeys: "mod+p",
+    title: m.command_palette_open,
+    run: () => usePalette.getState().show(""),
+  },
+  {
+    id: "palette.commands",
+    defaultKeys: "mod+shift+p",
+    title: m.command_palette_commands,
+    run: () => usePalette.getState().show(COMMAND_PREFIX),
+  },
   {
     id: "settings.open",
     defaultKeys: "mod+,",
@@ -153,13 +167,32 @@ export const commands = [
 
 export type CommandId = (typeof commands)[number]["id"]
 
-/** Command id -> effective chord ("" when unbound): defaults overlaid by the user's overrides. */
-export const resolveKeymap = (overrides: Readonly<Record<string, string>>): Readonly<Record<string, string>> =>
-  Object.fromEntries(commands.map((command) => [command.id, overrides[command.id] ?? command.defaultKeys]))
+export type Keymap = Readonly<Record<string, Hotkey | "">>
 
-/** Ids of the other commands bound to the same chord as `id`. */
-export const conflictsOf = (keymap: Readonly<Record<string, string>>, id: string): Array<Command> => {
+/**
+ * Stored chords come in several forms: defaults and older overrides written as "mod+shift+n", and
+ * recordings such as "Mod+Shift+[KeyN]" that name a physical key. All of them normalize here, and
+ * anything unparseable counts as unbound.
+ */
+const toHotkey = (chord: string): Hotkey | "" => (validateHotkey(chord).valid ? normalizeHotkey(chord) : "")
+
+/** Command id -> effective chord ("" when unbound): defaults overlaid by the user's overrides. */
+export const resolveKeymap = (overrides: Readonly<Record<string, string>>): Keymap =>
+  Object.fromEntries(commands.map((command) => [command.id, toHotkey(overrides[command.id] ?? command.defaultKeys)]))
+
+/**
+ * Whether two chords read as the same shortcut. A recorded physical key such as "Mod+[KeyB]" and a
+ * default such as "Mod+B" are different bindings to TanStack Hotkeys, but on common layouts the same
+ * keypress fires both.
+ */
+export const sameChord = (a: string, b: string) => formatForDisplay(a) === formatForDisplay(b)
+
+/** The other commands bound to the same chord as `id`. */
+export const conflictsOf = (keymap: Keymap, id: string): Array<Command> => {
   const chord = keymap[id]
   if (!chord) return []
-  return commands.filter((command) => command.id !== id && keymap[command.id] === chord)
+  return commands.filter((command) => {
+    const other = keymap[command.id]
+    return command.id !== id && !!other && sameChord(chord, other)
+  })
 }

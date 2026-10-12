@@ -34,8 +34,8 @@ When("the agent calls {string} with {string}", async ({ agent }, tool: string, a
 })
 
 When("I unlink {string} in the pull requests panel", async ({ app }, name: string) => {
-  const panel = await threadView(app.page, "Pull requests")
-  await panel.getByRole("button", { name: `Unlink ${name}`, exact: true }).click()
+  const pullRequests = await threadView(app.page, "Pull requests")
+  await pullRequests.getByRole("button", { name: `Unlink ${name}`, exact: true }).click()
 })
 
 Then("the agent sees the tools {string}", async ({ agent }, names: string) => {
@@ -58,13 +58,13 @@ Then("the tool fails with {string}", ({ agent }, text: string) => {
 })
 
 Then("the pull requests panel lists {string}", async ({ app }, name: string) => {
-  const panel = await threadView(app.page, "Pull requests")
-  await expect(panel.getByRole("link", { name })).toBeVisible()
+  const pullRequests = await threadView(app.page, "Pull requests")
+  await expect(pullRequests.getByRole("link", { name })).toBeVisible()
 })
 
 Then("the pull requests panel is empty", async ({ app, agent, threadIds }) => {
-  const panel = await threadView(app.page, "Pull requests")
-  await expect(panel).toContainText("None linked yet")
+  const pullRequests = await threadView(app.page, "Pull requests")
+  await expect(pullRequests).toContainText("None linked yet")
   const [threadId] = threadIds.values()
   if (agent.connection && threadId) expect(await rpc(app.page, "pullRequests.list", { threadId })).toStrictEqual([])
 })

@@ -24,8 +24,9 @@ const ensureFreshBuild = () => {
   execSync("pnpm build", { cwd: projectRoot, stdio: "inherit" })
 }
 
-/** Electron needs an X display. Workers inherit the environment of this process. */
+/** Linux Electron needs an X display; macOS uses its native window server. */
 const ensureDisplay = () => {
+  if (process.platform === "darwin") return
   if (process.env.DISPLAY) return
   if (existsSync("/tmp/.X11-unix/X99")) {
     process.env.DISPLAY = ":99"

@@ -17,7 +17,7 @@ Feature: Worktrees
     And the workspace status becomes "Ready"
     And I change "README.md" and add "new.txt" in the worktree
     And I refresh the changes
-    Then the changes list "README.md" as modified and "new.txt" as untracked
+    Then the changes list "README.md" as modified and "new.txt" as added
     When I open the diff of "README.md"
     Then the diff of "README.md" shows "change"
 

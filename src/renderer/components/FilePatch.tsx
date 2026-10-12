@@ -29,7 +29,7 @@ const patchForFile = (patch: string, path: string) =>
 export function FilePatch({ patch, path }: { patch: string; path: string }) {
   const filePatch = patchForFile(patch, path)
   const theme = useTheme(useSettings().appearance.theme)
-  if (!filePatch) return <p className="p-2 text-muted-foreground">{m.panel_diff_missing()}</p>
+  if (!filePatch) return <p className="p-2 text-muted-foreground">{m.diff_file_missing()}</p>
   return (
     <PatchDiff
       patch={filePatch}

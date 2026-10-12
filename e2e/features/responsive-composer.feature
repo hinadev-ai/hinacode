@@ -13,13 +13,27 @@ Feature: Responsive composer
     Examples:
       | width | height | fontSize | status  | action |
       | 720   | 480    | 16       | idle    | Send   |
-      | 720   | 480    | 16       | running | Stop   |
+      | 720   | 480    | 16       | running | Steer  |
       | 720   | 480    | 32       | idle    | Send   |
-      | 720   | 480    | 32       | running | Stop   |
+      | 720   | 480    | 32       | running | Steer  |
       | 320   | 480    | 16       | idle    | Send   |
-      | 320   | 480    | 16       | running | Stop   |
+      | 320   | 480    | 16       | running | Steer  |
       | 360   | 240    | 16       | idle    | Send   |
-      | 360   | 240    | 16       | running | Stop   |
+      | 360   | 240    | 16       | running | Steer  |
+
+  Scenario Outline: An empty running composer keeps Stop inside the window
+    Given a project "demo" for my repository
+    And the project "demo" has an running responsive thread "Compose"
+    When I open the thread "Compose" from the sidebar
+    And I use a <width> by <height> viewport with <fontSize> pixel text
+    Then the message field and Stop action fit inside the window
+
+    Examples:
+      | width | height | fontSize |
+      | 720   | 480    | 16       |
+      | 720   | 480    | 32       |
+      | 320   | 480    | 16       |
+      | 360   | 240    | 16       |
 
   Scenario: Compact secondary panels can be opened and dismissed with the keyboard
     Given a project "demo" for my repository

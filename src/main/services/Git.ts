@@ -15,11 +15,8 @@ export class CommandError extends Schema.TaggedError<CommandError>()("CommandErr
 }
 
 export interface RunOptions {
-  /** Exit codes treated as success besides 0, e.g. 1 for `git diff --no-index` when files differ. */
+  /** Exit codes treated as success besides 0, e.g. 1 for `git rev-parse --verify --quiet` on a missing ref. */
   readonly okExitCodes?: ReadonlyArray<number>
-}
-
-interface ExecOptions extends RunOptions {
   /** Added to the inherited environment. */
   readonly env?: Record<string, string>
 }
@@ -27,7 +24,7 @@ interface ExecOptions extends RunOptions {
 /** Runs `command` in `cwd` and returns stdout. A command that cannot start fails with exit code -1. */
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
-  (command: string, args: ReadonlyArray<string>, cwd: string, options?: ExecOptions) =>
+  (command: string, args: ReadonlyArray<string>, cwd: string, options?: RunOptions) =>
     Effect.gen(function* () {
       const handle = yield* spawner.spawn(
         ChildProcess.make(command, args, { cwd, stdin: "ignore", env: options?.env, extendEnv: true }),

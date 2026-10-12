@@ -4,6 +4,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/noto-sans-tc";
 @import "@fontsource-variable/noto-sans-jp";
+@import "tw-shimmer";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -55,6 +56,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-attention: var(--attention);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -131,6 +133,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --attention: oklch(0.473 0.137 46.201);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.25 0 0);
@@ -176,6 +179,7 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --attention: oklch(0.828 0.189 84.429);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   /* Focus rings draw this at 50% opacity, which still clears 3:1 against the background. */

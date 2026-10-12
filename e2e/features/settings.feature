@@ -21,16 +21,16 @@ Feature: Settings
     Then the new thread composer for "demo" preselects the model "Sonnet 5.5"
 
   Scenario: The sidebar shortcut hides and shows the sidebar
-    When I press "Control+b"
+    When I press "ControlOrMeta+b"
     Then the sidebar is hidden
-    When I press "Control+b"
+    When I press "ControlOrMeta+b"
     Then the sidebar is shown
 
   Scenario: Recording a shortcut on the keybindings page rebinds the command
     When I open settings
-    And I record the shortcut "Control+Shift+k" for "Show or hide sidebar"
-    Then the shortcut "mod+shift+k" is stored for "Show or hide sidebar"
-    When I press "Control+Shift+k"
+    And I record the shortcut "ControlOrMeta+Shift+k" for "Show or hide sidebar"
+    Then the shortcut "Mod+Shift+[KeyK]" is stored for "Show or hide sidebar"
+    When I press "ControlOrMeta+Shift+k"
     Then the sidebar is hidden
 
   Scenario: Escape cancels a recording without changing the shortcut
@@ -44,7 +44,7 @@ Feature: Settings
 
   Scenario: Reusing a chord warns about the conflict and reset clears the override
     When I open settings
-    And I record the shortcut "Control+b" for "New thread"
+    And I record the shortcut "ControlOrMeta+b" for "New thread"
     Then the shortcut row for "New thread" reads "Also bound to Show or hide sidebar. Only one of them will run."
     When I reset the shortcut for "New thread"
     Then the shortcut row for "New thread" does not read "Also bound to"
@@ -53,9 +53,9 @@ Feature: Settings
   Scenario: A saved shortcut replaces the default after a restart
     Given the shortcut for "Show or hide sidebar" is saved as "mod+shift+k"
     When the app restarts
-    And I press "Control+Shift+k"
+    And I press "ControlOrMeta+Shift+k"
     Then the sidebar is hidden
-    And pressing "Control+b" leaves the sidebar hidden
+    And pressing "ControlOrMeta+b" leaves the sidebar hidden
 
   Scenario: A Linear API key is stored without ever being shown again, and can be cleared
     When I open settings
