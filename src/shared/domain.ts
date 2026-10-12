@@ -297,3 +297,27 @@ export const Automation = Schema.Struct({
   updatedAt: Timestamp,
 })
 export type Automation = typeof Automation.Type
+
+/** A message that matched a global search, newest first. */
+export const ThreadSearchHit = Schema.Struct({
+  threadId: Schema.String,
+  threadTitle: Schema.String,
+  projectId: Schema.String,
+  messageId: Schema.String,
+  /** About 80 characters of the message around the first match. */
+  snippet: Schema.String,
+  at: Timestamp,
+})
+export type ThreadSearchHit = typeof ThreadSearchHit.Type
+
+/** A line in the open thread's workspace that matched a global search. */
+export const FileSearchHit = Schema.Struct({
+  /** Relative to the workspace root. */
+  path: Schema.String,
+  line: Schema.Number,
+  /** 1-based, in UTF-16 code units, of the first match on the line. */
+  column: Schema.Number,
+  /** The line around its first match, trimmed for long lines. */
+  text: Schema.String,
+})
+export type FileSearchHit = typeof FileSearchHit.Type

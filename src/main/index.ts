@@ -18,6 +18,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
@@ -48,6 +49,7 @@ const makeAppLayer = (dbPath: string) => {
     Settings.layer,
     Messages.layer,
     Attachments.layer,
+    Search.layer,
   )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, ThreadNaming.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
