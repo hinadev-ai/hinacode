@@ -205,6 +205,16 @@ export const threadUsageAtom = Atom.family((threadId: string) =>
   }),
 )
 
+/** Plan limits of every signed-in account. Re-read every 2 minutes while subscribed and whenever a turn ends. */
+export const accountLimitsAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent((event) => {
+      if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
+    }),
+  )
+  return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
+})
+
 const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
 
