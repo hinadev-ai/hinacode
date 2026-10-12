@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, rmSync, watch, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
@@ -97,7 +97,8 @@ const waitForAllSetups = Worktrees.use((worktrees) => worktrees.list).pipe(
 const withRepo = <A, E>(f: (repo: Repo) => Effect.Effect<A, E, Services>) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
-      Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
+      // macOS links the temp dir through /private, and git reports worktree paths fully resolved.
+      Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "kk-worktrees-test-")))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )
     const root = join(dir, "repo")
