@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
-import { dirname, isAbsolute } from "node:path"
+import { dirname, extname, isAbsolute, join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project } from "../../shared/domain.ts"
@@ -48,6 +48,8 @@ export class Projects extends Context.Service<
     readonly clone: (input: CloneProject) => Effect.Effect<Project, WriteError | CommandError>
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    /** The project's own favicon as a data URL, or null when it has none in a usual place. */
+    readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
 >()("kkcode/Projects") {}
 
@@ -55,6 +57,13 @@ const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) 
   SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
     ? new ProjectPathTakenError({ rootPath })
     : persistence(operation)(cause)
+
+const ICON_TYPES: Record<string, string> = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" }
+const ICON_NAMES = ["favicon.svg", "favicon.png", "favicon.ico", "icon.svg", "icon.png"]
+const ICON_DIRS = ["", "public", "static", "app", "src/app", "assets", "apps/web/public", "apps/web/app"]
+/** Where web apps keep their favicon, the project root first. */
+const ICON_PATHS = ICON_DIRS.flatMap((dir) => ICON_NAMES.map((name) => join(dir, name)))
+const ICON_LIMIT_BYTES = 100 * 1024
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -148,12 +157,31 @@ const make = Effect.gen(function* () {
       return next
     })
 
+  const readIcon = (path: string) =>
+    Effect.gen(function* () {
+      const info = yield* fs.stat(path)
+      if (info.type !== "File" || Number(info.size) > ICON_LIMIT_BYTES) return null
+      const bytes = yield* fs.readFile(path)
+      return `data:${ICON_TYPES[extname(path)]};base64,${Buffer.from(bytes).toString("base64")}`
+    }).pipe(Effect.orElseSucceed(() => null))
+
+  const icon = (id: string) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* get(id)
+      for (const path of ICON_PATHS) {
+        const found = yield* readIcon(join(rootPath, path))
+        if (found !== null) return found
+      }
+      return null
+    })
+
   return Projects.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("projects.list"))),
     get,
     create,
     clone,
     update,
+    icon,
     remove: (id) =>
       sql`DELETE FROM project WHERE id = ${id}`.pipe(Effect.asVoid, Effect.mapError(persistence("projects.delete"))),
   })

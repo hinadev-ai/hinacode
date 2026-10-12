@@ -12,6 +12,7 @@ import { externalUrl, isAppDocument, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
+import * as AutoArchive from "./services/AutoArchive.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as Files from "./services/Files.ts"
 import * as Favicons from "./services/Favicons.ts"
@@ -55,6 +56,7 @@ const serveAttachments = () =>
 const makeAppLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(Settings.layer),
@@ -69,12 +71,10 @@ const makeAppLayer = (dbPath: string) => {
       ? ThreadNaming.layer
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer, naming).pipe(
-    Layer.provide(domain),
-  )
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  return Layer.mergeAll(Automations.layer, Mcp.serverLayer).pipe(
+  return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
