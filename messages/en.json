@@ -370,5 +370,6 @@
   "settings_github_signed_out_before": "gh is installed but not signed in. Run",
   "settings_github_signed_out_after": "in a terminal.",
   "settings_github_check_again": "Check again",
-  "settings_github_hint": "kkcode uses your gh login to show pull request status, create pull requests, and poll GitHub issues for automations. Get gh at cli.github.com."
+  "settings_github_hint": "kkcode uses your gh login to show pull request status, create pull requests, and poll GitHub issues for automations. Get gh at cli.github.com.",
+  "message_writing": "Writing…"
 }

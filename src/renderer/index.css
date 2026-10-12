@@ -24,6 +24,14 @@
   --ease-swap: cubic-bezier(0.2, 0, 0, 1);
   /* A faster turn makes the same wait feel shorter. */
   --animate-spin: spin 0.6s linear infinite;
+  /* Opacity only, so reduced motion keeps it. */
+  --animate-fade-in: fade-in 150ms var(--ease-out);
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
 }
 
 @theme inline {
