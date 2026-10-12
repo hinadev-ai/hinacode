@@ -5,11 +5,12 @@ import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react"
 import { View } from "react-native"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
 
-export function TerminalView({ ref, theme, onInput, onSize }: TerminalViewProps) {
+export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
   const container = useRef<View>(null)
   const terminal = useRef<Terminal | null>(null)
   const input = useEffectEvent(onInput)
   const sized = useEffectEvent(onSize)
+  const cursorMode = useEffectEvent(onCursorMode)
   const initialTheme = useEffectEvent(() => xtermTheme(theme))
 
   useImperativeHandle(ref, () => ({ write: (data) => terminal.current?.write(data) }))
@@ -39,9 +40,16 @@ export function TerminalView({ ref, theme, onInput, onSize }: TerminalViewProps)
     observer.observe(element)
     resize()
     const subscription = term.onData((data) => input(data))
+    let applicationCursor = false
+    const parsed = term.onWriteParsed(() => {
+      if (term.modes.applicationCursorKeysMode === applicationCursor) return
+      applicationCursor = term.modes.applicationCursorKeysMode
+      cursorMode(applicationCursor)
+    })
     return () => {
       observer.disconnect()
       subscription.dispose()
+      parsed.dispose()
       term.dispose()
       terminal.current = null
     }

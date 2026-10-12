@@ -3,9 +3,12 @@ import { WebView } from "react-native-webview"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
 import { TERMINAL_HTML } from "@/terminal/terminal-page"
 
-type PageMessage = { type: "input"; data: string } | { type: "size"; cols: number; rows: number }
+type PageMessage =
+  | { type: "input"; data: string }
+  | { type: "size"; cols: number; rows: number }
+  | { type: "cursorMode"; applicationCursor: boolean }
 
-export function TerminalView({ ref, theme, onInput, onSize }: TerminalViewProps) {
+export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
   const webview = useRef<WebView>(null)
   useImperativeHandle(ref, () => ({
     write: (data) => webview.current?.injectJavaScript(`window.kkWrite(${JSON.stringify(data)});true;`),
@@ -25,7 +28,8 @@ export function TerminalView({ ref, theme, onInput, onSize }: TerminalViewProps)
       onMessage={(event) => {
         const message = JSON.parse(event.nativeEvent.data) as PageMessage
         if (message.type === "input") onInput(message.data)
-        else onSize(message.cols, message.rows)
+        else if (message.type === "size") onSize(message.cols, message.rows)
+        else onCursorMode(message.applicationCursor)
       }}
     />
   )

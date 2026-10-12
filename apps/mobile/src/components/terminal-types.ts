@@ -11,6 +11,8 @@ export interface TerminalViewProps {
   readonly onInput: (data: string) => void
   /** Called with the fitted grid size whenever it changes, first once the terminal has laid out. */
   readonly onSize: (cols: number, rows: number) => void
+  /** Called when the program switches arrow keys between normal and application mode. */
+  readonly onCursorMode: (applicationCursor: boolean) => void
 }
 
 export const xtermTheme = (theme: Palette) => ({

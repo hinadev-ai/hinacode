@@ -39,6 +39,12 @@ const resize = () => {
 new ResizeObserver(resize).observe(document.body)
 resize()
 term.onData((data) => post({ type: "input", data }))
+let applicationCursor = false
+term.onWriteParsed(() => {
+  if (term.modes.applicationCursorKeysMode === applicationCursor) return
+  applicationCursor = term.modes.applicationCursorKeysMode
+  post({ type: "cursorMode", applicationCursor })
+})
 window.kkWrite = (data) => term.write(data)
 </script>
 </body>
