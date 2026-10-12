@@ -224,6 +224,18 @@ describe("projects, threads and settings over rpc", () => {
     )
   })
 
+  test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    writeFileSync(join(repo, ".gitignore"), "secret.env\n")
+    writeFileSync(join(repo, "secret.env"), "TOKEN=1")
+    writeFileSync(join(repo, "notes.txt"), "hello")
+    const files = result(await invoke("files.list", { threadId: thread.id }))
+    expect(files).toContain("notes.txt")
+    expect(files).toContain(".gitignore")
+    expect(files).not.toContain("secret.env")
+  })
+
   test("settings written through rpc are what the next read returns", async () => {
     const saved = result(await invoke("settings.set", { locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } }))
     expect(saved).toMatchObject({ locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } })

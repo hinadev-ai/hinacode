@@ -39,3 +39,8 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 ## Effort and fast mode
 
 The thread stores `effort` (null means the model's default) and `fastMode` (migration `0004`). `models.list` reports each model's `efforts`, `defaultEffort` and `fastMode`, so the composer only shows the controls a model supports. Changing model drops values the new model can't honor, and switching agent resets both. Claude gets them as the `effort` option and `settings.fastMode` at session start, and through `applyFlagSettings` when they change. Codex gets `effort` and `serviceTier: "priority"` (its "Fast" tier) on `turn/start`.
+
+## Highlighting and completion
+
+- **Highlighting.** The textarea's text is transparent, and a highlighted copy of the same text sits under it (`ComposerInput`, `lib/composerSyntax.ts`). It colors list markers, inline and fenced code, known commands and mentions of files that exist. Only color changes, never font or spacing, so both layers wrap the same way.
+- **Completion.** `/` completes Claude slash commands and skills (`commands.list`: the live session's `supportedCommands()`, or a throwaway CLI in the thread's directory, cached for a minute). `$` completes Codex skills (`skills/list`), and a sent `$name` also goes to Codex as a `skill` input item. `@` completes workspace files (`files.list`: `git ls-files --cached --others --exclude-standard`, refreshed after each turn). Arrow keys move, Enter or Tab inserts, Escape closes.

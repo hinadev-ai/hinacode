@@ -7,9 +7,10 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
-import type { AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Stream } from "effect"
+import type { AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
@@ -38,6 +39,13 @@ const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
 const EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 const isEffortLevel = (effort: string | null): effort is EffortLevel =>
   effort !== null && EFFORT_LEVELS.includes(effort)
+
+const toCommand = (command: SlashCommand): AgentCommand => ({
+  trigger: "/",
+  name: command.name,
+  description: command.description,
+  argumentHint: command.argumentHint,
+})
 
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
@@ -372,11 +380,50 @@ export const layer = Layer.effect(
 
     const listModels = yield* Effect.cachedWithTTL(fetchModels, Duration.minutes(10))
 
+    /** A throwaway CLI in `cwd` that loads the same settings, skills and plugins a thread there would. */
+    const probeCommands = (cwd: string) =>
+      Effect.gen(function* () {
+        const prompts = yield* Queue.unbounded<SDKUserMessage>()
+        const probe = query({
+          prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
+          options: { ...baseOptions(), cwd, settingSources: ["user", "project", "local"], persistSession: false },
+        })
+        return yield* Effect.tryPromise({
+          try: () => probe.supportedCommands(),
+          catch: agentError("Failed to list Claude commands"),
+        }).pipe(
+          Effect.timeout(Duration.seconds(30)),
+          Effect.catchTag("TimeoutError", () =>
+            Effect.fail(new AgentError({ provider: "claude", message: "Timed out listing Claude commands" })),
+          ),
+          Effect.ensuring(Effect.sync(() => probe.close())),
+        )
+      })
+    const probedCommands = yield* Cache.make({
+      lookup: probeCommands,
+      capacity: 32,
+      timeToLive: Duration.minutes(1),
+    })
+
+    const listCommands = ({ threadId, cwd }: { readonly threadId: string; readonly cwd: string }) =>
+      Effect.gen(function* () {
+        const session = sessions.get(threadId)
+        const commands =
+          session !== undefined && session.cwd === cwd
+            ? yield* Effect.tryPromise({
+                try: () => session.query.supportedCommands(),
+                catch: agentError("Failed to list Claude commands"),
+              })
+            : yield* Cache.get(probedCommands, cwd)
+        return commands.map(toCommand)
+      })
+
     yield* Effect.addFinalizer(() => Effect.forEach([...sessions.values()], closeSession, { discard: true }))
 
     return ClaudeProvider.of({
       id: "claude",
       listModels,
+      listCommands,
       runTurn,
       steer,
       interrupt: (threadId) => {

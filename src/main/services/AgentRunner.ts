@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
-import type { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "../../shared/agent.ts"
+import type {
+  AgentCommand,
+  AgentEvent,
+  ApprovalDecision,
+  ApprovalRequest,
+  ModelInfo,
+  ProviderId,
+} from "../../shared/agent.ts"
 import type { Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -50,6 +57,9 @@ export class AgentRunner extends Context.Service<
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
+    readonly listCommands: (
+      threadId: string,
+    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
   }
 >()("kkcode/AgentRunner") {}
 
@@ -315,6 +325,12 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
+    listCommands: (threadId) =>
+      Effect.gen(function* () {
+        const thread = yield* threads.get(threadId)
+        const { cwd } = yield* activeWorkspace(threadId)
+        return yield* providers[thread.provider].listCommands({ threadId, cwd })
+      }),
   })
 })
 

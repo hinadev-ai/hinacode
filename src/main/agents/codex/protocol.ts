@@ -34,6 +34,7 @@ export type ThreadResumeResponse = { thread: Thread }
 export type UserInput =
   | { type: "text"; text: string; text_elements: Array<unknown> }
   | { type: "localImage"; path: string }
+  | { type: "skill"; name: string; path: string }
 
 export type TurnStartParams = {
   threadId: string
@@ -66,6 +67,16 @@ export type Model = {
   serviceTiers: Array<{ id: string; name: string; description: string }>
 }
 export type ModelListResponse = { data: Array<Model>; nextCursor: string | null }
+
+export type SkillsListParams = { cwds?: Array<string>; forceReload?: boolean }
+export type SkillMetadata = {
+  name: string
+  description: string
+  shortDescription?: string
+  path: string
+  enabled: boolean
+}
+export type SkillsListResponse = { data: Array<{ cwd: string; skills: Array<SkillMetadata> }> }
 
 export type CommandExecutionStatus = "inProgress" | "completed" | "failed" | "declined"
 export type PatchApplyStatus = "inProgress" | "completed" | "failed" | "declined"

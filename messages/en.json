@@ -381,5 +381,7 @@
   "effort_max": "Max",
   "effort_ultra": "Ultra",
   "thread_fast_mode": "Fast",
-  "thread_fast_mode_hint": "Faster responses that use more of your plan"
+  "thread_fast_mode_hint": "Faster responses that use more of your plan",
+  "composer_commands_label": "Commands",
+  "composer_files_label": "Files"
 }

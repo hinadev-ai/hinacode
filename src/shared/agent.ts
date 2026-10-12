@@ -27,6 +27,18 @@ export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   fastMode: false,
 })
 
+/**
+ * Something the composer can complete: a Claude slash command or skill typed as `/name`, or a Codex
+ * skill typed as `$name`.
+ */
+export const AgentCommand = Schema.Struct({
+  trigger: Schema.Literals(["/", "$"]),
+  name: Schema.String,
+  description: Schema.String,
+  argumentHint: Schema.String,
+})
+export type AgentCommand = typeof AgentCommand.Type
+
 export const ApprovalKind = Schema.Literals(["tool", "command", "patch"])
 export type ApprovalKind = typeof ApprovalKind.Type
 

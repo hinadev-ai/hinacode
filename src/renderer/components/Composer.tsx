@@ -1,3 +1,5 @@
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { AsyncResult } from "effect/reactivity"
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -10,19 +12,20 @@ import {
   useTransition,
 } from "react"
 import { RiAttachment2, RiSendPlaneLine, RiSteering2Line, RiStopFill } from "react-icons/ri"
+import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise } from "../lib/rpc.ts"
+import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { AgentPicker, EffortPicker, FastModeToggle, ModelPicker, WorkspacePicker } from "./ComposerControls.tsx"
+import { ComposerInput } from "./ComposerInput.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
-import { Textarea } from "./ui/textarea.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const readAsDataUrl = (file: File) =>
@@ -57,6 +60,10 @@ export function Composer({ thread }: { thread: Thread }) {
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const key = completionKey(thread)
+  const commands = AsyncResult.getOrElse(useAtomValue(commandsAtom(key)), (): ReadonlyArray<AgentCommand> => [])
+  const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
+  const refreshFiles = useAtomRefresh(filesAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const canSend = (text.trim() !== "" || attachments.length > 0) && !isSending && !isStaging
 
@@ -140,6 +147,13 @@ export function Composer({ thread }: { thread: Thread }) {
     send()
   }
 
+  // A finished turn may have added files worth mentioning.
+  const wasBusy = useRef(busy)
+  useEffect(() => {
+    if (wasBusy.current && !busy) refreshFiles()
+    wasBusy.current = busy
+  }, [busy, refreshFiles])
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
@@ -149,7 +163,7 @@ export function Composer({ thread }: { thread: Thread }) {
 
   return (
     <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
-      <div className="mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
+      <div className="relative mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
         {attachments.length > 0 && (
           <ul aria-label={m.attachment_pending_label()} className="flex flex-wrap gap-2 px-1 pt-1.5">
             {attachments.map((attachment) => (
@@ -162,18 +176,19 @@ export function Composer({ thread }: { thread: Thread }) {
             ))}
           </ul>
         )}
-        <Textarea
+        <ComposerInput
           ref={textareaRef}
           aria-label={m.thread_composer_label()}
           placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
           value={text}
-          onChange={(event) => useDrafts.getState().setText(thread.id, event.target.value)}
+          onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+          commands={commands}
+          files={files}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onDragOver={onDragOver}
           onDrop={onDrop}
           rows={2}
-          className="max-h-60 min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
         <div className="flex items-center gap-2">
           <AttachButton onClick={pickFiles} disabled={isStaging} />

@@ -363,5 +363,7 @@
   "effort_max": "最高",
   "effort_ultra": "極致",
   "thread_fast_mode": "快速",
-  "thread_fast_mode_hint": "回應更快，但會消耗更多用量"
+  "thread_fast_mode_hint": "回應更快，但會消耗更多用量",
+  "composer_commands_label": "指令",
+  "composer_files_label": "檔案"
 }

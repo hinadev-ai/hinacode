@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
+import { AgentCommand, AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
 import {
   Attachment,
   Automation,
@@ -113,6 +113,10 @@ export const RpcMethods = {
   ),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
+  /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
+  "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
+  /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
+  "files.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Schema.String)),
 
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),

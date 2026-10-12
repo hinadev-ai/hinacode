@@ -13,9 +13,13 @@ import {
   type WorktreeTakenError,
 } from "./errors.ts"
 import { slugifyBranch } from "./automations/template.ts"
-import type { CommandError } from "./Git.ts"
+import { type CommandError, Git } from "./Git.ts"
 import { Projects } from "./Projects.ts"
+import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
+
+/** Enough for `@` completion in a large monorepo without sending the renderer a huge payload. */
+const MAX_LISTED_FILES = 50_000
 
 /** A placeholder title for a thread nobody has described yet. It doubles as its branch name. */
 export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
@@ -59,6 +63,10 @@ export class Threads extends Context.Service<
     readonly update: (
       input: UpdateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadStartedError>
+    /** Files in the thread's working directory that git tracks or would track, for `@` mentions. */
+    readonly listFiles: (
+      id: string,
+    ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | CommandError>
     /** Whether the thread has any message yet. */
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
     /**
@@ -90,6 +98,8 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
   const worktrees = yield* Worktrees
+  const git = yield* Git
+  const activeWorkspace = yield* makeActiveWorkspace
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
 
@@ -208,6 +218,16 @@ const make = Effect.gen(function* () {
       return { ...thread, worktreeId: worktree.id, updatedAt }
     })
 
+  const listFiles = (id: string) =>
+    Effect.gen(function* () {
+      const { cwd } = yield* activeWorkspace(id)
+      const output = yield* git.run(cwd, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
+      return output
+        .split("\0")
+        .filter((path) => path !== "")
+        .slice(0, MAX_LISTED_FILES)
+    })
+
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
@@ -230,6 +250,7 @@ const make = Effect.gen(function* () {
     update,
     started,
     attachWorktree,
+    listFiles,
     settle,
     remove,
     resetInterrupted: sql`

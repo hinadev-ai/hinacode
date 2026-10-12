@@ -54,10 +54,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                           |
-| ------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `attachments.stage`, dialogs                 |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `automation.run` |
+| Channel | Direction       | Carries                                                                                                                                                                                          |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `automation.run`                |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 

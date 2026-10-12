@@ -100,6 +100,8 @@ const handlers: Handlers = {
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
+  "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
+  "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
 
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {
