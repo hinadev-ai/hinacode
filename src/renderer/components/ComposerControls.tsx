@@ -178,7 +178,7 @@ export function FastModeToggle({ thread, onError }: ControlProps) {
   )
 }
 
-const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
+export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
   supervised: { icon: RiShieldUserLine, label: m.access_supervised },
   auto: { icon: RiShieldCheckLine, label: m.access_auto },
   full: { icon: RiLockUnlockLine, label: m.access_full },

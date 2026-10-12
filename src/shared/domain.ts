@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, TokenUsage } from "./agent.ts"
+import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -72,7 +73,7 @@ export const PullRequest = Schema.Struct({
 })
 export type PullRequest = typeof PullRequest.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "settled", "archived"])
+export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "settled", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
@@ -102,6 +103,7 @@ export const Thread = Schema.Struct({
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
+  usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
   /**
    * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,
@@ -203,6 +205,8 @@ export const Settings = Schema.Struct({
   appearance: Appearance,
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
+  /** The access mode new threads start with. */
+  defaultAccessMode: AccessMode,
 })
 export type Settings = typeof Settings.Type
 
@@ -213,6 +217,7 @@ export const defaultSettings: Settings = {
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
+  defaultAccessMode: "full",
 }
 
 export const PullRequestLink = Schema.Struct({
