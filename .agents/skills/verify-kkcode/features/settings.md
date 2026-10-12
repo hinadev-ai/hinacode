@@ -1,11 +1,12 @@
 # Settings
 
-The settings page has five sections: `General` (language), `Models` (default model per agent), `Keybindings` (record, reset, conflict warning), `Integrations` (Linear API key, Slack user token, stored encrypted and never shown again), and `Automations` (see `automations.md`). Every change applies at once and survives a relaunch. No agent turn is needed.
+The settings page has five sections: `General` (language), `Models` (default model per agent, and the `Thread naming` model), `Keybindings` (record, reset, conflict warning), `Integrations` (Linear API key, Slack user token, stored encrypted and never shown again), and `Automations` (see `automations.md`). Every change applies at once and survives a relaunch. No agent turn is needed.
 
 ## Sub-features
 
 - `language` switches between `English` and `繁體中文`; the whole UI re-renders and the choice persists.
-- `default-model` sets the default model per agent; the new thread dialog then preselects it.
+- `default-model` sets the default model per agent; a new thread's composer `Model` starts on it, and switching `Agent` picks that agent's default.
+- `thread-naming` picks the Claude model that names a thread and its branch from the first message.
 - `keybinding-record` records a new chord for a command after `Record`; `Escape` cancels.
 - `keybinding-conflict` warns `Also bound to <commands>. Only one of them will run.` when a chord is reused.
 - `keybinding-reset` resets one command or `Reset all`.
@@ -28,9 +29,10 @@ Preconditions:
 
 - **Open.** Press `Control+,`. The heading `Settings` and `General` show. Screenshot `settings-01-general-en.png`.
 - **Language.** `$AB click '#settings-locale'`, `$AB wait '[role=option]'`, `$AB find role option click --name "繁體中文" --exact`. The page re-renders in Traditional Chinese, including the sidebar. Screenshot `settings-02-zh-TW.png`. `$S/rpc.mjs $PORT settings.get` shows `"locale": "zh-TW"`. Relaunch (`stop.sh`, `launch.sh --no-build`, reconnect): the app starts in zh-TW (`settings-03-after-relaunch-zh-TW.png`). Switch back to `English`.
-- **Default model.** Open `Models`. Each agent has a combobox labelled with the agent name; `$AB find role combobox click --name "Claude Code"`, pick `Sonnet 5.5`, click that section's `Save`; `Saved` appears. Go `Back to threads`, open `New thread in demo`: `#thread-model` already reads `Sonnet 5.5`. Screenshot `settings-04-new-thread-default-model.png`.
+- **Default model.** Open `Models`. Each agent has a combobox labelled with the agent name; `$AB click '#default-model-claude'`, `$AB wait '[role=option]'`, pick `Sonnet 5.5`. The choice saves at once (a `Save` button only appears in the free-text fallback when the agent cannot list models); `settings.get` shows `"claude": "claude-sonnet-5-5"` under `defaultModel`. Go `Back to threads`, click `New thread in demo`: the composer `Model` already reads `Sonnet 5.5`. Screenshot `settings-04-new-thread-default-model.png`.
+- **Thread naming model.** In `Models`, `$AB click '#text-generation-model'`, `$AB wait '[role=option]'`, pick a Claude model (only Claude models are listed). `settings.get` shows it as `textGenerationModel`. The effect needs a real send; see `worktrees.md` **Branch rename**.
 - **Record a keybinding.** Open `Keybindings`, click `Record a shortcut for New thread` (`--exact`). The row reads `Press a shortcut…`. Press `Control+Alt+t`. The row shows the keycaps `Ctrl` `Alt` `T` (accessible name `Ctrl+Alt+T`). Screenshot `settings-05-keybinding-recorded.png`. `settings.get` shows `"thread.new": "mod+alt+t"`.
-- **Effect.** `Back to threads`, press `Control+Alt+t`: the `New thread` dialog opens. Cancel it. Press `Control+n`: nothing opens.
+- **Effect.** `Back to threads`, press `Control+Alt+t`: a new `thread-xxxxx` opens with `Message` focused and a new sidebar row. Press `Control+n`: no thread is added. Delete the extra thread afterwards.
 - **Conflict.** Record `Control+b` for `New thread` (already `Show or hide sidebar`). The conflict warning names `Show or hide sidebar`. Screenshot `settings-06-conflict.png`. Click `Reset New thread to its default shortcut`; the row shows `Ctrl N` again.
 - **Integrations.** Open `Integrations`. Fill `Linear API key` with `lin_api_test_not_real` and save; the status reads `A key is stored.` and the field does not show the key. Screenshot `settings-07-linear-stored.png`. `$S/rpc.mjs $PORT secrets.has '{"name":"linear.apiKey"}'` prints `true`. Click `Clear`; the status reads `No key stored.` and `secrets.has` prints `false`. Repeat for `Slack user token` with secret name `slack.token`.
 
