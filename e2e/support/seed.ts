@@ -4,12 +4,15 @@ import { DatabaseSync } from "node:sqlite"
 export interface SeedProject {
   readonly name: string
   readonly rootPath: string
+  readonly setupScript?: string | null
 }
 
 export interface SeedThread {
   readonly projectId: string
   readonly title: string
   readonly provider?: "claude" | "codex"
+  readonly worktreeId?: string | null
+  readonly status?: "idle" | "running"
 }
 
 /**
@@ -33,30 +36,30 @@ export class Seed {
     }
   }
 
-  project({ name, rootPath }: SeedProject): string {
+  project({ name, rootPath, setupScript = null }: SeedProject): string {
     const id = randomUUID()
     const now = new Date().toISOString()
     this.#with((db) =>
       db
         .prepare(
-          `INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, ?)`,
+          `INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
         )
-        .run(id, name, rootPath, now, now),
+        .run(id, name, rootPath, setupScript, now, now),
     )
     return id
   }
 
-  thread({ projectId, title, provider = "claude" }: SeedThread): string {
+  thread({ projectId, title, provider = "claude", worktreeId = null, status = "idle" }: SeedThread): string {
     const id = randomUUID()
     const now = new Date().toISOString()
     this.#with((db) =>
       db
         .prepare(
           `INSERT INTO thread (id, project_id, worktree_id, title, provider, model, provider_session_id, status, sort_index, created_at, updated_at)
-           VALUES (?, ?, NULL, ?, ?, 'claude-sonnet-5-5', NULL, 'idle',
+           VALUES (?, ?, ?, ?, ?, 'claude-sonnet-5-5', NULL, ?,
                    (SELECT COALESCE(MAX(sort_index) + 1, 0) FROM thread WHERE project_id = ?), ?, ?)`,
         )
-        .run(id, projectId, title, provider, projectId, now, now),
+        .run(id, projectId, worktreeId, title, provider, status, projectId, now, now),
     )
     return id
   }

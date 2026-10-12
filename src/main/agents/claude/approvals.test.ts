@@ -1,4 +1,3 @@
-import { setImmediate } from "node:timers/promises"
 import { describe, expect, test } from "@effect/vitest"
 import { Effect } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalRequest } from "../../../shared/agent.ts"
@@ -8,8 +7,11 @@ const callOptions = () => ({ signal: new AbortController().signal, toolUseID: "t
 
 function setup() {
   const requests: Array<ApprovalRequest> = []
+  let raised: ((request: ApprovalRequest | null) => void) | null = null
   const approvals = makeApprovals((_session, event: AgentEvent) => {
-    if (event.type === "approval_requested") requests.push(event.request)
+    if (event.type !== "approval_requested") return
+    requests.push(event.request)
+    raised?.(event.request)
   })
   const session = {
     threadId: "thread",
@@ -20,14 +22,24 @@ function setup() {
   const ask = (toolName: string, input: Record<string, unknown>) =>
     approvals.ask(session, toolName, input, callOptions())
 
-  /** Calls the tool, answers the approval card with `decision` if one appears, and returns the result. */
+  /**
+   * Calls the tool, answers the approval card with `decision` if one appears, and returns the result.
+   * A card is raised synchronously inside `ask`, and a call that needs none settles on its own, so one of
+   * the two always resolves `prompted` without any waiting.
+   */
   const call = async (toolName: string, input: Record<string, unknown>, decision: ApprovalDecision = "deny") => {
-    const asked = requests.length
+    const prompted = new Promise<ApprovalRequest | null>((resolve) => {
+      raised = resolve
+    })
     const result = ask(toolName, input)
-    await setImmediate()
-    const request = requests[asked]
-    if (request !== undefined) await Effect.runPromise(approvals.respond(request.id, decision))
-    return { prompted: request !== undefined, request, result: await result }
+    result.then(
+      () => raised?.(null),
+      () => raised?.(null),
+    )
+    const request = await prompted
+    raised = null
+    if (request !== null) await Effect.runPromise(approvals.respond(request.id, decision))
+    return { prompted: request !== null, request: request ?? undefined, result: await result }
   }
 
   return { session, approvals, call }

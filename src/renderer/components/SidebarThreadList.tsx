@@ -13,7 +13,9 @@ import { move } from "@dnd-kit/helpers"
 import { DragDropProvider } from "@dnd-kit/react"
 import { useSortable } from "@dnd-kit/react/sortable"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { useAtomValue } from "@effect/atom-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import { AsyncResult } from "effect/reactivity"
 import {
   type ComponentProps,
   type KeyboardEvent,
@@ -35,13 +37,15 @@ import {
   RiGitBranchLine,
   RiMoreFill,
   RiPencilLine,
+  RiStackLine,
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
-import type { Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { PullRequestLink, Thread, ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise } from "../lib/rpc.ts"
+import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
+import { usePullRequests } from "../stores/pullRequests.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -103,7 +107,7 @@ const sensors = [
     preventActivation: (event, source) =>
       event.target instanceof Element &&
       !source.handle?.contains(event.target) &&
-      event.target.closest("button, input") !== null,
+      event.target.closest("button, input, a[target]") !== null,
   }),
   KeyboardSensor,
 ]
@@ -205,6 +209,8 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
   const worktree = useActiveWorktree(thread)
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const canSettle = thread.status !== "settled" || worktree !== undefined
+  const meta = useThreadMeta(thread)
+  const rowGap = meta.branch === null && meta.links.length === 0 ? "pb-1.5" : "pb-0.5"
 
   const queue = (next: RowMode) => () => setQueued(next)
   const closeDialog = (open: boolean) => {
@@ -221,10 +227,10 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
       ref={ref}
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
-      className="group/thread relative rounded-md data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
+      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
     >
       {mode === "renaming" ? (
-        <RenameInput thread={thread} onDone={finishRename} />
+        <RenameInput thread={thread} onDone={finishRename} rowGap={rowGap} />
       ) : (
         <Link
           ref={linkRef}
@@ -235,22 +241,21 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
             event.preventDefault()
             setMenuOpen(true)
           }}
-          className="flex cursor-grab items-center gap-2 rounded-md py-1 pr-2 pl-2 text-sm text-sidebar-foreground/80 outline-none group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+          // The link's ::after covers the whole row, so the second line clicks through to the thread too.
+          className={`flex cursor-grab items-center gap-2 rounded-md pt-1.5 pr-2 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring ${rowGap}`}
         >
           <ProviderIcon provider={thread.provider} />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span
-              className="truncate data-[settled=true]:text-muted-foreground"
-              data-settled={thread.status === "settled"}
-              title={thread.title}
-            >
-              {thread.title}
-            </span>
-            {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
+          <span
+            className="min-w-0 flex-1 truncate text-[0.9375rem] data-[settled=true]:text-muted-foreground"
+            data-settled={thread.status === "settled"}
+            title={thread.title}
+          >
+            {thread.title}
           </span>
           {thread.status === "settled" ? <SettledMark /> : <StatusDot status={thread.status} />}
         </Link>
       )}
+      <ThreadMeta {...meta} />
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
@@ -315,7 +320,7 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
 /** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 
-function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void }) {
+function RenameInput({ thread, onDone, rowGap }: { thread: Thread; onDone: () => void; rowGap: string }) {
   const [draft, setDraft] = useState(thread.title)
   const [error, setError] = useState<string | null>(null)
   const errorId = `rename-error-${thread.id}`
@@ -345,7 +350,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
   // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 py-1 pr-2 pl-2">
+      <div className={`flex items-center gap-2 pt-1.5 pr-2 pl-2 ${rowGap}`}>
         <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
@@ -358,9 +363,8 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
             aria-label={m.sidebar_thread_rename_label({ title: thread.title })}
             aria-invalid={error !== null}
             aria-describedby={error ? errorId : undefined}
-            className="-ml-1.5 h-5 rounded-sm px-1.5 py-0 text-sm"
+            className="-ml-1.5 h-5.5 rounded-sm px-1.5 py-0 text-[0.9375rem]"
           />
-          {thread.worktreeId && <WorktreeBranch worktreeId={thread.worktreeId} />}
         </span>
       </div>
       {error && (
@@ -460,17 +464,58 @@ function SettledMark() {
   )
 }
 
-function WorktreeBranch({ worktreeId }: { worktreeId: string }) {
-  const worktree = useWorktrees((state) => state.byId[worktreeId])
-  if (!worktree) return null
+/** The branch a thread works on: its worktree's, or the one checked out in the project root. */
+function useThreadMeta(thread: Thread) {
+  const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
+  const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => null)
+  const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
+  return {
+    branch: worktree?.branch ?? rootBranch,
+    // A removed worktree's branch is struck through: the thread works in the project root now.
+    removed: worktree?.status === "removed",
+    links,
+  }
+}
+
+const noLinks: ReadonlyArray<PullRequestLink> = []
+const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
+
+function ThreadMeta({ branch, removed, links }: ReturnType<typeof useThreadMeta>) {
+  const latest = links.at(-1)
+  if (branch === null && latest === undefined) return null
   return (
-    <span
-      className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground data-[removed=true]:line-through"
-      data-removed={worktree.status === "removed"}
-      title={m.sidebar_worktree_branch({ branch: worktree.branch })}
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+      {branch !== null && (
+        <span
+          className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"
+          data-removed={removed}
+          title={m.sidebar_worktree_branch({ branch })}
+        >
+          <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
+          <span className="truncate font-mono">{branch}</span>
+        </span>
+      )}
+      {latest && <PullRequestNumber latest={latest} count={links.length} />}
+    </div>
+  )
+}
+
+/** The newest linked pull request, with a stack icon when the thread linked several. Opens on GitHub. */
+function PullRequestNumber({ latest, count }: { latest: PullRequestLink; count: number }) {
+  const number = pullRequestNumber(latest.url)
+  return (
+    <a
+      href={latest.url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={
+        count > 1 ? m.sidebar_pull_request_stack({ number, count: String(count) }) : m.sidebar_pull_request({ number })
+      }
+      title={latest.url}
+      // Above the row link's ::after, so it opens the pull request instead of the thread.
+      className="relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring"
     >
-      <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
-      <span className="truncate font-mono">{worktree.branch}</span>
-    </span>
+      {count > 1 && <RiStackLine aria-hidden className="size-3" />}#{number}
+    </a>
   )
 }

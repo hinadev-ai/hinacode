@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto"
+import { homedir } from "node:os"
+import { dirname, isAbsolute } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project } from "../../shared/domain.ts"
+import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
@@ -10,11 +13,17 @@ import {
   ProjectRootInvalidError,
   persistence,
 } from "./errors.ts"
+import { type CommandError, Git } from "./Git.ts"
+import { GitHub } from "./GitHub.ts"
 
 export interface CreateProject {
   readonly name: string
   readonly rootPath: string
   readonly setupScript: string | null
+}
+
+export interface CloneProject extends CreateProject {
+  readonly repository: GitHubRepository
 }
 
 export interface UpdateProject {
@@ -32,6 +41,11 @@ export class Projects extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Project, PersistenceError | NotFoundError>
     readonly create: (input: CreateProject) => Effect.Effect<Project, WriteError>
+    /**
+     * Clones the repository into `rootPath` (a leading `~` is the home directory) and adds it. A folder
+     * that already holds a clone of the same repository is added as it is.
+     */
+    readonly clone: (input: CloneProject) => Effect.Effect<Project, WriteError | CommandError>
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
   }
@@ -45,6 +59,8 @@ const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const fs = yield* FileSystem.FileSystem
+  const git = yield* Git
+  const github = yield* GitHub
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -88,6 +104,28 @@ const make = Effect.gen(function* () {
       return project
     })
 
+  const holdsClone = (rootPath: string, { owner, name }: GitHubRepository) =>
+    git.run(rootPath, ["remote", "get-url", "origin"]).pipe(
+      Effect.map((url) => {
+        const origin = parseGitHubRepository(url)
+        return origin?.owner.toLowerCase() === owner.toLowerCase() && origin.name === name
+      }),
+      Effect.orElseSucceed(() => false),
+    )
+
+  const clone = ({ repository, ...input }: CloneProject) =>
+    Effect.gen(function* () {
+      const rootPath = input.rootPath.trim().replace(/^~(?=$|\/)/, homedir())
+      if (!isAbsolute(rootPath)) return yield* new ProjectRootInvalidError({ rootPath: input.rootPath })
+      if (!(yield* holdsClone(rootPath, repository))) {
+        yield* fs
+          .makeDirectory(dirname(rootPath), { recursive: true })
+          .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath: dirname(rootPath) })))
+        yield* github.clone(repository, rootPath)
+      }
+      return yield* create({ ...input, rootPath })
+    })
+
   const update = (input: UpdateProject) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
@@ -114,6 +152,7 @@ const make = Effect.gen(function* () {
     list: findAll(undefined).pipe(Effect.mapError(persistence("projects.list"))),
     get,
     create,
+    clone,
     update,
     remove: (id) =>
       sql`DELETE FROM project WHERE id = ${id}`.pipe(Effect.asVoid, Effect.mapError(persistence("projects.delete"))),

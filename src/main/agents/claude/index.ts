@@ -204,7 +204,7 @@ export const layer = Layer.effect(
               session.sessionId = message.session_id
               lastSessionIds.set(session.threadId, message.session_id)
             }
-            for (const event of mapMessage(message, session)) emit(session, event)
+            for (const event of mapMessage(message, session, new Date().toISOString())) emit(session, event)
           }),
         ),
         Effect.catchCause((cause) =>
@@ -255,6 +255,8 @@ export const layer = Layer.effect(
                 // Lets a live session switch to full access; the mode above decides what runs unasked.
                 allowDangerouslySkipPermissions: true,
                 thinking: { type: "adaptive", display: "summarized" },
+                // One-line "what it is doing now" for each sub-agent in the Agents tab.
+                agentProgressSummaries: true,
                 // Only invoked after the first prompt, by which time `session` is assigned.
                 canUseTool: (toolName, toolInput, options) => approvals.ask(session, toolName, toolInput, options),
                 mcpServers: { kkcode: kkcodeMcpServer(input.mcpServer) },
@@ -284,6 +286,7 @@ export const layer = Layer.effect(
           sessionGrants: new Set(),
           attachmentPaths: new Set(),
           pendingEdits: new Map(),
+          subagents: new Map(),
           sessionId: resume ?? null,
           turn: null,
           interrupted: false,

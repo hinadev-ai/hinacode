@@ -41,6 +41,10 @@ export const createProjectAtom = Atom.fn((input: RpcRequest<"projects.create">) 
   call("projects.create", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
+export const cloneProjectAtom = Atom.fn((input: RpcRequest<"projects.clone">) =>
+  call("projects.clone", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
+)
+
 export const updateProjectAtom = Atom.fn((input: RpcRequest<"projects.update">) =>
   call("projects.update", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
@@ -69,8 +73,9 @@ export const commandsAtom = Atom.family((key: string) =>
 
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 
+/** The branch checked out in the project root. Asked again when the window comes back, in case it changed. */
 export const currentBranchAtom = Atom.family((projectId: string) =>
-  Atom.make(call("projects.currentBranch", { id: projectId })),
+  Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
 export const worktreeChangesAtom = Atom.family((worktreeId: string) =>
@@ -117,7 +122,11 @@ export const pullRequestStatusAtom = Atom.family((url: string) =>
   ),
 )
 
-export const gitHubAuthAtom = Atom.make(call("github.auth", undefined))
+/**
+ * Whether `gh` is signed in. Kept for 12 hours after the last screen showing it closes, since asking `gh`
+ * is slow and the answer rarely changes. Settings' Recheck asks again at once.
+ */
+export const gitHubAuthAtom = Atom.make(call("github.auth", undefined)).pipe(Atom.setIdleTTL("12 hours"))
 
 export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
 

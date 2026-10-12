@@ -71,12 +71,43 @@ export type ApprovalRequest = typeof ApprovalRequest.Type
 export const ApprovalDecision = Schema.Literals(["allow", "allow_for_session", "deny"])
 export type ApprovalDecision = typeof ApprovalDecision.Type
 
+/** An agent asked the user for a secret through the MCP `request_secret` tool. The value never travels with it. */
+export const SecretRequest = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  /** The `Secrets` name the value is stored under. */
+  name: Schema.String,
+  description: Schema.String,
+})
+export type SecretRequest = typeof SecretRequest.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
   costUsd: Schema.optional(Schema.Number),
 })
 export type TokenUsage = typeof TokenUsage.Type
+
+export const SubagentStatus = Schema.Literals(["running", "completed", "failed", "stopped"])
+export type SubagentStatus = typeof SubagentStatus.Type
+
+/** A sub-agent the thread's agent spawned, as last reported by the provider. */
+export const Subagent = Schema.Struct({
+  id: Schema.String,
+  /** What it was asked to do: the task description or a summary of its prompt. */
+  label: Schema.String,
+  /** The sub-agent type (e.g. "Explore"), or "agent" when the provider has none. */
+  kind: Schema.String,
+  status: SubagentStatus,
+  /** The latest one-line progress summary, or the final summary once it ended. */
+  summary: Schema.NullOr(Schema.String),
+  lastTool: Schema.NullOr(Schema.String),
+  toolUses: Schema.NullOr(Schema.Number),
+  tokens: Schema.NullOr(Schema.Number),
+  startedAt: Schema.String,
+  endedAt: Schema.NullOr(Schema.String),
+})
+export type Subagent = typeof Subagent.Type
 
 export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("session_bound"), providerSessionId: Schema.String }),
@@ -101,6 +132,11 @@ export const AgentEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("approval_requested"), request: ApprovalRequest }),
   Schema.Struct({ type: Schema.Literal("approval_resolved"), requestId: Schema.String }),
+  /** Carries the sub-agent's full current state, not a patch. Never part of the transcript. */
+  Schema.Struct({ type: Schema.Literal("subagent_updated"), subagent: Subagent }),
+  /** Raised by the built-in MCP server, not the provider, while a turn runs. */
+  Schema.Struct({ type: Schema.Literal("secret_requested"), request: SecretRequest }),
+  Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
   Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
 ])

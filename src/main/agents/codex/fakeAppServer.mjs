@@ -1,11 +1,18 @@
 // Stands in for `codex app-server` in tests. Every received message is appended to $FAKE_CODEX_LOG as a JSON line.
-// $FAKE_CODEX_CONTROL is a JSON file re-read on every request and poll:
+// $FAKE_CODEX_CONTROL is a JSON file re-read on every request and whenever it changes:
 //   stall: methods to hold without replying, until `release` becomes true
 //   holdTurn: keep a started turn running until turn/interrupt instead of completing it right away
-import { appendFileSync, readFileSync } from "node:fs"
+import { appendFileSync, readFileSync, watch } from "node:fs"
 import { createInterface } from "node:readline"
 
-const control = () => JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
+const control = () => {
+  try {
+    return JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
+  } catch {
+    // The test is mid-write; the next change event reads the finished file.
+    return {}
+  }
+}
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
 const completeTurn = (threadId, turnId, status) =>
   send({ method: "turn/completed", params: { threadId, turn: { id: turnId, status, error: null } } })
@@ -50,10 +57,12 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line)
   appendFileSync(process.env.FAKE_CODEX_LOG, `${line}\n`)
   if (message.id === undefined) return
-  if (control().stall?.includes(message.method)) held.push(message)
+  const { stall, release } = control()
+  if (stall?.includes(message.method) && !release) held.push(message)
   else reply(message)
 })
 
-setInterval(() => {
+// Held messages go out when the test flips `release`; the control file changing is the only trigger.
+watch(process.env.FAKE_CODEX_CONTROL, () => {
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
-}, 20)
+})

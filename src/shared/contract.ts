@@ -1,5 +1,14 @@
 import { Schema } from "effect"
-import { AgentCommand, AgentEvent, ApprovalDecision, ApprovalRequest, ModelInfo, ProviderId } from "./agent.ts"
+import {
+  AgentCommand,
+  AgentEvent,
+  ApprovalDecision,
+  ApprovalRequest,
+  ModelInfo,
+  ProviderId,
+  Subagent,
+  SecretRequest,
+} from "./agent.ts"
 import {
   AccessMode,
   Attachment,
@@ -19,6 +28,7 @@ import {
   Worktree,
   WorktreeChanges,
 } from "./domain.ts"
+import { GitHubRepository } from "./github.ts"
 
 const AutomationInput = Schema.Struct({
   projectId: Schema.String,
@@ -37,11 +47,21 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 
 /** Every renderer -> main call. Both sides decode what they receive with these schemas. */
 export const RpcMethods = {
+  "app.ready": rpc(Schema.Void, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
       name: Schema.String,
       rootPath: Schema.String,
+      setupScript: Schema.NullOr(Schema.String),
+    }),
+    Project,
+  ),
+  "projects.clone": rpc(
+    Schema.Struct({
+      repository: GitHubRepository,
+      rootPath: Schema.String,
+      name: Schema.String,
       setupScript: Schema.NullOr(Schema.String),
     }),
     Project,
@@ -124,12 +144,17 @@ export const RpcMethods = {
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
   /**
-   * The thread's live transcript and pending approvals as of push `seq`: it reflects every
-   * transcript push up to and including `seq`, and none after.
+   * The thread's live transcript and pending approvals and secret requests as of push `seq`: it
+   * reflects every transcript push up to and including `seq`, and none after.
    */
   "threads.transcript": rpc(
     Schema.Struct({ threadId: Schema.String }),
-    Schema.Struct({ messages: Schema.Array(Message), approvals: Schema.Array(ApprovalRequest), seq: Schema.Number }),
+    Schema.Struct({
+      messages: Schema.Array(Message),
+      approvals: Schema.Array(ApprovalRequest),
+      secretRequests: Schema.Array(SecretRequest),
+      seq: Schema.Number,
+    }),
   ),
   /**
    * Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`.
@@ -151,7 +176,12 @@ export const RpcMethods = {
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
+  /** Sub-agents the thread's agent spawned since the app started, newest first. */
+  "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
+  /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
+  "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
+  "pullRequests.all": rpc(Schema.Void, Schema.Array(PullRequestLink)),
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
   /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. Returns the URL. */
   "pullRequests.create": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
@@ -268,6 +298,12 @@ export const PushEvent = Schema.Union([
     type: Schema.Literal("thread.pullRequests"),
     threadId: Schema.String,
     links: Schema.Array(PullRequestLink),
+  }),
+  /** Every sub-agent of the thread, newest first, sent whenever one of them changes. */
+  Schema.Struct({
+    type: Schema.Literal("thread.subagents"),
+    threadId: Schema.String,
+    subagents: Schema.Array(Subagent),
   }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),

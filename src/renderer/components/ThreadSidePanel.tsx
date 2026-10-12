@@ -2,7 +2,8 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { PatchDiff } from "@pierre/diffs/react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
-import { type ReactNode, useId, useState } from "react"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { type ReactNode, type RefObject, useId, useState } from "react"
 import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
 import {
   type ChangedFileStatus,
@@ -11,27 +12,32 @@ import {
   type Worktree,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
-import { themes } from "../lib/appearance.ts"
+import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom, worktreeChangesAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { ThreadAgents, useRunningSubagentCount } from "./ThreadAgents.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
 import { pullRequestStatusLabel, ThreadPullRequests } from "./ThreadPullRequests.tsx"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
 /** Hiding the panel (mod+.) takes the focused element with it; hand focus to the composer instead of <body>. */
 const returnFocusToComposer = (panel: HTMLElement | null) => () => {
   if (panel?.contains(document.activeElement)) useUi.getState().requestComposerFocus()
 }
 
-/** Right-hand panel of the thread route: where the thread runs, its setup log, changes, ports, pull requests, and settling. */
-export function ThreadSidePanel({ thread }: { thread: Thread }) {
+/**
+ * Right-hand panel of the thread route. Details: where the thread runs, its setup log, changes, ports
+ * and pull requests. Agents: the sub-agents its agent spawned.
+ */
+export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
@@ -40,42 +46,89 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
     <aside
       ref={returnFocusToComposer}
       aria-label={m.panel_label()}
-      className="flex w-96 shrink-0 flex-col border-l border-border"
+      className={compact ? "flex min-h-0 w-full flex-1 flex-col" : "flex w-96 shrink-0 flex-col border-l border-border"}
     >
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
-        <h2 className="text-sm font-semibold">{m.panel_label()}</h2>
-        <PanelToggle expanded onToggle={toggleSidePanel} />
-      </header>
-      <ScrollArea className="min-h-0 flex-1">
-        <div ref={sectionsRef} className="flex flex-col gap-6 p-4">
-          <Section title={m.panel_workspace()}>
-            {worktree ? <WorktreeWorkspace worktree={worktree} /> : <RootWorkspace projectId={thread.projectId} />}
-          </Section>
-          {worktree && (
-            <Section title={m.panel_setup_log()}>
-              <WorktreeSetupLog worktree={worktree} />
-            </Section>
-          )}
-          <ChangesSection worktree={worktree} />
-          <Section title={m.ports_title()}>
-            <ThreadPorts threadId={thread.id} />
-          </Section>
-          <Section title={m.pr_links_title()}>
-            <ThreadPullRequests thread={thread} />
-          </Section>
-        </div>
-      </ScrollArea>
+      <Tabs defaultValue="details" className="min-h-0 flex-1 gap-0">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
+          <TabsList>
+            <TabsTrigger value="details">{m.panel_tab_details()}</TabsTrigger>
+            <TabsTrigger value="agents">
+              {m.panel_tab_agents()}
+              <RunningSubagentsBadge threadId={thread.id} />
+            </TabsTrigger>
+          </TabsList>
+          <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
+        </header>
+        <TabsContent value="details" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <div ref={sectionsRef} className="flex flex-col gap-6 p-4">
+              <Section title={m.panel_workspace()}>
+                {worktree ? <WorktreeWorkspace worktree={worktree} /> : <RootWorkspace projectId={thread.projectId} />}
+              </Section>
+              {worktree && (
+                <Section title={m.panel_setup_log()}>
+                  <WorktreeSetupLog worktree={worktree} />
+                </Section>
+              )}
+              <ChangesSection worktree={worktree} />
+              <Section title={m.ports_title()}>
+                <ThreadPorts threadId={thread.id} />
+              </Section>
+              <Section title={m.pr_links_title()}>
+                <ThreadPullRequests thread={thread} />
+              </Section>
+            </div>
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="agents" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="p-4">
+              <ThreadAgents threadId={thread.id} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </aside>
   )
 }
 
-export function PanelToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
-  const label = expanded ? m.panel_hide() : m.panel_show()
+function RunningSubagentsBadge({ threadId }: { threadId: string }) {
+  const running = useRunningSubagentCount(threadId)
+  if (running === 0) return null
   return (
-    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} aria-expanded={expanded} onClick={onToggle}>
+    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-working/15 px-1 text-[0.6875rem] font-medium text-working tabular-nums">
+      <span aria-hidden>{running}</span>
+      <span className="sr-only">{m.agents_running_count({ count: running })}</span>
+    </span>
+  )
+}
+
+export function PanelToggle({
+  expanded,
+  onToggle,
+  buttonRef,
+  closeDialog = false,
+}: {
+  expanded: boolean
+  onToggle: () => void
+  buttonRef?: RefObject<HTMLButtonElement | null>
+  closeDialog?: boolean
+}) {
+  const label = expanded ? m.panel_hide() : m.panel_show()
+  const button = (
+    <Button
+      ref={buttonRef}
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      title={label}
+      aria-expanded={expanded}
+      onClick={closeDialog ? undefined : onToggle}
+    >
       <RiSideBarFill aria-hidden className="-scale-x-100" />
     </Button>
   )
+  return closeDialog ? <DialogPrimitive.Close render={button} /> : button
 }
 
 function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -280,7 +333,7 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
   const diffId = useId()
   const mark = fileStatusMark[status]
   const filePatch = open ? patchForFile(patch, path) : undefined
-  const theme = themes[useSettings().appearance.theme]
+  const theme = useTheme(useSettings().appearance.theme)
 
   return (
     <li className="flex flex-col gap-1">

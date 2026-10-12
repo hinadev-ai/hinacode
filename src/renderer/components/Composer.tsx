@@ -169,10 +169,13 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="shrink-0 px-4 pb-4">
-      <div className="relative mx-auto flex max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
+    <form onSubmit={onSubmit} className="flex max-h-3/5 min-h-0 shrink-0 flex-col px-3 pb-3">
+      <div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-1 rounded-xl border border-input bg-input/30 p-2 focus-within:border-ring">
         {attachments.length > 0 && (
-          <ul aria-label={m.attachment_pending_label()} className="flex flex-wrap gap-2 px-1 pt-1.5">
+          <ul
+            aria-label={m.attachment_pending_label()}
+            className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+          >
             {attachments.map((attachment) => (
               <li key={attachment.id}>
                 <PendingAttachment
@@ -196,15 +199,16 @@ export function Composer({ thread }: { thread: Thread }) {
           onDragOver={onDragOver}
           onDrop={onDrop}
           rows={2}
+          className="min-h-[calc(1lh+1rem)]"
         />
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <AttachButton onClick={pickFiles} disabled={isStaging} />
           {unstarted && <AgentPicker thread={thread} onError={setError} />}
           <ModelPicker thread={thread} onError={setError} />
           <EffortPicker thread={thread} onError={setError} />
           <FastModeToggle thread={thread} onError={setError} />
           <AccessPicker thread={thread} onError={setError} />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {busy && (
               <Button type="button" size="sm" variant="secondary" onClick={stop}>
                 <RiStopFill aria-hidden />

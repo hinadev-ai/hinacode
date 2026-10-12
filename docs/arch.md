@@ -54,12 +54,16 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                          |
-| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `automation.run`                |
+| Channel | Direction       | Carries                                                                                                                                                                                                             |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `secrets.respond`, `settings.*`, `secrets.*`, `ports.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`               |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
+
+Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
+
+The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document, diffs, and Mermaid; the selected theme remains in SQLite.
 
 ## Main-process layers
 
@@ -71,16 +75,20 @@ flowchart BT
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Settings, Messages, Attachments"]
-  features["Mcp, Ports"]
+  features["McpCredentials, Ports"]
   runner["AgentRunner"]
   autos["Automations"]
+  mcp["MCP server"]
 
   node --> db --> domain
   infra --> domain
   domain --> features --> runner
   domain --> runner
   runner --> autos
+  runner --> mcp
 ```
+
+The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 
 Every service is a `Context.Service` with an id like `"kkcode/Threads"` and an exported `layer`. On quit, `runtime.dispose()` gets up to 5 s, so running turns can persist their messages and status.
 
@@ -113,7 +121,7 @@ classDiagram
   AgentProvider <|.. CodexProvider
 ```
 
-Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `turn_completed` and `turn_failed`. Everything after the provider is agent-agnostic.
+Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `turn_completed` and `turn_failed`. Everything after the provider is agent-agnostic. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
 Adding a backend means one `AgentProvider` implementation in `src/main/agents/`, one entry in the `providers` record in `AgentRunner.ts`, and one literal in `ProviderId`.
 
@@ -153,6 +161,17 @@ sequenceDiagram
     R->>AR: rpc approvals.respond
     AR->>P: respondApproval
   end
+  opt sub-agent spawned
+    P-->>AR: subagent_updated (full state)
+    AR->>AR: keep latest per thread, in memory
+    AR-->>R: push thread.subagents (not a transcript push)
+  end
+  opt request_secret (MCP tool)
+    AR-->>R: secret_requested, thread.updated(awaiting_approval)
+    Dev->>R: Save / Decline
+    R->>AR: rpc secrets.respond
+    AR->>AR: Secrets.set, then secret_resolved to the waiting tool
+  end
   opt steer while running
     Dev->>R: send another message
     R->>AR: rpc threads.steer
@@ -165,6 +184,7 @@ sequenceDiagram
 ```
 
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
+- `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`.
 - Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
 - On boot, `resetInterrupted` and `closeInterrupted` mark anything a killed app left running as over.
 
@@ -178,7 +198,7 @@ sequenceDiagram
   participant M as Main
   S->>S: start buffering pushes in `pending`
   S->>M: rpc threads.transcript
-  M-->>S: { messages, approvals, seq }
+  M-->>S: { messages, approvals, secretRequests, seq }
   S->>S: apply snapshot
   S->>S: replay pending pushes where push.seq > seq
   M-->>S: later pushes apply directly
@@ -255,8 +275,8 @@ stateDiagram-v2
   state "Thread" as T {
     [*] --> idle
     idle --> running: send
-    running --> awaiting_approval: approval_requested
-    awaiting_approval --> running: approval_resolved
+    running --> awaiting_approval: approval_requested / secret_requested
+    awaiting_approval --> running: approval_resolved / secret_resolved
     running --> idle: turn_completed / turn_failed
     awaiting_approval --> idle: interrupt
     idle --> settled: settle
@@ -292,11 +312,17 @@ flowchart LR
     review["review_changes"]
     prs["link_pull_request<br/>list_thread_pull_requests<br/>unlink_pull_request"]
     linear["linear_get_issue, linear_search_issues,<br/>linear_create_comment, linear_update_issue_state"]
+    secret["request_secret"]
+    create["create_thread"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
   prs --> db[("pull_request_link")] --> push["push thread.pullRequests"]
-  linear --> secret["Secrets: linear.apiKey"]
+  linear --> apikey["Secrets: linear.apiKey"]
+  secret --> runner["AgentRunner.requestSecret<br/>card in the thread, value stored by Secrets"]
+  create --> threads["Threads.create (created_by = thread:caller)<br/>+ AgentRunner.send"]
 ```
+
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project: `created_by` records where it came from, nothing else ties it to its creator. Codex gets `tool_timeout_sec = 600` for this server so a user has time to answer.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 

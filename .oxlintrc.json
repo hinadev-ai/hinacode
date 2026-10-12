@@ -31,6 +31,83 @@
         "jsx-a11y/label-has-associated-control": "off",
         "jsx-a11y/prefer-tag-over-role": "off"
       }
+    },
+    {
+      "files": ["src/**/*.test.ts", "src/**/fakeAppServer.mjs", "e2e/**"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setTimeout",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          },
+          {
+            "name": "setInterval",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          },
+          {
+            "name": "setImmediate",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          }
+        ],
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:timers/promises",
+                "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+              },
+              {
+                "name": "timers/promises",
+                "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+              },
+              {
+                "name": "node:timers",
+                "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+              },
+              {
+                "name": "timers",
+                "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+              }
+            ]
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "page",
+            "property": "waitForTimeout",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          },
+          {
+            "object": "globalThis",
+            "property": "setTimeout",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          },
+          {
+            "object": "globalThis",
+            "property": "setInterval",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["e2e/support/app.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setInterval",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          },
+          {
+            "name": "setImmediate",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**"]

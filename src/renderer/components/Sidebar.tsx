@@ -1,8 +1,9 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { Link, useRouter, useNavigate } from "@tanstack/react-router"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
-import { type RefObject, useRef, useState } from "react"
+import { type RefObject, useEffect, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -13,6 +14,7 @@ import {
 } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { projectsAtom } from "../lib/rpc.ts"
+import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
@@ -23,40 +25,66 @@ import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
+import { Dialog, DialogPortal, DialogTitle } from "./ui/dialog.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 /** Stays mounted while hidden so its dialogs, opened by keybindings, still render. */
-export function Sidebar() {
+export function Sidebar({
+  compact,
+  finalFocus,
+}: {
+  compact: boolean
+  finalFocus: RefObject<HTMLButtonElement | null>
+}) {
+  // Loads every thread's pull request links once, for the PR numbers under each row.
+  useAtomValue(loadAllPullRequestsAtom)
   const sidebarOpen = useUi((state) => state.sidebarOpen)
+  const overlayOpen = useUi((state) => state.sidebarOverlayOpen)
+  const setOverlayOpen = useUi((state) => state.setSidebarOverlayOpen)
   const toggleSidebar = useUi((state) => state.toggleSidebar)
   const addProjectOpen = useUi((state) => state.addProjectOpen)
   const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
   const hideChord = useKeymap()["sidebar.toggle"]
   const addProjectButtonRef = useRef<HTMLButtonElement>(null)
+  const router = useRouter()
 
-  return (
+  useEffect(() => router.subscribe("onResolved", () => setOverlayOpen(false)), [router, setOverlayOpen])
+
+  const content = (
     <nav
       aria-label={m.sidebar_label()}
-      hidden={!sidebarOpen}
-      className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      hidden={!compact && !sidebarOpen}
+      className={
+        compact
+          ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
+          : "flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+      }
     >
-      <header className="flex h-12 items-center gap-0.5 pr-2 pl-3">
-        <span className="mr-auto font-heading text-sm font-semibold">{m.app_name()}</span>
+      <header className="flex h-12 shrink-0 items-center gap-0.5 pr-2 pl-3">
+        <span className="mr-auto min-w-0 truncate font-heading text-sm font-semibold">{m.app_name()}</span>
         <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
           <RiSettings3Line aria-hidden />
         </Button>
-        <Tooltip>
-          <TooltipTrigger
-            render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} onClick={toggleSidebar} />}
+        {compact ? (
+          <DialogPrimitive.Close
+            render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} title={m.sidebar_hide()} />}
           >
             <RiSideBarFill aria-hidden />
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {m.sidebar_hide()}
-            {hideChord && <ChordKeys chord={hideChord} />}
-          </TooltipContent>
-        </Tooltip>
+          </DialogPrimitive.Close>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label={m.sidebar_hide()} onClick={toggleSidebar} />}
+            >
+              <RiSideBarFill aria-hidden />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {m.sidebar_hide()}
+              {hideChord && <ChordKeys chord={hideChord} />}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </header>
 
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
@@ -78,6 +106,22 @@ export function Sidebar() {
 
       <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
     </nav>
+  )
+
+  if (!compact) return content
+  return (
+    <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
+      <DialogPortal keepMounted>
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-background/60" />
+        <DialogPrimitive.Popup
+          finalFocus={finalFocus}
+          className="fixed inset-y-0 left-0 z-50 flex w-64 max-w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar outline-none"
+        >
+          <DialogTitle className="sr-only">{m.sidebar_label()}</DialogTitle>
+          {content}
+        </DialogPrimitive.Popup>
+      </DialogPortal>
+    </Dialog>
   )
 }
 

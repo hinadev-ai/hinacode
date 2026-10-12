@@ -16,7 +16,7 @@ import { Attachments } from "./services/Attachments.ts"
 import { Events } from "./services/Events.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
-import { McpServer } from "./mcp/index.ts"
+import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
@@ -31,7 +31,7 @@ type AppServices =
   | Worktrees
   | Settings
   | AgentRunner
-  | McpServer
+  | McpCredentials
   | PullRequests
   | Secrets
   | Ports
@@ -62,8 +62,10 @@ const defaultModel = (provider: ProviderId) =>
   })
 
 const handlers: Handlers = {
+  "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
+  "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) => Projects.use((projects) => projects.remove(id)),
 
@@ -128,16 +130,19 @@ const handlers: Handlers = {
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
+  "secrets.respond": ({ requestId, value }) => AgentRunner.use((runner) => runner.respondSecret(requestId, value)),
 
   "secrets.has": ({ name }) => Secrets.use((secrets) => secrets.has(name)),
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
+  "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
+  "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
   "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
-  "mcp.connection": ({ threadId }) => McpServer.useSync((mcp) => mcp.connectionFor(threadId)),
+  "mcp.connection": ({ threadId }) => McpCredentials.use((mcp) => mcp.connectionFor(threadId)),
   "ports.list": ({ threadId }) => Ports.use((ports) => ports.listForThread(threadId)),
   "ports.kill": ({ pid }) => Ports.use((ports) => ports.kill(pid)),
 

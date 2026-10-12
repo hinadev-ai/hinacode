@@ -14,7 +14,7 @@
   "sidebar_new_thread_in": "在 {project} 建立討論串",
   "sidebar_toggle_project": "顯示或隱藏 {project} 的討論串",
   "project_dialog_title": "新增專案",
-  "project_dialog_description": "指定一個本機儲存庫給 kkcode。",
+  "project_dialog_description": "加入本機儲存庫，或從 GitHub 複製一個。",
   "project_name_label": "名稱",
   "project_name_placeholder": "my-app",
   "project_root_label": "根目錄路徑",
@@ -80,6 +80,14 @@
   "approval_scope_path": "「本次工作階段皆允許」會在工作階段結束前，自動允許對這個路徑的 {tool}：",
   "approval_scope_domain": "「本次工作階段皆允許」會在工作階段結束前，自動允許 {tool} 存取這個網域的任何網址：",
   "approval_scope_tool": "「本次工作階段皆允許」會在工作階段結束前，自動允許所有 {tool} 呼叫，不論輸入為何。",
+  "secret_request_title": "{provider} 需要一個密鑰",
+  "secret_request_name": "儲存名稱",
+  "secret_request_value": "密鑰內容",
+  "secret_request_exists": "已經有同名的密鑰，儲存後會取代它。",
+  "secret_request_save": "儲存",
+  "secret_request_replace": "取代",
+  "secret_request_decline": "拒絕",
+  "secret_request_hint": "密鑰只儲存在這台電腦上，不會顯示給代理。",
   "common_retry": "重試",
   "thread_worktree_label": "在新的 worktree 中執行",
   "thread_base_ref_label": "基準 ref",
@@ -195,6 +203,38 @@
   "pr_links_loading": "正在載入 pull request…",
   "pr_links_empty": "尚未連結。可以從這個分支建立，或請代理開一個。",
   "pr_links_failed": "無法載入 pull request：{message}",
+  "panel_tab_details": "詳細資訊",
+  "panel_tab_agents": "代理",
+  "agents_running_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個執行中",
+        "countPlural=other": "{count} 個執行中"
+      }
+    }
+  ],
+  "agents_list_label": "子代理",
+  "agents_loading": "正在載入子代理…",
+  "agents_failed": "無法載入子代理：{message}",
+  "agents_empty": "這個討論串產生的子代理會顯示在這裡。",
+  "agents_status_running": "執行中",
+  "agents_status_completed": "已完成",
+  "agents_status_failed": "失敗",
+  "agents_status_stopped": "已停止",
+  "agents_last_tool": "最後使用的工具：{tool}",
+  "agents_tools": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個工具",
+        "countPlural=other": "{count} 個工具"
+      }
+    }
+  ],
+  "agents_tokens": "{tokens} tokens",
   "pr_links_unlink": "取消連結 {name}",
   "sidebar_thread_actions": "「{title}」的操作",
   "sidebar_thread_rename": "重新命名",
@@ -314,7 +354,9 @@
   "project_delete_confirm": "刪除專案",
   "settings_appearance": "外觀",
   "settings_theme": "主題",
-  "theme_default": "預設",
+  "theme_system": "跟隨系統",
+  "theme_light": "淺色",
+  "theme_default": "深色",
   "settings_font_size": "字體大小",
   "settings_ui_font": "介面字型",
   "settings_mono_font": "等寬字型",
@@ -342,6 +384,14 @@
   "settings_github_signed_out_after": "登入。",
   "settings_github_check_again": "重新檢查",
   "settings_github_hint": "kkcode 會使用你的 gh 登入來顯示 pull request 狀態、建立 pull request，並為自動化輪詢 GitHub issue。可從 cli.github.com 取得 gh。",
+  "project_source_label": "資料夾或 GitHub 儲存庫",
+  "project_github_repository": "將從 GitHub 複製 {repository}。",
+  "project_clone_to_label": "複製到",
+  "project_clone_submit": "複製並加入",
+  "project_cloning": "正在複製…",
+  "message_writing": "撰寫中…",
+  "sidebar_pull_request": "開啟 pull request #{number}",
+  "sidebar_pull_request_stack": "開啟 pull request #{number}，{count} 個連結中最新的一個",
   "thread_agent_picker": "代理",
   "thread_workspace_picker": "工作區",
   "thread_workspace_local": "本機",

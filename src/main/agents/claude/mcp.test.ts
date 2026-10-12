@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
-import { setTimeout } from "node:timers/promises"
 import { expect, test } from "@effect/vitest"
 import { type McpServerConfig, query } from "@anthropic-ai/claude-agent-sdk"
 import { kkcodeMcpServer } from "./mcp.ts"
@@ -10,6 +9,8 @@ const cliInput = async (mcpServers: Record<string, McpServerConfig>) => {
   const abort = new AbortController()
   let args: ReadonlyArray<string> = []
   let stdin = ""
+  // The SDK writes its MCP configuration to stdin right after spawning; that write is the signal to stop.
+  const { promise: configured, resolve } = Promise.withResolvers<void>()
   const handle = query({
     prompt: (async function* () {})(),
     options: {
@@ -17,7 +18,10 @@ const cliInput = async (mcpServers: Record<string, McpServerConfig>) => {
       abortController: abort,
       spawnClaudeCodeProcess: (options) => {
         args = options.args
-        const input = new PassThrough().on("data", (chunk) => (stdin += chunk))
+        const input = new PassThrough().on("data", (chunk) => {
+          stdin += chunk
+          if (stdin.includes('"kkcode"')) resolve()
+        })
         return Object.assign(new EventEmitter(), {
           stdin: input,
           stdout: new PassThrough(),
@@ -29,7 +33,7 @@ const cliInput = async (mcpServers: Record<string, McpServerConfig>) => {
     },
   })
   handle.next().catch(() => undefined)
-  await setTimeout(100)
+  await configured
   abort.abort()
   return { args, stdin }
 }
@@ -39,6 +43,6 @@ test("the kkcode MCP credential reaches neither the Claude CLI's argv nor its st
   const connection = { url: "http://127.0.0.1:1/mcp", headers: { authorization: `Bearer thread-a.${secret}` } }
   const { args, stdin } = await cliInput({ kkcode: kkcodeMcpServer(connection) })
   expect(stdin).toMatch(/"kkcode"/)
-  expect(!args.some((arg) => arg.includes(secret))).toBeTruthy()
-  expect(!stdin.includes(secret)).toBeTruthy()
+  expect(args.some((arg) => arg.includes(secret))).toBe(false)
+  expect(stdin.includes(secret)).toBe(false)
 })

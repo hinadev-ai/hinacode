@@ -1,7 +1,9 @@
 import { homedir } from "node:os"
+import { dirname } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import type { ChecksStatus, GitHubAuth, PullRequest, PullRequestStatus, ReviewStatus } from "../../shared/domain.ts"
+import type { GitHubRepository } from "../../shared/github.ts"
 import { CommandError, makeExec } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
@@ -120,6 +122,11 @@ export class GitHub extends Context.Service<
       cwd: string,
       branches: { readonly head: string; readonly base: string },
     ) => Effect.Effect<string, GitHubError>
+    /**
+     * Clones `repository` into `dest`, whose parent must exist. Uses `gh`, so private repositories and the
+     * user's preferred protocol work; without a signed-in `gh` it falls back to `git` over https.
+     */
+    readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
   }
 >()("kkcode/GitHub") {}
 
@@ -166,12 +173,25 @@ const make = Effect.gen(function* () {
       Effect.map((stdout) => stdout.trim().split("\n").at(-1) ?? ""),
     )
 
+  const clone = ({ owner, name }: GitHubRepository, dest: string) => {
+    // Without a terminal git would wait forever on a credential prompt; fail fast instead.
+    const gitClone = () =>
+      exec("git", ["clone", `https://github.com/${owner}/${name}.git`, dest], dirname(dest), {
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      })
+    return gh(dirname(dest), ["repo", "clone", `${owner}/${name}`, dest]).pipe(
+      Effect.catchTags({ GitHubCliMissingError: gitClone, GitHubSignedOutError: gitClone }),
+      Effect.asVoid,
+    )
+  }
+
   return GitHub.of({
     auth,
     run: gh,
     pullRequest: (url) => view(homedir(), url),
     branchPullRequest,
     createPullRequest,
+    clone,
   })
 })
 

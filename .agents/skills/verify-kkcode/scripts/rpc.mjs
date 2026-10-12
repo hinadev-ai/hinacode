@@ -39,4 +39,4 @@ if ("error" in envelope) {
   console.error(JSON.stringify(envelope.error))
   process.exit(1)
 }
-console.log(JSON.stringify(envelope.result ?? null, null, 2))
+process.stdout.write(`${JSON.stringify(envelope.result ?? null, null, 2)}\n`, () => process.exit(0))
