@@ -132,7 +132,7 @@ function applyPush(history: ReadyHistory, push: TranscriptPush): ReadyHistory {
       return { ...history, messages: [...history.messages, push.message] }
     case "message.updated": {
       const index = history.messages.findIndex((existing) => existing.id === push.message.id)
-      return index === -1 ? history : { ...history, messages: history.messages.with(index, push.message) }
+      return index === -1 ? history : { ...history, messages: history.messages.map((existing, i) => (i === index ? push.message : existing)) }
     }
     case "thread.event": {
       const approvals = foldApprovals(history.approvals, push.event)

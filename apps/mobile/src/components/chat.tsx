@@ -23,7 +23,7 @@ export function Chat({ thread }: { thread: Thread }) {
   }, [connected, history, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
-  const newestFirst = useMemo(() => (messages === undefined ? [] : messages.toReversed()), [messages])
+  const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
 
   return (
     <View style={styles.flex}>

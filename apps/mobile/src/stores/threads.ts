@@ -46,4 +46,4 @@ const rank = (thread: Thread) =>
 
 /** The desktop sidebar order, with threads that need a human moved to the top. */
 export const sortThreads = (threads: readonly Thread[]) =>
-  threads.toSorted((a, b) => rank(a) - rank(b) || a.sortIndex - b.sortIndex)
+  [...threads].sort((a, b) => rank(a) - rank(b) || a.sortIndex - b.sortIndex)
