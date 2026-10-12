@@ -27,8 +27,6 @@
   "project_setup_root_var": "the project root",
   "project_setup_worktree_var": "the new worktree",
   "project_submit": "Add project",
-  "project_trust_label": "Trust this repository's Claude settings",
-  "project_trust_hint": "Claude Code then loads .claude/settings.json, .claude/settings.local.json and CLAUDE.md from this folder. Their hooks run shell commands without asking, and their permission rules can approve tools without an approval card. Leave this off for code you have not reviewed.",
   "thread_dialog_title": "New thread",
   "thread_dialog_description": "Start a thread in {project}.",
   "thread_title_label": "Title",

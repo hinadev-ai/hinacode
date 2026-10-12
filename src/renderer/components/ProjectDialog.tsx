@@ -14,8 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx"
-import { Checkbox } from "./ui/checkbox.tsx"
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -51,14 +50,12 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
   const [name, setName] = useState(project?.name ?? "")
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
-  const [trusted, setTrusted] = useState(project?.trusted ?? false)
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const fields = {
       name: name.trim(),
       rootPath: rootPath.trim(),
       setupScript: String(form.get("setupScript") ?? "").trim() || null,
-      trusted,
     }
     try {
       await (project ? updateProject({ id: project.id, ...fields }) : createProject(fields))
@@ -138,13 +135,6 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
               </span>
             </span>
           </FieldDescription>
-        </Field>
-        <Field orientation="horizontal">
-          <Checkbox id="project-trusted" checked={trusted} onCheckedChange={setTrusted} />
-          <FieldContent>
-            <FieldLabel htmlFor="project-trusted">{m.project_trust_label()}</FieldLabel>
-            <FieldDescription>{m.project_trust_hint()}</FieldDescription>
-          </FieldContent>
         </Field>
       </FieldGroup>
       {error && <FieldError>{error}</FieldError>}
