@@ -1,0 +1,1927 @@
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kkcode · Agent harness with taste and focus</title>
+    <meta
+      name="description"
+      content="Run Claude Code and Codex side by side, each in its own worktree. kkcode stays quiet until an agent needs you."
+    />
+    <meta name="theme-color" content="#09090b" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c3aed'/%3E%3Ctext x='32' y='32' dy='0.35em' text-anchor='middle' font-family='system-ui,sans-serif' font-size='32' font-weight='600' fill='%23fff'%3EK%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=Instrument+Serif:ital@1&display=swap"
+    />
+    <script>
+      document.documentElement.classList.replace("no-js", "js")
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #09090b;
+        --surface: #111113;
+        --surface-2: #18181b;
+        --line: rgb(255 255 255 / 0.08);
+        --line-strong: rgb(255 255 255 / 0.14);
+        --fg: #fafafa;
+        --fg-2: #a1a1aa;
+        --fg-3: #8b8b94;
+        --violet: #7c3aed;
+        --violet-fg: #a78bfa;
+        --amber: #fbbf24;
+        --emerald: #34d399;
+        --red: #f87171;
+        --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+        --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --serif: "Instrument Serif", ui-serif, Georgia, serif;
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+        --ease-swap: cubic-bezier(0.2, 0, 0, 1);
+        --frame: 1200px;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        overflow-x: clip;
+        background: var(--bg);
+        color: var(--fg);
+        font: 400 16px/1.6 var(--sans);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        font-feature-settings: "ss01", "cv11";
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      button,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+      code,
+      kbd {
+        font-family: var(--mono);
+      }
+      :focus-visible {
+        outline: 2px solid var(--violet-fg);
+        outline-offset: 3px;
+        border-radius: 6px;
+      }
+      ::selection {
+        background: rgb(124 58 237 / 0.45);
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      .skip {
+        position: absolute;
+        left: 16px;
+        top: -48px;
+        z-index: 100;
+        padding: 8px 12px;
+        border-radius: 8px;
+        background: var(--fg);
+        color: var(--bg);
+        font-size: 14px;
+      }
+      .skip:focus {
+        top: 12px;
+      }
+
+      /* The frame: two hairline rails down the page, with a cross wherever a section line meets them. */
+      .frame {
+        position: relative;
+        max-width: var(--frame);
+        margin: 0 auto;
+        border-inline: 1px solid var(--line);
+      }
+      .rule {
+        position: relative;
+        border-top: 1px solid var(--line);
+      }
+      .rule::before,
+      .rule::after {
+        content: "";
+        position: absolute;
+        top: -5px;
+        width: 9px;
+        height: 9px;
+        background:
+          linear-gradient(var(--fg-3), var(--fg-3)) center / 1px 100% no-repeat,
+          linear-gradient(var(--fg-3), var(--fg-3)) center / 100% 1px no-repeat;
+        opacity: 0.6;
+      }
+      .rule::before {
+        left: -5px;
+      }
+      .rule::after {
+        right: -5px;
+      }
+
+      /* Nav */
+      .nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgb(9 9 11 / 0.72);
+        backdrop-filter: blur(14px) saturate(140%);
+        -webkit-backdrop-filter: blur(14px) saturate(140%);
+        border-bottom: 1px solid var(--line);
+      }
+      .nav-inner {
+        max-width: var(--frame);
+        margin: 0 auto;
+        height: 56px;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        gap: 32px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .logo {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: var(--violet);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1;
+      }
+      .nav-links {
+        display: flex;
+        gap: 24px;
+        font-size: 14px;
+        color: var(--fg-2);
+      }
+      .nav-links a {
+        transition: color 150ms var(--ease-out);
+      }
+      .nav-links a:hover {
+        color: var(--fg);
+      }
+      .nav-cta {
+        margin-left: auto;
+      }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 10px;
+        border: 1px solid var(--line-strong);
+        background: transparent;
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          background-color 150ms var(--ease-out),
+          border-color 150ms var(--ease-out),
+          transform 120ms var(--ease-out);
+      }
+      .btn:hover {
+        background: rgb(255 255 255 / 0.04);
+        border-color: rgb(255 255 255 / 0.22);
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn-primary {
+        background: var(--fg);
+        color: var(--bg);
+        border-color: var(--fg);
+      }
+      .btn-primary:hover {
+        background: #e4e4e7;
+        border-color: #e4e4e7;
+      }
+      .btn-sm {
+        height: 32px;
+        padding: 0 12px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .btn svg {
+        width: 16px;
+        height: 16px;
+        flex: none;
+      }
+
+      /* Hero */
+      .hero {
+        padding: 96px 24px 0;
+        text-align: center;
+      }
+      .backed {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 12px 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 13px;
+        color: var(--fg-2);
+        cursor: default;
+      }
+      .backed .logo {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        font-size: 10px;
+      }
+      .backed b {
+        color: var(--fg);
+        font-weight: 500;
+      }
+      .backed-tip {
+        position: absolute;
+        left: 50%;
+        top: calc(100% + 8px);
+        translate: -50% -4px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        color: var(--fg-2);
+        font-size: 12px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 150ms var(--ease-out),
+          translate 150ms var(--ease-out);
+      }
+      .backed:hover .backed-tip,
+      .backed:focus-visible .backed-tip {
+        opacity: 1;
+        translate: -50% 0;
+      }
+
+      h1 {
+        margin: 28px auto 0;
+        max-width: 15ch;
+        font-size: clamp(44px, 8.4vw, 108px);
+        line-height: 0.98;
+        font-weight: 600;
+        letter-spacing: -0.052em;
+        text-wrap: balance;
+      }
+      .taste {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 400;
+        font-size: 1.1em;
+        letter-spacing: -0.02em;
+        padding-right: 0.04em;
+      }
+      .focus {
+        position: relative;
+        display: inline-block;
+        margin-inline: 0.06em 0.1em;
+      }
+      .focus::after {
+        content: "";
+        position: absolute;
+        inset: 0.08em -0.07em 0;
+        border: 0.045em solid var(--violet);
+        border-radius: 0.16em;
+        box-shadow: 0 0 0 0.09em rgb(124 58 237 / 0.22);
+        pointer-events: none;
+      }
+      .lede {
+        margin: 28px auto 0;
+        max-width: 34em;
+        font-size: clamp(17px, 1.6vw, 19px);
+        line-height: 1.55;
+        color: var(--fg-2);
+        text-wrap: pretty;
+      }
+      .ctas {
+        margin-top: 36px;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .fineprint {
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--fg-3);
+      }
+
+      .js .rise {
+        opacity: 0;
+        translate: 0 12px;
+        filter: blur(4px);
+        animation: rise 700ms var(--ease-out) forwards;
+        animation-delay: calc(var(--i, 0) * 70ms + 80ms);
+      }
+      @keyframes rise {
+        to {
+          opacity: 1;
+          translate: 0 0;
+          filter: none;
+        }
+      }
+      .js .focus::after {
+        opacity: 0;
+        scale: 1.12;
+        animation: ring 420ms var(--ease-out) 1050ms forwards;
+      }
+      @keyframes ring {
+        to {
+          opacity: 1;
+          scale: 1;
+        }
+      }
+
+      /* The window */
+      .stage {
+        position: relative;
+        margin: 72px auto 0;
+        padding: 0 24px;
+        max-width: 1160px;
+      }
+      .window {
+        position: relative;
+        display: grid;
+        grid-template-columns: 236px minmax(0, 1fr) 272px;
+        grid-template-rows: 40px 560px;
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        background: #0b0b0d;
+        overflow: hidden;
+        text-align: left;
+        box-shadow:
+          0 0 0 1px rgb(0 0 0 / 0.6),
+          0 32px 64px -32px rgb(0 0 0 / 0.9);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .titlebar {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line);
+        background: #0e0e10;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+      }
+      .lights {
+        display: flex;
+        gap: 7px;
+      }
+      .lights i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #2a2a2e;
+      }
+      .titlebar-title {
+        flex: 1;
+        text-align: center;
+        font-size: 12px;
+        color: var(--fg-3);
+        margin-right: 47px;
+      }
+
+      .side {
+        border-right: 1px solid var(--line);
+        background: #101012;
+        padding: 12px 8px;
+        overflow: hidden;
+      }
+      .side-label {
+        padding: 4px 8px 6px;
+        font-size: 11.5px;
+        color: var(--fg-3);
+      }
+      .project {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        font-weight: 500;
+        color: var(--fg);
+      }
+      .project svg {
+        width: 14px;
+        height: 14px;
+        color: var(--fg-3);
+      }
+      .threads {
+        list-style: none;
+        margin: 0 0 10px;
+        padding: 0;
+      }
+      .thread {
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr) auto;
+        column-gap: 8px;
+        align-items: center;
+        padding: 7px 8px;
+        border-radius: 8px;
+        transition: background-color 200ms var(--ease-out);
+      }
+      .thread.active {
+        background: rgb(255 255 255 / 0.05);
+      }
+      .thread-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--fg-2);
+      }
+      .thread.active .thread-title {
+        color: var(--fg);
+      }
+      .thread-branch {
+        grid-column: 2 / -1;
+        font: 11px/1.4 var(--mono);
+        color: var(--fg-3);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .thread-meta {
+        font-size: 11px;
+        color: var(--fg-3);
+        white-space: nowrap;
+      }
+      .tag-needs {
+        display: none;
+        padding: 1px 6px;
+        border-radius: 5px;
+        background: rgb(251 191 36 / 0.12);
+        color: var(--amber);
+        font-size: 10.5px;
+        font-weight: 500;
+      }
+      .thread[data-state="needs"] .tag-needs {
+        display: inline-block;
+      }
+      .thread[data-state="needs"] .thread-time {
+        display: none;
+      }
+
+      /* Status marks. Shape differs per state so color is never the only signal. */
+      .status {
+        position: relative;
+        width: 10px;
+        height: 10px;
+        justify-self: center;
+      }
+      .status::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+      }
+      [data-state="working"] > .status::before {
+        border: 1.5px solid rgb(167 139 250 / 0.25);
+        border-top-color: var(--violet-fg);
+        animation: spin 900ms linear infinite;
+      }
+      [data-state="needs"] > .status::before {
+        inset: 1px;
+        background: var(--amber);
+      }
+      [data-state="needs"] > .status::after {
+        content: "";
+        position: absolute;
+        inset: 1px;
+        border-radius: 50%;
+        background: var(--amber);
+        animation: ping 1.6s var(--ease-out) infinite;
+      }
+      [data-state="failed"] > .status::before {
+        inset: 1px;
+        border-radius: 2px;
+        background: var(--red);
+        rotate: 45deg;
+        scale: 0.8;
+      }
+      [data-state="done"] > .status::before {
+        border-radius: 0;
+        background: var(--fg-3);
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.2 4 7.5l4.5-5' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+          center / contain no-repeat;
+      }
+      [data-state="idle"] > .status::before {
+        inset: 2px;
+        border: 1.5px solid var(--fg-3);
+        opacity: 0.6;
+      }
+      @keyframes spin {
+        to {
+          rotate: 360deg;
+        }
+      }
+      @keyframes ping {
+        0% {
+          scale: 1;
+          opacity: 0.6;
+        }
+        80%,
+        100% {
+          scale: 2.6;
+          opacity: 0;
+        }
+      }
+
+      .main {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-width: 0;
+      }
+      .main-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 44px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .main-head b {
+        font-weight: 500;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 22px;
+        padding: 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 11.5px;
+        color: var(--fg-3);
+        white-space: nowrap;
+      }
+      .chip.mono {
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+      .main-head .chip:first-of-type {
+        margin-left: auto;
+      }
+      .chip[data-state] {
+        gap: 7px;
+      }
+      .chip .status {
+        width: 8px;
+        height: 8px;
+      }
+
+      .transcript {
+        padding: 18px 22px 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 10px;
+        mask-image: linear-gradient(to bottom, transparent 0, #000 40px);
+      }
+      .msg-user {
+        align-self: flex-start;
+        max-width: 88%;
+        padding: 8px 12px;
+        border-left: 2px solid var(--line-strong);
+        color: var(--fg);
+      }
+      .msg-user small {
+        display: block;
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--violet-fg);
+      }
+      .msg-agent {
+        color: var(--fg-2);
+        max-width: 60ch;
+      }
+      .tool {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font: 12px/1.5 var(--mono);
+        color: var(--fg-3);
+      }
+      .tool .glyph {
+        width: 14px;
+        text-align: center;
+        color: var(--fg-3);
+      }
+      .tool .path {
+        color: var(--fg-2);
+      }
+      .add {
+        color: var(--emerald);
+      }
+      .del {
+        color: var(--red);
+      }
+      .ok {
+        color: var(--emerald);
+      }
+
+      .approval {
+        border: 1px solid rgb(251 191 36 / 0.35);
+        background: linear-gradient(rgb(251 191 36 / 0.05), rgb(251 191 36 / 0.02));
+        border-radius: 10px;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        transition:
+          border-color 250ms var(--ease-out),
+          background-color 250ms var(--ease-out);
+      }
+      .approval-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--fg);
+      }
+      .approval-head .status {
+        width: 8px;
+        height: 8px;
+      }
+      .approval code {
+        display: block;
+        padding: 8px 10px;
+        border-radius: 7px;
+        background: rgb(0 0 0 / 0.4);
+        border: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--fg);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .approval-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .approval-actions .btn {
+        height: 28px;
+        padding: 0 10px;
+        font-size: 12px;
+        border-radius: 7px;
+        gap: 8px;
+      }
+      .approval-actions kbd {
+        font-size: 10.5px;
+        opacity: 0.6;
+      }
+      .approval.resolved {
+        border-color: var(--line);
+        background: transparent;
+      }
+      .approval.resolved .approval-actions {
+        display: none;
+      }
+
+      .composer {
+        margin: 6px 16px 16px;
+        border: 1px solid var(--line-strong);
+        border-radius: 12px;
+        background: #0e0e10;
+        transition: border-color 150ms var(--ease-out);
+      }
+      .composer:focus-within {
+        border-color: rgb(167 139 250 / 0.55);
+      }
+      .composer input {
+        width: 100%;
+        height: 40px;
+        padding: 0 14px;
+        background: transparent;
+        border: 0;
+        outline: 0;
+        font-size: 13px;
+      }
+      .composer input::placeholder {
+        color: var(--fg-3);
+      }
+      .composer-bar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 10px 8px 14px;
+        font-size: 11.5px;
+        color: var(--fg-3);
+      }
+      .composer-bar .send {
+        margin-left: auto;
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        color: var(--fg-2);
+      }
+
+      .panel {
+        border-left: 1px solid var(--line);
+        background: #0d0d0f;
+        padding: 14px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        overflow: hidden;
+      }
+      .panel h3 {
+        margin: 0 0 8px;
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--fg-3);
+      }
+      .files {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 2px;
+      }
+      .files li {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        padding: 4px 0;
+        font: 12px/1.4 var(--mono);
+      }
+      .files .name {
+        flex: 1;
+        color: var(--fg-2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .files .m {
+        color: var(--amber);
+      }
+      .files .a {
+        color: var(--emerald);
+      }
+      .port {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font: 12px/1.4 var(--mono);
+        color: var(--fg-2);
+      }
+      .port span:first-child {
+        color: var(--fg);
+      }
+      .port .kill {
+        margin-left: auto;
+        font: 11px var(--sans);
+        color: var(--fg-3);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 1px 7px;
+      }
+      .pr-empty {
+        color: var(--fg-3);
+        font-size: 12px;
+      }
+      .pr {
+        display: grid;
+        gap: 6px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+      .pr-title {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        color: var(--fg);
+      }
+      .pr-title span {
+        color: var(--fg-3);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .pr-meta {
+        display: flex;
+        gap: 10px;
+        font-size: 11.5px;
+        color: var(--fg-3);
+      }
+      .pr-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 18px;
+        padding: 0 7px;
+        border-radius: 999px;
+        background: rgb(52 211 153 / 0.12);
+        color: var(--emerald);
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .js .step {
+        display: none;
+      }
+      .js .step.on {
+        display: revert;
+        animation: step-in 360ms var(--ease-out);
+      }
+      .js .approval.step.on,
+      .js .tool.step.on {
+        display: flex;
+      }
+      .js .approval.step.on {
+        display: grid;
+      }
+      @keyframes step-in {
+        from {
+          opacity: 0;
+          translate: 0 6px;
+        }
+      }
+
+      .stage-hint {
+        margin-top: 18px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        min-height: 28px;
+        font-size: 13px;
+        color: var(--fg-3);
+      }
+      .stage-hint kbd,
+      .keys kbd {
+        display: inline-grid;
+        place-items: center;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border: 1px solid var(--line-strong);
+        border-bottom-width: 2px;
+        border-radius: 6px;
+        background: var(--surface);
+        font-size: 11.5px;
+        color: var(--fg-2);
+      }
+      .replay {
+        background: none;
+        border: 0;
+        padding: 2px 4px;
+        color: var(--fg-2);
+        text-decoration: underline;
+        text-decoration-color: var(--line-strong);
+        text-underline-offset: 3px;
+        cursor: pointer;
+      }
+
+      /* Sections */
+      section {
+        padding: 120px 64px;
+      }
+      .eyebrow {
+        font: 500 12px/1 var(--mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--fg-3);
+      }
+      h2 {
+        margin: 16px 0 0;
+        font-size: clamp(34px, 4.6vw, 56px);
+        line-height: 1.02;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        text-wrap: balance;
+      }
+      h2 em {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 1.08em;
+        letter-spacing: -0.015em;
+      }
+      .section-lede {
+        margin: 20px 0 0;
+        max-width: 32em;
+        color: var(--fg-2);
+        font-size: 17px;
+        text-wrap: pretty;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 64px;
+        align-items: start;
+      }
+      .legend {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        border-top: 1px solid var(--line);
+      }
+      .legend li {
+        display: grid;
+        grid-template-columns: 16px 112px minmax(0, 1fr);
+        gap: 16px;
+        align-items: baseline;
+        padding: 20px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .legend .status {
+        translate: 0 1px;
+      }
+      .legend b {
+        font-weight: 500;
+      }
+      .legend p {
+        margin: 0;
+        color: var(--fg-2);
+        font-size: 15px;
+      }
+
+      .split-aside {
+        align-self: end;
+        margin: 0;
+      }
+      .grid {
+        margin: 64px -64px -120px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-top: 1px solid var(--line);
+      }
+      .cell {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 240px;
+        padding: 32px 28px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        transition: background-color 200ms var(--ease-out);
+      }
+      .cell:nth-child(4n) {
+        border-right: 0;
+      }
+      .cell:nth-child(n + 5) {
+        border-bottom: 0;
+      }
+      .cell:hover {
+        background: rgb(255 255 255 / 0.015);
+      }
+      .cell h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+      .cell p {
+        margin: 0;
+        color: var(--fg-2);
+        font-size: 14.5px;
+        line-height: 1.55;
+      }
+      .cell p code {
+        font-size: 13px;
+        color: var(--fg);
+      }
+      .cell > code {
+        margin-top: auto;
+        padding-top: 16px;
+        font-size: 12px;
+        color: var(--fg-3);
+        transition: color 200ms var(--ease-out);
+      }
+      .cell:hover > code {
+        color: var(--violet-fg);
+      }
+
+      .keys {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        border-top: 1px solid var(--line);
+      }
+      .keys li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+        color: var(--fg-2);
+        font-size: 15px;
+      }
+      .keys span:last-child {
+        display: flex;
+        gap: 4px;
+      }
+      .keys kbd {
+        min-width: 26px;
+        height: 26px;
+        font-size: 12px;
+        transition:
+          translate 80ms var(--ease-out),
+          border-bottom-width 80ms var(--ease-out),
+          color 80ms,
+          border-color 80ms;
+      }
+      .keys kbd.down {
+        translate: 0 1px;
+        border-bottom-width: 1px;
+        color: var(--fg);
+        border-color: var(--violet-fg);
+      }
+      .keys-note {
+        margin-top: 16px;
+        font-size: 13px;
+        color: var(--fg-3);
+      }
+
+      .numbers {
+        margin: 64px -64px -120px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-top: 1px solid var(--line);
+      }
+      .numbers div {
+        padding: 36px 28px 40px;
+        border-right: 1px solid var(--line);
+      }
+      .numbers div:last-child {
+        border-right: 0;
+      }
+      .numbers b {
+        display: block;
+        font-size: 64px;
+        line-height: 1;
+        font-weight: 500;
+        letter-spacing: -0.05em;
+      }
+      .numbers span {
+        display: block;
+        margin-top: 12px;
+        color: var(--fg-2);
+        font-size: 14.5px;
+      }
+
+      .faq {
+        border-top: 1px solid var(--line);
+      }
+      .faq details {
+        border-bottom: 1px solid var(--line);
+      }
+      .faq summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 0;
+        cursor: pointer;
+        list-style: none;
+        font-weight: 500;
+      }
+      .faq summary::-webkit-details-marker {
+        display: none;
+      }
+      .faq summary::after {
+        content: "";
+        flex: none;
+        width: 10px;
+        height: 10px;
+        background:
+          linear-gradient(var(--fg-3), var(--fg-3)) center / 100% 1.5px no-repeat,
+          linear-gradient(var(--fg-3), var(--fg-3)) center / 1.5px 100% no-repeat;
+        transition: rotate 200ms var(--ease-out);
+      }
+      .faq details[open] summary::after {
+        rotate: 45deg;
+      }
+      .faq p {
+        margin: -4px 0 0;
+        padding: 0 40px 22px 0;
+        color: var(--fg-2);
+        font-size: 15px;
+        max-width: 38em;
+      }
+      .faq code {
+        font-size: 13.5px;
+        color: var(--fg);
+      }
+
+      .closing {
+        padding: 160px 24px;
+        text-align: center;
+      }
+      .closing h2 {
+        font-size: clamp(40px, 6.4vw, 80px);
+      }
+      .closing .section-lede {
+        margin-inline: auto;
+      }
+
+      footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 28px 64px;
+        font-size: 13px;
+        color: var(--fg-3);
+      }
+      footer nav {
+        display: flex;
+        gap: 20px;
+      }
+      footer a:hover {
+        color: var(--fg);
+      }
+
+      @media (max-width: 1080px) {
+        .window {
+          grid-template-columns: 220px minmax(0, 1fr);
+        }
+        .panel {
+          display: none;
+        }
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .cell:nth-child(4n) {
+          border-right: 1px solid var(--line);
+        }
+        .cell:nth-child(2n) {
+          border-right: 0;
+        }
+        .cell:nth-child(n + 5) {
+          border-bottom: 1px solid var(--line);
+        }
+        .cell:nth-child(n + 7) {
+          border-bottom: 0;
+        }
+        .numbers {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .numbers div:nth-child(2) {
+          border-right: 0;
+        }
+        .numbers div:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--line);
+        }
+      }
+      @media (max-width: 760px) {
+        .nav-links {
+          display: none;
+        }
+        .hero {
+          padding-top: 64px;
+        }
+        .stage {
+          padding: 0 12px;
+        }
+        .window {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-rows: 40px 520px;
+        }
+        .side,
+        .main-head .chip.mono {
+          display: none;
+        }
+        section {
+          padding: 88px 24px;
+        }
+        .split {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 40px;
+        }
+        .grid,
+        .numbers {
+          margin: 48px -24px -88px;
+        }
+        .grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .grid .cell {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          min-height: 0;
+        }
+        .grid .cell:last-child {
+          border-bottom: 0;
+        }
+        .legend li {
+          grid-template-columns: 16px minmax(0, 1fr);
+        }
+        .legend p {
+          grid-column: 2;
+        }
+        footer {
+          padding: 24px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        .js .rise,
+        .js .focus::after,
+        .js .step.on {
+          animation: none;
+          opacity: 1;
+          translate: none;
+          filter: none;
+          scale: 1;
+        }
+        [data-state="working"] > .status::before {
+          animation: none;
+          border-color: var(--violet-fg);
+          border-right-color: transparent;
+        }
+        [data-state="needs"] > .status::after {
+          animation: none;
+          display: none;
+        }
+        .btn:active {
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to content</a>
+
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="#top" aria-label="kkcode home"><span class="logo" aria-hidden="true">K</span>kkcode</a>
+        <nav class="nav-links" aria-label="Sections">
+          <a href="#quiet">Quiet</a>
+          <a href="#features">Features</a>
+          <a href="#keyboard">Keyboard</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <a class="btn btn-primary btn-sm nav-cta" href="https://github.com/kjj6198/kkcode/releases/latest">Download</a>
+      </div>
+    </header>
+
+    <div class="frame" id="top">
+      <main id="content">
+        <div class="hero">
+          <span class="backed rise" tabindex="0" style="--i: 0">
+            Backed by <span class="logo" aria-hidden="true">K</span><b>Kalan</b>
+            <span class="backed-tip" role="tooltip">Not a fund. One person with strong opinions.</span>
+          </span>
+
+          <h1 class="rise" style="--i: 1">
+            Agent harness with <span class="taste">taste</span> and <span class="focus">focus</span>.
+          </h1>
+
+          <p class="lede rise" style="--i: 2">
+            Run Claude Code and Codex side by side, each in its own worktree. kkcode stays quiet while your agents work,
+            and tells you exactly which one needs you.
+          </p>
+
+          <div class="ctas rise" style="--i: 3">
+            <a class="btn btn-primary" href="https://github.com/kjj6198/kkcode/releases/latest" data-download>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.5h10"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span data-download-label>Download for macOS</span>
+            </a>
+            <a class="btn" href="#demo">See it work</a>
+          </div>
+          <p class="fineprint rise" style="--i: 4">
+            macOS on Apple Silicon and Linux. Uses the <code>claude</code> and <code>codex</code> you already signed in
+            to.
+          </p>
+        </div>
+
+        <div class="stage rise" id="demo" style="--i: 5">
+          <div class="window" role="region" aria-label="Interactive kkcode demo">
+            <div class="titlebar" aria-hidden="true">
+              <div class="lights"><i></i><i></i><i></i></div>
+              <div class="titlebar-title">kkcode</div>
+            </div>
+
+            <aside class="side" aria-label="Threads">
+              <div class="side-label">Projects</div>
+              <div class="project">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M2 4.5c0-.83.67-1.5 1.5-1.5h3l1.5 1.5h4.5c.83 0 1.5.67 1.5 1.5v5.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5v-7Z"
+                    stroke="currentColor"
+                    stroke-width="1.2"
+                  />
+                </svg>
+                acme-web
+              </div>
+              <ul class="threads">
+                <li class="thread active" data-thread="main" data-state="working">
+                  <span class="status" role="img" aria-label="Working"></span>
+                  <span class="thread-title">Tighten address validation</span>
+                  <span class="thread-meta"
+                    ><span class="thread-time">now</span><span class="tag-needs">Needs you</span></span
+                  >
+                  <span class="thread-branch">feat/address-validation</span>
+                </li>
+                <li class="thread" data-state="working">
+                  <span class="status" role="img" aria-label="Working"></span>
+                  <span class="thread-title">Fix flaky checkout e2e</span>
+                  <span class="thread-meta">2m</span>
+                  <span class="thread-branch">fix/checkout-e2e</span>
+                </li>
+                <li class="thread" data-state="done">
+                  <span class="status" role="img" aria-label="Done"></span>
+                  <span class="thread-title">Webhook retry backoff</span>
+                  <span class="thread-meta">1h</span>
+                  <span class="thread-branch">fix/webhook-retry</span>
+                </li>
+              </ul>
+              <div class="project">
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M2 4.5c0-.83.67-1.5 1.5-1.5h3l1.5 1.5h4.5c.83 0 1.5.67 1.5 1.5v5.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5v-7Z"
+                    stroke="currentColor"
+                    stroke-width="1.2"
+                  />
+                </svg>
+                kkcode
+              </div>
+              <ul class="threads">
+                <li class="thread" data-state="working">
+                  <span class="status" role="img" aria-label="Working"></span>
+                  <span class="thread-title">Resizable side panel</span>
+                  <span class="thread-meta">5m</span>
+                  <span class="thread-branch">feat/resizable-side-panel</span>
+                </li>
+                <li class="thread" data-state="failed">
+                  <span class="status" role="img" aria-label="Failed"></span>
+                  <span class="thread-title">Setup: copy .env</span>
+                  <span class="thread-meta">12m</span>
+                  <span class="thread-branch">fix/loading-flash</span>
+                </li>
+                <li class="thread" data-state="done">
+                  <span class="status" role="img" aria-label="Done"></span>
+                  <span class="thread-title">Paraglide zh-TW catalog</span>
+                  <span class="thread-meta">3h</span>
+                  <span class="thread-branch">feat/zh-tw</span>
+                </li>
+              </ul>
+            </aside>
+
+            <div class="main">
+              <div class="main-head">
+                <b>Tighten address validation</b>
+                <span class="chip mono">feat/address-validation</span>
+                <span class="chip" data-chip data-state="working"
+                  ><span class="status" aria-hidden="true"></span><span data-chip-label>Working</span></span
+                >
+              </div>
+
+              <div class="transcript" data-transcript aria-live="polite">
+                <div class="msg-user">
+                  Tighten address validation. Canadian postal codes slip through, and a missing country passes.
+                </div>
+                <div class="msg-agent step" data-stream>
+                  I'll make the country check explicit, add a Canadian postal path, and cover both with tests.
+                </div>
+                <div class="tool step">
+                  <span class="glyph" aria-hidden="true">→</span>Read
+                  <span class="path">src/checkout/validators.ts</span>
+                </div>
+                <div class="tool step">
+                  <span class="glyph" aria-hidden="true">✎</span>Edit <span class="path">validators.ts</span>
+                  <span class="add">+8</span><span class="del">−3</span>
+                </div>
+                <div class="tool step">
+                  <span class="glyph" aria-hidden="true">$</span>pnpm test validators
+                  <span class="ok">27 passed</span>
+                </div>
+                <div class="approval step" data-approval>
+                  <div class="approval-head" data-state="needs">
+                    <span class="status" aria-hidden="true"></span
+                    ><span data-approval-title>Claude Code wants to run a command</span>
+                  </div>
+                  <code>git push -u origin feat/address-validation</code>
+                  <div class="approval-actions">
+                    <button class="btn" type="button" data-deny>Deny <kbd>D</kbd></button>
+                    <button class="btn btn-primary" type="button" data-allow>Allow <kbd>A</kbd></button>
+                  </div>
+                </div>
+              </div>
+
+              <form class="composer" data-composer autocomplete="off">
+                <label class="sr-only" for="steer">Steer the agent</label>
+                <input id="steer" maxlength="120" placeholder="Steer the running turn. Try typing something." />
+                <div class="composer-bar" aria-hidden="true">
+                  <span>Claude Code</span><span>Opus 5.5</span><span>Worktree</span>
+                  <span class="send">↑</span>
+                </div>
+              </form>
+            </div>
+
+            <aside class="panel" aria-label="Thread details">
+              <div>
+                <h3>Changes</h3>
+                <ul class="files">
+                  <li>
+                    <span class="name">validators.ts</span><span class="m">M</span><span class="add">+8</span
+                    ><span class="del">−3</span>
+                  </li>
+                  <li>
+                    <span class="name">validators.test.ts</span><span class="a">A</span><span class="add">+42</span>
+                  </li>
+                  <li>
+                    <span class="name">AddressForm.tsx</span><span class="m">M</span><span class="add">+2</span
+                    ><span class="del">−1</span>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h3>Ports</h3>
+                <div class="port"><span>:3000</span><span>next dev</span><span class="kill">Stop</span></div>
+              </div>
+              <div>
+                <h3>Pull request</h3>
+                <div data-pr-slot><p class="pr-empty" data-pr-empty>No pull request yet.</p></div>
+              </div>
+            </aside>
+          </div>
+
+          <p class="stage-hint" data-hint aria-live="polite">
+            <span>The agent waits for you. Nothing else will.</span>
+          </p>
+        </div>
+
+        <section class="rule" id="quiet" style="margin-top: 120px">
+          <div class="split">
+            <div>
+              <p class="eyebrow">Signal over chrome</p>
+              <h2>Quiet until it <em>matters</em>.</h2>
+              <p class="section-lede">
+                Most of the time, nothing needs you. The screen should look like it. kkcode spends color on one thing:
+                the thread that is waiting for a human. Glance at the sidebar between other work and you know where to
+                go.
+              </p>
+            </div>
+            <ul class="legend">
+              <li data-state="working">
+                <span class="status" aria-hidden="true"></span><b>Working</b>
+                <p>The agent is busy. Nothing for you to do.</p>
+              </li>
+              <li data-state="needs">
+                <span class="status" aria-hidden="true"></span><b>Needs you</b>
+                <p>An approval, a question, or a setup script that stopped.</p>
+              </li>
+              <li data-state="failed">
+                <span class="status" aria-hidden="true"></span><b>Failed</b>
+                <p>The turn or the setup failed. The log is one click away.</p>
+              </li>
+              <li data-state="done">
+                <span class="status" aria-hidden="true"></span><b>Done</b>
+                <p>Finished, with the pull request and its merge state linked.</p>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="rule" id="features">
+          <div class="split">
+            <div>
+              <p class="eyebrow">The harness</p>
+              <h2>Everything around the loop. Nothing in its way.</h2>
+            </div>
+            <p class="section-lede split-aside">
+              Start a thread, steer it, review what changed, ship the PR. kkcode handles the parts between, so the agent
+              output stays the content.
+            </p>
+          </div>
+          <div class="grid">
+            <article class="cell">
+              <h3>A worktree per thread</h3>
+              <p>
+                Every thread gets its own branch and checkout. Your setup script copies the <code>.env</code> in one
+                line.
+              </p>
+              <code>$KKCODE_WORKTREE_PATH</code>
+            </article>
+            <article class="cell">
+              <h3>Approvals, inline</h3>
+              <p>Commands, edits and MCP calls wait inside the conversation. Allow once, or for the session.</p>
+              <code>Allow for session</code>
+            </article>
+            <article class="cell">
+              <h3>Steer a running turn</h3>
+              <p>Send another message while the agent works. No stop, no restart, no lost context.</p>
+              <code>threads.steer</code>
+            </article>
+            <article class="cell">
+              <h3>A built-in MCP server</h3>
+              <p>
+                Both agents can review their diff, link a pull request and read Linear. Every call is scoped to one
+                thread.
+              </p>
+              <code>review_changes</code>
+            </article>
+            <article class="cell">
+              <h3>Pull requests with state</h3>
+              <p>Draft, open, merged or closed, with CI checks and the review decision. Refreshed every minute.</p>
+              <code>gh pr create --fill</code>
+            </article>
+            <article class="cell">
+              <h3>Ports you can see</h3>
+              <p>The dev servers a thread started, listed by port. Stop one without hunting for a PID.</p>
+              <code>:3000 next dev</code>
+            </article>
+            <article class="cell">
+              <h3>Automations</h3>
+              <p>Start a thread from a signed webhook, a new GitHub issue, a Linear ticket or a Slack mention.</p>
+              <code>{{issue.title}}</code>
+            </article>
+            <article class="cell">
+              <h3>Your setup, unchanged</h3>
+              <p>CLAUDE.md, AGENTS.md and skills load from the project and your home, the same as in the CLIs.</p>
+              <code>AGENTS.md</code>
+            </article>
+          </div>
+        </section>
+
+        <section class="rule" id="keyboard">
+          <div class="split">
+            <div>
+              <p class="eyebrow">Keyboard first</p>
+              <h2>Your hands stay <em>home</em>.</h2>
+              <p class="section-lede">
+                Every frequent action has a shortcut. Every shortcut can be rebound, with chord recording and conflict
+                detection built in.
+              </p>
+            </div>
+            <div>
+              <ul class="keys" data-keys>
+                <li>
+                  <span>New thread</span><span><kbd data-key="mod">⌘</kbd><kbd data-key="n">N</kbd></span>
+                </li>
+                <li>
+                  <span>Next thread</span
+                  ><span><kbd data-key="mod">⌘</kbd><kbd data-key="shift">⇧</kbd><kbd data-key="]">]</kbd></span>
+                </li>
+                <li>
+                  <span>Focus composer</span><span><kbd data-key="mod">⌘</kbd><kbd data-key="l">L</kbd></span>
+                </li>
+                <li>
+                  <span>Interrupt turn</span
+                  ><span><kbd data-key="mod">⌘</kbd><kbd data-key="shift">⇧</kbd><kbd data-key="c">C</kbd></span>
+                </li>
+                <li>
+                  <span>Show changes</span
+                  ><span><kbd data-key="mod">⌘</kbd><kbd data-key="shift">⇧</kbd><kbd data-key="d">D</kbd></span>
+                </li>
+                <li>
+                  <span>Toggle terminal</span><span><kbd data-key="mod">⌘</kbd><kbd data-key="j">J</kbd></span>
+                </li>
+              </ul>
+              <p class="keys-note">Go on, press a few. The keys will press back.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="rule" id="simple">
+          <p class="eyebrow">Ambitious ideas, simple systems</p>
+          <h2>Built with <em>kkcode</em>.</h2>
+          <p class="section-lede">
+            Every feature here was shipped by agents running inside kkcode. When the loop hurts while we work, that is a
+            product bug, and it gets fixed.
+          </p>
+          <div class="numbers">
+            <div><b>1</b><span>SQLite file for everything</span></div>
+            <div><b>1</b><span>channel between the UI and the app</span></div>
+            <div><b>1</b><span>interface per agent backend</span></div>
+            <div><b>0</b><span>background daemons</span></div>
+          </div>
+        </section>
+
+        <section class="rule" id="faq">
+          <div class="split">
+            <div>
+              <p class="eyebrow">Questions</p>
+              <h2>Asked, and answered.</h2>
+            </div>
+            <div class="faq">
+              <details>
+                <summary>What is kkcode?</summary>
+                <p>
+                  A desktop app that runs Claude Code and Codex side by side. Each thread can live in its own git
+                  worktree, and the sidebar shows which one needs you.
+                </p>
+              </details>
+              <details>
+                <summary>Which agents does it run?</summary>
+                <p>
+                  Claude Code through the Agent SDK, and Codex through its app-server protocol. Pick the agent and the
+                  model for each thread.
+                </p>
+              </details>
+              <details>
+                <summary>Do I need new API keys?</summary>
+                <p>No. kkcode uses the <code>claude</code> and <code>codex</code> CLIs you are already signed in to.</p>
+              </details>
+              <details>
+                <summary>Where does my code go?</summary>
+                <p>
+                  Nowhere new. Agents run on your machine against your repositories. Keys such as a Linear token are
+                  kept in the OS keychain.
+                </p>
+              </details>
+              <details>
+                <summary>Does it replace my editor?</summary>
+                <p>
+                  No. kkcode is the harness around the agent loop: start, steer, review, ship. Open the worktree in your
+                  editor whenever you want to.
+                </p>
+              </details>
+              <details>
+                <summary>Which platforms are supported?</summary>
+                <p>macOS on Apple Silicon, and Linux as an AppImage.</p>
+              </details>
+            </div>
+          </div>
+        </section>
+
+        <section class="rule closing">
+          <h2>Run more agents.<br /><em>Watch fewer.</em></h2>
+          <p class="section-lede">One window. Every agent. Only the ones that need you ask for you.</p>
+          <div class="ctas">
+            <a class="btn btn-primary" href="https://github.com/kjj6198/kkcode/releases/latest" data-download>
+              <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.5h10"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span data-download-label>Download for macOS</span>
+            </a>
+            <a class="btn" href="https://github.com/kjj6198/kkcode">View on GitHub</a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="rule">
+        <span>Backed by Kalan. Built with kkcode.</span>
+        <nav aria-label="Footer">
+          <a href="https://github.com/kjj6198/kkcode">GitHub</a>
+          <a href="https://github.com/kjj6198/kkcode/releases">Releases</a>
+          <a href="#top">Back to top</a>
+        </nav>
+      </footer>
+    </div>
+
+    <script>
+      const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches
+      const platform = navigator.userAgentData?.platform ?? navigator.platform ?? ""
+      const isMac = /mac/i.test(platform)
+      const isTouch = matchMedia("(pointer: coarse)").matches
+      const isLinux = /linux/i.test(platform) && !/android/i.test(navigator.userAgent)
+
+      if (isLinux) {
+        for (const label of document.querySelectorAll("[data-download-label]")) label.textContent = "Download for Linux"
+      }
+      if (!isMac) {
+        for (const key of document.querySelectorAll('[data-key="mod"]')) key.textContent = "Ctrl"
+        for (const key of document.querySelectorAll('[data-key="shift"]')) key.textContent = "Shift"
+      }
+
+      const keyFor = (event) => {
+        if (event.key === "Meta" || event.key === "Control") return "mod"
+        if (event.key === "Shift") return "shift"
+        return event.code.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.key
+      }
+      const keycaps = (key) => document.querySelectorAll(`[data-keys] kbd[data-key="${CSS.escape(key)}"]`)
+      addEventListener("keydown", (event) => keycaps(keyFor(event)).forEach((k) => k.classList.add("down")))
+      addEventListener("keyup", (event) => {
+        keycaps(keyFor(event)).forEach((k) => k.classList.remove("down"))
+        if (event.key === "Meta")
+          document.querySelectorAll("[data-keys] kbd.down").forEach((k) => k.classList.remove("down"))
+      })
+      addEventListener("blur", () =>
+        document.querySelectorAll("[data-keys] kbd.down").forEach((k) => k.classList.remove("down")),
+      )
+
+      const demo = (() => {
+        const transcript = document.querySelector("[data-transcript]")
+        const row = document.querySelector('[data-thread="main"]')
+        const chip = document.querySelector("[data-chip]")
+        const hint = document.querySelector("[data-hint]")
+        const prSlot = document.querySelector("[data-pr-slot]")
+        const initial = { transcript: transcript.innerHTML, pr: prSlot.innerHTML }
+        const labels = { working: "Working", needs: "Needs you", done: "Done" }
+        let phase = "idle"
+        let run = 0
+
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, reduceMotion ? 0 : ms))
+        const setState = (state) => {
+          row.dataset.state = state
+          row.querySelector(".status").setAttribute("aria-label", labels[state])
+          chip.dataset.state = state
+          chip.querySelector("[data-chip-label]").textContent = labels[state]
+        }
+        const setHint = (html) => (hint.innerHTML = html)
+        // The transcript is bottom-anchored in a fixed-height window, so the oldest lines fall off the top.
+        const trim = () => {
+          while (transcript.scrollHeight > transcript.clientHeight + 4 && transcript.children.length > 3) {
+            transcript.firstElementChild.remove()
+          }
+        }
+        const append = (el) => {
+          el.classList.add("step", "on")
+          transcript.append(el)
+          trim()
+        }
+        const html = (markup) => {
+          const template = document.createElement("template")
+          template.innerHTML = markup.trim()
+          return template.content.firstElementChild
+        }
+        const agentSays = (text) =>
+          Object.assign(document.createElement("div"), { className: "msg-agent", textContent: text })
+
+        async function play() {
+          const id = ++run
+          const alive = () => id === run
+          const steps = [...transcript.querySelectorAll(".step")]
+          const stream = transcript.querySelector("[data-stream]")
+          const text = stream.textContent.trim()
+          phase = "playing"
+          setState("working")
+          setHint("<span>The agent is working. You could be doing something else.</span>")
+          await wait(900)
+          stream.textContent = ""
+          stream.classList.add("on")
+          for (const word of text.split(" ")) {
+            if (!alive()) return
+            stream.textContent += (stream.textContent ? " " : "") + word
+            await wait(38)
+          }
+          for (const step of steps.slice(1)) {
+            await wait(step.matches("[data-approval]") ? 800 : 600)
+            if (!alive()) return
+            append(step)
+          }
+          setState("needs")
+          phase = "approval"
+          setHint(
+            isTouch
+              ? "<span>Now it needs you. Tap Allow or Deny.</span>"
+              : "<span>Now it needs you.</span><kbd>A</kbd><span>allows,</span><kbd>D</kbd><span>denies.</span>",
+          )
+        }
+
+        async function resolve(allowed) {
+          if (phase !== "approval") return
+          const id = run
+          phase = "resolving"
+          const approval = transcript.querySelector("[data-approval]")
+          approval.classList.add("resolved")
+          approval.querySelector("[data-approval-title]").textContent = allowed ? "Allowed by you" : "Denied by you"
+          approval.querySelector(".approval-head").dataset.state = "done"
+          setState("working")
+          setHint("<span>Back to work.</span>")
+          await wait(500)
+          if (id !== run) return
+          if (allowed) {
+            append(
+              html(
+                '<div class="tool"><span class="glyph" aria-hidden="true">$</span>git push -u origin feat/address-validation <span class="ok">done</span></div>',
+              ),
+            )
+            await wait(700)
+            if (id !== run) return
+            append(
+              html(
+                '<div class="tool"><span class="glyph" aria-hidden="true">⇡</span>link_pull_request <span class="path">#128</span></div>',
+              ),
+            )
+            prSlot.innerHTML = `
+              <div class="pr step on">
+                <div class="pr-title"><span>#128</span>Tighten address validation</div>
+                <div class="pr-meta"><span class="pr-state">Open</span><span class="ok">4/4 checks</span><span>Ready for review</span></div>
+              </div>`
+            await wait(800)
+            if (id !== run) return
+            append(agentSays("Opened #128 and the checks pass. It's ready for your review."))
+          } else {
+            append(agentSays("Understood. The branch stays local, and the tests are green whenever you want to push."))
+          }
+          setState("done")
+          phase = "done"
+          setHint(
+            '<span>Done. That is the whole loop.</span><button class="replay" type="button" data-replay>Replay</button>',
+          )
+        }
+
+        function replay() {
+          run++
+          transcript.innerHTML = initial.transcript
+          prSlot.innerHTML = initial.pr
+          play()
+        }
+
+        function steer(text) {
+          const note = html('<div class="msg-user"><small>Steer</small></div>')
+          note.append(text)
+          append(note)
+          setTimeout(
+            () => append(agentSays("Noted. I'll fold that into the next step without starting over.")),
+            reduceMotion ? 0 : 600,
+          )
+        }
+
+        return { play, resolve, replay, steer }
+      })()
+
+      document.addEventListener("click", (event) => {
+        if (event.target.closest("[data-allow]")) demo.resolve(true)
+        if (event.target.closest("[data-deny]")) demo.resolve(false)
+        if (event.target.closest("[data-replay]")) demo.replay()
+      })
+
+      addEventListener("keydown", (event) => {
+        if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+        if (event.target.closest?.("input, textarea, summary, button")) return
+        if (event.key.toLowerCase() === "a") demo.resolve(true)
+        if (event.key.toLowerCase() === "d") demo.resolve(false)
+      })
+
+      document.querySelector("[data-composer]").addEventListener("submit", (event) => {
+        event.preventDefault()
+        const input = event.currentTarget.querySelector("input")
+        const text = input.value.trim()
+        if (!text) return
+        input.value = ""
+        demo.steer(text)
+      })
+
+      const stage = document.querySelector("#demo")
+      new IntersectionObserver(
+        (entries, observer) => {
+          if (!entries.some((e) => e.isIntersecting)) return
+          observer.disconnect()
+          demo.play()
+        },
+        { threshold: 0.35 },
+      ).observe(stage)
+    </script>
+  </body>
+</html>
