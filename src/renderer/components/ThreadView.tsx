@@ -18,6 +18,7 @@ import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
+import { SubagentTranscript } from "./SubagentView.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { Button } from "./ui/button.tsx"
@@ -35,7 +36,8 @@ const statusLabel = {
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 
-export function ThreadView({ thread, actions }: { thread: Thread; actions?: ReactNode }) {
+/** `agent` is the `callId` of the sub-agent to show instead of the thread's own transcript. */
+export function ThreadView({ thread, agent, actions }: { thread: Thread; agent?: string; actions?: ReactNode }) {
   const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -57,7 +59,7 @@ export function ThreadView({ thread, actions }: { thread: Thread; actions?: Reac
       </header>
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         <ThreadRepository value={repository}>
-          <Transcript thread={thread} />
+          <Transcript thread={thread} agent={agent} />
         </ThreadRepository>
       </div>
       {thread.status === "limited" && thread.usageLimit !== null && (
@@ -68,7 +70,7 @@ export function ThreadView({ thread, actions }: { thread: Thread; actions?: Reac
   )
 }
 
-function Transcript({ thread }: { thread: Thread }) {
+function Transcript({ thread, agent }: { thread: Thread; agent: string | undefined }) {
   const history = useMessages((state) => state.byThread[thread.id])
   const load = useMessages((state) => state.load)
   const unload = useMessages((state) => state.unload)
@@ -112,8 +114,16 @@ function Transcript({ thread }: { thread: Thread }) {
   }
   return (
     <FindPatternContext value={pattern}>
-      {findOpen && <FindBar messages={history.messages} query={findQuery} listRef={listRef} />}
-      {history.messages.length === 0 ? (
+      {findOpen && agent === undefined && <FindBar messages={history.messages} query={findQuery} listRef={listRef} />}
+      {agent !== undefined ? (
+        <SubagentTranscript
+          key={agent}
+          thread={thread}
+          messages={history.messages}
+          callId={agent}
+          providerLabel={label}
+        />
+      ) : history.messages.length === 0 ? (
         <EmptyThread providerLabel={label} />
       ) : (
         <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />

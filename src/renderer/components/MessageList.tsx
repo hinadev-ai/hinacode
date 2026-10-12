@@ -1,5 +1,5 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
-import { createContext, memo, use, type Ref, useMemo, useState } from "react"
+import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
@@ -32,10 +32,16 @@ export function MessageList({
   messages,
   providerLabel,
   listRef,
+  header,
+  alignItemsAtEnd = true,
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
   listRef?: Ref<LegendListRef>
+  /** Scrolls with the messages and stays right above them. */
+  header?: ReactElement
+  /** Chat sits at the bottom, by the composer. A log reads from the top. */
+  alignItemsAtEnd?: boolean
 }) {
   const lastMessageId = messages.at(-1)?.id
   const answerable = useMemo(() => ({ lastMessageId, providerLabel }), [lastMessageId, providerLabel])
@@ -47,11 +53,11 @@ export function MessageList({
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         estimatedItemSize={120}
-        alignItemsAtEnd
+        alignItemsAtEnd={alignItemsAtEnd}
         initialScrollAtEnd
         maintainScrollAtEnd
         maintainVisibleContentPosition
-        ListHeaderComponent={edgeSpacer}
+        ListHeaderComponent={header ?? edgeSpacer}
         ListFooterComponent={edgeSpacer}
         className="min-h-0 flex-1"
       />
@@ -107,9 +113,11 @@ function MessageBody({ message }: { message: Message }) {
     )
   }
   const streaming = message.completedAt === null
+  // A sub-agent's calls belong to its own view, opened from the call that spawned it.
+  const parts = message.parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined)
   // A steer sent before the agent said anything closes an empty assistant message.
-  if (!streaming && message.parts.length === 0) return null
-  const last = message.parts.at(-1)
+  if (!streaming && parts.length === 0) return null
+  const last = parts.at(-1)
   const writing = streaming && last?.type === "text"
   return (
     <article
@@ -117,10 +125,10 @@ function MessageBody({ message }: { message: Message }) {
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {message.parts.map((part, index) =>
+      {parts.map((part, index) =>
         // Parts only ever get appended or updated in place, so the index is a stable key.
         part.type === "text" ? (
-          <ReplyText key={index} text={part.text} done={!(writing && index === message.parts.length - 1)} />
+          <ReplyText key={index} text={part.text} done={!(writing && index === parts.length - 1)} />
         ) : part.type === "questions" && message.id === lastMessageId ? (
           <PostedQuestionsCard
             key={index}
@@ -132,7 +140,7 @@ function MessageBody({ message }: { message: Message }) {
           <MessagePartView key={index} part={part} />
         ),
       )}
-      {streaming && (message.parts.length === 0 || writing) && (
+      {streaming && (parts.length === 0 || writing) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
           {writing ? m.message_writing() : m.message_thinking()}
         </p>

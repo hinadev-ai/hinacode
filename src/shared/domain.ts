@@ -223,6 +223,8 @@ export const MessagePart = Schema.Union([
     input: Schema.Unknown,
     output: Schema.optional(Schema.Unknown),
     status: ToolCallStatus,
+    /** Set when a sub-agent made the call: the `callId` of the sub-agent it belongs to. */
+    parentCallId: Schema.optional(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("file_change"), path: Schema.String, diff: Schema.String }),
   Schema.Struct({ type: Schema.Literal("attachment"), attachment: Attachment }),

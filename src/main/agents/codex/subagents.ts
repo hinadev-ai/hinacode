@@ -38,7 +38,7 @@ export function applyParentItem(subagents: Subagents, item: ThreadItem, now: str
       const started: Subagent = {
         id,
         label: nameFromPath(item.agentPath),
-        kind: "agent",
+        callId: id,
         status: "running",
         summary: null,
         lastTool: null,

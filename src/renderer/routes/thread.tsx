@@ -14,6 +14,7 @@ const route = getRouteApi("/thread/$threadId")
 
 export function ThreadRoute() {
   const { threadId } = route.useParams()
+  const { agent } = route.useSearch()
   const thread = useThreads((state) => state.byId[threadId])
   const togglePanel = useUi((state) => state.toggleSidePanel)
   const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
@@ -30,6 +31,7 @@ export function ThreadRoute() {
         <ThreadView
           key={thread.id}
           thread={thread}
+          agent={agent}
           actions={
             <>
               <TerminalToggle threadId={thread.id} />

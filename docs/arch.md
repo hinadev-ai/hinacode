@@ -166,6 +166,8 @@ sequenceDiagram
     P-->>AR: subagent_updated (full state)
     AR->>AR: keep latest per thread, in memory
     AR-->>R: push thread.subagents (not a transcript push)
+    P-->>AR: tool_call_started { parentCallId }
+    AR-->>R: thread.event (shown in the sub-agent's view, not the thread's)
   end
   opt request_secret (MCP tool)
     AR-->>R: secret_requested, thread.updated(awaiting_approval)

@@ -313,6 +313,10 @@
     }
   ],
   "agents_tokens": "{tokens} tokens",
+  "agents_untitled": "子代理",
+  "agents_back": "返回 {name}",
+  "agents_prompt": "指示",
+  "agents_missing": "這個子代理沒有任何紀錄。",
   "pr_links_unlink": "取消連結 {name}",
   "sidebar_thread_actions": "「{title}」的操作",
   "sidebar_thread_rename": "重新命名",

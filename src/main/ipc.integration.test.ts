@@ -104,7 +104,7 @@ const mainFrame: Frame = { url: appUrl, parent: null }
 const subagent: Subagent = {
   id: "task-1",
   label: "Count repo files",
-  kind: "general-purpose",
+  callId: "toolu_01DoGmNCXkV2M8SMNaE7E3XJ",
   status: "running",
   summary: null,
   lastTool: null,
