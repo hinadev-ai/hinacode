@@ -132,6 +132,7 @@
   "sidebar_worktree_branch": "Worktree branch {branch}",
   "sidebar_show": "Show sidebar",
   "sidebar_hide": "Hide sidebar",
+  "sidebar_resize": "Resize sidebar",
   "command_settings_open": "Open settings",
   "command_thread_new": "New thread",
   "command_project_add": "Add project",
