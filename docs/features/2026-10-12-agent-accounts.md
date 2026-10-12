@@ -10,7 +10,7 @@ A developer with a personal and a work subscription, or two Claude Max seats to 
 ## User flow
 
 1. Settings > Models lists, per agent, the CLI's own login and every account added in kkcode, each with its email and plan.
-2. "Add account" asks for a name, then starts sign-in. The browser opens on the agent's sign-in page, and the dialog shows the same URL as a link. For Claude Code the dialog also takes the code the page shows when the browser could not reach the CLI. The dialog closes when the agent reports the login.
+2. "Add account" asks for a name, then starts sign-in. The browser opens on the agent's sign-in page, and the dialog shows the same URL as a link. For Claude Code the dialog also takes the code the page shows when the browser could not reach the CLI. The dialog closes when the agent reports the login. A browser already signed in to ChatGPT finishes the Codex sign-in without asking, so adding a second ChatGPT account needs a private window or switching the browser's account first.
 3. Each added account can be renamed, signed out, signed in again or removed. "Account for new threads" picks the default per agent.
 4. A new thread starts on the agent's default account. When the agent has more than one account, the composer shows an account picker next to the model. It is disabled once the thread has a provider session, because the transcript lives in that account's home.
 
