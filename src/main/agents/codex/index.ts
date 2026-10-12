@@ -246,16 +246,17 @@ const make = Effect.gen(function* () {
     return models
   })
 
-  const planLimits = Effect.gen(function* () {
-    const client = yield* getClient(null)
-    const raw = yield* client.request<unknown>("account/rateLimits/read", undefined)
-    const response = yield* Schema.decodeUnknownEffect(GetAccountRateLimitsResponse)(raw).pipe(
-      Effect.mapError(
-        () => new AgentError({ provider: "codex", message: "Failed to read Codex plan limits: invalid response" }),
-      ),
-    )
-    return toPlanLimits(response, yield* nowIso)
-  })
+  const planLimits = (home: string | null) =>
+    Effect.gen(function* () {
+      const client = yield* getClient(home)
+      const raw = yield* client.request<unknown>("account/rateLimits/read", undefined)
+      const response = yield* Schema.decodeUnknownEffect(GetAccountRateLimitsResponse)(raw).pipe(
+        Effect.mapError(
+          () => new AgentError({ provider: "codex", message: "Failed to read Codex plan limits: invalid response" }),
+        ),
+      )
+      return toPlanLimits(response, yield* nowIso)
+    })
 
   const rolloutUsage = perHome(makeRolloutUsage)
   const readUsage = (threadId: string, home: string | null) =>

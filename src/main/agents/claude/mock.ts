@@ -27,7 +27,7 @@ export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "u
             plan: "Claude Max",
             organization: "Example Org",
           }),
-        planLimits: Effect.succeed(null),
+        planLimits: () => Effect.succeed(null),
         usage: () => Effect.succeed(null),
         signIn: () => Effect.die("The simulated Claude Code cannot sign in"),
         signOut: () => Effect.void,

@@ -47,8 +47,8 @@ export interface AgentProvider {
   /** Starts a subscription sign-in for the agent home `home`. Closing the scope abandons it. */
   readonly signIn: (home: string) => Effect.Effect<SignIn, AgentError, Scope.Scope>
   readonly signOut: (home: string) => Effect.Effect<void, AgentError>
-  /** The signed-in account's plan allowance windows. Null when it has none, such as with an API key. */
-  readonly planLimits: Effect.Effect<PlanLimits | null, AgentError>
+  /** Plan allowance windows of the login in `home`. Null when it has none, such as with an API key. */
+  readonly planLimits: (home: string | null) => Effect.Effect<PlanLimits | null, AgentError>
   /**
    * Tokens the session and every agent it started spent, read from the agent home `home` (the CLI's own for
    * null). Null when there is no transcript.

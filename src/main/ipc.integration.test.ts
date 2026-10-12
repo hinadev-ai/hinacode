@@ -161,7 +161,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
         ? { type: "signedOut" }
         : { type: "subscription", email: `${basename(home)}@example.com`, plan: null, organization: null },
     ),
-  planLimits:
+  planLimits: () =>
     id === "claude"
       ? Effect.succeed(claudeLimits)
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
@@ -684,10 +684,15 @@ describe("token usage over rpc", () => {
 })
 
 describe("plan limits over rpc", () => {
-  test("lists every provider, with null limits for one that cannot answer", async () => {
-    expect(result(await invoke("limits.list", undefined))).toStrictEqual([
+  test("lists every login and added account, with null limits for one that cannot answer", async () => {
+    const personal = result(await invoke("accounts.create", { provider: "claude", name: "Personal" }))
+    const work = result(await invoke("accounts.create", { provider: "codex", name: "Work" }))
+    const listed = result(await invoke("limits.list", undefined))
+    expect(listed.filter((entry) => [null, personal.id, work.id].includes(entry.accountId))).toStrictEqual([
       { provider: "claude", accountId: null, limits: claudeLimits },
+      { provider: "claude", accountId: personal.id, limits: claudeLimits },
       { provider: "codex", accountId: null, limits: null },
+      { provider: "codex", accountId: work.id, limits: null },
     ])
   })
 })

@@ -521,14 +521,15 @@ export const layer = Layer.effect(
         ),
         Effect.map(toAccount),
       )
-    const planLimits = probe(
-      (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
-      "Failed to read Claude plan limits",
-      null,
-    ).pipe(
-      Effect.flatMap((raw) => Effect.map(nowIso, (readAt) => toPlanLimits(raw, readAt))),
-      Effect.orElseSucceed(() => null),
-    )
+    const planLimits = (home: string | null) =>
+      probe(
+        (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
+        "Failed to read Claude plan limits",
+        home,
+      ).pipe(
+        Effect.flatMap((raw) => Effect.map(nowIso, (readAt) => toPlanLimits(raw, readAt))),
+        Effect.orElseSucceed(() => null),
+      )
 
     const transcriptUsage = perHome(makeTranscriptUsage)
     const usage = (sessionId: string, home: string | null) =>

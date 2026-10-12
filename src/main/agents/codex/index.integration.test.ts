@@ -391,7 +391,7 @@ describe("Codex plan limits", () => {
           },
         })
         const provider = yield* CodexProvider
-        expect(yield* provider.planLimits).toStrictEqual({
+        expect(yield* provider.planLimits(null)).toStrictEqual({
           windows: [
             { window: { kind: "session" }, usedPercent: 12.5, resetsAt: "2026-10-14T17:46:40.000Z" },
             { window: { kind: "minutes", minutes: 60 }, usedPercent: 40, resetsAt: null },
@@ -402,7 +402,7 @@ describe("Codex plan limits", () => {
         setControl({
           rateLimitsResponse: { rateLimits: snapshot("codex", weekly, null), rateLimitsByLimitId: null },
         })
-        expect((yield* provider.planLimits)?.windows).toStrictEqual([
+        expect((yield* provider.planLimits(null))?.windows).toStrictEqual([
           { window: { kind: "weekly" }, usedPercent: 69, resetsAt: "2026-10-18T14:51:52.000Z" },
         ])
       }),
@@ -414,7 +414,7 @@ describe("Codex plan limits", () => {
       Effect.gen(function* () {
         setControl({ rateLimitsResponse: { rateLimits: { primary: { usedPercent: "lots" } } } })
         const provider = yield* CodexProvider
-        expect((yield* provider.planLimits.pipe(Effect.flip)).message).toMatch(/plan limits/)
+        expect((yield* provider.planLimits(null).pipe(Effect.flip)).message).toMatch(/plan limits/)
       }),
     ),
   )

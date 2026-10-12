@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Duration, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
+import { Cache, Context, Deferred, Duration, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
   AccountLimits,
@@ -87,8 +87,11 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
-    /** One entry per signed-in account. A provider that fails to answer reports null limits. */
-    readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>>
+    /**
+     * One entry for each provider's CLI login and each added account. One that fails to answer or is signed out
+     * reports null limits.
+     */
+    readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
     /** Null until the thread's first turn binds an agent session. */
     readonly usage: (
       threadId: string,
@@ -166,16 +169,20 @@ const make = Effect.gen(function* () {
     codex: yield* CodexProvider,
   }
 
-  // A Claude read spawns a CLI, so each provider is asked at most once a minute.
-  const cachedLimits = yield* Effect.forEach(Object.values(providers), (provider) =>
-    Effect.cachedWithTTL(
-      provider.planLimits.pipe(
+  type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
+  // A Claude read spawns a CLI, so each account is asked at most once a minute. Keyed by a `LimitsKey` as JSON.
+  const cachedLimits = yield* Cache.make({
+    lookup: (key: string) => {
+      const { provider, accountId } = JSON.parse(key) as LimitsKey
+      return accounts.home(accountId).pipe(
+        Effect.flatMap(providers[provider].planLimits),
         Effect.orElseSucceed(() => null),
-        Effect.map((limits): AccountLimits => ({ provider: provider.id, accountId: null, limits })),
-      ),
-      Duration.minutes(1),
-    ),
-  )
+        Effect.map((limits): AccountLimits => ({ provider, accountId, limits })),
+      )
+    },
+    capacity: 64,
+    timeToLive: Duration.minutes(1),
+  })
 
   const turns = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
@@ -524,7 +531,18 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
-    limits: Effect.all(cachedLimits, { concurrency: "unbounded" }),
+    limits: Effect.gen(function* () {
+      const added = yield* accounts.list
+      const keys = Object.values(providers).flatMap(({ id }): ReadonlyArray<LimitsKey> => [
+        { provider: id, accountId: null },
+        ...added
+          .filter((account) => account.provider === id)
+          .map((account) => ({ provider: id, accountId: account.id })),
+      ])
+      return yield* Effect.forEach(keys, (key) => Cache.get(cachedLimits, JSON.stringify(key)), {
+        concurrency: "unbounded",
+      })
+    }),
     usage: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

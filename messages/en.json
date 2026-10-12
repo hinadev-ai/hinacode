@@ -681,6 +681,8 @@
     }
   ],
   "limits_label": "{provider} plan limits",
+  "limits_label_account": "{provider} plan limits, {name}",
+  "limits_default_account": "Default",
   "limits_value": "{percent}% of the {window} limit used",
   "limits_used_detail": "{percent}% used {detail}",
   "limits_used": "{percent}% used",

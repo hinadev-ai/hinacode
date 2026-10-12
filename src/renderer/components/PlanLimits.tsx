@@ -4,9 +4,10 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { Fragment } from "react"
 import type { AccountLimits, ProviderId } from "../../shared/agent.ts"
+import type { Thread } from "../../shared/domain.ts"
 import type { LimitWindow, LimitWindowKind } from "../../shared/limits.ts"
 import { formatMinutes, formatResetIn, limitLevel, mostUsed } from "../lib/planLimits.ts"
-import { accountAtom, accountKey, accountLimitsAtom } from "../lib/rpc.ts"
+import { accountAtom, accountKey, accountLimitsAtom, accountsAtom } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -39,33 +40,47 @@ type Shown = AccountLimits & { readonly windows: ReadonlyArray<LimitWindow> }
  * One group per account with plan limits. A provider's only account, or the one the open thread uses, shows
  * every window; any other collapses to its top percentage.
  */
-export function PlanLimits({ openProvider }: { openProvider: ProviderId | undefined }) {
+export function PlanLimits({ openThread }: { openThread: Pick<Thread, "provider" | "accountId"> | undefined }) {
   const entries = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), () => [])
+  const added = AsyncResult.getOrElse(useAtomValue(accountsAtom), () => [])
   const shown = entries.flatMap((entry): ReadonlyArray<Shown> => {
     const windows = entry.limits?.windows ?? []
     return windows.length === 0 ? [] : [{ ...entry, windows }]
   })
-  const accountsOf = (provider: ProviderId) => shown.filter((entry) => entry.provider === provider).length
+  const groupsOf = (provider: ProviderId) => shown.filter((entry) => entry.provider === provider).length
+  // The CLI's own login has no name; it needs one only next to the provider's added accounts.
+  const nameOf = (entry: Shown) =>
+    entry.accountId === null
+      ? groupsOf(entry.provider) > 1
+        ? m.limits_default_account()
+        : undefined
+      : added.find((account) => account.id === entry.accountId)?.name
   return shown.map((entry) => (
     <AccountLimitsGroup
-      key={`${entry.provider}\n${entry.accountId ?? ""}`}
+      key={accountKey(entry.provider, entry.accountId)}
       provider={entry.provider}
+      accountId={entry.accountId}
+      name={nameOf(entry)}
       windows={entry.windows}
-      // Threads don't pick an account yet, so a provider's default account is the one its threads use.
-      expanded={accountsOf(entry.provider) === 1 || (entry.provider === openProvider && entry.accountId === null)}
+      expanded={
+        groupsOf(entry.provider) === 1 ||
+        (entry.provider === openThread?.provider && entry.accountId === openThread.accountId)
+      }
     />
   ))
 }
 
 export function AccountLimitsGroup({
   provider,
+  accountId,
   name,
   windows,
   expanded,
 }: {
   provider: ProviderId
-  /** Shown only when collapsed, to tell a provider's accounts apart. */
-  name?: string
+  accountId: string | null
+  /** Tells a provider's accounts apart. */
+  name: string | undefined
   windows: ReadonlyArray<LimitWindow>
   expanded: boolean
 }) {
@@ -87,7 +102,11 @@ export function AccountLimitsGroup({
           <span
             role="meter"
             tabIndex={0}
-            aria-label={m.limits_label({ provider: providerLabel[provider]() })}
+            aria-label={
+              name === undefined
+                ? m.limits_label({ provider: providerLabel[provider]() })
+                : m.limits_label_account({ provider: providerLabel[provider](), name })
+            }
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.min(topPercent, 100)}
@@ -95,7 +114,7 @@ export function AccountLimitsGroup({
             className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-sm px-1.5 whitespace-nowrap tabular-nums outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ProviderIcon provider={provider} />
-            {!expanded && name !== undefined && <span>{name}</span>}
+            {name !== undefined && <span>{name}</span>}
             <Meter percent={top.usedPercent} />
             {expanded ? (
               windows.map((window, index) => {
@@ -117,7 +136,7 @@ export function AccountLimitsGroup({
         }
       />
       <TooltipContent side="top" align="start" className="max-w-none flex-col items-stretch gap-2 py-2">
-        <AccountHeading provider={provider} />
+        <AccountHeading provider={provider} accountId={accountId} name={name} />
         <table className="tabular-nums">
           <tbody>
             {windows.map((window, index) => (
@@ -147,10 +166,19 @@ export function AccountLimitsGroup({
   )
 }
 
-function AccountHeading({ provider }: { provider: ProviderId }) {
-  const account = AsyncResult.getOrElse(useAtomValue(accountAtom(accountKey(provider, null))), () => null)
-  const details =
-    account?.type === "subscription" ? [account.email, account.plan].filter((detail) => detail !== null) : []
+function AccountHeading({
+  provider,
+  accountId,
+  name,
+}: {
+  provider: ProviderId
+  accountId: string | null
+  name: string | undefined
+}) {
+  const account = AsyncResult.getOrElse(useAtomValue(accountAtom(accountKey(provider, accountId))), () => null)
+  const details = [name, ...(account?.type === "subscription" ? [account.email, account.plan] : [])].filter(
+    (detail) => detail != null,
+  )
   return (
     <p>
       <span className="font-medium">{providerLabel[provider]()}</span>
