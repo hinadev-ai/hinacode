@@ -26,6 +26,14 @@ Feature: Find in thread
     Then Find counts "1 of 1"
     And the current match is in an open command ending in "kkcode_tail_find_unique"
 
+  Scenario: Find shows a long command description in full while its match is current
+    Given the agent finished a turn in "Commands" running "printf ready" described by 500 "x" then "kkcode_description_find_unique"
+    When I find "kkcode_description_find_unique" in the thread
+    Then Find counts "1 of 1"
+    And the current match is in a command row that shows its whole label
+    When I close Find
+    Then the command row "printf ready" truncates its label again
+
   Scenario: Find steps between a folded command and later reply text
     Given the agent finished a turn in "Commands" with
       | kind    | text                                       | description  |

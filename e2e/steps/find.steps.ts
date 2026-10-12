@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 import { randomUUID } from "node:crypto"
 import type { DataTable } from "playwright-bdd"
 import type { AgentEvent } from "../../src/shared/agent.ts"
@@ -66,6 +66,16 @@ Given(
   async ({ app, threadIds }, title: string, count: number, filler: string, tail: string) => {
     await finishTurn(app, threadIds, title, [
       { kind: "command", text: `printf ${filler.repeat(count)}${tail}` },
+      { kind: "command", text: "pwd" },
+    ])
+  },
+)
+
+Given(
+  "the agent finished a turn in {string} running {string} described by {int} {string} then {string}",
+  async ({ app, threadIds }, title: string, command: string, count: number, filler: string, tail: string) => {
+    await finishTurn(app, threadIds, title, [
+      { kind: "command", text: command, description: `${filler.repeat(count)}${tail}` },
       { kind: "command", text: "pwd" },
     ])
   },
@@ -159,4 +169,21 @@ Then("the current match is in an open command ending in {string}", async ({ app 
   await expect(commandText.locator(currentMarkSelector)).toHaveText(tail)
   await expect(currentMark(app.page)).toHaveCount(1)
   await expect(currentMark(app.page)).toBeInViewport()
+})
+
+const isClipped = (label: Locator) => label.evaluate((element) => element.scrollWidth > element.clientWidth)
+
+Then("the current match is in a command row that shows its whole label", async ({ app }) => {
+  const label = transcript(app.page)
+    .locator("li span[title]")
+    .filter({ has: app.page.locator(currentMarkSelector) })
+  await expect(label).toHaveCount(1)
+  await expect.poll(() => isClipped(label)).toBe(false)
+  await expect(currentMark(app.page)).toHaveCount(1)
+  await expect(currentMark(app.page)).toBeInViewport()
+})
+
+Then("the command row {string} truncates its label again", async ({ app }, command: string) => {
+  const label = transcript(app.page).locator(`li span[title="${command}"]`)
+  await expect.poll(() => isClipped(label)).toBe(true)
 })
