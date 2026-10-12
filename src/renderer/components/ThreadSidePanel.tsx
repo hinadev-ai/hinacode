@@ -255,6 +255,7 @@ const fileStatusLabel = {
   modified: m.file_status_modified,
   deleted: m.file_status_deleted,
   untracked: m.file_status_untracked,
+  conflict: m.file_status_conflict,
 } satisfies Record<ChangedFileStatus, () => string>
 
 const fileStatusMark = {
@@ -262,6 +263,7 @@ const fileStatusMark = {
   modified: { letter: "M", className: "text-amber-500" },
   deleted: { letter: "D", className: "text-destructive" },
   untracked: { letter: "U", className: "text-sky-500" },
+  conflict: { letter: "C", className: "text-destructive" },
 } satisfies Record<ChangedFileStatus, { letter: string; className: string }>
 
 /** The single-file section of a combined `git diff`, found by its `diff --git a/… b/<path>` header. */

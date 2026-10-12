@@ -1,4 +1,4 @@
-import { join, relative, isAbsolute } from "node:path"
+import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { NodeServices } from "@effect/platform-node"
 import { app, BrowserWindow, net, protocol, shell } from "electron"
@@ -7,11 +7,12 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
-import { externalUrl, isAppDocument } from "./security.ts"
+import { externalUrl, isAppDocument, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Automations from "./services/automations/Automations.ts"
+import * as Files from "./services/Files.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
@@ -35,10 +36,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_PROTOCOL, privileges:
 const serveAttachments = () =>
   protocol.handle(ATTACHMENT_PROTOCOL, (request) => {
     const path = decodeURIComponent(new URL(request.url).pathname.slice(1))
-    const inside = relative(Attachments.attachmentsRoot(), path)
-    if (!isAbsolute(path) || inside.startsWith("..") || isAbsolute(inside)) {
-      return new Response(null, { status: 403 })
-    }
+    if (!isInside(Attachments.attachmentsRoot(), path)) return new Response(null, { status: 403 })
     return net.fetch(pathToFileURL(path).toString())
   })
 
@@ -48,6 +46,7 @@ const makeAppLayer = (dbPath: string) => {
     Settings.layer,
     Messages.layer,
     Attachments.layer,
+    Files.layer,
   )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, ThreadNaming.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))

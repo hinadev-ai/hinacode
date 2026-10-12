@@ -14,6 +14,7 @@ import { isTrustedSender } from "./security.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Events } from "./services/Events.ts"
+import { Files } from "./services/Files.ts"
 import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpCredentials } from "./mcp/index.ts"
@@ -38,6 +39,7 @@ type AppServices =
   | Attachments
   | Automations
   | GitHub
+  | Files
 
 interface HandlerError {
   readonly _tag: string
@@ -113,6 +115,8 @@ const handlers: Handlers = {
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
+  "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
+  "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
 
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {

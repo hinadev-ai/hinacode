@@ -122,6 +122,7 @@
   "file_status_modified": "Modified",
   "file_status_deleted": "Deleted",
   "file_status_untracked": "New, not tracked",
+  "file_status_conflict": "Conflict",
   "panel_diff_missing": "No diff for this file.",
   "settle_dialog_title": "Settle this thread?",
   "settle_dialog_root": "Marks the thread settled. Nothing on disk changes.",
