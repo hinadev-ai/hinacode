@@ -1,24 +1,7 @@
 import { join } from "node:path"
 import { Effect, FileSystem } from "effect"
-import type { ChangedFileStatus, Changes } from "../../shared/domain.ts"
-import { Git } from "./Git.ts"
-
-const toChangedStatus = (letter: string): ChangedFileStatus => {
-  if (letter === "A") return "added"
-  if (letter === "D") return "deleted"
-  if (letter === "U") return "conflict"
-  return "modified"
-}
-
-/** Parses `git diff --name-status -z`: alternating status letter and path. */
-export const parseNameStatus = (output: string) => {
-  const fields = output.split("\0").filter(Boolean)
-  const files: Array<{ path: string; status: ChangedFileStatus }> = []
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    files.push({ path: fields[i + 1] ?? "", status: toChangedStatus(fields[i]?.charAt(0) ?? "") })
-  }
-  return files
-}
+import type { Changes } from "../../shared/domain.ts"
+import { Git, parseNameStatus } from "./Git.ts"
 
 /**
  * Writes the whole working tree, untracked but not ignored files included, as a git tree and returns

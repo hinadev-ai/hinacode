@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
+import type { ChangedFileStatus, CommitDiff, GitCommit } from "../../shared/domain.ts"
 
 export class CommandError extends Schema.TaggedError<CommandError>()("CommandError", {
   command: Schema.String,
@@ -47,6 +48,51 @@ export const makeExec =
       ),
     )
 
+const toChangedStatus = (letter: string): ChangedFileStatus => {
+  if (letter === "A") return "added"
+  if (letter === "D") return "deleted"
+  if (letter === "U") return "conflict"
+  return "modified"
+}
+
+/** Parses `git diff --name-status -z`: alternating status letter and path. */
+export const parseNameStatus = (output: string) => {
+  const fields = output.split("\0").filter(Boolean)
+  const files: Array<{ path: string; status: ChangedFileStatus }> = []
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    files.push({ path: fields[i + 1] ?? "", status: toChangedStatus(fields[i]?.charAt(0) ?? "") })
+  }
+  return files
+}
+
+const LOG_FIELDS = ["%H", "%P", "%an", "%ad", "%D", "%s"]
+export const LOG_FORMAT = LOG_FIELDS.join("%x00")
+
+/** `HEAD -> main, origin/main, tag: v1` becomes `HEAD`, `main`, `origin/main`, `tag: v1`. */
+const parseRefs = (decorations: string) =>
+  decorations === "" ? [] : decorations.split(", ").flatMap((ref) => ref.split(" -> "))
+
+/** Parses `git log -z --format=<LOG_FORMAT>`: every field and every commit ends at a NUL. */
+export const parseLog = (output: string): Array<GitCommit> => {
+  const fields = output.split("\0")
+  const commits: Array<GitCommit> = []
+  for (let i = 0; i + LOG_FIELDS.length <= fields.length; i += LOG_FIELDS.length) {
+    const [hash = "", parents = "", author = "", authoredAt = "", refs = "", subject = ""] = fields.slice(
+      i,
+      i + LOG_FIELDS.length,
+    )
+    commits.push({
+      hash,
+      parents: parents === "" ? [] : parents.split(" "),
+      subject,
+      author,
+      authoredAt,
+      refs: parseRefs(refs),
+    })
+  }
+  return commits
+}
+
 export class Git extends Context.Service<
   Git,
   {
@@ -56,12 +102,68 @@ export class Git extends Context.Service<
       args: ReadonlyArray<string>,
       options?: RunOptions,
     ) => Effect.Effect<string, CommandError>
+    /** Up to `limit` commits reachable from branches, remote branches, tags and HEAD, children before parents. */
+    readonly log: (cwd: string, limit: number) => Effect.Effect<Array<GitCommit>, CommandError>
+    /** The commit's changes against its first parent. `hash` must already be validated as hex. */
+    readonly show: (cwd: string, hash: string) => Effect.Effect<CommitDiff, CommandError>
   }
 >()("kkcode/Git") {}
 
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
-  return Git.of({ run: (cwd, args, options) => exec("git", ["-C", cwd, ...args], cwd, options) })
+  const run = (cwd: string, args: ReadonlyArray<string>, options?: RunOptions) =>
+    exec("git", ["-C", cwd, ...args], cwd, options)
+
+  // Not `--all`: that also walks the stash and tool-private refs such as editor checkpoints,
+  // which show up as disconnected lanes that are not history.
+  const log = (cwd: string, limit: number) =>
+    run(cwd, [
+      "log",
+      "--branches",
+      "--remotes",
+      "--tags",
+      "HEAD",
+      // An unborn HEAD in a repository without commits is skipped instead of failing.
+      "--ignore-missing",
+      "--decorate-refs=refs/heads/",
+      "--decorate-refs=refs/remotes/",
+      "--decorate-refs=refs/tags/",
+      "--decorate-refs=HEAD",
+      "--topo-order",
+      "--date=iso-strict",
+      "--no-color",
+      "-z",
+      `--max-count=${limit}`,
+      `--format=${LOG_FORMAT}`,
+      "--",
+    ]).pipe(Effect.map(parseLog))
+
+  const show = (cwd: string, hash: string) => {
+    // Pinned against user config (mnemonic prefixes, color, quoted paths) like `Worktrees.changes`.
+    // A merge diffs against its first parent: the combined `--cc` diff is not a patch the viewer parses.
+    const diff = (args: ReadonlyArray<string>) =>
+      run(cwd, [
+        "-c",
+        "core.quotePath=false",
+        "show",
+        "--format=",
+        "--diff-merges=first-parent",
+        "--no-renames",
+        "--no-color",
+        "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        ...args,
+        hash,
+        "--",
+      ])
+    return Effect.all({
+      patch: diff(["--patch"]),
+      files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
+    })
+  }
+
+  return Git.of({ run, log, show })
 })
 
 export const layer = Layer.effect(Git, make)

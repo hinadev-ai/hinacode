@@ -92,6 +92,26 @@ export const threadChangesAtom = Atom.family((key: string) => {
   )
 })
 
+/** How many commits the git graph asks for, per checkout. Grows as the list scrolls to its end. */
+export const gitLogLimitAtom = Atom.family((_root: string) => Atom.make(200))
+
+/** Commits of the checkout at `root`. Asked again when that worktree's status changes. */
+export const gitLogAtom = Atom.family((root: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent((event) => event.type === "worktree.updated" && event.worktree.path === root && get.refreshSelf()),
+    )
+    return call("git.log", { root, limit: get(gitLogLimitAtom(root)) })
+  }),
+)
+
+/** One commit's changes, keyed by `commitKey`. */
+export const commitDiffAtom = Atom.family((key: string) => {
+  const [root = "", hash = ""] = key.split("\n")
+  return Atom.make(call("git.show", { root, hash }))
+})
+export const commitKey = (root: string, hash: string) => `${root}\n${hash}`
+
 /**
  * Bumps when the window comes back into view or regains focus. Effect's `windowFocusSignal` only
  * listens for `visibilitychange`, which never fires when switching between visible desktop windows.
