@@ -63,6 +63,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-syntax-token: var(--syntax-token);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -104,6 +105,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
+  /* Commands and mentions in the composer: the brand violet, since the default primary is gray. */
+  --syntax-token: #7c3aed;
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -140,6 +143,7 @@
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
+  --syntax-token: #a78bfa;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -173,6 +177,7 @@
  */
 
 [data-theme] {
+  --syntax-token: var(--primary);
   --card: var(--surface);
   --card-foreground: var(--foreground);
   --popover: var(--surface);
