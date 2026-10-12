@@ -107,6 +107,7 @@
   "panel_label": "討論串詳細資訊",
   "panel_show": "顯示討論串詳細資訊",
   "panel_hide": "隱藏討論串詳細資訊",
+  "panel_resize": "調整討論串詳細資訊寬度",
   "panel_workspace": "工作區",
   "panel_workspace_root": "在專案根目錄執行",
   "panel_reveal": "在資料夾中顯示",

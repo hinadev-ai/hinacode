@@ -4,8 +4,10 @@ import { createElement, type RefObject, useCallback, useEffect, useRef } from "r
 import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
+import { SIDE_PANEL_BOUNDS } from "../lib/panelWidth.ts"
 import { m } from "../paraglide/messages.js"
 import { selectSidePanelView, useUi } from "../stores/ui.ts"
+import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { viewById } from "./sidePanel/views.ts"
 import { Button } from "./ui/button.tsx"
@@ -46,7 +48,9 @@ interface ViewContentProps {
 
 function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
   const view = viewById(viewId)
-  const wide = useUi((state) => state.sidePanelWide)
+  const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))
+  const width = useUi((state) => state.sidePanelWidths[size])
+  const setWidth = useUi((state) => state.setSidePanelWidth)
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
   const ref = useRef<HTMLElement | null>(null)
   const setRef = useCallback((node: HTMLElement | null) => {
@@ -69,12 +73,23 @@ function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
       role="tabpanel"
       tabIndex={-1}
       aria-label={view.title()}
+      style={compact || width === null ? undefined : { width }}
       className={cn(
-        "flex min-h-0 min-w-0 flex-col outline-none",
-        compact ? "flex-1" : "transition-[width] duration-200 ease-out motion-reduce:transition-none",
-        !compact && (wide ? "w-[min(44rem,50vw)]" : "w-96"),
+        "relative flex min-h-0 min-w-0 flex-col outline-none",
+        compact ? "flex-1" : "max-w-[50vw] transition-[width] duration-200 ease-out motion-reduce:transition-none",
+        !compact && (size === "wide" ? "w-[min(44rem,50vw)]" : "w-96"),
       )}
     >
+      {!compact && (
+        <ResizeHandle
+          label={m.panel_resize()}
+          edge="left"
+          targetRef={ref}
+          bounds={SIDE_PANEL_BOUNDS}
+          onResize={(next) => setWidth(size, next)}
+          onReset={() => setWidth(size, null)}
+        />
+      )}
       <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border pr-2 pl-4">
         <h2 className="truncate text-sm font-medium">{view.title()}</h2>
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
