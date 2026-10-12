@@ -44,6 +44,15 @@ export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()
   }
 }
 
+/** The agent and workspace of a thread are fixed once it has a message. */
+export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()("ThreadStartedError", {
+  id: Schema.String,
+}) {
+  override get message(): string {
+    return "This thread has already started. Start a new thread to change its agent or workspace."
+  }
+}
+
 const busyReasons = {
   setup: "its setup script is still running",
   turn: "a thread is still running in it",

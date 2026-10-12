@@ -1,22 +1,23 @@
 # Worktrees
 
-A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the project's setup script in it with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, streams the script's output into the side panel, lists the worktree's changes with diffs, and removes the worktree when the thread is settled. No agent turn is needed.
+A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the project's setup script in it with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, streams the script's output into the side panel, lists the worktree's changes with diffs, and removes the worktree when the thread is settled. The automated cases create the worktree through rpc without an agent turn. The composer creates it on the first send.
 
 ## Automated coverage
 
-`e2e/features/worktrees.feature`: the setup script running with the variables and the log ending with its output, the copied `.env`, the branch and checkout in `git worktree list`, changed and untracked files with their diff after `Refresh changes`, a failing script ending in `Setup failed` with the exit code in the log, and settle removing the checkout while keeping a branch that has its own commit.
+`e2e/features/worktrees.feature` creates threads with a worktree through rpc, then drives their panels and sidebar. It covers the setup script running with the variables and the log ending with its output, the copied `.env`, the branch and checkout in `git worktree list`, changed and untracked files with their diff after `Refresh changes`, a failing script ending in `Setup failed` with the exit code in the log, and settle removing the checkout while keeping a branch that has its own commit.
 
 ## Sub-features
 
-- `setup-script`, `create`, `setup-log`, `changes`, `settle-cleanup` (e2e).
-- `sidebar-branch` (e2e, indirectly) shows the worktree branch under the thread row and strikes it through after settle.
-- `pr-badge` the `PR <state>` badge next to the branch comes from `gh pr view` for a branch with a pull request; after a merge, `Settle and clean up` becomes the primary action and the panel says the pull request is merged.
+- `setup-script`, `create` (rpc), `setup-log`, `changes`, `settle-cleanup` (e2e).
+- `workspace-pick` and `branch-rename` need a real first turn; use the manual recipe below.
+- `sidebar-branch` (e2e, indirectly) shows the worktree branch under the thread row and marks it removed after settle.
+- `pr-badge` the `PR <state>` badge next to the branch comes from `gh pr view` for a branch with a pull request.
 
 ## How to get to it (user POV)
 
 - `Add project` dialog, `Setup script` field.
-- `New thread in <project>`, switch `Run in a new worktree`, then the `Branch` and `Base ref` fields.
-- Thread details panel (`Ctrl+.`): `Workspace`, `Setup log`, `Changes`, and the footer button `Settle and clean up`.
+- `New thread in <project>`, then the composer `Workspace` picker set to `New worktree` and the optional `Base ref` before the first send.
+- Thread details panel (`Ctrl+.`): `Workspace`, `Setup log`, `Changes`. Settle from the sidebar row menu `Settle…`.
 
 ## Driving it with agent-browser
 
@@ -25,10 +26,14 @@ Preconditions:
 - Instance launched, doctor passes, a project on a repository that has a GitHub remote and a branch with an open pull request, and `gh` signed in. This touches GitHub read-only.
 - `AB="agent-browser --session kkv-$PORT-worktrees"`, connected.
 
-- **PR badge.** Create a worktree thread on that branch (type its name into `Branch`; an existing branch is checked out as is). The `Workspace` row shows `PR open` linking to the pull request. Screenshot `worktrees-01-pr-badge.png`. For a merged pull request the footer button is the primary variant and the hint reads `The pull request is merged. Settle the thread to delete this worktree.`
+- **Composer creation and naming.** Start a new thread, choose `New worktree` under `Workspace`, enter `main` in `Base ref`, and send `Reply with the single word: ok`. `worktrees.list` reports the checkout while setup streams into the panel. After the reply, the placeholder title and branch change together; read the checkout path and branch from rpc before inspecting git.
+- **PR badge.** Open a thread on a worktree branch with a pull request. The `Workspace` row shows `PR open` linking to the pull request. Screenshot `worktrees-01-pr-badge.png`.
 
 ## Gotchas
 
+- Nothing is created until the first send. Picking `New worktree` and leaving the thread unsent leaves no branch or folder.
+- `Workspace` and `Agent` exist only before the first message. To test them again, start a new thread.
+- Composer selects can open upward under the header; drive them with the keyboard as above rather than clicking options.
 - The setup script runs through `$SHELL -lc`, so the user's login profile runs first. A noisy profile shows up in the setup log.
 - The worktree lives next to the project root, not inside it. Keep scratch repos inside `$DATA` so cleanup removes their worktrees too.
 - A branch with no commits of its own counts as merged into the base ref, so settle deletes it. The e2e scenario commits first to prove the other branch of that rule.

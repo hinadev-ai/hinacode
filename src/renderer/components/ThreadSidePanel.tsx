@@ -6,7 +6,6 @@ import { type ReactNode, useId, useState } from "react"
 import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiRefreshLine, RiSideBarFill } from "react-icons/ri"
 import {
   type ChangedFileStatus,
-  isThreadBusy,
   type PullRequest,
   type Thread,
   type Worktree,
@@ -19,11 +18,9 @@ import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import { SettleDialog, useActiveWorktree } from "./SettleDialog.tsx"
 import { ThreadPorts } from "./ThreadPorts.tsx"
 import { pullRequestStatusLabel, ThreadPullRequests } from "./ThreadPullRequests.tsx"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
-import { AlertDialogTrigger } from "./ui/alert-dialog.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
@@ -68,9 +65,6 @@ export function ThreadSidePanel({ thread }: { thread: Thread }) {
           </Section>
         </div>
       </ScrollArea>
-      <footer className="shrink-0 border-t border-border p-3">
-        <SettleControl thread={thread} />
-      </footer>
     </aside>
   )
 }
@@ -323,27 +317,5 @@ function ChangedFileRow({ path, status, patch, open, onToggle }: ChangedFileRowP
         </div>
       )}
     </li>
-  )
-}
-
-function SettleControl({ thread }: { thread: Thread }) {
-  const [open, setOpen] = useState(false)
-  const worktree = useActiveWorktree(thread)
-  const merged = useBranchPullRequest(worktree?.id)?.status === "merged"
-
-  if (thread.status === "settled" && !worktree) {
-    return <p className="text-xs text-muted-foreground">{m.panel_settled()}</p>
-  }
-
-  // Once the branch is merged, deleting the worktree loses nothing, so cleanup becomes the primary action.
-  const variant = !worktree ? "outline" : merged ? "default" : "destructive"
-  return (
-    <SettleDialog thread={thread} open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger
-        render={<Button variant={variant} className="w-full" disabled={isThreadBusy(thread.status)} />}
-      >
-        {worktree ? m.panel_settle_cleanup() : m.panel_settle()}
-      </AlertDialogTrigger>
-    </SettleDialog>
   )
 }

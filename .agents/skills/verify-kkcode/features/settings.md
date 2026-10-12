@@ -1,15 +1,15 @@
 # Settings
 
-The settings page has five sections: `General` (language), `Models` (default model per agent), `Keybindings` (record, reset, conflict warning), `Integrations` (GitHub sign-in state, Linear API key, Slack user token, stored encrypted and never shown again), and `Automations` (see `automations.md`). Every change applies at once and survives a relaunch. No agent turn is needed.
+The settings page has five sections: `General` (language), `Models` (default model per agent and thread naming model), `Keybindings` (record, reset, conflict warning), `Integrations` (GitHub sign-in state, Linear API key, Slack user token, stored encrypted and never shown again), and `Automations` (see `automations.md`). Every change applies at once and survives a relaunch. No agent turn is needed.
 
 ## Automated coverage
 
-`e2e/features/settings.feature`: switching to 繁體中文 and starting in it, the Claude default model preselecting in the new thread dialog, recording a shortcut and using it, Escape cancelling a recording, the conflict warning and reset, a saved shortcut replacing the default after a restart, and the Linear API key being stored, reported as stored, and cleared.
+`e2e/features/settings.feature`: switching to 繁體中文 and starting in it, the Claude default model preselecting in the new thread composer, recording a shortcut and using it, Escape cancelling a recording, the conflict warning and reset, a saved shortcut replacing the default after a restart, and the Linear API key being stored, reported as stored, and cleared.
 
 ## Sub-features
 
 - `language` (e2e) switches between `English` and `繁體中文`; the whole UI re-renders and the choice persists.
-- `default-model` (e2e for Claude) sets the default model per agent; the new thread dialog then preselects it.
+- `default-model` (e2e for Claude) sets the default model per agent; the new thread composer then preselects it.
 - `keybinding-record`, `keybinding-conflict`, `keybinding-reset`, `keybinding-effect` (e2e).
 - `secret-linear` (e2e) stores, replaces and clears the Linear API key; the UI only ever says `A key is stored.` or `No key stored.`
 - `default-model-codex` the same picker for Codex, fed by the live `codex` model list.

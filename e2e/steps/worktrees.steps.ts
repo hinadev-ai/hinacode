@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
-import { threadDetails } from "../support/ui.ts"
+import { threadDetails, threadMenu } from "../support/ui.ts"
 
 const branchOf = (title: string) => `kk/${title.replace(/\s+/g, "-")}`
 
@@ -22,20 +22,20 @@ const openWorktree = async (page: import("@playwright/test").Page) => {
 const gitWorktrees = (repo: string) =>
   execFileSync("git", ["-C", repo, "worktree", "list", "--porcelain"], { encoding: "utf8" })
 
+// Create the real worktree and setup through rpc, then seed its owning thread without a paid first turn.
 When(
   "I create a thread titled {string} in {string} in a new worktree",
-  async ({ app, names }, title: string, project: string) => {
-    const page = app.page
-    await page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
-    const dialog = page.getByRole("dialog")
-    await dialog.getByLabel("Title", { exact: true }).fill(names.of(title))
-    await dialog.getByRole("switch", { name: "Run in a new worktree", exact: true }).click()
-    // The branch follows the title; the base ref fills in once main reports the current branch.
-    await expect(dialog.getByLabel("Branch", { exact: true })).toHaveValue(branchOf(names.of(title)))
-    await expect(dialog.getByLabel("Base ref", { exact: true })).toHaveValue("main")
-    await expect(dialog.getByLabel("Model", { exact: true })).toBeEnabled({ timeout: 30_000 })
-    await dialog.getByRole("button", { name: "Create thread", exact: true }).click()
-    await expect(dialog).toBeHidden()
+  async ({ app, seed, names, projectIds, threadIds }, title: string, project: string) => {
+    const projectId = projectIds.get(project)
+    if (!projectId) throw new Error(`no seeded project named ${project}`)
+    const worktree = await rpc(app.page, "worktrees.create", {
+      projectId,
+      branch: branchOf(names.of(title)),
+      baseRef: "main",
+    })
+    threadIds.set(title, seed.thread({ projectId, title: names.of(title), worktreeId: worktree.id }))
+    await app.reload()
+    await app.page.getByRole("link", { name: names.of(title), exact: true }).click()
   },
 )
 
@@ -56,8 +56,9 @@ When("I open the diff of {string}", async ({ app }, file: string) => {
 })
 
 When("I settle the thread and clean up its worktree", async ({ app }) => {
-  const panel = await threadDetails(app.page)
-  await panel.getByRole("button", { name: "Settle and clean up", exact: true }).click()
+  const title = await app.page.getByRole("heading", { level: 1 }).textContent()
+  if (!title) throw new Error("no open thread title")
+  await threadMenu(app.page, title, "Settle…")
   const dialog = app.page.getByRole("alertdialog")
   await expect(dialog).toContainText("Settle this thread?")
   await dialog.getByRole("button", { name: "Settle and delete worktree", exact: true }).click()

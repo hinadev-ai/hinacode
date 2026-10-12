@@ -3,15 +3,23 @@ import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 import { sidebar, threadMenu } from "../support/ui.ts"
 
-When("I create a thread titled {string} in {string}", async ({ app, names }, title: string, project: string) => {
-  const page = app.page
-  await page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
-  const dialog = page.getByRole("dialog")
-  await dialog.getByLabel("Title", { exact: true }).fill(names.of(title))
-  // The model picker is disabled until the agent lists its models.
-  await expect(dialog.getByLabel("Model", { exact: true })).toBeEnabled({ timeout: 30_000 })
-  await dialog.getByRole("button", { name: "Create thread", exact: true }).click()
-  await expect(dialog).toBeHidden()
+When("I start a new thread in {string}", async ({ app, names }, project: string) => {
+  await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
+})
+
+/** A thread starts with a placeholder title until its first message names it. */
+const placeholderTitle = /^thread-[0-9a-f]{5}$/
+
+Then("a new thread is open with the composer focused", async ({ app }) => {
+  await expect(app.page.getByRole("heading", { level: 1, name: placeholderTitle })).toBeVisible()
+  await expect(app.page.getByLabel("Message", { exact: true })).toBeFocused()
+})
+
+Then("the sidebar lists the open thread", async ({ app }) => {
+  const title = await app.page.getByRole("heading", { level: 1, name: placeholderTitle }).textContent()
+  await expect(
+    app.page.getByRole("navigation", { name: "Projects and threads" }).getByRole("link", { name: title ?? "" }),
+  ).toBeVisible()
 })
 
 When("I open the thread {string} from the sidebar", async ({ app, names }, title: string) => {

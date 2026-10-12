@@ -10,7 +10,7 @@ A user adds a local repository as a project, starts threads in it, and organizes
 
 - `project-add` (e2e) adds a project from a typed root path, with an optional setup script.
 - `project-add-errors` (e2e) rejects a path that is not a folder and a folder another project already uses.
-- `thread-new` (e2e) creates a thread with a title, agent and model from the sidebar; `Ctrl+N` and the home page button are the same dialog.
+- `thread-new` (e2e) creates a thread immediately with a placeholder title and focuses the composer; `Ctrl+N` and the home page button use the same action.
 - `sidebar-group` (e2e) lists threads under their project and collapses or expands the group.
 - `thread-reorder` (e2e, keyboard) moves a thread within its project; pointer drag is the same sortable with a pointer sensor.
 - `thread-rename` (e2e) renames a thread inline from the row menu.
@@ -33,7 +33,7 @@ A user adds a local repository as a project, starts threads in it, and organizes
 Preconditions:
 
 - `$S/launch.sh $PORT $DATA` printed `kkcode ready` and `$S/doctor.sh $PORT $DATA` exits 0, `$S/seed-repo.sh $DATA/repo` done.
-- `AB="agent-browser --session kkv-$PORT-projects-and-threads"`, connected. A project `demo` with threads `first`, `second`, `third` (create through the dialog or seed with `rpc.mjs` and `$AB reload`).
+- `AB="agent-browser --session kkv-$PORT-projects-and-threads"`, connected. A project `demo` with threads `first`, `second`, `third` (create from the sidebar and rename, or seed with `rpc.mjs` and `$AB reload`).
 
 - **Pointer drag.** Drag the row `third` above `first` with `$AB drag 'a[title="third"]' 'a[title="first"]'` (the pointer sensor activates after 4px). The links read third, first, second and `$S/rpc.mjs $PORT threads.list` shows `sortIndex` in that order. Screenshot `projects-and-threads-01-dragged.png`.
 - **Native picker.** `Browse…` opens a GTK dialog that CDP cannot reach. Only a person at a real display can prove it; report it as not driven otherwise.

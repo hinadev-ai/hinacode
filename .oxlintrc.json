@@ -92,6 +92,22 @@
           }
         ]
       }
+    },
+    {
+      "files": ["e2e/support/app.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setInterval",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          },
+          {
+            "name": "setImmediate",
+            "message": "Tests must not wait on wall-clock timers. Wait on an event, a push, a file change, or advance Effect's TestClock."
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**"]

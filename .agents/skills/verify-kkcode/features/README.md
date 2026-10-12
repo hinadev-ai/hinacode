@@ -38,7 +38,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Projects and threads](./projects-and-threads.md): fully automated except pointer-drag reorder and the native folder picker.
 - [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, restore and resume after relaunch. Real turns only.
 - [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for kkcode tools. Real turns only.
-- [Worktrees](./worktrees.md): automated except the `PR <state>` badge, which needs a GitHub remote.
+- [Worktrees](./worktrees.md): setup services and panels automated; composer creation and branch naming need a real first turn, and the `PR <state>` badge needs a GitHub remote.
 - [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments. Real turns only.
 - [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; `link_pull_request` from inside a turn, `gh` status, creating a pull request and the `gh` sign-in states by hand.
 - [Settings](./settings.md): automated except the Codex default model and the Slack token, which share code with the automated cases.

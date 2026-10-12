@@ -13,12 +13,12 @@ Feature: Settings
     When the app restarts
     Then the sidebar is labelled "專案與討論串"
 
-  Scenario: A default model preselects in the new thread dialog
+  Scenario: A default model preselects in the new thread composer
     Given a project "demo" for my repository
     When I open settings
     And I open the settings section "Models"
     And I choose the default model "Sonnet 5.5" for "Claude Code"
-    Then the new thread dialog for "demo" preselects the model "Sonnet 5.5"
+    Then the new thread composer for "demo" preselects the model "Sonnet 5.5"
 
   Scenario: The sidebar shortcut hides and shows the sidebar
     When I press "Control+b"

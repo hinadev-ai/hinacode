@@ -103,13 +103,10 @@ Then("the shortcut row for {string} does not read {string}", async ({ app }, com
 })
 
 Then(
-  "the new thread dialog for {string} preselects the model {string}",
+  "the new thread composer for {string} preselects the model {string}",
   async ({ app, names }, project: string, model: string) => {
     await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
-    const dialog = app.page.getByRole("dialog")
-    await expect(dialog.getByLabel("Model", { exact: true })).toHaveText(model, { timeout: 30_000 })
-    await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
-    await expect(dialog).toBeHidden()
+    await expect(app.page.getByLabel("Model", { exact: true })).toHaveText(model, { timeout: 30_000 })
   },
 )
 
