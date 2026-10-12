@@ -1,9 +1,10 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { RiBrainLine, RiFlashlightLine } from "react-icons/ri"
+import type { IconType } from "react-icons"
+import { RiBrainLine, RiFlashlightLine, RiLockUnlockLine, RiShieldCheckLine, RiShieldUserLine } from "react-icons/ri"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import type { Thread } from "../../shared/domain.ts"
+import { AccessMode, type Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, currentBranchAtom, modelsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -173,6 +174,66 @@ export function FastModeToggle({ thread, onError }: ControlProps) {
       />
       <TooltipContent>{m.thread_fast_mode_hint()}</TooltipContent>
     </Tooltip>
+  )
+}
+
+const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
+  supervised: { icon: RiShieldUserLine, label: m.access_supervised },
+  auto: { icon: RiShieldCheckLine, label: m.access_auto },
+  full: { icon: RiLockUnlockLine, label: m.access_full },
+}
+
+/** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
+const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
+  switch (accessMode) {
+    case "supervised":
+      return thread.provider === "codex" ? m.access_supervised_hint_codex() : m.access_supervised_hint_claude()
+    case "auto":
+      if (thread.provider === "codex") return m.access_auto_hint_codex()
+      return model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits()
+    case "full":
+      return m.access_full_hint()
+  }
+}
+
+/** How much the agent may do without asking. Takes effect from the next turn, or at once on a live Claude turn. */
+export function AccessPicker({ thread, onError }: ControlProps) {
+  const { current } = useThreadModels(thread)
+  const items = AccessMode.literals.map((value) => ({ value, label: accessModes[value].label() }))
+  const Icon = accessModes[thread.accessMode].icon
+
+  return (
+    <Select
+      items={items}
+      value={thread.accessMode}
+      onValueChange={(accessMode) =>
+        accessMode && accessMode !== thread.accessMode && update({ id: thread.id, accessMode }, onError)
+      }
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label={m.access_picker()}
+        data-access={thread.accessMode}
+        className={`${triggerClass} data-[access=full]:text-destructive`}
+      >
+        <Icon aria-hidden />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+        {items.map((item) => {
+          const ItemIcon = accessModes[item.value].icon
+          return (
+            <SelectItem key={item.value} value={item.value}>
+              <ItemIcon aria-hidden className="mt-0.5 self-start" />
+              <span className="flex flex-col">
+                {item.label}
+                <span className="text-xs text-muted-foreground">{accessHint(item.value, thread, current)}</span>
+              </span>
+            </SelectItem>
+          )
+        })}
+      </SelectContent>
+    </Select>
   )
 }
 
