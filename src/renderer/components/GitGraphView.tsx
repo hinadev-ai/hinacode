@@ -1,15 +1,18 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/interactive-supports-focus, jsx-a11y/click-events-have-key-events -- the WAI-ARIA listbox pattern with aria-activedescendant, which <select> cannot render: the listbox keeps focus and handles keys, a click on an option only moves the selection. The divider is a focusable WAI-ARIA window splitter.
-import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { useAtom, useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-react"
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { parsePatchFiles } from "@pierre/diffs"
 import { FileDiff } from "@pierre/diffs/react"
 import { cn } from "cn"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
   type KeyboardEvent,
   memo,
   type PointerEvent,
+  Suspense,
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
   useMemo,
@@ -17,7 +20,7 @@ import {
   useState,
 } from "react"
 import { RiPriceTag3Line, RiRefreshLine } from "react-icons/ri"
-import type { CommitDiff, GitCommit, Thread } from "../../shared/domain.ts"
+import type { GitCommit, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
@@ -90,11 +93,14 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
           title={m.git_graph_refresh()}
           onClick={refresh}
         >
-          <RiRefreshLine aria-hidden className={log.waiting ? "animate-spin motion-reduce:animate-none" : undefined} />
+          <RiRefreshLine
+            aria-hidden
+            className={log.waiting ? "animate-spin-late motion-reduce:animate-none" : undefined}
+          />
         </Button>
       </div>
       {AsyncResult.builder(log)
-        .onInitial(() => <Notice>{m.git_graph_loading()}</Notice>)
+        .onInitial(() => <Notice className="animate-reveal">{m.git_graph_loading()}</Notice>)
         .onSuccess((loaded) =>
           loaded.length === 0 ? (
             <Notice>{m.git_graph_empty()}</Notice>
@@ -108,11 +114,11 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
   )
 }
 
-function Notice({ children, alert = false }: { children: string; alert?: boolean }) {
+function Notice({ children, alert = false, className }: { children: string; alert?: boolean; className?: string }) {
   return (
     <p
       role={alert ? "alert" : undefined}
-      className={cn("p-3 text-xs", alert ? "text-destructive" : "text-muted-foreground")}
+      className={cn("p-3 text-xs", alert ? "text-destructive" : "text-muted-foreground", className)}
     >
       {children}
     </p>
@@ -221,7 +227,7 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
       {showDiff ? (
         <>
           <SplitHandle value={split} onChange={setSplit} />
-          <CommitDiffPane key={selectedCommit.hash} root={root} commit={selectedCommit} />
+          <CommitDiffPane root={root} commit={selectedCommit} />
         </>
       ) : (
         <p className="shrink-0 border-t border-border p-3 text-xs text-muted-foreground">{m.git_graph_hint()}</p>
@@ -418,7 +424,8 @@ function SplitHandle({ value, onChange }: { value: number; onChange: (value: num
 }
 
 function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
-  const diff = useAtomValue(commitDiffAtom(commitKey(root, commit.hash)))
+  // Moving through commits keeps the last diff on screen until the next one loads.
+  const shownHash = useDeferredValue(commit.hash)
   return (
     <section
       aria-label={m.git_graph_diff_label({ hash: commit.hash.slice(0, 7) })}
@@ -430,23 +437,25 @@ function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
           {commit.subject}
         </span>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        {AsyncResult.builder(diff)
-          .onInitial(() => <Notice>{m.git_graph_diff_loading()}</Notice>)
-          .onSuccess((loaded) => <CommitFiles hash={commit.hash} diff={loaded} />)
-          .onError((error) => <Notice alert>{m.git_graph_diff_failed({ message: errorMessage(error) })}</Notice>)
-          .orElse(() => null)}
+      <ScrollArea
+        className={cn("min-h-0 flex-1 transition-opacity", shownHash !== commit.hash && "opacity-60 delay-150")}
+      >
+        <Suspense fallback={<Notice className="animate-reveal">{m.git_graph_diff_loading()}</Notice>}>
+          <CommitFiles key={shownHash} root={root} hash={shownHash} />
+        </Suspense>
       </ScrollArea>
     </section>
   )
 }
 
-function CommitFiles({ hash, diff }: { hash: string; diff: CommitDiff }) {
+function CommitFiles({ root, hash }: { root: string; hash: string }) {
+  const diff = useAtomSuspense(commitDiffAtom(commitKey(root, hash)), { includeFailure: true })
   const theme = useTheme(useSettings().appearance.theme)
-  const files = useMemo(
-    () => parsePatchFiles(diff.patch, `commit-${hash}`).flatMap((patch) => patch.files),
-    [diff.patch, hash],
-  )
+  const patch = AsyncResult.isSuccess(diff) ? diff.value.patch : ""
+  const files = useMemo(() => parsePatchFiles(patch, `commit-${hash}`).flatMap((parsed) => parsed.files), [patch, hash])
+  if (AsyncResult.isFailure(diff)) {
+    return <Notice alert>{m.git_graph_diff_failed({ message: errorMessage(Cause.squash(diff.cause)) })}</Notice>
+  }
   if (files.length === 0) return <Notice>{m.git_graph_diff_empty()}</Notice>
   return (
     <div className="flex flex-col gap-2 px-3 pb-3 text-xs">

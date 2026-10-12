@@ -15,8 +15,7 @@ function Skeleton({ className, ...props }: ComponentProps<"div">) {
 const rowKeys = ["a", "b", "c", "d", "e"] as const
 
 /**
- * Placeholder rows for a list that usually loads in well under a second. It fades in after 150ms,
- * so a fast load never flashes it. `label` is what assistive tech announces while it shows.
+ * Placeholder rows for a list that usually loads in well under a second. `label` is what assistive tech announces while it shows.
  */
 function SkeletonList({
   label,
@@ -30,13 +29,7 @@ function SkeletonList({
   className?: string
 }) {
   return (
-    <output
-      aria-label={label}
-      className={cn(
-        "flex flex-col gap-2 transition-opacity delay-150 duration-200 ease-out starting:opacity-0",
-        className,
-      )}
-    >
+    <output aria-label={label} className={cn("flex animate-reveal flex-col gap-2", className)}>
       {rowKeys.slice(0, rows).map((key) => (
         <Skeleton key={key} className={rowClassName} />
       ))}
