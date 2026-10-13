@@ -1,10 +1,9 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
+import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
-import { isOwnPart } from "../lib/subagents.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
-import { groupCommands } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
@@ -12,6 +11,7 @@ import { Markdown } from "./Markdown.tsx"
 import { CommandGroup, MessagePartView } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
+import { WorkedFor } from "./WorkedFor.tsx"
 
 const keyExtractor = (message: Message) => message.id
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
@@ -19,12 +19,15 @@ const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} 
 const edgeSpacer = <div className="h-4" />
 
 /** Posted questions stay answerable only while nothing has been said after them. */
-const AnswerableContext = createContext<{ readonly lastMessageId: string | undefined; readonly providerLabel: string }>(
-  {
-    lastMessageId: undefined,
-    providerLabel: "",
-  },
-)
+const AnswerableContext = createContext<{
+  readonly lastMessageId: string | undefined
+  readonly providerLabel: string
+  readonly summarizeWork: boolean
+}>({
+  lastMessageId: undefined,
+  providerLabel: "",
+  summarizeWork: true,
+})
 
 /**
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
@@ -36,6 +39,7 @@ export function MessageList({
   listRef,
   header,
   alignItemsAtEnd = true,
+  summarizeWork = true,
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
@@ -44,9 +48,13 @@ export function MessageList({
   header?: ReactElement
   /** Chat sits at the bottom, by the composer. A log reads from the top. */
   alignItemsAtEnd?: boolean
+  summarizeWork?: boolean
 }) {
   const lastMessageId = messages.at(-1)?.id
-  const answerable = useMemo(() => ({ lastMessageId, providerLabel }), [lastMessageId, providerLabel])
+  const answerable = useMemo(
+    () => ({ lastMessageId, providerLabel, summarizeWork }),
+    [lastMessageId, providerLabel, summarizeWork],
+  )
   return (
     <AnswerableContext value={answerable}>
       <LegendList
@@ -81,7 +89,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
 
 function MessageBody({ message }: { message: Message }) {
   const repository = useThreadRepository()
-  const { lastMessageId, providerLabel } = use(AnswerableContext)
+  const { summarizeWork } = use(AnswerableContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -116,48 +124,63 @@ function MessageBody({ message }: { message: Message }) {
       </article>
     )
   }
+  const presentation = assistantPresentation(message, summarizeWork)
+  const completed = presentation.kind === "completed"
+  const shown = completed ? presentation.reply : presentation.parts
   const streaming = message.completedAt === null
-  const parts = message.parts.filter(isOwnPart)
   // A steer sent before the agent said anything closes an empty assistant message.
-  if (!streaming && parts.length === 0) return null
-  const last = parts.at(-1)
-  const writing = streaming && last?.type === "text"
+  if (!streaming && shown.length === 0 && (!completed || presentation.work.length === 0)) return null
+  const last = shown.at(-1)
+  const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
   return (
     <article
       aria-busy={streaming}
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {groupCommands(parts).map((block) => {
-        // Parts only ever get appended or updated in place, so the first part's index is a stable key.
-        const { index } = block
-        if (block.type === "commands") {
-          return <CommandGroup key={index} messageId={message.id} index={index} calls={block.calls} />
-        }
-        const { part } = block
-        return (
-          <FindPartContext key={index} value={index}>
-            {part.type === "text" ? (
-              <ReplyText text={part.text} done={!(writing && index === parts.length - 1)} />
-            ) : part.type === "questions" && message.id === lastMessageId ? (
-              <PostedQuestionsCard
-                threadId={message.threadId}
-                questions={part.questions}
-                providerLabel={providerLabel}
-              />
-            ) : (
-              <MessagePartView part={part} />
-            )}
-          </FindPartContext>
-        )
-      })}
-      {streaming && (parts.length === 0 || writing) && (
+      {completed && (
+        <WorkedFor messageId={message.id} durationMs={presentation.durationMs} work={presentation.work}>
+          <AssistantParts message={message} parts={presentation.work} />
+        </WorkedFor>
+      )}
+      <AssistantParts message={message} parts={shown} writingIndex={writingIndex} />
+      {streaming && (shown.length === 0 || writingIndex !== undefined) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
-          {writing ? m.message_writing() : m.message_thinking()}
+          {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
     </article>
   )
+}
+
+function AssistantParts({
+  message,
+  parts,
+  writingIndex,
+}: {
+  message: Message
+  parts: ReadonlyArray<IndexedMessagePart>
+  writingIndex?: number
+}) {
+  const { lastMessageId, providerLabel } = use(AnswerableContext)
+  return presentationBlocks(parts).map((block) => {
+    const { index } = block
+    if (block.type === "commands") {
+      return <CommandGroup key={index} messageId={message.id} index={index} calls={block.calls} />
+    }
+    const { part } = block
+    return (
+      <FindPartContext key={index} value={index}>
+        {part.type === "text" ? (
+          <ReplyText text={part.text} done={index !== writingIndex} />
+        ) : part.type === "questions" && message.id === lastMessageId ? (
+          <PostedQuestionsCard threadId={message.threadId} questions={part.questions} providerLabel={providerLabel} />
+        ) : (
+          <MessagePartView part={part} />
+        )}
+      </FindPartContext>
+    )
+  })
 }
 
 /**

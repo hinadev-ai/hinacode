@@ -171,7 +171,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
-function useFindDisclosure(request: FindRevealRequest | null) {
+export function useFindDisclosure(request: FindRevealRequest | null) {
   const id = request?.id ?? null
   const [open, setOpen] = useState(id !== null)
   const [revealedId, setRevealedId] = useState(id)
