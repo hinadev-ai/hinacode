@@ -5,7 +5,6 @@ import type { AgentEvent, ApprovalDecision, ApprovalKind, SessionScope } from ".
 
 export interface ApprovalSession {
   readonly threadId: string
-  /** Keys of the session scopes the user allowed; they die with the session. */
   readonly sessionGrants: Set<string>
   /** Attachments live outside the cwd; reading them is what the user asked for, so it needs no approval. */
   readonly attachmentPaths: Set<string>

@@ -10,7 +10,6 @@ import { ClaudeProvider, layer } from "./index.ts"
 const sdk = vi.hoisted(() => {
   type Message = { readonly type: string } & Readonly<Record<string, unknown>>
 
-  /** A CLI whose output the test writes, answering each prompt through `sdk.respond`. */
   class FakeQuery {
     readonly options: Options
     readonly prompts: Array<SDKUserMessage> = []
@@ -27,7 +26,6 @@ const sdk = vi.hoisted(() => {
 
     constructor(input: { readonly prompt: AsyncIterable<SDKUserMessage>; readonly options: Options }) {
       this.options = input.options
-      // The prompt stream fails once the session's queue shuts down, which is how a closed session ends it.
       this.read(input.prompt).catch(() => undefined)
     }
 
@@ -174,7 +172,6 @@ const runTurn = (input: RunTurnInput = turnInput()) =>
     return events
   })
 
-/** Runs a turn in the background, so the test can act while it is open. */
 const startTurn = (input: RunTurnInput = turnInput()) =>
   Effect.gen(function* () {
     const provider = yield* ClaudeProvider
