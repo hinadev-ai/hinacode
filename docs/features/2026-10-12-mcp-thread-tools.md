@@ -1,4 +1,4 @@
-# MCP tools: request a secret, start a thread
+# MCP tools: request a secret, start and follow up on threads
 
 Status: Shipped
 Date: 2026-10-12
@@ -41,13 +41,21 @@ Both tools run on the built-in MCP server, so the calling thread comes from the 
 - The thread is created with `created_by = thread:<callerId>`. The child is an ordinary thread of the project. It has its own worktree or none, its own turns and its own lifecycle. Archiving or deleting the parent does nothing to the child. `created_by` is provenance, not ownership: it answers "where did this thread come from" in the same way `automation:<id>` does.
 - The runner publishes `thread.updated` before starting the turn, so the sidebar shows the thread in the moment it is created.
 
+An agent that started threads needs to follow up on them, so four more tools sit next to `create_thread`:
+
+- `list_threads` returns the non-archived threads of the caller's project as JSON, with status, provider, model, `created_by`, the worktree branch, and `self` on the caller.
+- `read_thread({ threadId, limit? })` returns the status, any pending approval, question or secret request, and the last `limit` messages (20 by default, at most 100) as plain text. Reasoning is left out.
+- `send_to_thread({ threadId, prompt })` steers a busy thread and starts a turn on an idle one, and says which it did.
+- `stop_thread({ threadId })` interrupts the thread's turn.
+
+They reach any thread of the caller's project, not only its children, because `created_by` is provenance and not ownership. A thread of another project is refused. `send_to_thread` and `stop_thread` also refuse the caller itself.
+
 Services: `AgentRunner` now depends on `Secrets`. The MCP server now depends on `AgentRunner`, `Threads` and `Events`. The runner used to depend on the server for a thread's credential, which would make a cycle, so the credential store moves into its own service, `McpCredentials` (`src/main/mcp/credentials.ts`). It issues credentials, authenticates requests and learns the server URL once the listener is up. The server's HTTP layer and the runner both depend on it and not on each other.
 
 Codex times MCP tool calls out after 60 seconds by default. The kkcode server is configured with `tool_timeout_sec = 600` in the thread overrides, so a user has ten minutes to find and paste a secret. Claude Code's MCP tool timeout is already long enough.
 
 ## Out of scope
 
-- Reading another thread's transcript or sending it a message. `create_thread` starts a thread with a brief and returns its id. Whether the creator needs to follow up is a separate question, see the pull request.
 - Per-thread or per-project secrets. Secrets stay global, keyed by name, exactly as Settings stores them.
 - Cascading lifecycle for child threads. A parent that is archived leaves its children alone.
 - Limits on how many threads an agent may start. The user sees every one of them in the sidebar.
