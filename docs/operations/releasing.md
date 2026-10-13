@@ -4,16 +4,17 @@ Use this to publish a signed, notarized macOS arm64 build to `kjj6198/kkcode-rel
 
 ## Steps
 
-1. On an Apple Silicon Mac, install the Developer ID Application certificate in the login keychain.
-2. Bump `version` in `package.json` and merge it to `main`.
-3. Export the notarization key and a token that can write releases to `kjj6198/kkcode-releases`:
+1. Once, create the public feed repository: `gh repo create kjj6198/kkcode-releases --public`.
+2. On an Apple Silicon Mac, install the Developer ID Application certificate in the login keychain.
+3. Bump `version` in `package.json` and merge it to `main`.
+4. Export the notarization key and a token that can write releases to `kjj6198/kkcode-releases`:
 
    ```sh
    export APPLE_API_KEY=/path/to/AuthKey_XXXX.p8 APPLE_API_KEY_ID=XXXX APPLE_API_ISSUER=<issuer uuid>
    export GH_TOKEN=<token>
    ```
 
-4. Build, sign, notarize and publish:
+5. Build, sign, notarize and publish:
 
    ```sh
    pnpm install

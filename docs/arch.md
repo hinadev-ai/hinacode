@@ -77,7 +77,7 @@ flowchart BT
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports"]
   runner["AgentRunner"]
-  autos["Automations, AutoArchive"]
+  autos["Automations, AutoArchive, Updates"]
   mcp["MCP server"]
 
   node --> db --> domain
@@ -87,6 +87,8 @@ flowchart BT
   runner --> autos
   runner --> mcp
 ```
+
+`Updates` only runs in a packaged app. It checks the public `kjj6198/kkcode-releases` feed at launch and every 4 hours, downloads in the background, and pushes `update.ready` once Squirrel.Mac can install it. See [ADR 0015](adr/0015-updates-from-a-public-releases-repo.md).
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 
