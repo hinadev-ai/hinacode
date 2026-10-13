@@ -28,3 +28,25 @@ export const isInside = (root: string, path: string): boolean => {
   const inside = relative(root, path)
   return isAbsolute(path) && inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
 }
+
+/** The session the in-app browser's pages run in, apart from the app's own cookies and storage. */
+export const BROWSER_PARTITION = "persist:browser"
+
+/**
+ * Settles a `<webview>`'s preferences before it attaches, from `will-attach-webview`: no preload, no Node,
+ * sandboxed, in the browser session. Returns false when its first URL is not http(s), to refuse it.
+ */
+export const lockDownWebview = (preferences: Record<string, unknown>, params: Record<string, string>): boolean => {
+  delete preferences["preload"]
+  delete preferences["preloadURL"]
+  Object.assign(preferences, {
+    nodeIntegration: false,
+    nodeIntegrationInSubFrames: false,
+    contextIsolation: true,
+    sandbox: true,
+    webSecurity: true,
+    partition: BROWSER_PARTITION,
+  })
+  params["partition"] = BROWSER_PARTITION
+  return externalUrl(params["src"] ?? "") !== null
+}

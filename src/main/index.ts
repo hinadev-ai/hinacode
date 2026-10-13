@@ -1,14 +1,14 @@
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { NodeServices } from "@effect/platform-node"
-import { app, BrowserWindow, net, protocol, shell } from "electron"
+import { app, BrowserWindow, net, protocol, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
-import { externalUrl, isAppDocument, isInside } from "./security.ts"
+import { BROWSER_PARTITION, externalUrl, isAppDocument, isInside, lockDownWebview } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
@@ -88,6 +88,30 @@ const QUIT_TIMEOUT_MS = 5000
 const appUrl =
   process.env["ELECTRON_RENDERER_URL"] ?? pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href
 
+const httpOnly = (event: Electron.Event<{ url: string }>) => {
+  if (!externalUrl(event.url)) event.preventDefault()
+}
+
+/** A page in the in-app browser stays on http(s) and opens new windows in place. */
+const keepOnTheWeb = (page: Electron.WebContents) => {
+  page.setWindowOpenHandler(({ url }) => {
+    const web = externalUrl(url)
+    if (web) void page.loadURL(web)
+    return { action: "deny" }
+  })
+  page.on("will-navigate", httpOnly)
+  page.on("will-redirect", httpOnly)
+}
+
+const limitBrowserPermissions = () => {
+  const browser = session.fromPartition(BROWSER_PARTITION)
+  // Copy buttons in dev pages write sanitized text to the clipboard; every other permission is refused.
+  browser.setPermissionRequestHandler((_page, permission, respond) =>
+    respond(permission === "clipboard-sanitized-write"),
+  )
+  browser.setPermissionCheckHandler((_page, permission) => permission === "clipboard-sanitized-write")
+}
+
 const createWindow = () => {
   const window = new BrowserWindow({
     width: 1280,
@@ -104,6 +128,7 @@ const createWindow = () => {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       sandbox: true,
       contextIsolation: true,
+      webviewTag: true,
     },
   })
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -116,6 +141,10 @@ const createWindow = () => {
   }
   window.webContents.on("will-frame-navigate", stayInApp)
   window.webContents.on("will-redirect", stayInApp)
+  window.webContents.on("will-attach-webview", (event, preferences, params) => {
+    if (!lockDownWebview(preferences as Record<string, unknown>, params)) event.preventDefault()
+  })
+  window.webContents.on("did-attach-webview", (_event, page) => keepOnTheWeb(page))
 
   void window.loadURL(appUrl)
 }
@@ -127,6 +156,7 @@ app.whenReady().then(async () => {
   registerIpc(runtime, appUrl)
   app.dock?.setIcon(icon)
   serveAttachments()
+  limitBrowserPermissions()
   let disposed = false
   app.on("before-quit", (event) => {
     if (disposed) return
