@@ -27,7 +27,7 @@ import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
-import { FindPartContext, Highlighted, useFindPattern } from "./FindHighlight.tsx"
+import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
@@ -319,10 +319,9 @@ const shellHighlighter = (theme: string) => {
   return highlighter
 }
 
-/** Find marks need the command as one run of text, so it is left plain while the find bar is open. */
+/** Unmarked by Find on purpose: the command's row already carries its marks. */
 function ShellCode({ code }: { code: string }) {
   const { codeTheme, scheme } = useTheme(useSettings().appearance.theme)
-  if (useFindPattern() !== null) return <Highlighted text={code} />
   return (
     <Suspense fallback={code}>
       <ShellTokens code={code} theme={codeTheme ?? DEFAULT_THEMES[scheme]} />
