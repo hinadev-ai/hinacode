@@ -23,6 +23,8 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const view = useRef<TerminalViewHandle>(null)
   const session = useRef<{ id: string; size: string } | null>(null)
   const opening = useRef(false)
+  // `terminal.open` can answer after the screen is gone; that shell has to be closed, not kept.
+  const mounted = useRef(false)
   // Output can arrive before `terminal.open` answers with the session id.
   const early = useRef<TerminalPush[]>([])
   const latestSize = useRef({ cols: 80, rows: 24 })
@@ -48,12 +50,13 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     [],
   )
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
       if (session.current !== null) void call("terminal.close", { id: session.current.id }).catch(() => {})
-    },
-    [],
-  )
+    }
+  }, [])
 
   const resize = (current: { id: string; size: string }) => {
     const { cols, rows } = latestSize.current
@@ -70,6 +73,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     opening.current = true
     call("terminal.open", { threadId, ...latestSize.current }).then(
       (opened) => {
+        if (!mounted.current) return void call("terminal.close", { id: opened.id }).catch(() => {})
         const current = { id: opened.id, size: `${opened.cols}x${opened.rows}` }
         session.current = current
         for (const push of early.current) if (push.id === opened.id) apply(push)
