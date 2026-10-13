@@ -1,25 +1,29 @@
-import { type ReactNode, useState } from "react"
+import { type ReactNode } from "react"
 import { RiArrowRightSLine } from "react-icons/ri"
-import { formatWorkDuration, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
-import { commandFindText, commandSearchText, searchableText } from "../lib/find.ts"
+import { formatWorkDuration, type IndexedMessagePart } from "../lib/assistantPresentation.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
-import { useFindPattern } from "./FindHighlight.tsx"
+import { useUi } from "../stores/ui.ts"
+import { useFindDisclosure } from "./MessagePart.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 const rowClassName = "flex min-h-8 w-full items-center gap-2 border-b border-border text-xs text-muted-foreground"
 
 export function WorkedFor({
+  messageId,
   durationMs,
   work,
   children,
 }: {
+  messageId: string
   durationMs: number
   work: ReadonlyArray<IndexedMessagePart>
   children: ReactNode
 }) {
-  const [userOpen, setUserOpen] = useState(false)
-  const pattern = useFindPattern()
+  const reveal = useUi((state) => state.findReveal)
+  const revealHere =
+    reveal?.match.messageId === messageId && work.some(({ index }) => index === reveal.match.partIndex) ? reveal : null
+  const [open, setOpen] = useFindDisclosure(revealHere)
   const label = (
     <span className="tabular-nums">{m.message_worked_for({ duration: formatWorkDuration(durationMs) })}</span>
   )
@@ -31,15 +35,8 @@ export function WorkedFor({
       </div>
     )
 
-  const findForcesOpen =
-    pattern !== null &&
-    presentationBlocks(work).some((block) =>
-      block.type === "commands"
-        ? block.calls.some((call) => commandSearchText(commandFindText(call)).search(pattern) !== -1)
-        : searchableText(block.part).search(pattern) !== -1,
-    )
   return (
-    <Collapsible data-slot="worked-for" open={userOpen || findForcesOpen} onOpenChange={setUserOpen} className="mb-2">
+    <Collapsible data-slot="worked-for" open={open} onOpenChange={setOpen} className="mb-2">
       <CollapsibleTrigger
         className={cn(
           rowClassName,

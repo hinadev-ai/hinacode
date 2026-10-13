@@ -139,7 +139,7 @@ function MessageBody({ message }: { message: Message }) {
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
       {completed && (
-        <WorkedFor durationMs={presentation.durationMs} work={presentation.work}>
+        <WorkedFor messageId={message.id} durationMs={presentation.durationMs} work={presentation.work}>
           <AssistantParts message={message} parts={presentation.work} />
         </WorkedFor>
       )}
