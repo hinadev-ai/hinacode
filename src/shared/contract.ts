@@ -229,6 +229,20 @@ export const RpcMethods = {
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /**
+   * Replaces the text of the existing file `path` under `root`, with the same checks as `fs.read`. `expected` is the
+   * text the edit started from; the write fails with `FsWriteConflict` when the file no longer holds it. `null`
+   * overwrites whatever is there.
+   */
+  "fs.write": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      content: Schema.String,
+      expected: Schema.NullOr(Schema.String),
+    }),
+    Schema.Void,
+  ),
   /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 

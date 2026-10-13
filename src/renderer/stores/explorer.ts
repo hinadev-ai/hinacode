@@ -13,9 +13,18 @@ export interface ExplorerTree {
   readonly opened: string | null
   /** Why the root itself could not be listed. */
   readonly error: string | null
+  /** Files with unsaved edits, each mapped to the text the edits started from. */
+  readonly unsaved: Readonly<Record<string, string>>
 }
 
-export const emptyTree: ExplorerTree = { expanded: new Set(), children: {}, selected: null, opened: null, error: null }
+export const emptyTree: ExplorerTree = {
+  expanded: new Set(),
+  children: {},
+  selected: null,
+  opened: null,
+  error: null,
+  unsaved: {},
+}
 
 export interface TreeRow {
   readonly entry: FsEntry
@@ -62,6 +71,8 @@ interface ExplorerState {
   readonly select: (root: string, path: string | null) => void
   /** Shows `path` in the file viewer, or closes the viewer. */
   readonly open: (root: string, path: string | null) => void
+  /** Marks `path` as edited since `base`, or as saved when `base` is null. */
+  readonly setUnsaved: (root: string, path: string, base: string | null) => void
 }
 
 /** Kept per root for the whole session, so switching threads or tabs keeps what was open. */
@@ -102,5 +113,10 @@ export const useExplorer = create<ExplorerState>()((set, get) => {
     collapseAll: (root) => update(root, () => ({ expanded: new Set() })),
     select: (root, selected) => update(root, () => ({ selected })),
     open: (root, opened) => update(root, () => ({ opened })),
+    setUnsaved: (root, path, base) =>
+      update(root, (tree) => {
+        const { [path]: _previous, ...unsaved } = tree.unsaved
+        return { unsaved: base === null ? unsaved : { ...unsaved, [path]: base } }
+      }),
   }
 })

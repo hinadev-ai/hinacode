@@ -55,10 +55,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.watch`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                         |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                                     |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
@@ -237,7 +237,7 @@ flowchart LR
   ui --> content
 ```
 
-The Files view reads the disk only through `Files` in main. `fs.list` lists one folder level with ignore and git status, `fs.read` returns up to 1 MB of one file, and `fs.watch` sets the folders that push `fs.changed`. All three accept only a known project root or live worktree as `root` and refuse any `path` whose realpath leaves it.
+The Files view reads the disk only through `Files` in main. `fs.list` lists one folder level with ignore and git status, `fs.read` returns up to 1 MB of one file, `fs.write` replaces the text of an existing file unless it changed on disk since the edit began, and `fs.watch` sets the folders that push `fs.changed`. All four accept only a known project root or live worktree as `root` and refuse any `path` whose realpath leaves it.
 
 ```mermaid
 sequenceDiagram
