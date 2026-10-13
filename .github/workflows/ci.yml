@@ -30,7 +30,19 @@ jobs:
       - run: pnpm test
 
   e2e:
-    runs-on: [self-hosted, Linux, X64, home, proxmox]
+    name: e2e (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: [self-hosted, Linux, X64, home, proxmox]
+            # The runner has xvfb-run and openbox installed. Without a window manager, minimizing a window does nothing.
+            command: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
+          - os: macos
+            runner: [self-hosted, macOS, ARM64, home]
+            command: pnpm test:e2e
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -39,12 +51,11 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile
-      # The runner has xvfb-run and openbox installed. Without a window manager, minimizing a window does nothing.
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
+      - run: ${{ matrix.command }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-${{ matrix.os }}
           path: |
             e2e/playwright-report
             e2e/test-results
