@@ -11,7 +11,7 @@ Feature: Settings
   Scenario: The saved language is applied at startup
     Given the saved language is "zh-TW"
     When the app restarts
-    Then the sidebar is labelled "專案與討論串"
+    Then the sidebar is labelled "專案與對話串"
 
   Scenario: A default model preselects in the new thread composer
     Given a project "demo" for my repository

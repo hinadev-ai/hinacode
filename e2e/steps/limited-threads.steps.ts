@@ -21,7 +21,7 @@ const labels = async (app: KkcodeApp) => {
   const { locale } = await rpc(app.page, "settings.get", undefined)
   return locale === "zh-TW"
     ? {
-        navigation: "專案與討論串",
+        navigation: "專案與對話串",
         limited: "已達用量上限",
         idle: "閒置",
         message: "訊息",
