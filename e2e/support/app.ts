@@ -77,6 +77,18 @@ const launch = async (
       ...(options.mockResetMs === undefined ? {} : { KKCODE_MOCK_RESET_MS: String(options.mockResetMs) }),
     },
   })
+  await app.evaluate(
+    ({ app: electronApp, BrowserWindow }) =>
+      new Promise<void>((done) => {
+        const waitForShow = (nativeWindow: ElectronWindow) => {
+          if (nativeWindow.isVisible()) done()
+          else nativeWindow.once("show", () => done())
+        }
+        const existingWindow = BrowserWindow.getAllWindows()[0]
+        if (existingWindow) waitForShow(existingWindow)
+        else electronApp.once("browser-window-created", (_, createdWindow) => waitForShow(createdWindow))
+      }),
+  )
   const startup = Schema.decodeUnknownSync(StartupAppearance)(
     await app.evaluate(
       ({ app: electronApp, BrowserWindow }) =>
