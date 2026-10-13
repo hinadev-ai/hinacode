@@ -2,11 +2,11 @@
 
 # kkcode
 
-A local desktop app for running Claude Code and Codex against your repositories. One sidebar of threads grouped by project, each thread optionally in its own git worktree, both agents streaming into the same chat.
+A local desktop app for running Claude Code, Codex and Muse Code against your repositories. One sidebar of threads grouped by project, each thread optionally in its own git worktree, every agent streaming into the same chat.
 
 ## Features
 
-- Claude Code through the Agent SDK and Codex through the app-server protocol, selectable per thread, with the model picked from each agent's live list.
+- Claude Code through the Agent SDK, Codex through the app-server protocol and Muse Code through its session protocol (MSP), selectable per thread, with the model picked from each agent's live list.
 - Threads grouped by project in the left sidebar. Filter by title or project, drag to reorder, rename inline, archive or delete from the row menu. Archived threads live in their own tab and can be brought back.
 - Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Archiving a thread can remove the worktree too, deleting the branch when it is merged. Threads can archive themselves once every linked pull request merges.
 - CLAUDE.md, AGENTS.md and skills load from the project and your home directory, as they do in the CLIs.
@@ -24,7 +24,7 @@ A local desktop app for running Claude Code and Codex against your repositories.
 
 ## Development
 
-Requires Node 24 or later, pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
+Requires Node 24 or later, pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Muse Code threads need the `muse` CLI, signed in with `muse login`. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
 
 ```sh
 pnpm install
