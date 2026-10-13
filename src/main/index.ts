@@ -7,7 +7,7 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import * as Db from "./db/client.ts"
-import { eventsLayer, registerIpc } from "./ipc.ts"
+import { bringToFront, eventsLayer, registerIpc } from "./ipc.ts"
 import { BROWSER_PARTITION, externalUrl, isAppDocument, isInside, lockDownWebview } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
@@ -37,6 +37,12 @@ app.setName("kkcode")
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
+// Electron keys the lock on userData. A second process on the same database would run its own pollers and
+// agents, and the threads it starts never reach the first process's window.
+if (!app.requestSingleInstanceLock()) {
+  console.error(`kkcode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
+  app.exit(0)
+}
 const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
 if (mockClaude !== undefined && mockClaude !== "usage-limit" && mockClaude !== "org-spend-limit")
   throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit or org-spend-limit")
@@ -173,6 +179,11 @@ app.whenReady().then(async () => {
   })
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+  app.on("second-instance", () => {
+    const [window] = BrowserWindow.getAllWindows()
+    if (window) bringToFront(window)
+    else createWindow()
   })
   createWindow()
 })
