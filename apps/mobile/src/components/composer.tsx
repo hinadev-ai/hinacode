@@ -147,6 +147,7 @@ function useThreadModels(thread: Thread) {
 const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   claude: { label: "Claude Code", icon: "RiClaudeFill" },
   codex: { label: "Codex", icon: "RiOpenaiFill" },
+  muse: { label: "Muse Code", icon: "RiMetaFill" },
 }
 
 const effortLabels: Record<string, string> = {
@@ -169,17 +170,25 @@ const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
 }
 
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
+const supervisedHints: Record<ProviderId, string> = {
+  claude: "Asks before edits and commands",
+  codex: "Asks before any command that isn't read-only",
+  muse: "Asks before commands and edits",
+}
+
+const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
+  claude: (model) =>
+    model?.autoMode ? "Claude approves safe actions and asks about the rest" : "Edits run without asking; commands still ask",
+  codex: () => "Runs freely in the sandbox; asks to go beyond it",
+  muse: () => "Runs freely in the sandbox, network included; asks to go beyond it",
+}
+
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
   switch (accessMode) {
     case "supervised":
-      return thread.provider === "codex"
-        ? "Asks before any command that isn't read-only"
-        : "Asks before edits and commands"
+      return supervisedHints[thread.provider]
     case "auto":
-      if (thread.provider === "codex") return "Runs freely in the sandbox; asks to go beyond it"
-      return model?.autoMode
-        ? "Claude approves safe actions and asks about the rest"
-        : "Edits run without asking; commands still ask"
+      return autoHints[thread.provider](model)
     case "full":
       return "Runs everything without asking"
   }

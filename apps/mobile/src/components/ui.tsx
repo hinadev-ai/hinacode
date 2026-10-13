@@ -136,7 +136,11 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   )
 }
 
-const providerMark: Record<ProviderId, IconName> = { claude: "RiClaudeFill", codex: "RiOpenaiFill" }
+const providerMark: Record<ProviderId, IconName> = {
+  claude: "RiClaudeFill",
+  codex: "RiOpenaiFill",
+  muse: "RiMetaFill",
+}
 
 /** The provider's logo and name, muted, for meta rows. */
 export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; size?: number }) {
