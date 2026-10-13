@@ -1,7 +1,4 @@
-import { mkdtempSync } from "node:fs"
 import { createServer } from "node:net"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
@@ -58,8 +55,6 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   account: () => Effect.succeed({ type: "signedOut" }),
   planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
-  signIn: () => Effect.die("unused"),
-  signOut: () => Effect.void,
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
@@ -87,7 +82,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
-      Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
+      Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,

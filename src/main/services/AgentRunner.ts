@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { Cache, Context, Deferred, Duration, Effect, FiberMap, Layer, type Schema, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
+  AccountHome,
   AccountLimits,
   AgentCommand,
   AgentEvent,
@@ -111,8 +112,6 @@ export class AgentRunner extends Context.Service<
      * reports null limits.
      */
     readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
-    /** Drops an account's cached limits, so a sign-in or sign-out shows on the next read. */
-    readonly forgetLimits: (provider: ProviderId, accountId: string | null) => Effect.Effect<void>
     /** Null until the thread's first turn binds an agent session. */
     readonly usage: (
       threadId: string,
@@ -262,7 +261,13 @@ const make = Effect.gen(function* () {
    * steer closes it and opens another after the steer's user message, so ordering by createdAt keeps
    * the transcript in the order things happened.
    */
-  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, home: string | null, initial: Message) => {
+  const makeTurn = (
+    thread: Thread,
+    provider: AgentProvider,
+    cwd: string,
+    home: AccountHome | null,
+    initial: Message,
+  ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
@@ -574,8 +579,6 @@ const make = Effect.gen(function* () {
         concurrency: "unbounded",
       })
     }),
-    forgetLimits: (provider, accountId) =>
-      Cache.invalidate(cachedLimits, JSON.stringify({ provider, accountId } satisfies LimitsKey)),
     usage: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

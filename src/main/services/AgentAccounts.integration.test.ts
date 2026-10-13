@@ -1,5 +1,5 @@
-import { existsSync, mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
@@ -15,24 +15,30 @@ import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
-const testLayer = (root: string) =>
-  threadsLayer.pipe(
-    Layer.provide(Terminals.layer),
-    Layer.provideMerge(Worktrees.layer),
-    Layer.provideMerge(projectsLayer),
-    Layer.provideMerge(accountsLayer(root)),
-    Layer.provideMerge(settingsLayer),
-    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, { publish: () => Effect.void }))),
-    Layer.provideMerge(Db.layer(":memory:")),
-    Layer.provide(NodeServices.layer),
-  )
+const testLayer = threadsLayer.pipe(
+  Layer.provide(Terminals.layer),
+  Layer.provideMerge(Worktrees.layer),
+  Layer.provideMerge(projectsLayer),
+  Layer.provideMerge(accountsLayer),
+  Layer.provideMerge(settingsLayer),
+  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, { publish: () => Effect.void }))),
+  Layer.provideMerge(Db.layer(":memory:")),
+  Layer.provide(NodeServices.layer),
+)
 
 const withServices = <A, E>(
   effect: (root: string) => Effect.Effect<A, E, Threads | AgentAccounts | Settings | Projects>,
 ) => {
   const root = mkdtempSync(join(tmpdir(), "kk-accounts-test-"))
-  return effect(root).pipe(Effect.provide(testLayer(root)))
+  return effect(root).pipe(Effect.provide(testLayer))
 }
+
+const newAccount = (provider: "claude" | "codex", name: string, configDir = "/tmp/kk-accounts-unused") => ({
+  provider,
+  name,
+  configDir,
+  binary: provider,
+})
 
 const newThread = Effect.gen(function* () {
   const project = yield* Projects.use((projects) =>
@@ -44,19 +50,29 @@ const newThread = Effect.gen(function* () {
 })
 
 describe("agent accounts", () => {
-  it.effect("lists created accounts and gives each its own home", () =>
+  it.effect("lists created accounts with the home and binary each was given", () =>
     withServices((root) =>
       Effect.gen(function* () {
         const accounts = yield* AgentAccounts
-        const work = yield* accounts.create({ provider: "claude", name: "Work" })
-        const personal = yield* accounts.create({ provider: "codex", name: "Personal" })
+        const work = yield* accounts.create({
+          provider: "claude",
+          name: "Work",
+          configDir: join(root, "nested", "..", "work"),
+          binary: "/opt/bin/claude",
+        })
+        const personal = yield* accounts.create({
+          provider: "codex",
+          name: "Personal",
+          configDir: "~/.codex-personal",
+          binary: "codex",
+        })
         yield* accounts.rename(personal.id, "Home")
 
+        expect(personal.configDir).toBe(join(homedir(), ".codex-personal"))
         expect(yield* accounts.list).toStrictEqual([work, { ...personal, name: "Home" }])
-        const home = yield* accounts.home(work.id)
-        expect(home).toBe(join(root, work.id))
-        expect(existsSync(home!)).toBe(true)
+        expect(yield* accounts.home(work.id)).toStrictEqual({ dir: join(root, "work"), binary: "/opt/bin/claude" })
         expect(yield* accounts.home(null)).toBeNull()
+        expect(existsSync(join(root, "work"))).toBe(false)
       }),
     ),
   )
@@ -65,8 +81,8 @@ describe("agent accounts", () => {
     withServices(() =>
       Effect.gen(function* () {
         const accounts = yield* AgentAccounts
-        const claude = yield* accounts.create({ provider: "claude", name: "Work" })
-        const codex = yield* accounts.create({ provider: "codex", name: "Work" })
+        const claude = yield* accounts.create(newAccount("claude", "Work"))
+        const codex = yield* accounts.create(newAccount("codex", "Work"))
         yield* Settings.use((settings) =>
           settings.set({ defaultAccount: { claude: claude.id, codex: codex.id, muse: null } }),
         )
@@ -83,7 +99,7 @@ describe("agent accounts", () => {
   it.effect("refuses an account of another agent", () =>
     withServices(() =>
       Effect.gen(function* () {
-        const codex = yield* AgentAccounts.use((accounts) => accounts.create({ provider: "codex", name: "Work" }))
+        const codex = yield* AgentAccounts.use((accounts) => accounts.create(newAccount("codex", "Work")))
         const thread = yield* newThread
         const error = yield* Threads.use((threads) => threads.update({ id: thread.id, accountId: codex.id })).pipe(
           Effect.flip,
@@ -97,7 +113,7 @@ describe("agent accounts", () => {
     withServices(() =>
       Effect.gen(function* () {
         const accounts = yield* AgentAccounts
-        const work = yield* accounts.create({ provider: "claude", name: "Work" })
+        const work = yield* accounts.create(newAccount("claude", "Work"))
         const thread = yield* newThread
         const threads = yield* Threads
         expect((yield* threads.update({ id: thread.id, accountId: work.id })).accountId).toBe(work.id)
@@ -112,28 +128,25 @@ describe("agent accounts", () => {
     ),
   )
 
-  it.effect("refuses to remove an account a thread uses, then removes it with its home and default", () =>
-    withServices(() =>
+  it.effect("refuses to remove an account a thread uses, then removes it and its default but keeps its home", () =>
+    withServices((root) =>
       Effect.gen(function* () {
         const accounts = yield* AgentAccounts
-        const work = yield* accounts.create({ provider: "claude", name: "Work" })
+        const home = join(root, "work")
+        mkdirSync(home)
+        const work = yield* accounts.create(newAccount("claude", "Work", home))
         yield* Settings.use((settings) =>
           settings.set({ defaultAccount: { claude: work.id, codex: null, muse: null } }),
         )
-        const home = (yield* accounts.home(work.id))!
         const thread = yield* newThread
-        const signedOut: Array<string> = []
-        const signOut = (_: unknown, path: string) => Effect.sync(() => void signedOut.push(path))
 
-        const refused = yield* accounts.remove(work.id, signOut).pipe(Effect.flip)
+        const refused = yield* accounts.remove(work.id).pipe(Effect.flip)
         expect(refused).toMatchObject({ _tag: "AccountInUseError", threads: 1 })
-        expect(signedOut).toStrictEqual([])
         expect(yield* accounts.list).toHaveLength(1)
 
         yield* Threads.use((threads) => threads.remove(thread.id))
-        yield* accounts.remove(work.id, signOut)
-        expect(signedOut).toStrictEqual([home])
-        expect(existsSync(home)).toBe(false)
+        yield* accounts.remove(work.id)
+        expect(existsSync(home)).toBe(true)
         expect(yield* accounts.list).toStrictEqual([])
         expect((yield* Settings.use((settings) => settings.get)).defaultAccount.claude).toBeNull()
       }),

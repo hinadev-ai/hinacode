@@ -83,8 +83,6 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
           }),
         planLimits: () => Effect.succeed(null),
         usage: () => Effect.succeed(null),
-        signIn: () => Effect.die("The simulated Claude Code cannot sign in"),
-        signOut: () => Effect.void,
         listCommands: () => Effect.succeed([]),
         runTurn: (input) =>
           Stream.suspend(() => {

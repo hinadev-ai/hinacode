@@ -49,10 +49,23 @@ export const AgentProfile = Schema.Struct({
   id: Schema.String,
   provider: AccountProviderId,
   name: Schema.String,
+  /** The agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`), an absolute path. */
+  configDir: Schema.String,
+  /** The CLI run against `configDir`, a path or a name looked up on PATH. */
+  binary: Schema.String,
 })
 export type AgentProfile = typeof AgentProfile.Type
 
 export const AgentProfileName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
+/** Absolute, or relative to the user's home with a leading `~`. */
+export const AgentConfigDir = Schema.String.check(Schema.isTrimmed(), Schema.isPattern(/^(~(\/|$)|\/)/))
+export const AgentBinary = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty())
+
+/** An added account's agent home and the CLI binary run against it. */
+export interface AccountHome {
+  readonly dir: string
+  readonly binary: string
+}
 
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -261,8 +274,8 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
-  /** The account's agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`). Null uses the CLI's own login, the only one Muse Code has. */
-  readonly home: string | null
+  /** The added account to run as. Null uses the CLI's own login and home, the only one Muse Code has. */
+  readonly home: AccountHome | null
   /** The built-in kkcode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
 }

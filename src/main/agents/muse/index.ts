@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
+  AccountHome,
   AgentEvent,
   ApprovalDecision,
   ContextWindow,
@@ -149,7 +150,7 @@ const make = Effect.gen(function* () {
   const decodePlanUsage = Schema.decodeUnknownOption(SubscriptionUsage)
 
   /** Spawned on first use and respawned after it dies, like Codex's app-server. */
-  const getEntry = (home: string | null) =>
+  const getEntry = (home: AccountHome | null) =>
     Semaphore.withPermit(
       hostLock,
       Effect.gen(function* () {
@@ -179,7 +180,7 @@ const make = Effect.gen(function* () {
     )
   yield* Effect.addFinalizer(() => (current ? Scope.close(current.scope, Exit.void) : Effect.void))
 
-  const getHost = (home: string | null) => getEntry(home).pipe(Effect.map((entry) => entry.host))
+  const getHost = (home: AccountHome | null) => getEntry(home).pipe(Effect.map((entry) => entry.host))
 
   /** Pending approvals keyed by the kkcode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
@@ -199,7 +200,7 @@ const make = Effect.gen(function* () {
     return models.map(toModelInfo)
   })
 
-  const account = (home: string | null) =>
+  const account = (home: AccountHome | null) =>
     Effect.gen(function* () {
       const host = yield* getHost(home)
       const raw = yield* host.request("account/read", {}).pipe(Effect.mapError(toAgentError))
@@ -209,7 +210,7 @@ const make = Effect.gen(function* () {
       return toAccount(state)
     })
 
-  const planLimits = (home: string | null) =>
+  const planLimits = (home: AccountHome | null) =>
     Effect.sync(() => (home === null && planUsage !== undefined ? toPlanLimits(planUsage) : null))
 
   const readUsage = makeSessionUsage((params) =>
@@ -222,7 +223,7 @@ const make = Effect.gen(function* () {
     }),
   )
 
-  const usage = (sessionId: string, home: string | null) =>
+  const usage = (sessionId: string, home: AccountHome | null) =>
     home === null
       ? readUsage(sessionId).pipe(
           Effect.mapError((error) => (error._tag === "MuseCallError" ? toAgentError(error) : error)),
@@ -676,18 +677,12 @@ const make = Effect.gen(function* () {
       return deferred ? Deferred.succeed(deferred, answers) : Effect.void
     }).pipe(Effect.asVoid)
 
-  const notSupported = Effect.fail(
-    museError("Muse Code accounts are not supported. Sign in with `muse login` in a terminal."),
-  )
-
   return {
     id: "muse",
     listModels,
     account,
     planLimits,
     usage,
-    signIn: () => notSupported,
-    signOut: () => notSupported,
     // `skill/list` needs a loaded session, which the composer does not have yet.
     listCommands: () => Effect.succeed([]),
     runTurn,

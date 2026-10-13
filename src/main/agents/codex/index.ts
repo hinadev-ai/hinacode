@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
+  AccountHome,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -15,27 +16,19 @@ import type {
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
-import { resolveBinary } from "../binary.ts"
+import { resolveBinary, resolveBinaryOnce } from "../binary.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
-import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, makeRolloutUsage } from "./rollouts.ts"
 import { elementContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
-import {
-  GetAccountRateLimitsResponse,
-  AccountLoginCompletedNotification,
-  GetAccountResponse,
-  type RateLimitWindow,
-  LoginAccountResponse,
-} from "./protocol.ts"
+import { GetAccountRateLimitsResponse, GetAccountResponse, type RateLimitWindow } from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
-  CancelLoginAccountParams,
-  LoginAccountParams,
   ElicitationActionWire,
   GetAccountParams,
   McpServerElicitationRequestParams,
@@ -172,27 +165,32 @@ const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
   const binaryPath = resolveBinary("codex")
   const clientLock = yield* Semaphore.make(1)
-  /** Keyed by agent home, "" for the CLI's own one. */
+  /** Keyed by `JSON.stringify(home)`, so the CLI's own login is "null". */
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
 
   /**
-   * One app-server per agent home, since `CODEX_HOME` holds the login and the transcripts. Spawned on
-   * first use and respawned after it dies.
+   * One app-server per agent home and binary, since `CODEX_HOME` holds the login and the transcripts. Spawned
+   * on first use and respawned after it dies.
    */
-  const getClient = (home: string | null) =>
+  const getClient = (home: AccountHome | null) =>
     Semaphore.withPermit(
       clientLock,
       Effect.gen(function* () {
-        const current = clients.get(home ?? "")
+        const key = JSON.stringify(home)
+        const current = clients.get(key)
         if (current?.client.isAlive()) return current.client
         if (current) yield* Scope.close(current.scope, Exit.void)
         const scope = yield* Scope.make()
-        const env = home === null ? { ...process.env } : { ...process.env, CODEX_HOME: home }
-        const client = yield* makeCodexClient({ binaryPath, clientVersion: CLIENT_VERSION, env }).pipe(
+        const env = home === null ? { ...process.env } : { ...process.env, CODEX_HOME: home.dir }
+        const client = yield* makeCodexClient({
+          binaryPath: home === null ? binaryPath : resolveBinaryOnce(home.binary),
+          clientVersion: CLIENT_VERSION,
+          env,
+        }).pipe(
           Scope.provide(scope),
           Effect.onError(() => Scope.close(scope, Exit.void)),
         )
-        clients.set(home ?? "", { client, scope })
+        clients.set(key, { client, scope })
         return client
       }),
     )
@@ -233,7 +231,7 @@ const make = Effect.gen(function* () {
     return models
   })
 
-  const planLimits = (home: string | null) =>
+  const planLimits = (home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
       const raw = yield* client.request<unknown>("account/rateLimits/read", undefined)
@@ -246,14 +244,14 @@ const make = Effect.gen(function* () {
     })
 
   const rolloutUsage = perHome(makeRolloutUsage)
-  const readUsage = (threadId: string, home: string | null) =>
+  const readUsage = (threadId: string, home: AccountHome | null) =>
     Effect.tryPromise({
-      try: () => rolloutUsage(home ?? codexHome())(threadId),
+      try: () => rolloutUsage(home?.dir ?? codexHome())(threadId),
       catch: (cause) =>
         new AgentError({ provider: "codex", message: `Failed to read Codex rollouts: ${String(cause)}` }),
     })
 
-  const account = (home: string | null) =>
+  const account = (home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
       const params: GetAccountParams = { refreshToken: false }
@@ -266,63 +264,7 @@ const make = Effect.gen(function* () {
       return toAccount(response.account)
     })
 
-  const signIn = (home: string) =>
-    Effect.gen(function* () {
-      const client = yield* getClient(home)
-      // Subscribed first, so a login that completes right away is not missed.
-      const completions = yield* Queue.unbounded<Incoming>()
-      yield* client.subscribe((message) => Queue.offerUnsafe(completions, message))
-      const raw = yield* client.request<unknown>("account/login/start", {
-        type: "chatgpt",
-      } satisfies LoginAccountParams)
-      const { loginId, authUrl } = yield* Schema.decodeUnknownEffect(LoginAccountResponse)(raw).pipe(
-        Effect.mapError(
-          () => new AgentError({ provider: "codex", message: "Failed to start the Codex sign-in: invalid response" }),
-        ),
-      )
-      const done = yield* Deferred.make<void, AgentError>()
-      yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
-          if (yield* Deferred.isDone(done)) return
-          yield* client
-            .request("account/login/cancel", { loginId } satisfies CancelLoginAccountParams)
-            .pipe(Effect.ignore)
-        }),
-      )
-      const decodeCompletion = Schema.decodeUnknownOption(AccountLoginCompletedNotification)
-      const completed = Effect.gen(function* () {
-        while (true) {
-          const message = yield* Queue.take(completions)
-          if (message.kind === "exit") return yield* Effect.fail(message.error)
-          if (message.kind !== "notification" || message.method !== "account/login/completed") continue
-          const completion = Option.getOrUndefined(decodeCompletion(message.params))
-          if (completion?.loginId !== loginId) continue
-          if (completion.success) return
-          return yield* new AgentError({ provider: "codex", message: completion.error ?? "Codex sign-in failed" })
-        }
-      }).pipe(Effect.onExit((exit) => Deferred.done(done, Exit.asVoid(exit))))
-      const pending: SignIn = { url: authUrl, openedBrowser: false, submitCode: null, completed }
-      return pending
-    })
-
-  /** Also stops the home's app-server, since a removed account's home is deleted right after. */
-  const signOut = (home: string) =>
-    getClient(home).pipe(
-      Effect.flatMap((client) => client.request("account/logout", undefined)),
-      Effect.ensuring(
-        Semaphore.withPermit(
-          clientLock,
-          Effect.suspend(() => {
-            const current = clients.get(home)
-            clients.delete(home)
-            return current ? Scope.close(current.scope, Exit.void) : Effect.void
-          }),
-        ),
-      ),
-      Effect.asVoid,
-    )
-
-  const listSkills = (cwd: string, home: string | null) =>
+  const listSkills = (cwd: string, home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
       const params: SkillsListParams = { cwds: [cwd] }
@@ -330,7 +272,7 @@ const make = Effect.gen(function* () {
       return response.data.flatMap((entry) => entry.skills)
     })
 
-  const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: string | null }) =>
+  const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: AccountHome | null }) =>
     listSkills(cwd, home).pipe(
       Effect.map((skills) =>
         skills
@@ -782,8 +724,6 @@ const make = Effect.gen(function* () {
     account,
     planLimits,
     usage: readUsage,
-    signIn,
-    signOut,
     listCommands,
     runTurn,
     steer,

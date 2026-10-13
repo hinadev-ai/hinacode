@@ -10,6 +10,7 @@ import threadLimited from "./migrations/0006_thread_limited.ts"
 import archive from "./migrations/0009_archive.ts"
 import agentAccounts from "./migrations/0010_agent_accounts.ts"
 import museProvider from "./migrations/0011_muse_provider.ts"
+import accountHome from "./migrations/0012_account_home.ts"
 
 const run = Migrator.make({})
 
@@ -29,5 +30,6 @@ export const runMigrations = run({
     "9_archive": archive,
     "10_agent_accounts": agentAccounts,
     "11_muse_provider": museProvider,
+    "12_account_home": accountHome,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

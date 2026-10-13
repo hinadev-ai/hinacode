@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import {
   type AccountInfo,
@@ -11,13 +11,21 @@ import {
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Context, Deferred, Duration, Effect, Layer, Queue, Schema, Stream } from "effect"
-import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Schema, Stream } from "effect"
+import type {
+  AccountHome,
+  AgentAccount,
+  AgentCommand,
+  AgentEvent,
+  ModelInfo,
+  RunTurnInput,
+} from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
-import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { resolveBinaryOnce } from "../binary.ts"
+import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -64,7 +72,7 @@ type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
-  readonly home: string | null
+  readonly home: AccountHome | null
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly query: Query
@@ -125,11 +133,13 @@ const toAccount = (info: AccountInfo): AgentAccount => {
   return info.apiKeySource === undefined ? { type: "signedOut" } : { type: "apiKey" }
 }
 
-const commandsKey = (cwd: string, home: string | null) => JSON.stringify({ cwd, home })
+const commandsKey = (cwd: string, home: AccountHome | null) => JSON.stringify({ cwd, home })
+
+const sameHome = (a: AccountHome | null, b: AccountHome | null) => a?.dir === b?.dir && a?.binary === b?.binary
 
 /** The CLI's env for an account: its own home, or the user's default one for null. */
-const homeEnv = (home: string | null): NodeJS.ProcessEnv =>
-  home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home }
+const homeEnv = (home: AccountHome | null): NodeJS.ProcessEnv =>
+  home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home.dir }
 
 const agentError = (message: string) => (cause: unknown) =>
   new AgentError({
@@ -217,11 +227,16 @@ export const layer = Layer.effect(
     /** Last provider session id per thread, so a crashed CLI can be resumed without the caller's help. */
     const lastSessionIds = new Map<string, string>()
 
-    const baseOptions = (home: string | null): Options => ({
-      // The SDK replaces the child env instead of merging it.
-      env: homeEnv(home),
-      ...(executable === undefined ? {} : { pathToClaudeCodeExecutable: executable }),
-    })
+    const executableFor = (home: AccountHome | null) => (home === null ? executable : resolveBinaryOnce(home.binary))
+
+    const baseOptions = (home: AccountHome | null): Options => {
+      const path = executableFor(home)
+      return {
+        // The SDK replaces the child env instead of merging it.
+        env: homeEnv(home),
+        ...(path === undefined ? {} : { pathToClaudeCodeExecutable: path }),
+      }
+    }
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
@@ -377,7 +392,7 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (existing.cwd === input.cwd && existing.home === input.home) return existing
+          if (existing.cwd === input.cwd && sameHome(existing.home, input.home)) return existing
           yield* closeSession(existing)
         }
         return yield* startSession(input)
@@ -465,7 +480,7 @@ export const layer = Layer.effect(
     const probe = <A>(
       read: (probe: Query) => Promise<A>,
       failure: string,
-      home: string | null,
+      home: AccountHome | null,
       options: Options = {},
     ) =>
       Effect.gen(function* () {
@@ -510,13 +525,13 @@ export const layer = Layer.effect(
      * by `commandsKey`, since the account's home holds the user-level ones.
      */
     const probeCommands = (key: string) => {
-      const { cwd, home } = JSON.parse(key) as { cwd: string; home: string | null }
+      const { cwd, home } = JSON.parse(key) as { cwd: string; home: AccountHome | null }
       return probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
         cwd,
         settingSources: ["user", "project", "local"],
       })
     }
-    const account = (home: string | null) =>
+    const account = (home: AccountHome | null) =>
       probe((cli) => cli.accountInfo(), "Failed to read the Claude account", home).pipe(
         Effect.flatMap(Schema.decodeUnknownEffect(AccountInfoSchema)),
         Effect.catchTag("SchemaError", () =>
@@ -526,7 +541,7 @@ export const layer = Layer.effect(
         ),
         Effect.map(toAccount),
       )
-    const planLimits = (home: string | null) =>
+    const planLimits = (home: AccountHome | null) =>
       probe(
         (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
         "Failed to read Claude plan limits",
@@ -537,75 +552,12 @@ export const layer = Layer.effect(
       )
 
     const transcriptUsage = perHome(makeTranscriptUsage)
-    const usage = (sessionId: string, home: string | null) =>
+    const usage = (sessionId: string, home: AccountHome | null) =>
       Effect.tryPromise({
-        try: () => transcriptUsage(home ?? claudeHome())(sessionId),
+        try: () => transcriptUsage(home?.dir ?? claudeHome())(sessionId),
         catch: agentError("Failed to read Claude transcripts"),
       })
 
-    /**
-     * `claude auth login` opens the browser on a page that redirects to its own localhost listener. It also
-     * prints a fallback URL whose page shows a code to paste into its stdin. It exits once either lands.
-     */
-    const signIn = (home: string) =>
-      Effect.gen(function* () {
-        const cli = yield* Effect.acquireRelease(
-          Effect.sync(() =>
-            spawn(executable ?? "claude", ["auth", "login", "--claudeai"], {
-              env: homeEnv(home),
-              stdio: ["pipe", "pipe", "pipe"],
-            }),
-          ),
-          (child) => Effect.sync(() => child.exitCode === null && child.kill()),
-        )
-        const url = yield* Deferred.make<string, AgentError>()
-        const exited = yield* Deferred.make<void, AgentError>()
-        let output = ""
-        const read = (chunk: Buffer) => {
-          output = (output + chunk.toString()).slice(-4000)
-          const printed = /visit: (https:\/\/\S+)\s/.exec(output)?.[1]
-          if (printed !== undefined) Deferred.doneUnsafe(url, Effect.succeed(printed))
-        }
-        const fail = (message: string) => {
-          const error = new AgentError({ provider: "claude", message })
-          Deferred.doneUnsafe(url, Effect.fail(error))
-          Deferred.doneUnsafe(exited, Effect.fail(error))
-        }
-        cli.stdout.on("data", read)
-        cli.stderr.on("data", read)
-        cli.stdin.on("error", () => {})
-        cli.on("error", (error) => fail(`Failed to start claude auth login: ${error.message}`))
-        cli.on("exit", (code) =>
-          code === 0
-            ? Deferred.doneUnsafe(exited, Effect.void)
-            : fail(`claude auth login exited with code ${code}. ${output.trim()}`),
-        )
-        const printedUrl = yield* Deferred.await(url).pipe(
-          Effect.timeoutOrElse({
-            duration: Duration.seconds(30),
-            orElse: () =>
-              Effect.fail(new AgentError({ provider: "claude", message: "claude auth login printed no sign-in URL" })),
-          }),
-        )
-        const pending: SignIn = {
-          url: printedUrl,
-          openedBrowser: true,
-          submitCode: (code) => Effect.sync(() => void cli.stdin.write(`${code.trim()}\n`)),
-          completed: Deferred.await(exited),
-        }
-        return pending
-      })
-
-    const signOut = (home: string) =>
-      Effect.tryPromise({
-        try: () =>
-          new Promise<void>((resolve, reject) =>
-            execFile(executable ?? "claude", ["auth", "logout"], { env: homeEnv(home), timeout: 30_000 }, (error) =>
-              error ? reject(error) : resolve(),
-            ),
-          ),
-        catch: agentError("Failed to sign out of Claude Code"),
-      })
     const probedCommands = yield* Cache.make({
       lookup: probeCommands,
       capacity: 32,
@@ -619,12 +571,12 @@ export const layer = Layer.effect(
     }: {
       readonly threadId: string
       readonly cwd: string
-      readonly home: string | null
+      readonly home: AccountHome | null
     }) =>
       Effect.gen(function* () {
         const session = sessions.get(threadId)
         const commands =
-          session !== undefined && session.cwd === cwd && session.home === home
+          session !== undefined && session.cwd === cwd && sameHome(session.home, home)
             ? yield* Effect.tryPromise({
                 try: () => session.query.supportedCommands(),
                 catch: agentError("Failed to list Claude commands"),
@@ -641,8 +593,6 @@ export const layer = Layer.effect(
       account,
       planLimits,
       usage,
-      signIn,
-      signOut,
       listCommands,
       runTurn,
       steer,

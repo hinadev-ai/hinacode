@@ -39,7 +39,7 @@ const makeLayer = (
     Layer.provide(Terminals.layer),
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
-    Layer.provide(AgentAccounts.layer(join(dirname(dbPath), "accounts"))),
+    Layer.provide(AgentAccounts.layer),
     Layer.provideMerge(SettingsLayer.layer),
     Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
     Layer.provideMerge(Db.layer(dbPath)),

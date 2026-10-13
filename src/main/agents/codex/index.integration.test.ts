@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, PubSub, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
+import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { CodexProvider } from "./index.ts"
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
@@ -24,7 +24,6 @@ type Control = {
   postedQuestions?: Array<import("./protocol.ts").AsyncUserInputQuestion>
   cancelQuestion?: boolean
   accountFromHome?: boolean
-  login?: { success: boolean; error: string | null }
   subagent?: boolean
   plan?: boolean
 }
@@ -76,7 +75,7 @@ const waitFor = (predicate: () => boolean) =>
 
 const countOf = (method: string) => received().filter((message) => message.method === method).length
 
-const input = (threadId: string, home: string | null = null): RunTurnInput => ({
+const input = (threadId: string, home: AccountHome | null = null): RunTurnInput => ({
   threadId,
   prompt: "hello",
   attachments: [],
@@ -90,7 +89,7 @@ const input = (threadId: string, home: string | null = null): RunTurnInput => ({
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
 })
 
-const startTurn = (threadId: string, home: string | null = null) =>
+const startTurn = (threadId: string, home: AccountHome | null = null) =>
   Effect.gen(function* () {
     const provider = yield* CodexProvider
     const events: Array<AgentEvent> = []
@@ -475,7 +474,8 @@ describe("Codex plan limits", () => {
 
 const homes = () => {
   const root = mkdtempSync(join(tmpdir(), "kk-codex-homes-"))
-  return { work: join(root, "work"), personal: join(root, "personal") }
+  const home = (name: string): AccountHome => ({ dir: join(root, name), binary: "codex" })
+  return { work: home("work"), personal: home("personal") }
 }
 
 describe("Codex accounts", () => {
@@ -499,7 +499,7 @@ describe("Codex accounts", () => {
       Effect.gen(function* () {
         const { work, personal } = homes()
         const threadId = "01a0c6f7-8e77-75b1-9d6a-f583fa33e0da"
-        const day = join(work, "sessions", "2026", "10", "12")
+        const day = join(work.dir, "sessions", "2026", "10", "12")
         mkdirSync(day, { recursive: true })
         const lines = [
           { type: "session_meta", payload: { session_id: threadId, id: threadId } },
@@ -543,38 +543,6 @@ describe("Codex accounts", () => {
         yield* provider.interrupt("thread-personal")
         yield* finishesSoon(onPersonal.fiber)
         expect(countOf("turn/interrupt")).toBe(2)
-      }),
-    ),
-  )
-
-  it.live("signs a home in with the ChatGPT login and reports a failed one", () =>
-    withProvider(
-      Effect.gen(function* () {
-        const { work } = homes()
-        const provider = yield* CodexProvider
-        setControl({ login: { success: true, error: null } })
-        const signedIn = yield* provider.signIn(work)
-        expect(signedIn).toMatchObject({ openedBrowser: false, submitCode: null })
-        expect(signedIn.url).toMatch(/^https:\/\/auth\.example\.com\/authorize\?login=/)
-        yield* signedIn.completed
-
-        setControl({ login: { success: false, error: "Login cancelled" } })
-        const failed = yield* provider.signIn(work)
-        expect((yield* failed.completed.pipe(Effect.flip)).message).toBe("Login cancelled")
-        expect(countOf("account/login/cancel")).toBe(0)
-      }).pipe(Effect.scoped),
-    ),
-  )
-
-  it.live("cancels a sign-in nobody finished when its scope closes", () =>
-    withProvider(
-      Effect.gen(function* () {
-        const { work } = homes()
-        const provider = yield* CodexProvider
-        const pending = yield* provider.signIn(work).pipe(Effect.scoped)
-        yield* waitFor(() => countOf("account/login/cancel") === 1)
-        const cancel = received().find((message) => message.method === "account/login/cancel")
-        expect(pending.url).toContain((cancel!.params as { loginId: string }).loginId)
       }),
     ),
   )
