@@ -27,7 +27,7 @@ Renderer:
 Main:
 
 - `AGENT_INSTRUCTIONS` gains a "Threads" section explaining the token and pointing at `read_thread`.
-- `read_thread` adds a metadata block before the messages: provider and model, the workspace (worktree branch and path, or the project root), who created it, created and updated times, and the linked pull requests. Each message heading carries its timestamp.
+- `read_thread` starts with two tagged blocks of `key: value` lines, so the agent can tell facts from transcript. `<metadata>` holds the thread id, title, status, provider, model, who created it, created and updated times, and the linked pull requests. `<environment>` holds the workspace: the project root, or a worktree with its branch and path. Each message heading carries its timestamp.
 
 Persistence stays as it is. Messages, status, model and pull request links already live in SQLite (`message`, `thread`, `pull_request_link`), and `read_thread` reads them through `AgentRunner.transcript`. A turn is a user message and the assistant message after it, so there is no separate run id to store.
 

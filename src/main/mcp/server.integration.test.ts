@@ -405,11 +405,27 @@ layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
       yield* runner.send(child, "Look into the flaky test", [])
       const result = yield* callFrom(a, "read_thread", { threadId: child })
       expect(result.isError).toBe(false)
-      expect(result.text).toContain(`Thread ${child} "Read child" is running.`)
-      expect(result.text).toContain("Agent: claude, model m.")
-      expect(result.text).toContain("Workspace: the project root.")
-      expect(result.text).toMatch(/Created by user at \S+, last updated \S+\./)
-      expect(result.text).toContain("Pull requests:\n- https://github.com/o/r/pull/7")
+      expect(result.text).toMatch(
+        new RegExp(
+          [
+            "^<metadata>",
+            `thread_id: ${child}`,
+            "title: Read child",
+            "status: running",
+            "provider: claude",
+            "model: m",
+            "created_by: user",
+            "created_at: \\S+",
+            "updated_at: \\S+",
+            "pull_requests:",
+            "- https://github.com/o/r/pull/7",
+            "</metadata>",
+            "<environment>",
+            "workspace: project root",
+            "</environment>",
+          ].join("\n"),
+        ),
+      )
       expect(result.text).toMatch(/## user \(\S+\)\nLook into the flaky test/)
       yield* runner.interrupt(child)
     }),

@@ -125,20 +125,32 @@ const renderPart = (part: Message["parts"][number]): string | null => {
 const renderMessage = (message: Message) =>
   [`## ${message.role} (${message.createdAt})`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
 
-const renderMetadata = (
-  thread: Thread,
-  worktree: Worktree | null,
-  pullRequestUrls: ReadonlyArray<string>,
-): ReadonlyArray<string> => [
-  `Agent: ${thread.provider}, model ${thread.model}.`,
-  worktree === null
-    ? "Workspace: the project root."
-    : `Workspace: worktree on branch ${worktree.branch} at ${worktree.path}.`,
-  `Created by ${thread.createdBy} at ${thread.createdAt}, last updated ${thread.updatedAt}.`,
-  pullRequestUrls.length === 0
-    ? "Pull requests: none."
-    : ["Pull requests:", ...pullRequestUrls.map((url) => `- ${url}`)].join("\n"),
-]
+/** Facts about a thread, in a tagged block so the agent can tell them from the transcript. */
+const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) =>
+  [
+    "<metadata>",
+    `thread_id: ${thread.id}`,
+    `title: ${thread.title}`,
+    `status: ${thread.status}`,
+    `provider: ${thread.provider}`,
+    `model: ${thread.model}`,
+    `created_by: ${thread.createdBy}`,
+    `created_at: ${thread.createdAt}`,
+    `updated_at: ${thread.updatedAt}`,
+    ...(pullRequestUrls.length === 0
+      ? ["pull_requests: none"]
+      : ["pull_requests:", ...pullRequestUrls.map((url) => `- ${url}`)]),
+    "</metadata>",
+  ].join("\n")
+
+const renderEnvironment = (worktree: Worktree | null) =>
+  [
+    "<environment>",
+    ...(worktree === null
+      ? ["workspace: project root"]
+      : ["workspace: worktree", `branch: ${worktree.branch}`, `path: ${worktree.path}`]),
+    "</environment>",
+  ].join("\n")
 
 const registerTools = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -459,12 +471,11 @@ const registerTools = Layer.effectDiscard(
             ]
             const messages = transcript.messages.slice(-(limit ?? DEFAULT_READ_LIMIT))
             return [
-              `Thread ${target.id} "${target.title}" is ${target.status}.`,
-              ...renderMetadata(
+              renderMetadata(
                 target,
-                worktree,
                 links.map((link) => link.url),
               ),
+              renderEnvironment(worktree),
               ...(waiting.length > 0 ? ["Waiting on the user for:", ...waiting] : []),
               "",
               messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
