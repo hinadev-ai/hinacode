@@ -164,6 +164,29 @@ layer(testLayer, { excludeTestServices: true })("mcp server credentials", (it) =
     }),
   )
 
+  it.effect("watch_pull_request watches only the calling thread's pull request", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const pullRequests = yield* PullRequests.PullRequests
+      const { a, b } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const url = "https://github.com/o/r/pull/9"
+
+      const watched = yield* callAs(connection, "watch_pull_request", { url, events: ["checksFailed"] })
+      expect(watched.isError).toBe(false)
+      expect(watched.text).toContain("Watching https://github.com/o/r/pull/9 for checksFailed")
+
+      const listed = yield* callAs(connection, "list_thread_pull_requests")
+      expect(listed.text).toContain("watching for checksFailed")
+      expect((yield* pullRequests.list(b)).some((link) => link.url === url)).toBe(false)
+
+      const stopped = yield* callAs(connection, "unwatch_pull_request", { url })
+      expect(stopped.isError).toBe(false)
+      const links = yield* pullRequests.list(a)
+      expect(links.find((link) => link.url === url)?.watch).toBeNull()
+    }),
+  )
+
   it.effect("changing the thread parameter does not change identity", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials

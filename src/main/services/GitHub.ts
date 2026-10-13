@@ -99,13 +99,14 @@ const PullRequestFields = Schema.Struct({
 })
 const PullRequestJson = Schema.fromJsonString(PullRequestFields)
 
-const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,mergeable`
+const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,mergeable,headRefOid`
 
 const PullRequestDetailJson = Schema.fromJsonString(
   Schema.Struct({
     ...PullRequestFields.fields,
     body: Schema.String,
     mergeable: Schema.String,
+    headRefOid: Schema.String,
   }),
 )
 
@@ -176,6 +177,7 @@ export const toPullRequestDetail = (json: typeof PullRequestDetailJson.Type): Pu
   body: json.body,
   baseRef: json.baseRefName,
   headRef: json.headRefName,
+  head: json.headRefOid,
   mergeable: mergeable[json.mergeable] ?? "unknown",
   checkRuns: json.statusCheckRollup
     .map(toCheckRun)

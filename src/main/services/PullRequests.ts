@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { PullRequestLink } from "../../shared/domain.ts"
+import { allWatchEventKinds, PullRequestLink, PullRequestWatch, type WatchEventKind } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
@@ -18,6 +18,12 @@ export class NoBranchError extends Schema.TaggedError<NoBranchError>()("NoBranch
   }
 }
 
+/** The link table row. `watch` is a JSON text column, null while nobody watches the link. */
+const LinkRow = Schema.Struct({
+  ...PullRequestLink.fields,
+  watch: Schema.NullOr(Schema.fromJsonString(PullRequestWatch)),
+})
+
 /** Pull requests an agent registered for a thread. Every change is pushed as `thread.pullRequests`. */
 export class PullRequests extends Context.Service<
   PullRequests,
@@ -25,12 +31,37 @@ export class PullRequests extends Context.Service<
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
     /** Every thread's links, oldest first, so the sidebar can show them without one call per thread. */
     readonly listAll: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
+    /** Links with a live watch, oldest first. */
+    readonly watched: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
+    readonly find: (linkId: string) => Effect.Effect<PullRequestLink | null, PersistenceError>
     /** Returns the canonical URL. Linking the same pull request twice is a no-op. */
     readonly link: (
       threadId: string,
       url: string,
     ) => Effect.Effect<string, PersistenceError | PullRequestUrlInvalidError>
     readonly unlink: (threadId: string, url: string) => Effect.Effect<void, PersistenceError>
+    /**
+     * Starts watching the pull request for the thread, linking it first when it is not linked yet. Watching
+     * a link that is already watched restarts the watch under a new generation with no snapshot, so the
+     * next poll reports the pull request as it stands. An empty `events` watches for everything.
+     */
+    readonly watch: (
+      threadId: string,
+      url: string,
+      events?: ReadonlyArray<WatchEventKind>,
+    ) => Effect.Effect<PullRequestLink, PersistenceError | PullRequestUrlInvalidError>
+    /** Stops watching. The link itself stays. Unknown links are a no-op. */
+    readonly unwatch: (threadId: string, url: string) => Effect.Effect<void, PersistenceError>
+    /**
+     * Replaces a link's watch, or clears it with null, but only while the stored watch still carries
+     * `generation`. Returns false when the watch was stopped or restarted in the meantime, so a poll that
+     * started earlier drops its result instead of resurrecting a dead watch.
+     */
+    readonly updateWatch: (
+      linkId: string,
+      generation: number,
+      watch: PullRequestWatch | null,
+    ) => Effect.Effect<boolean, PersistenceError>
     /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. */
     readonly create: (
       threadId: string,
@@ -48,18 +79,35 @@ const make = Effect.gen(function* () {
   const worktrees = yield* Worktrees
   const git = yield* Git
   const github = yield* GitHub
+  const encodeRow = Schema.encodeEffect(LinkRow)
 
   const findByThread = SqlSchema.findAll({
     Request: Schema.String,
-    Result: PullRequestLink,
+    Result: LinkRow,
     execute: (threadId) => sql`SELECT * FROM pull_request_link WHERE thread_id = ${threadId} ORDER BY created_at`,
   })
   const list = (threadId: string) => findByThread(threadId).pipe(Effect.mapError(persistence("pullRequests.list")))
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
-    Result: PullRequestLink,
+    Result: LinkRow,
     execute: () => sql`SELECT * FROM pull_request_link ORDER BY created_at, rowid`,
   })
+  const findWatched = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: LinkRow,
+    execute: () => sql`SELECT * FROM pull_request_link WHERE watch IS NOT NULL ORDER BY created_at, rowid`,
+  })
+  const findById = SqlSchema.findOneOption({
+    Request: Schema.String,
+    Result: LinkRow,
+    execute: (linkId) => sql`SELECT * FROM pull_request_link WHERE id = ${linkId}`,
+  })
+
+  const find = (linkId: string) =>
+    findById(linkId).pipe(
+      Effect.mapError(persistence("pullRequests.find")),
+      Effect.map((link) => (link._tag === "Some" ? link.value : null)),
+    )
 
   const broadcast = (threadId: string) =>
     Effect.flatMap(list(threadId), (links) => events.publish({ type: "thread.pullRequests", threadId, links }))
@@ -67,8 +115,9 @@ const make = Effect.gen(function* () {
   const link = (threadId: string, raw: string) =>
     Effect.gen(function* () {
       const url = yield* requirePullRequestUrl(raw)
-      const row: PullRequestLink = { id: randomUUID(), threadId, url, createdAt: yield* nowIso }
-      yield* sql`INSERT INTO pull_request_link ${sql.insert(row)} ON CONFLICT (thread_id, url) DO NOTHING`.pipe(
+      const row: PullRequestLink = { id: randomUUID(), threadId, url, createdAt: yield* nowIso, watch: null }
+      const encoded = yield* encodeRow(row).pipe(Effect.mapError(persistence("pullRequests.link")))
+      yield* sql`INSERT INTO pull_request_link ${sql.insert(encoded)} ON CONFLICT (thread_id, url) DO NOTHING`.pipe(
         Effect.mapError(persistence("pullRequests.link")),
       )
       yield* broadcast(threadId)
@@ -82,6 +131,55 @@ const make = Effect.gen(function* () {
         Effect.mapError(persistence("pullRequests.unlink")),
       )
       yield* broadcast(threadId)
+    })
+
+  const setWatch = (current: PullRequestLink, watch: PullRequestWatch | null) =>
+    Effect.gen(function* () {
+      const encoded = yield* encodeRow({ ...current, watch }).pipe(Effect.mapError(persistence("pullRequests.watch")))
+      yield* sql`UPDATE pull_request_link SET watch = ${encoded.watch} WHERE id = ${current.id}`.pipe(
+        Effect.mapError(persistence("pullRequests.watch")),
+      )
+      yield* broadcast(current.threadId)
+      return { ...current, watch }
+    })
+
+  const byUrl = (threadId: string, url: string) =>
+    Effect.map(list(threadId), (links) => links.find((candidate) => candidate.url === url) ?? null)
+
+  const watch = (threadId: string, raw: string, requested: ReadonlyArray<WatchEventKind> = []) =>
+    Effect.gen(function* () {
+      const url = yield* requirePullRequestUrl(raw)
+      yield* link(threadId, url)
+      const current = yield* byUrl(threadId, url)
+      if (current === null) {
+        return yield* Effect.die(new Error(`pull request link for ${url} vanished right after linking`))
+      }
+      const kinds = [...new Set(requested)]
+      return yield* setWatch(current, {
+        generation: (current.watch?.generation ?? 0) + 1,
+        events: kinds.length > 0 ? kinds : [...allWatchEventKinds],
+        snapshot: null,
+        wakes: 0,
+        failures: 0,
+        lastPolledAt: null,
+        lastWokeAt: null,
+      })
+    })
+
+  const unwatch = (threadId: string, raw: string) =>
+    Effect.gen(function* () {
+      const url = parseGitHubPullRequestUrl(raw.trim()) ?? raw
+      const current = yield* byUrl(threadId, url)
+      if (current === null || current.watch === null) return
+      yield* setWatch(current, null)
+    })
+
+  const updateWatch = (linkId: string, generation: number, next: PullRequestWatch | null) =>
+    Effect.gen(function* () {
+      const current = yield* find(linkId)
+      if (current === null || current.watch === null || current.watch.generation !== generation) return false
+      yield* setWatch(current, next)
+      return true
     })
 
   const create = (threadId: string) =>
@@ -101,8 +199,13 @@ const make = Effect.gen(function* () {
   return PullRequests.of({
     list,
     listAll: findAll(undefined).pipe(Effect.mapError(persistence("pullRequests.listAll"))),
+    watched: findWatched(undefined).pipe(Effect.mapError(persistence("pullRequests.watched"))),
+    find,
     link,
     unlink,
+    watch,
+    unwatch,
+    updateWatch,
     create,
   })
 })

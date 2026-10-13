@@ -25,6 +25,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
@@ -83,7 +84,13 @@ const makeAppLayer = (dbPath: string) => {
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
+  return Layer.mergeAll(
+    Automations.layer,
+    AutoArchive.layer,
+    PullRequestWatcher.layer,
+    Mcp.serverLayer,
+    AgentLogins.layer,
+  ).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),

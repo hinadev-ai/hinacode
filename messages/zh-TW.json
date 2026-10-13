@@ -490,6 +490,7 @@
   "message_worked_for": "已工作 {duration}",
   "sidebar_pull_request": "開啟合併請求 #{number}",
   "sidebar_pull_request_stack": "開啟合併請求 #{number}，{count} 個連結中最新的一個",
+  "sidebar_watching": "正在監看合併請求",
   "thread_workspace_picker": "工作區",
   "settings_text_generation_model": "對話串命名",
   "settings_text_generation_model_hint": "根據第一則訊息為對話串與分支命名。",
@@ -596,6 +597,11 @@
       }
     }
   ],
+  "pr_watch": "監看變更",
+  "pr_watching": "監看中",
+  "pr_watch_stop": "停止監看 {name}",
+  "pr_watch_hint": "kkcode 每分鐘檢查一次，有變更時會通知這條對話串的 agent",
+  "pr_watch_failed": "無法變更監看狀態: {message}",
   "settings_notifications": "通知",
   "settings_notifications_hint": "你沒在看的對話串有變化時，KKCode 會通知你。",
   "settings_notifications_completed": "完成的回合",

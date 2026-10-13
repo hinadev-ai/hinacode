@@ -78,7 +78,7 @@ flowchart BT
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports"]
   runner["AgentRunner"]
-  autos["Automations, AutoArchive"]
+  autos["Automations, AutoArchive,<br/>PullRequestWatcher"]
   mcp["MCP server"]
 
   node --> db --> domain
@@ -341,6 +341,11 @@ erDiagram
     int run_in_worktree
     text cursor
   }
+  pull_request_link {
+    text id PK
+    text url
+    text watch "JSON, null = not watched"
+  }
   automation_run {
     text id PK
     text event_key
@@ -400,6 +405,7 @@ stateDiagram-v2
 - **Setup scripts** run with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
 - **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
 - **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads whose links are all merged, and pushes `thread.updated`.
+- **PullRequestWatcher** sweeps every minute over links whose `watch` JSON is set. It diffs a fresh `gh` detail read against the snapshot the thread was last told about (`services/pullRequestWatch.ts`), and wakes the thread through `AgentRunner.steer` when checks fail or pass, the review changes, the branch conflicts, or the pull request merges or closes. The snapshot only moves when its news was delivered or a poll found no news, and every write is guarded by the watch's generation, so a poll that outlived a stop or restart drops its result. A watch ends on merge or close, after 25 wakes, or after 15 unreadable polls in a row. See [the feature doc](features/2026-10-14-pull-request-watch.md).
 - **Removal is refused** (`WorktreeBusyError`) while setup runs, while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
 - A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background (only the title for a thread already linked to a pull request when naming starts, such as a pull request checkout, whose branch must keep its name), using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
 
@@ -412,7 +418,7 @@ flowchart LR
   auth -- invalid --> deny["401"]
   subgraph tools["Tools, scoped to threadId"]
     review["review_changes"]
-    prs["link_pull_request<br/>list_thread_pull_requests<br/>unlink_pull_request"]
+    prs["link_pull_request<br/>list_thread_pull_requests<br/>unlink_pull_request<br/>watch_pull_request, unwatch_pull_request"]
     linear["linear_get_issue, linear_search_issues,<br/>linear_create_comment, linear_update_issue_state"]
     secret["request_secret"]
     create["create_thread"]
