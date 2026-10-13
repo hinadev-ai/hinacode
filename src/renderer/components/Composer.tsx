@@ -1,4 +1,5 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
   type ClipboardEvent,
@@ -43,6 +44,7 @@ import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
 import { SubagentBar } from "./SubagentBar.tsx"
+import { TodoBar } from "./TodoBar.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -79,9 +81,15 @@ export function Composer({ thread }: { thread: Thread }) {
   const [isStaging, startStaging] = useTransition()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const key = completionKey(thread)
-  const commands = AsyncResult.getOrElse(useAtomValue(commandsAtom(key)), (): ReadonlyArray<AgentCommand> => [])
+  const commandsResult = useAtomValue(commandsAtom(key))
+  const commands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
+  // A failed load looks exactly like "the agent has no commands" when swallowed, so it is shown instead.
+  const commandsError = AsyncResult.isFailure(commandsResult)
+    ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
+    : null
   const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesAtom(key))
+  const refreshCommands = useAtomRefresh(commandsAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
@@ -166,12 +174,15 @@ export function Composer({ thread }: { thread: Thread }) {
     send()
   }
 
-  // A finished turn may have added files worth mentioning.
+  // A finished turn may have added files worth mentioning, and gives a failed command load another chance.
   const wasBusy = useRef(busy)
   useEffect(() => {
-    if (wasBusy.current && !busy) refreshFiles()
+    if (wasBusy.current && !busy) {
+      refreshFiles()
+      refreshCommands()
+    }
     wasBusy.current = busy
-  }, [busy, refreshFiles])
+  }, [busy, refreshFiles, refreshCommands])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
@@ -183,6 +194,7 @@ export function Composer({ thread }: { thread: Thread }) {
   return (
     <form onSubmit={onSubmit} className="flex max-h-3/5 min-h-0 shrink-0 flex-col px-3 pb-3">
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
+        <TodoBar thread={thread} />
         <SubagentBar thread={thread} />
         <ComposerBar className="min-h-0 focus-within:border-ring">
           {comments.length > 0 && (
@@ -246,7 +258,7 @@ export function Composer({ thread }: { thread: Thread }) {
         </ComposerBar>
       </ComposerRoot>
       {unstarted && <WorkspacePicker thread={thread} worktree={worktree} />}
-      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
+      {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )
 }

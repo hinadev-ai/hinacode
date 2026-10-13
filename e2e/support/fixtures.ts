@@ -30,6 +30,7 @@ interface TestFixtures {
   readonly usageLimitApp: KkcodeApp
   readonly automaticResumeApp: KkcodeApp
   readonly orgSpendLimitApp: KkcodeApp
+  readonly todoApp: KkcodeApp
   readonly names: Names
   /** A throwaway git repository on `main` with a README and a gitignored `.env`, inside the app's user-data directory. */
   readonly repo: string
@@ -85,6 +86,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           body: await app.page.screenshot(),
           contentType: "image/png",
         })
+      }
+    } finally {
+      await app.close()
+    }
+  },
+  todoApp: async ({}, provide, testInfo) => {
+    const app = await spawnApp({ mockClaude: "todos" })
+    try {
+      await provide(app)
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach("todo-screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
       }
     } finally {
       await app.close()

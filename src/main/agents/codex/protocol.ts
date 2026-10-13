@@ -199,6 +199,13 @@ export type ServerNotificationParams = {
   "item/started": { threadId: string; turnId: string; item: ThreadItem }
   "item/completed": { threadId: string; turnId: string; item: ThreadItem }
   "thread/tokenUsage/updated": { threadId: string; turnId: string; tokenUsage: ThreadTokenUsage }
+  /** The whole plan after an `update_plan` call, not a patch. Statuses arrive already camelCased. */
+  "turn/plan/updated": {
+    threadId: string
+    turnId: string
+    explanation: string | null
+    plan: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>
+  }
   "turn/completed": { threadId: string; turn: Turn }
   error: { error: TurnError; willRetry: boolean; threadId: string; turnId: string }
 }

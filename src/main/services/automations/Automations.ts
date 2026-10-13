@@ -140,10 +140,12 @@ const make = Effect.gen(function* () {
   const encodeRow = Schema.encodeEffect(AutomationRow)
   const encodePayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))
 
+  // Like the thread list, a newer build's automations of unknown providers are skipped, not fatal.
   const findRows = SqlSchema.findAll({
     Request: Schema.Void,
     Result: AutomationRow,
-    execute: () => sql`SELECT * FROM automation ORDER BY created_at`,
+    execute: () =>
+      sql`SELECT * FROM automation WHERE ${sql.in("provider", [...ProviderId.literals])} ORDER BY created_at`,
   })
   const findRow = SqlSchema.findOneOption({
     Request: Schema.String,

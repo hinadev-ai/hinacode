@@ -367,6 +367,8 @@ const make = Effect.gen(function* () {
             model: input.model,
             ...threadAccess(input.accessMode),
             config: {
+              // Off by default in current Codex; the composer's task list is built from its plan.
+              tools: { update_plan: { enabled: true } },
               mcp_servers: {
                 // `request_secret` waits for the user, so the default 60 s tool timeout is too short.
                 kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
@@ -410,6 +412,7 @@ const make = Effect.gen(function* () {
             Effect.forEach(changed, (subagent) => emit({ type: "subagent_updated", subagent }), { discard: true })
           let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
           let lastError: string | undefined
+          let planRevision = 0
 
           yield* Effect.addFinalizer(() =>
             Effect.gen(function* () {
@@ -650,6 +653,20 @@ const make = Effect.gen(function* () {
                     })
                   }
                   yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
+                  return false
+                }
+                case "turn/plan/updated": {
+                  const params = message.params as ServerNotificationParams[typeof method]
+                  // Stored as an `update_plan` tool call, so the plan persists with the transcript and
+                  // renders like every other agent's todo list. Each notification is the whole plan.
+                  const callId = `plan-${params.turnId}-${++planRevision}`
+                  yield* emit({
+                    type: "tool_call_started",
+                    callId,
+                    name: "update_plan",
+                    input: { explanation: params.explanation, plan: params.plan },
+                  })
+                  yield* emit({ type: "tool_call_finished", callId, output: "Plan updated", isError: false })
                   return false
                 }
                 case "thread/tokenUsage/updated": {
