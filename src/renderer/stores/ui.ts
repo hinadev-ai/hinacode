@@ -14,19 +14,27 @@ export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullReq
 export type SidePanelSize = "normal" | "wide"
 export type SidebarTab = "threads" | "archived"
 
+const pullRequestSections = ["checks", "description"] as const
+export type PullRequestSection = (typeof pullRequestSections)[number]
+
 let findRevealRequests = 0
 
 const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "kkcode.sidebarProjects"
+const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "kkcode.collapsedPullRequestSections"
 
-function loadProjectFilter(): ReadonlyArray<string> {
+function loadStrings(key: string): ReadonlyArray<string> {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(SIDEBAR_PROJECTS_KEY) ?? "[]")
-    return Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? "[]")
+    return Array.isArray(stored) ? stored.filter((value) => typeof value === "string") : []
   } catch {
     return []
   }
 }
+
+const isPullRequestSection = (value: string): value is PullRequestSection =>
+  pullRequestSections.some((section) => section === value)
+
 const sidePanelWidthKeys: Record<SidePanelSize, string> = {
   normal: "kkcode.sidePanelWidth",
   wide: "kkcode.sidePanelWideWidth",
@@ -43,6 +51,8 @@ interface UiState {
   readonly sidebarQuery: string
   /** The projects the sidebar shows. Empty shows every project. */
   readonly sidebarProjectIds: ReadonlyArray<string>
+  /** PR tab sections the user collapsed. They stay collapsed for every pull request. */
+  readonly collapsedPullRequestSections: ReadonlyArray<PullRequestSection>
   /** The side panel view each thread last showed. Threads not in here show `lastSidePanelView`. */
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
@@ -77,6 +87,8 @@ interface UiState {
   readonly setSidebarQuery: (query: string) => void
   /** Persists the sidebar's project filter. */
   readonly setSidebarProjectIds: (ids: ReadonlyArray<string>) => void
+  /** Persists whether a PR tab section is open. */
+  readonly setPullRequestSectionOpen: (section: PullRequestSection, open: boolean) => void
   /** Shows `view` for the thread, opening the panel. `focus` also moves focus into the view. */
   readonly showView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   /** Like `showView`, but hides the panel when it already shows `view`, as clicking an active activity bar icon does. */
@@ -121,7 +133,8 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelOverlayOpen: false,
   sidebarTab: "threads",
   sidebarQuery: "",
-  sidebarProjectIds: loadProjectFilter(),
+  sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),
+  collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
   sidePanelViews: {},
   lastSidePanelView: "details",
   sidePanelWide: false,
@@ -161,6 +174,12 @@ export const useUi = create<UiState>()((set, get) => ({
   setSidebarProjectIds: (sidebarProjectIds) => {
     localStorage.setItem(SIDEBAR_PROJECTS_KEY, JSON.stringify(sidebarProjectIds))
     set({ sidebarProjectIds })
+  },
+  setPullRequestSectionOpen: (section, open) => {
+    const others = get().collapsedPullRequestSections.filter((collapsed) => collapsed !== section)
+    const collapsedPullRequestSections = open ? others : [...others, section]
+    localStorage.setItem(COLLAPSED_PULL_REQUEST_SECTIONS_KEY, JSON.stringify(collapsedPullRequestSections))
+    set({ collapsedPullRequestSections })
   },
   showView: (threadId, view, options) =>
     set((state) => ({
