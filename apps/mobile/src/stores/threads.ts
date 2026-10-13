@@ -42,7 +42,7 @@ export const useThreads = create<ThreadsState>()((set) => ({
 export const needsHuman = (thread: Thread) => thread.status === "awaiting_approval" || thread.status === "limited"
 
 const rank = (thread: Thread) =>
-  needsHuman(thread) ? 0 : thread.status === "settled" || thread.status === "archived" ? 2 : 1
+  needsHuman(thread) ? 0 : thread.status === "archived" ? 2 : 1
 
 /** The desktop sidebar order, with threads that need a human moved to the top. */
 export const sortThreads = (threads: readonly Thread[]) =>
