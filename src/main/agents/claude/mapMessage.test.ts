@@ -212,6 +212,17 @@ const subagentOf = (events: ReadonlyArray<AgentEvent>) => {
   return event.subagent
 }
 
+const toolUse = (parentToolUseId: string | null, id: string) =>
+  ({
+    type: "assistant",
+    parent_tool_use_id: parentToolUseId,
+    message: {
+      model: "claude-opus-4-7",
+      content: [{ type: "tool_use", id, name: "Bash", input: { command: "git ls-files | wc -l" } }],
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  }) as unknown as SDKMessage
+
 describe("mapMessage sub-agent tasks", () => {
   test("follows a sub-agent from start through progress to its final summary", () => {
     const state = newState()
@@ -219,7 +230,7 @@ describe("mapMessage sub-agent tasks", () => {
     expect(subagentOf(mapMessage(started, state, "2026-10-12T10:00:00.000Z"))).toEqual({
       id: "abf6bab06dbff9ec1",
       label: "Count repo files",
-      kind: "general-purpose",
+      callId: "toolu_01DoGmNCXkV2M8SMNaE7E3XJ",
       status: "running",
       summary: null,
       lastTool: null,
@@ -259,6 +270,22 @@ describe("mapMessage sub-agent tasks", () => {
       "2026-10-12T10:00:02.000Z",
     )
     expect(subagentOf(stopped)).toMatchObject({ status: "stopped", summary: "Counting tracked files" })
+  })
+
+  test("tags the sub-agent's tool calls with the call that spawned it", () => {
+    const state = newState()
+    const spawner = subagentOf(mapMessage(started, state, "2026-10-12T10:00:00.000Z"))
+
+    expect(mapMessage(toolUse(spawner.callId, "toolu_child"), state, "now")).toEqual([
+      {
+        type: "tool_call_started",
+        callId: "toolu_child",
+        name: "Bash",
+        input: { command: "git ls-files | wc -l" },
+        parentCallId: "toolu_01DoGmNCXkV2M8SMNaE7E3XJ",
+      },
+    ])
+    expect(mapMessage(toolUse(null, "toolu_main"), state, "now")[0]).not.toHaveProperty("parentCallId")
   })
 
   test("ignores shells, housekeeping tasks and progress for tasks it never saw start", () => {

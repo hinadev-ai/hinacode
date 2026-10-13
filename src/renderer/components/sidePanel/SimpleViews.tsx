@@ -14,7 +14,7 @@ export function PullRequestsView({ thread }: { thread: Thread }) {
 export function AgentsView({ thread }: { thread: Thread }) {
   return (
     <ViewBody>
-      <ThreadAgents threadId={thread.id} />
+      <ThreadAgents thread={thread} />
     </ViewBody>
   )
 }

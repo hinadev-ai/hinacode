@@ -30,7 +30,7 @@ A developer who finishes reviewing a thread still has to leave kkcode for two th
 
 - A resizable or wider side panel for long diffs.
 - Inline review comments, or replying to review threads.
-- Auto-merge, merge queues, and deleting the remote branch on merge. Settling the thread already removes the worktree and branch.
+- Auto-merge, merge queues, and deleting the remote branch on merge. Archiving the thread can already remove the worktree and branch.
 - Turn history beyond the latest turn.
 - An unreferenced snapshot tree can be pruned by `git gc` after the prune window (two weeks by default). The Latest turn diff then shows an error until the next turn.
 

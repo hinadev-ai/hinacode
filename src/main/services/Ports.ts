@@ -1,4 +1,5 @@
-import { readdir, readFile, readlink } from "node:fs/promises"
+import { execFile } from "node:child_process"
+import { readdir, readFile, readlink, realpath } from "node:fs/promises"
 import { sep } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { OpenPort } from "../../shared/domain.ts"
@@ -29,6 +30,11 @@ export interface ListeningProcess extends ProcessInfo {
   readonly port: number
 }
 
+/** Lists the processes passing `include` that own a listening TCP socket, one entry per (port, pid). */
+type ListeningScanner = (
+  include: (process: ProcessInfo) => boolean,
+) => Effect.Effect<ReadonlyArray<ListeningProcess>, PortsError>
+
 const TCP_LISTEN = "0A"
 
 /** Listening sockets from the text of /proc/net/tcp or /proc/net/tcp6. */
@@ -55,6 +61,21 @@ const MAX_ANCESTORS = 64
 /** Resolves to null when the file is gone or unreadable: processes exit mid-scan or belong to other users. */
 const optional = <A>(read: () => Promise<A>) => Effect.tryPromise(read).pipe(Effect.orElseSucceed(() => null))
 
+const ancestorsIn = (parentOf: ReadonlyMap<number, number>) => (pid: number) => {
+  const ancestors: Array<number> = []
+  // Bounded so a pid reused between reads cannot form a cycle.
+  for (let parent = parentOf.get(pid); ancestors.length < MAX_ANCESTORS; parent = parentOf.get(parent)) {
+    if (parent === undefined || !Number.isInteger(parent) || parent <= 1) break
+    ancestors.push(parent)
+  }
+  return ancestors
+}
+
+const uniqueByPortAndPid = (entries: ReadonlyArray<ListeningProcess>) =>
+  [...new Map(entries.map((entry) => [`${entry.port}:${entry.pid}`, entry])).values()].toSorted(
+    (a, b) => a.port - b.port || a.pid - b.pid,
+  )
+
 const readProcesses = (fs: ProcFs) =>
   Effect.gen(function* () {
     const names = yield* Effect.tryPromise({
@@ -72,16 +93,7 @@ const readProcesses = (fs: ProcFs) =>
       { concurrency: SCAN_CONCURRENCY },
     )
     const live = stats.flatMap(({ pid, stat, cwd }) => (stat === null ? [] : [{ pid, stat, cwd }]))
-    const parentOf = new Map(live.map(({ pid, stat }) => [pid, parentPidOf(stat)]))
-    const ancestorsOf = (pid: number) => {
-      const ancestors: Array<number> = []
-      // Bounded so a pid reused between reads cannot form a cycle.
-      for (let parent = parentOf.get(pid); ancestors.length < MAX_ANCESTORS; parent = parentOf.get(parent)) {
-        if (parent === undefined || !Number.isInteger(parent) || parent <= 1) break
-        ancestors.push(parent)
-      }
-      return ancestors
-    }
+    const ancestorsOf = ancestorsIn(new Map(live.map(({ pid, stat }) => [pid, parentPidOf(stat)])))
     return live.map(({ pid, stat, cwd }): ProcessInfo => ({
       pid,
       command: commandOf(stat),
@@ -125,8 +137,67 @@ export const findListeningPorts = (fs: ProcFs, include: (process: ProcessInfo) =
         ),
       { concurrency: SCAN_CONCURRENCY },
     )
-    const unique = new Map(sockets.flat().map((entry) => [`${entry.port}:${entry.pid}`, entry]))
-    return [...unique.values()].toSorted((a, b) => a.port - b.port || a.pid - b.pid)
+    return uniqueByPortAndPid(sockets.flat())
+  })
+
+// lsof exits 1 when it cannot read one of the requested pids, and still prints the rest.
+const exec = (file: string, args: ReadonlyArray<string>) =>
+  Effect.callback<string, PortsError>((resume) => {
+    execFile(file, args, (error, stdout) =>
+      resume(
+        error && typeof error.code !== "number"
+          ? Effect.fail(new PortsError({ message: `Could not run ${file}: ${error.message}` }))
+          : Effect.succeed(stdout),
+      ),
+    )
+  })
+
+/** Processes from `lsof -F` output, each with the name field of every file listed under it. */
+const parseLsofFields = (text: string) => {
+  const processes: Array<{ pid: number; command: string; names: Array<string> }> = []
+  for (const line of text.split("\n")) {
+    const value = line.slice(1)
+    const current = processes.at(-1)
+    if (line.startsWith("p")) processes.push({ pid: Number(value), command: "", names: [] })
+    else if (line.startsWith("c") && current) current.command = value
+    else if (line.startsWith("n") && current) current.names.push(value)
+  }
+  return processes
+}
+
+/**
+ * The macOS scanner, which has no /proc. One lsof call finds every listening socket, `ps` supplies the
+ * parent pids, and a second lsof call reads the cwd of only the listening processes.
+ */
+const findListeningPortsWithLsof = (include: (process: ProcessInfo) => boolean) =>
+  Effect.gen(function* () {
+    // +c 0 keeps the full command name instead of its first nine characters.
+    const listening = parseLsofFields(yield* exec("lsof", ["-nP", "+c", "0", "-iTCP", "-sTCP:LISTEN", "-Fpcn"]))
+    if (listening.length === 0) return []
+
+    const parents = (yield* exec("ps", ["-axo", "pid=,ppid="]))
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/).map(Number))
+      .filter((fields): fields is [number, number] => fields.length === 2 && fields.every(Number.isInteger))
+    const ancestorsOf = ancestorsIn(new Map(parents))
+    const pids = listening.map(({ pid }) => pid).join(",")
+    const cwdOf = new Map(
+      parseLsofFields(yield* exec("lsof", ["-a", "-p", pids, "-d", "cwd", "-Fn"])).map(({ pid, names }) => [
+        pid,
+        names[0] ?? null,
+      ]),
+    )
+
+    return uniqueByPortAndPid(
+      listening.flatMap(({ pid, command, names }) => {
+        const proc: ProcessInfo = { pid, command, cwd: cwdOf.get(pid) ?? null, ancestors: ancestorsOf(pid) }
+        if (!include(proc)) return []
+        return names
+          .map((name) => Number(name.slice(name.lastIndexOf(":") + 1)))
+          .filter(Number.isInteger)
+          .map((port) => ({ ...proc, port }))
+      }),
+    )
   })
 
 const isInside = (path: string, root: string) =>
@@ -176,6 +247,12 @@ const procFs: ProcFs = {
   readlink: (path) => readlink(path),
 }
 
+const scanners: Partial<Record<NodeJS.Platform, ListeningScanner>> = {
+  linux: (include) => findListeningPorts(procFs, include),
+  darwin: findListeningPortsWithLsof,
+}
+const scanListening: ListeningScanner = scanners[process.platform] ?? (() => Effect.succeed([]))
+
 const KILL_GRACE = "3 seconds"
 
 /** Returns false when the process is gone (or never was ours to signal). */
@@ -202,7 +279,7 @@ export class Ports extends Context.Service<
 const kill = (pid: number) =>
   Effect.gen(function* () {
     // Only processes that own a listening socket, so the renderer cannot signal arbitrary pids.
-    const listening = yield* findListeningPorts(procFs, (proc) => proc.pid === pid)
+    const listening = yield* scanListening((proc) => proc.pid === pid)
     if (listening.length === 0) {
       return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
     }
@@ -218,12 +295,12 @@ const make = Effect.gen(function* () {
 
   const listForThread = (threadId: string) =>
     Effect.gen(function* () {
-      if (process.platform !== "linux") return []
       const workspace = yield* activeWorkspace(threadId)
-      const listening = yield* findListeningPorts(
-        procFs,
+      // Process cwds are resolved paths, so a workspace under a symlink such as macOS /tmp must be too.
+      const workspacePath = yield* Effect.promise(() => realpath(workspace.cwd).catch(() => workspace.cwd))
+      const listening = yield* scanListening(
         belongsToWorkspace({
-          workspacePath: workspace.cwd,
+          workspacePath,
           agentPids: agentPidsByThread.get(threadId) ?? new Set(),
           selfPid: process.pid,
         }),

@@ -6,7 +6,7 @@ import type { Project } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { selectProjectThreads, useThreads } from "../stores/threads.ts"
+import { useThreads } from "../stores/threads.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import {
   AlertDialog,
@@ -35,7 +35,9 @@ interface DeleteState {
 }
 
 export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDelete }: DeleteProjectDialogProps) {
-  const threads = useThreads(useShallow(selectProjectThreads(project.id)))
+  const threads = useThreads(
+    useShallow((state) => Object.values(state.byId).filter((thread) => thread.projectId === project.id)),
+  )
   const worktrees = useWorktrees(
     useShallow((state) =>
       Object.values(state.byId).filter(

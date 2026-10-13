@@ -47,7 +47,7 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
       }
 
     case "stream_event": {
-      // Subagent output is not streamed into the main transcript; its tool calls still show up below.
+      // Subagent text is not streamed into the transcript; only its tool calls are, tagged with parentCallId.
       if (message.parent_tool_use_id !== null) return []
       const event = message.event
       if (event.type !== "content_block_delta") return []
@@ -94,6 +94,7 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
           message.message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n") ||
           "Claude usage limit reached"
       }
+      const parentCallId = message.parent_tool_use_id
       return message.message.content.flatMap((block): Array<AgentEvent> => {
         if (block.type !== "tool_use") return []
         const input = block.input as Record<string, unknown> | null
@@ -101,7 +102,15 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
         if (FILE_EDIT_TOOLS.has(block.name) && typeof path === "string") {
           state.pendingEdits.set(block.id, path)
         }
-        return [{ type: "tool_call_started", callId: block.id, name: block.name, input: block.input }]
+        return [
+          {
+            type: "tool_call_started",
+            callId: block.id,
+            name: block.name,
+            input: block.input,
+            ...(parentCallId !== null && { parentCallId }),
+          },
+        ]
       })
 
     case "user": {
@@ -142,7 +151,7 @@ function subagentStarted(message: SDKTaskStartedMessage, state: MapState, now: s
   return updateSubagent(state, {
     id: message.task_id,
     label: message.description,
-    kind: message.subagent_type ?? "agent",
+    callId: message.tool_use_id ?? null,
     status: "running",
     summary: null,
     lastTool: null,

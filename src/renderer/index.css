@@ -24,6 +24,7 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Cross-fading one icon into another. */
   --ease-swap: cubic-bezier(0.2, 0, 0, 1);
+  --spacing-titlebar: 2.5rem;
   /* A faster turn makes the same wait feel shorter. */
   --animate-spin: spin 0.6s linear infinite;
   /* Opacity only, so reduced motion keeps it. */
@@ -314,6 +315,14 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Drags the window on macOS, where the native title bar is hidden. Controls inside it still take clicks. */
+@utility window-drag {
+  -webkit-app-region: drag;
+  & :is(a, button, input) {
+    -webkit-app-region: no-drag;
   }
 }
 

@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import type { Thread } from "../../shared/domain.ts"
 
-interface ThreadsState {
+export interface ThreadsState {
   readonly byId: Readonly<Record<string, Thread>>
   readonly replaceAll: (threads: ReadonlyArray<Thread>) => void
   readonly upsert: (thread: Thread) => void
@@ -20,10 +20,17 @@ export const useThreads = create<ThreadsState>()((set) => ({
     }),
 }))
 
-const settledLast = (thread: Thread) => (thread.status === "settled" ? 1 : 0)
+const inProject = (state: Pick<ThreadsState, "byId">, projectId: string) =>
+  Object.values(state.byId).filter((thread) => thread.projectId === projectId)
 
-/** A project's threads in sidebar order: saved order, with settled threads moved below the rest. */
+/** A project's threads that are not archived, in their saved sidebar order. */
 export const selectProjectThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
-  Object.values(state.byId)
-    .filter((thread) => thread.projectId === projectId)
-    .toSorted((a, b) => settledLast(a) - settledLast(b) || a.sortIndex - b.sortIndex)
+  inProject(state, projectId)
+    .filter((thread) => thread.status !== "archived")
+    .toSorted((a, b) => a.sortIndex - b.sortIndex)
+
+/** A project's archived threads, most recently updated first. */
+export const selectArchivedThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
+  inProject(state, projectId)
+    .filter((thread) => thread.status === "archived")
+    .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
