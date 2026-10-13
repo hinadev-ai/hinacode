@@ -487,3 +487,48 @@ test("clears pending questions immediately when a turn reaches a usage limit", a
   store().receive(event(2, { type: "turn_limited", limit: { kind: "org_spend", message: "Usage exhausted" } }))
   expect(ready().questions).toStrictEqual([])
 })
+
+const transcript = (text: string, seq: number) => ({
+  result: { messages: [assistant(text)], approvals: [], questions: [], secretRequests: [], seq },
+})
+
+const reloadAfterUnload = () => {
+  const first = transcriptResponse
+  const firstLoad = store().load(threadId)
+  store().unload(threadId)
+  store().receive(event(1, { type: "text_delta", text: "while unloaded" }))
+  transcriptResponse = Promise.withResolvers()
+  const second = transcriptResponse
+  const secondLoad = store().load(threadId)
+  return { first, firstLoad, second, secondLoad }
+}
+
+test.each(["older first", "newer first"])(
+  "a reload keeps its own snapshot when the request before unload resolves %s",
+  async (order) => {
+    const { first, firstLoad, second, secondLoad } = reloadAfterUnload()
+    if (order === "older first") {
+      first.resolve(transcript("stale", 0))
+      await firstLoad
+      second.resolve(transcript("while unloaded", 1))
+    } else {
+      second.resolve(transcript("while unloaded", 1))
+      await secondLoad
+      first.resolve(transcript("stale", 0))
+    }
+    await Promise.all([firstLoad, secondLoad])
+
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded" }])
+  },
+)
+
+test("a failed request from before unload cannot fail the reload", async () => {
+  const { first, firstLoad, second, secondLoad } = reloadAfterUnload()
+  first.resolve({ error: { tag: "ThreadNotFound", message: "stale failure" } })
+  await firstLoad
+  expect(store().byThread[threadId]?.status).toBe("loading")
+  second.resolve(transcript("while unloaded", 1))
+  await secondLoad
+
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded" }])
+})
