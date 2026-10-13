@@ -17,7 +17,7 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
-import { commandFindText, type FindRevealRequest, isInCommand } from "../lib/find.ts"
+import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -49,7 +49,7 @@ export function MessagePartView({ part }: { part: MessagePart }) {
 }
 
 const disclosureTrigger =
-  "group/trigger flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
 
 function Chevron() {
   return (
@@ -66,7 +66,7 @@ function ReasoningPart({ text }: { text: string }) {
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiSparkling2Line aria-hidden className="size-3.5 shrink-0" />
-        {m.message_reasoning()}
+        {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
         {text}
@@ -135,7 +135,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
           <span className="sr-only">{statusLabel[part.status]()}</span>
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 flex flex-col gap-2 pl-7 text-xs">
+      <CollapsibleContent className="mt-1 flex flex-col gap-2 text-xs">
         {part.name === "Bash" ? (
           <CommandView call={part} command={summary} />
         ) : (
@@ -238,7 +238,7 @@ export function CommandGroup({
         )}
         {running && <span className="ml-auto shrink-0">{statusIcon.running}</span>}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 ml-7 overflow-hidden rounded-lg border border-border">
+      <CollapsibleContent className="mt-1 overflow-hidden rounded-lg border border-border">
         <ul className="divide-y divide-border">
           {calls.map((call, position) => (
             <li key={call.callId}>
@@ -254,17 +254,19 @@ export function CommandGroup({
 }
 
 function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
-  const text = commandFindText(call)
-  const { distinctLabel, command } = text
-  const revealsCommand = reveal !== null && isInCommand(text, reveal.match.offset)
-  const revealsLabel = reveal !== null && !revealsCommand
-  const [open, setOpen] = useFindDisclosure(revealsCommand ? reveal : null)
+  const { distinctLabel, command } = commandFindText(call)
+  const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-1 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-        <span className={cn("min-w-0", revealsLabel ? "wrap-anywhere" : "truncate")} title={command}>
-          {distinctLabel === null ? command : <Highlighted text={distinctLabel} />}
+    <Collapsible>
+      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+        <span className={cn("min-w-0 font-mono text-foreground", truncate)} title={command}>
+          <Highlighted text={command} />
         </span>
+        {distinctLabel !== null && (
+          <span className={cn("min-w-0 max-w-1/2 shrink-0", truncate)} title={distinctLabel}>
+            <Highlighted text={distinctLabel} />
+          </span>
+        )}
         <RiArrowRightSLine
           aria-hidden
           className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
@@ -362,14 +364,16 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
     </>
   )
   if (diff === "")
-    return <div className="my-1 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    return (
+      <div className="my-1 -mx-2 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    )
   return (
     <Collapsible className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         {row}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 pl-7">
+      <CollapsibleContent className="mt-1">
         <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono text-xs">
           {diff}
         </pre>
