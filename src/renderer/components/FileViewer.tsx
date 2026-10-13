@@ -1,27 +1,47 @@
 import { useAtomRefresh, useAtomSuspense } from "@effect/atom-react"
-import { File, Virtualizer } from "@pierre/diffs/react"
+import { Editor } from "@pierre/diffs/edit"
+import { EditProvider, File, type LineAnnotation, Virtualizer } from "@pierre/diffs/react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { type KeyboardEvent, Suspense, useDeferredValue, useEffect } from "react"
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  Suspense,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { RiCloseLine, RiFileCopyLine } from "react-icons/ri"
+import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { fileContentAtom, onPushEvent } from "../lib/rpc.ts"
+import { callPromise, fileContentAtom, onPushEvent, RpcError } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
-import { parentOf } from "../stores/explorer.ts"
+import { emptyDraft, type LineComment, useDrafts } from "../stores/drafts.ts"
+import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
+import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Button } from "./ui/button.tsx"
 
 interface FileViewerProps {
+  readonly threadId: string
   readonly root: string
   /** Relative to `root`. */
   readonly path: string
   readonly onClose: () => void
 }
 
-/** A read-only, highlighted view of one file. */
-export function FileViewer({ root, path, onClose }: FileViewerProps) {
+const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
+  type: EType,
+  options: ConstructorParameters<typeof Editor<EType, LAnnotation, Caret>>[1],
+  editStateKey?: string,
+) => new Editor<EType, LAnnotation, Caret>(type, options, editStateKey)
+
+/** An editable, highlighted view of one file whose lines take comments for the thread's next message. */
+export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
   // Switching files keeps the last file on screen until the next one loads.
   const shownPath = useDeferredValue(path)
 
@@ -33,42 +53,78 @@ export function FileViewer({ root, path, onClose }: FileViewerProps) {
   }
 
   return (
-    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape bubbles up from the buttons and the scrolling code.
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Escape bubbles up from the buttons and the editor.
     <section aria-label={path} onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
-        <span className="min-w-0 flex-1 truncate font-mono text-xs" title={path}>
-          {path}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={m.explorer_copy_path()}
-          title={m.explorer_copy_path()}
-          onClick={() => void navigator.clipboard.writeText(path)}
-        >
-          <RiFileCopyLine aria-hidden />
-        </Button>
-        <Button variant="ghost" size="icon-xs" aria-label={m.viewer_close()} title={m.viewer_close()} onClick={onClose}>
-          <RiCloseLine aria-hidden />
-        </Button>
-      </header>
       <div
         className={cn("flex min-h-0 flex-1 flex-col transition-opacity", shownPath !== path && "opacity-60 delay-150")}
       >
-        <Suspense fallback={<Note text={m.viewer_loading()} className="animate-reveal" />}>
-          <FileContent key={shownPath} root={root} path={shownPath} />
-        </Suspense>
+        <EditProvider createEditor={createEditor}>
+          <Suspense
+            fallback={
+              <>
+                <ViewerHeader path={path} onClose={onClose} />
+                <Note text={m.viewer_loading()} className="animate-reveal" />
+              </>
+            }
+          >
+            <FileContent key={shownPath} threadId={threadId} root={root} path={shownPath} onClose={onClose} />
+          </Suspense>
+        </EditProvider>
       </div>
     </section>
   )
 }
 
+function ViewerHeader({ path, onClose, children }: { path: string; onClose: () => void; children?: ReactNode }) {
+  return (
+    <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
+      <span className="min-w-0 flex-1 truncate font-mono text-xs" title={path}>
+        {path}
+      </span>
+      {children}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={m.explorer_copy_path()}
+        title={m.explorer_copy_path()}
+        onClick={() => void navigator.clipboard.writeText(path)}
+      >
+        <RiFileCopyLine aria-hidden />
+      </Button>
+      <Button variant="ghost" size="icon-xs" aria-label={m.viewer_close()} title={m.viewer_close()} onClick={onClose}>
+        <RiCloseLine aria-hidden />
+      </Button>
+    </header>
+  )
+}
+
+/** The one open comment box: a new comment on a line range, or an edit of an existing comment. */
+type CommentForm =
+  | { readonly kind: "new"; readonly startLine: number; readonly endLine: number }
+  | { readonly kind: "edit"; readonly commentId: string }
+
+type Annotation = { readonly kind: "comment"; readonly comment: LineComment } | Extract<CommentForm, { kind: "new" }>
+
+const linesOf = (text: string, startLine: number, endLine: number) =>
+  text
+    .split("\n")
+    .slice(startLine - 1, endLine)
+    .join("\n")
+
 /** Suspends until the file is read, then reloads it in place when its folder changes on disk. */
-function FileContent({ root, path }: { root: string; path: string }) {
+function FileContent({ threadId, root, path, onClose }: Omit<FileViewerProps, "path"> & { path: string }) {
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
   const reload = useAtomRefresh(contentAtom)
   const theme = useTheme(useSettings().appearance.theme)
+  const base = useExplorer((state) => (state.byRoot[root] ?? emptyTree).unsaved[path])
+  const setUnsaved = useExplorer((state) => state.setUnsaved)
+  const allComments = useDrafts((state) => (state.byThreadId[threadId] ?? emptyDraft).comments)
+  const [form, setForm] = useState<CommentForm | null>(null)
+  /** What was written by the last save, shown until the read after it arrives. */
+  const [saved, setSaved] = useState<{ over: string; text: string } | null>(null)
+  const [isSaving, startSaving] = useTransition()
+  const editorRef = useRef<Editor<"file", Annotation> | null>(null)
 
   useEffect(
     () =>
@@ -80,28 +136,184 @@ function FileContent({ root, path }: { root: string; path: string }) {
 
   if (AsyncResult.isFailure(content)) {
     return (
-      <p role="alert" className="p-3 text-xs text-destructive">
-        {m.viewer_failed({ message: errorMessage(Cause.squash(content.cause)) })}
-      </p>
+      <>
+        <ViewerHeader path={path} onClose={onClose} />
+        <p role="alert" className="p-3 text-xs text-destructive">
+          {m.viewer_failed({ message: errorMessage(Cause.squash(content.cause)) })}
+        </p>
+      </>
     )
   }
-  const { content: contents, truncated, binary } = content.value
-  if (binary) return <Note text={m.viewer_binary()} />
+  const { content: disk, truncated, binary } = content.value
+  if (binary) {
+    return (
+      <>
+        <ViewerHeader path={path} onClose={onClose} />
+        <Note text={m.viewer_binary()} />
+      </>
+    )
+  }
+
+  const editable = !truncated
+  // The editor replaces its document whenever this text changes, so unsaved edits pin it to where they started.
+  const shown = base ?? (saved?.over === disk ? saved.text : disk)
+  const changedOnDisk = base !== undefined && base !== disk
+  const currentText = () => editorRef.current?.getText() ?? shown
+
+  const save = (expected: string | null) => {
+    const text = currentText()
+    startSaving(async () => {
+      try {
+        await callPromise("fs.write", { root, path, content: text, expected })
+        setSaved({ over: disk, text })
+        setUnsaved(root, path, currentText() === text ? null : text)
+        reload()
+      } catch (cause) {
+        if (cause instanceof RpcError && cause.tag === "FsWriteConflict") reload()
+        else toast.error(m.viewer_save_failed({ path, message: errorMessage(cause) }))
+      }
+    })
+  }
+
+  const commentOnSelection = () => {
+    const [selection] = editorRef.current?.getViewState().selections ?? []
+    if (selection) setForm({ kind: "new", startLine: selection.start.line + 1, endLine: selection.end.line + 1 })
+  }
+
+  const closeForm = () => {
+    setForm(null)
+    editorRef.current?.focus()
+  }
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.shiftKey) return
+    // With Alt held, macOS reports the composed character as `key`, so the comment shortcut matches on `code`.
+    if (event.altKey && event.code === "KeyC") {
+      event.preventDefault()
+      commentOnSelection()
+    } else if (!event.altKey && event.key === "s") {
+      event.preventDefault()
+      if (base !== undefined && !changedOnDisk) save(base)
+    }
+  }
+
+  const comments = allComments.filter((comment) => comment.path === path)
+  const annotations: Array<LineAnnotation<Annotation>> = [
+    ...comments.map((comment) => ({ lineNumber: comment.endLine, metadata: { kind: "comment" as const, comment } })),
+    ...(form?.kind === "new" ? [{ lineNumber: form.endLine, metadata: form }] : []),
+  ]
+
+  const renderAnnotation = ({ metadata }: LineAnnotation<Annotation>) => {
+    if (metadata.kind === "new") {
+      return (
+        <LineCommentForm
+          path={path}
+          startLine={metadata.startLine}
+          endLine={metadata.endLine}
+          onSubmit={(body) => {
+            useDrafts.getState().addComment(threadId, {
+              id: crypto.randomUUID(),
+              path,
+              startLine: metadata.startLine,
+              endLine: metadata.endLine,
+              code: linesOf(currentText(), metadata.startLine, metadata.endLine),
+              body,
+            })
+            closeForm()
+          }}
+          onCancel={closeForm}
+        />
+      )
+    }
+    const { comment } = metadata
+    if (form?.kind === "edit" && form.commentId === comment.id) {
+      return (
+        <LineCommentForm
+          path={path}
+          startLine={comment.startLine}
+          endLine={comment.endLine}
+          initialBody={comment.body}
+          onSubmit={(body) => {
+            useDrafts.getState().updateComment(threadId, comment.id, body)
+            closeForm()
+          }}
+          onCancel={closeForm}
+        />
+      )
+    }
+    return (
+      <LineCommentCard
+        comment={comment}
+        onEdit={() => setForm({ kind: "edit", commentId: comment.id })}
+        onDelete={() => useDrafts.getState().removeComment(threadId, comment.id)}
+      />
+    )
+  }
+
   return (
-    <>
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- mod+s bubbles up from the editor.
+    <div onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
+      <ViewerHeader path={path} onClose={onClose}>
+        {base !== undefined && (
+          <>
+            <span className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+              <span aria-hidden className="size-1.5 rounded-full bg-foreground" />
+              {m.viewer_unsaved()}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={isSaving || changedOnDisk}
+              title={m.viewer_save_hint()}
+              onClick={() => save(base)}
+            >
+              {m.viewer_save()}
+            </Button>
+          </>
+        )}
+      </ViewerHeader>
       {truncated && <Note text={m.viewer_truncated()} />}
+      {changedOnDisk && (
+        <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+          <span className="min-w-0 flex-1">{m.viewer_changed_on_disk()}</span>
+          <Button variant="outline" size="xs" disabled={isSaving} onClick={() => save(null)}>
+            {m.viewer_overwrite()}
+          </Button>
+          <Button variant="ghost" size="xs" onClick={() => setUnsaved(root, path, null)}>
+            {m.viewer_reload()}
+          </Button>
+        </div>
+      )}
       <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
         <File
-          file={{ name: path, contents }}
+          file={{ name: path, contents: shown }}
+          edit={editable}
+          editStateKey={JSON.stringify([root, path])}
+          editorOptions={{
+            onAttach: (editor) => {
+              editorRef.current = editor
+            },
+          }}
+          onEditChange={(event) => {
+            const edited = event.file.contents !== shown
+            if (edited !== (base !== undefined)) setUnsaved(root, path, edited ? shown : null)
+          }}
+          lineAnnotations={annotations}
+          selectedLines={form?.kind === "new" ? { start: form.startLine, end: form.endLine } : null}
+          renderAnnotation={renderAnnotation}
           options={{
             theme: theme.codeTheme,
             themeType: theme.scheme,
             overflow: "scroll",
             disableFileHeader: true,
+            enableGutterUtility: true,
+            onGutterUtilityClick: ({ start, end }) => {
+              setForm({ kind: "new", startLine: Math.min(start, end), endLine: Math.max(start, end) })
+            },
           }}
         />
       </Virtualizer>
-    </>
+    </div>
   )
 }
 

@@ -1,6 +1,7 @@
 import { Schema, Struct } from "effect"
 import {
   AccountLimits,
+  AccountProviderId,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -188,7 +189,7 @@ export const RpcMethods = {
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
-  "accounts.create": rpc(Schema.Struct({ provider: ProviderId, name: AgentProfileName }), AgentProfile),
+  "accounts.create": rpc(Schema.Struct({ provider: AccountProviderId, name: AgentProfileName }), AgentProfile),
   "accounts.rename": rpc(Schema.Struct({ id: Schema.String, name: AgentProfileName }), AgentProfile),
   /** Refused while any thread uses the account. Signs it out and deletes its home. */
   "accounts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
@@ -228,6 +229,20 @@ export const RpcMethods = {
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /**
+   * Replaces the text of the existing file `path` under `root`, with the same checks as `fs.read`. `expected` is the
+   * text the edit started from; the write fails with `FsWriteConflict` when the file no longer holds it. `null`
+   * overwrites whatever is there.
+   */
+  "fs.write": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      content: Schema.String,
+      expected: Schema.NullOr(Schema.String),
+    }),
+    Schema.Void,
+  ),
   /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 

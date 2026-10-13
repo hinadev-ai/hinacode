@@ -201,6 +201,7 @@ const handlers: Handlers = {
   "search.files": ({ threadId, query, limit }) => Search.use((search) => search.files(threadId, query, limit)),
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
+  "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
   "dialog.pickFolder": (_, sender) =>
     Effect.promise(async () => {

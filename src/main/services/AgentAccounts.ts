@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { AgentProfile, ProviderId } from "../../shared/agent.ts"
+import { AccountProviderId, AgentProfile } from "../../shared/agent.ts"
 import { nowIso } from "./clock.ts"
 import { AccountInUseError, NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { Settings } from "./Settings.ts"
@@ -17,7 +17,7 @@ export class AgentAccounts extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<AgentProfile>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<AgentProfile, PersistenceError | NotFoundError>
     readonly create: (input: {
-      readonly provider: ProviderId
+      readonly provider: AccountProviderId
       readonly name: string
     }) => Effect.Effect<AgentProfile, PersistenceError>
     readonly rename: (id: string, name: string) => Effect.Effect<AgentProfile, PersistenceError | NotFoundError>
@@ -45,7 +45,7 @@ const make = (root: string) =>
       Request: Schema.Void,
       Result: AgentProfile,
       execute: () =>
-        sql`SELECT id, provider, name FROM agent_account WHERE ${sql.in("provider", [...ProviderId.literals])} ORDER BY created_at, rowid`,
+        sql`SELECT id, provider, name FROM agent_account WHERE ${sql.in("provider", [...AccountProviderId.literals])} ORDER BY created_at, rowid`,
     })
     const findById = SqlSchema.findOneOption({
       Request: Schema.String,
@@ -69,7 +69,7 @@ const make = (root: string) =>
         ),
       )
 
-    const create = (input: { readonly provider: ProviderId; readonly name: string }) =>
+    const create = (input: { readonly provider: AccountProviderId; readonly name: string }) =>
       Effect.gen(function* () {
         const account: AgentProfile = { id: randomUUID(), provider: input.provider, name: input.name }
         const createdAt = yield* nowIso

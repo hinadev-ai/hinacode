@@ -1,6 +1,6 @@
 # kkcode
 
-kkcode is a desktop UI for coding agents. It runs Claude Code (Agent SDK) and Codex (app-server protocol) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
+kkcode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
 We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and automations triggered by webhooks or by GitHub, Linear and Slack pollers. Read `README.md` for the full feature list.
 
@@ -43,7 +43,7 @@ messages/     Paraglide catalogs, en.json and zh-TW.json
 - Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/ipc.ts`. Main pushes live updates on the `event` channel.
 - Main-process code is Effect services: `class X extends Context.Service<...>` plus an exported `layer`. Follow `services/Threads.ts`.
 - Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped.
-- A new agent backend is one `AgentProvider` in `src/main/agents/` and one entry in the `providers` record in `AgentRunner.ts`.
+- A new agent backend is one `AgentProvider` in `src/main/agents/` plus the registrations listed under "Agent providers" in `docs/arch.md`.
 - Every UI string lives in `messages/en.json` and `messages/zh-TW.json`. Add both. Don't hardcode copy in components.
 
 ## Conventions

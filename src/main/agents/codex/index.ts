@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
@@ -16,6 +15,7 @@ import type {
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
+import { resolveBinary } from "../binary.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
 import { perHome } from "../usage.ts"
@@ -70,21 +70,6 @@ const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
   allow: "accept",
   allow_for_session: "acceptForSession",
   deny: "decline",
-}
-
-/** A packaged Electron app may not inherit the shell PATH (mise, Homebrew), so fall back to a login shell. */
-const resolveCodexBinary = (): string => {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", ["codex"]],
-    [process.env.SHELL ?? "/bin/sh", ["-ilc", "command -v codex"]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim().split("\n").at(-1)
-      if (path) return path
-    } catch {}
-  }
-  return "codex"
 }
 
 const toQuestion = (question: ToolRequestUserInputQuestion): Question => ({
@@ -185,7 +170,7 @@ const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn inter
 
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
-  const binaryPath = resolveCodexBinary()
+  const binaryPath = resolveBinary("codex")
   const clientLock = yield* Semaphore.make(1)
   /** Keyed by agent home, "" for the CLI's own one. */
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()

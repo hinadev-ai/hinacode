@@ -29,7 +29,7 @@ import {
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
@@ -61,8 +61,6 @@ function useThreadModels(thread: Thread) {
     ? { models: listed, current }
     : { models: [unlistedModel(thread.model, thread.provider), ...listed], current: undefined }
 }
-
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
 /**
  * Composer pickers sit at the bottom of the window, so their popups open upward and hang off the
@@ -126,7 +124,7 @@ export function ModelPicker({ thread, onError }: ControlProps) {
       <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-24 ${triggerClass}`}>
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent {...composerPopup}>
+      <SelectContent {...composerPopup} className="w-auto min-w-(--anchor-width)">
         {items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             {item.label}
@@ -259,14 +257,26 @@ export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly
   full: { icon: RiLockUnlockLine, label: m.access_full },
 }
 
+const supervisedHint = {
+  claude: m.access_supervised_hint_claude,
+  codex: m.access_supervised_hint_codex,
+  muse: m.access_supervised_hint_muse,
+} satisfies Record<ProviderId, () => string>
+
+const autoHint = {
+  claude: (model: ModelInfo | undefined) =>
+    model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
+  codex: m.access_auto_hint_codex,
+  muse: m.access_auto_hint_muse,
+} satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
+
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
   switch (accessMode) {
     case "supervised":
-      return thread.provider === "codex" ? m.access_supervised_hint_codex() : m.access_supervised_hint_claude()
+      return supervisedHint[thread.provider]()
     case "auto":
-      if (thread.provider === "codex") return m.access_auto_hint_codex()
-      return model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits()
+      return autoHint[thread.provider](model)
     case "full":
       return m.access_full_hint()
   }
