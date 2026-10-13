@@ -33,7 +33,10 @@ export const ServerFrame = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("result"),
     id: Schema.Int,
-    envelope: Schema.Union([Schema.Struct({ error: Failure }), Schema.Struct({ result: Schema.optionalKey(Schema.Unknown) })]),
+    envelope: Schema.Union([
+      Schema.Struct({ error: Failure }),
+      Schema.Struct({ result: Schema.optionalKey(Schema.Unknown) }),
+    ]),
   }),
   Schema.Struct({ type: Schema.Literal("event"), event: PushEvent }),
 ])
