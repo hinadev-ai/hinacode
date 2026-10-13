@@ -485,6 +485,8 @@
   "effort_ultra": "極致",
   "thread_fast_mode": "快速",
   "thread_fast_mode_hint": "回應更快，但會消耗更多用量",
+  "thread_options_more": "更多選項",
+  "thread_option_value": "{name}：{value}",
   "composer_commands_label": "指令",
   "composer_files_label": "檔案",
   "access_picker": "權限",

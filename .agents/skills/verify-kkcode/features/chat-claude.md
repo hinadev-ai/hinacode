@@ -16,7 +16,7 @@ For a manual simulation, launch with `KKCODE_MOCK_CLAUDE=usage-limit` and an iso
 - `approval` shows `Claude Code needs your approval` with `Allow`, `Allow for session`, `Deny` for Bash and edits, and the thread status `Awaiting approval`.
 - `interrupt` stops a running turn from `Stop` or `Ctrl+Shift+C`.
 - `model-switch` changes the model for the next turn from the composer `Model` select.
-- `effort-fast` the composer `Effort` select and `Fast` toggle (`aria-pressed`), shown only when the model supports them; switching to a model without them resets them.
+- `effort-fast` the composer `Effort` select and `Fast` toggle (`aria-pressed`), shown only when the model supports them; switching to a model without them resets them. A narrow composer drops their labels, then moves them into the `More options` menu.
 - `completions` typing `/` lists Claude commands and skills, `@` lists workspace files, in a listbox above the composer (`Commands` or `Files`); ArrowUp/ArrowDown move, `Enter` or `Tab` inserts, `Escape` closes.
 - `restore` shows the full history after a relaunch.
 - `resume` continues the same Claude session after a relaunch, with earlier context intact.
