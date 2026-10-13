@@ -39,7 +39,8 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile
-      - run: xvfb-run -a pnpm test:e2e
+      # The runner has xvfb-run and openbox installed. Without a window manager, minimizing a window does nothing.
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
