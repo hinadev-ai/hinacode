@@ -216,6 +216,8 @@ export class GitHub extends Context.Service<
   GitHub,
   {
     readonly auth: Effect.Effect<GitHubAuth, CommandError | Schema.SchemaError>
+    /** The signed-in account's token for github.com. Stays in main: never log it or send it to the renderer. */
+    readonly token: Effect.Effect<string, GitHubError>
     /** Runs `gh ...args` in `cwd` and returns stdout. */
     readonly run: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, GitHubError>
     readonly pullRequest: (
@@ -323,6 +325,7 @@ const make = Effect.gen(function* () {
 
   return GitHub.of({
     auth,
+    token: gh(homedir(), ["auth", "token", "--hostname", "github.com"]).pipe(Effect.map((stdout) => stdout.trim())),
     run: gh,
     pullRequest: (raw) => Effect.flatMap(requirePullRequestUrl(raw), (url) => view(homedir(), url)),
     pullRequestDetail: (raw) =>

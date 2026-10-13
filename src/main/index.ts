@@ -9,8 +9,16 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
 import { bringToFront, makeEventsLayer, registerIpc } from "./ipc.ts"
-import { BROWSER_PARTITION, externalUrl, isAppDocument, isInside, lockDownWebview } from "./security.ts"
-import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
+import {
+  BROWSER_PARTITION,
+  externalUrl,
+  githubAssetId,
+  isAllowedNavigation,
+  isInside,
+  lockDownWebview,
+  projectFileRequest,
+} from "./security.ts"
+import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
@@ -61,7 +69,12 @@ const mockResetMs = Number(process.env["KKCODE_MOCK_RESET_MS"] ?? 60000)
 if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
   throw new Error("KKCODE_MOCK_RESET_MS must be between 0 and 3600000")
 
-protocol.registerSchemesAsPrivileged([{ scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } }])
+protocol.registerSchemesAsPrivileged([
+  { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
+  // `stream` lets <video> and <audio> seek with Range requests.
+  { scheme: GITHUB_ASSET_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
+  { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
+])
 
 /** Serves `kkcode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
 const serveAttachments = () =>
@@ -69,6 +82,53 @@ const serveAttachments = () =>
     const path = decodeURIComponent(new URL(request.url).pathname.slice(1))
     if (!isInside(Attachments.attachmentsRoot(), path)) return new Response(null, { status: 403 })
     return net.fetch(pathToFileURL(path).toString())
+  })
+
+type AppRuntime = ManagedRuntime.ManagedRuntime<GitHub.GitHub | Files.Files, unknown>
+
+const rangeOf = (request: Request): RequestInit => {
+  const range = request.headers.get("range")
+  return range === null ? {} : { headers: { range } }
+}
+
+/**
+ * Serves `kkcode-github-asset://asset/<id>` from `github.com/user-attachments/assets/<id>`, which private
+ * repositories only answer for a signed-in account. GitHub redirects to a short-lived signed URL, fetched
+ * without the token.
+ */
+const serveGitHubAssets = (runtime: AppRuntime) =>
+  protocol.handle(GITHUB_ASSET_PROTOCOL, async (request) => {
+    const id = githubAssetId(request.url)
+    if (id === null) return new Response(null, { status: 404 })
+    const token = await runtime.runPromise(Effect.flatMap(GitHub.GitHub, (github) => github.token)).catch(() => null)
+    if (token === null) return new Response(null, { status: 401 })
+    // Node's fetch, because Electron's net.fetch throws on a manual redirect instead of returning it.
+    const redirect = await fetch(`https://github.com/user-attachments/assets/${id}`, {
+      headers: { authorization: `Bearer ${token}` },
+      redirect: "manual",
+    })
+    const signed = externalUrl(redirect.headers.get("location") ?? "")
+    if (signed === null) return new Response(null, { status: redirect.status === 404 ? 404 : 502 })
+    return net.fetch(signed, rangeOf(request))
+  })
+
+/**
+ * Serves `kkcode-file://root/<encoded root>/<path>` for files inside a project root or worktree. The CSP
+ * sandbox runs every served document in an opaque origin without popups or top navigation, however it is
+ * embedded, so an HTML file can run its scripts but never reach the app.
+ */
+const serveProjectFiles = (runtime: AppRuntime) =>
+  protocol.handle(PROJECT_FILE_PROTOCOL, async (request) => {
+    const target = projectFileRequest(request.url)
+    if (target === null) return new Response(null, { status: 404 })
+    const file = await runtime
+      .runPromise(Effect.flatMap(Files.Files, (files) => files.resolve(target.root, target.path)))
+      .catch(() => null)
+    if (file === null) return new Response(null, { status: 403 })
+    const response = await net.fetch(pathToFileURL(file).toString(), rangeOf(request))
+    const headers = new Headers(response.headers)
+    headers.set("content-security-policy", "sandbox allow-scripts")
+    return new Response(response.body, { status: response.status, headers })
   })
 
 const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
@@ -165,7 +225,7 @@ const createWindow = () => {
     return { action: "deny" }
   })
   const stayInApp = (event: Electron.Event<{ url: string; isMainFrame: boolean }>) => {
-    if (!event.isMainFrame || !isAppDocument(event.url, appUrl)) event.preventDefault()
+    if (!isAllowedNavigation(event.url, event.isMainFrame, appUrl)) event.preventDefault()
   }
   window.webContents.on("will-frame-navigate", stayInApp)
   window.webContents.on("will-redirect", stayInApp)
@@ -187,6 +247,8 @@ app.whenReady().then(async () => {
   registerIpc(runtime, appUrl)
   app.dock?.setIcon(icon)
   serveAttachments()
+  serveGitHubAssets(runtime)
+  serveProjectFiles(runtime)
   limitBrowserPermissions()
   let disposed = false
   app.on("before-quit", (event) => {
