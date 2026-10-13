@@ -66,3 +66,10 @@ Feature: Settings
     When I clear the Linear API key
     Then the Linear API key status reads "No key stored."
     And the secret "linear.apiKey" is not stored
+
+  Scenario: Archive settings are saved
+    When I open settings
+    And I open the settings section "Archive"
+    And I turn on the setting "Archive when all linked pull requests merge"
+    And I turn on the setting "Remove the worktree when archiving"
+    Then the archive settings are saved as both on

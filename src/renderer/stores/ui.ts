@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 import {
   clampWidth,
@@ -11,8 +12,21 @@ import {
 
 export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser"
 export type SidePanelSize = "normal" | "wide"
+export type SidebarTab = "threads" | "archived"
+
+let findRevealRequests = 0
 
 const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
+const SIDEBAR_PROJECTS_KEY = "kkcode.sidebarProjects"
+
+function loadProjectFilter(): ReadonlyArray<string> {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(SIDEBAR_PROJECTS_KEY) ?? "[]")
+    return Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []
+  } catch {
+    return []
+  }
+}
 const sidePanelWidthKeys: Record<SidePanelSize, string> = {
   normal: "kkcode.sidePanelWidth",
   wide: "kkcode.sidePanelWideWidth",
@@ -24,6 +38,11 @@ interface UiState {
   readonly sidePanelOpen: boolean
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
+  readonly sidebarTab: SidebarTab
+  /** Narrows the sidebar to threads whose title, or whose project's name, contains it. */
+  readonly sidebarQuery: string
+  /** The projects the sidebar shows. Empty shows every project. */
+  readonly sidebarProjectIds: ReadonlyArray<string>
   /** The side panel view each thread last showed. Threads not in here show `lastSidePanelView`. */
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
@@ -49,10 +68,15 @@ interface UiState {
   readonly findMessageId: string | null
   /** Bumped to ask the find bar to focus and select its field. */
   readonly findFocusRequest: number
+  readonly findReveal: FindRevealRequest | null
   readonly toggleSidebar: () => void
   readonly toggleSidePanel: () => void
   readonly setSidebarOverlayOpen: (open: boolean) => void
   readonly setSidePanelOverlayOpen: (open: boolean) => void
+  readonly setSidebarTab: (tab: SidebarTab) => void
+  readonly setSidebarQuery: (query: string) => void
+  /** Persists the sidebar's project filter. */
+  readonly setSidebarProjectIds: (ids: ReadonlyArray<string>) => void
   /** Shows `view` for the thread, opening the panel. `focus` also moves focus into the view. */
   readonly showView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   /** Like `showView`, but hides the panel when it already shows `view`, as clicking an active activity bar icon does. */
@@ -68,6 +92,7 @@ interface UiState {
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
   readonly setFindQuery: (query: string) => void
+  readonly revealFindMatch: (match: FindMatch | null) => void
   /** Clamps, applies and persists the desktop sidebar width. */
   readonly setSidebarWidth: (width: number) => void
   /** Clamps, applies and persists the docked side panel width for one size. Null restores its default. */
@@ -94,6 +119,9 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelOpen: true,
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
+  sidebarTab: "threads",
+  sidebarQuery: "",
+  sidebarProjectIds: loadProjectFilter(),
   sidePanelViews: {},
   lastSidePanelView: "details",
   sidePanelWide: false,
@@ -111,6 +139,7 @@ export const useUi = create<UiState>()((set, get) => ({
   findQuery: "",
   findMessageId: null,
   findFocusRequest: 0,
+  findReveal: null,
   toggleSidebar: () =>
     set((state) =>
       getPanelLayout() === "compact"
@@ -127,6 +156,12 @@ export const useUi = create<UiState>()((set, get) => ({
     set((state) => ({ sidebarOverlayOpen: open, sidePanelOverlayOpen: open ? false : state.sidePanelOverlayOpen })),
   setSidePanelOverlayOpen: (open) =>
     set((state) => ({ sidePanelOverlayOpen: open, sidebarOverlayOpen: open ? false : state.sidebarOverlayOpen })),
+  setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+  setSidebarQuery: (sidebarQuery) => set({ sidebarQuery }),
+  setSidebarProjectIds: (sidebarProjectIds) => {
+    localStorage.setItem(SIDEBAR_PROJECTS_KEY, JSON.stringify(sidebarProjectIds))
+    set({ sidebarProjectIds })
+  },
   showView: (threadId, view, options) =>
     set((state) => ({
       sidePanelViews: { ...state.sidePanelViews, [threadId]: view },
@@ -153,8 +188,9 @@ export const useUi = create<UiState>()((set, get) => ({
       findMessageId: messageId ?? null,
       findFocusRequest: state.findFocusRequest + 1,
     })),
-  closeFind: () => set({ findThreadId: null }),
+  closeFind: () => set({ findThreadId: null, findReveal: null }),
   setFindQuery: (findQuery) => set({ findQuery, findMessageId: null }),
+  revealFindMatch: (match) => set({ findReveal: match && { id: ++findRevealRequests, match } }),
   setSidebarWidth: (width) => {
     const sidebarWidth = clampWidth(SIDEBAR_BOUNDS, width)
     saveWidth(SIDEBAR_WIDTH_KEY, sidebarWidth)

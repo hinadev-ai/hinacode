@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, Question, TokenUsage } from "./agent.ts"
+import { PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
@@ -156,7 +157,24 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "settled", "archived"])
+/** Where a thread's new worktree starts: a new branch forked from `baseRef`, or an open pull request's head. */
+export const WorktreeSource = Schema.Union([
+  Schema.TaggedStruct("branch", { baseRef: Schema.String }),
+  Schema.TaggedStruct("pullRequest", { selector: PullRequestSelector }),
+])
+export type WorktreeSource = typeof WorktreeSource.Type
+
+/** An open pull request the worktree picker can check out. */
+export const OpenPullRequest = Schema.Struct({
+  number: Schema.Int,
+  title: Schema.String,
+  headRefName: Schema.String,
+  author: Schema.String,
+  isDraft: Schema.Boolean,
+})
+export type OpenPullRequest = typeof OpenPullRequest.Type
+
+export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
@@ -310,6 +328,14 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
+export const ArchiveSettings = Schema.Struct({
+  /** Archive a thread once every pull request linked to it is merged. */
+  whenMerged: Schema.Boolean,
+  /** Archiving also deletes the thread's worktree folder, and its branch when merged into its base. */
+  removeWorktree: Schema.Boolean,
+})
+export type ArchiveSettings = typeof ArchiveSettings.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
@@ -333,6 +359,7 @@ export const Settings = Schema.Struct({
   /** The access mode new threads start with. */
   defaultAccessMode: AccessMode,
   notifications: NotificationSettings,
+  archive: ArchiveSettings,
 })
 export type Settings = typeof Settings.Type
 
@@ -345,6 +372,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  archive: { whenMerged: false, removeWorktree: false },
 }
 
 export const PullRequestLink = Schema.Struct({
