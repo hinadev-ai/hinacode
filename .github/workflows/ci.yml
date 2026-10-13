@@ -50,6 +50,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - if: runner.os == 'macOS'
+        name: Check the screen is unlocked
+        run: |
+          if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
+            echo "::error::Unlock the runner's screen. Electron never reports a window as shown while it is locked."
+            exit 1
+          fi
       - run: pnpm install --frozen-lockfile
       - run: ${{ matrix.command }}
       - if: failure()
