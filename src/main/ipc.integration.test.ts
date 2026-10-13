@@ -562,6 +562,8 @@ describe("projects, threads and settings over rpc", () => {
     expect(failure(await invoke("fs.list", { root: rootPath, path: ".." })).tag).toBe("FsAccessError")
     expect(failure(await invoke("fs.watch", { root: dir, paths: [""] })).tag).toBe("FsAccessError")
     expect(failure(await invoke("fs.read", { root: rootPath, path: "../kkcode.sqlite" })).tag).toBe("FsAccessError")
+    const outsideWrite = await invoke("fs.write", { root: dir, path: "kkcode.sqlite", content: "", expected: null })
+    expect(failure(outsideWrite).tag).toBe("FsAccessError")
   })
 
   test("cloning into a folder that already holds that repository adds it without cloning", async () => {
