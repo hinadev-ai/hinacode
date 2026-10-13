@@ -64,6 +64,19 @@ function useThreadModels(thread: Thread) {
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
+/**
+ * Composer pickers sit at the bottom of the window, so their popups open upward and hang off the
+ * trigger's left edge. Aligning the selected row with the trigger (the Select default) leaves only
+ * the rows that fit between the trigger and the window edge, about three, floating over the composer.
+ */
+const composerPopup = {
+  side: "top",
+  align: "start",
+  sideOffset: 6,
+  alignItemWithTrigger: false,
+  className: "max-h-[min(24rem,var(--available-height))] w-auto min-w-(--anchor-width)",
+} as const
+
 export function AgentPicker({ thread, onError }: ControlProps) {
   const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
   return (
@@ -77,7 +90,7 @@ export function AgentPicker({ thread, onError }: ControlProps) {
       <SelectTrigger size="sm" aria-label={m.thread_agent_picker()} className={triggerClass}>
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent {...composerPopup}>
         {providers.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             <ProviderIcon provider={item.value} />
@@ -113,7 +126,7 @@ export function ModelPicker({ thread, onError }: ControlProps) {
       <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-24 ${triggerClass}`}>
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent {...composerPopup}>
         {items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             {item.label}
@@ -154,7 +167,7 @@ export function AccountPicker({ thread, onError }: ControlProps) {
         <RiUserLine aria-hidden />
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent {...composerPopup}>
         {items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             {item.label}
@@ -203,7 +216,7 @@ export function EffortPicker({ thread, onError }: ControlProps) {
         <RiBrainLine aria-hidden />
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent {...composerPopup}>
         {items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             {item.label}
@@ -282,7 +295,7 @@ export function AccessPicker({ thread, onError }: ControlProps) {
         <Icon aria-hidden />
         <SelectValue />
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+      <SelectContent {...composerPopup}>
         {items.map((item) => {
           const ItemIcon = accessModes[item.value].icon
           return (
