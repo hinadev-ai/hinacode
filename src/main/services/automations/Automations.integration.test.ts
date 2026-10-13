@@ -1,4 +1,7 @@
+import { mkdtempSync } from "node:fs"
 import { createServer } from "node:net"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
@@ -14,6 +17,7 @@ import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
 import { McpCredentials, layer as credentialsLayer } from "../../mcp/credentials.ts"
 import { LINEAR_API_KEY_SECRET } from "../../mcp/index.ts"
+import * as AgentAccounts from "../AgentAccounts.ts"
 import * as AgentRunner from "../AgentRunner.ts"
 import { Events } from "../Events.ts"
 import * as Git from "../Git.ts"
@@ -50,9 +54,11 @@ vi.mock("@linear/sdk", async (importOriginal) => ({
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([]),
-  account: Effect.succeed({ type: "signedOut" }),
-  planLimits: Effect.succeed(null),
+  account: () => Effect.succeed({ type: "signedOut" }),
+  planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
+  signIn: () => Effect.die("unused"),
+  signOut: () => Effect.void,
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
@@ -80,6 +86,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,

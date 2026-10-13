@@ -10,6 +10,8 @@ import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import { BROWSER_PARTITION, externalUrl, isAppDocument, isInside, lockDownWebview } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
+import * as AgentAccounts from "./services/AgentAccounts.ts"
+import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as AutoArchive from "./services/AutoArchive.ts"
@@ -53,12 +55,13 @@ const serveAttachments = () =>
     return net.fetch(pathToFileURL(path).toString())
   })
 
-const makeAppLayer = (dbPath: string) => {
+const makeAppLayer = (dbPath: string, accountsRoot: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(accountsRoot)),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
@@ -74,7 +77,7 @@ const makeAppLayer = (dbPath: string) => {
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer).pipe(
+  return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
@@ -150,7 +153,8 @@ const createWindow = () => {
 }
 
 app.whenReady().then(async () => {
-  const runtime = ManagedRuntime.make(makeAppLayer(join(app.getPath("userData"), "kkcode.sqlite")))
+  const userData = app.getPath("userData")
+  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite"), join(userData, "accounts")))
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
   registerIpc(runtime, appUrl)

@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Layer, PubSub, Stream } from "effect"
@@ -14,6 +14,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials, layer as credentialsLayer } from "../mcp/credentials.ts"
+import * as AgentAccounts from "./AgentAccounts.ts"
 import * as AgentRunner from "./AgentRunner.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
@@ -46,9 +47,11 @@ const commit = (cwd: string, message: string) =>
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([]),
+  account: () => Effect.succeed({ type: "signedOut" }),
+  planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
-  account: Effect.succeed({ type: "signedOut" }),
-  planLimits: Effect.succeed(null),
+  signIn: () => Effect.die("unused"),
+  signOut: () => Effect.void,
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
@@ -105,6 +108,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(join(dirname(dbPath), "accounts"))),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,

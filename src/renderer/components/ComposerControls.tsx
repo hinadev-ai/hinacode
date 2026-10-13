@@ -11,6 +11,7 @@ import {
   RiLockUnlockLine,
   RiShieldCheckLine,
   RiShieldUserLine,
+  RiUserLine,
 } from "react-icons/ri"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
@@ -29,6 +30,7 @@ import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { Input } from "./ui/input.tsx"
@@ -108,8 +110,49 @@ export function ModelPicker({ thread, onError }: ControlProps) {
 
   return (
     <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-0 ${triggerClass}`}>
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-24 ${triggerClass}`}>
         <SelectValue className="min-w-0 truncate" />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+const CLI_LOGIN = "cli"
+
+/**
+ * Which account the thread bills to. Shown only when the agent has an added account, and fixed once the
+ * thread has a session, because the session's transcript lives in that account's home.
+ */
+export function AccountPicker({ thread, onError }: ControlProps) {
+  const accounts = useProviderAccounts(thread.provider)
+  if (accounts.length === 0) return null
+  const items = [
+    { value: CLI_LOGIN, label: m.account_cli_login() },
+    ...accounts.map((account) => ({ value: account.id, label: account.name })),
+  ]
+  const current = thread.accountId ?? CLI_LOGIN
+
+  return (
+    <Select
+      items={items}
+      value={current}
+      disabled={thread.providerSessionId !== null}
+      onValueChange={(value) =>
+        value !== null &&
+        value !== current &&
+        update({ id: thread.id, accountId: value === CLI_LOGIN ? null : value }, onError)
+      }
+    >
+      <SelectTrigger size="sm" aria-label={m.account_picker()} className={triggerClass}>
+        <RiUserLine aria-hidden />
+        <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {items.map((item) => (

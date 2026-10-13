@@ -34,6 +34,18 @@ export const memoizeByFile = <A>(parse: (path: string) => Promise<A>) => {
   }
 }
 
+/** One reader per agent home, so each keeps its own file cache. */
+export const perHome = <A>(make: (home: string) => A) => {
+  const byHome = new Map<string, A>()
+  return (home: string): A => {
+    const existing = byHome.get(home)
+    if (existing !== undefined) return existing
+    const made = make(home)
+    byHome.set(home, made)
+    return made
+  }
+}
+
 /** Sums tokens per model, the model that spent the most first. */
 export const toThreadUsage = (
   spent: Iterable<{ readonly model: string; readonly tokens: Tokens }>,

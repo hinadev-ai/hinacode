@@ -24,6 +24,7 @@ import {
   type WorktreeBusyError,
   type WorktreeTakenError,
 } from "./errors.ts"
+import { AgentAccounts } from "./AgentAccounts.ts"
 import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
@@ -61,8 +62,10 @@ export interface CreateThread {
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
-  /** Refused once the thread has a message. */
+  /** Refused once the thread has a message. Moves the thread to the new agent's default account unless `accountId` is given. */
   readonly provider?: ProviderId | undefined
+  /** Refused once the thread has a provider session, whose transcript lives in the account's home. */
+  readonly accountId?: string | null | undefined
   readonly model?: string | undefined
   /** Null goes back to the model's default effort. */
   readonly effort?: string | null | undefined
@@ -149,6 +152,7 @@ const make = Effect.gen(function* () {
   const git = yield* Git
   const github = yield* GitHub
   const settings = yield* Settings
+  const accounts = yield* AgentAccounts
   const terminals = yield* Terminals
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
@@ -207,7 +211,7 @@ const make = Effect.gen(function* () {
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
         : undefined
       const { next } = yield* nextSortIndex(input.projectId).pipe(Effect.mapError(persistence("threads.create")))
-      const { defaultAccessMode } = yield* settings.get
+      const { defaultAccessMode, defaultAccount } = yield* settings.get
       const now = yield* nowIso
       const thread: Thread = {
         id: randomUUID(),
@@ -216,6 +220,7 @@ const make = Effect.gen(function* () {
         effort: null,
         fastMode: false,
         accessMode: defaultAccessMode,
+        accountId: defaultAccount[input.provider],
         providerSessionId: null,
         status: "idle",
         usageLimit: null,
@@ -232,10 +237,25 @@ const make = Effect.gen(function* () {
   const update = (input: UpdateThread) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
-      if (input.provider !== undefined && input.provider !== current.provider && (yield* started(input.id))) {
+      const switchesAgent = input.provider !== undefined && input.provider !== current.provider
+      if (switchesAgent && (yield* started(input.id))) {
         return yield* new ThreadStartedError({ id: input.id })
       }
-      return yield* write(current, input)
+      const provider = input.provider ?? current.provider
+      const accountId =
+        input.accountId !== undefined
+          ? input.accountId
+          : switchesAgent
+            ? (yield* settings.get).defaultAccount[provider]
+            : current.accountId
+      if (accountId !== current.accountId) {
+        if (current.providerSessionId !== null) return yield* new ThreadStartedError({ id: input.id })
+        // An account of another agent is as unknown to this thread as a missing one.
+        if (accountId !== null && (yield* accounts.get(accountId)).provider !== provider) {
+          return yield* new NotFoundError({ entity: "account", id: accountId })
+        }
+      }
+      return yield* write(current, { ...input, accountId: accountId === current.accountId ? undefined : accountId })
     })
 
   const write = (current: Thread, input: UpdateThread) =>
@@ -244,6 +264,7 @@ const make = Effect.gen(function* () {
         ...current,
         title: input.title ?? current.title,
         provider: input.provider ?? current.provider,
+        accountId: input.accountId === undefined ? current.accountId : input.accountId,
         model: input.model ?? current.model,
         effort: input.effort === undefined ? current.effort : input.effort,
         fastMode: input.fastMode ?? current.fastMode,
@@ -261,7 +282,8 @@ const make = Effect.gen(function* () {
       }
       yield* sql`
         UPDATE thread
-        SET title = ${next.title}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
+        SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
+            effort = ${next.effort},
             fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)}

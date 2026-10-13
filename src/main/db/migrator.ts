@@ -8,6 +8,7 @@ import messagesFts from "./migrations/0008_messages_fts.ts"
 import turnBaseTree from "./migrations/0007_turn_base_tree.ts"
 import threadLimited from "./migrations/0006_thread_limited.ts"
 import archive from "./migrations/0009_archive.ts"
+import agentAccounts from "./migrations/0010_agent_accounts.ts"
 
 const run = Migrator.make({})
 
@@ -25,5 +26,6 @@ export const runMigrations = run({
     "7_turn_base_tree": turnBaseTree,
     "8_messages_fts": messagesFts,
     "9_archive": archive,
+    "10_agent_accounts": agentAccounts,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

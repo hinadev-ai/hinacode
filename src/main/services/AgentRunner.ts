@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Duration, Effect, FiberMap, Layer, type Schema, Semaphore, Stream } from "effect"
+import { Cache, Context, Deferred, Duration, Effect, FiberMap, Layer, type Schema, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
   AccountLimits,
-  AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
@@ -40,6 +39,7 @@ import { Secrets } from "./Secrets.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
+import { AgentAccounts } from "./AgentAccounts.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
@@ -105,9 +105,13 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
-    readonly account: (provider: ProviderId) => Effect.Effect<AgentAccount, AgentError>
-    /** One entry per signed-in account. A provider that fails to answer reports null limits. */
-    readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>>
+    /**
+     * One entry for each provider's CLI login and each added account. One that fails to answer or is signed out
+     * reports null limits.
+     */
+    readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
+    /** Drops an account's cached limits, so a sign-in or sign-out shows on the next read. */
+    readonly forgetLimits: (provider: ProviderId, accountId: string | null) => Effect.Effect<void>
     /** Null until the thread's first turn binds an agent session. */
     readonly usage: (
       threadId: string,
@@ -178,6 +182,7 @@ const make = Effect.gen(function* () {
   const mcp = yield* McpCredentials
   const secrets = yield* Secrets
   const naming = yield* ThreadNaming
+  const accounts = yield* AgentAccounts
   const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
@@ -185,16 +190,20 @@ const make = Effect.gen(function* () {
     codex: yield* CodexProvider,
   }
 
-  // A Claude read spawns a CLI, so each provider is asked at most once a minute.
-  const cachedLimits = yield* Effect.forEach(Object.values(providers), (provider) =>
-    Effect.cachedWithTTL(
-      provider.planLimits.pipe(
+  type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
+  // A Claude read spawns a CLI, so each account is asked at most once a minute. Keyed by a `LimitsKey` as JSON.
+  const cachedLimits = yield* Cache.make({
+    lookup: (key: string) => {
+      const { provider, accountId } = JSON.parse(key) as LimitsKey
+      return accounts.home(accountId).pipe(
+        Effect.flatMap(providers[provider].planLimits),
         Effect.orElseSucceed(() => null),
-        Effect.map((limits): AccountLimits => ({ provider: provider.id, accountId: null, limits })),
-      ),
-      Duration.minutes(1),
-    ),
-  )
+        Effect.map((limits): AccountLimits => ({ provider, accountId, limits })),
+      )
+    },
+    capacity: 64,
+    timeToLive: Duration.minutes(1),
+  })
 
   const turns = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
@@ -251,7 +260,7 @@ const make = Effect.gen(function* () {
    * steer closes it and opens another after the steer's user message, so ordering by createdAt keeps
    * the transcript in the order things happened.
    */
-  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, initial: Message) => {
+  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, home: string | null, initial: Message) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
@@ -350,6 +359,7 @@ const make = Effect.gen(function* () {
             fastMode: thread.fastMode,
             accessMode: thread.accessMode,
             resumeSessionId: thread.providerSessionId,
+            home,
             mcpServer,
           })
           .pipe(Stream.runForEach(handle)),
@@ -379,6 +389,8 @@ const make = Effect.gen(function* () {
         if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
       }
       const provider = yield* providerFor(thread.provider)
+      // Resolved before anything is written, so a thread whose account is gone fails here instead of on another login.
+      const home = yield* accounts.home(thread.accountId)
       // Marking the thread running in the same critical section as resolving its cwd stops a
       // worktree removal from deleting the directory this turn is about to run in.
       const turn = yield* worktrees.exclusive(
@@ -390,7 +402,7 @@ const make = Effect.gen(function* () {
           yield* insertMessage(userMessage(threadId, prompt, attachments, now))
           yield* insertMessage(assistant)
           yield* updateThread({ id: threadId, status: "running" })
-          return makeTurn(thread, provider, cwd, assistant)
+          return makeTurn(thread, provider, cwd, home, assistant)
         }),
       )
       activeTurns.set(threadId, turn)
@@ -548,20 +560,34 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
-    account: (id) => providers[id].account,
-    limits: Effect.all(cachedLimits, { concurrency: "unbounded" }),
+    limits: Effect.gen(function* () {
+      const added = yield* accounts.list
+      const keys = Object.values(providers).flatMap(({ id }): ReadonlyArray<LimitsKey> => [
+        { provider: id, accountId: null },
+        ...added
+          .filter((account) => account.provider === id)
+          .map((account) => ({ provider: id, accountId: account.id })),
+      ])
+      return yield* Effect.forEach(keys, (key) => Cache.get(cachedLimits, JSON.stringify(key)), {
+        concurrency: "unbounded",
+      })
+    }),
+    forgetLimits: (provider, accountId) =>
+      Cache.invalidate(cachedLimits, JSON.stringify({ provider, accountId } satisfies LimitsKey)),
     usage: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
         if (thread.providerSessionId === null) return null
-        return yield* providers[thread.provider].usage(thread.providerSessionId)
+        const home = yield* accounts.home(thread.accountId)
+        return yield* providers[thread.provider].usage(thread.providerSessionId, home)
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
         const { cwd } = yield* activeWorkspace(threadId)
-        return yield* providers[thread.provider].listCommands({ threadId, cwd })
+        const home = yield* accounts.home(thread.accountId)
+        return yield* providers[thread.provider].listCommands({ threadId, cwd, home })
       }),
   })
 })

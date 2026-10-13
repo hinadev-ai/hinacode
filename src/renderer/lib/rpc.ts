@@ -61,8 +61,35 @@ export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
 )
 
-/** Not kept alive, so reopening the Models tab picks up a sign-in made in a terminal meanwhile. */
-export const accountAtom = Atom.family((provider: ProviderId) => Atom.make(call("agents.account", { provider })))
+/**
+ * Who an account is signed in as, keyed by `accountKey`. Not kept alive, so reopening the Models tab picks
+ * up a sign-in made in a terminal meanwhile.
+ */
+export const accountAtom = Atom.family((key: string) => {
+  const [provider, accountId] = JSON.parse(key) as [ProviderId, string | null]
+  return Atom.make(call("agents.account", { provider, accountId }))
+})
+/** `accountId` null is the CLI's own login. */
+export const accountKey = (provider: ProviderId, accountId: string | null) => JSON.stringify([provider, accountId])
+
+/** Accounts added in kkcode, of every agent. */
+export const accountsAtom = Atom.make(call("accounts.list", undefined)).pipe(Atom.keepAlive)
+
+export const createAccountAtom = Atom.fn((input: RpcRequest<"accounts.create">) =>
+  call("accounts.create", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+)
+
+export const renameAccountAtom = Atom.fn((input: RpcRequest<"accounts.rename">) =>
+  call("accounts.rename", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+)
+
+/** Removing the default account also clears it from the settings. */
+export const deleteAccountAtom = Atom.fn((id: string) =>
+  call("accounts.delete", { id }).pipe(
+    Effect.tap(() => Atom.refresh(accountsAtom)),
+    Effect.tap(() => Atom.refresh(settingsAtom)),
+  ),
+)
 
 /**
  * Identifies a thread together with its agent and workspace, since switching either changes what the
@@ -223,11 +250,15 @@ export const threadUsageAtom = Atom.family((threadId: string) =>
   }),
 )
 
-/** Plan limits of every signed-in account. Re-read every 2 minutes while subscribed and whenever a turn ends. */
+/**
+ * Plan limits of every signed-in account. Re-read every 2 minutes while subscribed, whenever a turn ends, and
+ * when a sign-in finishes.
+ */
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent((event) => {
-      if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
+      const turnEnded = event.type === "thread.event" && turnEnds.has(event.event.type)
+      if (turnEnded || event.type === "account.signIn") get.refreshSelf()
     }),
   )
   return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
@@ -20,6 +20,8 @@ import { AgentError, type AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
+import * as AgentAccounts from "./services/AgentAccounts.ts"
+import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Files from "./services/Files.ts"
@@ -55,6 +57,7 @@ const electron = vi.hoisted(() => ({
   focused: [] as Array<object>,
   notifications: [] as Array<{ title: string; body: string; silent: boolean }>,
   notificationOutcome: "show" as "show" | "failed",
+  opened: [] as Array<string>,
   userData: "",
 }))
 
@@ -95,7 +98,10 @@ vi.mock("electron", () => ({
     }),
   },
   dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
-  shell: { showItemInFolder: () => undefined },
+  shell: {
+    showItemInFolder: () => undefined,
+    openExternal: async (url: string) => void electron.opened.push(url),
+  },
   safeStorage: { isEncryptionAvailable: () => false },
 }))
 
@@ -137,41 +143,69 @@ const claudeLimits: PlanLimits = {
   readAt: "2026-10-12T10:00:00.000Z",
 }
 
+/** What the scripted providers saw of accounts: turn homes, sign-in codes and sign-outs. */
+const accountCalls = {
+  turnHomes: [] as Array<string | null>,
+  codes: [] as Array<string>,
+  signedOut: [] as Array<string>,
+  signedIn: new Set<string>(),
+  signIn: Promise.withResolvers<void>(),
+}
+
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
-  account: Effect.succeed({ type: "signedOut" }),
-  planLimits:
+  // An added account answers with its home's name, so a test can tell which home was read.
+  account: (home) =>
+    Effect.succeed(
+      home === null
+        ? { type: "signedOut" }
+        : { type: "subscription", email: `${basename(home)}@example.com`, plan: null, organization: null },
+    ),
+  planLimits: (home) =>
     id === "claude"
-      ? Effect.succeed(claudeLimits)
+      ? Effect.succeed(home === null || accountCalls.signedIn.has(home) ? claudeLimits : null)
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
+  signIn: (home) =>
+    Effect.succeed({
+      url: `https://auth.example.com/login?home=${encodeURIComponent(home)}`,
+      openedBrowser: false,
+      submitCode: (code) => Effect.sync(() => void accountCalls.codes.push(code)),
+      completed: Effect.promise(() => accountCalls.signIn.promise).pipe(
+        Effect.tap(() => Effect.sync(() => void accountCalls.signedIn.add(home))),
+      ),
+    }),
+  signOut: (home) => Effect.sync(() => void accountCalls.signedOut.push(home)),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
-    Stream.fromIterable(
-      input.prompt === "simulate a session"
-        ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
-        : input.prompt === "simulate unanswered question"
-          ? [
-              {
-                type: "question_requested",
-                request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
-              },
-              { type: "turn_failed", message: "Provider disconnected before the answer" },
-            ]
-          : input.prompt === "simulate usage limit"
+    Stream.suspend(() => {
+      accountCalls.turnHomes.push(input.home)
+      return Stream.fromIterable(
+        input.prompt === "simulate a session"
+          ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
+          : input.prompt === "simulate unanswered question"
             ? [
                 {
-                  type: "turn_limited",
-                  limit: {
-                    kind: "usage",
-                    message: "Usage limit reached",
-                    reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
-                  },
+                  type: "question_requested",
+                  request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
                 },
+                { type: "turn_failed", message: "Provider disconnected before the answer" },
               ]
-            : scriptedTurn,
-    ),
+            : input.prompt === "simulate usage limit"
+              ? [
+                  {
+                    type: "turn_limited",
+                    limit: {
+                      kind: "usage",
+                      message: "Usage limit reached",
+                      reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                    },
+                  },
+                ]
+              : scriptedTurn,
+      )
+    }),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   respondApproval: () => Effect.void,
@@ -194,6 +228,7 @@ const makeLayer = (dbPath: string) => {
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(join(dirname(dbPath), "accounts"))),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
@@ -206,7 +241,8 @@ const makeLayer = (dbPath: string) => {
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
-  const base = Layer.mergeAll(agents, automationsStub)
+  const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
+  const base = Layer.mergeAll(agents, automationsStub, logins)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(eventsLayer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
@@ -652,10 +688,15 @@ describe("token usage over rpc", () => {
 })
 
 describe("plan limits over rpc", () => {
-  test("lists every provider, with null limits for one that cannot answer", async () => {
-    expect(result(await invoke("limits.list", undefined))).toStrictEqual([
+  test("lists every login and added account, with null limits for one that cannot answer", async () => {
+    const personal = result(await invoke("accounts.create", { provider: "claude", name: "Personal" }))
+    const work = result(await invoke("accounts.create", { provider: "codex", name: "Work" }))
+    const listed = result(await invoke("limits.list", undefined))
+    expect(listed.filter((entry) => [null, personal.id, work.id].includes(entry.accountId))).toStrictEqual([
       { provider: "claude", accountId: null, limits: claudeLimits },
+      { provider: "claude", accountId: personal.id, limits: null },
       { provider: "codex", accountId: null, limits: null },
+      { provider: "codex", accountId: work.id, limits: null },
     ])
   })
 })
@@ -790,8 +831,73 @@ describe("agent accounts over rpc", () => {
       expect(failure(response as RpcEnvelope<unknown>).tag).toBe("SchemaError")
     }
     expect(
-      failure(await invoke("agents.account", { provider: "claude" }, { url: appUrl, parent: mainFrame })).tag,
+      failure(
+        await invoke("agents.account", { provider: "claude", accountId: null }, { url: appUrl, parent: mainFrame }),
+      ).tag,
     ).toBe("UntrustedSender")
-    expect(result(await invoke("agents.account", { provider: "claude" }))).toStrictEqual({ type: "signedOut" })
+    expect(result(await invoke("agents.account", { provider: "claude", accountId: null }))).toStrictEqual({
+      type: "signedOut",
+    })
+  })
+
+  test("refuses account names that are blank, padded or long", async () => {
+    for (const name of ["", "  ", " Work", "x".repeat(81)]) {
+      expect(failure(await invoke("accounts.create", { provider: "codex", name })).tag).toBe("SchemaError")
+    }
+    expect(failure(await invoke("accounts.create", { provider: "gemini" as "codex", name: "Work" })).tag).toBe(
+      "SchemaError",
+    )
+  })
+
+  test("runs a thread on its account and refuses to remove the account while the thread exists", async () => {
+    const account = result(await invoke("accounts.create", { provider: "codex", name: "Work" }))
+    expect(result(await invoke("accounts.rename", { id: account.id, name: "Client work" })).name).toBe("Client work")
+    expect(result(await invoke("accounts.list", undefined))).toContainEqual({ ...account, name: "Client work" })
+    expect(result(await invoke("agents.account", { provider: "codex", accountId: account.id }))).toMatchObject({
+      email: `${account.id}@example.com`,
+    })
+
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const onCodex = result(await invoke("threads.update", { id: thread.id, provider: "codex", accountId: account.id }))
+    expect(onCodex.accountId).toBe(account.id)
+    accountCalls.turnHomes.length = 0
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "hello" }))
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+    )
+    expect(accountCalls.turnHomes).toStrictEqual([join(dir, "accounts", account.id)])
+
+    expect(failure(await invoke("accounts.delete", { id: account.id }))).toMatchObject({ tag: "AccountInUseError" })
+    expect(accountCalls.signedOut).toStrictEqual([])
+    result(await invoke("threads.delete", { id: thread.id }))
+    result(await invoke("accounts.delete", { id: account.id }))
+    expect(accountCalls.signedOut).toStrictEqual([join(dir, "accounts", account.id)])
+    expect(result(await invoke("accounts.list", undefined))).not.toContainEqual(
+      expect.objectContaining({ id: account.id }),
+    )
+  })
+
+  test("signs an account in through the browser and reports the outcome", async () => {
+    const account = result(await invoke("accounts.create", { provider: "claude", name: "Personal" }))
+    const limitsOf = async () =>
+      result(await invoke("limits.list", undefined)).find((entry) => entry.accountId === account.id)?.limits
+    expect(await limitsOf()).toBeNull()
+    electron.opened.length = 0
+    const started = result(await invoke("accounts.signIn", { id: account.id }))
+    expect(started).toStrictEqual({
+      url: `https://auth.example.com/login?home=${encodeURIComponent(join(dir, "accounts", account.id))}`,
+      acceptsCode: true,
+    })
+    expect(electron.opened).toStrictEqual([started.url])
+
+    result(await invoke("accounts.submitCode", { id: account.id, code: "pasted-code" }))
+    expect(accountCalls.codes).toStrictEqual(["pasted-code"])
+    accountCalls.signIn.resolve()
+    await pushedEventually(
+      (event) => event.type === "account.signIn" && event.accountId === account.id && event.error === null,
+    )
+    expect(await limitsOf()).toStrictEqual(claudeLimits)
+    expect(failure(await invoke("accounts.submitCode", { id: account.id, code: "late" })).tag).toBe("AgentError")
   })
 })

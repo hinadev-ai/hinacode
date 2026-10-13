@@ -22,13 +22,18 @@ const modelTotal = (usage: ModelUsage) =>
 export function StatusBar() {
   const { threadId } = useParams({ strict: false })
   const openProvider = useThreads((state) => (threadId === undefined ? undefined : state.byId[threadId]?.provider))
+  const openAccountId = useThreads((state) => (threadId === undefined ? undefined : state.byId[threadId]?.accountId))
   return (
     <footer
       aria-label={m.status_bar_label()}
       className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-sidebar-border bg-sidebar px-2 text-xs text-muted-foreground"
     >
       <div className="flex h-full min-w-0 items-center gap-3 overflow-hidden">
-        <PlanLimits openProvider={openProvider} />
+        <PlanLimits
+          openThread={
+            openProvider === undefined ? undefined : { provider: openProvider, accountId: openAccountId ?? null }
+          }
+        />
       </div>
       {threadId !== undefined && <ThreadTokens key={threadId} threadId={threadId} />}
     </footer>

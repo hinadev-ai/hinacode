@@ -4,6 +4,8 @@ import {
   AgentAccount,
   AgentCommand,
   AgentEvent,
+  AgentProfile,
+  AgentProfileName,
   ApprovalDecision,
   ApprovalRequest,
   ModelInfo,
@@ -112,6 +114,8 @@ export const RpcMethods = {
       effort: Schema.optional(Schema.NullOr(Schema.String)),
       fastMode: Schema.optional(Schema.Boolean),
       accessMode: Schema.optional(AccessMode),
+      /** Only before the thread has a provider session. Null is the CLI's own login. */
+      accountId: Schema.optional(Schema.NullOr(Schema.String)),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
     }),
@@ -179,9 +183,29 @@ export const RpcMethods = {
   "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
-  "agents.account": rpc(Schema.Struct({ provider: ProviderId }), AgentAccount),
+  /** Who the account is signed in as. `accountId` null is the CLI's own login. */
+  "agents.account": rpc(Schema.Struct({ provider: ProviderId, accountId: Schema.NullOr(Schema.String) }), AgentAccount),
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
+  "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
+  "accounts.create": rpc(Schema.Struct({ provider: ProviderId, name: AgentProfileName }), AgentProfile),
+  "accounts.rename": rpc(Schema.Struct({ id: Schema.String, name: AgentProfileName }), AgentProfile),
+  /** Refused while any thread uses the account. Signs it out and deletes its home. */
+  "accounts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  /**
+   * Starts a subscription sign-in and opens its page in the browser. The outcome arrives as an
+   * `account.signIn` push. `acceptsCode` means the page may show a code to hand back with `accounts.submitCode`.
+   */
+  "accounts.signIn": rpc(
+    Schema.Struct({ id: Schema.String }),
+    Schema.Struct({ url: Schema.String, acceptsCode: Schema.Boolean }),
+  ),
+  "accounts.submitCode": rpc(
+    Schema.Struct({ id: Schema.String, code: Schema.String.check(Schema.isMaxLength(1000)) }),
+    Schema.Void,
+  ),
+  "accounts.cancelSignIn": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "accounts.signOut": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
@@ -394,6 +418,12 @@ export const PushEvent = Schema.Union([
     type: Schema.Literal("thread.subagents"),
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
+  }),
+  /** A sign-in `accounts.signIn` started has finished. `error` is null when the account is signed in. */
+  Schema.Struct({
+    type: Schema.Literal("account.signIn"),
+    accountId: Schema.String,
+    error: Schema.NullOr(Schema.String),
   }),
   /** Something changed directly inside a folder `fs.watch` asked for. */
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),

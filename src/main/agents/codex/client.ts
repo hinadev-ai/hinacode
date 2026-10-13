@@ -37,10 +37,16 @@ const INITIALIZE_TIMEOUT = Duration.seconds(30)
  * The process is killed when the scope closes.
  * Wire format: newline-delimited JSON-RPC 2.0 without the "jsonrpc" field.
  */
-export const makeCodexClient = (options: { readonly binaryPath: string; readonly clientVersion: string }) =>
+export const makeCodexClient = (options: {
+  readonly binaryPath: string
+  readonly clientVersion: string
+  readonly env: NodeJS.ProcessEnv
+}) =>
   Effect.gen(function* () {
     const child = yield* Effect.acquireRelease(
-      Effect.sync(() => spawn(options.binaryPath, ["app-server"], { stdio: ["pipe", "pipe", "pipe"] })),
+      Effect.sync(() =>
+        spawn(options.binaryPath, ["app-server"], { env: options.env, stdio: ["pipe", "pipe", "pipe"] }),
+      ),
       (proc) => Effect.sync(() => proc.kill()),
     )
 

@@ -9,6 +9,7 @@ import type { PullRequest, PullRequestStatus, ThreadStatus } from "../../shared/
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import { AutoArchive, layer as autoArchiveLayer } from "./AutoArchive.ts"
+import * as AgentAccounts from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import { GitHub } from "./GitHub.ts"
@@ -36,10 +37,14 @@ const gitHub = Layer.mock(GitHub, {
     }),
 })
 
+const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-auto-archive-")))
+afterAll(() => rmSync(base, { recursive: true, force: true }))
+
 const domain = threadsLayer.pipe(
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
+  Layer.provide(AgentAccounts.layer(join(base, "accounts"))),
   Layer.provideMerge(settingsLayer),
 )
 const testLayer = autoArchiveLayer.pipe(
@@ -52,9 +57,6 @@ const testLayer = autoArchiveLayer.pipe(
 )
 
 const pullRequestUrl = (name: string, index = 0) => `https://github.com/o/${name}/pull/${index + 1}`
-
-const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-auto-archive-")))
-afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 /** A thread in its own project, linked to one pull request per given status. */
 const threadWithPullRequests = (name: string, prStatuses: ReadonlyArray<PullRequestStatus>, status?: ThreadStatus) =>

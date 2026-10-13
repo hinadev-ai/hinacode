@@ -36,6 +36,16 @@ export const AgentAccount = Schema.Union([
 ])
 export type AgentAccount = typeof AgentAccount.Type
 
+/** An account added in kkcode: a separate agent home with its own login and transcripts. */
+export const AgentProfile = Schema.Struct({
+  id: Schema.String,
+  provider: ProviderId,
+  name: Schema.String,
+})
+export type AgentProfile = typeof AgentProfile.Type
+
+export const AgentProfileName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
+
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   id,
@@ -243,6 +253,8 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
+  /** The account's agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`). Null uses the CLI's own login. */
+  readonly home: string | null
   /** The built-in kkcode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
 }

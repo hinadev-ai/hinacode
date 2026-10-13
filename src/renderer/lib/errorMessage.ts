@@ -7,6 +7,7 @@ import { RpcError } from "./rpc.ts"
  */
 const byTag: Readonly<Record<string, (detail: string) => string>> = {
   NotFoundError: () => m.error_not_found(),
+  AccountInUseError: () => m.error_account_in_use(),
   PersistenceError: () => m.error_persistence(),
   ProjectPathTakenError: () => m.error_project_path_taken(),
   ProjectRootInvalidError: () => m.error_project_root_invalid(),

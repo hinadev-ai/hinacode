@@ -54,10 +54,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                         |
-| ------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.watch`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                          |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.watch`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                         |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
@@ -100,6 +100,7 @@ classDiagram
     <<interface>>
     id: ProviderId
     listModels: Effect~ModelInfo[]~
+    account(home) / signIn(home) / signOut(home)
     runTurn(input) Stream~AgentEvent~
     steer(threadId, text, attachments)
     interrupt(threadId)
@@ -114,13 +115,15 @@ classDiagram
     loads user, project and local settings
   }
   class CodexProvider {
-    one app-server per app, respawned on exit
+    one app-server per account home, respawned on exit
     runs keyed by threadId
     approvalPolicy and sandbox from the thread's access mode
   }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
 ```
+
+An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = <userData>/accounts/<id>` from `AgentAccounts`. `AgentLogins` probes, signs in and signs out each home through the provider. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account.
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
@@ -285,6 +288,7 @@ erDiagram
   thread ||--o{ pull_request_link : links
   automation ||--o{ automation_run : records
   thread |o--o{ automation_run : "started by"
+  agent_account |o--o{ thread : "bills"
 
   project {
     text id PK
@@ -303,6 +307,7 @@ erDiagram
     text id PK
     text worktree_id FK "SET NULL"
     text provider "claude|codex"
+    text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
     text status
@@ -331,6 +336,11 @@ erDiagram
   setting {
     text key PK
     text value
+  }
+  agent_account {
+    text id PK "home is <userData>/accounts/<id>"
+    text provider "claude|codex"
+    text name
   }
 ```
 

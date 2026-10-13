@@ -1,26 +1,21 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import { type AgentAccount, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
+import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode } from "../../../shared/domain.ts"
-import { accountAtom, modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { accessModes } from "../ComposerControls.tsx"
 import { ProviderIcon } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
+import { AccountList, DefaultAccountField, providerLabel } from "./AccountSettings.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
-
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
-const signedOutHint = {
-  claude: m.settings_account_signed_out_claude,
-  codex: m.settings_account_signed_out_codex,
-} satisfies Record<ProviderId, () => string>
 
 export function ModelSettings() {
   return (
@@ -62,73 +57,32 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
   )
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>
+    <FieldSet>
+      <FieldLegend variant="label" className="flex items-center gap-2">
         <ProviderIcon provider={provider} />
         {label}
-      </FieldLabel>
-      <AccountStatus provider={provider} />
-      {AsyncResult.builder(models)
-        .onInitial(() => (
-          <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
-        ))
-        .onSuccess((list) =>
-          list.length > 0 ? (
-            <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
-          ) : (
-            textFallback(m.settings_models_unlisted({ provider: label }))
-          ),
-        )
-        .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
-        .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
-      {error && <FieldError>{error}</FieldError>}
-    </Field>
+      </FieldLegend>
+      <AccountList provider={provider} />
+      <DefaultAccountField provider={provider} />
+      <Field>
+        <FieldLabel htmlFor={inputId}>{m.settings_default_model()}</FieldLabel>
+        {AsyncResult.builder(models)
+          .onInitial(() => (
+            <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
+          ))
+          .onSuccess((list) =>
+            list.length > 0 ? (
+              <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
+            ) : (
+              textFallback(m.settings_models_unlisted({ provider: label }))
+            ),
+          )
+          .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
+          .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
+        {error && <FieldError>{error}</FieldError>}
+      </Field>
+    </FieldSet>
   )
-}
-
-function AccountStatus({ provider }: { provider: ProviderId }) {
-  const account = useAtomValue(accountAtom(provider))
-  return (
-    <output
-      aria-label={m.settings_account_label({ provider: providerLabel[provider]() })}
-      className="flex flex-wrap gap-x-1.5 text-sm text-muted-foreground"
-    >
-      {AsyncResult.builder(account)
-        .onInitial(() => m.settings_account_loading())
-        .onSuccess((current) => describeAccount(provider, current))
-        .onError((cause) => m.settings_account_failed({ message: errorMessage(cause) }))
-        .orElse(() => null)}
-    </output>
-  )
-}
-
-function describeAccount(provider: ProviderId, account: AgentAccount) {
-  switch (account.type) {
-    case "subscription": {
-      const details = [account.plan, account.organization].filter((detail) => detail !== null)
-      return (
-        <>
-          <span className="text-foreground">
-            {account.email === null
-              ? m.settings_account_signed_in_no_email()
-              : m.settings_account_signed_in({ email: account.email })}
-          </span>
-          {details.map((detail) => (
-            <span key={detail}>
-              <span aria-hidden>· </span>
-              {detail}
-            </span>
-          ))}
-        </>
-      )
-    }
-    case "apiKey":
-      return m.settings_account_api_key()
-    case "external":
-      return m.settings_account_external({ service: account.service })
-    case "signedOut":
-      return signedOutHint[provider]()
-  }
 }
 
 function DefaultAccessField() {

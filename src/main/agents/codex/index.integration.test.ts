@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
@@ -11,6 +11,8 @@ const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
 writeFileSync(join(bin, "codex"), `#!/bin/sh\nexec node ${join(import.meta.dirname, "fakeAppServer.mjs")} "$@"\n`)
 chmodSync(join(bin, "codex"), 0o755)
 process.env.PATH = `${bin}:${process.env.PATH}`
+// The CLI's own home must not leak in from the machine running the tests.
+delete process.env.CODEX_HOME
 
 type Control = {
   accountResponse?: unknown
@@ -21,6 +23,8 @@ type Control = {
   question?: Array<import("./protocol.ts").ToolRequestUserInputQuestion>
   postedQuestions?: Array<import("./protocol.ts").AsyncUserInputQuestion>
   cancelQuestion?: boolean
+  accountFromHome?: boolean
+  login?: { success: boolean; error: string | null }
   subagent?: boolean
 }
 type Received = {
@@ -71,7 +75,7 @@ const waitFor = (predicate: () => boolean) =>
 
 const countOf = (method: string) => received().filter((message) => message.method === method).length
 
-const input = (threadId: string): RunTurnInput => ({
+const input = (threadId: string, home: string | null = null): RunTurnInput => ({
   threadId,
   prompt: "hello",
   attachments: [],
@@ -81,15 +85,16 @@ const input = (threadId: string): RunTurnInput => ({
   fastMode: false,
   accessMode: "auto",
   resumeSessionId: null,
+  home,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
 })
 
-const startTurn = (threadId: string) =>
+const startTurn = (threadId: string, home: string | null = null) =>
   Effect.gen(function* () {
     const provider = yield* CodexProvider
     const events: Array<AgentEvent> = []
     const arrived = yield* PubSub.unbounded<AgentEvent>()
-    const fiber = yield* provider.runTurn(input(threadId)).pipe(
+    const fiber = yield* provider.runTurn(input(threadId, home)).pipe(
       Stream.runForEach((event) =>
         Effect.sync(() => events.push(event)).pipe(Effect.andThen(PubSub.publish(arrived, event))),
       ),
@@ -342,7 +347,7 @@ describe("Codex account boundary", () => {
         Effect.gen(function* () {
           setControl({ accountResponse: response })
           const provider = yield* CodexProvider
-          const error = yield* provider.account.pipe(Effect.flip)
+          const error = yield* provider.account(null).pipe(Effect.flip)
           expect(error._tag).toBe("AgentError")
           expect(error.message).toMatch(/invalid.*account|account.*invalid/i)
           expect(error.message).not.toContain("synthetic-secret")
@@ -362,7 +367,7 @@ describe("Codex account boundary", () => {
           },
         })
         const provider = yield* CodexProvider
-        expect(yield* provider.account).toStrictEqual({
+        expect(yield* provider.account(null)).toStrictEqual({
           type: "subscription",
           email: "dev@example.com",
           plan: "ChatGPT Pro",
@@ -411,7 +416,7 @@ describe("Codex plan limits", () => {
           },
         })
         const provider = yield* CodexProvider
-        expect(yield* provider.planLimits).toStrictEqual({
+        expect(yield* provider.planLimits(null)).toStrictEqual({
           windows: [
             { window: { kind: "session" }, usedPercent: 12.5, resetsAt: "2026-10-14T17:46:40.000Z" },
             { window: { kind: "minutes", minutes: 60 }, usedPercent: 40, resetsAt: null },
@@ -422,7 +427,7 @@ describe("Codex plan limits", () => {
         setControl({
           rateLimitsResponse: { rateLimits: snapshot("codex", weekly, null), rateLimitsByLimitId: null },
         })
-        expect((yield* provider.planLimits)?.windows).toStrictEqual([
+        expect((yield* provider.planLimits(null))?.windows).toStrictEqual([
           { window: { kind: "weekly" }, usedPercent: 69, resetsAt: "2026-10-18T14:51:52.000Z" },
         ])
       }),
@@ -434,7 +439,114 @@ describe("Codex plan limits", () => {
       Effect.gen(function* () {
         setControl({ rateLimitsResponse: { rateLimits: { primary: { usedPercent: "lots" } } } })
         const provider = yield* CodexProvider
-        expect((yield* provider.planLimits.pipe(Effect.flip)).message).toMatch(/plan limits/)
+        expect((yield* provider.planLimits(null).pipe(Effect.flip)).message).toMatch(/plan limits/)
+      }),
+    ),
+  )
+})
+
+const homes = () => {
+  const root = mkdtempSync(join(tmpdir(), "kk-codex-homes-"))
+  return { work: join(root, "work"), personal: join(root, "personal") }
+}
+
+describe("Codex accounts", () => {
+  it.live("runs one app-server per home, each with its own CODEX_HOME", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const { work, personal } = homes()
+        setControl({ accountFromHome: true })
+        const provider = yield* CodexProvider
+        expect(yield* provider.account(work)).toMatchObject({ email: "work@example.com" })
+        expect(yield* provider.account(personal)).toMatchObject({ email: "personal@example.com" })
+        expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
+        expect(yield* provider.account(work)).toMatchObject({ email: "work@example.com" })
+        expect(countOf("initialize")).toBe(3)
+      }),
+    ),
+  )
+
+  it.live("reads a thread's tokens from the rollouts in its account's home", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const { work, personal } = homes()
+        const threadId = "01a0c6f7-8e77-75b1-9d6a-f583fa33e0da"
+        const day = join(work, "sessions", "2026", "10", "12")
+        mkdirSync(day, { recursive: true })
+        const lines = [
+          { type: "session_meta", payload: { session_id: threadId, id: threadId } },
+          { type: "turn_context", payload: { model: "gpt-6-astra" } },
+          {
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+              info: { total_token_usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 7 } },
+            },
+          },
+        ]
+        writeFileSync(
+          join(day, `rollout-2026-10-12T09-00-00-${threadId}.jsonl`),
+          lines.map((line) => `${JSON.stringify(line)}\n`).join(""),
+        )
+        const provider = yield* CodexProvider
+        expect((yield* provider.usage(threadId, work))?.models).toStrictEqual([
+          { model: "gpt-6-astra", inputTokens: 60, cacheWriteTokens: 0, cacheReadTokens: 40, outputTokens: 7 },
+        ])
+        expect(yield* provider.usage(threadId, personal)).toBeNull()
+      }),
+    ),
+  )
+
+  it.live("interrupts a thread's turn on its own account's app-server", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const { work, personal } = homes()
+        setControl({ holdTurn: true })
+        const provider = yield* CodexProvider
+        const onWork = yield* startTurn("thread-work", work)
+        const onPersonal = yield* startTurn("thread-personal", personal)
+        yield* waitFor(() => countOf("turn/start") === 2)
+
+        yield* provider.interrupt("thread-work")
+        yield* finishesSoon(onWork.fiber)
+        expect(onWork.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
+        expect(onPersonal.events.some((event) => event.type === "turn_failed")).toBe(false)
+
+        yield* provider.interrupt("thread-personal")
+        yield* finishesSoon(onPersonal.fiber)
+        expect(countOf("turn/interrupt")).toBe(2)
+      }),
+    ),
+  )
+
+  it.live("signs a home in with the ChatGPT login and reports a failed one", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const { work } = homes()
+        const provider = yield* CodexProvider
+        setControl({ login: { success: true, error: null } })
+        const signedIn = yield* provider.signIn(work)
+        expect(signedIn).toMatchObject({ openedBrowser: false, submitCode: null })
+        expect(signedIn.url).toMatch(/^https:\/\/auth\.example\.com\/authorize\?login=/)
+        yield* signedIn.completed
+
+        setControl({ login: { success: false, error: "Login cancelled" } })
+        const failed = yield* provider.signIn(work)
+        expect((yield* failed.completed.pipe(Effect.flip)).message).toBe("Login cancelled")
+        expect(countOf("account/login/cancel")).toBe(0)
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("cancels a sign-in nobody finished when its scope closes", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const { work } = homes()
+        const provider = yield* CodexProvider
+        const pending = yield* provider.signIn(work).pipe(Effect.scoped)
+        yield* waitFor(() => countOf("account/login/cancel") === 1)
+        const cancel = received().find((message) => message.method === "account/login/cancel")
+        expect(pending.url).toContain((cancel!.params as { loginId: string }).loginId)
       }),
     ),
   )

@@ -31,6 +31,7 @@ import {
 import { PendingAttachment } from "./AttachmentView.tsx"
 import {
   AccessPicker,
+  AccountPicker,
   AgentPicker,
   EffortPicker,
   FastModeToggle,
@@ -217,6 +218,7 @@ export function Composer({ thread }: { thread: Thread }) {
               <AttachButton onClick={pickFiles} disabled={isStaging} />
               {unstarted && <AgentPicker thread={thread} onError={setError} />}
               <ModelPicker thread={thread} onError={setError} />
+              <AccountPicker thread={thread} onError={setError} />
               <EffortPicker thread={thread} onError={setError} />
               <FastModeToggle thread={thread} onError={setError} />
               <AccessPicker thread={thread} onError={setError} />

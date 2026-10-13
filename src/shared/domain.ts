@@ -201,6 +201,8 @@ export const Thread = Schema.Struct({
   fastMode: Schema.Boolean,
   /** Applies from the next turn, or right away on a live Claude session. */
   accessMode: AccessMode,
+  /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */
+  accountId: Schema.NullOr(Schema.String),
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
@@ -348,6 +350,11 @@ export const Settings = Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
   }),
+  /** The account new threads of each agent start on. Null is the CLI's own login. */
+  defaultAccount: Schema.Struct({
+    claude: Schema.NullOr(Schema.String),
+    codex: Schema.NullOr(Schema.String),
+  }),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
     bindHost: Schema.String,
@@ -367,6 +374,7 @@ export const defaultSettings: Settings = {
   locale: "en",
   keybindings: {},
   defaultModel: { claude: null, codex: null },
+  defaultAccount: { claude: null, codex: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",

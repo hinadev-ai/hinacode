@@ -9,6 +9,7 @@ import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
+import * as AgentAccounts from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -38,6 +39,7 @@ const makeLayer = (
     Layer.provide(Terminals.layer),
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
+    Layer.provide(AgentAccounts.layer(join(dirname(dbPath), "accounts"))),
     Layer.provideMerge(SettingsLayer.layer),
     Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
     Layer.provideMerge(Db.layer(dbPath)),
