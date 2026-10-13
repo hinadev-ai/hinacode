@@ -351,6 +351,12 @@ export const Settings = Schema.Struct({
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** Model ids the thread model picker lists per agent, in any order. Empty lists every model the agent has. */
+  modelPresets: Schema.Struct({
+    claude: Schema.Array(Schema.String),
+    codex: Schema.Array(Schema.String),
+    muse: Schema.Array(Schema.String),
+  }),
   /** The account new threads of each agent start on. Null is the CLI's own login. */
   defaultAccount: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
@@ -376,6 +382,7 @@ export const defaultSettings: Settings = {
   locale: "en",
   keybindings: {},
   defaultModel: { claude: null, codex: null, muse: null },
+  modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },

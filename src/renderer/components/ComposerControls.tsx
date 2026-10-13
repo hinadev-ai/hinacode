@@ -28,6 +28,7 @@ import {
   modelsAtom,
   pullRequestsAtom,
 } from "../lib/rpc.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -147,8 +148,19 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
   )
 }
 
+/**
+ * The agent's preset models, plus the thread's own. A preset none of whose models the agent still lists
+ * falls back to every model, so an agent never vanishes from the picker.
+ */
+function usePickerModels(provider: ProviderId, keep: string | null) {
+  const listed = useAgentModels(provider, keep)
+  const preset = useSettings().modelPresets[provider]
+  const picked = listed.filter((model) => preset.includes(model.id) || model.id === keep)
+  return preset.length === 0 || !picked.some((model) => model.id !== keep) ? listed : picked
+}
+
 function ModelGroup({ provider, keep }: { provider: ProviderId; keep: string | null }) {
-  const models = useAgentModels(provider, keep)
+  const models = usePickerModels(provider, keep)
   if (models.length === 0) return null
   return (
     <SelectGroup>
