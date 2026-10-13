@@ -2,12 +2,13 @@ import type { ApprovalDecision, ApprovalRequest, Question, QuestionAnswers, Ques
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
-import { Composer, errorText } from "@/components/composer"
+import { Composer } from "@/components/composer"
 import { Icon, type IconName } from "@/components/icon"
 import { Button, Notice, Pill } from "@/components/ui"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { errorText } from "@/lib/error-text"
 import { useMessages } from "@/stores/messages"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
@@ -177,15 +178,15 @@ function useAction() {
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true)
     setError(null)
+    let ok = true
     try {
       await action()
-      return true
     } catch (cause) {
       setError(errorText(cause))
-      return false
-    } finally {
-      setBusy(false)
+      ok = false
     }
+    setBusy(false)
+    return ok
   }
   return { busy, error, run }
 }

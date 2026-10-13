@@ -10,10 +10,10 @@ import {
   IconButton,
   Notice,
   ProviderLabel,
-  threadStatusLabel,
   ThreadStatusPill,
 } from "@/components/ui"
 import { HIT, radius } from "@/constants/theme"
+import { threadStatus } from "@/constants/thread-status"
 import { useTheme } from "@/hooks/use-theme"
 import { call, disconnect, useConnection } from "@/lib/connection"
 import { clearTarget } from "@/lib/storage"
@@ -83,9 +83,8 @@ function ProjectHeader({ project, empty }: { project: Project; empty: boolean })
       router.push({ pathname: "/thread/[id]", params: { id: thread.id } })
     } catch (cause) {
       Alert.alert("Could not create a thread", cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setCreating(false)
     }
+    setCreating(false)
   }
   return (
     <View style={styles.projectHeader}>
@@ -117,7 +116,7 @@ function ThreadRow({ thread }: { thread: Thread }) {
     <Pressable
       testID={`thread-row-${thread.id}`}
       accessibilityRole="button"
-      accessibilityLabel={`${thread.title}, ${thread.provider}, ${threadStatusLabel(thread.status)}`}
+      accessibilityLabel={`${thread.title}, ${thread.provider}, ${threadStatus[thread.status].label}`}
       onPress={() => router.push({ pathname: "/thread/[id]", params: { id: thread.id } })}
       style={({ pressed }) => [
         styles.row,

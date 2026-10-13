@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { ActivityIndicator, Pressable, type PressableProps, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { HIT, type Palette, radius } from "@/constants/theme"
+import { threadStatus } from "@/constants/thread-status"
 import { useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
 
@@ -95,7 +96,7 @@ const buttonColors = (theme: Palette) => ({
   ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
 })
 
-type Tone = "neutral" | "attention" | "running" | "danger"
+export type Tone = "neutral" | "attention" | "running" | "danger"
 
 export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: IconName }) {
   const theme = useTheme()
@@ -116,17 +117,6 @@ const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
 })
 
 type Status = { label: string; tone: Tone; icon?: IconName }
-
-const threadStatus: Record<ThreadStatus, Status> = {
-  idle: { label: "Idle", tone: "neutral" },
-  running: { label: "Running", tone: "running", icon: "RiLoader4Line" },
-  awaiting_approval: { label: "Needs you", tone: "attention", icon: "RiErrorWarningLine" },
-  limited: { label: "Limited", tone: "attention", icon: "RiErrorWarningLine" },
-  settled: { label: "Settled", tone: "neutral", icon: "RiCheckboxCircleLine" },
-  archived: { label: "Archived", tone: "neutral", icon: "RiArchiveLine" },
-}
-
-export const threadStatusLabel = (status: ThreadStatus) => threadStatus[status].label
 
 export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) => <Pill {...threadStatus[status]} />
 

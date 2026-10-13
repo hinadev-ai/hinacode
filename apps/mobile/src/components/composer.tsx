@@ -9,12 +9,11 @@ import { IconButton } from "@/components/ui"
 import { Colors, HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { errorText } from "@/lib/error-text"
 import { useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { useModels } from "@/stores/models"
 import { useThreads } from "@/stores/threads"
-
-export const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
 type OnError = (message: string) => void
 

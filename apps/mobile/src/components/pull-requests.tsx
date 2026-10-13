@@ -7,8 +7,7 @@ import { Button, EmptyState, Notice, Pill } from "@/components/ui"
 import { type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent, useConnection } from "@/lib/connection"
-
-const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
+import { errorText } from "@/lib/error-text"
 
 export function PullRequests({ thread }: { thread: Thread }) {
   const theme = useTheme()
@@ -40,9 +39,8 @@ export function PullRequests({ thread }: { thread: Thread }) {
       await call("pullRequests.create", { threadId: thread.id })
     } catch (cause) {
       setError(errorText(cause))
-    } finally {
-      setCreating(false)
     }
+    setCreating(false)
   }
 
   return (
@@ -113,9 +111,8 @@ function PullRequestCard({ url }: { url: string }) {
       setRevision((value) => value + 1)
     } catch (cause) {
       setError(errorText(cause))
-    } finally {
-      setMerging(false)
     }
+    setMerging(false)
   }
 
   const confirmMerge = () => {
