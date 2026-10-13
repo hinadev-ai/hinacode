@@ -67,7 +67,9 @@ describe("agent accounts", () => {
         const accounts = yield* AgentAccounts
         const claude = yield* accounts.create({ provider: "claude", name: "Work" })
         const codex = yield* accounts.create({ provider: "codex", name: "Work" })
-        yield* Settings.use((settings) => settings.set({ defaultAccount: { claude: claude.id, codex: codex.id } }))
+        yield* Settings.use((settings) =>
+          settings.set({ defaultAccount: { claude: claude.id, codex: codex.id, muse: null } }),
+        )
 
         const thread = yield* newThread
         expect(thread.accountId).toBe(claude.id)
@@ -115,7 +117,9 @@ describe("agent accounts", () => {
       Effect.gen(function* () {
         const accounts = yield* AgentAccounts
         const work = yield* accounts.create({ provider: "claude", name: "Work" })
-        yield* Settings.use((settings) => settings.set({ defaultAccount: { claude: work.id, codex: null } }))
+        yield* Settings.use((settings) =>
+          settings.set({ defaultAccount: { claude: work.id, codex: null, muse: null } }),
+        )
         const home = (yield* accounts.home(work.id))!
         const thread = yield* newThread
         const signedOut: Array<string> = []

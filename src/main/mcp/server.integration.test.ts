@@ -11,6 +11,7 @@ import type { AgentEvent, McpConnection, ProviderId } from "../../shared/agent.t
 import type { PushEvent } from "../../shared/contract.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -81,6 +82,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(ThreadNaming, ThreadNaming.of({ nameFromPrompt: () => Effect.void })),
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
+  Layer.succeed(MuseProvider, fakeProvider("muse")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
 )
 

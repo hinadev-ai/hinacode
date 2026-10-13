@@ -1,6 +1,6 @@
 # Architecture
 
-kkcode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents and talks to them over a child process (Codex) or the Agent SDK (Claude). Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-kkcode-foundation.md`](features/2026-10-11-kkcode-foundation.md).
+kkcode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex and Muse Code over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-kkcode-foundation.md`](features/2026-10-11-kkcode-foundation.md).
 
 ## System overview
 
@@ -21,6 +21,7 @@ flowchart LR
   db[("kkcode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
   codex["codex app-server<br/>JSON-RPC over stdio"]
+  muse["muse serve<br/>MSP over stdio"]
   git["git / gh CLIs"]
   ext["GitHub, Linear, Slack"]
 
@@ -28,8 +29,8 @@ flowchart LR
   stores -- "rpc (request/response)" --> preload --> ipc
   ipc -- "event (push)" --> preload --> stores
   ipc --> services & runner
-  runner --> claude & codex
-  claude & codex -- "Bearer threadId.secret" --> mcp
+  runner --> claude & codex & muse
+  claude & codex & muse -- "Bearer threadId.secret" --> mcp
   mcp --> services
   services --> db
   services --> git
@@ -73,7 +74,7 @@ The main process is one Effect layer graph, built in `src/main/index.ts` before 
 flowchart BT
   node["NodeServices"]
   db["Db.layer<br/>SQLite + migrations"]
-  infra["ClaudeProvider, CodexProvider,<br/>Git, Events"]
+  infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports"]
   runner["AgentRunner"]
@@ -119,15 +120,27 @@ classDiagram
     runs keyed by threadId
     approvalPolicy and sandbox from the thread's access mode
   }
+  class MuseProvider {
+    one muse serve for the CLI login, respawned on exit
+    sessions stay loaded in the host that opened them
+    approval mode from the thread's access mode, set live
+  }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
+  AgentProvider <|.. MuseProvider
 ```
 
-An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = <userData>/accounts/<id>` from `AgentAccounts`. `AgentLogins` probes, signs in and signs out each home through the provider. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account.
+An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = <userData>/accounts/<id>` from `AgentAccounts`. `AgentLogins` probes, signs in and signs out each home through the provider. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
-Adding a backend means one `AgentProvider` implementation in `src/main/agents/`, one entry in the `providers` record in `AgentRunner.ts`, and one literal in `ProviderId`.
+Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
+
+- `ProviderId`, and `AccountProviderId` if it can have added accounts.
+- The `providers` records in `AgentRunner.ts` and `AgentLogins.ts`, the layer in `src/main/index.ts`, and the fake providers of the integration tests that build those layers.
+- A migration widening the `provider` CHECK on `thread` and `automation`, as `0011_muse_provider` does.
+- The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
+- `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
 
 ## A turn, end to end
 
@@ -306,7 +319,7 @@ erDiagram
   thread {
     text id PK
     text worktree_id FK "SET NULL"
-    text provider "claude|codex"
+    text provider "claude|codex|muse"
     text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
@@ -417,6 +430,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 
 - **Claude** connects through an in-process forwarder (`agents/claude/mcp.ts`), so the CLI never sees the credential.
 - **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which kkcode shows as an approval.
+- **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
 
 ## Automations
 

@@ -1,6 +1,7 @@
 import { Schema, Struct } from "effect"
 import {
   AccountLimits,
+  AccountProviderId,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -188,7 +189,7 @@ export const RpcMethods = {
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
-  "accounts.create": rpc(Schema.Struct({ provider: ProviderId, name: AgentProfileName }), AgentProfile),
+  "accounts.create": rpc(Schema.Struct({ provider: AccountProviderId, name: AgentProfileName }), AgentProfile),
   "accounts.rename": rpc(Schema.Struct({ id: Schema.String, name: AgentProfileName }), AgentProfile),
   /** Refused while any thread uses the account. Signs it out and deletes its home. */
   "accounts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),

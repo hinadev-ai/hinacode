@@ -1,8 +1,9 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
+import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useEffect, useEffectEvent, useId, useState, useTransition } from "react"
 import { RiAddLine, RiDeleteBinLine, RiLoginBoxLine, RiLogoutBoxLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
-import type { AgentAccount, AgentProfile, ProviderId } from "../../../shared/agent.ts"
+import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
@@ -27,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
+import { providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import {
   Dialog,
@@ -42,14 +44,13 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 
-export const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<
-  ProviderId,
-  () => string
->
 const signedOutHint = {
   claude: m.settings_account_signed_out_claude,
   codex: m.settings_account_signed_out_codex,
+  muse: m.settings_account_signed_out_muse,
 } satisfies Record<ProviderId, () => string>
+
+const addsAccounts = Schema.is(AccountProviderId)
 
 /** The provider's added accounts, in the order they were added. */
 export function useProviderAccounts(provider: ProviderId): ReadonlyArray<AgentProfile> {
@@ -72,13 +73,17 @@ export function AccountList({ provider }: { provider: ProviderId }) {
           <AccountRow key={account.id} account={account} />
         ))}
       </ul>
-      <div>
-        <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => setAdding(true)}>
-          <RiAddLine aria-hidden />
-          {m.settings_account_add()}
-        </Button>
-      </div>
-      <AccountDialog provider={provider} account={null} open={adding} onOpenChange={setAdding} />
+      {addsAccounts(provider) && (
+        <>
+          <div>
+            <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => setAdding(true)}>
+              <RiAddLine aria-hidden />
+              {m.settings_account_add()}
+            </Button>
+          </div>
+          <AccountDialog provider={provider} account={null} open={adding} onOpenChange={setAdding} />
+        </>
+      )}
     </div>
   )
 }
@@ -222,7 +227,7 @@ function describeAccount(provider: ProviderId, account: AgentAccount, cliLogin: 
 }
 
 interface AccountDialogProps {
-  readonly provider: ProviderId
+  readonly provider: AccountProviderId
   /** Null adds a new account first. */
   readonly account: AgentProfile | null
   readonly open: boolean
@@ -246,7 +251,7 @@ function AccountDialogSteps({
   initial,
   onDone,
 }: {
-  provider: ProviderId
+  provider: AccountProviderId
   initial: AgentProfile | null
   onDone: () => void
 }) {
@@ -260,7 +265,13 @@ function AccountDialogSteps({
   )
 }
 
-function NameStep({ provider, onCreated }: { provider: ProviderId; onCreated: (account: AgentProfile) => void }) {
+function NameStep({
+  provider,
+  onCreated,
+}: {
+  provider: AccountProviderId
+  onCreated: (account: AgentProfile) => void
+}) {
   const createAccount = useAtomSet(createAccountAtom, { mode: "promise" })
   const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
