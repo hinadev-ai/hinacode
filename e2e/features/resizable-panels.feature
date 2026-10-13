@@ -12,6 +12,12 @@ Feature: Resizable panels
     When I reload the app and open the thread "Resize"
     Then the thread details panel is 120 pixels wider than it started
 
+  Scenario: Releasing the thread details edge away from the last move keeps the release width
+    When I release "Resize thread details" 120 pixels to the left without a final move
+    Then the thread details panel is 120 pixels wider than it started
+    When I reload the app and open the thread "Resize"
+    Then the thread details panel is 120 pixels wider than it started
+
   Scenario: The keyboard resizes the thread details panel
     When I press "ArrowLeft" on "Resize thread details"
     Then the thread details panel is 16 pixels wider than it started

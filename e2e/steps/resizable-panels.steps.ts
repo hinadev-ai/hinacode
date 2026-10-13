@@ -33,6 +33,34 @@ When("I drag {string} {int} pixels to the {word}", async ({ app }, name: string,
   await app.page.mouse.up()
 })
 
+When(
+  "I release {string} {int} pixels to the left without a final move",
+  async ({ app }, name: string, distance: number) => {
+    await rememberStart(app)
+    const separator = handle(app.page, name)
+    const box = await separator.boundingBox()
+    if (!box) throw new Error(`${name} is not visible`)
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    const session = await app.page.context().newCDPSession(app.page)
+    try {
+      await app.page.mouse.move(x, y)
+      await app.page.mouse.down()
+      await expect(separator).toHaveAttribute("data-dragging", "true")
+      await session.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: x - distance,
+        y,
+        button: "left",
+        clickCount: 1,
+      })
+    } finally {
+      await app.page.mouse.up()
+      await session.detach()
+    }
+  },
+)
+
 When("I press {string} on {string}", async ({ app }, key: string, name: string) => {
   await rememberStart(app)
   await handle(app.page, name).press(key)
