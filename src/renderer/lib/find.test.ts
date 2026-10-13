@@ -84,7 +84,7 @@ test("finds a posted question's transcript text after the user answers", () => {
   expect(findMatches(messages, "color")).toEqual([{ messageId: "question", partIndex: 0, offset: 6 }])
 })
 
-test("follows the rendered order when questions stay outside collapsed work", () => {
+test("follows the original order of questions, progress, and the final answer", () => {
   const messages = [
     message(
       "m1",
@@ -98,8 +98,8 @@ test("follows the rendered order when questions stay outside collapsed work", ()
     ),
   ]
   expect(findMatches(messages, "migration")).toEqual([
-    { messageId: "m1", partIndex: 1, offset: 9 },
     { messageId: "m1", partIndex: 0, offset: 6 },
+    { messageId: "m1", partIndex: 1, offset: 9 },
     { messageId: "m1", partIndex: 3, offset: 0 },
   ])
 })

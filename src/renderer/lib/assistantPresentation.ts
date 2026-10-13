@@ -12,28 +12,17 @@ export type AssistantPresentation =
   | {
       readonly kind: "completed"
       readonly durationMs: number
-      readonly work: ReadonlyArray<IndexedMessagePart>
-      readonly reply: ReadonlyArray<IndexedMessagePart>
+      readonly parts: ReadonlyArray<IndexedMessagePart>
     }
 
-const isWork = (part: MessagePart) =>
-  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
-
-const staysInReply = (part: MessagePart) => part.type === "questions" || part.type === "attachment"
-
-export function assistantPresentation(message: Message, summarizeWork = true): AssistantPresentation {
+export function assistantPresentation(message: Message, showElapsedTime = true): AssistantPresentation {
   const parts = message.parts.flatMap((part, index) => (isOwnPart(part) ? [{ part, index }] : []))
-  if (message.role === "user" || message.completedAt === null || !summarizeWork) return { kind: "inline", parts }
+  if (message.role === "user" || message.completedAt === null || !showElapsedTime) return { kind: "inline", parts }
   const durationMs = Date.parse(message.completedAt) - Date.parse(message.createdAt)
   if (!(durationMs >= 0)) return { kind: "inline", parts }
-
-  const workEnd = parts.findLastIndex(({ part }) => isWork(part)) + 1
-  const work = parts.slice(0, workEnd).filter(({ part }) => !staysInReply(part))
-  const reply = parts.filter(({ part }, position) => position >= workEnd || staysInReply(part))
-  return { kind: "completed", durationMs, work, reply }
+  return { kind: "completed", durationMs, parts }
 }
 
-/** Disclosures can leave gaps in the original indices, so commands group only within each contiguous run. */
 export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
   let start = 0

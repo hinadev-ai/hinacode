@@ -10,7 +10,7 @@ const responses = new WeakMap<KkcodeApp, Message>()
 const finishedAnswer = "The finished answer stays visible."
 const progress = "Checking the repository."
 const responseArticle = (page: Page) => page.locator("article[aria-busy]")
-const workRow = (page: Page) => responseArticle(page).getByRole("button", { name: /^Worked for / })
+const workRow = (page: Page) => responseArticle(page).locator('[data-slot="worked-for"]')
 
 Given("worked-for uses the {string} appearance", async ({ app }, appearance: string) => {
   if (appearance !== "light" && appearance !== "dark") throw new Error(`Unknown appearance ${appearance}`)
@@ -72,20 +72,15 @@ Given(
   },
 )
 
-Then("the worked-for row shows {string} with its work collapsed", async ({ app }, duration: string) => {
+Then("the worked-for row shows {string} without a collapse control", async ({ app }, duration: string) => {
   await expect(workRow(app.page)).toHaveText(`Worked for ${duration}`)
-  await expect(workRow(app.page)).toHaveAttribute("aria-expanded", "false")
-  await expect(responseArticle(app.page).getByText(progress, { exact: true })).toBeHidden()
-  await expect(responseArticle(app.page).getByRole("button", { name: /pwd/ })).toBeHidden()
+  await expect(workRow(app.page)).toBeVisible()
+  await expect(responseArticle(app.page).getByRole("button", { name: /^Worked for / })).toHaveCount(0)
+  await expect(workRow(app.page).locator("svg")).toHaveCount(0)
 })
 
 Then("the finished answer stays visible", async ({ app }) => {
   await expect(responseArticle(app.page).getByText(finishedAnswer, { exact: true })).toBeVisible()
-})
-
-When("I toggle the worked-for row with {string}", async ({ app }, key: string) => {
-  await workRow(app.page).focus()
-  await app.page.keyboard.press(key)
 })
 
 Then("the response progress and tool are visible", async ({ app }) => {
@@ -120,9 +115,4 @@ When("the timed response completes", async ({ app }) => {
   const completed: Message = { ...response, completedAt: "2026-10-12T00:08:05.000Z" }
   const { seq } = await rpc(app.page, "threads.transcript", { threadId: response.threadId })
   await app.pushEvents([{ type: "message.updated", message: completed, seq: seq + 1 }])
-})
-
-Then("the elapsed time shows {string} without a disclosure", async ({ app }, duration: string) => {
-  await expect(responseArticle(app.page).getByText(`Worked for ${duration}`, { exact: true })).toBeVisible()
-  await expect(workRow(app.page)).toHaveCount(0)
 })
