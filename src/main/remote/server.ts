@@ -85,6 +85,8 @@ const make = Effect.gen(function* () {
     socket.on("close", () => clearTimeout(deadline))
     socket.on("error", () => {})
     socket.on("message", (raw, isBinary) => {
+      // Frames can still arrive while the close handshake runs; a closing socket must not authenticate or dispatch.
+      if (socket.readyState !== WebSocket.OPEN) return
       const frame = isBinary ? undefined : parseFrame(raw)
       if (frame === undefined) return socket.close(CLOSE_UNAUTHORIZED, "malformed frame")
       if (!authenticated) {
@@ -105,17 +107,19 @@ const make = Effect.gen(function* () {
 
   const listen = (address: SettingsValue["remote"]) =>
     Effect.acquireRelease(
-      Effect.callback<Server, Error>((resume) => {
+      Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
         const wss = new WebSocketServer({ server, path: REMOTE_PATH, maxPayload: 1024 * 1024 })
         wss.on("connection", accept)
-        server.once("error", (error) => resume(Effect.fail(error)))
-        server.listen(address.port, address.bindHost, () => resume(Effect.succeed(server)))
+        // ws re-emits the http server's errors on wss, and an unhandled emit throws before any server listener runs.
+        wss.on("error", (error) => resume(Effect.fail(error)))
+        server.listen(address.port, address.bindHost, () => resume(Effect.succeed({ server, wss })))
       }),
       // ws leaves an external http server running, so the port is released here, not by wss.close().
-      (server) =>
+      // wss.clients includes sockets that have not authenticated yet; closeAllConnections() skips upgraded ones.
+      ({ server, wss }) =>
         Effect.sync(() => {
-          closeAll(CLOSE_LISTENER_STOPPED, "listener stopped")
+          for (const socket of wss.clients) socket.close(CLOSE_LISTENER_STOPPED, "listener stopped")
           server.closeAllConnections()
           server.close()
         }),
