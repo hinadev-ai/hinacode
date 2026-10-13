@@ -1,7 +1,8 @@
 import type { Mermaid, MermaidConfig } from "mermaid"
 import { isValidElement, memo, type ReactNode, use, useEffect, useId, useMemo, useState } from "react"
-import ReactMarkdown, { type Components } from "react-markdown"
+import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
 import { resolveColor, useTheme } from "../lib/appearance.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
@@ -12,8 +13,28 @@ import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, Highlighted, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
+/** The proxied URL when the paragraph is nothing but a bare GitHub attachment link, which GitHub embeds. */
+const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
+  const [link, ...rest] = paragraph?.children ?? []
+  if (rest.length > 0 || link?.type !== "element" || link.tagName !== "a") return null
+  const [text] = link.children
+  const href = link.properties["href"]
+  return text?.type === "text" && text.value === href ? githubAssetUrl(href) : null
+}
+
 const components: Components = {
-  p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
+  p: ({ children, node }) => {
+    const asset = bareGitHubAsset(node)
+    return asset ? <GitHubAttachment src={asset} /> : <p className="my-2 first:mt-0 last:mb-0">{children}</p>
+  },
+  img: ({ src, alt }) => (
+    <img
+      src={typeof src === "string" ? (githubAssetUrl(src) ?? src) : undefined}
+      alt={alt ?? ""}
+      loading="lazy"
+      className="inline-block max-w-full rounded-md"
+    />
+  ),
   a: ({ children, href }) =>
     isWebUrl(href) ? (
       <WebLink href={href}>{children}</WebLink>
@@ -76,6 +97,25 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
     </ReactMarkdown>
   )
 })
+
+/** GitHub embeds bare attachment links as video, which is what they usually are; an image falls back to <img>. */
+function GitHubAttachment({ src }: { src: string }) {
+  const [isImage, setIsImage] = useState(false)
+  const className = "my-2 block max-h-96 max-w-full rounded-md border border-border"
+  return isImage ? (
+    <img src={src} alt={m.markdown_attachment()} loading="lazy" className={className} />
+  ) : (
+    // oxlint-disable-next-line jsx-a11y/media-has-caption -- GitHub attachments carry no caption track.
+    <video
+      src={src}
+      controls
+      preload="metadata"
+      aria-label={m.markdown_attachment()}
+      onError={() => setIsImage(true)}
+      className={className}
+    />
+  )
+}
 
 function CodeFigure({ label, code, children }: { label?: string; code: string; children: ReactNode }) {
   return (
