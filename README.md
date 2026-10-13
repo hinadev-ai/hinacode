@@ -87,6 +87,10 @@ Adding an agent backend means one implementation of `AgentProvider` in `src/main
 
 Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own kkcode on a throwaway `KKCODE_USER_DATA`, seeds preconditions through `window.kkcode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
 
+Scenarios that depend on native pointer capture, scrolling or window focus carry `@desktop`. They run with one worker after the parallel scenarios finish, because separate app profiles still share the desktop's focus and input.
+
+Run selected desktop scenarios with `pnpm test:e2e --project desktop --no-deps -g 'Resizable'`. The `--no-deps` flag skips the parallel project for a focused run.
+
 Tests never wait on wall-clock timers; oxlint rejects `setTimeout`, `setInterval` and the `timers` modules in test files. Wait on the thing itself instead: a push event, a `PubSub` the service publishes to, a file change, a Playwright locator assertion, or `TestClock.adjust` for code that sleeps. The verification skill in `.agents/skills/verify-kkcode` picks up where e2e stops: real agent turns, GitHub through `gh`, and native dialogs.
 
 ## Acknowledgements

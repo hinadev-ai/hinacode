@@ -1,3 +1,4 @@
+@desktop
 Feature: Resizable panels
   The sidebar and the thread details panel take the width the developer gives them, and keep it.
 
