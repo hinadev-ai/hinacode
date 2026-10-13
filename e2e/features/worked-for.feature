@@ -49,6 +49,17 @@ Feature: Worked for
     Then the worked-for row shows "08:05" with its work collapsed
     And the finished answer stays visible
 
+  Scenario: Work revealed by Find stays available after closing Find
+    Given the thread "Timed response" has a finished response that took 485 seconds
+    When I open the thread "Timed response" from the sidebar
+    And I find "Checking the repository" in the timed response
+    Then the response progress and tool are visible
+    When I close Find
+    Then the response progress and tool are visible
+    When I toggle the worked-for row with "Enter"
+    Then the worked-for row shows "08:05" with its work collapsed
+    And the finished answer stays visible
+
   Scenario: Text-only answers show elapsed time without a disclosure
     Given the thread "Timed response" has a text-only response that took 485 seconds
     When I open the thread "Timed response" from the sidebar
