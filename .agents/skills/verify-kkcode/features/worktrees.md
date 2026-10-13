@@ -33,8 +33,7 @@ Preconditions:
 
 - Nothing is created until the first send. Ticking `Worktree` and leaving the thread unsent leaves no branch or folder.
 - **From a pull request.** Use a project cloned from a GitHub repo with open PRs and start the app with `KKCODE_MOCK_CLAUDE=usage-limit`, so the send creates the worktree without a real turn. `#<n>` or the PR URL checks out the PR's head branch tracking `origin` and links the PR; a PR URL of another repository is refused with an error under the composer. Type into the field after selecting its text through the DOM (`el.select()`), because `fill` may append to the prefilled `main`.
-- `Workspace` and `Agent` exist only before the first message. To test them again, start a new thread.
-- Composer selects can open upward under the header; drive them with the keyboard as above rather than clicking options.
+- `Workspace` exists, and `Model` lists every agent, only before the first message. To test them again, start a new thread.
 - The setup script runs through `$SHELL -lc`, so the user's login profile runs first. A noisy profile shows up in the setup log.
 - The worktree lives next to the project root, not inside it. Keep scratch repos inside `$DATA` so cleanup removes their worktrees too.
 - A branch with no commits of its own counts as merged into the base ref, so archiving with worktree removal deletes it. The e2e scenario commits first to prove the other branch of that rule.

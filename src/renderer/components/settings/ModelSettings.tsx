@@ -7,12 +7,12 @@ import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { accessModes } from "../ComposerControls.tsx"
-import { ProviderIcon } from "../ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
-import { AccountList, DefaultAccountField, providerLabel } from "./AccountSettings.tsx"
+import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
@@ -81,7 +81,66 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
           .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
         {error && <FieldError>{error}</FieldError>}
       </Field>
+      {AsyncResult.isSuccess(models) && models.value.length > 0 && (
+        <ModelPresetField provider={provider} models={models.value} />
+      )}
     </FieldSet>
+  )
+}
+
+/** Which of the agent's models the thread model picker lists. Picking none lists them all. */
+function ModelPresetField({ provider, models }: { provider: ProviderId; models: ReadonlyArray<ModelInfo> }) {
+  const { modelPresets } = useSettings()
+  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const inputId = `model-preset-${provider}`
+  const items = models.map((model) => ({ value: model.id, label: model.label }))
+  const listed = new Set(items.map((item) => item.value))
+  const selected = modelPresets[provider].filter((id) => listed.has(id))
+
+  const save = async (next: ReadonlyArray<string>) => {
+    setError(null)
+    try {
+      await updateSettings({ modelPresets: { ...modelPresets, [provider]: next } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{m.settings_model_preset()}</FieldLabel>
+      <div className="flex items-center gap-2">
+        <Select items={items} multiple value={selected} onValueChange={(next) => void save(next)}>
+          <SelectTrigger id={inputId} className="w-72">
+            <SelectValue className="min-w-0 truncate">
+              {(value: ReadonlyArray<string>) =>
+                value.length === 0
+                  ? m.settings_model_preset_all()
+                  : items
+                      .filter((item) => value.includes(item.value))
+                      .map((item) => item.label)
+                      .join(", ")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {items.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selected.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => void save([])}>
+            {m.settings_model_preset_clear()}
+          </Button>
+        )}
+      </div>
+      <FieldDescription>{m.settings_model_preset_hint()}</FieldDescription>
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
   )
 }
 

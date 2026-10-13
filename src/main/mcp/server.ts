@@ -5,11 +5,13 @@ import { McpProtocol, McpSchema, McpServer as AiMcpServer, Tool } from "effect/a
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
 import { SqlClient } from "effect/sql"
 import { ProviderId } from "../../shared/agent.ts"
+import { isThreadBusy, type Message, type Thread } from "../../shared/domain.ts"
 import { AgentRunner } from "../services/AgentRunner.ts"
 import { Events } from "../services/Events.ts"
 import { PullRequests } from "../services/PullRequests.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Threads } from "../services/Threads.ts"
+import { Worktrees } from "../services/Worktrees.ts"
 import { makeActiveWorkspace } from "../services/workspace.ts"
 import { McpCredentials } from "./credentials.ts"
 import { type Linear, makeLinear } from "./linear.ts"
@@ -59,6 +61,28 @@ const callingThreadId = (credentials: typeof McpCredentials.Service) =>
 
 const failure = (error: { readonly message: string }): ToolFailure => ({ message: error.message })
 
+const DEFAULT_READ_LIMIT = 20
+const MAX_READ_LIMIT = 100
+
+const renderPart = (part: Message["parts"][number]): string | null => {
+  switch (part.type) {
+    case "text":
+    case "questions":
+      return part.text
+    case "reasoning":
+      return null
+    case "tool_call":
+      return `[tool ${part.name}: ${part.status}]`
+    case "file_change":
+      return `[edited ${part.path}]`
+    case "attachment":
+      return `[attachment ${part.attachment.name}]`
+  }
+}
+
+const renderMessage = (message: Message) =>
+  [`## ${message.role}`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
+
 const registerTools = Layer.effectDiscard(
   Effect.gen(function* () {
     const server = yield* AiMcpServer.McpServer
@@ -68,6 +92,7 @@ const registerTools = Layer.effectDiscard(
     const runner = yield* AgentRunner
     const threads = yield* Threads
     const events = yield* Events
+    const worktrees = yield* Worktrees
 
     const activeWorkspace = yield* makeActiveWorkspace
 
@@ -94,6 +119,28 @@ const registerTools = Layer.effectDiscard(
         "Name the value is stored under, for example stripe.apiKey. Letters, digits, dots, dashes and underscores.",
     })
 
+    /** A thread of the caller's project, so an agent cannot reach into another project's threads. */
+    const projectThread = (callerId: string, targetId: string) =>
+      Effect.gen(function* () {
+        const caller = yield* threads.get(callerId)
+        const target = yield* threads
+          .get(targetId)
+          .pipe(
+            Effect.catchTag("NotFoundError", () => Effect.fail({ message: `Thread ${targetId} no longer exists.` })),
+          )
+        if (target.projectId !== caller.projectId) {
+          return yield* Effect.fail({ message: `Thread ${targetId} is not in this project.` })
+        }
+        return target
+      }).pipe(Effect.mapError(failure))
+
+    const peerThread = (callerId: string, targetId: string): Effect.Effect<Thread, ToolFailure> =>
+      targetId === callerId
+        ? Effect.fail({ message: "That is this thread. Use your own turn instead." })
+        : projectThread(callerId, targetId)
+
+    const TargetThreadId = Schema.String.annotate({ description: "Id of a thread in this project." })
+
     const tools = [
       tool({
         name: "request_secret",
@@ -118,7 +165,7 @@ const registerTools = Layer.effectDiscard(
       tool({
         name: "create_thread",
         description:
-          "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model. Pass `worktree` to run it in a new git worktree.",
+          "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model. Pass `worktree` to run it in a new git worktree. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
         parameters: Schema.Struct({
           title: Schema.String.annotate({ description: "Shown in the sidebar." }),
           prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
@@ -154,6 +201,96 @@ const registerTools = Layer.effectDiscard(
             )
             return `Created thread ${thread.id} "${thread.title}" and sent it the prompt.`
           }).pipe(Effect.mapError(failure)),
+      }),
+      tool({
+        name: "list_threads",
+        description:
+          "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread.",
+        parameters: NoParams,
+        run: (_, threadId) =>
+          Effect.gen(function* () {
+            const caller = yield* threads.get(threadId)
+            const all = yield* threads.list
+            const branches = new Map(
+              (yield* worktrees.list)
+                .filter((worktree) => worktree.status !== "removed")
+                .map((worktree) => [worktree.id, worktree.branch]),
+            )
+            const listed = all
+              .filter((thread) => thread.projectId === caller.projectId && thread.status !== "archived")
+              .map((thread) => ({
+                id: thread.id,
+                title: thread.title,
+                status: thread.status,
+                provider: thread.provider,
+                model: thread.model,
+                createdBy: thread.createdBy,
+                branch: (thread.worktreeId && branches.get(thread.worktreeId)) ?? null,
+                ...(thread.id === threadId ? { self: true } : {}),
+              }))
+            return JSON.stringify(listed)
+          }).pipe(Effect.mapError(failure)),
+      }),
+      tool({
+        name: "read_thread",
+        description:
+          "Read another thread of this project: its status, whether it is waiting on the user, and its latest messages.",
+        parameters: Schema.Struct({
+          threadId: TargetThreadId,
+          limit: Schema.optionalKey(
+            Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_READ_LIMIT })).annotate({
+              description: `Latest messages to return, 1-${MAX_READ_LIMIT}. Defaults to ${DEFAULT_READ_LIMIT}.`,
+            }),
+          ),
+        }),
+        run: ({ threadId: targetId, limit }, threadId) =>
+          Effect.gen(function* () {
+            const target = yield* projectThread(threadId, targetId)
+            const transcript = yield* runner.transcript(targetId).pipe(Effect.mapError(failure))
+            const waiting = [
+              ...transcript.approvals.map((request) => `- approval: ${request.title}`),
+              ...transcript.questions.flatMap((request) =>
+                request.questions.map((question) => `- question: ${question.question}`),
+              ),
+              ...transcript.secretRequests.map((request) => `- secret: ${request.name}`),
+            ]
+            const messages = transcript.messages.slice(-(limit ?? DEFAULT_READ_LIMIT))
+            return [
+              `Thread ${target.id} "${target.title}" is ${target.status}.`,
+              ...(waiting.length > 0 ? ["Waiting on the user for:", ...waiting] : []),
+              "",
+              messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
+            ].join("\n")
+          }),
+      }),
+      tool({
+        name: "send_to_thread",
+        description:
+          "Send a message to another thread of this project. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it.",
+        parameters: Schema.Struct({
+          threadId: TargetThreadId,
+          prompt: Schema.String.annotate({ description: "The user message to send." }),
+        }),
+        run: ({ threadId: targetId, prompt }, threadId) =>
+          Effect.gen(function* () {
+            const target = yield* peerThread(threadId, targetId)
+            if (isThreadBusy(target.status)) {
+              yield* runner.steer(targetId, prompt, []).pipe(Effect.mapError(failure))
+              return `Steered the running turn of thread ${targetId}.`
+            }
+            yield* runner.send(targetId, prompt, []).pipe(Effect.mapError(failure))
+            return `Started a new turn on thread ${targetId}.`
+          }),
+      }),
+      tool({
+        name: "stop_thread",
+        description: "Interrupt the running turn of another thread in this project. Does nothing if it is idle.",
+        parameters: Schema.Struct({ threadId: TargetThreadId }),
+        run: ({ threadId: targetId }, threadId) =>
+          peerThread(threadId, targetId).pipe(
+            Effect.andThen(runner.interrupt(targetId)),
+            Effect.as(`Interrupted thread ${targetId}.`),
+          ),
       }),
       tool({
         name: "review_changes",

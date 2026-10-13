@@ -56,12 +56,9 @@ export function commandFindText(call: ToolCall): CommandFindText {
   return { distinctLabel: label === command ? null : label, command }
 }
 
+/** In the order a command row shows them: the command, then the agent's description of it. */
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
-  distinctLabel === null ? command : `${distinctLabel}\n${command}`
-
-/** Whether a match at `offset` in `commandSearchText` falls in the command rather than the distinct label. */
-export const isInCommand = ({ distinctLabel }: CommandFindText, offset: number) =>
-  offset >= (distinctLabel === null ? 0 : distinctLabel.length + 1)
+  distinctLabel === null ? command : `${command}\n${distinctLabel}`
 
 /** Every match of `query` in the transcript, in reading order. */
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {

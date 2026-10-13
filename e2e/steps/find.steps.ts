@@ -12,6 +12,12 @@ const transcript = (page: Page) => page.locator("article[aria-busy]")
 const findField = (page: Page) => page.getByRole("textbox", { name: "Find in thread", exact: true })
 const currentMarkSelector = "mark[data-find-match][data-current]"
 const currentMark = (page: Page) => transcript(page).locator(currentMarkSelector)
+/** A row in an open command group, found by its command or by the agent's description of it. */
+const commandRow = (page: Page, text: string) =>
+  transcript(page)
+    .getByRole("button")
+    .filter({ has: page.getByTitle(text, { exact: true }) })
+const isClipped = (label: Locator) => label.evaluate((element) => element.scrollWidth > element.clientWidth)
 
 interface TurnRow {
   readonly kind?: string
@@ -25,7 +31,7 @@ const finishTurn = async (
   title: string,
   rows: ReadonlyArray<TurnRow>,
 ) => {
-  await expect(app.page.getByRole("heading", { name: "Start the conversation", exact: true })).toBeVisible()
+  await expect(app.page.getByRole("heading", { name: "Do anything", exact: true })).toBeVisible()
   const threadId = threadIds.get(title)
   if (!threadId) throw new Error(`no seeded thread named ${title}`)
   let { seq } = await rpc(app.page, "threads.transcript", { threadId })
@@ -105,12 +111,9 @@ When("I close Find", async ({ app }) => {
 })
 
 Then("the current match is in the command {string}", async ({ app }, command: string) => {
-  const section = transcript(app.page)
-    .locator("section")
-    .filter({ has: app.page.getByRole("heading", { name: "Command" }) })
-  const commandText = section.filter({ has: app.page.locator(currentMarkSelector) }).locator("pre")
-  await expect(commandText).toHaveText(command)
-  await expect(commandText).toBeInViewport()
+  const label = transcript(app.page).getByTitle(command, { exact: true })
+  await expect(label).toHaveText(command)
+  await expect(label.locator(currentMarkSelector)).toHaveCount(1)
   await expect(currentMark(app.page)).toHaveCount(1)
   await expect(currentMark(app.page)).toBeInViewport()
 })
@@ -125,9 +128,9 @@ Then("the current match is in the reply {string}", async ({ app }, text: string)
   await expect(currentMark(app.page)).toBeInViewport()
 })
 
-Then("the current match is in the command row {string}", async ({ app }, label: string) => {
-  const row = transcript(app.page).getByRole("button", { name: label, exact: true })
-  await expect(row.locator(currentMarkSelector)).toHaveText(new RegExp(label, "i"))
+Then("the current match is in the command description {string}", async ({ app }, description: string) => {
+  const label = transcript(app.page).getByTitle(description, { exact: true })
+  await expect(label.locator(currentMarkSelector)).toHaveText(new RegExp(description, "i"))
   await expect(currentMark(app.page)).toHaveCount(1)
   await expect(currentMark(app.page)).toBeInViewport()
 })
@@ -140,38 +143,27 @@ When("I toggle the command group {string}", async ({ app }, label: string) => {
   await transcript(app.page).getByRole("button", { name: label }).click()
 })
 
-Then("the command row {string} is hidden", async ({ app }, label: string) => {
-  await expect(transcript(app.page).getByRole("button", { name: label, exact: true })).toBeHidden()
+Then("the command row {string} is hidden", async ({ app }, text: string) => {
+  await expect(commandRow(app.page, text)).toBeHidden()
 })
 
-Then("the command row {string} is shown", async ({ app }, label: string) => {
-  await expect(transcript(app.page).getByRole("button", { name: label, exact: true })).toBeVisible()
+Then("the command row {string} is shown", async ({ app }, text: string) => {
+  await expect(commandRow(app.page, text)).toBeVisible()
 })
 
-When("I toggle the command row {string}", async ({ app }, label: string) => {
-  await transcript(app.page).getByRole("button", { name: label, exact: true }).click()
-})
-
-Then("the command {string} is hidden", async ({ app }, command: string) => {
-  await expect(transcript(app.page).locator("section pre").filter({ hasText: command })).toBeHidden()
-})
-
-Then("the current match is in an open command ending in {string}", async ({ app }, tail: string) => {
-  const row = transcript(app.page)
-    .locator("li")
-    .filter({ has: app.page.locator(currentMarkSelector) })
-  await expect(row.getByRole("button", { expanded: true })).toHaveCount(1)
-  const commandText = row
-    .locator("section")
-    .filter({ has: app.page.getByRole("heading", { name: "Command" }) })
-    .locator("pre")
-  await expect(commandText).toHaveText(new RegExp(`^printf x+${tail}$`))
-  await expect(commandText.locator(currentMarkSelector)).toHaveText(tail)
-  await expect(currentMark(app.page)).toHaveCount(1)
-  await expect(currentMark(app.page)).toBeInViewport()
-})
-
-const isClipped = (label: Locator) => label.evaluate((element) => element.scrollWidth > element.clientWidth)
+Then(
+  "the current match is in a command row that shows the whole command ending in {string}",
+  async ({ app }, tail: string) => {
+    const label = transcript(app.page)
+      .locator("li span[title]")
+      .filter({ has: app.page.locator(currentMarkSelector) })
+    await expect(label).toHaveText(new RegExp(`^printf x+${tail}$`))
+    await expect(label.locator(currentMarkSelector)).toHaveText(tail)
+    await expect.poll(() => isClipped(label)).toBe(false)
+    await expect(currentMark(app.page)).toHaveCount(1)
+    await expect(currentMark(app.page)).toBeInViewport()
+  },
+)
 
 Then("the current match is in a command row that shows its whole label", async ({ app }) => {
   const label = transcript(app.page)
@@ -183,7 +175,7 @@ Then("the current match is in a command row that shows its whole label", async (
   await expect(currentMark(app.page)).toBeInViewport()
 })
 
-Then("the command row {string} truncates its label again", async ({ app }, command: string) => {
-  const label = transcript(app.page).locator(`li span[title="${command}"]`)
+Then("the command description ending in {string} is truncated again", async ({ app }, tail: string) => {
+  const label = transcript(app.page).getByTitle(new RegExp(`${tail}$`))
   await expect.poll(() => isClipped(label)).toBe(true)
 })

@@ -35,6 +35,25 @@ Feature: Responsive composer
       | 320   | 480    | 16       |
       | 360   | 240    | 16       |
 
+  Scenario Outline: The composer toolbar stays on one line and keeps every option reachable
+    Given a project "demo" for my repository
+    And the project "demo" has an idle responsive thread "Compose"
+    When I open the thread "Compose" from the sidebar
+    And I use a <width> by <height> viewport with <fontSize> pixel text
+    Then the composer toolbar stays on one line
+    When I choose "Auto" access in the composer
+    Then the thread "Compose" runs with "auto" access
+
+    Examples:
+      | width | height | fontSize |
+      | 1280  | 820    | 16       |
+      | 960   | 720    | 16       |
+      | 720   | 480    | 16       |
+      | 480   | 480    | 16       |
+      | 360   | 480    | 16       |
+      | 320   | 480    | 16       |
+      | 720   | 480    | 32       |
+
   Scenario: Compact secondary panels can be opened and dismissed with the keyboard
     Given a project "demo" for my repository
     And the project "demo" has an idle responsive thread "Compose"

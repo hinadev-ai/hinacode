@@ -349,11 +349,19 @@ export const Settings = Schema.Struct({
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
+  }),
+  /** Model ids the thread model picker lists per agent, in any order. Empty lists every model the agent has. */
+  modelPresets: Schema.Struct({
+    claude: Schema.Array(Schema.String),
+    codex: Schema.Array(Schema.String),
+    muse: Schema.Array(Schema.String),
   }),
   /** The account new threads of each agent start on. Null is the CLI's own login. */
   defaultAccount: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
   }),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
@@ -379,8 +387,9 @@ export type Settings = typeof Settings.Type
 export const defaultSettings: Settings = {
   locale: "en",
   keybindings: {},
-  defaultModel: { claude: null, codex: null },
-  defaultAccount: { claude: null, codex: null },
+  defaultModel: { claude: null, codex: null, muse: null },
+  modelPresets: { claude: [], codex: [], muse: [] },
+  defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },

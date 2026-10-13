@@ -1,4 +1,5 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
   type ClipboardEvent,
@@ -15,6 +16,7 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, toWorktreeSource, useDrafts } from "../stores/drafts.ts"
@@ -29,18 +31,12 @@ import {
   ComposerToolbar,
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
-import {
-  AccessPicker,
-  AccountPicker,
-  AgentPicker,
-  EffortPicker,
-  FastModeToggle,
-  ModelPicker,
-  WorkspacePicker,
-} from "./ComposerControls.tsx"
+import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
+import { PendingLineComment } from "./LineComment.tsx"
 import { SubagentBar } from "./SubagentBar.tsx"
+import { TodoBar } from "./TodoBar.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -66,7 +62,7 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread }: { thread: Thread }) {
-  const { text, attachments, worktree } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, worktree, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
   // Agent and workspace stay open to change until the first message.
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -77,17 +73,23 @@ export function Composer({ thread }: { thread: Thread }) {
   const [isStaging, startStaging] = useTransition()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const key = completionKey(thread)
-  const commands = AsyncResult.getOrElse(useAtomValue(commandsAtom(key)), (): ReadonlyArray<AgentCommand> => [])
+  const commandsResult = useAtomValue(commandsAtom(key))
+  const commands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
+  // A failed load looks exactly like "the agent has no commands" when swallowed, so it is shown instead.
+  const commandsError = AsyncResult.isFailure(commandsResult)
+    ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
+    : null
   const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesAtom(key))
+  const refreshCommands = useAtomRefresh(commandsAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const hasDraft = text.trim() !== "" || attachments.length > 0
+  const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
 
   const send = () => {
     if (!canSend) return
     const sent = useDrafts.getState().take(thread.id)
-    const prompt = sent.text.trim()
+    const prompt = promptWithComments(sent.text, sent.comments)
     setError(null)
     startSending(async () => {
       try {
@@ -164,12 +166,15 @@ export function Composer({ thread }: { thread: Thread }) {
     send()
   }
 
-  // A finished turn may have added files worth mentioning.
+  // A finished turn may have added files worth mentioning, and gives a failed command load another chance.
   const wasBusy = useRef(busy)
   useEffect(() => {
-    if (wasBusy.current && !busy) refreshFiles()
+    if (wasBusy.current && !busy) {
+      refreshFiles()
+      refreshCommands()
+    }
     wasBusy.current = busy
-  }, [busy, refreshFiles])
+  }, [busy, refreshFiles, refreshCommands])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
@@ -181,8 +186,24 @@ export function Composer({ thread }: { thread: Thread }) {
   return (
     <form onSubmit={onSubmit} className="flex max-h-3/5 min-h-0 shrink-0 flex-col px-3 pb-3">
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
+        <TodoBar thread={thread} />
         <SubagentBar thread={thread} />
         <ComposerBar className="min-h-0 focus-within:border-ring">
+          {comments.length > 0 && (
+            <ul
+              aria-label={m.comment_pending_label()}
+              className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+            >
+              {comments.map((comment) => (
+                <li key={comment.id}>
+                  <PendingLineComment
+                    comment={comment}
+                    onRemove={() => useDrafts.getState().removeComment(thread.id, comment.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
           {attachments.length > 0 && (
             <ul
               aria-label={m.attachment_pending_label()}
@@ -214,14 +235,10 @@ export function Composer({ thread }: { thread: Thread }) {
             className="min-h-[calc(1lh+1rem)]"
           />
           <ComposerToolbar className="shrink-0 gap-2">
-            <ComposerActions className="min-w-0 flex-1 flex-wrap">
+            <ComposerActions className="min-w-0 flex-1">
               <AttachButton onClick={pickFiles} disabled={isStaging} />
-              {unstarted && <AgentPicker thread={thread} onError={setError} />}
-              <ModelPicker thread={thread} onError={setError} />
-              <AccountPicker thread={thread} onError={setError} />
-              <EffortPicker thread={thread} onError={setError} />
-              <FastModeToggle thread={thread} onError={setError} />
-              <AccessPicker thread={thread} onError={setError} />
+              <ModelPicker thread={thread} canSwitchAgent={unstarted} onError={setError} />
+              <ThreadOptions thread={thread} onError={setError} />
             </ComposerActions>
             <ContextRing threadId={thread.id} />
             <SendButton busy={busy} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
@@ -229,7 +246,7 @@ export function Composer({ thread }: { thread: Thread }) {
         </ComposerBar>
       </ComposerRoot>
       {unstarted && <WorkspacePicker thread={thread} worktree={worktree} />}
-      {error && <FieldError className="mx-auto mt-1 max-w-3xl">{error}</FieldError>}
+      {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )
 }
@@ -238,7 +255,14 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<ComposerAttachButton onClick={onClick} disabled={disabled} aria-label={m.attachment_add()} />}
+        render={
+          <ComposerAttachButton
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={m.attachment_add()}
+            className="shrink-0"
+          />
+        }
       />
       <TooltipContent>{m.attachment_add_hint()}</TooltipContent>
     </Tooltip>

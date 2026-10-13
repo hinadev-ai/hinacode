@@ -9,7 +9,7 @@ Feature: Built-in MCP server
     And an agent connected to the thread "Agent"
 
   Scenario: The server lists its tools to the thread's agent and turns strangers away
-    Then the agent sees the tools "review_changes, link_pull_request, list_thread_pull_requests, unlink_pull_request, linear_get_issue, linear_search_issues, linear_create_comment, linear_update_issue_state, request_secret, create_thread"
+    Then the agent sees the tools "review_changes, link_pull_request, list_thread_pull_requests, unlink_pull_request, linear_get_issue, linear_search_issues, linear_create_comment, linear_update_issue_state, request_secret, create_thread, list_threads, read_thread, send_to_thread, stop_thread"
     And a request with a wrong credential is rejected
 
   Scenario: review_changes reports what changed in the thread's workspace

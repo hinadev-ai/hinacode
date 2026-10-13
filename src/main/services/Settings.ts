@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, PubSub, Schema, type Scope, Stream } from "effect"
+import { Context, Effect, Layer, Predicate, PubSub, Schema, type Scope, Stream } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { defaultSettings, Settings as SettingsSchema } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
@@ -37,8 +37,18 @@ const make = Effect.gen(function* () {
 
   const get = Effect.gen(function* () {
     const rows = yield* findAll(undefined)
-    const stored = Object.fromEntries(rows.map((row) => [row.key, row.value]))
-    return yield* decodeSettings({ ...defaultSettings, ...stored })
+    const stored = new Map(rows.map((row) => [row.key, row.value]))
+    // A row saved before a key existed lacks it, so a stored object is laid over its default instead of replacing it.
+    const merged = Object.fromEntries(
+      Object.entries(defaultSettings).map(([key, fallback]) => {
+        const value = stored.get(key)
+        return [
+          key,
+          Predicate.isObject(fallback) && Predicate.isObject(value) ? { ...fallback, ...value } : (value ?? fallback),
+        ]
+      }),
+    )
+    return yield* decodeSettings(merged)
   }).pipe(Effect.mapError(persistence("settings.get")))
 
   const set = (patch: Partial<SettingsValue>) =>

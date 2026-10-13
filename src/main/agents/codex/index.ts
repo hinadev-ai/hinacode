@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
+  AccountHome,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -16,26 +16,19 @@ import type {
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
+import { resolveBinary, resolveBinaryOnce } from "../binary.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
-import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, makeRolloutUsage } from "./rollouts.ts"
 import { elementContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
-import {
-  GetAccountRateLimitsResponse,
-  AccountLoginCompletedNotification,
-  GetAccountResponse,
-  type RateLimitWindow,
-  LoginAccountResponse,
-} from "./protocol.ts"
+import { GetAccountRateLimitsResponse, GetAccountResponse, type RateLimitWindow } from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
-  CancelLoginAccountParams,
-  LoginAccountParams,
   ElicitationActionWire,
   GetAccountParams,
   McpServerElicitationRequestParams,
@@ -70,21 +63,6 @@ const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
   allow: "accept",
   allow_for_session: "acceptForSession",
   deny: "decline",
-}
-
-/** A packaged Electron app may not inherit the shell PATH (mise, Homebrew), so fall back to a login shell. */
-const resolveCodexBinary = (): string => {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", ["codex"]],
-    [process.env.SHELL ?? "/bin/sh", ["-ilc", "command -v codex"]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim().split("\n").at(-1)
-      if (path) return path
-    } catch {}
-  }
-  return "codex"
 }
 
 const toQuestion = (question: ToolRequestUserInputQuestion): Question => ({
@@ -185,29 +163,34 @@ const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn inter
 
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
-  const binaryPath = resolveCodexBinary()
+  const binaryPath = resolveBinary("codex")
   const clientLock = yield* Semaphore.make(1)
-  /** Keyed by agent home, "" for the CLI's own one. */
+  /** Keyed by `JSON.stringify(home)`, so the CLI's own login is "null". */
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
 
   /**
-   * One app-server per agent home, since `CODEX_HOME` holds the login and the transcripts. Spawned on
-   * first use and respawned after it dies.
+   * One app-server per agent home and binary, since `CODEX_HOME` holds the login and the transcripts. Spawned
+   * on first use and respawned after it dies.
    */
-  const getClient = (home: string | null) =>
+  const getClient = (home: AccountHome | null) =>
     Semaphore.withPermit(
       clientLock,
       Effect.gen(function* () {
-        const current = clients.get(home ?? "")
+        const key = JSON.stringify(home)
+        const current = clients.get(key)
         if (current?.client.isAlive()) return current.client
         if (current) yield* Scope.close(current.scope, Exit.void)
         const scope = yield* Scope.make()
-        const env = home === null ? { ...process.env } : { ...process.env, CODEX_HOME: home }
-        const client = yield* makeCodexClient({ binaryPath, clientVersion: CLIENT_VERSION, env }).pipe(
+        const env = home === null ? { ...process.env } : { ...process.env, CODEX_HOME: home.dir }
+        const client = yield* makeCodexClient({
+          binaryPath: home === null ? binaryPath : resolveBinaryOnce(home.binary),
+          clientVersion: CLIENT_VERSION,
+          env,
+        }).pipe(
           Scope.provide(scope),
           Effect.onError(() => Scope.close(scope, Exit.void)),
         )
-        clients.set(home ?? "", { client, scope })
+        clients.set(key, { client, scope })
         return client
       }),
     )
@@ -248,7 +231,7 @@ const make = Effect.gen(function* () {
     return models
   })
 
-  const planLimits = (home: string | null) =>
+  const planLimits = (home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
       const raw = yield* client.request<unknown>("account/rateLimits/read", undefined)
@@ -261,14 +244,14 @@ const make = Effect.gen(function* () {
     })
 
   const rolloutUsage = perHome(makeRolloutUsage)
-  const readUsage = (threadId: string, home: string | null) =>
+  const readUsage = (threadId: string, home: AccountHome | null) =>
     Effect.tryPromise({
-      try: () => rolloutUsage(home ?? codexHome())(threadId),
+      try: () => rolloutUsage(home?.dir ?? codexHome())(threadId),
       catch: (cause) =>
         new AgentError({ provider: "codex", message: `Failed to read Codex rollouts: ${String(cause)}` }),
     })
 
-  const account = (home: string | null) =>
+  const account = (home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
       const params: GetAccountParams = { refreshToken: false }
@@ -281,63 +264,7 @@ const make = Effect.gen(function* () {
       return toAccount(response.account)
     })
 
-  const signIn = (home: string) =>
-    Effect.gen(function* () {
-      const client = yield* getClient(home)
-      // Subscribed first, so a login that completes right away is not missed.
-      const completions = yield* Queue.unbounded<Incoming>()
-      yield* client.subscribe((message) => Queue.offerUnsafe(completions, message))
-      const raw = yield* client.request<unknown>("account/login/start", {
-        type: "chatgpt",
-      } satisfies LoginAccountParams)
-      const { loginId, authUrl } = yield* Schema.decodeUnknownEffect(LoginAccountResponse)(raw).pipe(
-        Effect.mapError(
-          () => new AgentError({ provider: "codex", message: "Failed to start the Codex sign-in: invalid response" }),
-        ),
-      )
-      const done = yield* Deferred.make<void, AgentError>()
-      yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
-          if (yield* Deferred.isDone(done)) return
-          yield* client
-            .request("account/login/cancel", { loginId } satisfies CancelLoginAccountParams)
-            .pipe(Effect.ignore)
-        }),
-      )
-      const decodeCompletion = Schema.decodeUnknownOption(AccountLoginCompletedNotification)
-      const completed = Effect.gen(function* () {
-        while (true) {
-          const message = yield* Queue.take(completions)
-          if (message.kind === "exit") return yield* Effect.fail(message.error)
-          if (message.kind !== "notification" || message.method !== "account/login/completed") continue
-          const completion = Option.getOrUndefined(decodeCompletion(message.params))
-          if (completion?.loginId !== loginId) continue
-          if (completion.success) return
-          return yield* new AgentError({ provider: "codex", message: completion.error ?? "Codex sign-in failed" })
-        }
-      }).pipe(Effect.onExit((exit) => Deferred.done(done, Exit.asVoid(exit))))
-      const pending: SignIn = { url: authUrl, openedBrowser: false, submitCode: null, completed }
-      return pending
-    })
-
-  /** Also stops the home's app-server, since a removed account's home is deleted right after. */
-  const signOut = (home: string) =>
-    getClient(home).pipe(
-      Effect.flatMap((client) => client.request("account/logout", undefined)),
-      Effect.ensuring(
-        Semaphore.withPermit(
-          clientLock,
-          Effect.suspend(() => {
-            const current = clients.get(home)
-            clients.delete(home)
-            return current ? Scope.close(current.scope, Exit.void) : Effect.void
-          }),
-        ),
-      ),
-      Effect.asVoid,
-    )
-
-  const listSkills = (cwd: string, home: string | null) =>
+  const listSkills = (cwd: string, home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
       const params: SkillsListParams = { cwds: [cwd] }
@@ -345,7 +272,7 @@ const make = Effect.gen(function* () {
       return response.data.flatMap((entry) => entry.skills)
     })
 
-  const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: string | null }) =>
+  const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: AccountHome | null }) =>
     listSkills(cwd, home).pipe(
       Effect.map((skills) =>
         skills
@@ -382,6 +309,8 @@ const make = Effect.gen(function* () {
             model: input.model,
             ...threadAccess(input.accessMode),
             config: {
+              // Off by default in current Codex; the composer's task list is built from its plan.
+              tools: { update_plan: { enabled: true } },
               mcp_servers: {
                 // `request_secret` waits for the user, so the default 60 s tool timeout is too short.
                 kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
@@ -425,6 +354,7 @@ const make = Effect.gen(function* () {
             Effect.forEach(changed, (subagent) => emit({ type: "subagent_updated", subagent }), { discard: true })
           let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
           let lastError: string | undefined
+          let planRevision = 0
 
           yield* Effect.addFinalizer(() =>
             Effect.gen(function* () {
@@ -667,6 +597,20 @@ const make = Effect.gen(function* () {
                   yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }
+                case "turn/plan/updated": {
+                  const params = message.params as ServerNotificationParams[typeof method]
+                  // Stored as an `update_plan` tool call, so the plan persists with the transcript and
+                  // renders like every other agent's todo list. Each notification is the whole plan.
+                  const callId = `plan-${params.turnId}-${++planRevision}`
+                  yield* emit({
+                    type: "tool_call_started",
+                    callId,
+                    name: "update_plan",
+                    input: { explanation: params.explanation, plan: params.plan },
+                  })
+                  yield* emit({ type: "tool_call_finished", callId, output: "Plan updated", isError: false })
+                  return false
+                }
                 case "thread/tokenUsage/updated": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   const { last, modelContextWindow } = params.tokenUsage
@@ -780,8 +724,6 @@ const make = Effect.gen(function* () {
     account,
     planLimits,
     usage: readUsage,
-    signIn,
-    signOut,
     listCommands,
     runTurn,
     steer,

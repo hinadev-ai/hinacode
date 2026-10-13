@@ -214,6 +214,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(zod@4.6.5)
+      '@muse-code/sdk':
+        specifier: 1.4.7
+        version: 1.4.7(@types/node@24.19.2)
       '@pierre/diffs':
         specifier: 1.5.2
         version: 1.5.2(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -1242,6 +1245,15 @@ packages:
       zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       '@cfworker/json-schema':
+        optional: true
+
+  '@muse-code/sdk@1.4.7':
+    resolution: {integrity: sha512-O4ZSSDZx8RLne0OhcR+AzBhGY+/0+nhk8Zs5v7FiNNHoNsV+14O9Wylpw1lq1dNyRehqVxBiCHehCRQBXI7Cpw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@types/node': '>=20'
+    peerDependenciesMeta:
+      '@types/node':
         optional: true
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
@@ -5726,6 +5738,10 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@4.6.5)
     transitivePeerDependencies:
       - supports-color
+
+  '@muse-code/sdk@1.4.7(@types/node@24.19.2)':
+    optionalDependencies:
+      '@types/node': 24.19.2
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

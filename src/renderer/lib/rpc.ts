@@ -92,11 +92,12 @@ export const deleteAccountAtom = Atom.fn((id: string) =>
 )
 
 /**
- * Identifies a thread together with its agent and workspace, since switching either changes what the
- * composer can complete. Key for `commandsAtom` and `filesAtom`.
+ * Identifies a thread together with its agent, account and workspace, since switching any of them
+ * changes what the composer can complete: user-level commands and skills live in the account's home.
+ * Key for `commandsAtom` and `filesAtom`.
  */
-export const completionKey = (thread: Pick<Thread, "id" | "provider" | "worktreeId">) =>
-  [thread.id, thread.provider, thread.worktreeId ?? ""].join("\n")
+export const completionKey = (thread: Pick<Thread, "id" | "provider" | "accountId" | "worktreeId">) =>
+  [thread.id, thread.provider, thread.accountId ?? "", thread.worktreeId ?? ""].join("\n")
 const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
 
 export const commandsAtom = Atom.family((key: string) =>
@@ -250,15 +251,11 @@ export const threadUsageAtom = Atom.family((threadId: string) =>
   }),
 )
 
-/**
- * Plan limits of every signed-in account. Re-read every 2 minutes while subscribed, whenever a turn ends, and
- * when a sign-in finishes.
- */
+/** Plan limits of every signed-in account. Re-read every 2 minutes while subscribed and whenever a turn ends. */
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent((event) => {
-      const turnEnded = event.type === "thread.event" && turnEnds.has(event.event.type)
-      if (turnEnded || event.type === "account.signIn") get.refreshSelf()
+      if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
     }),
   )
   return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))

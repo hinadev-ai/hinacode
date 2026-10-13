@@ -1,11 +1,14 @@
 import { Schema, Struct } from "effect"
 import {
   AccountLimits,
+  AccountProviderId,
   AgentAccount,
   AgentCommand,
   AgentEvent,
   AgentProfile,
   AgentProfileName,
+  AgentConfigDir,
+  AgentBinary,
   ApprovalDecision,
   ApprovalRequest,
   ModelInfo,
@@ -190,24 +193,18 @@ export const RpcMethods = {
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
-  "accounts.create": rpc(Schema.Struct({ provider: ProviderId, name: AgentProfileName }), AgentProfile),
+  "accounts.create": rpc(
+    Schema.Struct({
+      provider: AccountProviderId,
+      name: AgentProfileName,
+      configDir: AgentConfigDir,
+      binary: AgentBinary,
+    }),
+    AgentProfile,
+  ),
   "accounts.rename": rpc(Schema.Struct({ id: Schema.String, name: AgentProfileName }), AgentProfile),
-  /** Refused while any thread uses the account. Signs it out and deletes its home. */
+  /** Refused while any thread uses the account. Its config directory stays on disk. */
   "accounts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
-  /**
-   * Starts a subscription sign-in and opens its page in the browser. The outcome arrives as an
-   * `account.signIn` push. `acceptsCode` means the page may show a code to hand back with `accounts.submitCode`.
-   */
-  "accounts.signIn": rpc(
-    Schema.Struct({ id: Schema.String }),
-    Schema.Struct({ url: Schema.String, acceptsCode: Schema.Boolean }),
-  ),
-  "accounts.submitCode": rpc(
-    Schema.Struct({ id: Schema.String, code: Schema.String.check(Schema.isMaxLength(1000)) }),
-    Schema.Void,
-  ),
-  "accounts.cancelSignIn": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
-  "accounts.signOut": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
@@ -230,6 +227,20 @@ export const RpcMethods = {
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /**
+   * Replaces the text of the existing file `path` under `root`, with the same checks as `fs.read`. `expected` is the
+   * text the edit started from; the write fails with `FsWriteConflict` when the file no longer holds it. `null`
+   * overwrites whatever is there.
+   */
+  "fs.write": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      content: Schema.String,
+      expected: Schema.NullOr(Schema.String),
+    }),
+    Schema.Void,
+  ),
   /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 
@@ -441,12 +452,6 @@ export const PushEvent = Schema.Union([
     type: Schema.Literal("thread.subagents"),
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
-  }),
-  /** A sign-in `accounts.signIn` started has finished. `error` is null when the account is signed in. */
-  Schema.Struct({
-    type: Schema.Literal("account.signIn"),
-    accountId: Schema.String,
-    error: Schema.NullOr(Schema.String),
   }),
   /** Something changed directly inside a folder `fs.watch` asked for. */
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
