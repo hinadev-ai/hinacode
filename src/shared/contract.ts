@@ -49,6 +49,9 @@ import {
   Thread,
   ThreadSearchHit,
   ThreadStatus,
+  ThreadVm,
+  VmControl,
+  VmHostStatus,
   Worktree,
   WorktreeSource,
   OpenPullRequest,
@@ -324,6 +327,23 @@ export const RpcMethods = {
   "terminal.close": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "terminal.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(TerminalSession)),
 
+  "vm.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
+  /** Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. */
+  "vm.start": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
+  /** Destroys the thread's tiny VM. */
+  "vm.stop": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  /** Hands the pointer and keyboard to the user, or back to the agent. */
+  "vm.control": rpc(Schema.Struct({ threadId: Schema.String, control: VmControl }), ThreadVm),
+  "vm.host": rpc(Schema.Void, VmHostStatus),
+  /**
+   * Connects the side panel to the running VM's VNC server. The server's bytes arrive as `vm.screen.data`.
+   * The renderer picks `streamId`, so it can listen before the first push.
+   */
+  "vm.screen.open": rpc(Schema.Struct({ threadId: Schema.String, streamId: Schema.String }), Schema.Void),
+  /** Bytes for the VNC server, written in call order. Ignored once the stream has closed. */
+  "vm.screen.send": rpc(Schema.Struct({ streamId: Schema.String, data: Schema.Uint8Array }), Schema.Void),
+  "vm.screen.close": rpc(Schema.Struct({ streamId: Schema.String }), Schema.Void),
+
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
     Schema.Struct({
@@ -401,6 +421,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",
+  "vm.screen.open",
   "remote.pairing",
   "remote.rotateToken",
 ])
@@ -461,6 +482,11 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
   /** Sent after the session's last `terminal.data`. */
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
+  Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
+  /** VNC server bytes for an open screen stream, batched to about one push per frame. */
+  Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
+  /** Sent after the stream's last `vm.screen.data`. */
+  Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

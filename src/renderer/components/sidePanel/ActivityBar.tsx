@@ -5,10 +5,11 @@ import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
 import { ChordKeys } from "../ChordKeys.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
-import { type SidePanelView, sidePanelViews } from "./views.ts"
+import { type SidePanelView, viewById } from "./views.ts"
 
 interface ActivityBarProps {
   readonly threadId: string
+  readonly views: ReadonlyArray<SidePanelView>
   /** The view the content area shows, or null while the panel is hidden. */
   readonly selected: SidePanelView["id"] | null
   /** The content area the tabs control. */
@@ -19,10 +20,13 @@ interface ActivityBarProps {
  * A vertical WAI-ARIA tablist on the right edge, one icon per view. Clicking the selected view hides the
  * panel. Arrow keys move between the icons and Enter or Space shows one.
  */
-export function ActivityBar({ threadId, selected, panelId }: ActivityBarProps) {
+export function ActivityBar({ threadId, views, selected, panelId }: ActivityBarProps) {
   const keymap = useKeymap()
   const listRef = useRef<HTMLDivElement>(null)
-  const current = useUi((state) => state.sidePanelViews[threadId] ?? state.lastSidePanelView)
+  const current = viewById(
+    views,
+    useUi((state) => state.sidePanelViews[threadId] ?? state.lastSidePanelView),
+  ).id
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const tabs = [...(listRef.current?.querySelectorAll<HTMLElement>("[role=tab]") ?? [])]
@@ -48,7 +52,7 @@ export function ActivityBar({ threadId, selected, panelId }: ActivityBarProps) {
       onKeyDown={onKeyDown}
       className="flex w-11 shrink-0 flex-col items-center gap-1 border-l border-border py-2"
     >
-      {sidePanelViews.map((view) => (
+      {views.map((view) => (
         <ActivityTab
           key={view.id}
           view={view}

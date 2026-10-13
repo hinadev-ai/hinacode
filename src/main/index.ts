@@ -32,6 +32,7 @@ import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
+import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import * as Threads from "./services/Threads.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import icon from "../../assets/icon.png?asset"
@@ -64,7 +65,7 @@ const serveAttachments = () =>
     return net.fetch(pathToFileURL(path).toString())
   })
 
-const makeAppLayer = (dbPath: string) => {
+const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Terminals.layer),
@@ -84,7 +85,10 @@ const makeAppLayer = (dbPath: string) => {
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess).pipe(Layer.provide(domain))
+  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env })
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess, tinyVm).pipe(
+    Layer.provide(domain),
+  )
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
@@ -169,7 +173,9 @@ const createWindow = () => {
 
 app.whenReady().then(async () => {
   const userData = app.getPath("userData")
-  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite")))
+  // Where `sbx login` keeps its login on macOS and Linux.
+  const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
+  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite"), sbxConfigPath))
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
   registerIpc(runtime, appUrl)

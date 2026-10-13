@@ -34,7 +34,15 @@ const statusLabel = {
 } satisfies Record<ThreadStatus, () => string>
 
 /** `agent` is the `callId` of the sub-agent to show instead of the thread's own transcript. */
-export function ThreadView({ thread, agent, actions }: { thread: Thread; agent?: string; actions?: ReactNode }) {
+interface ThreadViewProps {
+  readonly thread: Thread
+  readonly agent?: string
+  readonly actions?: ReactNode
+  /** Floats over the top of the transcript, below the header. */
+  readonly overlay?: ReactNode
+}
+
+export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps) {
   const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -54,10 +62,13 @@ export function ThreadView({ thread, agent, actions }: { thread: Thread; agent?:
         </span>
         {actions}
       </header>
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-        <ThreadRepository value={repository}>
-          <Transcript thread={thread} agent={agent} />
-        </ThreadRepository>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          <ThreadRepository value={repository}>
+            <Transcript thread={thread} agent={agent} />
+          </ThreadRepository>
+        </div>
+        {overlay}
       </div>
       {thread.status === "limited" && thread.usageLimit !== null && (
         <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />

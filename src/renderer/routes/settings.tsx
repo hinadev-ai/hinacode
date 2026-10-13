@@ -3,6 +3,7 @@ import type { IconType } from "react-icons"
 import {
   RiArchiveLine,
   RiCpuLine,
+  RiFlaskLine,
   RiFlashlightLine,
   RiKeyboardLine,
   RiNotification3Line,
@@ -14,6 +15,7 @@ import {
 import { ArchiveSettings } from "../components/settings/ArchiveSettings.tsx"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
+import { ExperimentalSettings } from "../components/settings/ExperimentalSettings.tsx"
 import { GeneralSettings } from "../components/settings/GeneralSettings.tsx"
 import { IntegrationSettings } from "../components/settings/IntegrationSettings.tsx"
 import { KeybindingSettings } from "../components/settings/KeybindingSettings.tsx"
@@ -44,6 +46,7 @@ const pages: ReadonlyArray<SettingsPage> = [
   { id: "integrations", label: m.settings_integrations, icon: RiPlugLine, component: IntegrationSettings },
   { id: "remote", label: m.settings_remote, icon: RiSmartphoneLine, component: RemoteSettings },
   { id: "automations", label: m.settings_automations, icon: RiFlashlightLine, component: AutomationSettings },
+  { id: "experimental", label: m.settings_experimental, icon: RiFlaskLine, component: ExperimentalSettings },
 ]
 
 export function SettingsRoute() {

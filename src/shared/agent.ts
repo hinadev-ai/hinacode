@@ -278,6 +278,8 @@ export interface RunTurnInput {
   readonly home: AccountHome | null
   /** The built-in kkcode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
+  /** kkcode's own instructions for the agent, appended to its system prompt. */
+  readonly instructions: string
 }
 
 /** A Streamable HTTP MCP endpoint plus the headers that authenticate the caller. */
