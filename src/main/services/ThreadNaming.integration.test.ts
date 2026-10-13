@@ -11,6 +11,7 @@ import type { PushEvent } from "../../shared/contract.ts"
 import type { WorktreeSource } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials, layer as credentialsLayer } from "../mcp/credentials.ts"
@@ -125,6 +126,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
         github,
         Layer.succeed(ClaudeProvider, provider("claude")),
         Layer.succeed(CodexProvider, provider("codex")),
+        Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(Events, { publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
       ),
     ),

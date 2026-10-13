@@ -31,7 +31,7 @@ import {
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
@@ -86,8 +86,6 @@ function useAgentModels(provider: ProviderId, keep: string | null) {
 function useThreadModel(thread: Thread) {
   return useAgentModels(thread.provider, null).find((model) => model.id === thread.model)
 }
-
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
@@ -175,14 +173,26 @@ export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly
   full: { icon: RiLockUnlockLine, label: m.access_full },
 }
 
+const supervisedHint = {
+  claude: m.access_supervised_hint_claude,
+  codex: m.access_supervised_hint_codex,
+  muse: m.access_supervised_hint_muse,
+} satisfies Record<ProviderId, () => string>
+
+const autoHint = {
+  claude: (model: ModelInfo | undefined) =>
+    model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
+  codex: m.access_auto_hint_codex,
+  muse: m.access_auto_hint_muse,
+} satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
+
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
   switch (accessMode) {
     case "supervised":
-      return thread.provider === "codex" ? m.access_supervised_hint_codex() : m.access_supervised_hint_claude()
+      return supervisedHint[thread.provider]()
     case "auto":
-      if (thread.provider === "codex") return m.access_auto_hint_codex()
-      return model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits()
+      return autoHint[thread.provider](model)
     case "full":
       return m.access_full_hint()
   }

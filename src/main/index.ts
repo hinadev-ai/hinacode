@@ -6,6 +6,7 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
+import { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
 import { BROWSER_PARTITION, externalUrl, isAppDocument, isInside, lockDownWebview } from "./security.ts"
@@ -79,7 +80,7 @@ const makeAppLayer = (dbPath: string, accountsRoot: string) => {
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
     Layer.provideMerge(agents),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
+    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),

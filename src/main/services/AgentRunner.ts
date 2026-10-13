@@ -20,6 +20,7 @@ import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
@@ -188,6 +189,7 @@ const make = Effect.gen(function* () {
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
+    muse: yield* MuseProvider,
   }
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "@effect/vitest"
 import type { Attachment } from "../../shared/domain.ts"
-import { emptyDraft, useDrafts } from "./drafts.ts"
+import { emptyDraft, type LineComment, useDrafts } from "./drafts.ts"
 
 const attachment = (id: string): Attachment => ({
   id,
@@ -9,6 +9,15 @@ const attachment = (id: string): Attachment => ({
   mime: "image/png",
   kind: "image",
   bytes: 1,
+})
+
+const comment = (id: string, body = "rename"): LineComment => ({
+  id,
+  path: "src/a.ts",
+  startLine: 1,
+  endLine: 2,
+  code: "a\nb",
+  body,
 })
 
 const draftOf = (threadId: string) => useDrafts.getState().byThreadId[threadId] ?? emptyDraft
@@ -20,7 +29,7 @@ describe("useDrafts", () => {
     const { setText, addAttachments } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null })
+    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null, comments: [] })
     expect(draftOf("b")).toStrictEqual(emptyDraft)
   })
 
@@ -28,7 +37,7 @@ describe("useDrafts", () => {
     const { setText, addAttachments, take } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null })
+    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null, comments: [] })
     expect(draftOf("a")).toStrictEqual(emptyDraft)
   })
 
@@ -52,6 +61,7 @@ describe("useDrafts", () => {
       text: "first\nsecond",
       attachments: [attachment("x"), attachment("y")],
       worktree: null,
+      comments: [],
     })
   })
 
@@ -63,6 +73,22 @@ describe("useDrafts", () => {
     removeAttachment("b", "x")
     setText("c", "hello")
     discard("c")
+    expect(useDrafts.getState().byThreadId).toStrictEqual({})
+  })
+
+  test("comments are added, edited, removed, and leave and come back with the draft", () => {
+    const { addComment, updateComment, removeComment, take, restore } = useDrafts.getState()
+    addComment("a", comment("x"))
+    addComment("a", comment("y"))
+    updateComment("a", "x", "rename to b")
+    removeComment("a", "y")
+    expect(draftOf("a").comments).toStrictEqual([comment("x", "rename to b")])
+    const sent = take("a")
+    addComment("a", comment("z"))
+    restore("a", sent)
+    expect(draftOf("a").comments).toStrictEqual([comment("x", "rename to b"), comment("z")])
+    removeComment("a", "x")
+    removeComment("a", "z")
     expect(useDrafts.getState().byThreadId).toStrictEqual({})
   })
 })

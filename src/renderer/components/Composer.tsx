@@ -15,6 +15,7 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, toWorktreeSource, useDrafts } from "../stores/drafts.ts"
@@ -32,6 +33,7 @@ import { PendingAttachment } from "./AttachmentView.tsx"
 import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
+import { PendingLineComment } from "./LineComment.tsx"
 import { SubagentBar } from "./SubagentBar.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
@@ -58,7 +60,7 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread }: { thread: Thread }) {
-  const { text, attachments, worktree } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, worktree, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
   // Agent and workspace stay open to change until the first message.
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -73,13 +75,13 @@ export function Composer({ thread }: { thread: Thread }) {
   const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const hasDraft = text.trim() !== "" || attachments.length > 0
+  const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
 
   const send = () => {
     if (!canSend) return
     const sent = useDrafts.getState().take(thread.id)
-    const prompt = sent.text.trim()
+    const prompt = promptWithComments(sent.text, sent.comments)
     setError(null)
     startSending(async () => {
       try {
@@ -175,6 +177,21 @@ export function Composer({ thread }: { thread: Thread }) {
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
         <SubagentBar thread={thread} />
         <ComposerBar className="min-h-0 focus-within:border-ring">
+          {comments.length > 0 && (
+            <ul
+              aria-label={m.comment_pending_label()}
+              className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+            >
+              {comments.map((comment) => (
+                <li key={comment.id}>
+                  <PendingLineComment
+                    comment={comment}
+                    onRemove={() => useDrafts.getState().removeComment(thread.id, comment.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
           {attachments.length > 0 && (
             <ul
               aria-label={m.attachment_pending_label()}

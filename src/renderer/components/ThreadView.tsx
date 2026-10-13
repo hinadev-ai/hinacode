@@ -19,13 +19,11 @@ import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { SubagentTranscript } from "./SubagentView.tsx"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
-
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex }
 
 const statusLabel = {
   idle: m.thread_status_idle,

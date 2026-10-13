@@ -5,3 +5,4 @@ allowBuilds:
   node-pty: true
 minimumReleaseAgeExclude:
   - effect@4.0.3
+  - "@muse-code/sdk@1.4.7"

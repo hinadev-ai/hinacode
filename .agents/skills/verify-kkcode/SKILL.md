@@ -1,6 +1,6 @@
 ---
 name: verify-kkcode
-description: Launch, drive and screenshot the kkcode Electron desktop app (Claude Code and Codex threads, worktrees, MCP, settings, ports, automations) in an isolated headless instance over CDP. Use when you need to prove a kkcode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
+description: Launch, drive and screenshot the kkcode Electron desktop app (Claude Code, Codex and Muse Code threads, worktrees, MCP, settings, ports, automations) in an isolated headless instance over CDP. Use when you need to prove a kkcode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
 ---
 
 # Verify kkcode
@@ -106,7 +106,7 @@ Other helpers:
 
 ### Agents cost money
 
-Every turn calls a real Claude or Codex account. Use `claude-sonnet-5-5` for Claude and the first model in the Codex list, keep prompts to one short sentence, and stop as soon as the behavior is proven. Prefer features that need no turn (projects, settings, ports, MCP tools via `mcp-call.mjs`) when any feature will do.
+Every turn calls a real Claude, Codex or Muse Code account. Use `claude-sonnet-5-5` for Claude, the first model in the Codex list, and `Low` effort for Muse Code, whose reminder agents make even a one-word reply cost tens of thousands of tokens. Keep prompts to one short sentence, and stop as soon as the behavior is proven. Prefer features that need no turn (projects, settings, ports, MCP tools via `mcp-call.mjs`) when any feature will do.
 
 ## Evidence
 
