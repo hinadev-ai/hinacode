@@ -218,13 +218,13 @@ Then("the transcript keeps text on both sides of the tool and reasoning", async 
   const rendered = article(app.page)
   await expect(rendered.locator(":scope > div > p")).toHaveText(["Before tool.", "After tool."])
   await expect(rendered.getByRole("button", { name: /Read.*README\.md.*Running/ })).toBeVisible()
-  await rendered.getByRole("button", { name: "Reasoning", exact: true }).click()
+  await rendered.getByRole("button", { name: "Thinking…", exact: true }).click()
   await expect(rendered).toContainText("Check the result.")
   expect(await rendered.evaluate((node) => Array.from(node.children, (child) => child.textContent))).toEqual([
     "Before tool.",
     "ReadREADME.mdRunning",
     "After tool.",
-    "ReasoningCheck the result.",
+    "Thinking…Check the result.",
     "Writing…",
   ])
 })
