@@ -1,17 +1,36 @@
+import { Autocomplete } from "@base-ui/react/autocomplete"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
+import { useMemo, useState } from "react"
 import type { IconType } from "react-icons"
-import { RiBrainLine, RiFlashlightLine, RiLockUnlockLine, RiShieldCheckLine, RiShieldUserLine } from "react-icons/ri"
+import {
+  RiBrainLine,
+  RiFlashlightLine,
+  RiGitBranchLine,
+  RiGitPullRequestLine,
+  RiLockUnlockLine,
+  RiShieldCheckLine,
+  RiShieldUserLine,
+} from "react-icons/ri"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { AccessMode, type Thread } from "../../shared/domain.ts"
+import { AccessMode, type OpenPullRequest, type Thread } from "../../shared/domain.ts"
+import { parsePullRequestSelector } from "../../shared/github.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise, currentBranchAtom, modelsAtom } from "../lib/rpc.ts"
+import {
+  branchesAtom,
+  callPromise,
+  currentBranchAtom,
+  defaultBranchAtom,
+  modelsAtom,
+  pullRequestsAtom,
+} from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { Button } from "./ui/button.tsx"
+import { Checkbox } from "./ui/checkbox.tsx"
 import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
@@ -89,7 +108,7 @@ export function ModelPicker({ thread, onError }: ControlProps) {
 
   return (
     <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-0 flex-1 ${triggerClass}`}>
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-0 ${triggerClass}`}>
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
       <SelectContent>
@@ -238,48 +257,172 @@ export function AccessPicker({ thread, onError }: ControlProps) {
   )
 }
 
-const workspaces = [
-  { value: "local", label: m.thread_workspace_local() },
-  { value: "worktree", label: m.thread_workspace_worktree() },
-]
+type RefSuggestion =
+  | { readonly kind: "pullRequest"; readonly ref: string; readonly pullRequest: OpenPullRequest }
+  | { readonly kind: "branch"; readonly ref: string }
 
-/** Where the first turn runs: the project root, or a new worktree forked from a base ref. */
-export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree: Draft["worktree"] }) {
-  const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
-  const setWorktree = (next: Draft["worktree"]) => useDrafts.getState().setWorktree(thread.id, next)
+const SUGGESTIONS_PER_GROUP = 20
+
+/**
+ * Open pull requests, then branches, filtered by the field's text. When the text is exactly one of the
+ * suggestions, such as the default branch prefilled by ticking Worktree, every suggestion shows instead.
+ */
+function useRefSuggestions(projectId: string, query: string) {
+  const branches = AsyncResult.getOrElse(useAtomValue(branchesAtom(projectId)), (): ReadonlyArray<string> => [])
+  const pullRequests = AsyncResult.getOrElse(
+    useAtomValue(pullRequestsAtom(projectId)),
+    (): ReadonlyArray<OpenPullRequest> => [],
+  )
+
+  return useMemo(() => {
+    const groups = [
+      {
+        label: m.thread_worktree_ref_pull_requests(),
+        items: pullRequests.map((pullRequest): RefSuggestion => ({
+          kind: "pullRequest",
+          ref: `#${pullRequest.number}`,
+          pullRequest,
+        })),
+      },
+      {
+        label: m.thread_worktree_ref_branches(),
+        items: branches.map((branch): RefSuggestion => ({ kind: "branch", ref: branch })),
+      },
+    ]
+    const trimmed = query.trim()
+    const needle = trimmed.toLowerCase()
+    const showAll = groups.some((group) => group.items.some((item) => item.ref === trimmed))
+    const matches = (item: RefSuggestion) =>
+      (item.kind === "pullRequest" ? `${item.ref} ${item.pullRequest.title} ${item.pullRequest.headRefName}` : item.ref)
+        .toLowerCase()
+        .includes(needle)
+    return groups
+      .map((group) => ({
+        ...group,
+        items: (showAll ? group.items : group.items.filter(matches)).slice(0, SUGGESTIONS_PER_GROUP),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [branches, pullRequests, query])
+}
+
+function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
+  return (
+    <Autocomplete.Item
+      value={suggestion}
+      className="flex h-7 cursor-default items-center gap-2 rounded-md px-2 text-xs outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+    >
+      {suggestion.kind === "pullRequest" ? (
+        <>
+          <RiGitPullRequestLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="shrink-0 font-mono">{suggestion.ref}</span>
+          <span className="min-w-0 truncate">{suggestion.pullRequest.title}</span>
+          {suggestion.pullRequest.isDraft && (
+            <span className="ml-auto shrink-0 text-muted-foreground">{m.thread_worktree_ref_draft()}</span>
+          )}
+        </>
+      ) : (
+        <>
+          <RiGitBranchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate font-mono">{suggestion.ref}</span>
+        </>
+      )}
+    </Autocomplete.Item>
+  )
+}
+
+/** Free text for a new worktree's ref, suggesting the repository's open pull requests and branches. */
+function RefInput({
+  projectId,
+  value,
+  onChange,
+}: {
+  projectId: string
+  value: string
+  onChange: (ref: string) => void
+}) {
+  const groups = useRefSuggestions(projectId, value)
+  const [open, setOpen] = useState(false)
 
   return (
-    <div className="mx-auto mt-1 flex max-w-3xl flex-wrap items-center gap-1 px-1 text-xs text-muted-foreground">
-      <Select
-        items={workspaces}
-        value={worktree === null ? "local" : "worktree"}
-        onValueChange={(value) => setWorktree(value === "worktree" ? { baseRef: "" } : null)}
+    <Autocomplete.Root
+      items={groups}
+      filter={null}
+      value={value}
+      onValueChange={(next, details) => {
+        // Escape on a closed list would clear the field; it should only dismiss.
+        if (details.reason !== "escape-key") onChange(next)
+      }}
+      open={open && groups.length > 0}
+      onOpenChange={setOpen}
+      openOnInputClick
+      itemToStringValue={(suggestion: RefSuggestion) => suggestion.ref}
+    >
+      <Autocomplete.Input
+        aria-label={m.thread_worktree_ref_label()}
+        placeholder={m.thread_worktree_ref_placeholder()}
+        spellCheck={false}
+        autoComplete="off"
+        onFocus={() => setOpen(true)}
+        onKeyDown={(event) => {
+          // The field sits inside the composer's form, where Enter would send the message.
+          if (event.key === "Enter") event.preventDefault()
+        }}
+        render={
+          <Input className="field-sizing-content h-6 max-w-96 min-w-16 rounded-sm border-0 px-1 font-mono text-xs text-foreground shadow-none focus-visible:ring-2 md:text-xs dark:bg-transparent" />
+        }
+      />
+      <Autocomplete.Portal>
+        <Autocomplete.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} className="isolate z-50">
+          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-(--ease-out) data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
+            <Autocomplete.List className="scroll-py-1">
+              {(group: (typeof groups)[number]) => (
+                <Autocomplete.Group key={group.label} items={group.items} className="not-last:mb-1">
+                  <Autocomplete.GroupLabel className="px-2 pt-1 pb-0.5 text-xs font-medium text-muted-foreground select-none">
+                    {group.label}
+                  </Autocomplete.GroupLabel>
+                  <Autocomplete.Collection>
+                    {(suggestion: RefSuggestion) => <RefSuggestionItem key={suggestion.ref} suggestion={suggestion} />}
+                  </Autocomplete.Collection>
+                </Autocomplete.Group>
+              )}
+            </Autocomplete.List>
+          </Autocomplete.Popup>
+        </Autocomplete.Positioner>
+      </Autocomplete.Portal>
+    </Autocomplete.Root>
+  )
+}
+
+/** Where the first turn runs: the project root, or a new worktree forked from a branch or checked out from a PR. */
+export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree: Draft["worktree"] }) {
+  const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
+  const defaultBranch = AsyncResult.getOrElse(useAtomValue(defaultBranchAtom(thread.projectId)), () => "main")
+  const setWorktree = (next: Draft["worktree"]) => useDrafts.getState().setWorktree(thread.id, next)
+  const RefIcon = worktree && parsePullRequestSelector(worktree.ref) ? RiGitPullRequestLine : RiGitBranchLine
+
+  return (
+    <div className="mx-auto mt-1 flex w-full max-w-3xl px-1">
+      <fieldset
+        aria-label={m.thread_workspace_picker()}
+        className="flex h-7 min-w-0 items-center rounded-full border border-border text-xs text-muted-foreground"
       >
-        <SelectTrigger size="sm" aria-label={m.thread_workspace_picker()} className={triggerClass}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {workspaces.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {worktree !== null && (
-        <label className="flex min-w-0 flex-1 items-center gap-1.5">
-          {m.thread_base_ref_prefix()}
-          <Input
-            aria-label={m.thread_base_ref_label()}
-            value={worktree.baseRef}
-            onChange={(event) => setWorktree({ baseRef: event.target.value })}
-            placeholder={currentBranch}
-            spellCheck={false}
-            autoComplete="off"
-            className="h-7 w-48 min-w-0 font-mono text-xs"
+        <div className="flex min-w-0 items-center gap-1.5 pr-2 pl-2.5">
+          <RefIcon aria-hidden className="size-3.5 shrink-0" />
+          {worktree === null ? (
+            <span className="truncate font-mono text-foreground">{currentBranch}</span>
+          ) : (
+            <RefInput projectId={thread.projectId} value={worktree.ref} onChange={(ref) => setWorktree({ ref })} />
+          )}
+        </div>
+        <div aria-hidden className="h-4 w-px shrink-0 bg-border" />
+        <label className="flex h-full cursor-pointer items-center gap-1.5 rounded-r-full pr-3 pl-2 hover:text-foreground">
+          <Checkbox
+            checked={worktree !== null}
+            onCheckedChange={(checked) => setWorktree(checked ? { ref: defaultBranch } : null)}
           />
+          {m.thread_worktree_toggle()}
         </label>
-      )}
+      </fieldset>
     </div>
   )
 }

@@ -5,21 +5,28 @@ export const FindPatternContext = createContext<RegExp | null>(null)
 
 export const useFindPattern = () => useContext(FindPatternContext)
 
-/** The find bar picks its current match by counting these in a message, in document order. */
-export const MATCH_SELECTOR = "mark[data-find-match]"
+/**
+ * The transcript part a subtree renders, stamped on its marks as `data-find-part`. The find bar picks
+ * its current match by position among its part's marks, so hidden or repeated text elsewhere in the
+ * message cannot shift it. Marks outside any part, like a command group's running line, are never picked.
+ */
+export const FindPartContext = createContext<number | null>(null)
+
+/** The marks of part `partIndex` within a message's row. */
+export const partMatchSelector = (partIndex: number) => `mark[data-find-match][data-find-part="${partIndex}"]`
 
 export const markClassName =
   "rounded-[2px] bg-find-match text-inherit transition-[background-color,outline-color] duration-150 ease-out outline-1 outline-transparent data-current:bg-find-match-current data-current:outline-find-match-ring motion-reduce:transition-none"
 
 /** Splits `text` into plain runs and `<mark>`s around every match. */
-export function highlight(text: string, pattern: RegExp | null): ReactNode {
+export function highlight(text: string, pattern: RegExp | null, part: number | null = null): ReactNode {
   if (pattern === null) return text
   const nodes: Array<ReactNode> = []
   let end = 0
   for (const match of text.matchAll(pattern)) {
     if (match.index > end) nodes.push(text.slice(end, match.index))
     nodes.push(
-      <mark key={match.index} data-find-match="" className={markClassName}>
+      <mark key={match.index} data-find-match="" data-find-part={part ?? undefined} className={markClassName}>
         {match[0]}
       </mark>,
     )
@@ -32,7 +39,7 @@ export function highlight(text: string, pattern: RegExp | null): ReactNode {
 
 /** Plain text with the find bar's matches marked. */
 export function Highlighted({ text }: { text: string }) {
-  return highlight(text, useFindPattern())
+  return highlight(text, useFindPattern(), useContext(FindPartContext))
 }
 
 interface HastText {
@@ -50,19 +57,19 @@ type HastNode =
   | HastElement
   | { readonly type: "root" | "comment" | "doctype" | "raw"; children?: Array<HastNode> }
 
-const markNode = (value: string): HastElement => ({
+const markNode = (value: string, part: number | null): HastElement => ({
   type: "element",
   tagName: "mark",
-  properties: { dataFindMatch: "", className: markClassName },
+  properties: { dataFindMatch: "", dataFindPart: part ?? undefined, className: markClassName },
   children: [{ type: "text", value }],
 })
 
-const splitText = (value: string, pattern: RegExp): Array<HastNode> | null => {
+const splitText = (value: string, pattern: RegExp, part: number | null): Array<HastNode> | null => {
   const nodes: Array<HastNode> = []
   let end = 0
   for (const match of value.matchAll(pattern)) {
     if (match.index > end) nodes.push({ type: "text", value: value.slice(end, match.index) })
-    nodes.push(markNode(match[0]))
+    nodes.push(markNode(match[0], part))
     end = match.index + match[0].length
   }
   if (end === 0) return null
@@ -74,12 +81,12 @@ const splitText = (value: string, pattern: RegExp): Array<HastNode> | null => {
  * A rehype plugin that marks matches in rendered markdown text. Fenced code is skipped here because
  * `Markdown` renders it from the raw source and marks it with `Highlighted`.
  */
-export const rehypeFindMarks = (pattern: RegExp) => () => (tree: HastNode) => {
+export const rehypeFindMarks = (pattern: RegExp, part: number | null) => () => (tree: HastNode) => {
   const visit = (node: HastNode) => {
     if (!("children" in node) || node.children === undefined) return
     if (node.type === "element" && node.tagName === "pre") return
     node.children = node.children.flatMap((child) => {
-      if (child.type === "text") return splitText(child.value, pattern) ?? [child]
+      if (child.type === "text") return splitText(child.value, pattern, part) ?? [child]
       visit(child)
       return [child]
     })

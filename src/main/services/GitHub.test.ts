@@ -1,15 +1,8 @@
 import { describe, expect, it, test } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import { ChildProcessSpawner } from "effect/process"
-import {
-  GitHub,
-  layer,
-  parseAuthStatus,
-  parseGitHubPullRequestUrl,
-  summarizeChecks,
-  toPullRequest,
-  toPullRequestDetail,
-} from "./GitHub.ts"
+import { GitHub, layer, parseAuthStatus, summarizeChecks, toPullRequest, toPullRequestDetail } from "./GitHub.ts"
+import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
 
 const account = (overrides: Partial<{ state: string; active: boolean; login: string }>) => ({
   state: "success",

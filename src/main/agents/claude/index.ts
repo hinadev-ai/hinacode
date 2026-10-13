@@ -16,6 +16,7 @@ import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } 
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -305,7 +306,7 @@ export const layer = Layer.effect(
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
-                systemPrompt: { type: "preset", preset: "claude_code" },
+                systemPrompt: { type: "preset", preset: "claude_code", append: AGENT_INSTRUCTIONS },
                 permissionMode: mode,
                 // Lets a live session switch to full access; the mode above decides what runs unasked.
                 allowDangerouslySkipPermissions: true,

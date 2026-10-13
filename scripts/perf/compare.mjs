@@ -28,7 +28,7 @@ const median = (xs) => xs.toSorted((x, y) => x - y)[Math.floor(xs.length / 2)]
 
 console.log(`${"metric".padEnd(34)} ${before.padStart(12)}  ${after.padStart(12)}  delta`)
 let matched = 0
-for (const scenario of ["switch", "scroll", "settle", "stream"]) {
+for (const scenario of ["switch", "scroll", "archive", "stream"]) {
   const a = load(before, scenario)
   const b = load(after, scenario)
   if (!a || !b) continue
@@ -53,9 +53,9 @@ for (const scenario of ["switch", "scroll", "settle", "stream"]) {
     row("scroll: frames over 50ms", a.run.over50, b.run.over50)
     row("scroll: long task ms", a.run.longTaskMs, b.run.longTaskMs)
   }
-  if (scenario === "settle") {
-    row("settle: rpc wall ms", a.settleMs, b.settleMs)
-    row("settle: main blocked max ms", a.probeMaxMs, b.probeMaxMs)
+  if (scenario === "archive") {
+    row("archive: rpc wall ms", a.archiveMs, b.archiveMs)
+    row("archive: main blocked max ms", a.probeMaxMs, b.probeMaxMs)
   }
   if (scenario === "stream") {
     for (const key of ["sha256", "chars", "deltas", "charsPerDelta", "intervalMs", "settlingMs"]) {

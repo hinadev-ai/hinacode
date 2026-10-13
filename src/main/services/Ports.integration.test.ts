@@ -39,7 +39,7 @@ const portsOf = (threadId: string) =>
     Effect.map((ports) => ports.map(({ port, pid }) => ({ port, pid }))),
   )
 
-describe.skipIf(process.platform !== "linux")("Ports.listForThread", () => {
+describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("Ports.listForThread", () => {
   let base = ""
   beforeAll(async () => {
     base = await mkdtemp(join(tmpdir(), "kk-ports-"))

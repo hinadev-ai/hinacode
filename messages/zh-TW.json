@@ -2,7 +2,6 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_name": "kkcode",
   "sidebar_label": "專案與討論串",
-  "sidebar_projects": "專案",
   "sidebar_add_project": "新增專案",
   "sidebar_settings": "設定",
   "sidebar_loading": "正在載入專案…",
@@ -43,8 +42,7 @@
   "thread_usage_limit_cancel_resume": "取消自動繼續",
   "thread_org_spend_limit_title": "已達組織每月支出上限",
   "thread_org_spend_limit_hint": "請組織管理員提高每月支出上限。重設工作階段不會解除這個上限。",
-  "thread_status_settled": "已完成",
-  "thread_status_archived": "已封存",
+  "thread_status_archived": "已歸檔",
   "thread_not_found": "這個討論串已不存在。",
   "thread_composer_label": "訊息",
   "thread_composer_placeholder": "輸入任何問題。Enter 傳送，Shift+Enter 換行。",
@@ -110,7 +108,6 @@
   "secret_request_hint": "密鑰只儲存在這台電腦上，不會顯示給代理。",
   "common_retry": "重試",
   "thread_worktree_label": "在新的 worktree 中執行",
-  "thread_base_ref_label": "基準 ref",
   "panel_label": "討論串詳細資訊",
   "panel_show": "顯示討論串詳細資訊",
   "panel_hide": "隱藏討論串詳細資訊",
@@ -126,7 +123,7 @@
   "pr_state_open": "開啟中",
   "pr_state_closed": "已關閉",
   "pr_state_merged": "已合併",
-  "panel_pr_merged_hint": "Pull request 已合併。將討論串標記為完成即可刪除這個 worktree。",
+  "panel_pr_merged_hint": "Pull request 已合併。將討論串歸檔即可收起。",
   "panel_setup_log": "設定記錄",
   "panel_setup_waiting": "等待輸出…",
   "panel_setup_none": "沒有輸出。",
@@ -135,12 +132,6 @@
   "file_status_modified": "修改",
   "file_status_deleted": "刪除",
   "file_status_conflict": "衝突",
-  "settle_dialog_title": "要將這個討論串標記為完成嗎？",
-  "settle_dialog_root": "討論串會標記為已完成，磁碟上的檔案不會變動。",
-  "settle_dialog_worktree": "討論串會標記為已完成，並刪除 worktree 資料夾 {path}，包含尚未提交的變更。",
-  "settle_dialog_branch": "分支 {branch} 只有在已合併到 {baseRef} 時才會刪除。",
-  "settle_dialog_confirm_root": "標記為完成",
-  "settle_dialog_confirm_worktree": "完成並刪除 worktree",
   "sidebar_worktree_branch": "Worktree 分支 {branch}",
   "sidebar_show": "顯示側邊欄",
   "sidebar_hide": "隱藏側邊欄",
@@ -254,6 +245,7 @@
   "error_command": "指令執行失敗：{detail}",
   "error_ports": "無法檢查或停止程序：{detail}",
   "error_terminal": "終端機無法執行：{detail}",
+  "error_thread_busy": "這個討論串仍在執行或等待核准，請先停止再歸檔。",
   "error_fs_access": "無法讀取這個資料夾，它可能已被移動或刪除。",
   "error_unexpected": "發生非預期的錯誤：{detail}",
   "panel_pr_badge": "PR {state}",
@@ -313,11 +305,14 @@
     }
   ],
   "agents_tokens": "{tokens} tokens",
+  "agents_untitled": "子代理",
+  "agents_back": "返回 {name}",
+  "agents_prompt": "指示",
+  "agents_missing": "這個子代理沒有任何紀錄。",
   "pr_links_unlink": "取消連結 {name}",
   "sidebar_thread_actions": "「{title}」的操作",
   "sidebar_thread_rename": "重新命名",
   "sidebar_thread_rename_label": "「{title}」的新名稱",
-  "sidebar_thread_settle": "標記為完成…",
   "sidebar_thread_delete": "刪除…",
   "sidebar_thread_reorder": "調整「{title}」的順序",
   "sidebar_thread_reorder_role": "可排序項目",
@@ -421,7 +416,6 @@
   "sidebar_project_new_thread": "新討論串",
   "sidebar_project_reveal": "在資料夾中顯示",
   "sidebar_project_delete": "刪除…",
-  "sidebar_thread_settled": "已結案",
   "project_edit_title": "編輯專案",
   "project_edit_description": "修改「{project}」的名稱、資料夾與設定腳本。",
   "project_save": "儲存",
@@ -475,9 +469,6 @@
   "sidebar_pull_request_stack": "開啟 pull request #{number}，{count} 個連結中最新的一個",
   "thread_agent_picker": "代理",
   "thread_workspace_picker": "工作區",
-  "thread_workspace_local": "本機",
-  "thread_workspace_worktree": "新的 worktree",
-  "thread_base_ref_prefix": "基於",
   "settings_text_generation_model": "討論串命名",
   "settings_text_generation_model_hint": "根據第一則訊息為討論串與分支命名。",
   "settings_default_access": "預設存取權限",
@@ -637,5 +628,66 @@
   "limits_session": "5 小時",
   "limits_weekly": "每週",
   "limits_resets_in": "{duration}後重置，{time}",
-  "limits_no_reset": "沒有重置時間"
+  "limits_no_reset": "沒有重置時間",
+  "tool_commands_ran": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已執行 {count} 個指令",
+        "countPlural=other": "已執行 {count} 個指令"
+      }
+    }
+  ],
+  "tool_commands_running": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "正在執行 {count} 個指令",
+        "countPlural=other": "正在執行 {count} 個指令"
+      }
+    }
+  ],
+  "tool_commands_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個失敗",
+        "countPlural=other": "{count} 個失敗"
+      }
+    }
+  ],
+  "tool_command": "指令",
+  "thread_worktree_toggle": "工作樹",
+  "thread_worktree_ref_label": "分支或 pull request",
+  "thread_worktree_ref_placeholder": "main、#123 或 pull request 網址",
+  "thread_worktree_ref_pull_requests": "Pull requests",
+  "thread_worktree_ref_branches": "分支",
+  "thread_worktree_ref_draft": "草稿",
+  "archive_dialog_title": "要歸檔這個討論串嗎？",
+  "archive_dialog_worktree": "歸檔會刪除 worktree 資料夾 {path}，包含尚未提交的變更。",
+  "archive_dialog_branch": "分支 {branch} 只有在已合併到 {baseRef} 時才會刪除。",
+  "archive_dialog_confirm": "歸檔並刪除 worktree",
+  "sidebar_thread_archive": "歸檔",
+  "sidebar_thread_archive_confirm": "歸檔…",
+  "sidebar_thread_unarchive": "取消歸檔",
+  "sidebar_thread_unarchive_label": "取消歸檔「{title}」",
+  "sidebar_archive_failed": "無法歸檔：{message}",
+  "sidebar_unarchive_failed": "無法取消歸檔：{message}",
+  "sidebar_tab_threads": "討論串",
+  "sidebar_tab_archived": "已歸檔",
+  "sidebar_filter_label": "篩選討論串和專案",
+  "sidebar_filter_placeholder": "篩選",
+  "sidebar_filter_projects": "依專案篩選",
+  "sidebar_filter_all_projects": "所有專案",
+  "sidebar_no_archived": "沒有已歸檔的討論串",
+  "sidebar_no_matches": "沒有符合的討論串",
+  "settings_archive": "歸檔",
+  "settings_archive_hint": "歸檔的討論串會離開側邊欄的「討論串」分頁，仍可在「已歸檔」中閱讀。",
+  "settings_archive_when_merged": "所有連結的 pull request 合併後自動歸檔",
+  "settings_archive_when_merged_hint": "kkcode 每隔幾分鐘檢查連結的 pull request，全部合併後就會歸檔討論串。",
+  "settings_archive_remove_worktree": "歸檔時移除 worktree",
+  "settings_archive_remove_worktree_hint": "刪除 worktree 資料夾，包含尚未提交的變更；分支已合併到基準分支時也一併刪除。"
 }

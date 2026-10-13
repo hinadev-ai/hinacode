@@ -2,6 +2,7 @@
 // $FAKE_CODEX_CONTROL is a JSON file re-read on every request and whenever it changes:
 //   stall: methods to hold without replying, until `release` becomes true
 //   holdTurn: keep a started turn running until turn/interrupt instead of completing it right away
+//   subagent: spawn a sub-agent thread that runs one command before the turn completes
 import { appendFileSync, readFileSync, watch } from "node:fs"
 import { createInterface } from "node:readline"
 
@@ -40,6 +41,24 @@ const turnTokenUsage = [
   { total: breakdown(1000, 50), last: breakdown(1000, 50), modelContextWindow: 258400 },
   { total: breakdown(3200, 80), last: breakdown(2200, 30), modelContextWindow: 258400 },
 ]
+
+const spawnSubagent = (threadId, turnId) => {
+  const child = "codex-child-thread"
+  const item = (method, params) => send({ method, params: { threadId, turnId, ...params } })
+  const childItem = (method, params) => send({ method, params: { threadId: child, turnId: "child-turn", ...params } })
+  const activity = {
+    type: "subAgentActivity",
+    id: "spawn",
+    kind: "started",
+    agentThreadId: child,
+    agentPath: "/root/count",
+  }
+  const command = { type: "commandExecution", id: "child-exec", command: "wc -l", cwd: "/repo", exitCode: null }
+  item("item/started", { item: activity })
+  childItem("item/started", { item: { ...command, status: "inProgress", aggregatedOutput: null } })
+  childItem("item/commandExecution/outputDelta", { itemId: "child-exec", delta: "218\n" })
+  childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
+}
 
 const held = []
 let turns = 0
@@ -101,6 +120,7 @@ const reply = ({ id, method, params }) => {
           },
         })
       }
+      if (control().subagent) spawnSubagent(params.threadId, turnId)
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
           send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })
