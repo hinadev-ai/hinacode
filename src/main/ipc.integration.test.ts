@@ -30,6 +30,7 @@ import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Files from "./services/Files.ts"
 import { Automations } from "./services/automations/Automations.ts"
+import { Events } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
@@ -937,6 +938,7 @@ const phone = (port: number) => {
     event: (predicate: (event: PushEvent) => boolean) =>
       until(() => frames.find((f) => f.type === "event" && predicate(f.event as PushEvent))),
     closed: () => until(() => closed ?? undefined),
+    frames,
     opened,
     socket,
   }
@@ -978,6 +980,29 @@ describe("remote mode", () => {
 
     expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
     expect(await paired.call("threads.interrupt", { threadId: thread.id })).toStrictEqual({})
+    paired.socket.close()
+  })
+
+  test("a phone does not receive the VNC bytes and folder changes only the desktop window asked for", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await paired.ready()
+
+    await runtime.runPromise(
+      Events.use((events) =>
+        Effect.all([
+          events.publish({ type: "vm.screen.data", streamId: "s1", data: new Uint8Array([1, 2, 3]) }),
+          events.publish({ type: "vm.screen.closed", streamId: "s1" }),
+          events.publish({ type: "fs.changed", root: repo, path: "a.txt" }),
+          events.publish({ type: "thread.removed", id: "marker" }),
+        ]),
+      ),
+    )
+    await paired.event((event) => event.type === "thread.removed" && event.id === "marker")
+    const types = paired.frames.flatMap((frame) => (frame.type === "event" ? [(frame.event as PushEvent).type] : []))
+    expect(types).not.toContain("vm.screen.data")
+    expect(types).not.toContain("vm.screen.closed")
+    expect(types).not.toContain("fs.changed")
     paired.socket.close()
   })
 
