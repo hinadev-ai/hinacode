@@ -16,6 +16,7 @@ import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } 
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
@@ -23,6 +24,7 @@ import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
+import { elementContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, makeTranscriptUsage } from "./transcripts.ts"
 
@@ -162,11 +164,14 @@ type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"]
 const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
 
-/** Images go inline as base64; other files are named by path so the agent reads them with its own tools. */
-const attachmentBlock = (attachment: Attachment) =>
+/**
+ * Images go inline as base64, followed by what the user picked when the image is a browser element. Other files
+ * are named by path so the agent reads them with its own tools.
+ */
+const attachmentBlocks = (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
-    if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return fileBlock
+    if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return [fileBlock]
     if (attachment.bytes > MAX_IMAGE_BYTES) {
       return yield* new AgentError({
         provider: "claude",
@@ -181,12 +186,12 @@ const attachmentBlock = (attachment: Attachment) =>
       type: "image",
       source: { type: "base64", media_type: attachment.mime, data },
     }
-    return block
+    return attachment.element ? [block, { type: "text" as const, text: elementContext(attachment.element) }] : [block]
   })
 
 const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, priority?: SDKUserMessage["priority"]) =>
   Effect.gen(function* () {
-    const blocks = yield* Effect.forEach(attachments, attachmentBlock)
+    const blocks = (yield* Effect.forEach(attachments, attachmentBlocks)).flat()
     const content: SDKUserMessage["message"]["content"] =
       blocks.length === 0 ? prompt : [...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]), ...blocks]
     const message: SDKUserMessage = {
@@ -313,7 +318,7 @@ export const layer = Layer.effect(
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
-                systemPrompt: { type: "preset", preset: "claude_code" },
+                systemPrompt: { type: "preset", preset: "claude_code", append: AGENT_INSTRUCTIONS },
                 permissionMode: mode,
                 // Lets a live session switch to full access; the mode above decides what runs unasked.
                 allowDangerouslySkipPermissions: true,

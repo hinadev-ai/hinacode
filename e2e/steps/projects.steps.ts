@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test"
+import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
@@ -31,6 +32,18 @@ Given(
   async ({ app, seed, names, projectIds, threadIds }, project: string, title: string) => {
     const projectId = projectIds.get(project)
     if (!projectId) throw new Error(`no seeded project named ${project}`)
+    threadIds.set(title, seed.thread({ projectId, title: names.of(title) }))
+    await app.reload()
+  },
+)
+
+Given(
+  "another project {string} has a thread {string}",
+  async ({ app, seed, names, projectIds, threadIds }, project: string, title: string) => {
+    const rootPath = join(app.userData, "repos", names.of(project))
+    mkdirSync(rootPath, { recursive: true })
+    const projectId = seed.project({ name: names.of(project), rootPath })
+    projectIds.set(project, projectId)
     threadIds.set(title, seed.thread({ projectId, title: names.of(title) }))
     await app.reload()
   },

@@ -28,6 +28,7 @@ const renderedHtml = (page: Page) =>
   article(page).evaluate((node) => {
     const clone = node.cloneNode(true)
     if (!(clone instanceof HTMLElement)) throw new Error("assistant article is not HTML")
+    for (const row of clone.querySelectorAll('[data-slot="worked-for"]')) row.remove()
     const generatedIds = new Map<string, string>()
     for (const element of clone.querySelectorAll("[id]")) {
       if (/^(base-ui-|_r_\w+_$|:r\w+:$)/.test(element.id)) {
@@ -165,7 +166,7 @@ Then("the completed Markdown exactly matches its full snapshot", async ({ app })
       message: { ...snapshot, parts: [{ type: "text", text: "Replacement" }] },
     },
   ])
-  await expect(rendered).toHaveText("Replacement")
+  await expect(rendered.locator(":scope > div > p")).toHaveText(["Replacement"])
   await app.pushEvents([{ type: "message.updated", seq: ++stream.seq, message: snapshot }])
   await expect.poll(() => renderedHtml(app.page)).toBe(html)
 })
@@ -272,7 +273,11 @@ Then("the first completed rendering contains its final text and {word}", async (
   const stream = streamOf(app)
   if (!stream.firstBoundary) throw new Error("completion observation was not armed")
   const text = await stream.firstBoundary()
-  expect(text).toBe(ending === "completes" ? "Final queued text." : "Final queued text.Error: Interrupted locally")
+  expect(text).toMatch(
+    ending === "completes"
+      ? /^Worked for \d{2}:\d{2}Final queued text\.$/
+      : /^Worked for \d{2}:\d{2}Final queued text\.Error: Interrupted locally$/,
+  )
   await expect(article(app.page).locator("strong")).toHaveText(
     ending === "completes" ? ["queued"] : ["queued", "Error:"],
   )

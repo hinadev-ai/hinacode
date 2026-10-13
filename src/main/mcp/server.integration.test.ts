@@ -25,6 +25,7 @@ import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
+import * as Terminals from "../services/Terminals.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
@@ -85,6 +86,7 @@ const stubs = Layer.mergeAll(
 
 const core = Layer.mergeAll(
   threadsLayer.pipe(
+    Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),

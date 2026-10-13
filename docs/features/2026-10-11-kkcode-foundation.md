@@ -19,7 +19,7 @@ kkcode is a local desktop app that puts both agents into one sidebar. Each threa
    - Send again while a turn runs to steer it.
 4. **Watch the side panel.** It shows the workspace path, changed files with diffs, linked PRs with merge state, and ports the thread's processes opened, each with a kill button.
 5. **Ship.** The agent calls `review_changes`, opens a PR, and calls `link_pull_request`. The PR appears on the thread.
-6. **Settle.** Settling removes the worktree, deletes the branch if it's merged into its base, and dims the thread in the sidebar.
+6. **Archive.** Archiving moves the thread to the sidebar's Archived tab. With worktree removal on in settings, it also removes the worktree and deletes the branch if it's merged into its base.
 7. **Automate.** An automation turns a signed webhook, a new GitHub issue, a new Linear issue or a Slack mention into a new thread. The prompt comes from a template such as `{{issue.title}}`, and the thread can get its own worktree.
 
 ## Design
@@ -37,7 +37,7 @@ The system map is in [`../arch.md`](../arch.md), and decisions that are costly t
   - Images go to the model: base64 for Claude (5 MB cap) and `localImage` for Codex.
   - Other files are passed by absolute path, and the agent reads them with its own tools.
   - Thumbnails are served by `kkcode-attachment://`, which refuses paths outside that directory.
-- **Ports** come from `/proc/net/tcp{,6}`. A port belongs to a thread when its process runs in the thread's workspace or descends from the thread's agent. Kill sends SIGTERM, then SIGKILL after 3 s, and only to processes that own a listening socket.
+- **Ports** come from `/proc/net/tcp{,6}` on Linux and from `lsof` plus `ps` on macOS. Other platforms list none. A port belongs to a thread when its process runs in the thread's workspace or descends from the thread's agent. Kill sends SIGTERM, then SIGKILL after 3 s, and only to processes that own a listening socket.
 - **Automations.**
   - The webhook server listens on 127.0.0.1:48080 by default, separate from the MCP server. It accepts an HMAC in `x-kkcode-signature` or GitHub's `x-hub-signature-256`.
   - Pollers run every 60 s from a cursor established when an enabled automation is saved, or when a disabled automation is first enabled. The first poll fetches new events. Re-enabling keeps the saved cursor.

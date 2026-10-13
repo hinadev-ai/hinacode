@@ -12,6 +12,9 @@ export const threadRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/thread/$threadId",
   component: ThreadRoute,
+  /** `agent` opens the sub-agent whose tool calls carry that `parentCallId` instead of the thread's own transcript. */
+  validateSearch: (search: Record<string, unknown>): { agent?: string } =>
+    typeof search.agent === "string" ? { agent: search.agent } : {},
 })
 
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute })

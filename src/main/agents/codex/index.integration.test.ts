@@ -25,6 +25,7 @@ type Control = {
   cancelQuestion?: boolean
   accountFromHome?: boolean
   login?: { success: boolean; error: string | null }
+  subagent?: boolean
 }
 type Received = {
   method?: string
@@ -211,6 +212,30 @@ describe("Codex token usage", () => {
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
         })
+      }),
+    ),
+  )
+})
+
+describe("Codex sub-agents", () => {
+  it.live("puts the sub-agent's tool calls in the transcript tagged with its thread id", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ subagent: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+        const subagent = turn.events.find((event) => event.type === "subagent_updated")
+        expect(subagent).toMatchObject({ subagent: { id: "codex-child-thread", callId: "codex-child-thread" } })
+        expect(turn.events.filter((event) => event.type.startsWith("tool_call"))).toStrictEqual([
+          {
+            type: "tool_call_started",
+            callId: "child-exec",
+            name: "Bash",
+            input: expect.objectContaining({ command: "wc -l" }),
+            parentCallId: "codex-child-thread",
+          },
+          { type: "tool_call_finished", callId: "child-exec", output: "218\n", isError: false },
+        ])
       }),
     ),
   )

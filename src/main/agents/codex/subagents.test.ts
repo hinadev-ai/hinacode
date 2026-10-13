@@ -45,7 +45,7 @@ describe("Codex sub-agents", () => {
       {
         id: child,
         label: "count_files",
-        kind: "agent",
+        callId: child,
         status: "running",
         summary: null,
         lastTool: null,

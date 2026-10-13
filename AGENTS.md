@@ -23,7 +23,7 @@ pnpm test         # node --test, *.test.ts next to source
 pnpm check:specs  # TLC over specs/*.cfg, needs Java 11+ (see specs/README.md)
 ```
 
-Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. There is no CI, so nothing else runs these checks.
+Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, and React Doctor comments on the ones that touch React code.
 
 ## Architecture
 
@@ -48,9 +48,10 @@ messages/     Paraglide catalogs, en.json and zh-TW.json
 
 ## Conventions
 
+- The renderer lints with the React Compiler rules (`react/purity`, `react/refs` and the rest) and the React Doctor rules listed in `.oxlintrc.json`. Code the compiler cannot optimize fails `pnpm lint`.
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
-- Icons come from `react-icons/ri` (Remix). `components.json` says lucide, but the code doesn't use it.
+- Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
 

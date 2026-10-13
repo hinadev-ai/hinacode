@@ -1,5 +1,12 @@
 import { describe, expect, test } from "@effect/vitest"
-import { externalUrl, isAppDocument, isInside, isTrustedSender } from "./security.ts"
+import {
+  BROWSER_PARTITION,
+  externalUrl,
+  isAppDocument,
+  isInside,
+  isTrustedSender,
+  lockDownWebview,
+} from "./security.ts"
 
 const packagedDocument = "file:///opt/kkcode/resources/app.asar/out/renderer/index.html"
 const resolved = (href: string) => new URL(href, packagedDocument).href
@@ -97,5 +104,37 @@ describe("isInside", () => {
     expect(isInside("/repo", "/repo-other/a.ts")).toBe(false)
     expect(isInside("/repo", "/repo/../etc/passwd")).toBe(false)
     expect(isInside("/repo", "src/a.ts")).toBe(false)
+  })
+})
+
+describe("lockDownWebview", () => {
+  test("strips the preload and forces the sandbox and the browser session", () => {
+    const preferences: Record<string, unknown> = {
+      preload: "file:///tmp/evil.js",
+      preloadURL: "file:///tmp/evil.js",
+      nodeIntegration: true,
+      contextIsolation: false,
+      sandbox: false,
+      webSecurity: false,
+      partition: "persist:app",
+    }
+    const params: Record<string, string> = { src: "http://localhost:5173/", partition: "persist:app" }
+
+    expect(lockDownWebview(preferences, params)).toBe(true)
+    expect(preferences).toEqual({
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      partition: BROWSER_PARTITION,
+    })
+    expect(params["partition"]).toBe(BROWSER_PARTITION)
+  })
+
+  test("refuses a first URL that is not http(s)", () => {
+    for (const src of ["file:///etc/passwd", "javascript:alert(1)", "kkcode-attachment://file/x", ""]) {
+      expect(lockDownWebview({}, { src })).toBe(false)
+    }
   })
 })

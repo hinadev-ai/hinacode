@@ -186,8 +186,11 @@ export const Subagent = Schema.Struct({
   id: Schema.String,
   /** What it was asked to do: the task description or a summary of its prompt. */
   label: Schema.String,
-  /** The sub-agent type (e.g. "Explore"), or "agent" when the provider has none. */
-  kind: Schema.String,
+  /**
+   * What the sub-agent's own tool calls carry as `parentCallId`: the tool call that spawned it on
+   * Claude, its own thread id on Codex. Null until the provider has said which.
+   */
+  callId: Schema.NullOr(Schema.String),
   status: SubagentStatus,
   /** The latest one-line progress summary, or the final summary once it ended. */
   summary: Schema.NullOr(Schema.String),
@@ -208,6 +211,7 @@ export const AgentEvent = Schema.Union([
     callId: Schema.String,
     name: Schema.String,
     input: Schema.Unknown,
+    parentCallId: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("tool_call_finished"),

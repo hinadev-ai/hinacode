@@ -44,6 +44,15 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
 }
 
 /** A thread asked for a branch whose checkout another thread already owns. */
+export class PullRequestElsewhereError extends Schema.TaggedError<PullRequestElsewhereError>()(
+  "PullRequestElsewhereError",
+  { url: Schema.String, repository: Schema.String },
+) {
+  override get message(): string {
+    return `${this.url} is not a pull request of this project's repository, ${this.repository}`
+  }
+}
+
 export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()("WorktreeTakenError", {
   branch: Schema.String,
   path: Schema.String,
@@ -69,6 +78,15 @@ export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("
 }) {
   override get message(): string {
     return `${this.threads} ${this.threads === 1 ? "thread uses" : "threads use"} this account. Delete them first.`
+  }
+}
+
+/** A turn or approval is in flight, and archiving would hide it from the active sidebar. */
+export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("ThreadBusyError", {
+  id: Schema.String,
+}) {
+  override get message(): string {
+    return "This thread is still running. Stop it or wait for it to finish before archiving."
   }
 }
 

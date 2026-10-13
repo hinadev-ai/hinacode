@@ -111,7 +111,7 @@ const mainFrame: Frame = { url: appUrl, parent: null }
 const subagent: Subagent = {
   id: "task-1",
   label: "Count repo files",
-  kind: "general-purpose",
+  callId: "toolu_01DoGmNCXkV2M8SMNaE7E3XJ",
   status: "running",
   summary: null,
   lastTool: null,
@@ -225,6 +225,7 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer(join(dirname(dbPath), "accounts"))),
@@ -235,7 +236,7 @@ const makeLayer = (dbPath: string) => {
     Search.layer,
     Files.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, Terminals.layer).pipe(Layer.provide(domain))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),

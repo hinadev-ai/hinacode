@@ -7,13 +7,15 @@ A local desktop app for running Claude Code and Codex against your repositories.
 ## Features
 
 - Claude Code through the Agent SDK and Codex through the app-server protocol, selectable per thread, with the model picked from each agent's live list.
-- Threads grouped by project in the left sidebar. Drag to reorder, rename inline, settle or delete from the row menu.
-- Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Settling a thread removes the worktree and deletes the branch when it is merged.
+- Threads grouped by project in the left sidebar. Filter by title or project, drag to reorder, rename inline, archive or delete from the row menu. Archived threads live in their own tab and can be brought back.
+- Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Archiving a thread can remove the worktree too, deleting the branch when it is merged. Threads can archive themselves once every linked pull request merges.
 - CLAUDE.md, AGENTS.md and skills load from the project and your home directory, as they do in the CLIs.
 - Approvals for commands, edits and MCP tool calls appear inline. Steer a running turn by sending another message.
+- Completed responses show elapsed time above the activity and answer. Reasoning, tools, and progress messages keep their existing order and controls.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.
 - Built-in MCP server exposed to both agents: `review_changes`, `link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, and Linear issue tools backed by an API key stored with Electron's safeStorage.
 - An activity bar on the right switches the thread panel between views, each with its own shortcut: details (workspace, setup log, and TCP ports opened by processes the thread spawned, each with a kill button), a file explorer with git status and a read-only highlighted file viewer, changes with diffs, pull requests, and subagents.
+- A browser view for the thread's dev server. It lists the ports the thread listens on, and Select element picks a part of the page into the message as a screenshot with its URL, selector, HTML and React component names.
 - GitHub through your `gh` login. Each pull request shows its title, draft, open, merged or closed state, CI checks and review decision, refreshed every minute. A worktree branch without a pull request gets a button that pushes it and runs `gh pr create --fill`. Settings > Integrations shows whether `gh` is installed and signed in.
 - Automations start a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree. Triggers are a signed webhook and pollers for new GitHub issues, Linear issues and Slack mentions.
 - English and 繁體中文, switchable in settings.

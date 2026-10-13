@@ -11,11 +11,13 @@ import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
 import { Projects, layer as projectsLayer } from "./Projects.ts"
 import { Settings, layer as settingsLayer } from "./Settings.ts"
+import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
 const testLayer = (root: string) =>
   threadsLayer.pipe(
+    Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(projectsLayer),
     Layer.provideMerge(accountsLayer(root)),

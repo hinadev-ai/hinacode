@@ -83,3 +83,23 @@ test("finds a posted question's transcript text after the user answers", () => {
   ]
   expect(findMatches(messages, "color")).toEqual([{ messageId: "question", partIndex: 0, offset: 6 }])
 })
+
+test("follows the original order of questions, progress, and the final answer", () => {
+  const messages = [
+    message(
+      "m1",
+      [
+        { type: "questions", text: "Which migration?", questions: [] },
+        { type: "text", text: "Checking migration." },
+        { type: "tool_call", callId: "c1", name: "Bash", input: { command: "pnpm migrate" }, status: "done" },
+        { type: "text", text: "Migration finished." },
+      ],
+      "2026-10-12T00:08:05.000Z",
+    ),
+  ]
+  expect(findMatches(messages, "migration")).toEqual([
+    { messageId: "m1", partIndex: 0, offset: 6 },
+    { messageId: "m1", partIndex: 1, offset: 9 },
+    { messageId: "m1", partIndex: 3, offset: 0 },
+  ])
+})
