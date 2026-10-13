@@ -46,6 +46,7 @@ const commit = (cwd: string, message: string) =>
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([]),
+  usage: () => Effect.succeed(null),
   account: Effect.succeed({ type: "signedOut" }),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
