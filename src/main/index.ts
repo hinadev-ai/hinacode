@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { app, BrowserWindow, net, protocol, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
