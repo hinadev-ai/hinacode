@@ -2,7 +2,11 @@
 // $FAKE_CODEX_CONTROL is a JSON file re-read on every request and whenever it changes:
 //   stall: methods to hold without replying, until `release` becomes true
 //   holdTurn: keep a started turn running until turn/interrupt instead of completing it right away
+//   accountFromHome: account/read reports `<basename of $CODEX_HOME>@example.com`
+//   login: { success, error } sent as account/login/completed right after account/login/start
+//   subagent: spawn a sub-agent thread that runs one command before the turn completes
 import { appendFileSync, readFileSync, watch } from "node:fs"
+import { basename } from "node:path"
 import { createInterface } from "node:readline"
 
 const control = () => {
@@ -41,6 +45,24 @@ const turnTokenUsage = [
   { total: breakdown(3200, 80), last: breakdown(2200, 30), modelContextWindow: 258400 },
 ]
 
+const spawnSubagent = (threadId, turnId) => {
+  const child = "codex-child-thread"
+  const item = (method, params) => send({ method, params: { threadId, turnId, ...params } })
+  const childItem = (method, params) => send({ method, params: { threadId: child, turnId: "child-turn", ...params } })
+  const activity = {
+    type: "subAgentActivity",
+    id: "spawn",
+    kind: "started",
+    agentThreadId: child,
+    agentPath: "/root/count",
+  }
+  const command = { type: "commandExecution", id: "child-exec", command: "wc -l", cwd: "/repo", exitCode: null }
+  item("item/started", { item: activity })
+  childItem("item/started", { item: { ...command, status: "inProgress", aggregatedOutput: null } })
+  childItem("item/commandExecution/outputDelta", { itemId: "child-exec", delta: "218\n" })
+  childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
+}
+
 const held = []
 let turns = 0
 let activeQuestion = null
@@ -54,8 +76,24 @@ const reply = ({ id, method, params }) => {
     return
   }
   switch (method) {
-    case "account/read":
-      return send({ id, result: control().accountResponse ?? { account: null, requiresOpenaiAuth: true } })
+    case "account/read": {
+      const { accountResponse, accountFromHome } = control()
+      const home = process.env.CODEX_HOME
+      if (accountFromHome && home) {
+        const email = `${basename(home)}@example.com`
+        return send({ id, result: { account: { type: "chatgpt", email, planType: "pro" }, requiresOpenaiAuth: true } })
+      }
+      return send({ id, result: accountResponse ?? { account: null, requiresOpenaiAuth: true } })
+    }
+    case "account/login/start": {
+      const loginId = `login-${id}`
+      send({ id, result: { type: "chatgpt", loginId, authUrl: `https://auth.example.com/authorize?login=${loginId}` } })
+      const { login } = control()
+      if (login) send({ method: "account/login/completed", params: { loginId, onboardingEntrypoint: null, ...login } })
+      return
+    }
+    case "account/rateLimits/read":
+      return send({ id, result: control().rateLimitsResponse ?? {} })
     case "model/list":
       return send({
         id,
@@ -99,6 +137,7 @@ const reply = ({ id, method, params }) => {
           },
         })
       }
+      if (control().subagent) spawnSubagent(params.threadId, turnId)
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
           send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })

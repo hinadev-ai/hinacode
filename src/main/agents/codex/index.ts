@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
   AgentAccount,
   AgentCommand,
@@ -14,15 +14,28 @@ import type {
   TokenUsage,
 } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
+import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
+import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
+import { codexHome, makeRolloutUsage } from "./rollouts.ts"
+import { elementContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
-import { GetAccountResponse } from "./protocol.ts"
+import {
+  GetAccountRateLimitsResponse,
+  AccountLoginCompletedNotification,
+  GetAccountResponse,
+  type RateLimitWindow,
+  LoginAccountResponse,
+} from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
+  CancelLoginAccountParams,
+  LoginAccountParams,
   ElicitationActionWire,
   GetAccountParams,
   McpServerElicitationRequestParams,
@@ -100,14 +113,14 @@ const userInputResponse = (answers: QuestionAnswers): ToolRequestUserInputRespon
 
 const textInput = (text: string): UserInput => ({ type: "text", text, text_elements: [] })
 
-/** Images go in as local paths; other files are named by path so the agent reads them with its own tools. */
+/** Images go in as local paths, a picked element with its context; other files are named by path for the agent to read. */
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<UserInput> => [
   ...(text === "" ? [] : [textInput(text)]),
-  ...attachments.map((attachment) =>
-    attachment.kind === "image"
-      ? { type: "localImage" as const, path: attachment.path }
-      : textInput(`Attached file: ${attachment.path}`),
-  ),
+  ...attachments.flatMap((attachment): Array<UserInput> => {
+    if (attachment.kind !== "image") return [textInput(`Attached file: ${attachment.path}`)]
+    const image: UserInput = { type: "localImage", path: attachment.path }
+    return attachment.element ? [image, textInput(elementContext(attachment.element))] : [image]
+  }),
 ]
 
 /** Codex expands a skill only when it arrives as its own input item next to the `$name` in the text. */
@@ -156,10 +169,17 @@ type RemoteTurn = { readonly threadId: string; readonly turnId: string }
 type Run = {
   /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
+  /** The app-server of the thread's account, which alone knows the run's remote turn. */
+  client?: CodexClient
   /** Outlives a stopped run, so a turn Codex starts after Stop can still be interrupted. */
   turnStart?: Fiber.Fiber<RemoteTurn, AgentError>
   turn?: RemoteTurn
 }
+
+const interruptTurn = (client: CodexClient, turn: RemoteTurn) =>
+  Effect.suspend(() =>
+    client.isAlive() ? client.request("turn/interrupt", turn satisfies TurnInterruptParams) : Effect.void,
+  )
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
@@ -167,24 +187,33 @@ const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
   const binaryPath = resolveCodexBinary()
   const clientLock = yield* Semaphore.make(1)
-  let current: { readonly client: CodexClient; readonly scope: Scope.Closeable } | undefined
+  /** Keyed by agent home, "" for the CLI's own one. */
+  const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
 
-  /** One app-server for the whole provider, spawned on first use and respawned after it dies. */
-  const getClient = Semaphore.withPermit(
-    clientLock,
-    Effect.gen(function* () {
-      if (current?.client.isAlive()) return current.client
-      if (current) yield* Scope.close(current.scope, Exit.void)
-      const scope = yield* Scope.make()
-      const client = yield* makeCodexClient({ binaryPath, clientVersion: CLIENT_VERSION }).pipe(
-        Scope.provide(scope),
-        Effect.onError(() => Scope.close(scope, Exit.void)),
-      )
-      current = { client, scope }
-      return client
-    }),
+  /**
+   * One app-server per agent home, since `CODEX_HOME` holds the login and the transcripts. Spawned on
+   * first use and respawned after it dies.
+   */
+  const getClient = (home: string | null) =>
+    Semaphore.withPermit(
+      clientLock,
+      Effect.gen(function* () {
+        const current = clients.get(home ?? "")
+        if (current?.client.isAlive()) return current.client
+        if (current) yield* Scope.close(current.scope, Exit.void)
+        const scope = yield* Scope.make()
+        const env = home === null ? { ...process.env } : { ...process.env, CODEX_HOME: home }
+        const client = yield* makeCodexClient({ binaryPath, clientVersion: CLIENT_VERSION, env }).pipe(
+          Scope.provide(scope),
+          Effect.onError(() => Scope.close(scope, Exit.void)),
+        )
+        clients.set(home ?? "", { client, scope })
+        return client
+      }),
+    )
+  yield* Effect.addFinalizer(() =>
+    Effect.forEach(clients.values(), ({ scope }) => Scope.close(scope, Exit.void), { discard: true }),
   )
-  yield* Effect.addFinalizer(() => (current ? Scope.close(current.scope, Exit.void) : Effect.void))
 
   /** Pending approvals keyed by the kkcode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
@@ -195,15 +224,8 @@ const make = Effect.gen(function* () {
   /** Keyed by kkcode threadId; a sub-agent can outlive the turn that spawned it. */
   const subagentsByThread = new Map<string, Subagents>()
 
-  const interruptTurn = (turn: RemoteTurn) =>
-    Effect.suspend(() =>
-      current?.client.isAlive()
-        ? current.client.request("turn/interrupt", turn satisfies TurnInterruptParams)
-        : Effect.void,
-    )
-
   const listModels = Effect.gen(function* () {
-    const client = yield* getClient
+    const client = yield* getClient(null)
     const models: Array<ModelInfo> = []
     let cursor: string | null = null
     do {
@@ -226,28 +248,105 @@ const make = Effect.gen(function* () {
     return models
   })
 
-  const account = Effect.gen(function* () {
-    const client = yield* getClient
-    const params: GetAccountParams = { refreshToken: false }
-    const raw = yield* client.request<unknown>("account/read", params)
-    const response = yield* Schema.decodeUnknownEffect(GetAccountResponse)(raw).pipe(
-      Effect.mapError(
-        () => new AgentError({ provider: "codex", message: "Failed to read the Codex account: invalid response" }),
-      ),
-    )
-    return toAccount(response.account)
-  })
-
-  const listSkills = (cwd: string) =>
+  const planLimits = (home: string | null) =>
     Effect.gen(function* () {
-      const client = yield* getClient
+      const client = yield* getClient(home)
+      const raw = yield* client.request<unknown>("account/rateLimits/read", undefined)
+      const response = yield* Schema.decodeUnknownEffect(GetAccountRateLimitsResponse)(raw).pipe(
+        Effect.mapError(
+          () => new AgentError({ provider: "codex", message: "Failed to read Codex plan limits: invalid response" }),
+        ),
+      )
+      return toPlanLimits(response, yield* nowIso)
+    })
+
+  const rolloutUsage = perHome(makeRolloutUsage)
+  const readUsage = (threadId: string, home: string | null) =>
+    Effect.tryPromise({
+      try: () => rolloutUsage(home ?? codexHome())(threadId),
+      catch: (cause) =>
+        new AgentError({ provider: "codex", message: `Failed to read Codex rollouts: ${String(cause)}` }),
+    })
+
+  const account = (home: string | null) =>
+    Effect.gen(function* () {
+      const client = yield* getClient(home)
+      const params: GetAccountParams = { refreshToken: false }
+      const raw = yield* client.request<unknown>("account/read", params)
+      const response = yield* Schema.decodeUnknownEffect(GetAccountResponse)(raw).pipe(
+        Effect.mapError(
+          () => new AgentError({ provider: "codex", message: "Failed to read the Codex account: invalid response" }),
+        ),
+      )
+      return toAccount(response.account)
+    })
+
+  const signIn = (home: string) =>
+    Effect.gen(function* () {
+      const client = yield* getClient(home)
+      // Subscribed first, so a login that completes right away is not missed.
+      const completions = yield* Queue.unbounded<Incoming>()
+      yield* client.subscribe((message) => Queue.offerUnsafe(completions, message))
+      const raw = yield* client.request<unknown>("account/login/start", {
+        type: "chatgpt",
+      } satisfies LoginAccountParams)
+      const { loginId, authUrl } = yield* Schema.decodeUnknownEffect(LoginAccountResponse)(raw).pipe(
+        Effect.mapError(
+          () => new AgentError({ provider: "codex", message: "Failed to start the Codex sign-in: invalid response" }),
+        ),
+      )
+      const done = yield* Deferred.make<void, AgentError>()
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          if (yield* Deferred.isDone(done)) return
+          yield* client
+            .request("account/login/cancel", { loginId } satisfies CancelLoginAccountParams)
+            .pipe(Effect.ignore)
+        }),
+      )
+      const decodeCompletion = Schema.decodeUnknownOption(AccountLoginCompletedNotification)
+      const completed = Effect.gen(function* () {
+        while (true) {
+          const message = yield* Queue.take(completions)
+          if (message.kind === "exit") return yield* Effect.fail(message.error)
+          if (message.kind !== "notification" || message.method !== "account/login/completed") continue
+          const completion = Option.getOrUndefined(decodeCompletion(message.params))
+          if (completion?.loginId !== loginId) continue
+          if (completion.success) return
+          return yield* new AgentError({ provider: "codex", message: completion.error ?? "Codex sign-in failed" })
+        }
+      }).pipe(Effect.onExit((exit) => Deferred.done(done, Exit.asVoid(exit))))
+      const pending: SignIn = { url: authUrl, openedBrowser: false, submitCode: null, completed }
+      return pending
+    })
+
+  /** Also stops the home's app-server, since a removed account's home is deleted right after. */
+  const signOut = (home: string) =>
+    getClient(home).pipe(
+      Effect.flatMap((client) => client.request("account/logout", undefined)),
+      Effect.ensuring(
+        Semaphore.withPermit(
+          clientLock,
+          Effect.suspend(() => {
+            const current = clients.get(home)
+            clients.delete(home)
+            return current ? Scope.close(current.scope, Exit.void) : Effect.void
+          }),
+        ),
+      ),
+      Effect.asVoid,
+    )
+
+  const listSkills = (cwd: string, home: string | null) =>
+    Effect.gen(function* () {
+      const client = yield* getClient(home)
       const params: SkillsListParams = { cwds: [cwd] }
       const response = yield* client.request<SkillsListResponse>("skills/list", params)
       return response.data.flatMap((entry) => entry.skills)
     })
 
-  const listCommands = ({ cwd }: { readonly cwd: string }) =>
-    listSkills(cwd).pipe(
+  const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: string | null }) =>
+    listSkills(cwd, home).pipe(
       Effect.map((skills) =>
         skills
           .filter((skill) => skill.enabled)
@@ -271,7 +370,8 @@ const make = Effect.gen(function* () {
         )
 
         const stream = Effect.gen(function* () {
-          const client = yield* getClient
+          const client = yield* getClient(input.home)
+          run.client = client
 
           // Subscribe before starting so no notification is missed; they wait here until the turn id is known.
           const inbox = yield* Queue.unbounded<Incoming>()
@@ -287,6 +387,7 @@ const make = Effect.gen(function* () {
                 kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
               },
             },
+            developerInstructions: AGENT_INSTRUCTIONS,
           } satisfies ThreadStartParams
           const { thread, sandbox } = input.resumeSessionId
             ? yield* client.request<ThreadStartResponse>("thread/resume", {
@@ -297,7 +398,7 @@ const make = Effect.gen(function* () {
             : yield* client.request<ThreadStartResponse>("thread/start", overrides)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
-          const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd) : []
+          const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd, input.home) : []
           const turnStart: TurnStartParams = {
             threadId: thread.id,
             input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
@@ -369,18 +470,25 @@ const make = Effect.gen(function* () {
               )
             })
 
-          const startTool = (item: ThreadItem) => {
+          /** `parentCallId` is the sub-agent's thread id when one of its tools runs. */
+          const startTool = (item: ThreadItem, parentCallId?: string) => {
             const name = toolName(item)
             if (name === undefined || startedTools.has(item.id)) return Effect.void
             startedTools.add(item.id)
             openTools.add(item.id)
-            return emit({ type: "tool_call_started", callId: item.id, name, input: toolInput(item) })
+            return emit({
+              type: "tool_call_started",
+              callId: item.id,
+              name,
+              input: toolInput(item),
+              ...(parentCallId !== undefined && { parentCallId }),
+            })
           }
 
-          const finishTool = (item: ThreadItem) =>
+          const finishTool = (item: ThreadItem, parentCallId?: string) =>
             Effect.gen(function* () {
               if (toolName(item) === undefined) return
-              yield* startTool(item)
+              yield* startTool(item, parentCallId)
               const result = toolResult(item, commandOutput.get(item.id))
               commandOutput.delete(item.id)
               openTools.delete(item.id)
@@ -457,6 +565,22 @@ const make = Effect.gen(function* () {
               )
             })
 
+          const handleChildTool = (childThreadId: string, method: string, params: unknown) => {
+            switch (method) {
+              case "item/started":
+                return startTool((params as ServerNotificationParams["item/started"]).item, childThreadId)
+              case "item/completed":
+                return finishTool((params as ServerNotificationParams["item/completed"]).item, childThreadId)
+              case "item/commandExecution/outputDelta": {
+                const { itemId, delta } = params as ServerNotificationParams["item/commandExecution/outputDelta"]
+                commandOutput.set(itemId, (commandOutput.get(itemId) ?? "") + delta)
+                return Effect.void
+              }
+              default:
+                return Effect.void
+            }
+          }
+
           const belongsToTurn = (params: unknown) => {
             const scope = params as { threadId?: string; turnId?: string; turn?: { id: string } } | undefined
             return scope?.threadId === thread.id && (scope.turnId ?? scope.turn?.id ?? turn.turnId) === turn.turnId
@@ -468,6 +592,7 @@ const make = Effect.gen(function* () {
               if (message.kind === "exit") return yield* Effect.fail(message.error)
               const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
               if (message.kind === "notification" && childThreadId !== undefined && subagents.has(childThreadId)) {
+                yield* handleChildTool(childThreadId, message.method, message.params)
                 const changed = applyChildNotification(
                   subagents,
                   childThreadId,
@@ -598,10 +723,10 @@ const make = Effect.gen(function* () {
           Deferred.await(run.stop).pipe(Effect.as(true)),
         )
         if (stopped) {
-          const { turnStart } = run
-          if (turnStart) {
+          const { turnStart, client } = run
+          if (turnStart && client) {
             yield* Fiber.join(turnStart).pipe(
-              Effect.flatMap(interruptTurn),
+              Effect.flatMap((turn) => interruptTurn(client, turn)),
               Effect.ignore,
               Effect.forkIn(providerScope),
             )
@@ -618,13 +743,15 @@ const make = Effect.gen(function* () {
       const run = runs.get(threadId)
       if (!run) return Effect.void
       const stop = Deferred.succeed(run.stop, undefined)
-      return run.turn ? interruptTurn(run.turn).pipe(Effect.catch(() => stop)) : stop
+      return run.turn && run.client ? interruptTurn(run.client, run.turn).pipe(Effect.catch(() => stop)) : stop
     }).pipe(Effect.asVoid)
 
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
-      const active = runs.get(threadId)?.turn
-      if (!active || !current?.client.isAlive()) {
+      const run = runs.get(threadId)
+      const active = run?.turn
+      const client = run?.client
+      if (!active || !client?.isAlive()) {
         return yield* new AgentError({ provider: "codex", message: "No turn is running on this thread" })
       }
       const params: TurnSteerParams = {
@@ -632,7 +759,7 @@ const make = Effect.gen(function* () {
         input: userInput(text, attachments),
         expectedTurnId: active.turnId,
       }
-      yield* current.client.request("turn/steer", params)
+      yield* client.request("turn/steer", params)
     })
 
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>
@@ -651,6 +778,10 @@ const make = Effect.gen(function* () {
     id: "codex",
     listModels,
     account,
+    planLimits,
+    usage: readUsage,
+    signIn,
+    signOut,
     listCommands,
     runTurn,
     steer,
@@ -696,6 +827,33 @@ const toAccount = (account: GetAccountResponse["account"]): AgentAccount => {
     case "amazonBedrock":
       return { type: "external", service: "Amazon Bedrock" }
   }
+}
+
+const SESSION_MINUTES = 5 * 60
+const WEEK_MINUTES = 7 * 24 * 60
+
+/** A window without a duration can't be named, so it is left out. */
+const toLimitWindow = (window: RateLimitWindow | null): ReadonlyArray<LimitWindow> => {
+  const minutes = window?.windowDurationMins ?? null
+  if (window === null || minutes === null) return []
+  return [
+    {
+      window:
+        minutes === SESSION_MINUTES
+          ? { kind: "session" }
+          : minutes === WEEK_MINUTES
+            ? { kind: "weekly" }
+            : { kind: "minutes", minutes },
+      usedPercent: window.usedPercent,
+      resetsAt: window.resetsAt === null ? null : new Date(window.resetsAt * 1000).toISOString(),
+    },
+  ]
+}
+
+/** The `codex` bucket is what Codex itself meters; the legacy single snapshot stands in when it is missing. */
+const toPlanLimits = (response: GetAccountRateLimitsResponse, readAt: string): PlanLimits => {
+  const snapshot = response.rateLimitsByLimitId?.["codex"] ?? response.rateLimits
+  return { windows: [...toLimitWindow(snapshot.primary), ...toLimitWindow(snapshot.secondary)], readAt }
 }
 
 export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {

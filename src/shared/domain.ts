@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, Question, TokenUsage } from "./agent.ts"
+import { PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
@@ -156,7 +157,24 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "settled", "archived"])
+/** Where a thread's new worktree starts: a new branch forked from `baseRef`, or an open pull request's head. */
+export const WorktreeSource = Schema.Union([
+  Schema.TaggedStruct("branch", { baseRef: Schema.String }),
+  Schema.TaggedStruct("pullRequest", { selector: PullRequestSelector }),
+])
+export type WorktreeSource = typeof WorktreeSource.Type
+
+/** An open pull request the worktree picker can check out. */
+export const OpenPullRequest = Schema.Struct({
+  number: Schema.Int,
+  title: Schema.String,
+  headRefName: Schema.String,
+  author: Schema.String,
+  isDraft: Schema.Boolean,
+})
+export type OpenPullRequest = typeof OpenPullRequest.Type
+
+export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 /** A turn is in flight: the agent may be writing to the thread's working directory. */
@@ -183,6 +201,8 @@ export const Thread = Schema.Struct({
   fastMode: Schema.Boolean,
   /** Applies from the next turn, or right away on a live Claude session. */
   accessMode: AccessMode,
+  /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */
+  accountId: Schema.NullOr(Schema.String),
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
   status: ThreadStatus,
@@ -201,6 +221,21 @@ export type Thread = typeof Thread.Type
 export const ToolCallStatus = Schema.Literals(["running", "done", "error"])
 export type ToolCallStatus = typeof ToolCallStatus.Type
 
+/**
+ * An element the user picked in the in-app browser. The page produced every field, so the limits hold even when
+ * its scripts tamper with the picker, and agents read it as page content, not as instructions.
+ */
+export const PickedElement = Schema.Struct({
+  url: Schema.String.check(Schema.isMaxLength(2048)),
+  selector: Schema.String.check(Schema.isMaxLength(1000)),
+  /** The element's outerHTML, cut to 4000 characters. */
+  html: Schema.String.check(Schema.isMaxLength(4000)),
+  text: Schema.String.check(Schema.isMaxLength(500)),
+  /** The React components it sits in, nearest first. Empty unless the page is a React development build. */
+  components: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(5)),
+})
+export type PickedElement = typeof PickedElement.Type
+
 /** A file the user attached, copied into the app's attachments dir so `path` outlives the source. */
 export const Attachment = Schema.Struct({
   id: Schema.String,
@@ -210,6 +245,8 @@ export const Attachment = Schema.Struct({
   mime: Schema.String,
   kind: Schema.Literals(["image", "file"]),
   bytes: Schema.Number,
+  /** Set when the image is a screenshot of an element picked in the in-app browser. */
+  element: Schema.optional(PickedElement),
 })
 export type Attachment = typeof Attachment.Type
 
@@ -223,6 +260,8 @@ export const MessagePart = Schema.Union([
     input: Schema.Unknown,
     output: Schema.optional(Schema.Unknown),
     status: ToolCallStatus,
+    /** Set when a sub-agent made the call: the `callId` of the sub-agent it belongs to. */
+    parentCallId: Schema.optional(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("file_change"), path: Schema.String, diff: Schema.String }),
   Schema.Struct({ type: Schema.Literal("attachment"), attachment: Attachment }),
@@ -291,6 +330,14 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
+export const ArchiveSettings = Schema.Struct({
+  /** Archive a thread once every pull request linked to it is merged. */
+  whenMerged: Schema.Boolean,
+  /** Archiving also deletes the thread's worktree folder, and its branch when merged into its base. */
+  removeWorktree: Schema.Boolean,
+})
+export type ArchiveSettings = typeof ArchiveSettings.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
@@ -300,6 +347,11 @@ export const Settings = Schema.Struct({
   /** CommandId -> canonical chord such as "mod+shift+p". Only user overrides are stored. */
   keybindings: Schema.Record(Schema.String, Schema.String),
   defaultModel: Schema.Struct({
+    claude: Schema.NullOr(Schema.String),
+    codex: Schema.NullOr(Schema.String),
+  }),
+  /** The account new threads of each agent start on. Null is the CLI's own login. */
+  defaultAccount: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
   }),
@@ -320,6 +372,7 @@ export const Settings = Schema.Struct({
   /** The access mode new threads start with. */
   defaultAccessMode: AccessMode,
   notifications: NotificationSettings,
+  archive: ArchiveSettings,
 })
 export type Settings = typeof Settings.Type
 
@@ -327,12 +380,14 @@ export const defaultSettings: Settings = {
   locale: "en",
   keybindings: {},
   defaultModel: { claude: null, codex: null },
+  defaultAccount: { claude: null, codex: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  archive: { whenMerged: false, removeWorktree: false },
 }
 
 export const PullRequestLink = Schema.Struct({

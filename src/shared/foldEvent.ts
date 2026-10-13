@@ -17,7 +17,14 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         ...message,
         parts: [
           ...message.parts,
-          { type: "tool_call", callId: event.callId, name: event.name, input: event.input, status: "running" },
+          {
+            type: "tool_call",
+            callId: event.callId,
+            name: event.name,
+            input: event.input,
+            status: "running",
+            ...(event.parentCallId !== undefined && { parentCallId: event.parentCallId }),
+          },
         ],
       }
     case "tool_call_finished":

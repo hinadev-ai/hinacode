@@ -5,7 +5,7 @@ import type { Message } from "../../shared/domain.ts"
 import { type FindMatch, findMatches } from "../lib/find.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
-import { MATCH_SELECTOR } from "./FindHighlight.tsx"
+import { partMatchSelector } from "./FindHighlight.tsx"
 import { Button } from "./ui/button.tsx"
 
 /** Frames to wait for a row to mount after the list scrolls to it. */
@@ -16,16 +16,11 @@ let handledFocusRequest = 0
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
-/**
- * Scrolls the virtual list to the match's message, then the `ordinal`-th mark in that message to
- * the middle of the view. Resolves to the mark, or null when the row never mounted.
- */
-async function scrollToMatch(list: LegendListRef, index: number, messageId: string, ordinal: number) {
+async function scrollToMountedPartMatch(list: LegendListRef, index: number, match: FindMatch, ordinal: number) {
   await list.scrollToIndex({ index, viewPosition: 0.5, animated: false })
   for (let frame = 0; frame < MOUNT_WAIT_FRAMES; frame++) {
-    const row = list.getScrollableNode()?.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`)
-    const marks = row?.querySelectorAll<HTMLElement>(MATCH_SELECTOR)
-    const mark = marks?.[Math.min(ordinal, marks.length - 1)]
+    const row = list.getScrollableNode()?.querySelector(`[data-message-id="${CSS.escape(match.messageId)}"]`)
+    const mark = row?.querySelectorAll<HTMLElement>(partMatchSelector(match.partIndex))[ordinal]
     if (mark) {
       mark.scrollIntoView({ block: "center", behavior: "instant" })
       return mark
@@ -35,12 +30,11 @@ async function scrollToMatch(list: LegendListRef, index: number, messageId: stri
   return null
 }
 
-/** Position of `matches[current]` among the matches in its own message. */
-const ordinalInMessage = (matches: ReadonlyArray<FindMatch>, current: number) => {
-  const messageId = matches[current]?.messageId
-  let first = current
-  while (first > 0 && matches[first - 1]?.messageId === messageId) first--
-  return current - first
+const ordinalInPart = (matches: ReadonlyArray<FindMatch>, current: number) => {
+  const target = matches[current]
+  return matches
+    .slice(0, current)
+    .filter((match) => match.messageId === target?.messageId && match.partIndex === target.partIndex).length
 }
 
 /**
@@ -60,6 +54,7 @@ export function FindBar({
   const typed = useUi((state) => state.findQuery)
   const setQuery = useUi((state) => state.setFindQuery)
   const closeFind = useUi((state) => state.closeFind)
+  const revealFindMatch = useUi((state) => state.revealFindMatch)
   const focusRequest = useUi((state) => state.findFocusRequest)
   const inputRef = useRef<HTMLInputElement>(null)
   const returnFocus = useRef<Element | null>(null)
@@ -83,10 +78,11 @@ export function FindBar({
     currentMark.current?.removeAttribute("data-current")
     currentMark.current = null
     const match = matches[index]
+    revealFindMatch(match ?? null)
     const list = listRef.current
     const row = match ? messages.findIndex((message) => message.id === match.messageId) : -1
     if (!match || !list || row === -1) return
-    const mark = await scrollToMatch(list, row, match.messageId, ordinalInMessage(matches, index))
+    const mark = await scrollToMountedPartMatch(list, row, match, ordinalInPart(matches, index))
     if (token !== revealToken.current || !mark) return
     mark.setAttribute("data-current", "")
     currentMark.current = mark

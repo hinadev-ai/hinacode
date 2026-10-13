@@ -1,6 +1,6 @@
 Feature: Threads
   A thread is one agent conversation inside a project. The sidebar groups threads under their
-  project and lets the user reorder, rename, settle and delete them.
+  project and lets the user filter, reorder, rename, archive and delete them.
 
   Background:
     Given a project "demo" for my repository
@@ -45,10 +45,40 @@ Feature: Threads
     Then the sidebar lists the thread "Final"
     And the sidebar does not list the thread "Draft"
 
-  Scenario: A thread is settled from its row menu
+  Scenario: An archived thread moves to the Archived tab and can be brought back
     Given the project "demo" has a thread "Done"
-    When I settle the thread "Done" from its menu
-    Then the thread "Done" is marked settled
+    When I archive the thread "Done" from its menu
+    Then the sidebar does not list the thread "Done"
+    And the thread "Done" is stored as "archived"
+    When I open the sidebar tab "Archived"
+    Then the sidebar lists the thread "Done"
+    When I unarchive the thread "Done"
+    Then the sidebar does not list the thread "Done"
+    When I open the sidebar tab "Threads"
+    Then the sidebar lists the thread "Done"
+    And the thread "Done" is stored as "idle"
+
+  Scenario: The sidebar filter matches thread titles and project names
+    Given the project "demo" has a thread "Fix login"
+    And the project "demo" has a thread "Write docs"
+    And another project "tools" has a thread "Bump deps"
+    When I filter the sidebar by "login"
+    Then the sidebar lists the thread "Fix login"
+    And the sidebar does not list the thread "Write docs"
+    And the sidebar does not list the thread "Bump deps"
+    When I filter the sidebar by the name of the project "tools"
+    Then the sidebar lists the thread "Bump deps"
+    And the sidebar does not list the thread "Fix login"
+
+  Scenario: The project filter shows only the chosen projects, after a restart too
+    Given the project "demo" has a thread "Fix login"
+    And another project "tools" has a thread "Bump deps"
+    When I show only the project "tools" in the sidebar
+    Then the sidebar lists the thread "Bump deps"
+    And the sidebar does not list the thread "Fix login"
+    When the app restarts
+    Then the sidebar lists the thread "Bump deps"
+    And the sidebar does not list the thread "Fix login"
 
   Scenario: A thread is deleted after confirmation
     Given the project "demo" has a thread "Gone"

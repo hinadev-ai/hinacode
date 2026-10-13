@@ -7,7 +7,7 @@ import { callPromise, RpcError } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { MAX_ITEMS_PER_GROUP, type RankedGroup, type RankedItem } from "./rank.ts"
-import { mentionFile } from "./sources.tsx"
+import { openFile } from "./sources.tsx"
 import type { PaletteContext, PaletteGroup, PaletteItem, PaletteSource } from "./types.ts"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
@@ -30,13 +30,13 @@ const threadItem = (hit: ThreadSearchHit, query: string, ctx: PaletteContext): P
   }
 }
 
-const fileItem = (hit: FileSearchHit, threadId: string): PaletteItem => ({
+const fileItem = (hit: FileSearchHit, ctx: PaletteContext): PaletteItem => ({
   id: `match:${hit.path}:${hit.line}`,
   group: "files",
   title: `${hit.path.slice(hit.path.lastIndexOf("/") + 1)}:${hit.line}`,
   subtitle: hit.text,
   icon: <RiFileTextLine aria-hidden className={iconClass} />,
-  run: () => mentionFile(threadId, hit.path),
+  run: () => openFile(ctx, hit.path),
 })
 
 const ripgrepMissingItem = (): PaletteItem => ({
@@ -74,11 +74,16 @@ export const threadSearchSource: PaletteSource = {
   },
 }
 
-const searchFiles = async (threadId: string, query: string, key: string): Promise<ReadonlyArray<PaletteItem>> => {
+const searchFiles = async (
+  ctx: PaletteContext,
+  threadId: string,
+  query: string,
+  key: string,
+): Promise<ReadonlyArray<PaletteItem>> => {
   await new Promise((resolve) => setTimeout(resolve, FILES_DEBOUNCE_MS))
   if (lastFiles?.key !== key) return []
   return callPromise("search.files", { threadId, query }).then(
-    (hits) => hits.map((hit) => fileItem(hit, threadId)),
+    (hits) => hits.map((hit) => fileItem(hit, ctx)),
     (cause: unknown) =>
       cause instanceof RpcError && cause.tag === "RipgrepMissingError"
         ? [ripgrepMissingItem()]
@@ -93,7 +98,7 @@ export const fileSearchSource: PaletteSource = {
     if (query === "" || !ctx.threadId) return []
     const key = `${ctx.threadId}\0${query}`
     if (lastFiles?.key !== key) {
-      const request = { key, items: searchFiles(ctx.threadId, query, key) }
+      const request = { key, items: searchFiles(ctx, ctx.threadId, query, key) }
       lastFiles = request
       void request.items.then(() => {
         if (lastFiles === request) lastFiles = null

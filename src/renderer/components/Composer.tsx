@@ -17,7 +17,7 @@ import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { emptyDraft, useDrafts } from "../stores/drafts.ts"
+import { emptyDraft, toWorktreeSource, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useUi } from "../stores/ui.ts"
 import {
@@ -31,6 +31,7 @@ import {
 import { PendingAttachment } from "./AttachmentView.tsx"
 import {
   AccessPicker,
+  AccountPicker,
   AgentPicker,
   EffortPicker,
   FastModeToggle,
@@ -39,6 +40,7 @@ import {
 } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
+import { SubagentBar } from "./SubagentBar.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -95,7 +97,7 @@ export function Composer({ thread }: { thread: Thread }) {
               threadId: thread.id,
               prompt,
               attachments: sent.attachments,
-              worktree: unstarted ? (sent.worktree ?? undefined) : undefined,
+              worktree: unstarted && sent.worktree ? toWorktreeSource(sent.worktree.ref) : undefined,
             }))
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)
@@ -179,6 +181,7 @@ export function Composer({ thread }: { thread: Thread }) {
   return (
     <form onSubmit={onSubmit} className="flex max-h-3/5 min-h-0 shrink-0 flex-col px-3 pb-3">
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
+        <SubagentBar thread={thread} />
         <ComposerBar className="min-h-0 focus-within:border-ring">
           {attachments.length > 0 && (
             <ul
@@ -215,6 +218,7 @@ export function Composer({ thread }: { thread: Thread }) {
               <AttachButton onClick={pickFiles} disabled={isStaging} />
               {unstarted && <AgentPicker thread={thread} onError={setError} />}
               <ModelPicker thread={thread} onError={setError} />
+              <AccountPicker thread={thread} onError={setError} />
               <EffortPicker thread={thread} onError={setError} />
               <FastModeToggle thread={thread} onError={setError} />
               <AccessPicker thread={thread} onError={setError} />

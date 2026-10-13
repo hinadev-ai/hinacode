@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
-import { UsageLimit } from "./limits.ts"
+import { PlanLimits, UsageLimit } from "./limits.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex"])
 export type ProviderId = typeof ProviderId.Type
@@ -35,6 +35,16 @@ export const AgentAccount = Schema.Union([
   Schema.Struct({ type: Schema.Literal("signedOut") }),
 ])
 export type AgentAccount = typeof AgentAccount.Type
+
+/** An account added in kkcode: a separate agent home with its own login and transcripts. */
+export const AgentProfile = Schema.Struct({
+  id: Schema.String,
+  provider: ProviderId,
+  name: Schema.String,
+})
+export type AgentProfile = typeof AgentProfile.Type
+
+export const AgentProfileName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
 
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -141,6 +151,33 @@ export const TokenUsage = Schema.Struct({
 })
 export type TokenUsage = typeof TokenUsage.Type
 
+/** Tokens one model spent across a thread's transcripts. The four counts add up to its total. */
+export const ModelUsage = Schema.Struct({
+  model: Schema.String,
+  /** Input billed at the full rate, without cache reads or writes. */
+  inputTokens: Schema.Number,
+  cacheWriteTokens: Schema.Number,
+  cacheReadTokens: Schema.Number,
+  /** Includes reasoning tokens. */
+  outputTokens: Schema.Number,
+})
+export type ModelUsage = typeof ModelUsage.Type
+
+export const ThreadUsage = Schema.Struct({
+  models: Schema.Array(ModelUsage),
+  /** Transcripts counted: the main session plus one per sub-agent or workflow agent. */
+  transcripts: Schema.Number,
+})
+export type ThreadUsage = typeof ThreadUsage.Type
+
+/** Plan limits of one signed-in account. `limits` is null when the account has none, such as an API key. */
+export const AccountLimits = Schema.Struct({
+  provider: ProviderId,
+  accountId: Schema.NullOr(Schema.String),
+  limits: Schema.NullOr(PlanLimits),
+})
+export type AccountLimits = typeof AccountLimits.Type
+
 export const SubagentStatus = Schema.Literals(["running", "completed", "failed", "stopped"])
 export type SubagentStatus = typeof SubagentStatus.Type
 
@@ -149,8 +186,11 @@ export const Subagent = Schema.Struct({
   id: Schema.String,
   /** What it was asked to do: the task description or a summary of its prompt. */
   label: Schema.String,
-  /** The sub-agent type (e.g. "Explore"), or "agent" when the provider has none. */
-  kind: Schema.String,
+  /**
+   * What the sub-agent's own tool calls carry as `parentCallId`: the tool call that spawned it on
+   * Claude, its own thread id on Codex. Null until the provider has said which.
+   */
+  callId: Schema.NullOr(Schema.String),
   status: SubagentStatus,
   /** The latest one-line progress summary, or the final summary once it ended. */
   summary: Schema.NullOr(Schema.String),
@@ -171,6 +211,7 @@ export const AgentEvent = Schema.Union([
     callId: Schema.String,
     name: Schema.String,
     input: Schema.Unknown,
+    parentCallId: Schema.optional(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("tool_call_finished"),
@@ -212,6 +253,8 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
+  /** The account's agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`). Null uses the CLI's own login. */
+  readonly home: string | null
   /** The built-in kkcode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
 }

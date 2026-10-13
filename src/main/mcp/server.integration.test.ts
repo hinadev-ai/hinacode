@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { expect, layer } from "@effect/vitest"
 import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -11,6 +14,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
+import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
 import { ThreadNaming } from "../services/ThreadNaming.ts"
 import { Events } from "../services/Events.ts"
@@ -21,6 +25,7 @@ import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
+import * as Terminals from "../services/Terminals.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
@@ -48,7 +53,11 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
   return {
     id,
     listModels: Effect.succeed([]),
-    account: Effect.succeed({ type: "signedOut" }),
+    account: () => Effect.succeed({ type: "signedOut" }),
+    planLimits: () => Effect.succeed(null),
+    usage: () => Effect.succeed(null),
+    signIn: () => Effect.die("unused"),
+    signOut: () => Effect.void,
     listCommands: () => Effect.succeed([]),
     runTurn: ({ threadId }) =>
       Stream.unwrap(
@@ -77,8 +86,10 @@ const stubs = Layer.mergeAll(
 
 const core = Layer.mergeAll(
   threadsLayer.pipe(
+    Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
+    Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
     Layer.provide(Settings.layer),
   ),
   Messages.layer,

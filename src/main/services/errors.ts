@@ -10,7 +10,7 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal"]),
+  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account"]),
   id: Schema.String,
 }) {
   override get message(): string {
@@ -44,6 +44,15 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
 }
 
 /** A thread asked for a branch whose checkout another thread already owns. */
+export class PullRequestElsewhereError extends Schema.TaggedError<PullRequestElsewhereError>()(
+  "PullRequestElsewhereError",
+  { url: Schema.String, repository: Schema.String },
+) {
+  override get message(): string {
+    return `${this.url} is not a pull request of this project's repository, ${this.repository}`
+  }
+}
+
 export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()("WorktreeTakenError", {
   branch: Schema.String,
   path: Schema.String,
@@ -53,12 +62,31 @@ export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()
   }
 }
 
-/** The agent and workspace of a thread are fixed once it has a message. */
+/** The agent and workspace of a thread are fixed once it has a message, its account once it has a session. */
 export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()("ThreadStartedError", {
   id: Schema.String,
 }) {
   override get message(): string {
-    return "This thread has already started. Start a new thread to change its agent or workspace."
+    return "This thread has already started. Start a new thread to change its agent, account or workspace."
+  }
+}
+
+/** Removing the account would leave threads with transcripts nobody can resume. */
+export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("AccountInUseError", {
+  id: Schema.String,
+  threads: Schema.Number,
+}) {
+  override get message(): string {
+    return `${this.threads} ${this.threads === 1 ? "thread uses" : "threads use"} this account. Delete them first.`
+  }
+}
+
+/** A turn or approval is in flight, and archiving would hide it from the active sidebar. */
+export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("ThreadBusyError", {
+  id: Schema.String,
+}) {
+  override get message(): string {
+    return "This thread is still running. Stop it or wait for it to finish before archiving."
   }
 }
 

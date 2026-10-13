@@ -76,6 +76,7 @@
     "node-gyp": "12.2.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
+    "oxlint-plugin-react-doctor": "0.9.17",
     "playwright-bdd": "9.2.1",
     "shadcn": "4.21.4",
     "tailwindcss": "4.3.3",

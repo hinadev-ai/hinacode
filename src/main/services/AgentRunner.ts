@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
+import { Cache, Context, Deferred, Duration, Effect, FiberMap, Layer, type Schema, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
-  AgentAccount,
+  AccountLimits,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
@@ -13,8 +13,9 @@ import type {
   QuestionRequest,
   Subagent,
   SecretRequest,
+  ThreadUsage,
 } from "../../shared/agent.ts"
-import type { AccessMode, Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, Message, Thread, ThreadStatus, WorktreeSource } from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -23,23 +24,42 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
-import type { NotFoundError, PersistenceError, ThreadStartedError, WorktreeTakenError } from "./errors.ts"
+import type {
+  NotFoundError,
+  PersistenceError,
+  PullRequestElsewhereError,
+  ThreadStartedError,
+  WorktreeTakenError,
+} from "./errors.ts"
 import type { CommandError } from "./Git.ts"
+import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages } from "./Messages.ts"
+import { PullRequests } from "./PullRequests.ts"
 import { Secrets } from "./Secrets.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
+import { AgentAccounts } from "./AgentAccounts.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
 
 export interface SendOptions {
-  /** Only with the first message: moves the thread into a new worktree forked from `baseRef` first. */
-  readonly worktree?: { readonly baseRef: string } | undefined
+  /** Only with the first message: moves the thread into a new worktree first. */
+  readonly worktree?: WorktreeSource | undefined
 }
 
-type SendError = AgentError | PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
+type SendError =
+  | AgentError
+  | PersistenceError
+  | NotFoundError
+  | CommandError
+  | WorktreeTakenError
+  | ThreadStartedError
+  | GitHubError
+  | Schema.SchemaError
+  | PullRequestElsewhereError
+  | PullRequestUrlInvalidError
 
 export class AgentRunner extends Context.Service<
   AgentRunner,
@@ -85,7 +105,17 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
-    readonly account: (provider: ProviderId) => Effect.Effect<AgentAccount, AgentError>
+    /**
+     * One entry for each provider's CLI login and each added account. One that fails to answer or is signed out
+     * reports null limits.
+     */
+    readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
+    /** Drops an account's cached limits, so a sign-in or sign-out shows on the next read. */
+    readonly forgetLimits: (provider: ProviderId, accountId: string | null) => Effect.Effect<void>
+    /** Null until the thread's first turn binds an agent session. */
+    readonly usage: (
+      threadId: string,
+    ) => Effect.Effect<ThreadUsage | null, AgentError | PersistenceError | NotFoundError>
     /** Sub-agents the thread's agent spawned since the app started, newest first. */
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
     readonly listCommands: (
@@ -146,17 +176,34 @@ const make = Effect.gen(function* () {
   const scope = yield* Effect.scope
   const threads = yield* Threads
   const worktrees = yield* Worktrees
+  const pullRequests = yield* PullRequests
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpCredentials
   const secrets = yield* Secrets
   const naming = yield* ThreadNaming
+  const accounts = yield* AgentAccounts
   const activeWorkspace = yield* makeActiveWorkspace
 
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
   }
+
+  type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
+  // A Claude read spawns a CLI, so each account is asked at most once a minute. Keyed by a `LimitsKey` as JSON.
+  const cachedLimits = yield* Cache.make({
+    lookup: (key: string) => {
+      const { provider, accountId } = JSON.parse(key) as LimitsKey
+      return accounts.home(accountId).pipe(
+        Effect.flatMap(providers[provider].planLimits),
+        Effect.orElseSucceed(() => null),
+        Effect.map((limits): AccountLimits => ({ provider, accountId, limits })),
+      )
+    },
+    capacity: 64,
+    timeToLive: Duration.minutes(1),
+  })
 
   const turns = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
@@ -213,7 +260,7 @@ const make = Effect.gen(function* () {
    * steer closes it and opens another after the steer's user message, so ordering by createdAt keeps
    * the transcript in the order things happened.
    */
-  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, initial: Message) => {
+  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, home: string | null, initial: Message) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
@@ -312,6 +359,7 @@ const make = Effect.gen(function* () {
             fastMode: thread.fastMode,
             accessMode: thread.accessMode,
             resumeSessionId: thread.providerSessionId,
+            home,
             mcpServer,
           })
           .pipe(Stream.runForEach(handle)),
@@ -324,15 +372,25 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, handle, messages: () => turnMessages }
   }
 
+  const nameThreadWithPullRequestScope = (thread: Thread, prompt: string) =>
+    pullRequests.list(thread.id).pipe(
+      Effect.flatMap((links) => naming.nameFromPrompt(thread, prompt, links.length === 0 ? "titleAndBranch" : "title")),
+      Effect.catch((error) => Effect.logWarning("thread naming failed", error)),
+    )
+
   const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions) =>
     Effect.gen(function* () {
       let thread = yield* threads.get(threadId)
       const first = !(yield* threads.started(threadId))
       if (options.worktree) {
-        thread = yield* threads.attachWorktree(threadId, options.worktree.baseRef)
+        const attached = yield* threads.attachWorktree(threadId, options.worktree)
+        thread = attached.thread
         yield* push.publish({ type: "thread.updated", thread })
+        if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
       }
       const provider = yield* providerFor(thread.provider)
+      // Resolved before anything is written, so a thread whose account is gone fails here instead of on another login.
+      const home = yield* accounts.home(thread.accountId)
       // Marking the thread running in the same critical section as resolving its cwd stops a
       // worktree removal from deleting the directory this turn is about to run in.
       const turn = yield* worktrees.exclusive(
@@ -344,14 +402,14 @@ const make = Effect.gen(function* () {
           yield* insertMessage(userMessage(threadId, prompt, attachments, now))
           yield* insertMessage(assistant)
           yield* updateThread({ id: threadId, status: "running" })
-          return makeTurn(thread, provider, cwd, assistant)
+          return makeTurn(thread, provider, cwd, home, assistant)
         }),
       )
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
       // Automations title their threads from their own template.
       if (first && thread.createdBy === "user" && prompt.trim() !== "")
-        yield* Effect.forkDetach(naming.nameFromPrompt(thread, prompt))
+        yield* Effect.forkDetach(nameThreadWithPullRequestScope(thread, prompt))
     }).pipe(exclusive(threadId))
 
   const send = (
@@ -502,13 +560,34 @@ const make = Effect.gen(function* () {
         }
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
-    account: (id) => providers[id].account,
+    limits: Effect.gen(function* () {
+      const added = yield* accounts.list
+      const keys = Object.values(providers).flatMap(({ id }): ReadonlyArray<LimitsKey> => [
+        { provider: id, accountId: null },
+        ...added
+          .filter((account) => account.provider === id)
+          .map((account) => ({ provider: id, accountId: account.id })),
+      ])
+      return yield* Effect.forEach(keys, (key) => Cache.get(cachedLimits, JSON.stringify(key)), {
+        concurrency: "unbounded",
+      })
+    }),
+    forgetLimits: (provider, accountId) =>
+      Cache.invalidate(cachedLimits, JSON.stringify({ provider, accountId } satisfies LimitsKey)),
+    usage: (threadId) =>
+      Effect.gen(function* () {
+        const thread = yield* threads.get(threadId)
+        if (thread.providerSessionId === null) return null
+        const home = yield* accounts.home(thread.accountId)
+        return yield* providers[thread.provider].usage(thread.providerSessionId, home)
+      }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
         const { cwd } = yield* activeWorkspace(threadId)
-        return yield* providers[thread.provider].listCommands({ threadId, cwd })
+        const home = yield* accounts.home(thread.accountId)
+        return yield* providers[thread.provider].listCommands({ threadId, cwd, home })
       }),
   })
 })

@@ -57,10 +57,10 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                         |
-| ------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.watch`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                          |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.watch`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                         |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
@@ -79,10 +79,10 @@ flowchart BT
   node["NodeServices"]
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>Git, Events"]
-  domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports, Terminals, RemoteAccess"]
+  domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
+  features["McpCredentials, Ports, RemoteAccess"]
   runner["AgentRunner"]
-  autos["Automations"]
+  autos["Automations, AutoArchive"]
   mcp["MCP server"]
   remote["Remote listener"]
 
@@ -109,6 +109,7 @@ classDiagram
     <<interface>>
     id: ProviderId
     listModels: Effect~ModelInfo[]~
+    account(home) / signIn(home) / signOut(home)
     runTurn(input) Stream~AgentEvent~
     steer(threadId, text, attachments)
     interrupt(threadId)
@@ -123,13 +124,15 @@ classDiagram
     loads user, project and local settings
   }
   class CodexProvider {
-    one app-server per app, respawned on exit
+    one app-server per account home, respawned on exit
     runs keyed by threadId
     approvalPolicy and sandbox from the thread's access mode
   }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
 ```
+
+An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = <userData>/accounts/<id>` from `AgentAccounts`. `AgentLogins` probes, signs in and signs out each home through the provider. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account.
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
@@ -175,6 +178,8 @@ sequenceDiagram
     P-->>AR: subagent_updated (full state)
     AR->>AR: keep latest per thread, in memory
     AR-->>R: push thread.subagents (not a transcript push)
+    P-->>AR: tool_call_started { parentCallId }
+    AR-->>R: thread.event (shown in the sub-agent's view, not the thread's)
   end
   opt request_secret (MCP tool)
     AR-->>R: secret_requested, thread.updated(awaiting_approval)
@@ -220,7 +225,7 @@ The right edge of the thread route is an activity bar: one icon per view, and th
 
 ```mermaid
 flowchart LR
-  registry["sidePanel/views.ts<br/>details, files, changes,<br/>git, pullRequests, agents"]
+  registry["sidePanel/views.ts<br/>details, files, changes,<br/>git, pullRequests, agents, browser"]
   registry --> bar["ActivityBar<br/>tablist, badges, chords"]
   registry --> content["ThreadSidePanel<br/>tabpanel for the selected view"]
   registry --> commands["view.* commands"]
@@ -243,6 +248,22 @@ sequenceDiagram
   E->>F: fs.list again
   F-->>V: same push for the file's folder
   V->>F: fs.read again
+```
+
+The Browser view is a `<webview>` in the `persist:browser` session (ADR 0014). Picking runs a self-contained script in the page and turns the result into an image attachment that carries the element.
+
+```mermaid
+sequenceDiagram
+  participant B as BrowserView
+  participant P as Page (webview)
+  participant M as Main
+  B->>P: executeJavaScript(pickElement)
+  P-->>B: {element, rect} on click or Enter, null on Escape
+  B->>B: decode PagePick
+  B->>P: capturePage(rect)
+  B->>M: attachments.stage {dataUrl}
+  B->>B: draft gets {...attachment, element}
+  B->>M: threads.send, the provider adds the image and elementContext text
 ```
 
 ## Keybindings
@@ -276,6 +297,7 @@ erDiagram
   thread ||--o{ pull_request_link : links
   automation ||--o{ automation_run : records
   thread |o--o{ automation_run : "started by"
+  agent_account |o--o{ thread : "bills"
 
   project {
     text id PK
@@ -294,6 +316,7 @@ erDiagram
     text id PK
     text worktree_id FK "SET NULL"
     text provider "claude|codex"
+    text account_id FK "null = CLI login, delete refused"
     text model
     text provider_session_id
     text status
@@ -323,6 +346,11 @@ erDiagram
     text key PK
     text value
   }
+  agent_account {
+    text id PK "home is <userData>/accounts/<id>"
+    text provider "claude|codex"
+    text name
+  }
 ```
 
 - `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`.
@@ -342,13 +370,14 @@ stateDiagram-v2
     running --> limited: turn_limited
     awaiting_approval --> limited: turn_limited
     limited --> running: send / scheduled reset retry
-    limited --> settled: settle
+    limited --> archived: archive
     awaiting_approval --> idle: interrupt
-    idle --> settled: settle
+    idle --> archived: archive
+    archived --> idle: unarchive
   }
 ```
 
-Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and settling clear the limit. Restart preserves limited threads and scheduled requests.
+Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and archiving clear the limit. Restart preserves limited threads and scheduled requests.
 
 ```mermaid
 stateDiagram-v2
@@ -357,16 +386,16 @@ stateDiagram-v2
     [*] --> preparing: git worktree add
     preparing --> ready: setup script exits 0
     preparing --> failed: script fails, or the app quit mid-setup
-    ready --> removed: settle / remove
+    ready --> removed: archive with removeWorktree / remove
     failed --> removed: remove
   }
 ```
 
 - **Setup scripts** run with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
-- **Settling** a thread removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so settling a large tree returns immediately. Creating the same branch again waits for that deletion.
+- **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
+- **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads whose links are all merged, and pushes `thread.updated`.
 - **Removal is refused** (`WorktreeBusyError`) while setup runs, while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
-- A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background, using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
-- `archived` exists in the schema but nothing sets it yet.
+- A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background (only the title for a thread already linked to a pull request when naming starts, such as a pull request checkout, whose branch must keep its name), using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
 
 ## Built-in MCP server
 
@@ -428,10 +457,11 @@ flowchart TB
   agents["Agent processes<br/>run user-approved code"] -- "MCP: loopback,<br/>per-thread bearer" --> main
   net["Internet"] -- "webhook: HMAC + dedup" --> main
   main -- "openExternal: http(s) only" --> browser["System browser"]
+  page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
 ```
 
-Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, and [0009](adr/0009-scoped-session-approvals.md) for session approvals. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
+Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, and [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
 
 ## Where things live
 
@@ -442,7 +472,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Navigation, external links, sender checks | `src/main/security.ts`                                     |
 | Turn orchestration                        | `src/main/services/AgentRunner.ts`                         |
 | Transcript folding (shared with renderer) | `src/shared/foldEvent.ts`                                  |
-| Worktree lifecycle, diff, settle          | `src/main/services/Worktrees.ts`, `Git.ts`, `workspace.ts` |
+| Worktree lifecycle, diff, archive         | `src/main/services/Worktrees.ts`, `Git.ts`, `workspace.ts` |
 | Commit graph (log, show, lane layout)     | `src/main/services/Git.ts`, `src/renderer/lib/gitGraph.ts` |
 | Providers                                 | `src/main/agents/claude/`, `src/main/agents/codex/`        |
 | MCP server and tools                      | `src/main/mcp/`                                            |

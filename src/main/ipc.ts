@@ -10,7 +10,9 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
-import { isTrustedSender } from "./security.ts"
+import { externalUrl, isTrustedSender } from "./security.ts"
+import { AgentAccounts } from "./services/AgentAccounts.ts"
+import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { UnknownRootError } from "./services/errors.ts"
@@ -34,6 +36,8 @@ import { randomName, Threads } from "./services/Threads.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
+  | AgentAccounts
+  | AgentLogins
   | Projects
   | Threads
   | Worktrees
@@ -159,9 +163,22 @@ const handlers: Handlers = {
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
-  "threads.settle": ({ threadId }) =>
-    closeTerminals(threadId).pipe(Effect.andThen(Threads.use((threads) => threads.settle(threadId)))),
+  "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
+  "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
+  "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
+  "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
+  "projects.pullRequests": ({ id }) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* Projects.use((projects) => projects.get(id))
+      return yield* GitHub.use((github) => github.openPullRequests(rootPath))
+    }).pipe(
+      Effect.catchTags({
+        GitHubCliMissingError: () => Effect.succeed([]),
+        GitHubSignedOutError: () => Effect.succeed([]),
+      }),
+    ),
+  "projects.icon": ({ id }) => Projects.use((projects) => projects.icon(id)),
   "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
   "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }) => Effect.sync(() => shell.showItemInFolder(path)),
@@ -172,7 +189,22 @@ const handlers: Handlers = {
   "notifications.askPermission": ({ title, body }) => askNotificationPermission(title, body),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
-  "agents.account": ({ provider }) => AgentRunner.use((runner) => runner.account(provider)),
+  "agents.account": ({ provider, accountId }) => AgentLogins.use((logins) => logins.account(provider, accountId)),
+  "limits.list": () => AgentRunner.use((runner) => runner.limits),
+  "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
+  "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
+  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
+  "accounts.delete": ({ id }) => AgentLogins.use((logins) => logins.remove(id)),
+  "accounts.signIn": ({ id }) =>
+    Effect.gen(function* () {
+      const { url, openedBrowser, submitCode } = yield* AgentLogins.use((logins) => logins.signIn(id))
+      const external = externalUrl(url)
+      if (!openedBrowser && external) yield* Effect.promise(() => shell.openExternal(external))
+      return { url, acceptsCode: submitCode !== null }
+    }),
+  "accounts.submitCode": ({ id, code }) => AgentLogins.use((logins) => logins.submitCode(id, code)),
+  "accounts.cancelSignIn": ({ id }) => AgentLogins.use((logins) => logins.cancelSignIn(id)),
+  "accounts.signOut": ({ id }) => AgentLogins.use((logins) => logins.signOut(id)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
@@ -203,6 +235,7 @@ const handlers: Handlers = {
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
+  "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),

@@ -5,10 +5,11 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
-import { emptyDraft, useDrafts } from "../stores/drafts.ts"
+import { useExplorer } from "../stores/explorer.ts"
 import { selectProjectThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import type { PaletteItem, PaletteSource } from "./types.ts"
+import { useWorktrees } from "../stores/worktrees.ts"
+import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
@@ -57,15 +58,19 @@ export const commandsSource: PaletteSource = {
     }),
 }
 
-/** Adds `@path` to the thread's draft, the same mention the composer's `@` completion inserts. */
-export const mentionFile = (threadId: string, path: string) => {
-  const { text } = useDrafts.getState().byThreadId[threadId] ?? emptyDraft
-  const separator = text === "" || /\s$/.test(text) ? "" : " "
-  useDrafts.getState().setText(threadId, `${text}${separator}@${path} `)
-  useUi.getState().requestComposerFocus()
+/** Shows `path` in the open thread's Files panel, whose explorer is keyed by the same root `FilesView` picks. */
+export const openFile = (ctx: PaletteContext, path: string) => {
+  const thread = ctx.threadId ? ctx.threads[ctx.threadId] : undefined
+  if (!thread) return
+  const worktree = thread.worktreeId ? useWorktrees.getState().byId[thread.worktreeId] : undefined
+  const live = worktree?.status === "removed" ? undefined : worktree
+  const root = live?.path ?? ctx.projects.find((project) => project.id === thread.projectId)?.rootPath
+  if (root === undefined) return
+  useExplorer.getState().open(root, path)
+  useUi.getState().showView(thread.id, "files")
 }
 
-const fileItem = (threadId: string, path: string): PaletteItem => {
+const fileItem = (ctx: PaletteContext, path: string): PaletteItem => {
   const slash = path.lastIndexOf("/")
   return {
     id: `file:${path}`,
@@ -75,7 +80,7 @@ const fileItem = (threadId: string, path: string): PaletteItem => {
     // The whole path, so a query such as "renderer/comp" can span the directory and the name.
     keywords: [path],
     icon: <RiFileTextLine aria-hidden className={iconClass} />,
-    run: () => mentionFile(threadId, path),
+    run: () => openFile(ctx, path),
   }
 }
 
@@ -83,10 +88,10 @@ const FILES_TTL_MS = 5_000
 let filesCache: { threadId: string; at: number; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
 
 /** Listing a large repo takes a moment, so keystrokes within a few seconds share one listing. */
-const threadFiles = (threadId: string) => {
+const threadFiles = (threadId: string, ctx: PaletteContext) => {
   if (filesCache?.threadId === threadId && Date.now() - filesCache.at < FILES_TTL_MS) return filesCache.items
   const items = callPromise("files.list", { threadId }).then(
-    (paths) => paths.map((path) => fileItem(threadId, path)),
+    (paths) => paths.map((path) => fileItem(ctx, path)),
     (cause: unknown) => {
       console.error(`Could not list files: ${errorMessage(cause)}`)
       return []
@@ -99,5 +104,5 @@ const threadFiles = (threadId: string) => {
 /** Files in the open thread's workspace. Only for a typed query, since a list of arbitrary files is noise. */
 export const filesSource: PaletteSource = {
   group: "files",
-  items: (query, ctx) => (ctx.threadId && query.trim() !== "" ? threadFiles(ctx.threadId) : []),
+  items: (query, ctx) => (ctx.threadId && query.trim() !== "" ? threadFiles(ctx.threadId, ctx) : []),
 }

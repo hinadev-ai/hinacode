@@ -28,9 +28,11 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: vi.fn(),
 }))
 
+const probeEnv = () => (fake.query.mock.calls[0]![0] as { options: { env: Record<string, string> } }).options.env
+
 const read = Effect.gen(function* () {
   const provider = yield* ClaudeProvider
-  return yield* provider.account
+  return yield* provider.account(null)
 }).pipe(Effect.provide(layer))
 
 describe("Claude account probe", () => {
@@ -60,6 +62,20 @@ describe("Claude account probe", () => {
       }),
     )
   }
+  it.effect("reads an added account from its own config dir", () =>
+    Effect.gen(function* () {
+      fake.info = { email: "work@example.com" }
+      fake.query.mockClear()
+      const provider = yield* ClaudeProvider
+      yield* provider.account("/accounts/work")
+      const env = probeEnv()
+      expect(env.CLAUDE_CONFIG_DIR).toBe("/accounts/work")
+      fake.query.mockClear()
+      yield* provider.account(null)
+      const defaultEnv = probeEnv()
+      expect(defaultEnv.CLAUDE_CONFIG_DIR).toBe(process.env.CLAUDE_CONFIG_DIR)
+    }).pipe(Effect.provide(layer)),
+  )
   it.effect("closes a rejected probe", () =>
     Effect.gen(function* () {
       fake.reject = true

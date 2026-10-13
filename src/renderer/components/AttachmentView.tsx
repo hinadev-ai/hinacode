@@ -1,6 +1,8 @@
+import { cn } from "cn"
 import { RiCloseLine, RiFileLine } from "react-icons/ri"
 import { attachmentUrl } from "../../shared/channels.ts"
-import type { Attachment } from "../../shared/domain.ts"
+import type { Attachment, PickedElement } from "../../shared/domain.ts"
+import { elementLabel } from "../lib/elementPicker.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -32,37 +34,56 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
 }
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
+  const { element } = attachment
+  const title = element ? elementLabel(element) : attachment.name
   return (
     <Dialog>
       <DialogTrigger
-        title={m.attachment_open_image({ name: attachment.name })}
+        title={m.attachment_open_image({ name: title })}
         className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Thumbnail attachment={attachment} />
+        <Preview attachment={attachment} />
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] sm:max-w-4xl">
-        <DialogTitle className="truncate pr-8">{attachment.name}</DialogTitle>
+        <DialogTitle className={cn("truncate pr-8", element && "font-mono text-sm")}>{title}</DialogTitle>
         <img
           src={attachmentUrl(attachment.path)}
           alt={attachment.name}
-          className="max-h-[75vh] w-full rounded-md object-contain"
+          className={cn("max-h-[70vh] rounded-md object-contain", element ? "mx-auto max-w-full" : "w-full")}
         />
+        {element && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">{m.attachment_element_url()}</dt>
+            <dd className="truncate font-mono">{element.url}</dd>
+            <dt className="text-muted-foreground">{m.attachment_element_selector()}</dt>
+            <dd className="truncate font-mono">{element.selector}</dd>
+          </dl>
+        )}
       </DialogContent>
     </Dialog>
   )
+}
+
+function Preview({ attachment }: { attachment: Attachment }) {
+  if (attachment.element) return <ElementChip attachment={attachment} element={attachment.element} />
+  return attachment.kind === "image" ? <Thumbnail attachment={attachment} /> : <FileChip attachment={attachment} />
 }
 
 /** An attachment waiting in the composer, with a remove button. */
 export function PendingAttachment({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
   return (
     <div className="relative">
-      {attachment.kind === "image" ? <Thumbnail attachment={attachment} /> : <FileChip attachment={attachment} />}
+      <Preview attachment={attachment} />
       <Button
         type="button"
         size="icon-xs"
         variant="secondary"
         onClick={onRemove}
-        aria-label={m.attachment_remove({ name: attachment.name })}
+        aria-label={m.attachment_remove({
+          name: attachment.element
+            ? m.attachment_element({ element: elementLabel(attachment.element) })
+            : attachment.name,
+        })}
         className="absolute -top-1.5 -right-1.5 rounded-full border border-border"
       >
         <RiCloseLine aria-hidden />
@@ -90,6 +111,29 @@ function FileChip({ attachment }: { attachment: Attachment }) {
           {attachment.name}
         </span>
         <span className="text-muted-foreground">{formatBytes(attachment.bytes)}</span>
+      </span>
+    </span>
+  )
+}
+
+/** A screenshot of an element picked in the browser, named by its tag and where it lives. */
+function ElementChip({ attachment, element }: { attachment: Attachment; element: PickedElement }) {
+  const url = URL.parse(element.url)
+  const tag = elementLabel(element)
+  return (
+    <span className="flex h-16 w-64 items-center gap-2 overflow-hidden rounded-lg border border-border bg-background/50 pr-3 text-left text-xs">
+      <img
+        src={attachmentUrl(attachment.path)}
+        alt={m.attachment_element({ element: tag })}
+        className="h-full w-20 shrink-0 border-r border-border bg-muted object-contain p-1"
+      />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate font-mono font-medium" title={element.selector}>
+          {tag}
+        </span>
+        <span className="truncate text-muted-foreground" title={element.url}>
+          {url ? `${url.host}${url.pathname}` : element.url}
+        </span>
       </span>
     </span>
   )

@@ -1,6 +1,7 @@
 import { type ComponentType, useState } from "react"
 import type { IconType } from "react-icons"
 import {
+  RiArchiveLine,
   RiCpuLine,
   RiFlashlightLine,
   RiKeyboardLine,
@@ -10,6 +11,7 @@ import {
   RiSettings3Line,
   RiSmartphoneLine,
 } from "react-icons/ri"
+import { ArchiveSettings } from "../components/settings/ArchiveSettings.tsx"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
 import { GeneralSettings } from "../components/settings/GeneralSettings.tsx"
@@ -37,6 +39,7 @@ const pages: ReadonlyArray<SettingsPage> = [
     icon: RiNotification3Line,
     component: NotificationSettings,
   },
+  { id: "archive", label: m.settings_archive, icon: RiArchiveLine, component: ArchiveSettings },
   { id: "keybindings", label: m.settings_keybindings, icon: RiKeyboardLine, component: KeybindingSettings },
   { id: "integrations", label: m.settings_integrations, icon: RiPlugLine, component: IntegrationSettings },
   { id: "remote", label: m.settings_remote, icon: RiSmartphoneLine, component: RemoteSettings },

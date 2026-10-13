@@ -22,9 +22,3 @@ Then("the first palette result reads {string}", async ({ app }, text: string) =>
 Then("the palette is closed", async ({ app }) => {
   await expect(app.page.getByRole("dialog")).toBeHidden()
 })
-
-Then("the message reads {string}", async ({ app }, text: string) => {
-  const message = app.page.getByLabel("Message", { exact: true })
-  await expect(message).toHaveValue(text)
-  await expect(message).toBeFocused()
-})

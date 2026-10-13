@@ -1,4 +1,7 @@
+import { mkdtempSync } from "node:fs"
 import { createServer } from "node:net"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
@@ -14,17 +17,20 @@ import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
 import { McpCredentials, layer as credentialsLayer } from "../../mcp/credentials.ts"
 import { LINEAR_API_KEY_SECRET } from "../../mcp/index.ts"
+import * as AgentAccounts from "../AgentAccounts.ts"
 import * as AgentRunner from "../AgentRunner.ts"
 import { Events } from "../Events.ts"
 import * as Git from "../Git.ts"
 import * as GitHub from "../GitHub.ts"
 import * as Messages from "../Messages.ts"
 import * as Projects from "../Projects.ts"
+import * as PullRequests from "../PullRequests.ts"
 import * as Secrets from "../Secrets.ts"
 import * as Settings from "../Settings.ts"
 import * as ThreadNaming from "../ThreadNaming.ts"
 import * as Threads from "../Threads.ts"
 import * as Worktrees from "../Worktrees.ts"
+import * as Terminals from "../Terminals.ts"
 import { Automations, layer as automationsLayer } from "./Automations.ts"
 import type { LinearIssueFilter, LinearIssueNode } from "./pollers.ts"
 
@@ -48,7 +54,11 @@ vi.mock("@linear/sdk", async (importOriginal) => ({
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([]),
-  account: Effect.succeed({ type: "signedOut" }),
+  account: () => Effect.succeed({ type: "signedOut" }),
+  planLimits: () => Effect.succeed(null),
+  usage: () => Effect.succeed(null),
+  signIn: () => Effect.die("unused"),
+  signOut: () => Effect.void,
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
@@ -73,8 +83,10 @@ const unusedPort = Effect.promise(async () => {
 const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
+      Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
@@ -83,6 +95,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   )
   const agents = AgentRunner.layer.pipe(
     Layer.provideMerge(ThreadNaming.layer.pipe(Layer.provide(domain))),
+    Layer.provideMerge(PullRequests.layer.pipe(Layer.provide(domain))),
     Layer.provideMerge(domain),
   )
   const database = Layer.effectDiscard(

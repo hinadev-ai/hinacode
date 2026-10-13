@@ -61,8 +61,35 @@ export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
 )
 
-/** Not kept alive, so reopening the Models tab picks up a sign-in made in a terminal meanwhile. */
-export const accountAtom = Atom.family((provider: ProviderId) => Atom.make(call("agents.account", { provider })))
+/**
+ * Who an account is signed in as, keyed by `accountKey`. Not kept alive, so reopening the Models tab picks
+ * up a sign-in made in a terminal meanwhile.
+ */
+export const accountAtom = Atom.family((key: string) => {
+  const [provider, accountId] = JSON.parse(key) as [ProviderId, string | null]
+  return Atom.make(call("agents.account", { provider, accountId }))
+})
+/** `accountId` null is the CLI's own login. */
+export const accountKey = (provider: ProviderId, accountId: string | null) => JSON.stringify([provider, accountId])
+
+/** Accounts added in kkcode, of every agent. */
+export const accountsAtom = Atom.make(call("accounts.list", undefined)).pipe(Atom.keepAlive)
+
+export const createAccountAtom = Atom.fn((input: RpcRequest<"accounts.create">) =>
+  call("accounts.create", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+)
+
+export const renameAccountAtom = Atom.fn((input: RpcRequest<"accounts.rename">) =>
+  call("accounts.rename", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+)
+
+/** Removing the default account also clears it from the settings. */
+export const deleteAccountAtom = Atom.fn((id: string) =>
+  call("accounts.delete", { id }).pipe(
+    Effect.tap(() => Atom.refresh(accountsAtom)),
+    Effect.tap(() => Atom.refresh(settingsAtom)),
+  ),
+)
 
 /**
  * Identifies a thread together with its agent and workspace, since switching either changes what the
@@ -79,8 +106,26 @@ export const commandsAtom = Atom.family((key: string) =>
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 
 /** The branch checked out in the project root. Asked again when the window comes back, in case it changed. */
+export const projectIconAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.icon", { id: projectId })).pipe(Atom.keepAlive),
+)
+
 export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
+
+/** Branches a new worktree can fork from. Asked again when the window comes back, in case one was made meanwhile. */
+export const branchesAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.branches", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
+
+/** The repository's open pull requests, through `gh`. Asked again when the window comes back. */
+export const pullRequestsAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.pullRequests", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
+
+export const defaultBranchAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.defaultBranch", { id: projectId })),
 )
 
 /** The start of the file `path` under `root`, keyed by `JSON.stringify([root, path])`. */
@@ -185,6 +230,39 @@ export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("se
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
 )
+
+const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
+
+/**
+ * Tokens the thread spent, read from its agent's transcripts. Asked again when a turn ends or a sub-agent
+ * changes, since workflow agents keep spending after the turn's result.
+ */
+export const threadUsageAtom = Atom.family((threadId: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent((event) => {
+        const turnEnded = event.type === "thread.event" && event.threadId === threadId && turnEnds.has(event.event.type)
+        const subagentChanged = event.type === "thread.subagents" && event.threadId === threadId
+        if (turnEnded || subagentChanged) get.refreshSelf()
+      }),
+    )
+    return call("threads.usage", { threadId })
+  }),
+)
+
+/**
+ * Plan limits of every signed-in account. Re-read every 2 minutes while subscribed, whenever a turn ends, and
+ * when a sign-in finishes.
+ */
+export const accountLimitsAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent((event) => {
+      const turnEnded = event.type === "thread.event" && turnEnds.has(event.event.type)
+      if (turnEnded || event.type === "account.signIn") get.refreshSelf()
+    }),
+  )
+  return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
+})
 
 /** Polls the remote listener every 2s while subscribed so the device count stays current. */
 export const remoteStatusAtom = Atom.make(
