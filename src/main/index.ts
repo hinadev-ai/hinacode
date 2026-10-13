@@ -89,8 +89,9 @@ const makeAppLayer = (dbPath: string, accountsRoot: string) => {
 
 const QUIT_TIMEOUT_MS = 5000
 
-const appUrl =
-  process.env["ELECTRON_RENDERER_URL"] ?? pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href
+// A packaged app started from an agent's terminal inside `pnpm dev` inherits this variable.
+const devRendererUrl = app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"]
+const appUrl = devRendererUrl ?? pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href
 
 const httpOnly = (event: Electron.Event<{ url: string }>) => {
   if (!externalUrl(event.url)) event.preventDefault()
