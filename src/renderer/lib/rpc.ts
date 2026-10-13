@@ -266,8 +266,14 @@ export const remoteStatusAtom = Atom.make(
   Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
 )
 
-/** Not kept alive, so reopening the page asks again and picks up a changed network. */
-export const remotePairingAtom = Atom.make(call("remote.pairing", undefined))
+/**
+ * Not kept alive, so reopening the page asks again and picks up a changed network. Recomputed when settings change,
+ * since the pairing URL follows the listener's bind host and port.
+ */
+export const remotePairingAtom = Atom.make((get) => {
+  get(settingsAtom)
+  return call("remote.pairing", undefined)
+})
 
 const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
