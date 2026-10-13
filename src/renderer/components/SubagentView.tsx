@@ -129,7 +129,13 @@ export function SubagentTranscript({
           <p className="m-auto px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
         </>
       ) : (
-        <MessageList messages={transcript} providerLabel={providerLabel} header={header} alignItemsAtEnd={false} />
+        <MessageList
+          messages={transcript}
+          providerLabel={providerLabel}
+          header={header}
+          alignItemsAtEnd={false}
+          summarizeWork={false}
+        />
       )}
     </div>
   )
