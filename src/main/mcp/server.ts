@@ -12,6 +12,9 @@ import { PullRequests } from "../services/PullRequests.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Threads } from "../services/Threads.ts"
 import { Worktrees } from "../services/Worktrees.ts"
+import type { VmAction } from "../services/tinyVm/rfb.ts"
+import type { ExecResult } from "../services/tinyVm/sbx.ts"
+import { TinyVm } from "../services/tinyVm/TinyVm.ts"
 import { makeActiveWorkspace } from "../services/workspace.ts"
 import { McpCredentials } from "./credentials.ts"
 import { type Linear, makeLinear } from "./linear.ts"
@@ -24,11 +27,15 @@ interface ToolFailure {
   readonly message: string
 }
 
+type ToolOutput = string | ReadonlyArray<McpSchema.ContentBlock>
+
 interface ToolSpec<S extends Schema.Top> {
   readonly name: string
   readonly description: string
   readonly parameters: S
-  readonly run: (input: S["Type"], threadId: string) => Effect.Effect<string, ToolFailure>
+  readonly run: (input: S["Type"], threadId: string) => Effect.Effect<ToolOutput, ToolFailure>
+  /** For example `McpSchema.EnabledWhen`, which hides the tool from both `tools/list` and `tools/call`. */
+  readonly annotations?: Context.Context<never>
 }
 
 /** Erases the parameter type so tools with different inputs fit in one list. */
@@ -49,6 +56,41 @@ const NoParams = Tool.EmptyParams
 
 const text = (value: string, isError = false) =>
   new McpSchema.CallToolResult({ content: [{ type: "text", text: value }], isError })
+
+const toolResult = (output: ToolOutput) =>
+  typeof output === "string" ? text(output) : new McpSchema.CallToolResult({ content: output, isError: false })
+
+/** Waits this long after acting before the screenshot, so the screen has reacted. */
+const SETTLE_MS = 500
+const MAX_OUTPUT_CHARS = 20_000
+
+const tail = (label: string, bytes: Uint8Array) => {
+  const output = Buffer.from(bytes).toString()
+  if (output === "") return `${label}: (empty)`
+  if (output.length <= MAX_OUTPUT_CHARS) return `${label}:\n${output}`
+  return `${label} (last ${MAX_OUTPUT_CHARS} of ${output.length} characters):\n${output.slice(-MAX_OUTPUT_CHARS)}`
+}
+
+const Coordinate = (axis: "x" | "y", what: string) =>
+  Schema.Int.annotate({
+    description: `${what}, in pixels of the latest screenshot from the ${axis === "x" ? "left" : "top"} edge.`,
+  })
+
+const execReport = (result: ExecResult, timeoutSeconds: number, background: boolean) => {
+  if (background) {
+    return result.exitCode === 0 && result.pid !== undefined
+      ? `Started in the background as pid ${result.pid}. Output goes to ${result.log ?? "the sbx log"}.`
+      : `Could not start it in the background (exit code ${result.exitCode}). ${result.error ?? ""}`.trim()
+  }
+  const status =
+    result.exitCode === 124 ? `Timed out after ${timeoutSeconds} s (exit code 124).` : `Exit code ${result.exitCode}.`
+  return [
+    status,
+    ...(result.error ? [result.error] : []),
+    tail("stdout", result.stdout),
+    tail("stderr", result.stderr),
+  ].join("\n\n")
+}
 
 /**
  * McpServer runs tool handlers inside the HTTP request fiber but does not declare that in their type,
@@ -93,6 +135,7 @@ const registerTools = Layer.effectDiscard(
     const threads = yield* Threads
     const events = yield* Events
     const worktrees = yield* Worktrees
+    const tinyVm = yield* TinyVm
 
     const activeWorkspace = yield* makeActiveWorkspace
 
@@ -118,6 +161,143 @@ const registerTools = Layer.effectDiscard(
       description:
         "Name the value is stored under, for example stripe.apiKey. Letters, digits, dots, dashes and underscores.",
     })
+
+    const vmAnnotations = Context.make(McpSchema.EnabledWhen, () => tinyVm.enabled())
+    const screenImage = (threadId: string) =>
+      Effect.map(tinyVm.screenshot(threadId), (data): McpSchema.ContentBlock => ({
+        type: "image",
+        data,
+        mimeType: "image/png",
+      }))
+    const HANDED_BACK =
+      "The user had control and has handed it back. The screen may have changed, so this action was not performed. Look at the screenshot before you continue."
+    /** Performs one pointer or keyboard action, then shows the agent the screen it left. */
+    const actAndLook = (threadId: string, action: VmAction, done: string) =>
+      Effect.gen(function* () {
+        const outcome = yield* tinyVm.act(threadId, [action])
+        if (outcome === "done") yield* Effect.sleep(SETTLE_MS)
+        const image = yield* screenImage(threadId)
+        return [{ type: "text", text: outcome === "done" ? done : HANDED_BACK }, image] as const
+      }).pipe(Effect.mapError(failure))
+
+    const STARTS = "Starts the thread's tiny VM on first use."
+    const WAITS =
+      "While the user has control it waits for them to hand it back and then returns the screen without acting."
+    const SHOWS = "Returns a screenshot taken just after acting."
+
+    const vmTool = <S extends Schema.Top>(spec: Omit<ToolSpec<S>, "annotations">) =>
+      tool({ ...spec, annotations: vmAnnotations })
+
+    const vmTools = [
+      vmTool({
+        name: "vm_screenshot",
+        description: `Take a screenshot of the tiny VM's 1280×800 desktop. ${STARTS}`,
+        parameters: NoParams,
+        run: (_, threadId) =>
+          Effect.map(
+            screenImage(threadId),
+            (image) => [{ type: "text", text: "Screen 1280×800." }, image] as const,
+          ).pipe(Effect.mapError(failure)),
+      }),
+      vmTool({
+        name: "vm_click",
+        description: `Click in the tiny VM at a point of the latest screenshot. ${STARTS} ${WAITS} ${SHOWS}`,
+        parameters: Schema.Struct({
+          x: Coordinate("x", "Horizontal position"),
+          y: Coordinate("y", "Vertical position"),
+          button: Schema.optionalKey(
+            Schema.Literals(["left", "right", "middle"]).annotate({ description: "Defaults to left." }),
+          ),
+          clicks: Schema.optionalKey(
+            Schema.Literals([1, 2, 3]).annotate({ description: "1, 2 for a double click or 3. Defaults to 1." }),
+          ),
+        }),
+        run: ({ x, y, button = "left", clicks = 1 }, threadId) =>
+          actAndLook(
+            threadId,
+            { type: "click", x, y, button, clicks },
+            `${clicks === 1 ? "Clicked" : `Clicked ${clicks} times`} ${button} at ${x}, ${y}.`,
+          ),
+      }),
+      vmTool({
+        name: "vm_move",
+        description: `Move the tiny VM's pointer to a point of the latest screenshot, for example to hover. ${STARTS} ${WAITS} ${SHOWS}`,
+        parameters: Schema.Struct({
+          x: Coordinate("x", "Horizontal position"),
+          y: Coordinate("y", "Vertical position"),
+        }),
+        run: ({ x, y }, threadId) => actAndLook(threadId, { type: "move", x, y }, `Moved the pointer to ${x}, ${y}.`),
+      }),
+      vmTool({
+        name: "vm_drag",
+        description: `Drag with the left button held from one point of the latest screenshot to another. ${STARTS} ${WAITS} ${SHOWS}`,
+        parameters: Schema.Struct({
+          x: Coordinate("x", "Start position"),
+          y: Coordinate("y", "Start position"),
+          toX: Coordinate("x", "End position"),
+          toY: Coordinate("y", "End position"),
+        }),
+        run: ({ x, y, toX, toY }, threadId) =>
+          actAndLook(threadId, { type: "drag", x, y, toX, toY }, `Dragged from ${x}, ${y} to ${toX}, ${toY}.`),
+      }),
+      vmTool({
+        name: "vm_scroll",
+        description: `Scroll the mouse wheel in the tiny VM with the pointer at a point of the latest screenshot. ${STARTS} ${WAITS} ${SHOWS}`,
+        parameters: Schema.Struct({
+          x: Coordinate("x", "Pointer position"),
+          y: Coordinate("y", "Pointer position"),
+          direction: Schema.Literals(["up", "down", "left", "right"]),
+          amount: Schema.optionalKey(
+            Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 20 })).annotate({
+              description: "Wheel notches, 1-20. Defaults to 3.",
+            }),
+          ),
+        }),
+        run: ({ x, y, direction, amount = 3 }, threadId) =>
+          actAndLook(
+            threadId,
+            { type: "scroll", x, y, direction, amount },
+            `Scrolled ${direction} ${amount} ${amount === 1 ? "notch" : "notches"} at ${x}, ${y}.`,
+          ),
+      }),
+      vmTool({
+        name: "vm_type",
+        description: `Type text into the tiny VM's focused window, as key presses. Any Unicode text works; "\\n" presses Return and "\\t" Tab. Click the field first. ${STARTS} ${WAITS} ${SHOWS}`,
+        parameters: Schema.Struct({
+          text: Schema.String.check(Schema.isMaxLength(10_000)).annotate({ description: "At most 10,000 characters." }),
+        }),
+        run: ({ text: typed }, threadId) =>
+          actAndLook(threadId, { type: "type", text: typed }, `Typed ${[...typed].length} characters.`),
+      }),
+      vmTool({
+        name: "vm_key",
+        description: `Press keys or shortcuts in the tiny VM, xdotool style: Return, Escape, BackSpace, Tab, Page_Down, F5, ctrl+l, ctrl+shift+t, alt+F4. Separate several with spaces to press them in order. ${STARTS} ${WAITS} ${SHOWS}`,
+        parameters: Schema.Struct({
+          keys: Schema.String.annotate({ description: "For example `ctrl+a BackSpace` or `Return`." }),
+        }),
+        run: ({ keys }, threadId) => actAndLook(threadId, { type: "key", keys }, `Pressed ${keys}.`),
+      }),
+      vmTool({
+        name: "vm_exec",
+        description: `Run a bash script in the tiny VM as \`user\` (passwordless sudo, DISPLAY=:0) and return its exit code, stdout and stderr. Start GUI programs and servers with \`background: true\`. ${STARTS}`,
+        parameters: Schema.Struct({
+          command: Schema.String.annotate({ description: "Run with bash -lc." }),
+          timeoutSeconds: Schema.optionalKey(
+            Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 600 })).annotate({
+              description: "1-600. Defaults to 120.",
+            }),
+          ),
+          background: Schema.optionalKey(
+            Schema.Boolean.annotate({ description: "Return at once with the pid and log path instead of waiting." }),
+          ),
+        }),
+        run: ({ command, timeoutSeconds = 120, background = false }, threadId) =>
+          tinyVm.exec(threadId, { command, timeoutSeconds, background }).pipe(
+            Effect.map((output) => execReport(output, timeoutSeconds, background)),
+            Effect.mapError(failure),
+          ),
+      }),
+    ]
 
     /** A thread of the caller's project, so an agent cannot reach into another project's threads. */
     const projectThread = (callerId: string, targetId: string) =>
@@ -362,13 +542,13 @@ const registerTools = Layer.effectDiscard(
         }),
         run: ({ key, stateName }) => withLinear((linear) => linear.updateIssueState(key, stateName)),
       }),
+      ...vmTools,
     ]
 
-    const annotations = Context.empty()
     yield* Effect.forEach(tools, (spec) =>
       server.addTool({
         tool: new McpSchema.Tool({ name: spec.name, description: spec.description, inputSchema: spec.inputSchema }),
-        annotations,
+        annotations: spec.annotations ?? Context.empty(),
         handle: (payload) =>
           Effect.gen(function* () {
             const threadId = yield* callingThreadId(credentials)
@@ -376,7 +556,7 @@ const registerTools = Layer.effectDiscard(
             return yield* spec.run(payload ?? {}, threadId.value).pipe(
               Effect.match({
                 onFailure: (error) => text(error.message, true),
-                onSuccess: (report) => text(report),
+                onSuccess: toolResult,
               }),
             )
           }).pipe(

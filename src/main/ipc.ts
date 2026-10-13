@@ -32,6 +32,7 @@ import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { randomName, Threads } from "./services/Threads.ts"
+import { TinyVm } from "./services/tinyVm/TinyVm.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 type AppServices =
@@ -54,6 +55,7 @@ type AppServices =
   | GitHub
   | Files
   | Favicons
+  | TinyVm
 
 interface HandlerError {
   readonly _tag: string
@@ -240,6 +242,15 @@ const handlers: Handlers = {
   "terminal.resize": ({ id, cols, rows }) => Terminals.use((terminals) => terminals.resize(id, cols, rows)),
   "terminal.close": ({ id }) => Terminals.use((terminals) => terminals.close(id)),
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
+
+  "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
+  "vm.start": ({ threadId }) => TinyVm.use((vm) => vm.start(threadId)),
+  "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
+  "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
+  "vm.host": () => TinyVm.use((vm) => vm.host),
+  "vm.screen.open": ({ threadId, streamId }, sender) => TinyVm.use((vm) => vm.openScreen(threadId, streamId, sender)),
+  "vm.screen.send": ({ streamId, data }) => TinyVm.use((vm) => vm.sendScreen(streamId, data)),
+  "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "dialog.pickFiles": (_, sender) =>
