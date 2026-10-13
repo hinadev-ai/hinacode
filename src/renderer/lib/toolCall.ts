@@ -42,9 +42,10 @@ const isCommand = (part: MessagePart): part is ToolCall => part.type === "tool_c
  * Folds each run of two or more back-to-back shell commands into one block, so a burst of commands reads
  * as one line. `index` is the block's first part, which stays put as parts are appended.
  */
-export function groupCommands(parts: ReadonlyArray<MessagePart>): Array<TranscriptBlock> {
+export function groupCommands(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
-  for (const [index, part] of parts.entries()) {
+  for (const [position, part] of parts.entries()) {
+    const index = startIndex + position
     const previous = blocks.at(-1)
     const run =
       previous?.type === "commands" ? previous.calls : previous && isCommand(previous.part) ? [previous.part] : null
