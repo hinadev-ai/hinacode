@@ -1,11 +1,15 @@
 import { describe, expect, test } from "@effect/vitest"
+import { githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
 import {
   BROWSER_PARTITION,
   externalUrl,
+  githubAssetId,
+  isAllowedNavigation,
   isAppDocument,
   isInside,
   isTrustedSender,
   lockDownWebview,
+  projectFileRequest,
 } from "./security.ts"
 
 const packagedDocument = "file:///opt/kkcode/resources/app.asar/out/renderer/index.html"
@@ -136,5 +140,63 @@ describe("lockDownWebview", () => {
     for (const src of ["file:///etc/passwd", "javascript:alert(1)", "kkcode-attachment://file/x", ""]) {
       expect(lockDownWebview({}, { src })).toBe(false)
     }
+  })
+})
+
+describe("githubAssetId", () => {
+  const id = "e21c7bd2-dd8d-4549-a268-04bdaea6355b"
+
+  test("round-trips a user-attachments link", () => {
+    const url = githubAssetUrl(`https://github.com/user-attachments/assets/${id}`)
+    expect(url === null ? null : githubAssetId(url)).toBe(id)
+  })
+
+  test("refuses anything but a bare attachment id, so the proxy only ever asks GitHub for an attachment", () => {
+    expect(githubAssetUrl(`https://github.com/user-attachments/assets/${id}/../../settings`)).toBe(null)
+    expect(githubAssetUrl(`https://evil.example/user-attachments/assets/${id}`)).toBe(null)
+    expect(githubAssetId(`kkcode-github-asset://asset/${id}/x`)).toBe(null)
+    expect(githubAssetId(`kkcode-github-asset://other/${id}`)).toBe(null)
+    expect(githubAssetId(`kkcode-github-asset://asset/..%2F${id}`)).toBe(null)
+  })
+})
+
+describe("projectFileRequest", () => {
+  test("round-trips roots and paths with spaces, reserved characters and non-ASCII names", () => {
+    const root = "/Users/me/my repo#1"
+    const path = "docs/報告 ?.html"
+    expect(projectFileRequest(projectFileUrl(root, path))).toEqual({ root, path })
+  })
+
+  test("resolves a relative link from a served page to a sibling under the same root", () => {
+    const page = projectFileUrl("/repo", "site/index.html")
+    expect(projectFileRequest(new URL("style.css", page).href)).toEqual({ root: "/repo", path: "site/style.css" })
+  })
+
+  test("a link that climbs out of the root names a different, unknown root instead of a file outside it", () => {
+    const page = projectFileUrl("/repo", "index.html")
+    expect(projectFileRequest(new URL("../../etc/passwd", page).href)).toEqual({ root: "etc", path: "passwd" })
+  })
+
+  test("refuses other hosts and malformed escapes", () => {
+    expect(projectFileRequest("kkcode-file://other/%2Frepo/a.png")).toBe(null)
+    expect(projectFileRequest("kkcode-file://root/%E0%A4%A/a.png")).toBe(null)
+    expect(projectFileRequest("kkcode-file://root/")).toBe(null)
+  })
+})
+
+describe("isAllowedNavigation", () => {
+  const preview = projectFileUrl("/repo", "site/index.html")
+
+  test("keeps the top frame on the app document, never on a project file", () => {
+    expect(isAllowedNavigation(packagedDocument, true, packagedDocument)).toBe(true)
+    expect(isAllowedNavigation(preview, true, packagedDocument)).toBe(false)
+    expect(isAllowedNavigation("https://example.com", true, packagedDocument)).toBe(false)
+  })
+
+  test("lets a subframe load project files only", () => {
+    expect(isAllowedNavigation(preview, false, packagedDocument)).toBe(true)
+    expect(isAllowedNavigation(packagedDocument, false, packagedDocument)).toBe(false)
+    expect(isAllowedNavigation("https://example.com", false, packagedDocument)).toBe(false)
+    expect(isAllowedNavigation("file:///etc/passwd", false, packagedDocument)).toBe(false)
   })
 })
