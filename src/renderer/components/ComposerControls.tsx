@@ -29,7 +29,7 @@ import {
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
@@ -61,8 +61,6 @@ function useThreadModels(thread: Thread) {
     ? { models: listed, current }
     : { models: [unlistedModel(thread.model, thread.provider), ...listed], current: undefined }
 }
-
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
 export function AgentPicker({ thread, onError }: ControlProps) {
   const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))

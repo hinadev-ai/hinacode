@@ -27,6 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
+import { providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import {
   Dialog,
@@ -42,10 +43,6 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 
-export const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<
-  ProviderId,
-  () => string
->
 const signedOutHint = {
   claude: m.settings_account_signed_out_claude,
   codex: m.settings_account_signed_out_codex,

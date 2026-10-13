@@ -7,7 +7,7 @@ import type { Automation, AutomationTrigger, AutomationTriggerType, Project } fr
 import { callPromise, modelsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { m } from "../../../paraglide/messages.js"
-import { ProviderIcon } from "../../ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "../../ProviderIcon.tsx"
 import { Button } from "../../ui/button.tsx"
 import {
   Dialog,
@@ -25,7 +25,6 @@ import { Switch } from "../../ui/switch.tsx"
 import { Textarea } from "../../ui/textarea.tsx"
 import { triggerLabel } from "./shared.tsx"
 
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 const triggerTypes: ReadonlyArray<AutomationTriggerType> = ["webhook", "github.issue", "linear.issue", "slack.mention"]
 const isProviderId = (value: unknown): value is ProviderId => ProviderId.literals.some((id) => id === value)
 const isTriggerType = (value: unknown): value is AutomationTriggerType => triggerTypes.some((type) => type === value)

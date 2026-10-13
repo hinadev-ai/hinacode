@@ -1,7 +1,13 @@
 import { RiClaudeFill, RiOpenaiFill } from "react-icons/ri"
 import type { ProviderId } from "../../shared/agent.ts"
+import { m } from "../paraglide/messages.js"
 
 const icons = { claude: RiClaudeFill, codex: RiOpenaiFill } satisfies Record<ProviderId, unknown>
+
+export const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<
+  ProviderId,
+  () => string
+>
 
 export function ProviderIcon({ provider }: { provider: ProviderId }) {
   const Icon = icons[provider]
