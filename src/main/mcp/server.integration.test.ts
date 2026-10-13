@@ -50,6 +50,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
     id,
     listModels: Effect.succeed([]),
     account: Effect.succeed({ type: "signedOut" }),
+    planLimits: Effect.succeed(null),
     usage: () => Effect.succeed(null),
     listCommands: () => Effect.succeed([]),
     runTurn: ({ threadId }) =>

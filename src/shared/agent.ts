@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
-import { UsageLimit } from "./limits.ts"
+import { PlanLimits, UsageLimit } from "./limits.ts"
 
 export const ProviderId = Schema.Literals(["claude", "codex"])
 export type ProviderId = typeof ProviderId.Type
@@ -159,6 +159,14 @@ export const ThreadUsage = Schema.Struct({
   transcripts: Schema.Number,
 })
 export type ThreadUsage = typeof ThreadUsage.Type
+
+/** Plan limits of one signed-in account. `limits` is null when the account has none, such as an API key. */
+export const AccountLimits = Schema.Struct({
+  provider: ProviderId,
+  accountId: Schema.NullOr(Schema.String),
+  limits: Schema.NullOr(PlanLimits),
+})
+export type AccountLimits = typeof AccountLimits.Type
 
 export const SubagentStatus = Schema.Literals(["running", "completed", "failed", "stopped"])
 export type SubagentStatus = typeof SubagentStatus.Type

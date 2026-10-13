@@ -51,6 +51,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([]),
   account: Effect.succeed({ type: "signedOut" }),
+  planLimits: Effect.succeed(null),
   usage: () => Effect.succeed(null),
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),

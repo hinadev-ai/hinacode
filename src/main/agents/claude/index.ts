@@ -14,12 +14,14 @@ import {
 import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Schema, Stream } from "effect"
 import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
+import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
+import { toPlanLimits } from "./limits.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
 import { elementContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
@@ -505,6 +507,14 @@ export const layer = Layer.effect(
       ),
       Effect.map(toAccount),
     )
+    const planLimits = probe(
+      (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
+      "Failed to read Claude plan limits",
+    ).pipe(
+      Effect.flatMap((raw) => Effect.map(nowIso, (readAt) => toPlanLimits(raw, readAt))),
+      Effect.orElseSucceed(() => null),
+    )
+
     const transcriptUsage = makeTranscriptUsage(claudeHome())
     const usage = (sessionId: string) =>
       Effect.tryPromise({
@@ -537,6 +547,7 @@ export const layer = Layer.effect(
       id: "claude",
       listModels,
       account,
+      planLimits,
       usage,
       listCommands,
       runTurn,

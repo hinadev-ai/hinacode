@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect"
 import {
+  AccountLimits,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -179,6 +180,8 @@ export const RpcMethods = {
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(Schema.Struct({ provider: ProviderId }), AgentAccount),
+  /** Plan limits of every signed-in account, read at most once a minute per account. */
+  "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */

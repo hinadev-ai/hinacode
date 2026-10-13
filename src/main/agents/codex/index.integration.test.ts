@@ -14,6 +14,7 @@ process.env.PATH = `${bin}:${process.env.PATH}`
 
 type Control = {
   accountResponse?: unknown
+  rateLimitsResponse?: unknown
   stall?: Array<string>
   release?: boolean
   holdTurn?: boolean
@@ -368,6 +369,72 @@ describe("Codex account boundary", () => {
           organization: null,
         })
         expect(countOf("turn/start")).toBe(0)
+      }),
+    ),
+  )
+})
+
+// Trimmed from codex-cli 0.162 on a ChatGPT plan.
+const snapshot = (limitId: string, primary: unknown, secondary: unknown) => ({
+  limitId,
+  limitName: null,
+  normalModelSlug: null,
+  primary,
+  secondary,
+  credits: { hasCredits: false, unlimited: false, balance: "0" },
+  individualLimit: null,
+  spendControlReached: false,
+  planType: "prolite",
+  rateLimitReachedType: null,
+})
+
+describe("Codex plan limits", () => {
+  it.live("reads the codex bucket and names windows by their length", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const weekly = { usedPercent: 69, windowDurationMins: 10080, resetsAt: 1792335112 }
+        setControl({
+          rateLimitsResponse: {
+            ordinaryUsageAllowed: true,
+            rateLimits: snapshot("codex", weekly, null),
+            rateLimitsByLimitId: {
+              codex: snapshot(
+                "codex",
+                { usedPercent: 12.5, windowDurationMins: 300, resetsAt: 1792000000 },
+                { usedPercent: 40, windowDurationMins: 60, resetsAt: null },
+              ),
+              codex_other: snapshot("codex_other", weekly, null),
+            },
+            rateLimitResetCredits: null,
+            accountId: "account-1",
+            rateLimitUpsell: null,
+          },
+        })
+        const provider = yield* CodexProvider
+        expect(yield* provider.planLimits).toStrictEqual({
+          windows: [
+            { window: { kind: "session" }, usedPercent: 12.5, resetsAt: "2026-10-14T17:46:40.000Z" },
+            { window: { kind: "minutes", minutes: 60 }, usedPercent: 40, resetsAt: null },
+          ],
+          readAt: expect.any(String),
+        })
+
+        setControl({
+          rateLimitsResponse: { rateLimits: snapshot("codex", weekly, null), rateLimitsByLimitId: null },
+        })
+        expect((yield* provider.planLimits)?.windows).toStrictEqual([
+          { window: { kind: "weekly" }, usedPercent: 69, resetsAt: "2026-10-18T14:51:52.000Z" },
+        ])
+      }),
+    ),
+  )
+
+  it.live("fails on a malformed answer", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ rateLimitsResponse: { rateLimits: { primary: { usedPercent: "lots" } } } })
+        const provider = yield* CodexProvider
+        expect((yield* provider.planLimits.pipe(Effect.flip)).message).toMatch(/plan limits/)
       }),
     ),
   )

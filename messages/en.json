@@ -640,6 +640,14 @@
       }
     }
   ],
+  "limits_label": "{provider} plan limits",
+  "limits_value": "{percent}% of the {window} limit used",
+  "limits_used_detail": "{percent}% used {detail}",
+  "limits_used": "{percent}% used",
+  "limits_session": "5-hour",
+  "limits_weekly": "Weekly",
+  "limits_resets_in": "Resets in {duration}, {time}",
+  "limits_no_reset": "No reset time",
   "command_view_browser": "Show browser",
   "panel_tab_browser": "Browser",
   "browser_address": "Address",

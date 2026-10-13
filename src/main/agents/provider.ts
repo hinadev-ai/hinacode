@@ -1,5 +1,6 @@
 import { Effect, Schema, Stream } from "effect"
 import type { AccessMode, Attachment } from "../../shared/domain.ts"
+import type { PlanLimits } from "../../shared/limits.ts"
 import type {
   AgentAccount,
   AgentCommand,
@@ -26,6 +27,8 @@ export interface AgentProvider {
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
   /** Read fresh on each call, so signing in or out in a terminal shows up without a restart. */
   readonly account: Effect.Effect<AgentAccount, AgentError>
+  /** The signed-in account's plan allowance windows. Null when it has none, such as with an API key. */
+  readonly planLimits: Effect.Effect<PlanLimits | null, AgentError>
   /** Tokens the session and every agent it started spent, read from disk. Null when there is no transcript. */
   readonly usage: (sessionId: string) => Effect.Effect<ThreadUsage | null, AgentError>
   /** Commands and skills the agent would load for a thread working in `cwd`. */

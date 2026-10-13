@@ -8,6 +8,7 @@ import { threadUsageAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
+import { PlanLimits } from "./PlanLimits.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const REFRESH_WHILE_BUSY_MS = 5000
@@ -20,11 +21,15 @@ const modelTotal = (usage: ModelUsage) =>
 /** A quiet strip along the bottom of the window, below the sidebar and the thread. */
 export function StatusBar() {
   const { threadId } = useParams({ strict: false })
+  const openProvider = useThreads((state) => (threadId === undefined ? undefined : state.byId[threadId]?.provider))
   return (
     <footer
       aria-label={m.status_bar_label()}
-      className="flex h-6 shrink-0 items-center justify-end gap-3 border-t border-sidebar-border bg-sidebar px-2 text-xs text-muted-foreground"
+      className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-sidebar-border bg-sidebar px-2 text-xs text-muted-foreground"
     >
+      <div className="flex h-full min-w-0 items-center gap-3 overflow-hidden">
+        <PlanLimits openProvider={openProvider} />
+      </div>
       {threadId !== undefined && <ThreadTokens key={threadId} threadId={threadId} />}
     </footer>
   )
