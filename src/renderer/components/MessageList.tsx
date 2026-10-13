@@ -22,11 +22,11 @@ const edgeSpacer = <div className="h-4" />
 const AnswerableContext = createContext<{
   readonly lastMessageId: string | undefined
   readonly providerLabel: string
-  readonly summarizeWork: boolean
+  readonly showElapsedTime: boolean
 }>({
   lastMessageId: undefined,
   providerLabel: "",
-  summarizeWork: true,
+  showElapsedTime: true,
 })
 
 /**
@@ -39,7 +39,7 @@ export function MessageList({
   listRef,
   header,
   alignItemsAtEnd = true,
-  summarizeWork = true,
+  showElapsedTime = true,
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
@@ -48,12 +48,12 @@ export function MessageList({
   header?: ReactElement
   /** Chat sits at the bottom, by the composer. A log reads from the top. */
   alignItemsAtEnd?: boolean
-  summarizeWork?: boolean
+  showElapsedTime?: boolean
 }) {
   const lastMessageId = messages.at(-1)?.id
   const answerable = useMemo(
-    () => ({ lastMessageId, providerLabel, summarizeWork }),
-    [lastMessageId, providerLabel, summarizeWork],
+    () => ({ lastMessageId, providerLabel, showElapsedTime }),
+    [lastMessageId, providerLabel, showElapsedTime],
   )
   return (
     <AnswerableContext value={answerable}>
@@ -89,7 +89,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
 
 function MessageBody({ message }: { message: Message }) {
   const repository = useThreadRepository()
-  const { summarizeWork } = use(AnswerableContext)
+  const { showElapsedTime } = use(AnswerableContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -124,13 +124,12 @@ function MessageBody({ message }: { message: Message }) {
       </article>
     )
   }
-  const presentation = assistantPresentation(message, summarizeWork)
-  const completed = presentation.kind === "completed"
-  const shown = completed ? presentation.reply : presentation.parts
+  const presentation = assistantPresentation(message, showElapsedTime)
+  const { parts } = presentation
   const streaming = message.completedAt === null
   // A steer sent before the agent said anything closes an empty assistant message.
-  if (!streaming && shown.length === 0 && (!completed || presentation.work.length === 0)) return null
-  const last = shown.at(-1)
+  if (!streaming && parts.length === 0) return null
+  const last = parts.at(-1)
   const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
   return (
     <article
@@ -138,13 +137,9 @@ function MessageBody({ message }: { message: Message }) {
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {completed && (
-        <WorkedFor messageId={message.id} durationMs={presentation.durationMs} work={presentation.work}>
-          <AssistantParts message={message} parts={presentation.work} />
-        </WorkedFor>
-      )}
-      <AssistantParts message={message} parts={shown} writingIndex={writingIndex} />
-      {streaming && (shown.length === 0 || writingIndex !== undefined) && (
+      {presentation.kind === "completed" && <WorkedFor durationMs={presentation.durationMs} />}
+      <AssistantParts message={message} parts={parts} writingIndex={writingIndex} />
+      {streaming && (parts.length === 0 || writingIndex !== undefined) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>

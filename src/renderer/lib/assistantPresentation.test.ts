@@ -24,7 +24,7 @@ const tool: MessagePart = {
   status: "done",
 }
 
-test("completed work contains progress and activity while the trailing answer stays visible", () => {
+test("completed responses retain activity and the answer in their original order", () => {
   const parts: ReadonlyArray<MessagePart> = [
     { type: "text", text: "Checking the repository." },
     { type: "reasoning", text: "Inspect the working directory first." },
@@ -37,8 +37,7 @@ test("completed work contains progress and activity while the trailing answer st
   expect(assistantPresentation(message(parts))).toEqual({
     kind: "completed",
     durationMs: 485_000,
-    work: parts.slice(0, 5).map((part, index) => ({ part, index })),
-    reply: parts.slice(5).map((part, index) => ({ part, index: index + 5 })),
+    parts: parts.map((part, index) => ({ part, index })),
   })
 })
 
@@ -57,31 +56,29 @@ test("running responses keep activity inline and retain original indices after f
   })
 })
 
-test("questions before the last tool remain visible outside completed work", () => {
+test("questions retain their original position before a tool", () => {
   const questions: MessagePart = { type: "questions", text: "Which approach?", questions: [] }
   const presentation = assistantPresentation(message([questions, tool, { type: "text", text: "Choose a path." }]))
   expect(presentation.kind).toBe("completed")
   if (presentation.kind !== "completed") throw new Error("Expected completed work")
-  expect(presentation.work).toEqual([{ part: tool, index: 1 }])
-  expect(presentation.reply).toEqual([
+  expect(presentation.parts).toEqual([
     { part: questions, index: 0 },
+    { part: tool, index: 1 },
     { part: { type: "text", text: "Choose a path." }, index: 2 },
   ])
 })
 
-test("text-only and tool-only completions have a duration without inventing an answer or work", () => {
+test("text-only and tool-only completions keep their parts alongside the duration", () => {
   const text: MessagePart = { type: "text", text: "Hello." }
   expect(assistantPresentation(message([text]))).toEqual({
     kind: "completed",
     durationMs: 485_000,
-    work: [],
-    reply: [{ part: text, index: 0 }],
+    parts: [{ part: text, index: 0 }],
   })
   expect(assistantPresentation(message([tool]))).toEqual({
     kind: "completed",
     durationMs: 485_000,
-    work: [{ part: tool, index: 0 }],
-    reply: [],
+    parts: [{ part: tool, index: 0 }],
   })
 })
 

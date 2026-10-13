@@ -6,7 +6,7 @@ type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 export interface FindMatch {
   readonly messageId: string
-  /** Index in the original message parts, retained when work is disclosed separately. */
+  /** Index in the original message parts, retained when subagent parts are filtered out. */
   readonly partIndex: number
   /** UTF-16 offset of the match in the part's searchable text. */
   readonly offset: number
@@ -72,8 +72,7 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
     for (const match of text.matchAll(pattern)) matches.push({ messageId, partIndex, offset: match.index })
   }
   for (const message of messages) {
-    const presentation = assistantPresentation(message)
-    const parts = presentation.kind === "completed" ? [...presentation.work, ...presentation.reply] : presentation.parts
+    const { parts } = assistantPresentation(message)
     const writing = message.completedAt === null && parts.at(-1)?.part.type === "text"
     for (const block of presentationBlocks(writing ? parts.slice(0, -1) : parts)) {
       if (block.type === "part") {

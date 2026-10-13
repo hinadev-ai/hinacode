@@ -134,7 +134,7 @@ export function SubagentTranscript({
           providerLabel={providerLabel}
           header={header}
           alignItemsAtEnd={false}
-          summarizeWork={false}
+          showElapsedTime={false}
         />
       )}
     </div>

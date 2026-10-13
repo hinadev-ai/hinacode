@@ -247,7 +247,6 @@ When("the tool and approval finish", async ({ app }) => {
 Then("the tool result is inspectable and the approval disappears", async ({ app }) => {
   const rendered = article(app.page)
   await expect(app.page.getByRole("button", { name: "Allow", exact: true })).toHaveCount(0)
-  await rendered.getByRole("button", { name: /^Worked for / }).click()
   await rendered.getByRole("button", { name: /Read.*README\.md.*Done/ }).click()
   await expect(rendered.getByRole("heading", { name: "Output", exact: true })).toBeVisible()
   await expect(rendered.locator("pre").last()).toHaveText("Repository instructions")
