@@ -147,3 +147,20 @@ and command probes. The `claude` comparison uses the settled 70-second sample.
 The comparator rejects failed captures and different workloads. It saves before, after, absolute
 delta, and percentage change beside the captures. Keep the JSON and the build revision with any
 performance claim. Captures also record a digest of uncommitted changes.
+
+### 2026-10-14 capture
+
+On macOS arm64, baseline `3941d33` and candidate `3a01bf1` used the workloads above:
+
+| Measurement                                                   |    Baseline |  Candidate |  Change |
+| ------------------------------------------------------------- | ----------: | ---------: | ------: |
+| Renderer heap after twelve hidden threads finish              |  115.37 MiB |  19.11 MiB | -83.44% |
+| Process-tree RSS after three Claude turns and 70 idle seconds | 3177.45 MiB | 898.33 MiB | -71.73% |
+
+The Claude turns hit the default account's organization spend limit on both builds. Idle process
+count fell from 29 to 5; no observed child processes remained orphaned. A separate successful
+conversation recalled an earlier marker after its CLI exited and the next turn resumed the same
+session. The 60-second grace preserves immediate follow-ups; later turns pay CLI startup time.
+
+Raw captures use the `baseline-verified` and `final` labels. Mechanical comparisons are saved as
+`.context/perf/baseline-verified-final-{history,claude}-memory-comparison.json`.
