@@ -85,7 +85,7 @@ const firstBoundaryText = async (page: Page, selector: string) => {
 }
 
 When("the agent starts streaming in {string}", async ({ app, names }, title: string) => {
-  await expect(app.page.getByRole("heading", { name: "Start the conversation", exact: true })).toBeVisible()
+  await expect(app.page.getByRole("heading", { name: "Do Anything", exact: true })).toBeVisible()
   const thread = (await rpc(app.page, "threads.list", undefined)).find((item) => item.title === names.of(title))
   if (!thread) throw new Error(`no seeded thread named ${title}`)
   const { seq } = await rpc(app.page, "threads.transcript", { threadId: thread.id })
