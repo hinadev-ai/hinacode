@@ -474,6 +474,68 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("does not let a foreground task without an end event hold the session open", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(init("session-1"), taskStarted("agent-1", { is_backgrounded: false }), succeeded)
+        yield* runTurn()
+
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("keeps a session once a foreground task moves to the background", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            taskStarted("agent-1", { is_backgrounded: false }),
+            { type: "system", subtype: "task_updated", task_id: "agent-1", patch: { is_backgrounded: true } },
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        latestCli().push(taskNotification("agent-1"))
+        yield* settle
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("lets only background tasks snapshots end a task once the CLI sends them", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(init("session-1"), backgroundTasks({ task_id: "shell-1" }), taskStarted("shell-1"), succeeded)
+        yield* runTurn()
+        latestCli().push(
+          { type: "system", subtype: "task_updated", task_id: "shell-1", patch: { status: "completed" } },
+          taskNotification("shell-1"),
+        )
+        yield* settle
+
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        latestCli().push(backgroundTasks(), taskStarted("agent-1", { is_backgrounded: false }))
+        yield* settle
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
   it.effect("keeps a session while a background tasks snapshot lists a live task", () =>
     lifecycle(
       Effect.gen(function* () {
