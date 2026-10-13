@@ -389,7 +389,7 @@ const make = (source: LoginSource) =>
         if (vm.status !== "running") return yield* new VmError({ message: "The VM is not running." })
         openingScreens.add(streamId)
         const sbx = yield* client
-        const { socket, head } = yield* sbx.tunnel(vm.sandboxId, VNC_PORT).pipe(
+        const { socket, head } = yield* sbx.tunnel(vm.sandboxId, VNC_PORT, { passive: true }).pipe(
           Effect.catchTag("SandboxGoneError", (error) =>
             Effect.andThen(forget(threadId, vm.sandboxId), Effect.fail(error)),
           ),
