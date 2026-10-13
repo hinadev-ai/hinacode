@@ -1,12 +1,12 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { isOwnPart } from "./subagents.ts"
-import { describeCommand, describeToolCall, groupCommands } from "./toolCall.ts"
+import { assistantPresentation, presentationBlocks } from "./assistantPresentation.ts"
+import { describeCommand, describeToolCall } from "./toolCall.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 export interface FindMatch {
   readonly messageId: string
-  /** Index among the parts the transcript renders, which leaves out sub-agent calls. */
+  /** Index in the original message parts, retained when work is disclosed separately. */
   readonly partIndex: number
   /** UTF-16 offset of the match in the part's searchable text. */
   readonly offset: number
@@ -72,10 +72,10 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
     for (const match of text.matchAll(pattern)) matches.push({ messageId, partIndex, offset: match.index })
   }
   for (const message of messages) {
-    const parts = message.parts.filter(isOwnPart)
-    // Reply text appears only once the agent finishes it, so the part still being written is not on screen.
-    const writing = message.completedAt === null && parts.at(-1)?.type === "text"
-    for (const block of groupCommands(writing ? parts.slice(0, -1) : parts)) {
+    const presentation = assistantPresentation(message)
+    const parts = presentation.kind === "completed" ? [...presentation.work, ...presentation.reply] : presentation.parts
+    const writing = message.completedAt === null && parts.at(-1)?.part.type === "text"
+    for (const block of presentationBlocks(writing ? parts.slice(0, -1) : parts)) {
       if (block.type === "part") {
         search(message.id, block.index, searchableText(block.part))
         continue

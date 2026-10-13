@@ -11,6 +11,7 @@ A local desktop app for running Claude Code and Codex against your repositories.
 - Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Archiving a thread can remove the worktree too, deleting the branch when it is merged. Threads can archive themselves once every linked pull request merges.
 - CLAUDE.md, AGENTS.md and skills load from the project and your home directory, as they do in the CLIs.
 - Approvals for commands, edits and MCP tool calls appear inline. Steer a running turn by sending another message.
+- Completed responses show elapsed time above the answer. Expand the Worked for row to inspect reasoning, tools, and progress messages.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.
 - Built-in MCP server exposed to both agents: `review_changes`, `link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, and Linear issue tools backed by an API key stored with Electron's safeStorage.
 - An activity bar on the right switches the thread panel between views, each with its own shortcut: details (workspace, setup log, and TCP ports opened by processes the thread spawned, each with a kill button), a file explorer with git status and a read-only highlighted file viewer, changes with diffs, pull requests, and subagents.
