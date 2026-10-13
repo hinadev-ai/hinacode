@@ -1,5 +1,6 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useMemo, useState } from "react"
 import type { IconType } from "react-icons"
@@ -34,7 +35,15 @@ import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { Input } from "./ui/input.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 interface ControlProps {
@@ -53,74 +62,83 @@ const update = async (patch: RpcRequest<"threads.update">, onError: (message: st
   }
 }
 
-/** The agent's listed models, plus the thread's own model when the agent no longer lists it. */
-function useThreadModels(thread: Thread) {
-  const listed = AsyncResult.getOrElse(useAtomValue(modelsAtom(thread.provider)), (): ReadonlyArray<ModelInfo> => [])
-  const current = listed.find((model) => model.id === thread.model)
-  return current
-    ? { models: listed, current }
-    : { models: [unlistedModel(thread.model, thread.provider), ...listed], current: undefined }
+/** The agent's listed models, plus `keep`, such as a thread's saved model, when the agent no longer lists it. */
+function useAgentModels(provider: ProviderId, keep: string | null) {
+  const listed = AsyncResult.getOrElse(useAtomValue(modelsAtom(provider)), (): ReadonlyArray<ModelInfo> => [])
+  return keep === null || listed.some((model) => model.id === keep)
+    ? listed
+    : [unlistedModel(keep, provider), ...listed]
+}
+
+/** The thread's model as its agent lists it, or undefined when the agent no longer lists it. */
+function useThreadModel(thread: Thread) {
+  return useAgentModels(thread.provider, null).find((model) => model.id === thread.model)
 }
 
 const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
-export function AgentPicker({ thread, onError }: ControlProps) {
-  const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
+const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
+
+/**
+ * The thread's model, listed under its agent. Until the first message every agent is listed, so picking
+ * another agent's model switches the agent in the same step.
+ */
+export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
+  const selected = useThreadModel(thread) ?? unlistedModel(thread.model, thread.provider)
+  const providers = canSwitchAgent ? ProviderId.literals : [thread.provider]
+
+  // Another agent starts from its own defaults. On the same agent, effort and fast mode the next model
+  // cannot honor go back to its defaults.
+  const change = (next: ModelInfo | null) => {
+    if (next === null || sameModel(next, selected)) return
+    void update(
+      next.provider === thread.provider
+        ? {
+            id: thread.id,
+            model: next.id,
+            ...(thread.effort !== null && !next.efforts.includes(thread.effort) ? { effort: null } : {}),
+            ...(thread.fastMode && !next.fastMode ? { fastMode: false } : {}),
+          }
+        : { id: thread.id, provider: next.provider, model: next.id },
+      onError,
+    )
+  }
+
   return (
     <Select
-      items={providers}
-      value={thread.provider}
-      onValueChange={(provider) =>
-        provider && provider !== thread.provider && update({ id: thread.id, provider }, onError)
-      }
+      value={selected}
+      onValueChange={change}
+      isItemEqualToValue={sameModel}
+      itemToStringLabel={(model: ModelInfo) => model.label}
     >
-      <SelectTrigger size="sm" aria-label={m.thread_agent_picker()} className={triggerClass}>
-        <SelectValue />
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={cn("min-w-0", triggerClass)}>
+        <ProviderIcon provider={thread.provider} />
+        <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent>
-        {providers.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            <ProviderIcon provider={item.value} />
-            {item.label}
-          </SelectItem>
+      <SelectContent side="top" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+        {providers.map((provider) => (
+          <ModelGroup key={provider} provider={provider} keep={provider === thread.provider ? thread.model : null} />
         ))}
       </SelectContent>
     </Select>
   )
 }
 
-export function ModelPicker({ thread, onError }: ControlProps) {
-  const { models } = useThreadModels(thread)
-  const items = models.map((model) => ({ value: model.id, label: model.label }))
-
-  // Effort and fast mode the next model cannot honor go back to its defaults.
-  const change = (id: string | null) => {
-    const next = models.find((model) => model.id === id)
-    if (next === undefined || next.id === thread.model) return
-    void update(
-      {
-        id: thread.id,
-        model: next.id,
-        ...(thread.effort !== null && !next.efforts.includes(thread.effort) ? { effort: null } : {}),
-        ...(thread.fastMode && !next.fastMode ? { fastMode: false } : {}),
-      },
-      onError,
-    )
-  }
-
+function ModelGroup({ provider, keep }: { provider: ProviderId; keep: string | null }) {
+  const models = useAgentModels(provider, keep)
+  if (models.length === 0) return null
   return (
-    <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-24 ${triggerClass}`}>
-        <SelectValue className="min-w-0 truncate" />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <SelectGroup>
+      <SelectLabel className="flex items-center gap-1.5">
+        <ProviderIcon provider={provider} />
+        {providerLabel[provider]()}
+      </SelectLabel>
+      {models.map((model) => (
+        <SelectItem key={model.id} value={model}>
+          {model.label}
+        </SelectItem>
+      ))}
+    </SelectGroup>
   )
 }
 
@@ -180,7 +198,7 @@ const DEFAULT_EFFORT = "default"
 
 /** Shown only for models with effort control. */
 export function EffortPicker({ thread, onError }: ControlProps) {
-  const { current } = useThreadModels(thread)
+  const current = useThreadModel(thread)
   if (current === undefined || current.efforts.length === 0) return null
   const defaultLabel = current.defaultEffort
     ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
@@ -216,7 +234,7 @@ export function EffortPicker({ thread, onError }: ControlProps) {
 
 /** Shown only for models with a fast service tier. */
 export function FastModeToggle({ thread, onError }: ControlProps) {
-  const { current } = useThreadModels(thread)
+  const current = useThreadModel(thread)
   if (!current?.fastMode) return null
   return (
     <Tooltip>
@@ -261,7 +279,7 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
 
 /** How much the agent may do without asking. Takes effect from the next turn, or at once on a live Claude turn. */
 export function AccessPicker({ thread, onError }: ControlProps) {
-  const { current } = useThreadModels(thread)
+  const current = useThreadModel(thread)
   const items = AccessMode.literals.map((value) => ({ value, label: accessModes[value].label() }))
   const Icon = accessModes[thread.accessMode].icon
 

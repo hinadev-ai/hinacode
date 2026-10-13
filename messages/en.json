@@ -486,7 +486,6 @@
   "message_worked_for": "Worked for {duration}",
   "sidebar_pull_request": "Open pull request #{number}",
   "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
-  "thread_agent_picker": "Agent",
   "thread_workspace_picker": "Workspace",
   "settings_text_generation_model": "Thread naming",
   "settings_text_generation_model_hint": "Names a thread and its branch from its first message.",
