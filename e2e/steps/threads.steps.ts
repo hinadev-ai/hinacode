@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test"
+import { expect, type Page } from "@playwright/test"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 import { sidebar, threadMenu } from "../support/ui.ts"
@@ -57,12 +57,34 @@ When("I rename the thread {string} to {string}", async ({ app, names }, title: s
   await input.press("Enter")
 })
 
-When("I settle the thread {string} from its menu", async ({ app, names }, title: string) => {
-  await threadMenu(app.page, names.of(title), "Settle…")
-  const dialog = app.page.getByRole("alertdialog")
-  await expect(dialog).toContainText("Settle this thread?")
-  await dialog.getByRole("button", { name: "Settle", exact: true }).click()
-  await expect(dialog).toBeHidden()
+When("I archive the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Archive")
+})
+
+When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
+  await sidebar(app.page).getByRole("tab", { name: tab, exact: true }).click()
+})
+
+When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
+  await sidebar(app.page)
+    .getByRole("button", { name: `Unarchive ${names.of(title)}`, exact: true })
+    .click()
+})
+
+const sidebarFilter = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Filter threads and projects" })
+
+When("I filter the sidebar by {string}", async ({ app }, query: string) => {
+  await sidebarFilter(app.page).fill(query)
+})
+
+When("I filter the sidebar by the name of the project {string}", async ({ app, names }, project: string) => {
+  await sidebarFilter(app.page).fill(names.of(project))
+})
+
+When("I show only the project {string} in the sidebar", async ({ app, names }, project: string) => {
+  await sidebar(app.page).getByRole("button", { name: "Filter by project", exact: true }).click()
+  await app.page.getByRole("menuitemcheckbox", { name: names.of(project), exact: true }).click()
+  await app.page.keyboard.press("Escape")
 })
 
 When("I delete the thread {string} from its menu", async ({ app, names }, title: string) => {
@@ -97,10 +119,13 @@ Then("the sidebar lists the threads {string} in that order", async ({ app, names
     .toStrictEqual(expected)
 })
 
-Then("the thread {string} is marked settled", async ({ app, names }, title: string) => {
-  await expect(sidebar(app.page).getByRole("link", { name: names.of(title) })).toContainText("Settled")
-  const threads = await rpc(app.page, "threads.list", undefined)
-  expect(threads.find((thread) => thread.title === names.of(title))?.status).toBe("settled")
+Then("the thread {string} is stored as {string}", async ({ app, names }, title: string, status: string) => {
+  await expect
+    .poll(async () => {
+      const threads = await rpc(app.page, "threads.list", undefined)
+      return threads.find((thread) => thread.title === names.of(title))?.status
+    })
+    .toBe(status)
 })
 
 Then("the thread {string} no longer exists", async ({ app, names }, title: string) => {

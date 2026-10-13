@@ -1,4 +1,6 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
+import { isOwnPart } from "./subagents.ts"
+import { groupCommands, type TranscriptBlock } from "./toolCall.ts"
 
 export interface IndexedMessagePart {
   readonly part: MessagePart
@@ -18,10 +20,9 @@ const isWork = (part: MessagePart) =>
   part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
 
 const staysInReply = (part: MessagePart) => part.type === "questions" || part.type === "attachment"
-const isTopLevelPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
 export function assistantPresentation(message: Message, summarizeWork = true): AssistantPresentation {
-  const parts = message.parts.flatMap((part, index) => (isTopLevelPart(part) ? [{ part, index }] : []))
+  const parts = message.parts.flatMap((part, index) => (isOwnPart(part) ? [{ part, index }] : []))
   if (message.role === "user" || message.completedAt === null || !summarizeWork) return { kind: "inline", parts }
   const durationMs = Date.parse(message.completedAt) - Date.parse(message.createdAt)
   if (!(durationMs >= 0)) return { kind: "inline", parts }
@@ -30,6 +31,25 @@ export function assistantPresentation(message: Message, summarizeWork = true): A
   const work = parts.slice(0, workEnd).filter(({ part }) => !staysInReply(part))
   const reply = parts.filter(({ part }, position) => position >= workEnd || staysInReply(part))
   return { kind: "completed", durationMs, work, reply }
+}
+
+/** Disclosures can leave gaps in the original indices, so commands group only within each contiguous run. */
+export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {
+  const blocks: Array<TranscriptBlock> = []
+  let start = 0
+  let firstIndex = 0
+  for (const [position, { index }] of parts.entries()) {
+    if (position === start) firstIndex = index
+    if (parts[position + 1]?.index === index + 1) continue
+    blocks.push(
+      ...groupCommands(
+        parts.slice(start, position + 1).map(({ part }) => part),
+        firstIndex,
+      ),
+    )
+    start = position + 1
+  }
+  return blocks
 }
 
 const twoDigits = (value: number) => String(value).padStart(2, "0")

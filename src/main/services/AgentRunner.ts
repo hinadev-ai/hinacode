@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, FiberMap, Layer, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, FiberMap, Layer, type Schema, Semaphore, Stream } from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
   AgentAccount,
@@ -14,7 +14,7 @@ import type {
   Subagent,
   SecretRequest,
 } from "../../shared/agent.ts"
-import type { AccessMode, Attachment, Message, Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, Message, Thread, ThreadStatus, WorktreeSource } from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -23,9 +23,17 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
-import type { NotFoundError, PersistenceError, ThreadStartedError, WorktreeTakenError } from "./errors.ts"
+import type {
+  NotFoundError,
+  PersistenceError,
+  PullRequestElsewhereError,
+  ThreadStartedError,
+  WorktreeTakenError,
+} from "./errors.ts"
 import type { CommandError } from "./Git.ts"
+import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages } from "./Messages.ts"
+import { PullRequests } from "./PullRequests.ts"
 import { Secrets } from "./Secrets.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads } from "./Threads.ts"
@@ -35,11 +43,21 @@ import { makeActiveWorkspace } from "./workspace.ts"
 const PERSIST_INTERVAL_MS = 500
 
 export interface SendOptions {
-  /** Only with the first message: moves the thread into a new worktree forked from `baseRef` first. */
-  readonly worktree?: { readonly baseRef: string } | undefined
+  /** Only with the first message: moves the thread into a new worktree first. */
+  readonly worktree?: WorktreeSource | undefined
 }
 
-type SendError = AgentError | PersistenceError | NotFoundError | CommandError | WorktreeTakenError | ThreadStartedError
+type SendError =
+  | AgentError
+  | PersistenceError
+  | NotFoundError
+  | CommandError
+  | WorktreeTakenError
+  | ThreadStartedError
+  | GitHubError
+  | Schema.SchemaError
+  | PullRequestElsewhereError
+  | PullRequestUrlInvalidError
 
 export class AgentRunner extends Context.Service<
   AgentRunner,
@@ -146,6 +164,7 @@ const make = Effect.gen(function* () {
   const scope = yield* Effect.scope
   const threads = yield* Threads
   const worktrees = yield* Worktrees
+  const pullRequests = yield* PullRequests
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpCredentials
@@ -324,13 +343,21 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, handle, messages: () => turnMessages }
   }
 
+  const nameThreadWithPullRequestScope = (thread: Thread, prompt: string) =>
+    pullRequests.list(thread.id).pipe(
+      Effect.flatMap((links) => naming.nameFromPrompt(thread, prompt, links.length === 0 ? "titleAndBranch" : "title")),
+      Effect.catch((error) => Effect.logWarning("thread naming failed", error)),
+    )
+
   const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions) =>
     Effect.gen(function* () {
       let thread = yield* threads.get(threadId)
       const first = !(yield* threads.started(threadId))
       if (options.worktree) {
-        thread = yield* threads.attachWorktree(threadId, options.worktree.baseRef)
+        const attached = yield* threads.attachWorktree(threadId, options.worktree)
+        thread = attached.thread
         yield* push.publish({ type: "thread.updated", thread })
+        if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
       }
       const provider = yield* providerFor(thread.provider)
       // Marking the thread running in the same critical section as resolving its cwd stops a
@@ -351,7 +378,7 @@ const make = Effect.gen(function* () {
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
       // Automations title their threads from their own template.
       if (first && thread.createdBy === "user" && prompt.trim() !== "")
-        yield* Effect.forkDetach(naming.nameFromPrompt(thread, prompt))
+        yield* Effect.forkDetach(nameThreadWithPullRequestScope(thread, prompt))
     }).pipe(exclusive(threadId))
 
   const send = (

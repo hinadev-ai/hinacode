@@ -13,8 +13,9 @@ import type {
   PullRequestDetail,
   PullRequestStatus,
   ReviewStatus,
+  OpenPullRequest,
 } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
 import { CommandError, makeExec } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
@@ -38,18 +39,6 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
   override get message(): string {
     return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>)`
   }
-}
-
-/** Canonical `https://github.com/<owner>/<repo>/pull/<n>`, dropping sub-pages like `/files` and any query or hash. */
-export const parseGitHubPullRequestUrl = (raw: string): string | undefined => {
-  if (!URL.canParse(raw)) return undefined
-  const url = new URL(raw)
-  if (url.protocol !== "https:" || (url.hostname !== "github.com" && url.hostname !== "www.github.com"))
-    return undefined
-  const match = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:\/.*)?$/.exec(url.pathname)
-  if (!match) return undefined
-  const [, owner, repo, number] = match
-  return `https://github.com/${owner}/${repo}/pull/${number}`
 }
 
 /** The canonical pull request URL, safe to pass to `gh` as an argument: it can never be read as a flag. */
@@ -197,6 +186,31 @@ const decodeAuthStatus = Schema.decodeUnknownEffect(AuthStatusJson)
 const decodePullRequest = Schema.decodeUnknownEffect(PullRequestJson)
 const decodePullRequestDetail = Schema.decodeUnknownEffect(PullRequestDetailJson)
 
+const PullRequestHead = Schema.Struct({
+  url: Schema.String,
+  number: Schema.Int,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  isCrossRepository: Schema.Boolean,
+})
+/** What checking out a pull request needs: where its head branch lives and what it merges into. */
+export type PullRequestHead = typeof PullRequestHead.Type
+const decodePullRequestHead = Schema.decodeUnknownEffect(Schema.fromJsonString(PullRequestHead))
+
+const decodeOpenPullRequests = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Array(
+      Schema.Struct({
+        number: Schema.Int,
+        title: Schema.String,
+        headRefName: Schema.String,
+        isDraft: Schema.Boolean,
+        author: Schema.Struct({ login: Schema.String }),
+      }),
+    ),
+  ),
+)
+
 /** GitHub as the user's `gh` login sees it. Every call runs `gh` without prompts. */
 export class GitHub extends Context.Service<
   GitHub,
@@ -218,6 +232,15 @@ export class GitHub extends Context.Service<
       cwd: string,
       branch: string,
     ) => Effect.Effect<PullRequest | null, GitHubError | Schema.SchemaError>
+    /** The pull request `selector` (a number or URL, see `parsePullRequestSelector`) names in the repository at `cwd`. */
+    readonly pullRequestHead: (
+      cwd: string,
+      selector: string,
+    ) => Effect.Effect<PullRequestHead, GitHubError | Schema.SchemaError>
+    /** Open pull requests of the repository at `cwd`, newest first. */
+    readonly openPullRequests: (
+      cwd: string,
+    ) => Effect.Effect<ReadonlyArray<OpenPullRequest>, GitHubError | Schema.SchemaError>
     /** Opens a pull request from the pushed `head` branch, titled and described from its commits. Returns its URL. */
     readonly createPullRequest: (
       cwd: string,
@@ -310,6 +333,24 @@ const make = Effect.gen(function* () {
     merge: (raw, method) => ghByUrl(raw, (url) => ["pr", "merge", url, `--${method}`]).pipe(Effect.asVoid),
     close: (raw) => ghByUrl(raw, (url) => ["pr", "close", url]).pipe(Effect.asVoid),
     branchPullRequest,
+    pullRequestHead: (cwd, selector) =>
+      gh(cwd, ["pr", "view", selector, "--json", "url,number,headRefName,baseRefName,isCrossRepository"]).pipe(
+        Effect.flatMap(decodePullRequestHead),
+      ),
+    openPullRequests: (cwd) =>
+      gh(cwd, [
+        "pr",
+        "list",
+        "--state",
+        "open",
+        "--limit",
+        "50",
+        "--json",
+        "number,title,headRefName,isDraft,author",
+      ]).pipe(
+        Effect.flatMap(decodeOpenPullRequests),
+        Effect.map((list) => list.map(({ author, ...pullRequest }) => ({ ...pullRequest, author: author.login }))),
+      ),
     createPullRequest,
     clone,
     repository,

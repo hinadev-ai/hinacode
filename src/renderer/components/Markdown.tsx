@@ -1,5 +1,5 @@
 import type { Mermaid, MermaidConfig } from "mermaid"
-import { isValidElement, memo, type ReactNode, useEffect, useId, useMemo, useState } from "react"
+import { isValidElement, memo, type ReactNode, use, useEffect, useId, useMemo, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import type { Appearance } from "../../shared/domain.ts"
@@ -9,7 +9,7 @@ import { useSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
-import { Highlighted, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
+import { FindPartContext, Highlighted, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
 const components: Components = {
@@ -63,7 +63,8 @@ const components: Components = {
 /** Agent markdown with GFM. Memoized because streaming re-renders the message on every delta. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const pattern = useFindPattern()
-  const rehypePlugins = useMemo(() => (pattern === null ? [] : [rehypeFindMarks(pattern)]), [pattern])
+  const part = use(FindPartContext)
+  const rehypePlugins = useMemo(() => (pattern === null ? [] : [rehypeFindMarks(pattern, part)]), [pattern, part])
   const repository = useThreadRepository()
   const remarkPlugins = useMemo(
     () => (repository ? [remarkGfm, remarkPullRequests(repository)] : [remarkGfm]),

@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react"
 import { RiArrowRightSLine } from "react-icons/ri"
-import { formatWorkDuration, type IndexedMessagePart } from "../lib/assistantPresentation.ts"
-import { searchableText } from "../lib/find.ts"
+import { formatWorkDuration, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
+import { commandFindText, commandSearchText, searchableText } from "../lib/find.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useFindPattern } from "./FindHighlight.tsx"
@@ -31,7 +31,13 @@ export function WorkedFor({
       </div>
     )
 
-  const findForcesOpen = pattern !== null && work.some(({ part }) => searchableText(part).search(pattern) !== -1)
+  const findForcesOpen =
+    pattern !== null &&
+    presentationBlocks(work).some((block) =>
+      block.type === "commands"
+        ? block.calls.some((call) => commandSearchText(commandFindText(call)).search(pattern) !== -1)
+        : searchableText(block.part).search(pattern) !== -1,
+    )
   return (
     <Collapsible data-slot="worked-for" open={userOpen || findForcesOpen} onOpenChange={setUserOpen} className="mb-2">
       <CollapsibleTrigger

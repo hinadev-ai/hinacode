@@ -6,13 +6,8 @@ import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { type CommandError, Git } from "./Git.ts"
-import {
-  GitHub,
-  type GitHubError,
-  parseGitHubPullRequestUrl,
-  type PullRequestUrlInvalidError,
-  requirePullRequestUrl,
-} from "./GitHub.ts"
+import { GitHub, type GitHubError, type PullRequestUrlInvalidError, requirePullRequestUrl } from "./GitHub.ts"
+import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 

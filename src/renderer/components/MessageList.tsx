@@ -1,14 +1,14 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
-import { assistantPresentation, type IndexedMessagePart } from "../lib/assistantPresentation.ts"
+import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
-import { Highlighted } from "./FindHighlight.tsx"
+import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { MessagePartView } from "./MessagePart.tsx"
+import { CommandGroup, MessagePartView } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { WorkedFor } from "./WorkedFor.tsx"
@@ -108,15 +108,17 @@ function MessageBody({ message }: { message: Message }) {
         )}
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
-            {linkify(text, repository).map((segment, index) =>
-              segment.type === "link" ? (
-                <WebLink key={index} href={segment.href}>
-                  <Highlighted text={segment.text} />
-                </WebLink>
-              ) : (
-                <Highlighted key={index} text={segment.text} />
-              ),
-            )}
+            <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
+              {linkify(text, repository).map((segment, index) =>
+                segment.type === "link" ? (
+                  <WebLink key={index} href={segment.href}>
+                    <Highlighted text={segment.text} />
+                  </WebLink>
+                ) : (
+                  <Highlighted key={index} text={segment.text} />
+                ),
+              )}
+            </FindPartContext>
           </div>
         )}
       </article>
@@ -138,14 +140,10 @@ function MessageBody({ message }: { message: Message }) {
     >
       {completed && (
         <WorkedFor durationMs={presentation.durationMs} work={presentation.work}>
-          {presentation.work.map((indexed) => (
-            <AssistantPart key={indexed.index} message={message} indexed={indexed} done />
-          ))}
+          <AssistantParts message={message} parts={presentation.work} />
         </WorkedFor>
       )}
-      {shown.map((indexed) => (
-        <AssistantPart key={indexed.index} message={message} indexed={indexed} done={indexed.index !== writingIndex} />
-      ))}
+      <AssistantParts message={message} parts={shown} writingIndex={writingIndex} />
       {streaming && (shown.length === 0 || writingIndex !== undefined) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
@@ -155,21 +153,34 @@ function MessageBody({ message }: { message: Message }) {
   )
 }
 
-function AssistantPart({
+function AssistantParts({
   message,
-  indexed: { part },
-  done,
+  parts,
+  writingIndex,
 }: {
   message: Message
-  indexed: IndexedMessagePart
-  done: boolean
+  parts: ReadonlyArray<IndexedMessagePart>
+  writingIndex?: number
 }) {
   const { lastMessageId, providerLabel } = use(AnswerableContext)
-  if (part.type === "text") return <ReplyText text={part.text} done={done} />
-  if (part.type === "questions" && message.id === lastMessageId) {
-    return <PostedQuestionsCard threadId={message.threadId} questions={part.questions} providerLabel={providerLabel} />
-  }
-  return <MessagePartView part={part} />
+  return presentationBlocks(parts).map((block) => {
+    const { index } = block
+    if (block.type === "commands") {
+      return <CommandGroup key={index} messageId={message.id} index={index} calls={block.calls} />
+    }
+    const { part } = block
+    return (
+      <FindPartContext key={index} value={index}>
+        {part.type === "text" ? (
+          <ReplyText text={part.text} done={index !== writingIndex} />
+        ) : part.type === "questions" && message.id === lastMessageId ? (
+          <PostedQuestionsCard threadId={message.threadId} questions={part.questions} providerLabel={providerLabel} />
+        ) : (
+          <MessagePartView part={part} />
+        )}
+      </FindPartContext>
+    )
+  })
 }
 
 /**

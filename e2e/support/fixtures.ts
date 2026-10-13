@@ -157,7 +157,9 @@ AfterScenario(async ({ app, $testInfo }) => {
     locale: "en",
     keybindings: {},
     defaultModel: { claude: null, codex: null },
+    archive: { whenMerged: false, removeWorktree: false },
   })
+  await app.page.evaluate(() => localStorage.removeItem("kkcode.sidebarProjects"))
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
