@@ -17,7 +17,7 @@ type ReadyHistory = {
 
 export type ThreadHistory =
   /** `pending` holds pushes that arrive before the snapshot, which may or may not contain them. */
-  | { readonly status: "loading"; readonly pending: ReadonlyArray<TranscriptPush> }
+  | { readonly status: "loading"; readonly loadId: symbol; readonly pending: ReadonlyArray<TranscriptPush> }
   | { readonly status: "error"; readonly message: string }
   | ReadyHistory
 
@@ -59,10 +59,12 @@ export const useMessages = create<MessagesState>()((set, get) => {
     load: async (threadId) => {
       const current = get().byThread[threadId]
       if (current !== undefined && current.status !== "error") return
-      setHistory(threadId, () => ({ status: "loading", pending: [] }))
-      // An `unload` while the request was in flight wins: the result would only leak.
+      const loadId = Symbol(threadId)
+      setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
       const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
-        setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
+        setHistory(threadId, (history) =>
+          history?.status === "loading" && history.loadId === loadId ? update(history.pending) : history,
+        )
       try {
         const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
         settle((pending) =>
