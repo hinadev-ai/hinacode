@@ -425,6 +425,12 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "remote.pairing",
   "remote.rotateToken",
 ])
+/** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
+export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
+  "vm.screen.data",
+  "vm.screen.closed",
+  "fs.changed",
+])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
 export type RpcRequestEncoded<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Encoded"]

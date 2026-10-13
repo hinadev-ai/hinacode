@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http"
 import { Cause, Effect, Fiber, FiberHandle, Layer, Option, Schema, Stream } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
-import { desktopOnlyMethods, type RpcEnvelope } from "../../shared/contract.ts"
+import { desktopOnlyMethods, desktopOnlyPushes, type RpcEnvelope } from "../../shared/contract.ts"
 import type { Settings as SettingsValue } from "../../shared/domain.ts"
 import { ClientFrame, REMOTE_PATH, REMOTE_PROTOCOL_VERSION, type ServerFrame } from "../../shared/remote.ts"
 import { type AppServices, dispatch } from "../ipc.ts"
@@ -60,7 +60,11 @@ const make = Effect.gen(function* () {
     countConnected()
     const subscription = runFork(
       Effect.scoped(
-        broadcast.subscribe((event) => send(socket, { type: "event", event })).pipe(Effect.andThen(Effect.never)),
+        broadcast
+          .subscribe((event) => {
+            if (!desktopOnlyPushes.has(event.type)) send(socket, { type: "event", event })
+          })
+          .pipe(Effect.andThen(Effect.never)),
       ),
     )
     socket.on("close", () => {
