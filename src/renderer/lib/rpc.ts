@@ -264,6 +264,12 @@ export const accountLimitsAtom = Atom.make((get) => {
   return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
 })
 
+/** The downloaded release waiting to install, or null. Asked again when a download finishes. */
+export const updateReadyAtom = Atom.make((get) => {
+  get.addFinalizer(onPushEvent((event) => event.type === "update.ready" && get.refreshSelf()))
+  return call("updates.ready", undefined)
+})
+
 const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
 

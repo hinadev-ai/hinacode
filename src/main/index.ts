@@ -29,6 +29,7 @@ import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
+import * as Updates from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import icon from "../../assets/icon.png?asset"
 
@@ -77,7 +78,7 @@ const makeAppLayer = (dbPath: string, accountsRoot: string) => {
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  return Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
+  return Layer.mergeAll(Automations.layer, AutoArchive.layer, Updates.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
     Layer.provideMerge(agents),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, eventsLayer)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),

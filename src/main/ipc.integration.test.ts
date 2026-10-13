@@ -38,6 +38,7 @@ import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
+import { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
@@ -218,10 +219,11 @@ const providers = Layer.mergeAll(
   Layer.succeed(CodexProvider, scriptedProvider("codex")),
 )
 
-// Automations are not exercised here: their handlers only forward to the service.
+// Automations and Updates are not exercised here: their handlers only forward to the service.
 const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Service)
+const updatesStub = Layer.succeed(Updates, {} as typeof Updates.Service)
 
-/** The production composition from `index.ts`, with scripted agent providers and a stubbed Automations. */
+/** The production composition from `index.ts`, with scripted agent providers and stubbed Automations and Updates. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -242,7 +244,7 @@ const makeLayer = (dbPath: string) => {
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
-  const base = Layer.mergeAll(agents, automationsStub, logins)
+  const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins)
   return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
     Layer.provide(eventsLayer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),

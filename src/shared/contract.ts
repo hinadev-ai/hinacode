@@ -234,6 +234,11 @@ export const RpcMethods = {
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
+  /** The downloaded release version waiting to install, or null. */
+  "updates.ready": rpc(Schema.Void, Schema.NullOr(Schema.String)),
+  /** Quits, installs the downloaded release and relaunches. */
+  "updates.install": rpc(Schema.Void, Schema.Void),
+
   /**
    * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
    * reflects every transcript push up to and including `seq`, and none after.
@@ -433,6 +438,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
   /** Sent after the session's last `terminal.data`. */
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
+  /** A new release finished downloading and installs on restart. */
+  Schema.Struct({ type: Schema.Literal("update.ready"), version: Schema.String }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

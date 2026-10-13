@@ -639,6 +639,8 @@
   "status_bar_label": "狀態列",
   "usage_tokens": "{tokens} tokens",
   "usage_label": "此討論串已使用 {tokens} tokens",
+  "update_restart": "重新啟動以更新",
+  "update_ready_tooltip": "kkcode {version} 已可安裝",
   "usage_model": "模型",
   "usage_input": "輸入",
   "usage_cache_write": "快取寫入",
