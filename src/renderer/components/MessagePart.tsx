@@ -302,7 +302,9 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
     </>
   )
   if (diff === "")
-    return <div className="my-1 -mx-2 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    return (
+      <div className="my-1 -mx-2 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    )
   return (
     <Collapsible className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
