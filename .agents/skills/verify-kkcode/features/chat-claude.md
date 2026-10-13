@@ -16,7 +16,7 @@ For a manual simulation, launch with `KKCODE_MOCK_CLAUDE=usage-limit` and an iso
 - `approval` shows `Claude Code needs your approval` with `Allow`, `Allow for session`, `Deny` for Bash and edits, and the thread status `Awaiting approval`.
 - `interrupt` stops a running turn from `Stop` or `Ctrl+Shift+C`.
 - `model-switch` changes the model for the next turn from the composer `Model` select.
-- `effort-fast` the composer `Effort` select and `Fast` toggle (`aria-pressed`), shown only when the model supports them; switching to a model without them resets them.
+- `effort-fast` the composer `Effort` popover with its slider, and the `Fast` toggle (`aria-pressed`), shown only when the model supports them; switching to a model without them resets them.
 - `completions` typing `/` lists Claude commands and skills, `@` lists workspace files, in a listbox above the composer (`Commands` or `Files`); ArrowUp/ArrowDown move, `Enter` or `Tab` inserts, `Escape` closes.
 - `restore` shows the full history after a relaunch.
 - `resume` continues the same Claude session after a relaunch, with earlier context intact.
@@ -37,7 +37,7 @@ Preconditions:
 - `AB="agent-browser --session kkv-$PORT-chat-claude"`, connected, thread open.
 
 - **Completions (no turn).** Focus `Message` (`$AB focus 'textarea[aria-label=Message]'`) and `$AB keyboard type '@READ'`. `$AB wait '[role=listbox][aria-label=Files]'`; it lists `README.md`. Press `Enter`; the box reads `@README.md `. Clear it, type `/`, `$AB wait '[role=listbox][aria-label=Commands]'`, press `ArrowDown` (the `aria-selected` option moves), then `Escape`; the listbox closes and the text stays. Screenshot `chat-claude-00-completions.png` while a listbox is open. Clear the box.
-- **Effort and fast.** If `Effort` is shown, pick a level with the keyboard (`$AB focus 'button[aria-label="Effort"]'`, `Enter`, `ArrowDown`, `Enter`); `threads.list` shows the thread's `effort`. If `Fast` is shown, click it; `aria-pressed` turns `true` and `threads.list` shows `"fastMode": true`. Report a control as not shown when the model lacks it, not as a failure.
+- **Effort and fast.** If `Effort` is shown, open it (`$AB click 'button[aria-label="Effort"]'`), then step the slider with the keyboard (`$AB focus 'input[aria-label="Effort"]'`, `ArrowRight`); `threads.list` shows the thread's `effort`. If `Fast` is shown, click it; `aria-pressed` turns `true` and `threads.list` shows `"fastMode": true`. Report a control as not shown when the model lacks it, not as a failure.
 - **Send and stream.** Run `$AB find role combobox fill --name "Message" "Reply with the single word: pong"` and `$AB press Enter`. Take `chat-claude-01-streaming.png` immediately: the header status reads `Running` and a `Thinking…` or partial reply is visible. `$AB wait --text "pong"`, then the header returns to `Idle`. Screenshot `chat-claude-02-reply.png`.
 - **Approval.** Send `Use the Bash tool to run: echo approved > approved.txt`. `$AB wait --text "Claude Code needs your approval"`. The card shows the command; the header reads `Awaiting approval`. Screenshot `chat-claude-03-approval.png`. Run `$AB find role button click --name "Allow" --exact`. The Bash tool row turns `Done`, and `cat $DATA/repo/approved.txt` prints `approved`.
 - **Deny.** Send `Use the Bash tool to run: rm README.md`, wait for the card, click `Deny`. The row ends `Failed` or the reply says it was denied, and `$DATA/repo/README.md` still exists.

@@ -1,9 +1,11 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
+import { Slider } from "@base-ui/react/slider"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useMemo, useState } from "react"
 import type { IconType } from "react-icons"
 import {
+  RiArrowDownSLine,
   RiBrainLine,
   RiFlashlightLine,
   RiGitBranchLine,
@@ -34,6 +36,7 @@ import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { Input } from "./ui/input.tsx"
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "./ui/popover.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -176,41 +179,142 @@ const effortLabels: Record<string, () => string> = {
 }
 const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
 
-const DEFAULT_EFFORT = "default"
-
-/** Shown only for models with effort control. */
+/** Shown only for models that offer a choice of effort. */
 export function EffortPicker({ thread, onError }: ControlProps) {
   const { current } = useThreadModels(thread)
-  if (current === undefined || current.efforts.length === 0) return null
-  const defaultLabel = current.defaultEffort
-    ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
-    : m.thread_effort_default()
-  const items = [
-    { value: DEFAULT_EFFORT, label: defaultLabel },
-    ...current.efforts.map((effort) => ({ value: effort, label: effortLabel(effort) })),
-  ]
+  if (current === undefined || current.efforts.length < 2) return null
+  const label =
+    thread.effort !== null
+      ? effortLabel(thread.effort)
+      : current.defaultEffort
+        ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
+        : m.thread_effort_default()
 
   return (
-    <Select
-      items={items}
-      value={thread.effort ?? DEFAULT_EFFORT}
-      onValueChange={(value) => {
-        const effort = value === DEFAULT_EFFORT ? null : value
-        if (value !== null && effort !== thread.effort) void update({ id: thread.id, effort }, onError)
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label={m.thread_effort_picker()}
+            className={`gap-1.5 ${triggerClass}`}
+          >
+            <RiBrainLine aria-hidden />
+            {label}
+            <RiArrowDownSLine aria-hidden className="size-4" />
+          </Button>
+        }
+      />
+      <PopoverContent side="top" align="start" sideOffset={6} className="gap-3 p-3">
+        <div className="flex h-6 items-center gap-2">
+          <PopoverTitle className="text-muted-foreground">{m.thread_effort_picker()}</PopoverTitle>
+          <span className="font-medium text-syntax-token">
+            {thread.effort === null && !current.defaultEffort ? m.thread_effort_default_mark() : label}
+          </span>
+          {thread.effort !== null && (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="ml-auto text-muted-foreground"
+              onClick={() => void update({ id: thread.id, effort: null }, onError)}
+            >
+              {m.thread_effort_reset()}
+            </Button>
+          )}
+        </div>
+        <EffortSlider
+          model={current}
+          effort={thread.effort}
+          onCommit={(effort) => update({ id: thread.id, effort }, onError)}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * Steps through the model's efforts. Landing on the model's default stores null, so the thread keeps following
+ * the model's default. With no effort set and no known default, the thumb stays hidden until it gets focus,
+ * because any position would claim a level the agent never reported.
+ */
+function EffortSlider({
+  model,
+  effort,
+  onCommit,
+}: {
+  model: ModelInfo
+  effort: string | null
+  onCommit: (effort: string | null) => Promise<void>
+}) {
+  const { efforts, defaultEffort } = model
+  const last = efforts.length - 1
+  const defaultIndex = defaultEffort === null ? -1 : efforts.indexOf(defaultEffort)
+  const savedIndex = efforts.indexOf(effort ?? defaultEffort ?? "")
+  const savedPosition = savedIndex === -1 ? Math.floor(last / 2) : savedIndex
+  // Only holds a position that differs from the saved one, so it never outlives an uncommitted drag.
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const unset = dragIndex === null && savedIndex === -1
+  const shownIndex = dragIndex ?? savedPosition
+  // Base UI's edge alignment keeps the thumb's center within half a thumb (0.75rem) of either end.
+  const at = (step: number) => `calc(0.75rem + ${step / last} * (100% - 1.5rem))`
+
+  return (
+    <Slider.Root
+      value={shownIndex}
+      min={0}
+      max={last}
+      thumbAlignment="edge"
+      onValueChange={(value) => setDragIndex(value === savedPosition ? null : value)}
+      onValueCommitted={async (value) => {
+        await onCommit(value === defaultIndex ? null : (efforts[value] ?? null))
+        setDragIndex(null)
       }}
+      className="flex flex-col gap-1.5"
     >
-      <SelectTrigger size="sm" aria-label={m.thread_effort_picker()} className={triggerClass}>
-        <RiBrainLine aria-hidden />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>{m.thread_effort_faster()}</span>
+        <span>{m.thread_effort_smarter()}</span>
+      </div>
+      <Slider.Control className="relative h-9 cursor-pointer touch-none rounded-lg bg-muted select-none">
+        <Slider.Track className="h-full overflow-hidden rounded-lg">
+          {!unset && (
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-syntax-token/15 bg-[radial-gradient(circle,var(--color-syntax-token)_1px,transparent_1.5px)] bg-size-[5px_5px] mask-[linear-gradient(to_right,transparent,black)]"
+              style={{ clipPath: `inset(0 calc(100% - ${at(shownIndex)}) 0 0)` }}
+            />
+          )}
+          {efforts.map((step, i) => (
+            <span
+              key={step}
+              aria-hidden
+              data-default={i === defaultIndex || undefined}
+              className="absolute top-1/2 size-1 -translate-1/2 rounded-full bg-foreground/25 data-default:h-3 data-default:w-0.5 data-default:bg-foreground/50"
+              style={{ left: at(i) }}
+            />
+          ))}
+        </Slider.Track>
+        <Slider.Thumb
+          aria-label={m.thread_effort_picker()}
+          getAriaValueText={(_, value) => (unset ? m.thread_effort_default() : effortLabel(efforts[value] ?? ""))}
+          data-unset={unset || undefined}
+          className="top-1/2 h-7 w-6 rounded-md bg-background shadow-sm ring-1 ring-foreground/15 dark:bg-foreground outline-none has-focus-visible:ring-3 has-focus-visible:ring-ring/50 data-unset:opacity-0 data-unset:has-focus-visible:opacity-100"
+        />
+      </Slider.Control>
+      {defaultIndex !== -1 && (
+        <div className="relative h-4 text-xs text-muted-foreground">
+          <span
+            className="absolute whitespace-nowrap"
+            style={{ left: `${(defaultIndex / last) * 100}%`, translate: `-${(defaultIndex / last) * 100}%` }}
+          >
+            {m.thread_effort_default_mark()}
+          </span>
+        </div>
+      )}
+    </Slider.Root>
   )
 }
 

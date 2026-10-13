@@ -66,7 +66,7 @@ $AB screenshot "$SHOTS/<feature>-<step>.png"
 
 Run `agent-browser skills get electron` once if you have not used agent-browser with Electron before. Always pass `--session`: the default session is shared with other agents.
 
-Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), comboboxes `Agent` / `Model` / `Effort` / `Access`, group `Workspace` with checkbox `Worktree` and combobox `Branch or pull request`, toggle `Fast`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
+Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), comboboxes `Agent` / `Model` / `Access`, button `Effort` that opens a popover with slider `Effort`, group `Workspace` with checkbox `Worktree` and combobox `Branch or pull request`, toggle `Fast`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
 
 Rules that came out of real runs:
 
