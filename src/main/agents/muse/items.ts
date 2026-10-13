@@ -25,13 +25,20 @@ export const toolInput = (args: string | undefined): unknown => {
   }
 }
 
-/** `bash` reports a JSON receipt whose `output` is what the command printed. Other tools report text. */
+/**
+ * `bash` reports a JSON receipt whose `output` is what the command printed. Other tools report text. A call that was
+ * stopped or rejected usually printed nothing, so its row says why it ended instead.
+ */
 export const toolResult = (item: Item, streamed: string | undefined): { output: unknown; isError: boolean } => {
-  const visible = item.visibleOutput ?? streamed ?? item.failureReason ?? item.status
+  const visible = item.visibleOutput ?? streamed ?? ""
   const receipt = toolInput(visible)
-  const output = Predicate.isObject(receipt) && typeof receipt.output === "string" ? receipt.output : visible
+  const printed = Predicate.isObject(receipt) && typeof receipt.output === "string" ? receipt.output : visible
   const exitCode = Predicate.isObject(receipt) ? receipt.exit_code : undefined
-  return { output, isError: item.status !== "completed" || (typeof exitCode === "number" && exitCode !== 0) }
+  const completed = item.status === "completed"
+  return {
+    output: printed === "" && !completed ? (item.failureReason ?? `Tool ${item.status}`) : printed,
+    isError: !completed || (typeof exitCode === "number" && exitCode !== 0),
+  }
 }
 
 const editTools = new Set(["write_file", "edit_file"])
