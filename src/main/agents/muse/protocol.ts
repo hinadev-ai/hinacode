@@ -5,6 +5,7 @@ export type {
   ApprovalMode,
   ApprovalRequestParams,
   ApprovalResolvedParams,
+  ApprovalUpdatedParams,
   Item,
   ItemCompletedParams,
   ItemDeltaParams,

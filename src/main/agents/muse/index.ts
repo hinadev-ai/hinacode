@@ -24,6 +24,7 @@ import {
   type ApprovalMode,
   type ApprovalRequestParams,
   type ApprovalResolvedParams,
+  type ApprovalUpdatedParams,
   type Item,
   type ItemCompletedParams,
   type ItemDeltaParams,
@@ -94,13 +95,20 @@ type Run = {
   turnId?: string
 }
 
-/** A pending Muse approval. Muse asks once per stage of a compound command; the user's one answer covers them all. */
+/**
+ * A pending Muse approval. Muse asks once per stage of a compound command, and the user's one answer covers them
+ * all: Muse 1.4.7 moves to the next stage with an `approval/updated`, not the re-issued `approval/request` MSP's
+ * reference describes, so both lead here.
+ */
 interface Approval {
   readonly id: string
+  /** The latest choices and current stage. */
   params: ApprovalRequestParams
   decision: ApprovalDecision | undefined
   /** False when a session grant answered it without asking. */
   presented: boolean
+  /** The stage answered last, so no stage is answered twice. */
+  answered: number | undefined
 }
 
 const grantKey = (scope: SessionScope) => JSON.stringify([scope.tool, scope.kind, scope.value])
@@ -318,6 +326,9 @@ const make = Effect.gen(function* () {
 
           const decide = (approval: Approval, decision: ApprovalDecision) =>
             Effect.gen(function* () {
+              const stage = approval.params.currentRequirementId.sourceIndex
+              if (approval.answered === stage) return
+              approval.answered = stage
               const choice = choiceFor(decision, approval.params.availableChoices)
               if (choice === undefined) {
                 return yield* Effect.logWarning("Muse offered no choice for the decision", decision)
@@ -355,11 +366,16 @@ const make = Effect.gen(function* () {
               const known = pendingApprovals.get(params.approvalId)
               if (known !== undefined) {
                 known.params = params
-                // The next stage of a command the user already answered.
                 if (known.decision !== undefined) yield* decide(known, known.decision)
                 return
               }
-              const approval: Approval = { id: randomUUID(), params, decision: undefined, presented: false }
+              const approval: Approval = {
+                id: randomUUID(),
+                params,
+                decision: undefined,
+                presented: false,
+                answered: undefined,
+              }
               pendingApprovals.set(params.approvalId, approval)
               if (threadGrants.has(grantKey(sessionScope(params)))) {
                 approval.decision = "allow"
@@ -380,6 +396,15 @@ const make = Effect.gen(function* () {
                 }),
                 Effect.forkScoped,
               )
+            })
+
+          const updateApproval = (params: ApprovalUpdatedParams) =>
+            Effect.gen(function* () {
+              const known = pendingApprovals.get(params.approvalId)
+              if (known === undefined) return
+              const { availableChoices, currentRequirementId, subject } = params
+              known.params = { ...known.params, availableChoices, currentRequirementId, subject }
+              if (known.decision !== undefined) yield* decide(known, known.decision)
             })
 
           const resolveApproval = ({ approvalId }: ApprovalResolvedParams) =>
@@ -556,6 +581,9 @@ const make = Effect.gen(function* () {
                   return false
                 case "item/completed":
                   yield* onCompleted((message.params as ItemCompletedParams).item)
+                  return false
+                case "approval/updated":
+                  yield* updateApproval(message.params as ApprovalUpdatedParams)
                   return false
                 case "approval/resolved":
                   yield* resolveApproval(message.params as ApprovalResolvedParams)
