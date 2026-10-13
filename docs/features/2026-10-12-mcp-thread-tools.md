@@ -44,7 +44,7 @@ Both tools run on the built-in MCP server, so the calling thread comes from the 
 An agent that started threads needs to follow up on them, so four more tools sit next to `create_thread`:
 
 - `list_threads` returns the non-archived threads of the caller's project as JSON, with status, provider, model, `created_by`, the worktree branch, and `self` on the caller.
-- `read_thread({ threadId, limit? })` returns the status, any pending approval, question or secret request, and the last `limit` messages (20 by default, at most 100) as plain text. Reasoning is left out.
+- `read_thread({ threadId, limit? })` returns the status, the metadata listed in `2026-10-14-thread-mentions.md`, any pending approval, question or secret request, and the last `limit` messages (20 by default, at most 100) as plain text. Reasoning is left out.
 - `send_to_thread({ threadId, prompt })` steers a busy thread and starts a turn on an idle one, and says which it did.
 - `stop_thread({ threadId })` interrupts the thread's turn.
 
