@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { createConnection } from "node:net"
+import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
@@ -935,6 +935,7 @@ const phone = (port: number) => {
     event: (predicate: (event: PushEvent) => boolean) =>
       until(() => frames.find((f) => f.type === "event" && predicate(f.event as PushEvent))),
     closed: () => until(() => closed ?? undefined),
+    opened,
     socket,
   }
 }
@@ -991,6 +992,35 @@ describe("remote mode", () => {
     const stale = phone(port)
     await stale.send({ type: "auth", token: before.token })
     expect((await stale.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+  })
+
+  test("turning remote off closes a socket that has not authenticated yet", async () => {
+    const pending = phone(port)
+    await pending.opened
+    result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
+    await pending.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await pending.closed()).code).toBe(RemoteServer.CLOSE_LISTENER_STOPPED)
+
+    result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+  })
+
+  test("a port already in use is reported as a listen error", async () => {
+    const occupied = createServer()
+    await new Promise<void>((resolve) => occupied.listen(0, "127.0.0.1", resolve))
+    const busyPort = (occupied.address() as AddressInfo).port
+    try {
+      result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port: busyPort } }))
+      await vi.waitFor(async () =>
+        expect(result(await invoke("remote.status", undefined)).listenError).toMatch(/EADDRINUSE/),
+      )
+      expect(result(await invoke("remote.status", undefined)).listening).toBe(false)
+    } finally {
+      occupied.close()
+      result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+      await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+    }
   })
 
   test("turning remote off releases the port and turning it back on listens again", async () => {
