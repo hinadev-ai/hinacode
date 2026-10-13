@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, watch, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
@@ -109,11 +109,8 @@ const withRepo = <A, E>(
       Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )
-    // The project is added through a symlink, as macOS's /var or a linked code folder would be, while git
-    // reports worktree paths fully resolved.
-    mkdirSync(join(dir, "real"))
-    symlinkSync(join(dir, "real"), join(dir, "linked"))
-    const root = join(dir, "linked", "repo")
+    // Unresolved on purpose. macOS's temp dir goes through the /var symlink, and git reports resolved paths.
+    const root = join(dir, "repo")
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
     const dbPath = join(dir, "kkcode.sqlite")
