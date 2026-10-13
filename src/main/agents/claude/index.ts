@@ -23,7 +23,6 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { resolveBinaryOnce } from "../binary.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
@@ -73,6 +72,7 @@ interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
   readonly home: AccountHome | null
+  readonly instructions: string
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly query: Query
@@ -333,7 +333,7 @@ export const layer = Layer.effect(
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
-                systemPrompt: { type: "preset", preset: "claude_code", append: AGENT_INSTRUCTIONS },
+                systemPrompt: { type: "preset", preset: "claude_code", append: input.instructions },
                 permissionMode: mode,
                 // Lets a live session switch to full access; the mode above decides what runs unasked.
                 allowDangerouslySkipPermissions: true,
@@ -363,6 +363,7 @@ export const layer = Layer.effect(
           threadId: input.threadId,
           cwd: input.cwd,
           home: input.home,
+          instructions: input.instructions,
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
@@ -392,7 +393,12 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (existing.cwd === input.cwd && sameHome(existing.home, input.home)) return existing
+          if (
+            existing.cwd === input.cwd &&
+            sameHome(existing.home, input.home) &&
+            existing.instructions === input.instructions
+          )
+            return existing
           yield* closeSession(existing)
         }
         return yield* startSession(input)

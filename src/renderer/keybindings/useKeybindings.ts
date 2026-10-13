@@ -5,7 +5,16 @@ import { AsyncResult } from "effect/reactivity"
 import { useMemo } from "react"
 import { projectsAtom, updateSettingsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
-import { type Command, type CommandContext, commands, type Keymap, resolveKeymap, sameChord } from "./commands.ts"
+import type { ExperimentalSettings } from "../../shared/domain.ts"
+import {
+  type Command,
+  type CommandContext,
+  commands,
+  isCommandAvailable,
+  type Keymap,
+  resolveKeymap,
+  sameChord,
+} from "./commands.ts"
 import { isTerminalKey } from "./terminalScope.ts"
 
 /** The user's effective keymap: command id -> normalized chord, "" when unbound. */
@@ -18,8 +27,9 @@ export const useKeymap = (): Keymap => {
  * One binding per chord, first command in registry order winning, so a chord bound twice runs one
  * command as the keybindings page warns.
  */
-const bindings = (keymap: Keymap) =>
+const bindings = (keymap: Keymap, experimental: ExperimentalSettings) =>
   commands.reduce<Array<{ hotkey: Hotkey; command: Command }>>((bound, command) => {
+    if (!isCommandAvailable(command, experimental)) return bound
     const hotkey = keymap[command.id]
     if (hotkey && !bound.some((binding) => sameChord(binding.hotkey, hotkey))) bound.push({ hotkey, command })
     return bound
@@ -31,9 +41,10 @@ export const useCommandContext = (): CommandContext => {
   const { threadId = null } = useParams({ strict: false })
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const { experimental } = useSettings()
   return useMemo(
-    () => ({ navigate, threadId, projects, updateSettings }),
-    [navigate, threadId, projects, updateSettings],
+    () => ({ navigate, threadId, projects, updateSettings, experimental }),
+    [navigate, threadId, projects, updateSettings, experimental],
   )
 }
 
@@ -47,7 +58,7 @@ export function useKeybindings() {
   const ctx = useCommandContext()
 
   useHotkeys(
-    bindings(keymap).map(({ hotkey, command }) => ({
+    bindings(keymap, ctx.experimental).map(({ hotkey, command }) => ({
       hotkey,
       callback: (event) => {
         if (isTerminalKey(event)) return

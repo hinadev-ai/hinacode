@@ -88,13 +88,19 @@ const toolIcons: Record<string, IconType> = {
   WebSearch: RiGlobalLine,
 }
 
+const field = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
+
 /** Tool results are a string or a list of content blocks; only the text blocks are worth showing. */
 export function formatOutput(output: unknown): string {
   if (typeof output === "string") return output
-  if (Array.isArray(output)) {
-    return output
+  // Codex wraps an MCP tool's result in `{ content: [...] }`.
+  const content = Array.isArray(output) ? output : field(output, "content")
+  if (Array.isArray(content)) {
+    return content
       .map((block: unknown) => {
-        const text: unknown = typeof block === "object" && block !== null ? Reflect.get(block, "text") : undefined
+        if (field(block, "type") === "image") return m.tool_output_image()
+        const text = field(block, "text")
         return typeof text === "string" ? text : JSON.stringify(block)
       })
       .join("\n")

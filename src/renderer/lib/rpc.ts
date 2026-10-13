@@ -1,8 +1,8 @@
 import { Effect, Schedule, Schema, Stream } from "effect"
-import { Atom } from "effect/reactivity"
+import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
-import type { Thread } from "../../shared/domain.ts"
+import type { Thread, ThreadVm } from "../../shared/domain.ts"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   tag: Schema.String,
@@ -231,6 +231,24 @@ export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("se
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
 )
+
+/** The thread's tiny VM, kept current by `vm.updated`. A push that lands before `vm.get` answers wins over it. */
+export const threadVmAtom = Atom.family((threadId: string) =>
+  Atom.make((get) => {
+    let pushed: ThreadVm | undefined
+    get.addFinalizer(
+      onPushEvent((event) => {
+        if (event.type !== "vm.updated" || event.threadId !== threadId) return
+        pushed = event.vm
+        get.setSelf(AsyncResult.success(event.vm))
+      }),
+    )
+    return Effect.map(call("vm.get", { threadId }), (fetched) => pushed ?? fetched)
+  }),
+)
+
+/** Whether kkcode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
+export const vmHostAtom = Atom.make(call("vm.host", undefined))
 
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
 

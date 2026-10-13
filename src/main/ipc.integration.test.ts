@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
@@ -37,6 +37,7 @@ import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
+import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -218,7 +219,8 @@ const makeLayer = (dbPath: string) => {
     Search.layer,
     Files.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const tinyVm = TinyVm.layer({ configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} })
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, tinyVm).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),

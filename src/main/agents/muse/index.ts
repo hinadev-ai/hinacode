@@ -13,7 +13,6 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { resolveBinary } from "../binary.ts"
 import { elementContext } from "../elementContext.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
@@ -301,7 +300,7 @@ const make = Effect.gen(function* () {
             .command<TurnStartResult>("turn/start", {
               sessionId,
               // MSP has no developer instructions, so kkcode's ride in front of the prompt. Muse shows `displayText`.
-              input: [textPart(AGENT_INSTRUCTIONS), ...prompt],
+              input: [textPart(input.instructions), ...prompt],
               displayText: input.prompt,
               ...(input.effort === null ? {} : { reasoningEffort: input.effort }),
             })

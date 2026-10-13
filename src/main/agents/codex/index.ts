@@ -17,7 +17,6 @@ import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { resolveBinary, resolveBinaryOnce } from "../binary.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
@@ -316,7 +315,7 @@ const make = Effect.gen(function* () {
                 kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
               },
             },
-            developerInstructions: AGENT_INSTRUCTIONS,
+            developerInstructions: input.instructions,
           } satisfies ThreadStartParams
           const { thread, sandbox } = input.resumeSessionId
             ? yield* client.request<ThreadStartResponse>("thread/resume", {
