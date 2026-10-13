@@ -30,21 +30,22 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 import {
-  RiCheckboxCircleLine,
-  RiCheckLine,
+  RiArchiveLine,
   RiDeleteBinLine,
   RiDraggable,
   RiErrorWarningLine,
   RiGitBranchLine,
+  RiInboxUnarchiveLine,
   RiMoreFill,
   RiPencilLine,
   RiStackLine,
 } from "react-icons/ri"
-import { useShallow } from "zustand/react/shallow"
-import type { PullRequestLink, Thread, ThreadStatus } from "../../shared/domain.ts"
+import { toast } from "sonner"
+import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
+import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -53,7 +54,7 @@ import { usePullRequests } from "../stores/pullRequests.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { SettleDialog, useActiveWorktree } from "./SettleDialog.tsx"
+import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,7 +70,6 @@ import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -118,16 +118,19 @@ const sensors = [
 
 interface SidebarThreadListProps {
   readonly projectId: string
+  /** The rows to show, already narrowed to the sidebar's tab and filter. */
+  readonly threads: ReadonlyArray<Thread>
+  /** Only a project's full list of active threads can be reordered, since a drop saves every row's position. */
+  readonly reorderable: boolean
   /** Takes focus after a delete leaves the project without threads. */
   readonly newThreadButtonRef: RefObject<HTMLButtonElement | null>
 }
 
-/** Threads of one project in their saved order, reorderable by drag. */
-export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThreadListProps) {
-  const threads = useThreads(useShallow(selectProjectThreads(projectId)))
+/** Threads of one project, reorderable by drag when the list is complete. */
+export function SidebarThreadList({ projectId, threads, reorderable, newThreadButtonRef }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
-  // The deleted row takes the focused element with it; keep focus in the list instead of on <body>.
-  const focusAfterDelete = () => firstRowRef.current ?? newThreadButtonRef.current
+  // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
+  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef.current
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
     () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(projectId)],
@@ -162,14 +165,14 @@ export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThre
         sensors={sensors}
         onDragStart={() => setAnimate(false)}
         onDragEnd={(event) => {
-          if (!event.canceled) void save(move(threads, event))
+          if (!event.canceled) void save(move([...threads], event))
           // dnd-kit is still playing its drop animation here; resuming auto-animate now makes both
           // libraries move the same rows and the dropped row slides twice.
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
         <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5 pl-5">
-          {threads.length === 0 && (
+          {threads.length === 0 && reorderable && (
             <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
@@ -178,8 +181,9 @@ export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThre
               thread={thread}
               index={index}
               group={projectId}
+              reorderable={reorderable}
               linkRef={index === 0 ? firstRowRef : undefined}
-              focusAfterDelete={focusAfterDelete}
+              focusAfterRemoval={focusAfterRemoval}
             />
           ))}
         </ul>
@@ -193,27 +197,51 @@ export function SidebarThreadList({ projectId, newThreadButtonRef }: SidebarThre
   )
 }
 
-type RowMode = "idle" | "renaming" | "settle" | "delete"
+type RowMode = "idle" | "renaming" | "archive" | "delete"
 
 interface ThreadRowProps {
   readonly thread: Thread
   readonly index: number
   readonly group: string
+  readonly reorderable: boolean
   readonly linkRef: RefObject<HTMLAnchorElement | null> | undefined
-  readonly focusAfterDelete: () => HTMLElement | null
+  readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRowProps) {
-  const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group })
+function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemoval }: ThreadRowProps) {
+  const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
   // Menu items queue their mode and apply it once the menu has closed and handed focus back.
   const [queued, setQueued] = useState<RowMode | null>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const worktree = useActiveWorktree(thread)
-  const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  const canSettle = thread.status !== "settled" || worktree !== undefined
+  const { archive: archiveSettings } = useSettings()
+  const busy = isThreadBusy(thread.status)
+  const archived = thread.status === "archived"
+  // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
+  const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread)
+
+  // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
+  const moveOut = (updated: Thread) => {
+    flushSync(() => useThreads.getState().upsert(updated))
+    if (document.activeElement === document.body) focusAfterRemoval()?.focus()
+  }
+  const archive = async () => {
+    try {
+      moveOut(await callPromise("threads.archive", { threadId: thread.id }))
+    } catch (cause) {
+      toast.error(m.sidebar_archive_failed({ message: errorMessage(cause) }))
+    }
+  }
+  const unarchive = async () => {
+    try {
+      moveOut(await callPromise("threads.unarchive", { threadId: thread.id }))
+    } catch (cause) {
+      toast.error(m.sidebar_unarchive_failed({ message: errorMessage(cause) }))
+    }
+  }
 
   const queue = (next: RowMode) => () => setQueued(next)
   const closeDialog = (open: boolean) => {
@@ -227,7 +255,9 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
 
   return (
     <li
-      ref={ref}
+      // dnd-kit decorates the handle, or the row when there is none, as a button. Without a handle the
+      // row would read as a disabled button, so it only gets the row while the handle is there.
+      ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
       className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
@@ -245,33 +275,44 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
             setMenuOpen(true)
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
-          className="flex cursor-grab items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring"
+          data-reorderable={reorderable}
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
           <ProviderIcon provider={thread.provider} />
-          <span
-            className="min-w-0 flex-1 truncate text-[0.9375rem] data-[settled=true]:text-muted-foreground"
-            data-settled={thread.status === "settled"}
-            title={thread.title}
-          >
+          <span className="min-w-0 flex-1 truncate text-[0.9375rem]" title={thread.title}>
             {thread.title}
           </span>
-          {thread.status === "settled" ? <SettledMark /> : <StatusIndicator status={thread.status} />}
+          <StatusIndicator status={thread.status} />
         </Link>
       )}
       <ThreadMeta {...meta} />
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
-          <Button
-            ref={handleRef}
-            variant="ghost"
-            size="icon-xs"
-            aria-label={m.sidebar_thread_reorder({ title: thread.title })}
-            aria-roledescription={m.sidebar_thread_reorder_role()}
-            className="cursor-grab"
-          >
-            <RiDraggable aria-hidden />
-          </Button>
+          {archived ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
+              title={m.sidebar_thread_unarchive()}
+              onClick={() => void unarchive()}
+            >
+              <RiInboxUnarchiveLine aria-hidden />
+            </Button>
+          ) : (
+            reorderable && (
+              <Button
+                ref={handleRef}
+                variant="ghost"
+                size="icon-xs"
+                aria-label={m.sidebar_thread_reorder({ title: thread.title })}
+                aria-roledescription={m.sidebar_thread_reorder_role()}
+                className="cursor-grab"
+              >
+                <RiDraggable aria-hidden />
+              </Button>
+            )
+          )}
           <DropdownMenu
             open={menuOpen}
             onOpenChange={setMenuOpen}
@@ -294,10 +335,15 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
                 <RiPencilLine aria-hidden />
                 {m.sidebar_thread_rename()}
               </DropdownMenuItem>
-              {canSettle && (
-                <DropdownMenuItem disabled={busy} onClick={queue("settle")}>
-                  <RiCheckboxCircleLine aria-hidden />
-                  {m.sidebar_thread_settle()}
+              {archived ? (
+                <DropdownMenuItem onClick={() => void unarchive()}>
+                  <RiInboxUnarchiveLine aria-hidden />
+                  {m.sidebar_thread_unarchive()}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem disabled={busy} onClick={archiveDeletes ? queue("archive") : () => void archive()}>
+                  <RiArchiveLine aria-hidden />
+                  {archiveDeletes ? m.sidebar_thread_archive_confirm() : m.sidebar_thread_archive()}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem variant="destructive" disabled={busy} onClick={queue("delete")}>
@@ -309,12 +355,20 @@ function ThreadRow({ thread, index, group, linkRef, focusAfterDelete }: ThreadRo
         </div>
       )}
 
-      <SettleDialog thread={thread} open={mode === "settle"} onOpenChange={closeDialog} />
+      {worktree && (
+        <ArchiveDialog
+          thread={thread}
+          worktree={worktree}
+          open={mode === "archive"}
+          onOpenChange={closeDialog}
+          onArchived={moveOut}
+        />
+      )}
       <DeleteThreadDialog
         thread={thread}
         open={mode === "delete"}
         onOpenChange={closeDialog}
-        focusAfterDelete={focusAfterDelete}
+        focusAfterDelete={focusAfterRemoval}
       />
     </li>
   )
@@ -459,18 +513,6 @@ function StatusIndicator({ status }: { status: ThreadStatus }): ReactNode {
       <span aria-hidden className={`size-2 rounded-full ${dot.className}`} />
       <span className="sr-only">{dot.label()}</span>
     </span>
-  )
-}
-
-function SettledMark() {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="flex shrink-0 items-center text-muted-foreground" />}>
-        <RiCheckLine aria-hidden className="size-3.5" />
-        <span className="sr-only">{m.sidebar_thread_settled()}</span>
-      </TooltipTrigger>
-      <TooltipContent>{m.sidebar_thread_settled()}</TooltipContent>
-    </Tooltip>
   )
 }
 

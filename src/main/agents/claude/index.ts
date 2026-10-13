@@ -15,6 +15,7 @@ import { Cache, Cause, Context, Duration, Effect, Layer, Queue, Schema, Stream }
 import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { permissionMode } from "./access.ts"

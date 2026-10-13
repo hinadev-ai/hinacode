@@ -2,7 +2,7 @@
 // Usage: measure.mjs <cdp-port> <label> <scenario> [args...]
 //   switch <threadId...>        click each sidebar thread link in turn, 3 rounds; time to painted transcript + heap
 //   scroll <threadId>           open the thread, scroll bottom->top->bottom one step per frame; frame times + heap
-//   settle <threadId>           time the threads.settle rpc, and the latency of a cheap rpc while it runs
+//   archive <threadId>          turn on worktree removal, time the threads.archive rpc, and the latency of a cheap rpc while it runs
 // Writes results/<label>-<scenario>.json under .context/perf/.
 import { mkdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
@@ -157,23 +157,24 @@ if (scenario === "switch") {
     longTasks: run.longTasks.length,
   }
   results.heapAfter = await heap()
-} else if (scenario === "settle") {
+} else if (scenario === "archive") {
   const r = await evaluate(`(async () => {
     const probes = []
     const t0 = performance.now()
-    const settle = window.kkcode.rpc("threads.settle", { threadId: ${JSON.stringify(args[0])} })
+    await window.kkcode.rpc("settings.set", { archive: { whenMerged: false, removeWorktree: true } })
+    const archive = window.kkcode.rpc("threads.archive", { threadId: ${JSON.stringify(args[0])} })
     let done = false
-    settle.finally(() => { done = true })
+    archive.finally(() => { done = true })
     while (!done) {
       const p0 = performance.now()
       await window.kkcode.rpc("settings.get", undefined)
       probes.push(performance.now() - p0)
       await new Promise((r) => setTimeout(r, 100))
     }
-    const envelope = await settle
+    const envelope = await archive
     return { ms: performance.now() - t0, probes, envelope }
   })()`)
-  results.settleMs = +r.ms.toFixed(0)
+  results.archiveMs = +r.ms.toFixed(0)
   results.probeMaxMs = +Math.max(0, ...r.probes).toFixed(1)
   results.probeCount = r.probes.length
   results.envelope = r.envelope

@@ -2,12 +2,14 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
+import { isOwnPart } from "../lib/subagents.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { groupCommands } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { AttachmentView } from "./AttachmentView.tsx"
-import { Highlighted } from "./FindHighlight.tsx"
+import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { MessagePartView } from "./MessagePart.tsx"
+import { CommandGroup, MessagePartView } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 
@@ -98,23 +100,24 @@ function MessageBody({ message }: { message: Message }) {
         )}
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap text-secondary-foreground">
-            {linkify(text, repository).map((segment, index) =>
-              segment.type === "link" ? (
-                <WebLink key={index} href={segment.href}>
-                  <Highlighted text={segment.text} />
-                </WebLink>
-              ) : (
-                <Highlighted key={index} text={segment.text} />
-              ),
-            )}
+            <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
+              {linkify(text, repository).map((segment, index) =>
+                segment.type === "link" ? (
+                  <WebLink key={index} href={segment.href}>
+                    <Highlighted text={segment.text} />
+                  </WebLink>
+                ) : (
+                  <Highlighted key={index} text={segment.text} />
+                ),
+              )}
+            </FindPartContext>
           </div>
         )}
       </article>
     )
   }
   const streaming = message.completedAt === null
-  // A sub-agent's calls belong to its own view, opened from the call that spawned it.
-  const parts = message.parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined)
+  const parts = message.parts.filter(isOwnPart)
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const last = parts.at(-1)
@@ -125,21 +128,29 @@ function MessageBody({ message }: { message: Message }) {
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {parts.map((part, index) =>
-        // Parts only ever get appended or updated in place, so the index is a stable key.
-        part.type === "text" ? (
-          <ReplyText key={index} text={part.text} done={!(writing && index === parts.length - 1)} />
-        ) : part.type === "questions" && message.id === lastMessageId ? (
-          <PostedQuestionsCard
-            key={index}
-            threadId={message.threadId}
-            questions={part.questions}
-            providerLabel={providerLabel}
-          />
-        ) : (
-          <MessagePartView key={index} part={part} />
-        ),
-      )}
+      {groupCommands(parts).map((block) => {
+        // Parts only ever get appended or updated in place, so the first part's index is a stable key.
+        const { index } = block
+        if (block.type === "commands") {
+          return <CommandGroup key={index} messageId={message.id} index={index} calls={block.calls} />
+        }
+        const { part } = block
+        return (
+          <FindPartContext key={index} value={index}>
+            {part.type === "text" ? (
+              <ReplyText text={part.text} done={!(writing && index === parts.length - 1)} />
+            ) : part.type === "questions" && message.id === lastMessageId ? (
+              <PostedQuestionsCard
+                threadId={message.threadId}
+                questions={part.questions}
+                providerLabel={providerLabel}
+              />
+            ) : (
+              <MessagePartView part={part} />
+            )}
+          </FindPartContext>
+        )
+      })}
       {streaming && (parts.length === 0 || writing) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
           {writing ? m.message_writing() : m.message_thinking()}

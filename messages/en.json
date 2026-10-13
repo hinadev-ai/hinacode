@@ -2,7 +2,6 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_name": "kkcode",
   "sidebar_label": "Projects and threads",
-  "sidebar_projects": "Projects",
   "sidebar_add_project": "Add project",
   "sidebar_settings": "Settings",
   "sidebar_loading": "Loading projects…",
@@ -43,7 +42,6 @@
   "thread_usage_limit_cancel_resume": "Cancel automatic resume",
   "thread_org_spend_limit_title": "Organization spend limit reached",
   "thread_org_spend_limit_hint": "Ask an organization admin to raise the monthly spend limit. A session reset does not clear this limit.",
-  "thread_status_settled": "Settled",
   "thread_status_archived": "Archived",
   "thread_not_found": "This thread no longer exists.",
   "thread_composer_label": "Message",
@@ -110,7 +108,6 @@
   "secret_request_hint": "The value is stored on this machine and never shown to the agent.",
   "common_retry": "Retry",
   "thread_worktree_label": "Run in a new worktree",
-  "thread_base_ref_label": "Base ref",
   "panel_label": "Thread details",
   "panel_show": "Show thread details",
   "panel_hide": "Hide thread details",
@@ -126,7 +123,7 @@
   "pr_state_open": "open",
   "pr_state_closed": "closed",
   "pr_state_merged": "merged",
-  "panel_pr_merged_hint": "The pull request is merged. Settle the thread to delete this worktree.",
+  "panel_pr_merged_hint": "The pull request is merged. Archive the thread to put it away.",
   "panel_setup_log": "Setup log",
   "panel_setup_waiting": "Waiting for output…",
   "panel_setup_none": "No output.",
@@ -135,12 +132,6 @@
   "file_status_modified": "Modified",
   "file_status_deleted": "Deleted",
   "file_status_conflict": "Conflict",
-  "settle_dialog_title": "Settle this thread?",
-  "settle_dialog_root": "Marks the thread settled. Nothing on disk changes.",
-  "settle_dialog_worktree": "Marks the thread settled and deletes the worktree folder {path}, including uncommitted changes.",
-  "settle_dialog_branch": "Deletes branch {branch} only if it is merged into {baseRef}.",
-  "settle_dialog_confirm_root": "Settle",
-  "settle_dialog_confirm_worktree": "Settle and delete worktree",
   "sidebar_worktree_branch": "Worktree branch {branch}",
   "sidebar_show": "Show sidebar",
   "sidebar_hide": "Hide sidebar",
@@ -254,6 +245,7 @@
   "error_command": "A command failed: {detail}",
   "error_ports": "Could not inspect or stop the process: {detail}",
   "error_terminal": "Could not run the terminal: {detail}",
+  "error_thread_busy": "This thread is still running or waiting for approval. Stop it before you archive it.",
   "error_fs_access": "Could not read this folder. It may have been moved or deleted.",
   "error_unexpected": "Unexpected error: {detail}",
   "panel_pr_badge": "PR {state}",
@@ -321,7 +313,6 @@
   "sidebar_thread_actions": "Actions for {title}",
   "sidebar_thread_rename": "Rename",
   "sidebar_thread_rename_label": "New name for {title}",
-  "sidebar_thread_settle": "Settle…",
   "sidebar_thread_delete": "Delete…",
   "sidebar_thread_reorder": "Reorder {title}",
   "sidebar_thread_reorder_role": "sortable item",
@@ -425,7 +416,6 @@
   "sidebar_project_new_thread": "New thread",
   "sidebar_project_reveal": "Show in folder",
   "sidebar_project_delete": "Delete…",
-  "sidebar_thread_settled": "Settled",
   "project_edit_title": "Edit project",
   "project_edit_description": "Change the name, folder and setup script of {project}.",
   "project_save": "Save",
@@ -497,9 +487,6 @@
   "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
   "thread_agent_picker": "Agent",
   "thread_workspace_picker": "Workspace",
-  "thread_workspace_local": "Local",
-  "thread_workspace_worktree": "New worktree",
-  "thread_base_ref_prefix": "from",
   "settings_text_generation_model": "Thread naming",
   "settings_text_generation_model_hint": "Names a thread and its branch from its first message.",
   "settings_default_access": "Default access",
@@ -632,5 +619,66 @@
   "settings_notifications_not_determined": "Notifications need your permission",
   "settings_notifications_not_determined_hint": "macOS asks the first time kkcode sends one. Allow them now so the first alert is not missed.",
   "settings_notifications_allow": "Allow notifications",
-  "notification_open": "Open"
+  "notification_open": "Open",
+  "tool_commands_ran": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Ran {count} command",
+        "countPlural=other": "Ran {count} commands"
+      }
+    }
+  ],
+  "tool_commands_running": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Running {count} command",
+        "countPlural=other": "Running {count} commands"
+      }
+    }
+  ],
+  "tool_commands_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} failed",
+        "countPlural=other": "{count} failed"
+      }
+    }
+  ],
+  "tool_command": "Command",
+  "thread_worktree_toggle": "Worktree",
+  "thread_worktree_ref_label": "Branch or pull request",
+  "thread_worktree_ref_placeholder": "main, #123, or a pull request URL",
+  "thread_worktree_ref_pull_requests": "Pull requests",
+  "thread_worktree_ref_branches": "Branches",
+  "thread_worktree_ref_draft": "Draft",
+  "archive_dialog_title": "Archive this thread?",
+  "archive_dialog_worktree": "Archiving deletes the worktree folder {path}, including uncommitted changes.",
+  "archive_dialog_branch": "Deletes branch {branch} only if it is merged into {baseRef}.",
+  "archive_dialog_confirm": "Archive and delete worktree",
+  "sidebar_thread_archive": "Archive",
+  "sidebar_thread_archive_confirm": "Archive…",
+  "sidebar_thread_unarchive": "Unarchive",
+  "sidebar_thread_unarchive_label": "Unarchive {title}",
+  "sidebar_archive_failed": "Could not archive: {message}",
+  "sidebar_unarchive_failed": "Could not unarchive: {message}",
+  "sidebar_tab_threads": "Threads",
+  "sidebar_tab_archived": "Archived",
+  "sidebar_filter_label": "Filter threads and projects",
+  "sidebar_filter_placeholder": "Filter",
+  "sidebar_filter_projects": "Filter by project",
+  "sidebar_filter_all_projects": "All projects",
+  "sidebar_no_archived": "No archived threads",
+  "sidebar_no_matches": "No matching threads",
+  "settings_archive": "Archive",
+  "settings_archive_hint": "Archived threads leave the sidebar's Threads tab and stay readable under Archived.",
+  "settings_archive_when_merged": "Archive when all linked pull requests merge",
+  "settings_archive_when_merged_hint": "kkcode checks linked pull requests every few minutes and archives the thread once all of them are merged.",
+  "settings_archive_remove_worktree": "Remove the worktree when archiving",
+  "settings_archive_remove_worktree_hint": "Deletes the worktree folder, including uncommitted changes, and its branch when it is merged into its base."
 }

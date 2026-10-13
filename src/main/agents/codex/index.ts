@@ -15,6 +15,7 @@ import type {
 } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { threadAccess, turnAccess } from "./access.ts"
