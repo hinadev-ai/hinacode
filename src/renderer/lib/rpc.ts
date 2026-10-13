@@ -92,11 +92,12 @@ export const deleteAccountAtom = Atom.fn((id: string) =>
 )
 
 /**
- * Identifies a thread together with its agent and workspace, since switching either changes what the
- * composer can complete. Key for `commandsAtom` and `filesAtom`.
+ * Identifies a thread together with its agent, account and workspace, since switching any of them
+ * changes what the composer can complete: user-level commands and skills live in the account's home.
+ * Key for `commandsAtom` and `filesAtom`.
  */
-export const completionKey = (thread: Pick<Thread, "id" | "provider" | "worktreeId">) =>
-  [thread.id, thread.provider, thread.worktreeId ?? ""].join("\n")
+export const completionKey = (thread: Pick<Thread, "id" | "provider" | "accountId" | "worktreeId">) =>
+  [thread.id, thread.provider, thread.accountId ?? "", thread.worktreeId ?? ""].join("\n")
 const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
 
 export const commandsAtom = Atom.family((key: string) =>

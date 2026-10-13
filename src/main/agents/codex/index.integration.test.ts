@@ -26,6 +26,7 @@ type Control = {
   accountFromHome?: boolean
   login?: { success: boolean; error: string | null }
   subagent?: boolean
+  plan?: boolean
 }
 type Received = {
   method?: string
@@ -212,6 +213,33 @@ describe("Codex token usage", () => {
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
         })
+      }),
+    ),
+  )
+})
+
+describe("Codex plan", () => {
+  it.live("stores a plan update as an update_plan tool call", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ plan: true })
+        const turn = yield* startTurn("plan-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events.filter((event) => event.type.startsWith("tool_call"))).toStrictEqual([
+          {
+            type: "tool_call_started",
+            callId: "plan-turn-1-1",
+            name: "update_plan",
+            input: {
+              explanation: "Two steps",
+              plan: [
+                { step: "Read the code", status: "completed" },
+                { step: "Write the fix", status: "inProgress" },
+              ],
+            },
+          },
+          { type: "tool_call_finished", callId: "plan-turn-1-1", output: "Plan updated", isError: false },
+        ])
       }),
     ),
   )
