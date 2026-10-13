@@ -3,6 +3,7 @@ import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import type { ExperimentalSettings, Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
+import { windowProjectId } from "../lib/windowProject.ts"
 import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
@@ -76,7 +77,7 @@ export const commands = [
     title: m.command_thread_new,
     run: (ctx) => {
       const current = ctx.threadId ? useThreads.getState().byId[ctx.threadId] : undefined
-      const projectId = current?.projectId ?? ctx.projects[0]?.id
+      const projectId = current?.projectId ?? windowProjectId ?? ctx.projects[0]?.id
       if (projectId) void startThread(projectId, ctx.navigate)
       else useUi.getState().setAddProjectOpen(true)
     },

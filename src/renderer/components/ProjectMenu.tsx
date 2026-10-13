@@ -1,7 +1,8 @@
 import { type RefObject, useState } from "react"
-import { RiAddLine, RiDeleteBinLine, RiFolderOpenLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import { RiAddLine, RiDeleteBinLine, RiFolderOpenLine, RiMoreFill, RiPencilLine, RiWindowLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { windowProjectId } from "../lib/windowProject.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
@@ -75,6 +76,12 @@ export function ProjectMenu({ project, open, onOpenChange, onNewThread, focusAft
             <RiFolderOpenLine aria-hidden />
             {m.sidebar_project_reveal()}
           </DropdownMenuItem>
+          {windowProjectId !== project.id && (
+            <DropdownMenuItem onClick={() => void callPromise("app.openProjectWindow", { projectId: project.id })}>
+              <RiWindowLine aria-hidden />
+              {m.sidebar_project_open_window()}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => setQueued("delete")}>
             <RiDeleteBinLine aria-hidden />
             {m.sidebar_project_delete()}

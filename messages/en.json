@@ -1,6 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_name": "KKCode",
+  "window_title_project": "{project} - KKCode",
   "sidebar_label": "Projects and threads",
   "sidebar_add_project": "Add project",
   "sidebar_settings": "Settings",
@@ -437,6 +438,7 @@
   "sidebar_project_edit": "Edit…",
   "sidebar_project_new_thread": "New thread",
   "sidebar_project_reveal": "Show in folder",
+  "sidebar_project_open_window": "Open in new window",
   "sidebar_project_delete": "Delete…",
   "project_edit_title": "Edit project",
   "project_edit_description": "Change the name, folder and setup script of {project}.",

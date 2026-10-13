@@ -18,6 +18,7 @@ import { projectIconAtom, projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
 import { startThread } from "../lib/startThread.ts"
+import { windowProjectId } from "../lib/windowProject.ts"
 import { m } from "../paraglide/messages.js"
 import { selectArchivedThreads, selectProjectThreads, type ThreadsState, useThreads } from "../stores/threads.ts"
 import { type SidebarTab, useUi } from "../stores/ui.ts"
@@ -88,16 +89,20 @@ export function Sidebar({
           placeholder={m.sidebar_filter_placeholder()}
           className="mr-1 h-7 min-w-0 flex-1 text-sm"
         />
-        <ProjectFilterMenu />
-        <Button
-          ref={addProjectButtonRef}
-          variant="ghost"
-          size="icon-xs"
-          aria-label={m.sidebar_add_project()}
-          onClick={() => setAddProjectOpen(true)}
-        >
-          <RiFolderAddLine aria-hidden />
-        </Button>
+        {windowProjectId === null && (
+          <>
+            <ProjectFilterMenu />
+            <Button
+              ref={addProjectButtonRef}
+              variant="ghost"
+              size="icon-xs"
+              aria-label={m.sidebar_add_project()}
+              onClick={() => setAddProjectOpen(true)}
+            >
+              <RiFolderAddLine aria-hidden />
+            </Button>
+          </>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={(value: SidebarTab) => setTab(value)} className="min-h-0 flex-1 gap-1">
@@ -173,9 +178,10 @@ const tabThreads = (state: Pick<ThreadsState, "byId">, project: Project, tab: Si
  */
 const isFullList = (tab: SidebarTab, query: Query) => tab === "threads" && query === ""
 
-/** The projects the filter picks. A filter whose projects are all gone shows every project. */
+/** The window's own project, else the projects the filter picks. A filter whose projects are all gone shows every project. */
 function useFilteredProjects(projects: ReadonlyArray<Project>) {
   const ids = useUi((state) => state.sidebarProjectIds)
+  if (windowProjectId !== null) return projects.filter((project) => project.id === windowProjectId)
   const picked = projects.filter((project) => ids.includes(project.id))
   return picked.length === 0 ? projects : picked
 }

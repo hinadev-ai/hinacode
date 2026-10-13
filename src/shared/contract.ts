@@ -79,6 +79,7 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "app.openProjectWindow": rpc(Schema.Struct({ projectId: Schema.String }), Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -414,6 +415,7 @@ export type RpcMethod = keyof typeof RpcMethods
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "app.openProjectWindow",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",

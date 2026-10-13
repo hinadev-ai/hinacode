@@ -1,6 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_name": "KKCode",
+  "window_title_project": "{project} - KKCode",
   "sidebar_label": "專案與對話串",
   "sidebar_add_project": "新增專案",
   "sidebar_settings": "設定",
@@ -437,6 +438,7 @@
   "sidebar_project_edit": "編輯…",
   "sidebar_project_new_thread": "新對話串",
   "sidebar_project_reveal": "在資料夾中顯示",
+  "sidebar_project_open_window": "在新視窗中開啟",
   "sidebar_project_delete": "刪除…",
   "project_edit_title": "編輯專案",
   "project_edit_description": "修改「{project}」的名稱、資料夾與設定腳本。",

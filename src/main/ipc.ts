@@ -35,6 +35,7 @@ import { Terminals } from "./services/Terminals.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Worktrees } from "./services/Worktrees.ts"
+import { closeProjectWindow, openProjectWindow } from "./windows.ts"
 
 export type AppServices =
   | AgentAccounts
@@ -107,6 +108,10 @@ const handlers: Handlers = {
       window.show()
       window.focus()
     }),
+  "app.openProjectWindow": ({ projectId }) =>
+    Projects.use((projects) => projects.get(projectId)).pipe(
+      Effect.andThen(Effect.sync(() => openProjectWindow(projectId))),
+    ),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
@@ -119,6 +124,7 @@ const handlers: Handlers = {
         (thread) => closeTerminals(thread.id),
       )
       yield* Projects.use((projects) => projects.remove(id))
+      yield* Effect.sync(() => closeProjectWindow(id))
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),

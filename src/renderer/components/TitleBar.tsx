@@ -1,8 +1,12 @@
+import { useAtomValue } from "@effect/atom-react"
 import { detectPlatform } from "@tanstack/react-hotkeys"
 import { Link } from "@tanstack/react-router"
-import type { RefObject } from "react"
+import { AsyncResult } from "effect/reactivity"
+import { type RefObject, useEffect } from "react"
 import { RiSettings3Line, RiSideBarFill, RiSideBarLine } from "react-icons/ri"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
+import { projectsAtom } from "../lib/rpc.ts"
+import { windowProjectId } from "../lib/windowProject.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { cn } from "../lib/utils.ts"
@@ -24,6 +28,13 @@ export function TitleBar({
   const toggleSidebar = useUi((state) => state.toggleSidebar)
   const chord = useKeymap()["sidebar.toggle"]
   const sidebarLabel = sidebarShown ? m.sidebar_hide() : m.sidebar_show()
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
+  const windowProject = projects.find((project) => project.id === windowProjectId)
+
+  // The native window takes the document title, which names the window in the Window menu and Mission Control.
+  useEffect(() => {
+    if (windowProject) document.title = m.window_title_project({ project: windowProject.name })
+  }, [windowProject])
 
   return (
     <header
@@ -32,7 +43,7 @@ export function TitleBar({
         besideTrafficLights ? "pl-22" : "pl-3",
       )}
     >
-      <span className="mr-3 font-heading text-sm font-semibold">{m.app_name()}</span>
+      <span className="mr-3 truncate font-heading text-sm font-semibold">{windowProject?.name ?? m.app_name()}</span>
       <Tooltip>
         <TooltipTrigger
           render={

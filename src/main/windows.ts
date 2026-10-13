@@ -22,7 +22,11 @@ const keepOnTheWeb = (page: Electron.WebContents) => {
   page.on("will-redirect", httpOnly)
 }
 
-export const createWindow = () => {
+/** Windows opened for a single project, by project id. The window opened at launch shows every project. */
+const projectWindows = new Map<string, BrowserWindow>()
+
+/** `projectId` scopes the window to one project; the renderer reads it from the `project` query parameter. */
+export const createWindow = (projectId?: string) => {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -56,5 +60,22 @@ export const createWindow = () => {
   })
   window.webContents.on("did-attach-webview", (_event, page) => keepOnTheWeb(page))
 
-  void window.loadURL(appUrl)
+  const url = new URL(appUrl)
+  if (projectId !== undefined) {
+    url.searchParams.set("project", projectId)
+    projectWindows.set(projectId, window)
+    window.on("closed", () => projectWindows.delete(projectId))
+  }
+  void window.loadURL(url.href)
 }
+
+/** Focuses the project's window, or opens one. */
+export const openProjectWindow = (projectId: string) => {
+  const existing = projectWindows.get(projectId)
+  if (!existing) return createWindow(projectId)
+  if (existing.isMinimized()) existing.restore()
+  existing.focus()
+}
+
+/** A deleted project's window has nothing left to show. */
+export const closeProjectWindow = (projectId: string) => projectWindows.get(projectId)?.close()

@@ -2,8 +2,10 @@ import { describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { conflictsOf, resolveKeymap } from "./commands.ts"
 
-// Commands import the ui store, which reads the saved sidebar width from localStorage when it is created.
+// Commands import the ui store, which reads the saved sidebar width from localStorage when it is created,
+// and the window's project, read from the page URL.
 vi.hoisted(() => {
+  vi.stubGlobal("location", new URL("file:///index.html"))
   const values = new Map<string, string>()
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,

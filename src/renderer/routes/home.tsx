@@ -8,6 +8,7 @@ import { commands } from "../keybindings/commands.ts"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { startThread } from "../lib/startThread.ts"
+import { windowProjectId } from "../lib/windowProject.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 
@@ -16,7 +17,7 @@ const commandTitle = (id: "thread.new" | "project.add") => commands.find((comman
 export function HomeRoute() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const keymap = useKeymap()
-  const firstProject = projects[0]
+  const firstProject = projects.find((project) => project.id === windowProjectId) ?? projects[0]
   const navigate = useNavigate()
 
   const addProject = (
@@ -47,7 +48,7 @@ export function HomeRoute() {
         )}
         {addProject}
       </div>
-      {firstProject && (
+      {firstProject && windowProjectId === null && (
         <p className="text-xs text-balance text-muted-foreground">
           {m.home_hint_ready({ project: firstProject.name })}
         </p>
