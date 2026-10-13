@@ -412,7 +412,7 @@ test("loading keeps raw text and reasoning pushes until snapshot sequence filter
   ]
   for (const push of pushes) store().receive(push)
   vi.advanceTimersByTime(500)
-  expect(store().byThread[threadId]).toStrictEqual({ status: "loading", pending: pushes })
+  expect(store().byThread[threadId]).toStrictEqual({ status: "loading", loadId: expect.any(Symbol), pending: pushes })
   expect(vi.getTimerCount()).toBe(0)
   transcriptResponse.resolve({
     result: {
@@ -497,9 +497,11 @@ const reloadAfterUnload = () => {
   const firstLoad = store().load(threadId)
   store().unload(threadId)
   store().receive(event(1, { type: "text_delta", text: "while unloaded" }))
+  expect(store().byThread[threadId]).toBeUndefined()
   transcriptResponse = Promise.withResolvers()
   const second = transcriptResponse
   const secondLoad = store().load(threadId)
+  store().receive(event(2, { type: "text_delta", text: " and after reload" }))
   return { first, firstLoad, second, secondLoad }
 }
 
@@ -518,7 +520,7 @@ test.each(["older first", "newer first"])(
     }
     await Promise.all([firstLoad, secondLoad])
 
-    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded" }])
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded and after reload" }])
   },
 )
 
@@ -530,5 +532,5 @@ test("a failed request from before unload cannot fail the reload", async () => {
   second.resolve(transcript("while unloaded", 1))
   await secondLoad
 
-  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded" }])
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded and after reload" }])
 })
