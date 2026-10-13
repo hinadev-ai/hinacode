@@ -4,6 +4,7 @@ import { useKeybindings } from "../keybindings/useKeybindings.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { Sidebar } from "./Sidebar.tsx"
+import { StatusBar } from "./StatusBar.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
 export function AppShell() {
@@ -20,6 +21,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <StatusBar />
       <CommandPalette />
     </div>
   )

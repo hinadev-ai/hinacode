@@ -13,6 +13,7 @@ import type {
   QuestionRequest,
   Subagent,
   SecretRequest,
+  ThreadUsage,
 } from "../../shared/agent.ts"
 import type { AccessMode, Attachment, Message, Thread, ThreadStatus, WorktreeSource } from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
@@ -104,6 +105,10 @@ export class AgentRunner extends Context.Service<
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
     readonly account: (provider: ProviderId) => Effect.Effect<AgentAccount, AgentError>
+    /** Null until the thread's first turn binds an agent session. */
+    readonly usage: (
+      threadId: string,
+    ) => Effect.Effect<ThreadUsage | null, AgentError | PersistenceError | NotFoundError>
     /** Sub-agents the thread's agent spawned since the app started, newest first. */
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
     readonly listCommands: (
@@ -530,6 +535,12 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(threadId)),
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
     account: (id) => providers[id].account,
+    usage: (threadId) =>
+      Effect.gen(function* () {
+        const thread = yield* threads.get(threadId)
+        if (thread.providerSessionId === null) return null
+        return yield* providers[thread.provider].usage(thread.providerSessionId)
+      }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     listCommands: (threadId) =>
       Effect.gen(function* () {

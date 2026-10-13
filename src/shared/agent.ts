@@ -141,6 +141,25 @@ export const TokenUsage = Schema.Struct({
 })
 export type TokenUsage = typeof TokenUsage.Type
 
+/** Tokens one model spent across a thread's transcripts. The four counts add up to its total. */
+export const ModelUsage = Schema.Struct({
+  model: Schema.String,
+  /** Input billed at the full rate, without cache reads or writes. */
+  inputTokens: Schema.Number,
+  cacheWriteTokens: Schema.Number,
+  cacheReadTokens: Schema.Number,
+  /** Includes reasoning tokens. */
+  outputTokens: Schema.Number,
+})
+export type ModelUsage = typeof ModelUsage.Type
+
+export const ThreadUsage = Schema.Struct({
+  models: Schema.Array(ModelUsage),
+  /** Transcripts counted: the main session plus one per sub-agent or workflow agent. */
+  transcripts: Schema.Number,
+})
+export type ThreadUsage = typeof ThreadUsage.Type
+
 export const SubagentStatus = Schema.Literals(["running", "completed", "failed", "stopped"])
 export type SubagentStatus = typeof SubagentStatus.Type
 

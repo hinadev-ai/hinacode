@@ -8,7 +8,7 @@ import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import type { AgentEvent, Subagent } from "../shared/agent.ts"
+import type { AgentEvent, Subagent, ThreadUsage } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
@@ -125,33 +125,42 @@ const scriptedTurn: ReadonlyArray<AgentEvent> = [
   { type: "turn_completed" },
 ]
 
+const boundSession = "31ee17f8-6200-4a50-80ff-96241b83319e"
+const sessionUsage: ThreadUsage = {
+  models: [{ model: "claude-model", inputTokens: 6, cacheWriteTokens: 1050, cacheReadTokens: 3000, outputTokens: 220 }],
+  transcripts: 3,
+}
+
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
   account: Effect.succeed({ type: "signedOut" }),
+  usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.fromIterable(
-      input.prompt === "simulate unanswered question"
-        ? [
-            {
-              type: "question_requested",
-              request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
-            },
-            { type: "turn_failed", message: "Provider disconnected before the answer" },
-          ]
-        : input.prompt === "simulate usage limit"
+      input.prompt === "simulate a session"
+        ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
+        : input.prompt === "simulate unanswered question"
           ? [
               {
-                type: "turn_limited",
-                limit: {
-                  kind: "usage",
-                  message: "Usage limit reached",
-                  reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
-                },
+                type: "question_requested",
+                request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
               },
+              { type: "turn_failed", message: "Provider disconnected before the answer" },
             ]
-          : scriptedTurn,
+          : input.prompt === "simulate usage limit"
+            ? [
+                {
+                  type: "turn_limited",
+                  limit: {
+                    kind: "usage",
+                    message: "Usage limit reached",
+                    reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                  },
+                },
+              ]
+            : scriptedTurn,
     ),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
@@ -616,6 +625,19 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+})
+
+describe("token usage over rpc", () => {
+  test("is null until a turn binds a session, then comes from that session's transcripts", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(result(await invoke("threads.usage", { threadId: thread.id }))).toBeNull()
+
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect
+      .poll(async () => result(await invoke("threads.usage", { threadId: thread.id })))
+      .toStrictEqual(sessionUsage)
   })
 })
 

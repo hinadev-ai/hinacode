@@ -26,6 +26,7 @@ export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "u
           plan: "Claude Max",
           organization: "Example Org",
         }),
+        usage: () => Effect.succeed(null),
         listCommands: () => Effect.succeed([]),
         runTurn: (input) =>
           Stream.suspend(() => {
