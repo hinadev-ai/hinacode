@@ -138,6 +138,12 @@ export const commands = [
     run: (ctx) => showView(ctx, "agents"),
   },
   {
+    id: "view.browser",
+    defaultKeys: "mod+shift+b",
+    title: m.command_view_browser,
+    run: (ctx) => showView(ctx, "browser"),
+  },
+  {
     id: "turn.interrupt",
     defaultKeys: "mod+shift+c",
     title: m.command_turn_interrupt,

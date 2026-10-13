@@ -23,6 +23,7 @@ import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { kkcodeMcpServer } from "./mcp.ts"
+import { elementContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, makeTranscriptUsage } from "./transcripts.ts"
 
@@ -155,11 +156,14 @@ type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"]
 const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
 
-/** Images go inline as base64; other files are named by path so the agent reads them with its own tools. */
-const attachmentBlock = (attachment: Attachment) =>
+/**
+ * Images go inline as base64, followed by what the user picked when the image is a browser element. Other files
+ * are named by path so the agent reads them with its own tools.
+ */
+const attachmentBlocks = (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
-    if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return fileBlock
+    if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return [fileBlock]
     if (attachment.bytes > MAX_IMAGE_BYTES) {
       return yield* new AgentError({
         provider: "claude",
@@ -174,12 +178,12 @@ const attachmentBlock = (attachment: Attachment) =>
       type: "image",
       source: { type: "base64", media_type: attachment.mime, data },
     }
-    return block
+    return attachment.element ? [block, { type: "text" as const, text: elementContext(attachment.element) }] : [block]
   })
 
 const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, priority?: SDKUserMessage["priority"]) =>
   Effect.gen(function* () {
-    const blocks = yield* Effect.forEach(attachments, attachmentBlock)
+    const blocks = (yield* Effect.forEach(attachments, attachmentBlocks)).flat()
     const content: SDKUserMessage["message"]["content"] =
       blocks.length === 0 ? prompt : [...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]), ...blocks]
     const message: SDKUserMessage = {
