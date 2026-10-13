@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
@@ -106,11 +106,14 @@ const withRepo = <A, E>(
 ) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
-      // macOS links the temp dir through /private, and git reports worktree paths fully resolved.
-      Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "kk-worktrees-test-")))),
+      Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )
-    const root = join(dir, "repo")
+    // The project is added through a symlink, as macOS's /var or a linked code folder would be, while git
+    // reports worktree paths fully resolved.
+    mkdirSync(join(dir, "real"))
+    symlinkSync(join(dir, "real"), join(dir, "linked"))
+    const root = join(dir, "linked", "repo")
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
     const dbPath = join(dir, "kkcode.sqlite")
@@ -362,10 +365,12 @@ describe("worktree ownership", () => {
   )
 
   it.live("archiving an idle thread with worktree removal on removes its own checkout", () =>
-    withRepo(({ projectId }) =>
+    withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
         const thread = yield* createThread(projectId, "done", "kk/done")
         yield* waitUntilSetUp(thread.worktreeId)
+        const { path } = yield* worktreeOf(thread.worktreeId)
+        expect(git(root, "worktree", "list", "--porcelain")).toContain(`worktree ${path}\n`)
         const archived = yield* archiveRemovingWorktree(thread.id)
         expect(archived.status).toBe("archived")
         const worktree = yield* worktreeOf(thread.worktreeId)
@@ -456,7 +461,7 @@ describe("worktree ownership", () => {
 
         const thread = yield* createThread(projectId, "recovered", "kk/orphan")
         const worktree = yield* worktreeOf(thread.worktreeId)
-        expect(worktree.path).toBe(orphan)
+        expect(worktree.path).toBe(realpathSync(orphan))
         expect(existsSync(join(orphan, "sentinel"))).toBe(true)
       }),
     ),
