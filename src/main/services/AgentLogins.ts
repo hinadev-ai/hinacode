@@ -2,6 +2,7 @@ import { Context, Duration, Effect, Exit, Fiber, Layer, Scope } from "effect"
 import type { AgentAccount, ProviderId } from "../../shared/agent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { MuseProvider } from "../agents/muse/index.ts"
 import { AgentError, type AgentProvider, type SignIn } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { AgentRunner } from "./AgentRunner.ts"
@@ -48,6 +49,7 @@ const make = Effect.gen(function* () {
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
+    muse: yield* MuseProvider,
   }
   const pending = new Map<string, Pending>()
 

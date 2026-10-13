@@ -156,7 +156,7 @@ AfterScenario(async ({ app, $testInfo }) => {
   await rpc(app.page, "settings.set", {
     locale: "en",
     keybindings: {},
-    defaultModel: { claude: null, codex: null },
+    defaultModel: { claude: null, codex: null, muse: null },
     archive: { whenMerged: false, removeWorktree: false },
   })
   await app.page.evaluate(() => localStorage.removeItem("kkcode.sidebarProjects"))

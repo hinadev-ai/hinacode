@@ -16,6 +16,7 @@ import type { Project, Thread, Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
+import { MuseProvider } from "./agents/muse/index.ts"
 import { AgentError, type AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
 import { eventsLayer, registerIpc } from "./ipc.ts"
@@ -216,6 +217,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
 const providers = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, scriptedProvider("claude")),
   Layer.succeed(CodexProvider, scriptedProvider("codex")),
+  Layer.succeed(MuseProvider, scriptedProvider("muse")),
 )
 
 // Automations are not exercised here: their handlers only forward to the service.
@@ -697,6 +699,7 @@ describe("plan limits over rpc", () => {
       { provider: "claude", accountId: personal.id, limits: null },
       { provider: "codex", accountId: null, limits: null },
       { provider: "codex", accountId: work.id, limits: null },
+      { provider: "muse", accountId: null, limits: null },
     ])
   })
 })
@@ -845,6 +848,9 @@ describe("agent accounts over rpc", () => {
       expect(failure(await invoke("accounts.create", { provider: "codex", name })).tag).toBe("SchemaError")
     }
     expect(failure(await invoke("accounts.create", { provider: "gemini" as "codex", name: "Work" })).tag).toBe(
+      "SchemaError",
+    )
+    expect(failure(await invoke("accounts.create", { provider: "muse" as "codex", name: "Work" })).tag).toBe(
       "SchemaError",
     )
   })

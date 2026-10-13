@@ -349,11 +349,13 @@ export const Settings = Schema.Struct({
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
   }),
   /** The account new threads of each agent start on. Null is the CLI's own login. */
   defaultAccount: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
   }),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
@@ -373,8 +375,8 @@ export type Settings = typeof Settings.Type
 export const defaultSettings: Settings = {
   locale: "en",
   keybindings: {},
-  defaultModel: { claude: null, codex: null },
-  defaultAccount: { claude: null, codex: null },
+  defaultModel: { claude: null, codex: null, muse: null },
+  defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
