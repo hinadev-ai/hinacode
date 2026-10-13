@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { AgentProfile, type ProviderId } from "../../shared/agent.ts"
+import { AgentProfile, ProviderId } from "../../shared/agent.ts"
 import { nowIso } from "./clock.ts"
 import { AccountInUseError, NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { Settings } from "./Settings.ts"
@@ -40,10 +40,12 @@ const make = (root: string) =>
     const fs = yield* FileSystem.FileSystem
     const settings = yield* Settings
 
+    // Like the thread list, a newer build's accounts of unknown providers are skipped, not fatal.
     const findAll = SqlSchema.findAll({
       Request: Schema.Void,
       Result: AgentProfile,
-      execute: () => sql`SELECT id, provider, name FROM agent_account ORDER BY created_at, rowid`,
+      execute: () =>
+        sql`SELECT id, provider, name FROM agent_account WHERE ${sql.in("provider", [...ProviderId.literals])} ORDER BY created_at, rowid`,
     })
     const findById = SqlSchema.findOneOption({
       Request: Schema.String,
