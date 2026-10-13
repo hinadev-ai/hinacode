@@ -10,6 +10,8 @@ A ready thread may have one pending group of adjacent text or reasoning deltas a
 
 Approval, terminal, tool, file-change and message-replacement events remain synchronous. Text separated by a tool or reasoning part remains in separate Markdown documents. Every published string and the final string use the existing whole-document renderer.
 
+Scrolling up cancels the list's initial bottom target as well as its automatic following. Legend List 3.6.0 retained the initial target after wheel input, so later streaming updates or a viewport resize could return the reader to the bottom. The patch in `patches/@legendapp__list@3.6.0.patch` cancels that target and synchronizes the observed scroll offset before another update runs. Keep the patch on dependency upgrades until the paced-output scenario passes with native wheel input and a viewport resize on both macOS and Linux.
+
 ## Verification
 
 Compare candidate cadences against the same visible Electron IPC workload. Measure frame spacing, parser invocations, total parsed characters and parser time. Check references across blocks, open fences and tables, exact final DOM, tool boundaries, approval and terminal events, scrolling, typing, and unload/reload behavior. Keep raw measurements and traces under `.context/perf/`, and check logs and summaries under `.context/issue-12/`.

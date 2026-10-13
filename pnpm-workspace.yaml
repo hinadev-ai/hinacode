@@ -6,3 +6,5 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - effect@4.0.3
   - "@muse-code/sdk@1.4.7"
+patchedDependencies:
+  "@legendapp/list@3.6.0": patches/@legendapp__list@3.6.0.patch

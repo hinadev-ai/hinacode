@@ -162,6 +162,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@legendapp/list@3.6.0': 426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28
+
 importers:
 
   .:
@@ -207,7 +210,7 @@ importers:
         version: 0.10.0
       '@legendapp/list':
         specifier: 3.6.0
-        version: 3.6.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 3.6.0(patch_hash=426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
@@ -5678,7 +5681,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@legendapp/list@3.6.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@legendapp/list@3.6.0(patch_hash=426c3a855cb95755b0022f1ffde624d54843b0bfbfe324ef820e6a2343137d28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       react: 19.3.0
       use-sync-external-store: 1.7.0(react@19.3.0)

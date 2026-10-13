@@ -1,0 +1,40 @@
+diff --git a/react.js b/react.js
+index a0f962c42b7b28a49e7480ed3e16056b9e154a4c..0b55d0d2d76758f62eaf007b96044400cd3f975b 100644
+--- a/react.js
++++ b/react.js
+@@ -6654,9 +6654,13 @@ var ListComponentScrollView = React3.forwardRef(function ListComponentScrollView
+     const onWheel = (nativeEvent) => {
+       const event = nativeEvent;
+       const delta = horizontal ? event.deltaX || (event.shiftKey ? event.deltaY : 0) : event.deltaY;
+-      if (delta < 0 && !event.ctrlKey && !event.defaultPrevented && (ctx.state.maintainingScrollAtEnd || ctx.state.pendingMaintainScrollAtEnd)) {
++      if (delta < 0 && !event.ctrlKey && !event.defaultPrevented && (ctx.state.maintainingScrollAtEnd || ctx.state.pendingMaintainScrollAtEnd || ctx.state.initialScroll || ctx.state.preservedEndAnchorCorrection)) {
+         const offset = getCurrentScrollOffset();
+-        if (interruptMaintainScrollAtEnd(ctx) && isScrollInRange()) {
++        const interrupted = interruptMaintainScrollAtEnd(ctx);
++        supersedeInitialScroll(ctx);
++        ctx.state.preservedEndAnchorCorrection = void 0;
++        updateScroll(ctx, offset, true, { fromNativeScrollEvent: true });
++        if (interrupted && isScrollInRange()) {
+           scrollToLocalOffset(offset, false);
+         }
+       }
+diff --git a/react.mjs b/react.mjs
+index 9338287159778f842fa05b5a0467336bf5f50fe8..d7147836db63a92802c846f26f70f103d2642965 100644
+--- a/react.mjs
++++ b/react.mjs
+@@ -6633,9 +6633,13 @@ var ListComponentScrollView = forwardRef(function ListComponentScrollView2({
+     const onWheel = (nativeEvent) => {
+       const event = nativeEvent;
+       const delta = horizontal ? event.deltaX || (event.shiftKey ? event.deltaY : 0) : event.deltaY;
+-      if (delta < 0 && !event.ctrlKey && !event.defaultPrevented && (ctx.state.maintainingScrollAtEnd || ctx.state.pendingMaintainScrollAtEnd)) {
++      if (delta < 0 && !event.ctrlKey && !event.defaultPrevented && (ctx.state.maintainingScrollAtEnd || ctx.state.pendingMaintainScrollAtEnd || ctx.state.initialScroll || ctx.state.preservedEndAnchorCorrection)) {
+         const offset = getCurrentScrollOffset();
+-        if (interruptMaintainScrollAtEnd(ctx) && isScrollInRange()) {
++        const interrupted = interruptMaintainScrollAtEnd(ctx);
++        supersedeInitialScroll(ctx);
++        ctx.state.preservedEndAnchorCorrection = void 0;
++        updateScroll(ctx, offset, true, { fromNativeScrollEvent: true });
++        if (interrupted && isScrollInRange()) {
+           scrollToLocalOffset(offset, false);
+         }
+       }
