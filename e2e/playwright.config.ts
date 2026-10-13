@@ -16,6 +16,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   workers: process.env.CI ? 2 : 3,
+  projects: [
+    { name: "parallel", grepInvert: /@desktop/ },
+    { name: "desktop", grep: /@desktop/, dependencies: ["parallel"], workers: 1 },
+  ],
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   timeout: 30_000,

@@ -1,3 +1,4 @@
+@desktop
 Feature: Resizable panels
   The sidebar and the thread details panel take the width the developer gives them, and keep it.
 
@@ -8,6 +9,12 @@ Feature: Resizable panels
 
   Scenario: Dragging the thread details edge widens it and the width survives a reload
     When I drag "Resize thread details" 120 pixels to the left
+    Then the thread details panel is 120 pixels wider than it started
+    When I reload the app and open the thread "Resize"
+    Then the thread details panel is 120 pixels wider than it started
+
+  Scenario: Releasing the thread details edge away from the last move keeps the release width
+    When I release "Resize thread details" 120 pixels to the left without a final move
     Then the thread details panel is 120 pixels wider than it started
     When I reload the app and open the thread "Resize"
     Then the thread details panel is 120 pixels wider than it started
