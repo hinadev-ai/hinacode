@@ -23,6 +23,11 @@ The Codex provider stores each `turn/plan/updated` notification as an `update_pl
 so the plan persists with the transcript and renders through the same path. No new rpc method,
 event or table.
 
+Both CLIs now ship their todo tool off for current models. Codex 0.162 needs
+`tools.update_plan.enabled`, which kkcode sets on every thread. Claude Code 2.1 offers
+`TaskCreate`/`TaskUpdate` only to 4.x models unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=true`; kkcode
+leaves that alone, so Claude threads on 5.x models show no task list.
+
 `TodoBar` sits above the composer next to the sub-agent bar. Collapsed it shows
 `{done} of {total} done` plus the in-progress task; expanding lists every task with a status
 icon. It hides once every task is finished and the thread is idle.

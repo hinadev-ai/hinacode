@@ -382,6 +382,8 @@ const make = Effect.gen(function* () {
             model: input.model,
             ...threadAccess(input.accessMode),
             config: {
+              // Off by default in current Codex; the composer's task list is built from its plan.
+              tools: { update_plan: { enabled: true } },
               mcp_servers: {
                 // `request_secret` waits for the user, so the default 60 s tool timeout is too short.
                 kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
