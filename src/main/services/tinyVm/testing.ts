@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo, Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 
 /** A client-to-server RFB input message, decoded. */
 export type RfbEvent =
@@ -60,6 +60,10 @@ export const FAKE_PNG = Buffer.from(
 )
 
 export const SCREENSHOT_SCRIPT = "import -window root png:-"
+
+const decodeExecRequest = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ script: Schema.String, detach: Schema.optional(Schema.Boolean) })),
+)
 
 const frame = (type: number, payload: Uint8Array) => {
   const header = Buffer.alloc(5)
@@ -169,7 +173,9 @@ export const startFakeSbx = Effect.acquireRelease(
         response.writeHead(204).end()
         return
       }
-      const { script, detach = false } = JSON.parse(body) as { script: string; detach?: boolean }
+      const exec = decodeExecRequest(body)
+      if (Option.isNone(exec)) return json(response, 400, { error: "invalid exec request" })
+      const { script, detach = false } = exec.value
       execs.push({ sandboxId: id, script, detach })
       response.writeHead(200, { "content-type": "application/octet-stream" })
       if (detach) {
