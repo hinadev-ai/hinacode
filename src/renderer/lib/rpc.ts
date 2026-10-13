@@ -53,9 +53,8 @@ export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom
 
 export const notificationPermissionAtom = Atom.make(call("notifications.permission", undefined))
 
-export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
-  call("settings.set", patch).pipe(Effect.tap(() => Atom.refresh(settingsAtom))),
-)
+/** Main pushes `settings.updated` to every window, the caller's included, which refreshes `settingsAtom`. */
+export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) => call("settings.set", patch))
 
 export const modelsAtom = Atom.family((provider: ProviderId) =>
   Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
@@ -83,12 +82,9 @@ export const renameAccountAtom = Atom.fn((input: RpcRequest<"accounts.rename">) 
   call("accounts.rename", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
 )
 
-/** Removing the default account also clears it from the settings. */
+/** Removing the default account also clears it from the settings, which main pushes to every window. */
 export const deleteAccountAtom = Atom.fn((id: string) =>
-  call("accounts.delete", { id }).pipe(
-    Effect.tap(() => Atom.refresh(accountsAtom)),
-    Effect.tap(() => Atom.refresh(settingsAtom)),
-  ),
+  call("accounts.delete", { id }).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
 )
 
 /**

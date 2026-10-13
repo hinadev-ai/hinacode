@@ -64,6 +64,9 @@ onPushEvent((event) => {
       const { notifications } = AsyncResult.getOrElse(registry.get(settingsAtom), () => settings)
       return notifyThreadEvent(event.threadId, event.event, notifications)
     }
+    case "settings.updated":
+      registry.refresh(settingsAtom)
+      return useLocale.getState().apply(event.settings.locale)
     case "worktree.updated":
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":

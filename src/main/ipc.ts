@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, shell } from "electron"
-import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
+import { Cause, Effect, Layer, type ManagedRuntime, Schema, Stream } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import {
@@ -365,3 +365,15 @@ export const makeEventsLayer = () => {
   )
   return Layer.mergeAll(events, broadcast)
 }
+
+/** Every settings write, from any window, a phone or a service, reaches every window so they never disagree. */
+export const settingsPushLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const settings = yield* Settings
+    const events = yield* Events
+    yield* (yield* settings.changes).pipe(
+      Stream.runForEach((next) => events.publish({ type: "settings.updated", settings: next })),
+      Effect.forkScoped,
+    )
+  }),
+)

@@ -22,7 +22,7 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { AgentError, type AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
-import { makeEventsLayer, registerIpc } from "./ipc.ts"
+import { makeEventsLayer, registerIpc, settingsPushLayer } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
@@ -235,7 +235,7 @@ const makeLayer = (dbPath: string) => {
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
   const base = Layer.mergeAll(agents, automationsStub, logins)
-  const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
+  const app = Layer.mergeAll(base, Layer.mergeAll(Mcp.serverLayer, settingsPushLayer).pipe(Layer.provide(base)))
   return RemoteServer.layer.pipe(
     Layer.provideMerge(app),
     Layer.provideMerge(makeEventsLayer()),
@@ -592,6 +592,17 @@ describe("projects, threads and settings over rpc", () => {
     const saved = result(await invoke("settings.set", { locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } }))
     expect(saved).toMatchObject({ locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } })
     expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+  })
+
+  test("settings saved from one window are pushed to every window", async () => {
+    const saved = result(
+      await invoke("settings.set", {
+        appearance: { theme: "tokyo-night", fontSize: 15, uiFont: null, monoFont: null },
+      }),
+    )
+    await pushedEventually(
+      (event) => event.type === "settings.updated" && event.settings.appearance.theme === saved.appearance.theme,
+    )
   })
 
   test("notification preferences persist through the derived settings patch", async () => {

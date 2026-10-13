@@ -215,7 +215,7 @@ export const commands = [
     title: m.command_language_switch,
     run: (ctx) => {
       const next = useLocale.getState().locale === "en" ? "zh-TW" : "en"
-      void ctx.updateSettings({ locale: next }).then((saved) => useLocale.getState().apply(saved.locale))
+      void ctx.updateSettings({ locale: next })
     },
   },
 ] as const satisfies ReadonlyArray<Command>

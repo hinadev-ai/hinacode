@@ -469,6 +469,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
   /** The thread was deleted, from this window, a phone or an automation. */
   Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
+  /** Settings changed, from any window or a phone. */
+  Schema.Struct({ type: Schema.Literal("settings.updated"), settings: Settings }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({

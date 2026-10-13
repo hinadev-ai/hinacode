@@ -8,7 +8,7 @@ import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
-import { makeEventsLayer, registerIpc } from "./ipc.ts"
+import { makeEventsLayer, registerIpc, settingsPushLayer } from "./ipc.ts"
 import { BROWSER_PARTITION, isInside } from "./security.ts"
 import { ATTACHMENT_PROTOCOL } from "../shared/channels.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
@@ -92,9 +92,13 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
   )
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  const services = Layer.mergeAll(Automations.layer, AutoArchive.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
-    Layer.provideMerge(agents),
-  )
+  const services = Layer.mergeAll(
+    Automations.layer,
+    AutoArchive.layer,
+    Mcp.serverLayer,
+    AgentLogins.layer,
+    settingsPushLayer,
+  ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   return RemoteServer.layer.pipe(
     Layer.provideMerge(services),

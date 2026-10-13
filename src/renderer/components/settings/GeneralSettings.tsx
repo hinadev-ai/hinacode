@@ -14,7 +14,6 @@ const isLocale = (value: unknown): value is Locale => Locale.literals.some((loca
 
 export function GeneralSettings() {
   const locale = useLocale((state) => state.locale)
-  const applyLocale = useLocale((state) => state.apply)
   const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const locales = Locale.literals.map((value) => ({ value, label: localeLabel[value]() }))
@@ -22,8 +21,7 @@ export function GeneralSettings() {
   const changeLocale = async (next: unknown) => {
     if (!isLocale(next) || next === locale) return
     try {
-      const saved = await updateSettings({ locale: next })
-      applyLocale(saved.locale)
+      await updateSettings({ locale: next })
     } catch (cause) {
       setError(errorMessage(cause))
     }
