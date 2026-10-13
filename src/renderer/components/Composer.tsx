@@ -31,15 +31,7 @@ import {
   ComposerToolbar,
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
-import {
-  AccessPicker,
-  AccountPicker,
-  AgentPicker,
-  EffortPicker,
-  FastModeToggle,
-  ModelPicker,
-  WorkspacePicker,
-} from "./ComposerControls.tsx"
+import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
@@ -243,14 +235,10 @@ export function Composer({ thread }: { thread: Thread }) {
             className="min-h-[calc(1lh+1rem)]"
           />
           <ComposerToolbar className="shrink-0 gap-2">
-            <ComposerActions className="min-w-0 flex-1 flex-wrap">
+            <ComposerActions className="min-w-0 flex-1">
               <AttachButton onClick={pickFiles} disabled={isStaging} />
-              {unstarted && <AgentPicker thread={thread} onError={setError} />}
-              <ModelPicker thread={thread} onError={setError} />
-              <AccountPicker thread={thread} onError={setError} />
-              <EffortPicker thread={thread} onError={setError} />
-              <FastModeToggle thread={thread} onError={setError} />
-              <AccessPicker thread={thread} onError={setError} />
+              <ModelPicker thread={thread} canSwitchAgent={unstarted} onError={setError} />
+              <ThreadOptions thread={thread} onError={setError} />
             </ComposerActions>
             <ContextRing threadId={thread.id} />
             <SendButton busy={busy} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
@@ -267,7 +255,14 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<ComposerAttachButton onClick={onClick} disabled={disabled} aria-label={m.attachment_add()} />}
+        render={
+          <ComposerAttachButton
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={m.attachment_add()}
+            className="shrink-0"
+          />
+        }
       />
       <TooltipContent>{m.attachment_add_hint()}</TooltipContent>
     </Tooltip>

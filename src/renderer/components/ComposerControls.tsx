@@ -1,7 +1,8 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { useMemo, useState } from "react"
+import { useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiBrainLine,
@@ -9,6 +10,7 @@ import {
   RiGitBranchLine,
   RiGitPullRequestLine,
   RiLockUnlockLine,
+  RiMoreLine,
   RiShieldCheckLine,
   RiShieldUserLine,
   RiUserLine,
@@ -33,8 +35,27 @@ import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx"
 import { Input } from "./ui/input.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 interface ControlProps {
@@ -53,13 +74,17 @@ const update = async (patch: RpcRequest<"threads.update">, onError: (message: st
   }
 }
 
-/** The agent's listed models, plus the thread's own model when the agent no longer lists it. */
-function useThreadModels(thread: Thread) {
-  const listed = AsyncResult.getOrElse(useAtomValue(modelsAtom(thread.provider)), (): ReadonlyArray<ModelInfo> => [])
-  const current = listed.find((model) => model.id === thread.model)
-  return current
-    ? { models: listed, current }
-    : { models: [unlistedModel(thread.model, thread.provider), ...listed], current: undefined }
+/** The agent's listed models, plus `keep`, such as a thread's saved model, when the agent no longer lists it. */
+function useAgentModels(provider: ProviderId, keep: string | null) {
+  const listed = AsyncResult.getOrElse(useAtomValue(modelsAtom(provider)), (): ReadonlyArray<ModelInfo> => [])
+  return keep === null || listed.some((model) => model.id === keep)
+    ? listed
+    : [unlistedModel(keep, provider), ...listed]
+}
+
+/** The thread's model as its agent lists it, or undefined when the agent no longer lists it. */
+function useThreadModel(thread: Thread) {
+  return useAgentModels(thread.provider, null).find((model) => model.id === thread.model)
 }
 
 /**
@@ -75,106 +100,72 @@ const composerPopup = {
   className: "max-h-[min(24rem,var(--available-height))] w-auto min-w-(--anchor-width)",
 } as const
 
-export function AgentPicker({ thread, onError }: ControlProps) {
-  const providers = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
-  return (
-    <Select
-      items={providers}
-      value={thread.provider}
-      onValueChange={(provider) =>
-        provider && provider !== thread.provider && update({ id: thread.id, provider }, onError)
-      }
-    >
-      <SelectTrigger size="sm" aria-label={m.thread_agent_picker()} className={triggerClass}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent {...composerPopup}>
-        {providers.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            <ProviderIcon provider={item.value} />
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
+const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
-export function ModelPicker({ thread, onError }: ControlProps) {
-  const { models } = useThreadModels(thread)
-  const items = models.map((model) => ({ value: model.id, label: model.label }))
+/**
+ * The thread's model, listed under its agent. Until the first message every agent is listed, so picking
+ * another agent's model switches the agent in the same step.
+ */
+export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
+  const selected = useThreadModel(thread) ?? unlistedModel(thread.model, thread.provider)
+  const providers = canSwitchAgent ? ProviderId.literals : [thread.provider]
 
-  // Effort and fast mode the next model cannot honor go back to its defaults.
-  const change = (id: string | null) => {
-    const next = models.find((model) => model.id === id)
-    if (next === undefined || next.id === thread.model) return
+  // Another agent starts from its own defaults. On the same agent, effort and fast mode the next model
+  // cannot honor go back to its defaults.
+  const change = (next: ModelInfo | null) => {
+    if (next === null || sameModel(next, selected)) return
     void update(
-      {
-        id: thread.id,
-        model: next.id,
-        ...(thread.effort !== null && !next.efforts.includes(thread.effort) ? { effort: null } : {}),
-        ...(thread.fastMode && !next.fastMode ? { fastMode: false } : {}),
-      },
+      next.provider === thread.provider
+        ? {
+            id: thread.id,
+            model: next.id,
+            ...(thread.effort !== null && !next.efforts.includes(thread.effort) ? { effort: null } : {}),
+            ...(thread.fastMode && !next.fastMode ? { fastMode: false } : {}),
+          }
+        : { id: thread.id, provider: next.provider, model: next.id },
       onError,
     )
   }
 
   return (
-    <Select items={items} value={thread.model} onValueChange={change}>
-      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-24 ${triggerClass}`}>
+    <Select
+      value={selected}
+      onValueChange={change}
+      isItemEqualToValue={sameModel}
+      itemToStringLabel={(model: ModelInfo) => model.label}
+    >
+      <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={cn("min-w-0", triggerClass)}>
+        <ProviderIcon provider={thread.provider} />
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent {...composerPopup} className="w-auto min-w-(--anchor-width)">
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
+      <SelectContent {...composerPopup}>
+        {providers.map((provider) => (
+          <ModelGroup key={provider} provider={provider} keep={provider === thread.provider ? thread.model : null} />
         ))}
       </SelectContent>
     </Select>
+  )
+}
+
+function ModelGroup({ provider, keep }: { provider: ProviderId; keep: string | null }) {
+  const models = useAgentModels(provider, keep)
+  if (models.length === 0) return null
+  return (
+    <SelectGroup>
+      <SelectLabel className="flex items-center gap-1.5">
+        <ProviderIcon provider={provider} />
+        {providerLabel[provider]()}
+      </SelectLabel>
+      {models.map((model) => (
+        <SelectItem key={model.id} value={model}>
+          {model.label}
+        </SelectItem>
+      ))}
+    </SelectGroup>
   )
 }
 
 const CLI_LOGIN = "cli"
-
-/**
- * Which account the thread bills to. Shown only when the agent has an added account, and fixed once the
- * thread has a session, because the session's transcript lives in that account's home.
- */
-export function AccountPicker({ thread, onError }: ControlProps) {
-  const accounts = useProviderAccounts(thread.provider)
-  if (accounts.length === 0) return null
-  const items = [
-    { value: CLI_LOGIN, label: m.account_cli_login() },
-    ...accounts.map((account) => ({ value: account.id, label: account.name })),
-  ]
-  const current = thread.accountId ?? CLI_LOGIN
-
-  return (
-    <Select
-      items={items}
-      value={current}
-      disabled={thread.providerSessionId !== null}
-      onValueChange={(value) =>
-        value !== null &&
-        value !== current &&
-        update({ id: thread.id, accountId: value === CLI_LOGIN ? null : value }, onError)
-      }
-    >
-      <SelectTrigger size="sm" aria-label={m.account_picker()} className={triggerClass}>
-        <RiUserLine aria-hidden />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent {...composerPopup}>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
 
 const effortLabels: Record<string, () => string> = {
   minimal: m.effort_minimal,
@@ -188,68 +179,6 @@ const effortLabels: Record<string, () => string> = {
 const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
 
 const DEFAULT_EFFORT = "default"
-
-/** Shown only for models with effort control. */
-export function EffortPicker({ thread, onError }: ControlProps) {
-  const { current } = useThreadModels(thread)
-  if (current === undefined || current.efforts.length === 0) return null
-  const defaultLabel = current.defaultEffort
-    ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
-    : m.thread_effort_default()
-  const items = [
-    { value: DEFAULT_EFFORT, label: defaultLabel },
-    ...current.efforts.map((effort) => ({ value: effort, label: effortLabel(effort) })),
-  ]
-
-  return (
-    <Select
-      items={items}
-      value={thread.effort ?? DEFAULT_EFFORT}
-      onValueChange={(value) => {
-        const effort = value === DEFAULT_EFFORT ? null : value
-        if (value !== null && effort !== thread.effort) void update({ id: thread.id, effort }, onError)
-      }}
-    >
-      <SelectTrigger size="sm" aria-label={m.thread_effort_picker()} className={triggerClass}>
-        <RiBrainLine aria-hidden />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent {...composerPopup}>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
-/** Shown only for models with a fast service tier. */
-export function FastModeToggle({ thread, onError }: ControlProps) {
-  const { current } = useThreadModels(thread)
-  if (!current?.fastMode) return null
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            aria-pressed={thread.fastMode}
-            onClick={() => void update({ id: thread.id, fastMode: !thread.fastMode }, onError)}
-            className="text-xs text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
-          >
-            <RiFlashlightLine aria-hidden />
-            {m.thread_fast_mode()}
-          </Button>
-        }
-      />
-      <TooltipContent>{m.thread_fast_mode_hint()}</TooltipContent>
-    </Tooltip>
-  )
-}
 
 export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
   supervised: { icon: RiShieldUserLine, label: m.access_supervised },
@@ -282,44 +211,299 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** How much the agent may do without asking. Takes effect from the next turn, or at once on a live Claude turn. */
-export function AccessPicker({ thread, onError }: ControlProps) {
-  const { current } = useThreadModels(thread)
-  const items = AccessMode.literals.map((value) => ({ value, label: accessModes[value].label() }))
-  const Icon = accessModes[thread.accessMode].icon
+interface ChoiceItem<V extends string> {
+  readonly value: V
+  readonly label: string
+  readonly icon?: IconType
+  readonly hint?: string
+}
 
+/** A thread setting picked from a list: a select on the toolbar, or a submenu of More options. */
+interface Choice<V extends string = string> {
+  readonly name: string
+  /** Stands for the current value when its label does not fit. */
+  readonly icon: IconType
+  readonly value: V
+  readonly items: ReadonlyArray<ChoiceItem<V>>
+  readonly disabled: boolean
+  /** Full access runs every command unchecked, so it keeps the destructive color wherever it shows. */
+  readonly destructive: boolean
+  readonly onChange: (value: V) => void
+}
+
+interface FastMode {
+  readonly on: boolean
+  readonly toggle: () => void
+}
+
+/** The settings beside the model, each shown only when the agent, account or model supports it. */
+function useThreadOptions(thread: Thread, onError: (message: string) => void) {
+  const current = useThreadModel(thread)
+  const accounts = useProviderAccounts(thread.provider)
+  const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
+
+  const account: Choice | null =
+    accounts.length === 0
+      ? null
+      : {
+          name: m.account_picker(),
+          icon: RiUserLine,
+          value: thread.accountId ?? CLI_LOGIN,
+          items: [
+            { value: CLI_LOGIN, label: m.account_cli_login() },
+            ...accounts.map((profile) => ({ value: profile.id, label: profile.name })),
+          ],
+          // The session's transcript lives in the account's home, so the account is fixed once there is one.
+          disabled: thread.providerSessionId !== null,
+          destructive: false,
+          onChange: (value) => set({ accountId: value === CLI_LOGIN ? null : value }),
+        }
+
+  const effort: Choice | null =
+    current === undefined || current.efforts.length === 0
+      ? null
+      : {
+          name: m.thread_effort_picker(),
+          icon: RiBrainLine,
+          value: thread.effort ?? DEFAULT_EFFORT,
+          items: [
+            {
+              value: DEFAULT_EFFORT,
+              label: current.defaultEffort
+                ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
+                : m.thread_effort_default(),
+            },
+            ...current.efforts.map((value) => ({ value, label: effortLabel(value) })),
+          ],
+          disabled: false,
+          destructive: false,
+          onChange: (value) => set({ effort: value === DEFAULT_EFFORT ? null : value }),
+        }
+
+  const fast: FastMode | null = current?.fastMode
+    ? { on: thread.fastMode, toggle: () => set({ fastMode: !thread.fastMode }) }
+    : null
+
+  // Takes effect from the next turn, or at once on a live Claude turn.
+  const access: Choice<AccessMode> = {
+    name: m.access_picker(),
+    icon: accessModes[thread.accessMode].icon,
+    value: thread.accessMode,
+    items: AccessMode.literals.map((value) => ({
+      value,
+      label: accessModes[value].label(),
+      icon: accessModes[value].icon,
+      hint: accessHint(value, thread, current),
+    })),
+    disabled: false,
+    destructive: thread.accessMode === "full",
+    onChange: (accessMode) => set({ accessMode }),
+  }
+
+  return { account, effort, fast, access }
+}
+
+/**
+ * Tries labels, then icons, and settles on the first whose row fits the slot, else on the More options menu.
+ * Children restyle from the slot's `data-fit`, so each try costs a layout, not a render.
+ */
+const fitOptions = (slot: HTMLElement, row: HTMLElement) => {
+  for (const fit of ["labels", "icons"]) {
+    slot.dataset.fit = fit
+    if (row.getBoundingClientRect().width <= slot.getBoundingClientRect().width) return
+  }
+  slot.dataset.fit = "menu"
+}
+
+/**
+ * Account, effort, fast mode and access, shown with labels, else as icons, else in a More options menu,
+ * whichever fits beside the model picker. It is measured, not set at breakpoints, because the width the
+ * labels need changes with the model, the chosen values and the language.
+ */
+export function ThreadOptions({ thread, onError }: ControlProps) {
+  const { account, effort, fast, access } = useThreadOptions(thread, onError)
+  const slotRef = useRef<HTMLDivElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  // After every render, because another value or model changes how wide the labels are.
+  useLayoutEffect(() => {
+    if (slotRef.current && rowRef.current) fitOptions(slotRef.current, rowRef.current)
+  })
+
+  useLayoutEffect(() => {
+    const slot = slotRef.current
+    const row = rowRef.current
+    if (!slot || !row) return undefined
+    const fit = () => fitOptions(slot, row)
+    const observer = new ResizeObserver(fit)
+    observer.observe(slot)
+    // A label also changes width when its font finishes loading, which resizes nothing else.
+    document.fonts.addEventListener("loadingdone", fit)
+    return () => {
+      observer.disconnect()
+      document.fonts.removeEventListener("loadingdone", fit)
+    }
+  }, [])
+
+  // A trigger whose popup is open stays shown when the fit changes: a hidden one would leave its modal popup
+  // open over nothing, blocking every click.
+  return (
+    <div ref={slotRef} className="flex min-w-7 flex-1">
+      <div
+        ref={rowRef}
+        className="flex shrink-0 items-center gap-1.5 in-data-[fit=menu]:hidden in-data-[fit=menu]:has-data-popup-open:flex"
+      >
+        {account && <ChoiceSelect choice={account} />}
+        {effort && <ChoiceSelect choice={effort} />}
+        {fast && <FastToggle fast={fast} />}
+        <ChoiceSelect choice={access} />
+      </div>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={m.thread_options_more()}
+                    data-destructive={access.destructive || undefined}
+                    className={cn(
+                      triggerClass,
+                      "hidden in-data-[fit=menu]:inline-flex data-popup-open:inline-flex data-destructive:text-destructive",
+                    )}
+                  />
+                }
+              >
+                <RiMoreLine aria-hidden />
+              </DropdownMenuTrigger>
+            }
+          />
+          <TooltipContent>{m.thread_options_more()}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent side="top" className="w-auto min-w-48">
+          {account && <ChoiceSubmenu choice={account} />}
+          {effort && <ChoiceSubmenu choice={effort} />}
+          {fast && (
+            <DropdownMenuCheckboxItem checked={fast.on} onCheckedChange={fast.toggle} closeOnClick>
+              <RiFlashlightLine aria-hidden />
+              {m.thread_fast_mode()}
+            </DropdownMenuCheckboxItem>
+          )}
+          <ChoiceSubmenu choice={access} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+/** In the icons fit the label and chevron go; screen readers still read the value. */
+const iconOnly =
+  "in-data-[fit=icons]:w-7 in-data-[fit=icons]:justify-center in-data-[fit=icons]:px-0 in-data-[fit=icons]:*:data-[slot=select-icon]:hidden in-data-[fit=icons]:*:data-[slot=select-value]:sr-only"
+
+function ChoiceSelect<V extends string>({ choice }: { choice: Choice<V> }) {
+  const Icon = choice.icon
+  const label = choice.items.find((item) => item.value === choice.value)?.label ?? choice.value
   return (
     <Select
-      items={items}
-      value={thread.accessMode}
-      onValueChange={(accessMode) =>
-        accessMode && accessMode !== thread.accessMode && update({ id: thread.id, accessMode }, onError)
-      }
+      items={choice.items}
+      value={choice.value}
+      disabled={choice.disabled}
+      onValueChange={(value) => value !== null && value !== choice.value && choice.onChange(value)}
     >
-      <SelectTrigger
-        size="sm"
-        aria-label={m.access_picker()}
-        data-access={thread.accessMode}
-        className={`${triggerClass} data-[access=full]:text-destructive`}
-      >
-        <Icon aria-hidden />
-        <SelectValue />
-      </SelectTrigger>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <SelectTrigger
+              size="sm"
+              aria-label={choice.name}
+              data-destructive={choice.destructive || undefined}
+              className={cn(triggerClass, iconOnly, "data-destructive:text-destructive")}
+            >
+              <Icon aria-hidden />
+              <SelectValue />
+            </SelectTrigger>
+          }
+        />
+        <TooltipContent>{m.thread_option_value({ name: choice.name, value: label })}</TooltipContent>
+      </Tooltip>
       <SelectContent {...composerPopup}>
-        {items.map((item) => {
-          const ItemIcon = accessModes[item.value].icon
-          return (
-            <SelectItem key={item.value} value={item.value}>
-              <ItemIcon aria-hidden className="mt-0.5 self-start" />
-              <span className="flex flex-col">
-                {item.label}
-                <span className="text-xs text-muted-foreground">{accessHint(item.value, thread, current)}</span>
-              </span>
-            </SelectItem>
-          )
-        })}
+        {choice.items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            <ChoiceItemLabel item={item} />
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
+  )
+}
+
+function ChoiceSubmenu<V extends string>({ choice }: { choice: Choice<V> }) {
+  const Icon = choice.icon
+  const label = choice.items.find((item) => item.value === choice.value)?.label
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        disabled={choice.disabled}
+        data-destructive={choice.destructive || undefined}
+        className="data-destructive:text-destructive"
+      >
+        <Icon aria-hidden />
+        {choice.name}
+        <span className={cn("flex-1 pl-6 text-right", !choice.destructive && "text-muted-foreground")}>{label}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuRadioGroup
+          value={choice.value}
+          onValueChange={(value: V) => value !== choice.value && choice.onChange(value)}
+        >
+          {choice.items.map((item) => (
+            <DropdownMenuRadioItem key={item.value} value={item.value} closeOnClick>
+              <ChoiceItemLabel item={item} />
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
+function ChoiceItemLabel({ item }: { item: ChoiceItem<string> }) {
+  if (item.icon === undefined) return item.label
+  const Icon = item.icon
+  return (
+    <>
+      <Icon aria-hidden className="mt-0.5 self-start" />
+      <span className="flex flex-col">
+        {item.label}
+        <span className="text-xs text-muted-foreground">{item.hint}</span>
+      </span>
+    </>
+  )
+}
+
+function FastToggle({ fast }: { fast: FastMode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-pressed={fast.on}
+            onClick={fast.toggle}
+            className="text-xs text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground in-data-[fit=icons]:w-7 in-data-[fit=icons]:px-0 in-data-[fit=icons]:[&>span]:sr-only"
+          >
+            <RiFlashlightLine aria-hidden />
+            <span>{m.thread_fast_mode()}</span>
+          </Button>
+        }
+      />
+      <TooltipContent>{m.thread_fast_mode_hint()}</TooltipContent>
+    </Tooltip>
   )
 }
 
