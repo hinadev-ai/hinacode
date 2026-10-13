@@ -17,9 +17,10 @@ const sdk = vi.hoisted(() => {
     readonly close = vi.fn(() => this.end())
     readonly setModel = vi.fn((_model: string) => sdk.setModel())
     readonly applyFlagSettings = vi.fn(() => Promise.resolve())
-    readonly setPermissionMode = vi.fn(() => Promise.resolve())
+    readonly setPermissionMode = vi.fn((_mode: string) => sdk.setPermissionMode())
     readonly interrupt = vi.fn(() => Promise.resolve())
-    readonly supportedCommands = vi.fn(() => Promise.resolve([]))
+    readonly supportedCommands = vi.fn(() => sdk.supportedCommands())
+    readonly supportedModels = vi.fn(() => sdk.supportedModels())
     private readonly buffer: Array<Message> = []
     private reader: ((result: IteratorResult<Message>) => void) | null = null
     private ended = false
@@ -80,6 +81,9 @@ const sdk = vi.hoisted(() => {
     clis: new Array<FakeQuery>(),
     respond: (_cli: FakeQuery): void | Promise<void> => undefined,
     setModel: (): Promise<void> => Promise.resolve(),
+    setPermissionMode: (): Promise<void> => Promise.resolve(),
+    supportedCommands: (): Promise<Array<never>> => Promise.resolve([]),
+    supportedModels: (): Promise<Array<never>> => Promise.resolve([]),
     FakeQuery,
   }
   return state
@@ -110,13 +114,19 @@ const taskStarted = (taskId: string, extra: Readonly<Record<string, unknown>> = 
   is_backgrounded: true,
   ...extra,
 })
-const taskNotification = (taskId: string) => ({
+const taskNotification = (taskId: string, extra: Readonly<Record<string, unknown>> = {}) => ({
   type: "system",
   subtype: "task_notification",
   task_id: taskId,
   status: "completed",
   output_file: "/tmp/out",
   summary: "",
+  ...extra,
+})
+const backgroundTasks = (...tasks: ReadonlyArray<Readonly<Record<string, unknown>>>) => ({
+  type: "system",
+  subtype: "background_tasks_changed",
+  tasks: tasks.map((task) => ({ task_type: "local_bash", description: "npm run dev", ...task })),
 })
 
 const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
@@ -181,6 +191,9 @@ const lifecycle = <A, E>(effect: Effect.Effect<A, E, ClaudeProvider>) =>
     sdk.clis.length = 0
     sdk.respond = completeWith(succeeded)
     sdk.setModel = () => Promise.resolve()
+    sdk.setPermissionMode = () => Promise.resolve()
+    sdk.supportedCommands = () => Promise.resolve([])
+    sdk.supportedModels = () => Promise.resolve([])
     return effect
   }).pipe(Effect.provide(layer))
 
@@ -415,6 +428,153 @@ describe("Claude idle sessions", () => {
           cli.push(init("session-1"), taskStarted("watcher", { ambient: true, task_type: "local_workflow" }), succeeded)
         yield* runTurn()
 
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("restarts the countdown when a background task ends inside the idle deadline", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn()
+        yield* TestClock.adjust("10 seconds")
+        latestCli().push(taskStarted("shell-1"))
+        yield* settle
+        yield* TestClock.adjust("10 seconds")
+        latestCli().push(taskNotification("shell-1"))
+        yield* settle
+
+        yield* TestClock.adjust("59 seconds")
+        expect(latestCli().close).not.toHaveBeenCalled()
+        yield* TestClock.adjust("1 second")
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("expires 60 seconds after a background tasks snapshot drops the last task", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) => cli.push(init("session-1"), taskStarted("shell-1"), succeeded)
+        yield* runTurn()
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        latestCli().push(backgroundTasks())
+        yield* settle
+        yield* TestClock.adjust("59 seconds")
+        expect(latestCli().close).not.toHaveBeenCalled()
+        yield* TestClock.adjust("1 second")
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("keeps a session while a background tasks snapshot lists a live task", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            backgroundTasks({ task_id: "shell-1" }, { task_id: "watcher", ambient: true }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+      }),
+    ),
+  )
+
+  it.effect("ignores a late notification from an earlier run of a resumed task", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) => cli.push(init("session-1"), taskStarted("agent-1", { run_id: "run-1" }), succeeded)
+        yield* runTurn()
+        latestCli().push(taskStarted("agent-1", { run_id: "run-2" }), taskNotification("agent-1", { run_id: "run-1" }))
+        yield* settle
+
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        latestCli().push(taskNotification("agent-1", { run_id: "run-2" }))
+        yield* settle
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("keeps a session while an access mode switch is in flight", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        yield* runTurn()
+        yield* TestClock.adjust("30 seconds")
+        const modeSwitch = Promise.withResolvers<void>()
+        sdk.setPermissionMode = () => modeSwitch.promise
+        const switching = yield* provider.setAccessMode("thread-1", "full").pipe(Effect.forkChild)
+        yield* until(() => latestCli().setPermissionMode.mock.calls.length === 1)
+
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        modeSwitch.resolve()
+        yield* Fiber.join(switching)
+        yield* settle
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("keeps a session while it is listing its commands", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        yield* runTurn()
+        yield* TestClock.adjust("30 seconds")
+        const listed = Promise.withResolvers<Array<never>>()
+        sdk.supportedCommands = () => listed.promise
+        const listing = yield* provider
+          .listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
+          .pipe(Effect.forkChild)
+        yield* until(() => latestCli().supportedCommands.mock.calls.length === 1)
+
+        yield* TestClock.adjust("10 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        listed.resolve([])
+        yield* Fiber.join(listing)
+        yield* settle
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("stops a turn whose auto mode check is pending without starting or stranding a CLI", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.supportedModels = () => new Promise(() => undefined)
+        const turn = yield* startTurn(turnInput({ accessMode: "auto" }))
+        yield* until(() => sdk.clis.length === 1)
+
+        const stop = yield* Fiber.interrupt(turn.fiber).pipe(Effect.forkChild)
+        yield* settle
+        expect(stop.pollUnsafe()).toBeDefined()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).toHaveBeenCalledOnce()
+
+        yield* runTurn()
         yield* TestClock.adjust(TTL)
         yield* settle
         expect(latestCli().close).toHaveBeenCalledOnce()
