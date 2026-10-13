@@ -66,7 +66,6 @@ export const CompletionUsage = Schema.Struct({
 })
 export type CompletionUsage = typeof CompletionUsage.Type
 
-/** A page of a session's durable view events. */
 export const ViewPage = Schema.Struct({
   events: Schema.Array(Schema.Struct({ method: Schema.String, params: Schema.Unknown })),
   nextCursor: Schema.NullOr(Schema.String),
