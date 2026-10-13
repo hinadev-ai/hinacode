@@ -412,7 +412,7 @@ const make = (source: LoginSource) =>
 
     const closeScreen = (streamId: string) => Effect.sync(() => screens.get(streamId)?.socket.destroy())
 
-    yield* settings.changes.pipe(
+    yield* (yield* settings.changes).pipe(
       Stream.runForEach((value) =>
         Effect.suspend(() => {
           const was = enabled
@@ -420,8 +420,7 @@ const make = (source: LoginSource) =>
           return was && !enabled ? stopAll : Effect.void
         }),
       ),
-      // Subscribes before the layer finishes building, so no toggle is missed.
-      Effect.forkIn(scope, { startImmediately: true }),
+      Effect.forkIn(scope),
     )
 
     // Sandboxes do not outlive the app; sbx's idle timeout catches whatever this misses.

@@ -17,7 +17,9 @@ flowchart LR
     runner["AgentRunner"]
     mcp["MCP server<br/>127.0.0.1:random/mcp"]
     autos["Automations<br/>webhook + pollers"]
+    remote["Remote listener<br/>ws://bindHost:port/remote"]
   end
+  phone["Phone app<br/>apps/mobile (Expo)"]
   db[("kkcode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
   codex["codex app-server<br/>JSON-RPC over stdio"]
@@ -28,6 +30,7 @@ flowchart LR
   ui <--> stores
   stores -- "rpc (request/response)" --> preload --> ipc
   ipc -- "event (push)" --> preload --> stores
+  phone -- "auth, then the same calls and pushes" <--> remote --> ipc
   ipc --> services & runner
   runner --> claude & codex & muse
   claude & codex & muse -- "Bearer threadId.secret" --> mcp
@@ -62,6 +65,8 @@ flowchart LR
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
+Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, sends `{ type: "auth", token }` first, and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` as the Electron channel with a null window, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`.
+
 Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
 
 The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document, diffs, and Mermaid; the selected theme remains in SQLite.
@@ -76,10 +81,11 @@ flowchart BT
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports"]
+  features["McpCredentials, Ports, RemoteAccess"]
   runner["AgentRunner"]
   autos["Automations, AutoArchive"]
   mcp["MCP server"]
+  remote["Remote listener"]
 
   node --> db --> domain
   infra --> domain
@@ -87,7 +93,10 @@ flowchart BT
   domain --> runner
   runner --> autos
   runner --> mcp
+  autos & mcp --> remote
 ```
+
+The remote listener sits above everything because it dispatches every rpc method, including the automation ones.
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 

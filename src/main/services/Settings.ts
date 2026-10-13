@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Predicate, PubSub, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Predicate, PubSub, Schema, type Scope, Stream } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { defaultSettings, Settings as SettingsSchema } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
@@ -14,8 +14,11 @@ export class Settings extends Context.Service<
   {
     readonly get: Effect.Effect<SettingsValue, PersistenceError>
     readonly set: (patch: Partial<SettingsValue>) => Effect.Effect<SettingsValue, PersistenceError>
-    /** Every value `set` writes, from subscription time on. */
-    readonly changes: Stream.Stream<SettingsValue>
+    /**
+     * Every value `set` writes after this effect ran. The subscription exists once it returns, so a `set`
+     * between it and running the stream is not lost, as it would be with a stream subscribed on first pull.
+     */
+    readonly changes: Effect.Effect<Stream.Stream<SettingsValue>, never, Scope.Scope>
   }
 >()("kkcode/Settings") {}
 
@@ -65,7 +68,7 @@ const make = Effect.gen(function* () {
       return next
     })
 
-  return Settings.of({ get, set, changes: Stream.fromPubSub(written) })
+  return Settings.of({ get, set, changes: Effect.map(PubSub.subscribe(written), Stream.fromSubscription) })
 })
 
 export const layer = Layer.effect(Settings, make)

@@ -18,6 +18,7 @@ A local desktop app for running Claude Code, Codex and Muse Code against your re
 - A browser view for the thread's dev server. It lists the ports the thread listens on, and Select element picks a part of the page into the message as a screenshot with its URL, selector, HTML and React component names.
 - GitHub through your `gh` login. Each pull request shows its title, draft, open, merged or closed state, CI checks and review decision, refreshed every minute. A worktree branch without a pull request gets a button that pushes it and runs `gh pr create --fill`. Settings > Integrations shows whether `gh` is installed and signed in.
 - Automations start a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree. Triggers are a signed webhook and pollers for new GitHub issues, Linear issues and Slack mentions.
+- Remote mode. Settings > Remote starts a WebSocket listener and shows a pairing QR code. The phone app in `apps/mobile` (Expo) lists threads, streams transcripts, answers approvals and questions, sends and steers prompts, merges pull requests and opens a shell in the worktree, over the same rpc contract as the desktop window.
 - English and 繁體中文, switchable in settings.
 - Rebindable keyboard shortcuts with chord recording and conflict detection.
 - SQLite persistence through Node's built-in `node:sqlite`, so there is nothing native to rebuild.

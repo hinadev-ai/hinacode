@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron"
+import { BrowserWindow, dialog, ipcMain, shell } from "electron"
 import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
@@ -16,7 +16,7 @@ import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { UnknownRootError } from "./services/errors.ts"
-import { Events } from "./services/Events.ts"
+import { Events, PushBroadcast } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
@@ -24,6 +24,7 @@ import { GitHub } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
+import { RemoteAccess } from "./remote/access.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { Search } from "./services/Search.ts"
@@ -32,10 +33,10 @@ import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { randomName, Threads } from "./services/Threads.ts"
-import { TinyVm } from "./services/tinyVm/TinyVm.ts"
+import { TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-type AppServices =
+export type AppServices =
   | AgentAccounts
   | AgentLogins
   | Projects
@@ -55,6 +56,8 @@ type AppServices =
   | GitHub
   | Files
   | Favicons
+  | RemoteAccess
+  | Events
   | TinyVm
 
 interface HandlerError {
@@ -62,10 +65,11 @@ interface HandlerError {
   readonly message: string
 }
 
+/** `window` is the desktop window that called, or null for a phone over remote mode. */
 type Handlers = {
   readonly [M in RpcMethod]: (
     payload: RpcRequest<M>,
-    sender: WebContents,
+    window: BrowserWindow | null,
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
@@ -95,10 +99,9 @@ const knownRoot = (root: string) =>
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const handlers: Handlers = {
-  "app.ready": (_, sender) => Effect.sync(() => BrowserWindow.fromWebContents(sender)?.show()),
-  "app.focus": (_, sender) =>
+  "app.ready": (_, window) => Effect.sync(() => window?.show()),
+  "app.focus": (_, window) =>
     Effect.sync(() => {
-      const window = BrowserWindow.fromWebContents(sender)
       if (!window) return
       if (window.isMinimized()) window.restore()
       window.show()
@@ -119,12 +122,15 @@ const handlers: Handlers = {
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
+  // Thread changes are pushed as well as returned, so a phone and the desktop window stay in step.
   "threads.create": ({ projectId }) =>
     Effect.gen(function* () {
       const model = yield* defaultModel("claude")
-      return yield* Threads.use((threads) =>
+      const thread = yield* Threads.use((threads) =>
         threads.create({ projectId, title: randomName(), provider: "claude", model }),
       )
+      yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      return thread
     }),
   // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
@@ -142,10 +148,14 @@ const handlers: Handlers = {
       if (input.accessMode !== undefined) {
         yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
       }
+      yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
     }),
   "threads.delete": ({ id, removeWorktree }) =>
-    closeTerminals(id).pipe(Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree })))),
+    closeTerminals(id).pipe(
+      Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
+      Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
+    ),
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
 
@@ -195,9 +205,8 @@ const handlers: Handlers = {
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
-  "dialog.pickFolder": (_, sender) =>
+  "dialog.pickFolder": (_, window) =>
     Effect.promise(async () => {
-      const window = BrowserWindow.fromWebContents(sender)
       const options = { properties: ["openDirectory", "createDirectory"] } satisfies Electron.OpenDialogOptions
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? null : (result.filePaths[0] ?? null)
@@ -248,14 +257,16 @@ const handlers: Handlers = {
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),
-  "vm.screen.open": ({ threadId, streamId }, sender) => TinyVm.use((vm) => vm.openScreen(threadId, streamId, sender)),
+  "vm.screen.open": ({ threadId, streamId }, window) =>
+    window
+      ? TinyVm.use((vm) => vm.openScreen(threadId, streamId, window.webContents))
+      : new VmError({ message: "The VM screen is only available in the desktop window." }),
   "vm.screen.send": ({ streamId, data }) => TinyVm.use((vm) => vm.sendScreen(streamId, data)),
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
-  "dialog.pickFiles": (_, sender) =>
+  "dialog.pickFiles": (_, window) =>
     Effect.promise(async () => {
-      const window = BrowserWindow.fromWebContents(sender)
       const options = { properties: ["openFile", "multiSelections"] } satisfies Electron.OpenDialogOptions
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? [] : result.filePaths
@@ -268,6 +279,10 @@ const handlers: Handlers = {
   "automations.runNow": ({ id, payload }) => Automations.use((automations) => automations.runNow(id, payload)),
   "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
   "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
+
+  "remote.status": () => RemoteAccess.use((remote) => remote.status),
+  "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
+  "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
 }
 
 const RpcCall = Schema.Struct({
@@ -275,18 +290,25 @@ const RpcCall = Schema.Struct({
   payload: Schema.Unknown,
 })
 
-const call = <M extends RpcMethod>(method: M, payload: unknown, sender: WebContents) => {
+const call = <M extends RpcMethod>(method: M, payload: unknown, window: BrowserWindow | null) => {
   const spec = RpcMethods[method]
   const handler: Handlers[M] = handlers[method]
   return Schema.decodeUnknownEffect(spec.request)(payload).pipe(
-    Effect.flatMap((request) => handler(request, sender)),
+    Effect.flatMap((request) => handler(request, window)),
     Effect.flatMap(Schema.encodeEffect(spec.response)),
   )
 }
 
-const dispatch = (raw: unknown, sender: WebContents): Effect.Effect<RpcEnvelope<unknown>, never, AppServices> =>
+/**
+ * Decodes one `{ method, payload }` call, runs its handler and encodes the answer. Shared by the Electron
+ * `rpc` channel and the remote listener, which passes a null window.
+ */
+export const dispatch = (
+  raw: unknown,
+  window: BrowserWindow | null,
+): Effect.Effect<RpcEnvelope<unknown>, never, AppServices> =>
   Schema.decodeUnknownEffect(RpcCall)(raw).pipe(
-    Effect.flatMap(({ method, payload }) => call(method, payload, sender)),
+    Effect.flatMap(({ method, payload }) => call(method, payload, window)),
     Effect.map((result) => ({ result })),
     Effect.catch((error: HandlerError) => Effect.succeed({ error: { tag: error._tag, message: error.message } })),
     Effect.catchCause((cause) =>
@@ -304,20 +326,36 @@ const untrustedSender: RpcEnvelope<never> = {
 export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
   ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
     isTrustedSender(event.senderFrame, appUrl)
-      ? runtime.runPromise(dispatch(raw, event.sender))
+      ? runtime.runPromise(dispatch(raw, BrowserWindow.fromWebContents(event.sender)))
       : Promise.resolve(untrustedSender),
   )
 }
 
 const encodePushEvent = Schema.encodeSync(PushEvent)
 
-export const eventsLayer = Layer.succeed(
-  Events,
-  Events.of({
-    publish: (event) =>
-      Effect.sync(() => {
-        const encoded = encodePushEvent(event)
-        for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
-      }),
-  }),
-)
+/** Pushes go to every open window and to every sink the remote listener registered. */
+export const makeEventsLayer = () => {
+  const sinks = new Set<(event: typeof PushEvent.Encoded) => void>()
+  const events = Layer.succeed(
+    Events,
+    Events.of({
+      publish: (event) =>
+        Effect.sync(() => {
+          const encoded = encodePushEvent(event)
+          for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
+          for (const sink of sinks) sink(encoded)
+        }),
+    }),
+  )
+  const broadcast = Layer.succeed(
+    PushBroadcast,
+    PushBroadcast.of({
+      subscribe: (sink) =>
+        Effect.acquireRelease(
+          Effect.sync(() => void sinks.add(sink)),
+          () => Effect.sync(() => void sinks.delete(sink)),
+        ),
+    }),
+  )
+  return Layer.mergeAll(events, broadcast)
+}

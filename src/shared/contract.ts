@@ -42,6 +42,8 @@ import {
   PullRequest,
   PullRequestDetail,
   PullRequestLink,
+  RemotePairing,
+  RemoteStatus,
   Settings,
   TerminalSession,
   Thread,
@@ -396,6 +398,10 @@ export const RpcMethods = {
     Schema.Array(AutomationRun),
   ),
   /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
+  "remote.status": rpc(Schema.Void, RemoteStatus),
+  "remote.pairing": rpc(Schema.Void, RemotePairing),
+  /** Replaces the access token and disconnects every phone. */
+  "remote.rotateToken": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
     Schema.Struct({ id: Schema.String }),
     Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
@@ -403,6 +409,28 @@ export const RpcMethods = {
 }
 
 export type RpcMethod = keyof typeof RpcMethods
+
+/** Methods that need the desktop window (dialogs, focus) or the desktop renderer (file watching). Refused over remote. */
+export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "app.ready",
+  "app.focus",
+  "dialog.pickFolder",
+  "dialog.pickFiles",
+  "shell.reveal",
+  "attachments.stage",
+  "notifications.permission",
+  "notifications.askPermission",
+  "fs.watch",
+  "vm.screen.open",
+  "remote.pairing",
+  "remote.rotateToken",
+])
+/** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
+export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
+  "vm.screen.data",
+  "vm.screen.closed",
+  "fs.changed",
+])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
 export type RpcRequestEncoded<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Encoded"]
@@ -437,6 +465,8 @@ export type TranscriptPush = typeof TranscriptPush.Type
 export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
+  /** The thread was deleted, from this window, a phone or an automation. */
+  Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({

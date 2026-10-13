@@ -378,6 +378,12 @@ export const Settings = Schema.Struct({
     bindHost: Schema.String,
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   }),
+  /** The remote control listener phones connect to. Off by default; 0.0.0.0 exposes it on the LAN and Tailscale. */
+  remote: Schema.Struct({
+    enabled: Schema.Boolean,
+    bindHost: Schema.String,
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  }),
   appearance: Appearance,
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
@@ -396,6 +402,7 @@ export const defaultSettings: Settings = {
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
+  remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
@@ -556,3 +563,19 @@ export const FileSearchHit = Schema.Struct({
   text: Schema.String,
 })
 export type FileSearchHit = typeof FileSearchHit.Type
+
+/** What Settings > Remote shows: whether phones can connect right now, and how many do. */
+export const RemoteStatus = Schema.Struct({
+  listening: Schema.Boolean,
+  listenError: Schema.NullOr(Schema.String),
+  connected: Schema.Int,
+})
+export type RemoteStatus = typeof RemoteStatus.Type
+
+/** Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first. */
+export const RemotePairing = Schema.Struct({
+  hosts: Schema.Array(Schema.String),
+  port: Schema.Int,
+  token: Schema.String,
+})
+export type RemotePairing = typeof RemotePairing.Type
