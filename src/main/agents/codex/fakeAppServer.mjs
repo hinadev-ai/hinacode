@@ -3,7 +3,6 @@
 //   stall: methods to hold without replying, until `release` becomes true
 //   holdTurn: keep a started turn running until turn/interrupt instead of completing it right away
 //   accountFromHome: account/read reports `<basename of $CODEX_HOME>@example.com`
-//   login: { success, error } sent as account/login/completed right after account/login/start
 //   subagent: spawn a sub-agent thread that runs one command before the turn completes
 import { appendFileSync, readFileSync, watch } from "node:fs"
 import { basename } from "node:path"
@@ -84,13 +83,6 @@ const reply = ({ id, method, params }) => {
         return send({ id, result: { account: { type: "chatgpt", email, planType: "pro" }, requiresOpenaiAuth: true } })
       }
       return send({ id, result: accountResponse ?? { account: null, requiresOpenaiAuth: true } })
-    }
-    case "account/login/start": {
-      const loginId = `login-${id}`
-      send({ id, result: { type: "chatgpt", loginId, authUrl: `https://auth.example.com/authorize?login=${loginId}` } })
-      const { login } = control()
-      if (login) send({ method: "account/login/completed", params: { loginId, onboardingEntrypoint: null, ...login } })
-      return
     }
     case "account/rateLimits/read":
       return send({ id, result: control().rateLimitsResponse ?? {} })

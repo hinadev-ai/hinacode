@@ -10,7 +10,7 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "../shared/contract.ts"
-import { externalUrl, isTrustedSender } from "./security.ts"
+import { isTrustedSender } from "./security.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
@@ -184,17 +184,7 @@ const handlers: Handlers = {
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
   "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
-  "accounts.delete": ({ id }) => AgentLogins.use((logins) => logins.remove(id)),
-  "accounts.signIn": ({ id }) =>
-    Effect.gen(function* () {
-      const { url, openedBrowser, submitCode } = yield* AgentLogins.use((logins) => logins.signIn(id))
-      const external = externalUrl(url)
-      if (!openedBrowser && external) yield* Effect.promise(() => shell.openExternal(external))
-      return { url, acceptsCode: submitCode !== null }
-    }),
-  "accounts.submitCode": ({ id, code }) => AgentLogins.use((logins) => logins.submitCode(id, code)),
-  "accounts.cancelSignIn": ({ id }) => AgentLogins.use((logins) => logins.cancelSignIn(id)),
-  "accounts.signOut": ({ id }) => AgentLogins.use((logins) => logins.signOut(id)),
+  "accounts.delete": ({ id }) => AgentAccounts.use((accounts) => accounts.remove(id)),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),

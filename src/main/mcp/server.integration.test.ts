@@ -1,6 +1,3 @@
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { expect, layer } from "@effect/vitest"
 import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -57,8 +54,6 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
     account: () => Effect.succeed({ type: "signedOut" }),
     planLimits: () => Effect.succeed(null),
     usage: () => Effect.succeed(null),
-    signIn: () => Effect.die("unused"),
-    signOut: () => Effect.void,
     listCommands: () => Effect.succeed([]),
     runTurn: ({ threadId }) =>
       Stream.unwrap(
@@ -91,7 +86,7 @@ const core = Layer.mergeAll(
     Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
-    Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
+    Layer.provideMerge(AgentAccounts.layer),
     Layer.provide(Settings.layer),
   ),
   Messages.layer,

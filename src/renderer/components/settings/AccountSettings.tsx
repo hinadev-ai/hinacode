@@ -1,18 +1,16 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, useEffect, useEffectEvent, useId, useState, useTransition } from "react"
-import { RiAddLine, RiDeleteBinLine, RiLoginBoxLine, RiLogoutBoxLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import { type FormEvent, useId, useState, useTransition } from "react"
+import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
   accountKey,
   accountsAtom,
-  callPromise,
   createAccountAtom,
   deleteAccountAtom,
-  onPushEvent,
   renameAccountAtom,
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
@@ -52,6 +50,21 @@ const signedOutHint = {
 
 const addsAccounts = Schema.is(AccountProviderId)
 
+const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
+  AccountProviderId,
+  string
+>
+
+const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
+
+/** What the user runs in a terminal to sign the account in. */
+const loginCommand = (account: AgentProfile) =>
+  [
+    `${configDirVariable[account.provider]}=${shellQuote(account.configDir)}`,
+    shellQuote(account.binary),
+    ...(account.provider === "claude" ? ["auth", "login"] : ["login"]),
+  ].join(" ")
+
 /** The provider's added accounts, in the order they were added. */
 export function useProviderAccounts(provider: ProviderId): ReadonlyArray<AgentProfile> {
   const all = AsyncResult.getOrElse(useAtomValue(accountsAtom), (): ReadonlyArray<AgentProfile> => [])
@@ -81,65 +94,49 @@ export function AccountList({ provider }: { provider: ProviderId }) {
               {m.settings_account_add()}
             </Button>
           </div>
-          <AccountDialog provider={provider} account={null} open={adding} onOpenChange={setAdding} />
+          <AddAccountDialog provider={provider} open={adding} onOpenChange={setAdding} />
         </>
       )}
     </div>
   )
 }
 
-type RowDialog = "signIn" | "rename" | "remove"
+type RowDialog = "rename" | "remove"
 
 function AccountRow({ account }: { account: AgentProfile }) {
   const status = useAtomValue(accountAtom(accountKey(account.provider, account.id)))
   const refreshStatus = useAtomRefresh(accountAtom(accountKey(account.provider, account.id)))
   const [dialog, setDialog] = useState<RowDialog | null>(null)
-  const [queued, setQueued] = useState<RowDialog | "signOut" | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const signedIn = AsyncResult.isSuccess(status) && status.value.type !== "signedOut"
+  const [queued, setQueued] = useState<RowDialog | null>(null)
+  const signedOut = AsyncResult.isSuccess(status) && status.value.type === "signedOut"
 
-  const signOut = async () => {
-    setError(null)
-    try {
-      await callPromise("accounts.signOut", { id: account.id })
-    } catch (cause) {
-      setError(errorMessage(cause))
-    }
-    refreshStatus()
-  }
-
-  // Menu items queue their action and run it once the menu has closed and handed focus back.
+  // Menu items queue their dialog and open it once the menu has closed and handed focus back.
   const runQueued = () => {
-    if (queued === "signOut") void signOut()
-    else setDialog(queued)
+    setDialog(queued)
     setQueued(null)
   }
   const closeDialog = (open: boolean) => {
-    if (open) return
-    setDialog(null)
-    refreshStatus()
+    if (!open) setDialog(null)
   }
 
   return (
-    <li className="flex min-h-8 flex-wrap items-center gap-x-3">
-      <span className="w-28 shrink-0 truncate text-sm font-medium">{account.name}</span>
-      <AccountStatus provider={account.provider} account={account} />
-      <div className="ml-auto flex items-center gap-1">
-        {AsyncResult.isSuccess(status) && !signedIn && (
-          <Button variant="outline" size="sm" onClick={() => setDialog("signIn")}>
-            <RiLoginBoxLine aria-hidden />
-            {m.settings_account_sign_in()}
-          </Button>
-        )}
+    <li className="flex flex-col pb-1">
+      <div className="flex min-h-8 items-center gap-x-3">
+        <span className="w-28 shrink-0 truncate text-sm font-medium">{account.name}</span>
+        <AccountStatus provider={account.provider} account={account} />
         <DropdownMenu
-          onOpenChange={(open) => open && setError(null)}
           onOpenChangeComplete={(open) => {
             if (!open && queued) runQueued()
           }}
         >
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" size="icon-sm" aria-label={m.settings_account_actions({ name: account.name })} />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="ml-auto"
+                aria-label={m.settings_account_actions({ name: account.name })}
+              />
             }
           >
             <RiMoreFill aria-hidden />
@@ -149,12 +146,6 @@ function AccountRow({ account }: { account: AgentProfile }) {
               <RiPencilLine aria-hidden />
               {m.settings_account_rename()}
             </DropdownMenuItem>
-            {signedIn && (
-              <DropdownMenuItem onClick={() => setQueued("signOut")}>
-                <RiLogoutBoxLine aria-hidden />
-                {m.settings_account_sign_out()}
-              </DropdownMenuItem>
-            )}
             <DropdownMenuItem variant="destructive" onClick={() => setQueued("remove")}>
               <RiDeleteBinLine aria-hidden />
               {m.settings_account_remove()}
@@ -162,13 +153,22 @@ function AccountRow({ account }: { account: AgentProfile }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {error && <FieldError className="basis-full">{error}</FieldError>}
-      <AccountDialog
-        provider={account.provider}
-        account={account}
-        open={dialog === "signIn"}
-        onOpenChange={closeDialog}
-      />
+      <div className="flex min-w-0 flex-col gap-1 pl-31">
+        <p className="truncate font-mono text-xs text-muted-foreground" title={account.configDir}>
+          {account.configDir}
+        </p>
+        {signedOut && (
+          <div className="flex min-w-0 flex-col items-start gap-1 text-xs">
+            <span className="text-muted-foreground">{m.settings_account_sign_in_terminal()}</span>
+            <code className="max-w-full rounded-md bg-muted px-2 py-1 font-mono break-all select-all">
+              {loginCommand(account)}
+            </code>
+            <Button variant="ghost" size="xs" className="-ml-2" onClick={refreshStatus}>
+              {m.settings_account_check_again()}
+            </Button>
+          </div>
+        )}
+      </div>
       <RenameAccountDialog account={account} open={dialog === "rename"} onOpenChange={closeDialog} />
       <RemoveAccountDialog account={account} open={dialog === "remove"} onOpenChange={closeDialog} />
     </li>
@@ -221,69 +221,46 @@ function describeAccount(provider: ProviderId, account: AgentAccount, cliLogin: 
     case "external":
       return m.settings_account_external({ service: account.service })
     case "signedOut":
-      // Only the CLI's own login is signed in from a terminal; added accounts sign in here.
       return cliLogin ? signedOutHint[provider]() : m.settings_account_signed_out()
   }
 }
 
-interface AccountDialogProps {
+interface AddAccountDialogProps {
   readonly provider: AccountProviderId
-  /** Null adds a new account first. */
-  readonly account: AgentProfile | null
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
 }
 
-/** Names a new account, then signs it in. With an existing account it only signs in. */
-function AccountDialog({ provider, account, open, onOpenChange }: AccountDialogProps) {
+function AddAccountDialog({ provider, open, onOpenChange }: AddAccountDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        {/* Inside the popup so every opening starts from the first step. */}
-        <AccountDialogSteps provider={provider} initial={account} onDone={() => onOpenChange(false)} />
+        {/* Inside the popup so every opening starts from an empty form. */}
+        <AddAccountForm provider={provider} onCreated={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
 }
 
-function AccountDialogSteps({
-  provider,
-  initial,
-  onDone,
-}: {
-  provider: AccountProviderId
-  initial: AgentProfile | null
-  onDone: () => void
-}) {
-  const [account, setAccount] = useState(initial)
-  // A retry remounts the step, which starts a fresh sign-in.
-  const [attempt, setAttempt] = useState(0)
-  return account === null ? (
-    <NameStep provider={provider} onCreated={setAccount} />
-  ) : (
-    <SignInStep key={attempt} account={account} onSignedIn={onDone} onRetry={() => setAttempt((count) => count + 1)} />
-  )
-}
-
-function NameStep({
-  provider,
-  onCreated,
-}: {
-  provider: AccountProviderId
-  onCreated: (account: AgentProfile) => void
-}) {
+function AddAccountForm({ provider, onCreated }: { provider: AccountProviderId; onCreated: () => void }) {
   const createAccount = useAtomSet(createAccountAtom, { mode: "promise" })
   const [name, setName] = useState("")
+  const [binary, setBinary] = useState<string>(provider)
+  const [configDir, setConfigDir] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
-  const inputId = useId()
+  const nameId = useId()
+  const binaryId = useId()
+  const configDirId = useId()
+  const complete = [name, binary, configDir].every((value) => value.trim() !== "")
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
     startTransition(async () => {
       try {
-        onCreated(await createAccount({ provider, name: name.trim() }))
+        await createAccount({ provider, name: name.trim(), binary: binary.trim(), configDir: configDir.trim() })
+        onCreated()
       } catch (cause) {
         setError(errorMessage(cause))
       }
@@ -297,143 +274,52 @@ function NameStep({
         <DialogDescription>{m.account_dialog_add_description()}</DialogDescription>
       </DialogHeader>
       <Field>
-        <FieldLabel htmlFor={inputId}>{m.account_dialog_name()}</FieldLabel>
+        <FieldLabel htmlFor={nameId}>{m.account_dialog_name()}</FieldLabel>
         <Input
-          id={inputId}
+          id={nameId}
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder={m.account_dialog_name_placeholder()}
           maxLength={80}
           autoComplete="off"
         />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={binaryId}>{m.account_dialog_binary()}</FieldLabel>
+        <Input
+          id={binaryId}
+          value={binary}
+          onChange={(event) => setBinary(event.target.value)}
+          spellCheck={false}
+          autoComplete="off"
+          className="font-mono"
+        />
+        <FieldDescription>
+          {m.account_dialog_binary_description({ provider: providerLabel[provider]() })}
+        </FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={configDirId}>{m.account_dialog_config_dir()}</FieldLabel>
+        <Input
+          id={configDirId}
+          value={configDir}
+          onChange={(event) => setConfigDir(event.target.value)}
+          placeholder={`~/.${provider}-work`}
+          spellCheck={false}
+          autoComplete="off"
+          className="font-mono"
+        />
+        <FieldDescription>
+          {m.account_dialog_config_dir_description({ variable: configDirVariable[provider] })}
+        </FieldDescription>
         {error && <FieldError>{error}</FieldError>}
       </Field>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={name.trim() === "" || pending}>
-          {m.account_dialog_continue()}
+        <Button type="submit" disabled={!complete || pending}>
+          {m.settings_account_add()}
         </Button>
       </DialogFooter>
-    </form>
-  )
-}
-
-type SignInState =
-  | { readonly type: "starting" }
-  | { readonly type: "waiting"; readonly url: string; readonly acceptsCode: boolean }
-  | { readonly type: "failed"; readonly message: string }
-
-interface SignInStepProps {
-  readonly account: AgentProfile
-  readonly onSignedIn: () => void
-  readonly onRetry: () => void
-}
-
-/** Starts the sign-in on mount, and abandons it if the dialog closes before the agent has the login. */
-function SignInStep({ account, onSignedIn, onRetry }: SignInStepProps) {
-  const [state, setState] = useState<SignInState>({ type: "starting" })
-  const signedIn = useEffectEvent(onSignedIn)
-
-  useEffect(() => {
-    let finished = false
-    const stop = onPushEvent((event) => {
-      if (event.type !== "account.signIn" || event.accountId !== account.id) return
-      finished = true
-      if (event.error === null) signedIn()
-      else setState({ type: "failed", message: event.error })
-    })
-    callPromise("accounts.signIn", { id: account.id }).then(
-      ({ url, acceptsCode }) => !finished && setState({ type: "waiting", url, acceptsCode }),
-      (cause) => {
-        finished = true
-        setState({ type: "failed", message: errorMessage(cause) })
-      },
-    )
-    return () => {
-      stop()
-      if (!finished) void callPromise("accounts.cancelSignIn", { id: account.id })
-    }
-  }, [account.id])
-
-  const provider = providerLabel[account.provider]()
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>{m.account_sign_in_title({ name: account.name })}</DialogTitle>
-        <DialogDescription>{m.account_sign_in_waiting({ provider })}</DialogDescription>
-      </DialogHeader>
-      {state.type === "waiting" && (
-        <>
-          <div className="flex min-w-0 flex-col gap-1">
-            <a
-              href={state.url}
-              target="_blank"
-              rel="noreferrer"
-              className="w-fit text-sm text-primary underline-offset-4 hover:underline focus-visible:underline"
-            >
-              {m.account_sign_in_link()}
-            </a>
-            <p className="truncate font-mono text-xs text-muted-foreground select-all" title={state.url}>
-              {state.url}
-            </p>
-          </div>
-          {state.acceptsCode && <CodeForm accountId={account.id} />}
-        </>
-      )}
-      {state.type === "starting" && (
-        <output className="text-sm text-muted-foreground">{m.account_sign_in_starting()}</output>
-      )}
-      {state.type === "failed" && (
-        <p role="alert" className="text-sm text-destructive">
-          {m.account_sign_in_failed({ message: state.message })}
-        </p>
-      )}
-      <DialogFooter>
-        <DialogClose render={<Button variant="outline" />}>{m.common_cancel()}</DialogClose>
-        {state.type === "failed" && <Button onClick={onRetry}>{m.common_retry()}</Button>}
-      </DialogFooter>
-    </div>
-  )
-}
-
-function CodeForm({ accountId }: { accountId: string }) {
-  const [code, setCode] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
-  const inputId = useId()
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
-    startTransition(async () => {
-      try {
-        await callPromise("accounts.submitCode", { id: accountId, code: code.trim() })
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-  }
-
-  return (
-    <form onSubmit={submit}>
-      <Field>
-        <FieldLabel htmlFor={inputId}>{m.account_sign_in_code()}</FieldLabel>
-        <div className="flex items-center gap-2">
-          <Input
-            id={inputId}
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-            className="font-mono"
-          />
-          <Button type="submit" variant="outline" disabled={code.trim() === "" || pending}>
-            {m.account_sign_in_submit_code()}
-          </Button>
-        </div>
-        <FieldDescription>{m.account_sign_in_code_hint()}</FieldDescription>
-        {error && <FieldError>{error}</FieldError>}
-      </Field>
     </form>
   )
 }

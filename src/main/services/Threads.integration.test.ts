@@ -19,7 +19,7 @@ const threadsLayer = threadsLayerBase.pipe(
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
-  Layer.provideMerge(AgentAccounts.layer("/tmp/kk-threads-test-accounts")),
+  Layer.provideMerge(AgentAccounts.layer),
   Layer.provideMerge(Settings.layer),
   Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, { publish: () => Effect.void }))),
   Layer.provideMerge(Db.layer(":memory:")),

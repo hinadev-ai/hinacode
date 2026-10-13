@@ -61,13 +61,13 @@ const serveAttachments = () =>
     return net.fetch(pathToFileURL(path).toString())
   })
 
-const makeAppLayer = (dbPath: string, accountsRoot: string) => {
+const makeAppLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
-      Layer.provideMerge(AgentAccounts.layer(accountsRoot)),
+      Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
@@ -160,7 +160,7 @@ const createWindow = () => {
 
 app.whenReady().then(async () => {
   const userData = app.getPath("userData")
-  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite"), join(userData, "accounts")))
+  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite")))
   // Build the layer (open the database, run migrations) before the renderer can call in.
   await runtime.runPromise(Effect.void)
   registerIpc(runtime, appUrl)

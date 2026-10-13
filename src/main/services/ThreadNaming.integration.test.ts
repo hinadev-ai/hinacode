@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Layer, PubSub, Stream } from "effect"
@@ -51,8 +51,6 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   account: () => Effect.succeed({ type: "signedOut" }),
   planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
-  signIn: () => Effect.die("unused"),
-  signOut: () => Effect.void,
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
@@ -109,7 +107,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
-      Layer.provideMerge(AgentAccounts.layer(join(dirname(dbPath), "accounts"))),
+      Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
