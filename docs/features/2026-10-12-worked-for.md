@@ -11,7 +11,7 @@ Developers returning to a finished response have to scroll through its reasoning
 
 While the agent runs, its activity stays visible. When an assistant response completes, a quiet `Worked for 08:05` row appears above the answer. Select the row to expand its reasoning, tool calls, file changes, and progress text. Enter and Space toggle the same disclosure. Tool input, output, and subagent navigation remain inspectable inside it.
 
-Text-only responses show the duration without a disclosure. Questions and attachments stay visible. Find in thread opens work containing a matching visible label or progress message.
+Text-only responses show the duration without a disclosure. Questions and attachments stay visible. Find in thread opens work containing the selected match, including grouped commands. Closing Find keeps that work open until the reader closes its disclosure.
 
 ## Design
 
