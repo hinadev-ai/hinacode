@@ -1,11 +1,14 @@
 import type { AgentCommand } from "../../shared/agent.ts"
+import type { Thread } from "../../shared/domain.ts"
+import { mentionedThreadId } from "../../shared/threadMention.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "command" | "mention"
 
-/** Tokens worth coloring: full command tokens such as `/review`, and workspace file paths for `@` mentions. */
+/** Tokens worth coloring: full command tokens such as `/review`, and workspace file paths and thread ids for `@` mentions. */
 export interface KnownTokens {
   readonly commands: ReadonlySet<string>
   readonly files: ReadonlySet<string>
+  readonly threads: ReadonlySet<string>
 }
 
 export interface Segment {
@@ -24,7 +27,9 @@ const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: 
   if (token.startsWith("`")) return { kind: "code", text: token }
   if (token.startsWith("@")) {
     const mention = token.replace(TRAILING_PUNCTUATION, "")
-    return known.files.has(mention.slice(1)) ? { kind: "mention", text: mention } : null
+    const threadId = mentionedThreadId(mention)
+    const isKnown = threadId === null ? known.files.has(mention.slice(1)) : known.threads.has(threadId)
+    return isKnown ? { kind: "mention", text: mention } : null
   }
   return known.commands.has(token) ? { kind: "command", text: token } : null
 }
@@ -80,7 +85,7 @@ export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segme
 }
 
 export interface CompletionQuery {
-  /** `@` mentions a file; the others are the agent's command triggers. */
+  /** `@` mentions a file or a thread; the others are the agent's command triggers. */
   readonly trigger: AgentCommand["trigger"] | "@"
   /** What has been typed after the trigger, up to the caret. */
   readonly query: string
@@ -91,7 +96,7 @@ export interface CompletionQuery {
 
 const isSpace = (char: string | undefined) => char !== undefined && /\s/.test(char)
 
-/** The `/command`, `$skill` or `@file` token the caret is in, if it starts the line or follows whitespace. */
+/** The `/command`, `$skill` or `@mention` token the caret is in, if it starts the line or follows whitespace. */
 export function completionAt(text: string, caret: number): CompletionQuery | null {
   let start = caret
   while (start > 0 && !isSpace(text[start - 1])) start--
@@ -132,4 +137,14 @@ export function matchFiles(files: ReadonlyArray<string>, query: string) {
     else if (path.includes(needle)) pathContains.push(file)
   }
   return [...nameStarts.toSorted(byLength), ...nameContains.toSorted(byLength), ...pathContains.toSorted(byLength)]
+}
+
+/** Threads whose title starts with `query`, then whose title contains it, each in the given order. */
+export function matchThreads<T extends Pick<Thread, "title">>(threads: ReadonlyArray<T>, query: string) {
+  const needle = query.toLowerCase()
+  const titleStarts = threads.filter((thread) => thread.title.toLowerCase().startsWith(needle))
+  const titleContains = threads.filter(
+    (thread) => !titleStarts.includes(thread) && thread.title.toLowerCase().includes(needle),
+  )
+  return [...titleStarts, ...titleContains]
 }
