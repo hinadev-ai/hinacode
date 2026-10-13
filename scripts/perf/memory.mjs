@@ -48,6 +48,9 @@ const results = {
   label,
   scenario,
   revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  diffSha256: createHash("sha256")
+    .update(execFileSync("git", ["diff", "HEAD"]))
+    .digest("hex"),
   samples: [],
 }
 const save = () =>
@@ -64,7 +67,7 @@ try {
   if (ownership.cwd !== root || ownership.data !== data) throw new Error("wrong app")
   results.ownership = ownership
   const rpc = async (method, payload) => {
-    const reply = await page.evaluate(async ({ method, payload }) => window.kkcode.rpc(method, payload), {
+    const reply = await page.evaluate(async (request) => window.kkcode.rpc(request.method, request.payload), {
       method,
       payload,
     })
@@ -83,6 +86,7 @@ try {
   await rpc("settings.set", { automations: { bindHost: "127.0.0.1", port: webhookPort } })
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Performance.enable")
+  const observedProcesses = new Map()
   const sample = async (name) => {
     await cdp.send("HeapProfiler.collectGarbage")
     const { metrics } = await cdp.send("Performance.getMetrics")
@@ -106,6 +110,10 @@ try {
       for (const p of processes) if (ids.has(p.ppid)) ids.add(p.pid)
     }
     const owned = processes.filter((p) => ids.has(p.pid))
+    for (const process of owned) observedProcesses.set(process.pid, process.executable)
+    const detachedDescendants = processes.filter(
+      (p) => !ids.has(p.pid) && observedProcesses.get(p.pid) === p.executable,
+    )
     const value = {
       name,
       rendererHeapBytes: metric("JSHeapUsedSize"),
@@ -113,6 +121,7 @@ try {
       listeners: metric("JSEventListeners"),
       rssBytes: owned.reduce((n, p) => n + p.rssBytes, 0),
       processes: owned,
+      detachedDescendants,
       main: await app.evaluate(() => process.memoryUsage()),
     }
     results.samples.push(value)
@@ -170,6 +179,8 @@ try {
     db.close()
     await page.reload()
     await expect(page.locator('a[href="/thread/memory-0"]')).toBeVisible()
+    const runningThreads = page.locator('a[href^="/thread/memory-"] [title="Running"]')
+    await expect(runningThreads).toHaveCount(count)
     await sample("seeded")
     for (let i = 0; i < count; i++) {
       await page.locator(`a[href="/thread/memory-${i}"]`).click()
@@ -180,19 +191,19 @@ try {
     await expect(page.getByRole("heading", { name: "Memory empty", exact: true })).toBeVisible()
     await sample("left-running")
     const threads = await rpc("threads.list")
-    await app.evaluate(({ BrowserWindow }, threads) => {
+    await app.evaluate(({ BrowserWindow }, completedThreads) => {
       const window = BrowserWindow.getAllWindows()[0]
-      for (const thread of threads) {
+      for (const completedThread of completedThreads) {
         window.webContents.send("event", {
           type: "thread.event",
-          threadId: thread.id,
+          threadId: completedThread.id,
           seq: 1,
           event: { type: "turn_completed" },
         })
-        window.webContents.send("event", { type: "thread.updated", thread: { ...thread, status: "idle" } })
+        window.webContents.send("event", { type: "thread.updated", thread: { ...completedThread, status: "idle" } })
       }
     }, threads)
-    await expect(page.locator('[data-status="running"]')).toHaveCount(0)
+    await expect(runningThreads).toHaveCount(0)
     await sample("completed-background")
     await page.screenshot({ path: join(root, ".context/shots", `${label}-memory.png`) })
     await page.locator('a[href="/thread/memory-0"]').click()
@@ -220,8 +231,10 @@ try {
       await expect
         .poll(
           async () => {
-            const t = (await rpc("threads.list")).find((t) => t.id === thread.id)
-            return t && ["idle", "limited"].includes(t.status) && typeof t.providerSessionId === "string"
+            const current = (await rpc("threads.list")).find((listed) => listed.id === thread.id)
+            return (
+              current && ["idle", "limited"].includes(current.status) && typeof current.providerSessionId === "string"
+            )
           },
           { timeout: 120000 },
         )
@@ -239,8 +252,27 @@ try {
         results.samples.at(-1).processes.filter((p) => p.executable === "claude"),
         "idle Claude processes must exit",
       ).toHaveLength(0)
+      expect(results.samples.at(-1).detachedDescendants, "idle cleanup must not orphan child processes").toHaveLength(0)
     }
     await page.screenshot({ path: join(root, ".context/shots", `${label}-claude-memory.png`) })
+    const first = results.threads[0]
+    await page.locator(`a[href="/thread/${first.id}"]`).click()
+    await page.getByRole("combobox", { name: "Message", exact: true }).fill(results.workload.prompt)
+    await page.getByRole("button", { name: "Send", exact: true }).click()
+    await expect
+      .poll(
+        async () => {
+          const transcript = await rpc("threads.transcript", { threadId: first.id })
+          return transcript.messages.filter((message) => message.role === "assistant" && message.completedAt !== null)
+            .length
+        },
+        { timeout: 120000 },
+      )
+      .toBe(2)
+    const resumed = (await rpc("threads.list")).find((thread) => thread.id === first.id)
+    expect(resumed.providerSessionId, "follow-up preserves the provider session").toBe(first.providerSessionId)
+    results.resume = { sameSessionId: true, status: resumed.status }
+    await sample("resumed-first")
   }
   save()
 } catch (error) {
