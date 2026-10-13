@@ -114,6 +114,8 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
     process.env.XDG_CONFIG_HOME = join(endpoint.home, ".config")
     process.env.XDG_DATA_HOME = join(endpoint.home, ".local", "share")
     process.env.MUSE_NO_AUTO_UPDATE = "1"
+    // On macOS Muse moves a stored key into the login keychain, which the fake HOME lacks, so the OS prompts.
+    process.env.TBH_CREDENTIAL_BACKEND = "file"
   })
 
   afterAll(async () => {
