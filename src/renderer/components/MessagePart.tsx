@@ -63,7 +63,7 @@ function ReasoningPart({ text }: { text: string }) {
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiSparkling2Line aria-hidden className="size-3.5 shrink-0" />
-        {m.message_reasoning()}
+        {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
         {text}
