@@ -1,4 +1,5 @@
 import { isAbsolute, relative, sep } from "node:path"
+import { GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
 
 const EXTERNAL_PROTOCOLS = new Set(["https:", "http:"])
 
@@ -18,6 +19,13 @@ export const isAppDocument = (url: string, appUrl: string): boolean => {
   if (!target || target.protocol !== app.protocol || target.host !== app.host) return false
   return app.protocol !== "file:" || target.pathname === app.pathname
 }
+
+/**
+ * Whether a frame of the app window may navigate to `url`. The top frame stays on the app document, and a
+ * subframe may only load project files, which `kkcode-file` serves under a CSP sandbox.
+ */
+export const isAllowedNavigation = (url: string, isMainFrame: boolean, appUrl: string): boolean =>
+  isMainFrame ? isAppDocument(url, appUrl) : URL.parse(url)?.protocol === `${PROJECT_FILE_PROTOCOL}:`
 
 /** Only the app document in the top-level frame may call RPC; `frame` is `IpcMainInvokeEvent.senderFrame`. */
 export const isTrustedSender = (frame: { url: string; parent: unknown } | null, appUrl: string): boolean =>
@@ -49,4 +57,29 @@ export const lockDownWebview = (preferences: Record<string, unknown>, params: Re
   })
   params["partition"] = BROWSER_PARTITION
   return externalUrl(params["src"] ?? "") !== null
+}
+
+const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+
+/** The attachment id a `kkcode-github-asset://asset/<id>` request names, or null for anything else. */
+export const githubAssetId = (url: string): string | null => {
+  const parsed = URL.parse(url)
+  if (parsed?.protocol !== `${GITHUB_ASSET_PROTOCOL}:` || parsed.host !== "asset") return null
+  const id = parsed.pathname.slice(1)
+  return UUID.test(id) ? id : null
+}
+
+/**
+ * The root and relative path a `kkcode-file://root/<encoded root>/<path>` request names, or null when it is
+ * malformed. Says nothing about whether the path stays inside the root; `Files.resolve` checks that.
+ */
+export const projectFileRequest = (url: string): { root: string; path: string } | null => {
+  const parsed = URL.parse(url)
+  if (parsed?.protocol !== `${PROJECT_FILE_PROTOCOL}:` || parsed.host !== "root") return null
+  const [root, ...segments] = parsed.pathname.slice(1).split("/")
+  try {
+    return root ? { root: decodeURIComponent(root), path: segments.map(decodeURIComponent).join("/") } : null
+  } catch {
+    return null
+  }
 }

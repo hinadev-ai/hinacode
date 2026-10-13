@@ -355,7 +355,8 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
             focusAfterDelete={focusAfterDelete}
           />
         </div>
-        <CollapsibleContent>
+        {/* Clips the rows while the height animates, with room left for a row's 2px focus ring. */}
+        <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] [overflow-clip-margin:2px] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
           <SidebarThreadList
             projectId={project.id}
             threads={threads}

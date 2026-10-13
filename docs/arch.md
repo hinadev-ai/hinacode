@@ -481,6 +481,8 @@ flowchart TB
   main -- "openExternal: http(s) only" --> browser["System browser"]
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
+  main -- "kkcode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
+  main -- "kkcode-github-asset: gh token stays in main" --> renderer
 ```
 
 Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, and [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
@@ -489,7 +491,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 
 | Concern                                   | Path                                                       |
 | ----------------------------------------- | ---------------------------------------------------------- |
-| Layer graph, window, attachment protocol  | `src/main/index.ts`                                        |
+| Layer graph, window, custom protocols     | `src/main/index.ts`                                        |
 | rpc handlers, event push                  | `src/main/ipc.ts`                                          |
 | Navigation, external links, sender checks | `src/main/security.ts`                                     |
 | Turn orchestration                        | `src/main/services/AgentRunner.ts`                         |

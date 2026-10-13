@@ -5,3 +5,24 @@ export const EVENT_CHANNEL = "event"
 export const ATTACHMENT_PROTOCOL = "kkcode-attachment"
 
 export const attachmentUrl = (path: string) => `${ATTACHMENT_PROTOCOL}://file/${encodeURIComponent(path)}`
+
+/** Custom scheme main proxies private GitHub attachments through, signed in with the user's `gh` token. */
+export const GITHUB_ASSET_PROTOCOL = "kkcode-github-asset"
+
+const GITHUB_ASSET = /^https:\/\/github\.com\/user-attachments\/assets\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/
+
+/** The `kkcode-github-asset` URL for a `github.com/user-attachments/assets/<id>` link, or null for any other URL. */
+export const githubAssetUrl = (url: string | undefined): string | null => {
+  const id = GITHUB_ASSET.exec(url ?? "")?.[1]
+  return id === undefined ? null : `${GITHUB_ASSET_PROTOCOL}://asset/${id}`
+}
+
+/** Custom scheme main serves files of project roots and worktrees from, for media and HTML previews. */
+export const PROJECT_FILE_PROTOCOL = "kkcode-file"
+
+/**
+ * The `kkcode-file` URL of `path` (relative, `/`-separated) under `root`. The root is one path segment,
+ * so relative links in a served HTML file resolve to siblings under the same root.
+ */
+export const projectFileUrl = (root: string, path: string) =>
+  `${PROJECT_FILE_PROTOCOL}://root/${encodeURIComponent(root)}/${path.split("/").map(encodeURIComponent).join("/")}`

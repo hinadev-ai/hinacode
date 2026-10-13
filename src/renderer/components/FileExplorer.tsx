@@ -20,7 +20,9 @@ import {
   RiFileCodeLine,
   RiFileCopyLine,
   RiFileLine,
+  RiFileMusicLine,
   RiFileTextLine,
+  RiFileVideoLine,
   RiFolderLine,
   RiFolderOpenLine,
   RiImageLine,
@@ -29,6 +31,7 @@ import {
   RiRefreshLine,
 } from "react-icons/ri"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
+import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -46,15 +49,17 @@ const TYPEAHEAD_RESET_MS = 600
 const DEFAULT_TREE_HEIGHT = 240
 const MIN_PANE_HEIGHT = 96
 
+const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
+  image: RiImageLine,
+  svg: RiImageLine,
+  video: RiFileVideoLine,
+  audio: RiFileMusicLine,
+  html: RiFileCodeLine,
+}
+
 const iconsByExtension: Readonly<Record<string, IconType>> = {
   md: RiMarkdownLine,
   mdx: RiMarkdownLine,
-  png: RiImageLine,
-  jpg: RiImageLine,
-  jpeg: RiImageLine,
-  gif: RiImageLine,
-  webp: RiImageLine,
-  svg: RiImageLine,
   txt: RiFileTextLine,
   json: RiFileTextLine,
   yaml: RiFileTextLine,
@@ -66,7 +71,9 @@ const CODE = /^(ts|tsx|js|jsx|mjs|cjs|css|html|py|rs|go|rb|java|kt|swift|c|h|cpp
 const fileIcon = (entry: FsEntry, expanded: boolean): IconType => {
   if (entry.kind === "dir") return expanded ? RiFolderOpenLine : RiFolderLine
   if (entry.kind === "symlink") return RiLinksLine
-  const extension = entry.name.slice(entry.name.lastIndexOf(".") + 1).toLowerCase()
+  const preview = previewOf(entry.name)
+  if (preview !== null) return iconsByPreview[preview]
+  const extension = extensionOf(entry.name)
   return iconsByExtension[extension] ?? (CODE.test(extension) ? RiFileCodeLine : RiFileLine)
 }
 

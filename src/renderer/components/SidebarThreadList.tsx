@@ -494,7 +494,12 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
 
 const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: string }>> = {
   running: { label: m.thread_status_running, className: "bg-emerald-500 animate-pulse motion-reduce:animate-none" },
-  awaiting_approval: { label: m.thread_status_awaiting_approval, className: "bg-amber-500" },
+  // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
+  awaiting_approval: {
+    label: m.thread_status_awaiting_approval,
+    className:
+      "relative bg-amber-500 after:absolute after:inset-0 after:animate-attention after:rounded-full after:bg-inherit motion-reduce:after:hidden",
+  },
 }
 
 function StatusIndicator({ status }: { status: ThreadStatus }): ReactNode {
