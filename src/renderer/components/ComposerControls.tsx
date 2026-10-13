@@ -87,6 +87,19 @@ function useThreadModel(thread: Thread) {
   return useAgentModels(thread.provider, null).find((model) => model.id === thread.model)
 }
 
+/**
+ * Composer pickers sit at the bottom of the window, so their popups open upward and hang off the
+ * trigger's left edge. Aligning the selected row with the trigger (the Select default) leaves only
+ * the rows that fit between the trigger and the window edge, about three, floating over the composer.
+ */
+const composerPopup = {
+  side: "top",
+  align: "start",
+  sideOffset: 6,
+  alignItemWithTrigger: false,
+  className: "max-h-[min(24rem,var(--available-height))] w-auto min-w-(--anchor-width)",
+} as const
+
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
 /**
@@ -125,7 +138,7 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
         <ProviderIcon provider={thread.provider} />
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent side="top" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+      <SelectContent {...composerPopup}>
         {providers.map((provider) => (
           <ModelGroup key={provider} provider={provider} keep={provider === thread.provider ? thread.model : null} />
         ))}
@@ -416,7 +429,7 @@ function ChoiceSelect<V extends string>({ choice }: { choice: Choice<V> }) {
         />
         <TooltipContent>{m.thread_option_value({ name: choice.name, value: label })}</TooltipContent>
       </Tooltip>
-      <SelectContent side="top" alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
+      <SelectContent {...composerPopup}>
         {choice.items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             <ChoiceItemLabel item={item} />

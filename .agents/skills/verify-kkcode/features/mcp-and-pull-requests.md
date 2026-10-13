@@ -1,10 +1,10 @@
 # MCP tools and pull request links
 
-kkcode runs one MCP server on 127.0.0.1 and hands each agent run a bearer credential bound to its thread; the credential alone decides which thread a call acts as. Agents use it to review their changes (`review_changes`), register the pull requests they open (`link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`), work with Linear (`linear_get_issue`, `linear_search_issues`, `linear_create_comment`, `linear_update_issue_state`), ask the user for a secret through a card in the thread (`request_secret`), and start sibling threads (`create_thread`). Linked pull requests appear in the thread's side panel with their status from `gh`, where the user can open or unlink them, and a worktree branch without a pull request offers `Create pull request`.
+kkcode runs one MCP server on 127.0.0.1 and hands each agent run a bearer credential bound to its thread; the credential alone decides which thread a call acts as. Agents use it to review their changes (`review_changes`), register the pull requests they open (`link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`), work with Linear (`linear_get_issue`, `linear_search_issues`, `linear_create_comment`, `linear_update_issue_state`), ask the user for a secret through a card in the thread (`request_secret`), start sibling threads (`create_thread`), and check on, steer or stop the threads of their project (`list_threads`, `read_thread`, `send_to_thread`, `stop_thread`). Linked pull requests appear in the thread's side panel with their status from `gh`, where the user can open or unlink them, and a worktree branch without a pull request offers `Create pull request`.
 
 ## Automated coverage
 
-`e2e/features/mcp.feature` talks to the server with the real MCP SDK as the thread's agent: the ten-tool list including `request_secret` and `create_thread`, a wrong credential getting 401, `review_changes` reporting a diff, `link_pull_request` showing up in the panel live and `Unlink` emptying it, a non-PR URL being refused, the Linear tools explaining the missing key, and `request_secret` refusing a call outside a running turn. `src/main/mcp/server.integration.test.ts` covers the credential rules and the secret/create-thread lifecycles with stub providers.
+`e2e/features/mcp.feature` talks to the server with the real MCP SDK as the thread's agent: the fourteen-tool list including `request_secret`, `create_thread` and the thread controls, a wrong credential getting 401, `review_changes` reporting a diff, `link_pull_request` showing up in the panel live and `Unlink` emptying it, a non-PR URL being refused, the Linear tools explaining the missing key, and `request_secret` refusing a call outside a running turn. `src/main/mcp/server.integration.test.ts` covers the credential rules, the secret/create-thread lifecycles and the thread controls with stub providers.
 
 ## Sub-features
 
@@ -16,6 +16,7 @@ kkcode runs one MCP server on 127.0.0.1 and hands each agent run a bearer creden
 
 - `request-secret` (service integration; real-turn UI recipe below) during a turn, `request_secret` shows a `<provider> asks for a secret` card with the description, the name and a masked input; Save stores the value (`secrets.has` turns true) and the tool returns the name only; Decline returns an error result; the card goes away either way. Outside a turn the tool fails with `No turn is running`.
 - `create-thread` (service integration; real-turn UI recipe below) `create_thread` adds a thread to the caller's project; it shows in the sidebar without a reload, runs its prompt as the first turn, and `threads.list` shows `createdBy` as `thread:<caller>`.
+- `thread-controls` (service integration) `list_threads` lists the non-archived threads of the caller's project and marks the caller; `read_thread` shows a thread's status, pending approvals or questions, and latest messages; `send_to_thread` starts a turn on an idle thread and steers a running one; `stop_thread` interrupts it. Threads of another project are refused, and send/stop refuse the caller itself.
 
 ## How to get to it (user POV)
 

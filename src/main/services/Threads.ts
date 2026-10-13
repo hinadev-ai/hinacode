@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import type { ProviderId } from "../../shared/agent.ts"
+import { ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
 import {
   type AccessMode,
@@ -159,10 +159,13 @@ const make = Effect.gen(function* () {
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
 
+  // A database written by a newer build can hold threads of providers this build has no agent
+  // for. Listing skips them instead of failing every caller (the sidebar, the limit checker).
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: ThreadRow,
-    execute: () => sql`SELECT * FROM thread ORDER BY project_id, sort_index`,
+    execute: () =>
+      sql`SELECT * FROM thread WHERE ${sql.in("provider", [...ProviderId.literals])} ORDER BY project_id, sort_index`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,

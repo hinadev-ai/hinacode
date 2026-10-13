@@ -1,5 +1,6 @@
+import { DEFAULT_THEMES, type DiffsHighlighter, getSharedHighlighter } from "@pierre/diffs"
 import { useParams } from "@tanstack/react-router"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, Suspense, use, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -18,6 +19,8 @@ import {
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
+import { useTheme } from "../lib/appearance.ts"
+import { useSettings } from "../lib/settings.ts"
 import { describeCommand, describeToolCall } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -133,11 +136,17 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 flex flex-col gap-2 text-xs">
-        <ToolSection label={m.tool_input()} text={JSON.stringify(part.input, null, 2)} />
-        <ToolSection
-          label={m.tool_output()}
-          text={part.output === undefined ? m.tool_no_output() : formatOutput(part.output)}
-        />
+        {part.name === "Bash" ? (
+          <CommandView call={part} command={summary} />
+        ) : (
+          <>
+            <ToolSection label={m.tool_input()} text={JSON.stringify(part.input, null, 2)} />
+            <ToolSection
+              label={m.tool_output()}
+              text={part.output === undefined ? m.tool_no_output() : formatOutput(part.output)}
+            />
+          </>
+        )}
       </CollapsibleContent>
     </Collapsible>
   )
@@ -269,15 +278,67 @@ function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealReques
           </span>
         )}
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2 px-3 pb-2 text-xs">
-        <ToolSection label={m.tool_command()} text={command} />
-        <ToolSection
-          label={m.tool_output()}
-          text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
-        />
+      <CollapsibleContent className="px-3 pb-2 text-xs">
+        <CommandView call={call} command={command} />
       </CollapsibleContent>
     </Collapsible>
   )
+}
+
+/** A shell command as it would read in a terminal: the command, highlighted, then what it printed. */
+function CommandView({ call, command }: { call: ToolCall; command: string }) {
+  const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
+  return (
+    <div className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono">
+      <section>
+        <h4 className="sr-only">{m.tool_command()}</h4>
+        <pre className="whitespace-pre-wrap wrap-anywhere">
+          <ShellCode code={command} />
+        </pre>
+      </section>
+      {(output !== "" || call.status !== "running") && (
+        <section className="mt-2">
+          <h4 className="sr-only">{m.tool_output()}</h4>
+          <pre className="whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+            {output === "" ? m.tool_no_output() : output}
+          </pre>
+        </section>
+      )}
+    </div>
+  )
+}
+
+const shellHighlighters = new Map<string, Promise<DiffsHighlighter>>()
+
+const shellHighlighter = (theme: string) => {
+  let highlighter = shellHighlighters.get(theme)
+  if (highlighter === undefined) {
+    highlighter = getSharedHighlighter({ themes: [theme], langs: ["shellscript"] })
+    shellHighlighters.set(theme, highlighter)
+  }
+  return highlighter
+}
+
+/** Unmarked by Find on purpose: the command's row already carries its marks. */
+function ShellCode({ code }: { code: string }) {
+  const { codeTheme, scheme } = useTheme(useSettings().appearance.theme)
+  return (
+    <Suspense fallback={code}>
+      <ShellTokens code={code} theme={codeTheme ?? DEFAULT_THEMES[scheme]} />
+    </Suspense>
+  )
+}
+
+function ShellTokens({ code, theme }: { code: string; theme: string }) {
+  const { tokens } = use(shellHighlighter(theme)).codeToTokens(code, { lang: "shellscript", theme })
+  return tokens.flatMap((line, index) => [
+    ...(index === 0 ? [] : ["\n"]),
+    ...line.map((token) => (
+      <span key={token.offset} style={{ color: token.color }}>
+        {token.content}
+      </span>
+    )),
+  ])
 }
 
 function ToolSection({ label, text }: { label: string; text: string }) {

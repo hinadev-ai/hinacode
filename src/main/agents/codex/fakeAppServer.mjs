@@ -137,6 +137,20 @@ const reply = ({ id, method, params }) => {
           },
         })
       }
+      if (control().plan) {
+        send({
+          method: "turn/plan/updated",
+          params: {
+            threadId: params.threadId,
+            turnId,
+            explanation: "Two steps",
+            plan: [
+              { step: "Read the code", status: "completed" },
+              { step: "Write the fix", status: "inProgress" },
+            ],
+          },
+        })
+      }
       if (control().subagent) spawnSubagent(params.threadId, turnId)
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {

@@ -347,3 +347,91 @@ layer(testLayer, { excludeTestServices: true })("create_thread", (it) => {
     }),
   )
 })
+
+const childOf = (callerId: string, title: string) =>
+  Effect.gen(function* () {
+    const threads = yield* Threads
+    const caller = yield* threads.get(callerId)
+    return (yield* threads.create({ projectId: caller.projectId, title, provider: "claude", model: "m" })).id
+  })
+
+const callFrom = (threadId: string, name: string, args: Record<string, unknown> = {}) =>
+  Effect.gen(function* () {
+    const mcp = yield* McpCredentials
+    return yield* callAs(yield* mcp.connectionFor(threadId), name, args)
+  })
+
+layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
+  it.effect("list_threads shows this project's threads and marks the caller", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      const child = yield* childOf(a, "Listed child")
+      const result = yield* callFrom(a, "list_threads")
+      const listed = JSON.parse(result.text) as Array<{ id: string; self?: boolean }>
+      expect(listed.map((thread) => thread.id).toSorted()).toEqual([a, child].toSorted())
+      expect(listed.find((thread) => thread.id === a)?.self).toBe(true)
+      expect(listed.find((thread) => thread.id === child)).toMatchObject({ title: "Listed child", status: "idle" })
+      expect(listed.some((thread) => thread.id === b)).toBe(false)
+    }),
+  )
+
+  it.effect("read_thread returns the status and the latest messages", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Read child")
+      yield* runner.send(child, "Look into the flaky test", [])
+      const result = yield* callFrom(a, "read_thread", { threadId: child })
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain(`Thread ${child} "Read child" is running.`)
+      expect(result.text).toContain("## user\nLook into the flaky test")
+      yield* runner.interrupt(child)
+    }),
+  )
+
+  it.effect("send_to_thread starts a turn, then steers it, and stop_thread interrupts it", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Driven child")
+      const started = yield* callFrom(a, "send_to_thread", { threadId: child, prompt: "Begin" })
+      expect(started.text).toBe(`Started a new turn on thread ${child}.`)
+      expect((yield* threads.get(child)).status).toBe("running")
+
+      const steered = yield* callFrom(a, "send_to_thread", { threadId: child, prompt: "Also this" })
+      expect(steered.text).toBe(`Steered the running turn of thread ${child}.`)
+
+      const stopped = yield* callFrom(a, "stop_thread", { threadId: child })
+      expect(stopped.text).toBe(`Interrupted thread ${child}.`)
+      yield* until(
+        threads.get(child).pipe(
+          Effect.map((thread) => Option.liftPredicate(thread, (t) => t.status === "idle")),
+          Effect.orDie,
+        ),
+      )
+    }),
+  )
+
+  it.effect("a thread of another project or a deleted one is out of reach", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      for (const name of ["read_thread", "send_to_thread", "stop_thread"]) {
+        const result = yield* callFrom(a, name, { threadId: b, prompt: "x" })
+        expect(result).toStrictEqual({ text: `Thread ${b} is not in this project.`, isError: true })
+      }
+      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
+      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true })
+    }),
+  )
+
+  it.effect("send_to_thread and stop_thread refuse the caller itself", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      for (const name of ["send_to_thread", "stop_thread"]) {
+        const result = yield* callFrom(a, name, { threadId: a, prompt: "x" })
+        expect(result.isError).toBe(true)
+        expect(result.text).toContain("own turn")
+      }
+    }),
+  )
+})
