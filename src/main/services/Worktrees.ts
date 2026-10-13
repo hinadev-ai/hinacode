@@ -129,6 +129,7 @@ const make = Effect.gen(function* () {
   const github = yield* GitHub
   const events = yield* Events
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const fs = yield* FileSystem.FileSystem
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
 
   const findAll = SqlSchema.findAll({
@@ -282,14 +283,17 @@ const make = Effect.gen(function* () {
         return yield* new WorktreeTakenError({ branch: input.branch, path: live.value.path })
       }
 
+      // git reports checkouts by their resolved path, so ours derive from the resolved root to compare equal.
+      // A root that cannot be resolved does not exist, and the git calls below report that.
+      const rootPath = yield* fs.realPath(project.rootPath).pipe(Effect.orElseSucceed(() => project.rootPath))
       const id = randomUUID()
-      const orphan = yield* findOrphan(project.rootPath, input.branch)
-      const path = Option.getOrElse(orphan, () => checkoutPath(project.rootPath, input.branch, id))
+      const orphan = yield* findOrphan(rootPath, input.branch)
+      const path = Option.getOrElse(orphan, () => checkoutPath(rootPath, input.branch, id))
       if (Option.isNone(orphan)) {
-        const args = (yield* branchExists(project.rootPath, input.branch))
+        const args = (yield* branchExists(rootPath, input.branch))
           ? ["worktree", "add", path, input.branch]
           : ["worktree", "add", "-b", input.branch, path, input.startPoint ?? input.baseRef]
-        yield* git.run(project.rootPath, args)
+        yield* git.run(rootPath, args)
       }
 
       const worktree: Worktree = {

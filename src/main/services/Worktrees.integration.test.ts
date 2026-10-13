@@ -106,10 +106,10 @@ const withRepo = <A, E>(
 ) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
-      // macOS links the temp dir through /private, and git reports worktree paths fully resolved.
-      Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "kk-worktrees-test-")))),
+      Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )
+    // Unresolved on purpose. macOS's temp dir goes through the /var symlink, and git reports resolved paths.
     const root = join(dir, "repo")
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
@@ -362,10 +362,12 @@ describe("worktree ownership", () => {
   )
 
   it.live("archiving an idle thread with worktree removal on removes its own checkout", () =>
-    withRepo(({ projectId }) =>
+    withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
         const thread = yield* createThread(projectId, "done", "kk/done")
         yield* waitUntilSetUp(thread.worktreeId)
+        const { path } = yield* worktreeOf(thread.worktreeId)
+        expect(git(root, "worktree", "list", "--porcelain")).toContain(`worktree ${path}\n`)
         const archived = yield* archiveRemovingWorktree(thread.id)
         expect(archived.status).toBe("archived")
         const worktree = yield* worktreeOf(thread.worktreeId)
@@ -456,7 +458,7 @@ describe("worktree ownership", () => {
 
         const thread = yield* createThread(projectId, "recovered", "kk/orphan")
         const worktree = yield* worktreeOf(thread.worktreeId)
-        expect(worktree.path).toBe(orphan)
+        expect(worktree.path).toBe(realpathSync(orphan))
         expect(existsSync(join(orphan, "sentinel"))).toBe(true)
       }),
     ),
