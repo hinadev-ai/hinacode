@@ -24,6 +24,7 @@ Feature: Notifications
       | turn_failed        | Failed: Turn interrupted   |
       | turn_limited       | Stopped at the usage limit |
 
+  @desktop
   Scenario: Clicking a desktop notification restores the minimized window
     Given the window does not have focus
     When the agent in "Background" emits "turn_completed"

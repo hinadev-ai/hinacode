@@ -22,6 +22,10 @@ type AppearanceSnapshot = typeof AppearanceSnapshot.Type
 const StartupAppearance = Schema.Struct({ firstVisible: AppearanceSnapshot, firstPaint: AppearanceSnapshot })
 type StartupAppearance = typeof StartupAppearance.Type
 
+declare global {
+  var kkcodeStartupAppearance: Promise<unknown>
+}
+
 export interface KkcodeApp {
   readonly userData: string
   readonly dbPath: string
@@ -68,7 +72,14 @@ const launch = async (
   delete env.ELECTRON_RUN_AS_NODE
   const app = await electron.launch({
     executablePath,
-    args: ["--no-sandbox", "--disable-gpu", "--mute-audio", join(projectRoot, "out/main/index.js")],
+    args: [
+      "--no-sandbox",
+      "--disable-gpu",
+      "--mute-audio",
+      "-r",
+      join(import.meta.dirname, "startup-observer.cjs"),
+      join(projectRoot, "out/main/index.js"),
+    ],
     cwd: projectRoot,
     env: {
       ...env,
@@ -77,42 +88,20 @@ const launch = async (
       ...(options.mockResetMs === undefined ? {} : { KKCODE_MOCK_RESET_MS: String(options.mockResetMs) }),
     },
   })
+  await app.evaluate(
+    ({ app: electronApp, BrowserWindow }) =>
+      new Promise<void>((done) => {
+        const waitForShow = (nativeWindow: ElectronWindow) => {
+          if (nativeWindow.isVisible()) done()
+          else nativeWindow.once("show", () => done())
+        }
+        const existingWindow = BrowserWindow.getAllWindows()[0]
+        if (existingWindow) waitForShow(existingWindow)
+        else electronApp.once("browser-window-created", (_, createdWindow) => waitForShow(createdWindow))
+      }),
+  )
   const startup = Schema.decodeUnknownSync(StartupAppearance)(
-    await app.evaluate(
-      ({ app: electronApp, BrowserWindow }) =>
-        new Promise<unknown>((done, fail) => {
-          const observe = (nativeWindow: ElectronWindow) => {
-            if (nativeWindow.isVisible()) {
-              fail(new Error("The window became visible before startup observation"))
-              return
-            }
-            nativeWindow.once("show", () => {
-              void nativeWindow.webContents
-                .executeJavaScript(`(() => {
-                  const snapshot = () => ({
-                    scheme: document.documentElement.classList.contains("dark") ? "dark" : "light",
-                    rendered: (document.getElementById("root")?.childElementCount ?? 0) > 0,
-                    background: getComputedStyle(document.body).backgroundColor
-                  })
-                  const firstVisible = snapshot()
-                  return new Promise(done => {
-                    const observer = new PerformanceObserver(list => {
-                      if (list.getEntries().some(entry => entry.name === "first-contentful-paint")) {
-                        observer.disconnect()
-                        done({ firstVisible, firstPaint: snapshot() })
-                      }
-                    })
-                    observer.observe({ type: "paint", buffered: true })
-                  })
-                })()`)
-                .then(done, fail)
-            })
-          }
-          const existingWindow = BrowserWindow.getAllWindows()[0]
-          if (existingWindow) observe(existingWindow)
-          else electronApp.once("browser-window-created", (_, createdWindow) => observe(createdWindow))
-        }),
-    ),
+    await app.evaluate(() => globalThis.kkcodeStartupAppearance),
   )
   const page = await app.firstWindow()
   await waitForRenderer(page)

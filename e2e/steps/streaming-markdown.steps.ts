@@ -290,7 +290,7 @@ const scrollContainer = (page: Page) =>
     .filter({ has: article(page) })
     .first()
 
-When("I type and scroll while the agent streams many Markdown blocks", async ({ app }) => {
+When("I type, scroll and resize while the agent streams many Markdown blocks", async ({ app }) => {
   const stream = streamOf(app)
   const initial = Array.from({ length: 80 }, (_, index) => `Paragraph ${index}: inspect **this** output.\n\n`).join("")
   await app.pushEvents([
@@ -326,6 +326,7 @@ When("I type and scroll while the agent streams many Markdown blocks", async ({ 
     await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(10)
     await expect(article(app.page)).not.toContainText("Live 299:")
     stream.readingPosition = await viewport.evaluate((node) => node.scrollTop)
+    await app.page.setViewportSize({ width: 1280, height: 760 })
     await production
     await expect(article(app.page)).toContainText("Writing…")
     await expect(article(app.page)).not.toContainText("Live 299:")

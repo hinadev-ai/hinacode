@@ -2,7 +2,9 @@ import { execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { expect } from "@playwright/test"
 import { createBdd, test as base } from "playwright-bdd"
+import { defaultSettings } from "../../src/shared/domain.ts"
 import { type KkcodeApp, spawnApp } from "./app.ts"
 import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
@@ -170,9 +172,12 @@ AfterScenario(async ({ app, $testInfo }) => {
     keybindings: {},
     defaultModel: { claude: null, codex: null, muse: null },
     archive: { whenMerged: false, removeWorktree: false },
+    appearance: defaultSettings.appearance,
   })
+  await app.page.emulateMedia({ colorScheme: null })
   await app.page.evaluate(() => localStorage.removeItem("kkcode.sidebarProjects"))
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
+  await expect(app.page.locator("html")).toHaveCSS("font-size", `${defaultSettings.appearance.fontSize}px`)
 })

@@ -1,10 +1,13 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
+import { Link } from "@tanstack/react-router"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
+import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
+import { useThreads } from "../stores/threads.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
@@ -87,6 +90,31 @@ const MessageItem = memo(function MessageItem({ message }: { message: Message })
   )
 })
 
+/** Plain text with each `@thread:<id>` of a known thread shown as a link titled `@<title>`. */
+function WithThreadMentions({ text }: { text: string }) {
+  const threadsById = useThreads((state) => state.byId)
+  const nodes: Array<ReactElement> = []
+  let end = 0
+  for (const match of text.matchAll(THREAD_MENTION)) {
+    const thread = threadsById[match[1] ?? ""]
+    if (thread === undefined) continue
+    nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end, match.index)} />)
+    nodes.push(
+      <Link
+        key={`thread-${match.index}`}
+        to="/thread/$threadId"
+        params={{ threadId: thread.id }}
+        className="text-syntax-token underline-offset-2 hover:underline"
+      >
+        <Highlighted text={`@${thread.title}`} />
+      </Link>,
+    )
+    end = match.index + match[0].length
+  }
+  nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end)} />)
+  return nodes
+}
+
 function MessageBody({ message }: { message: Message }) {
   const repository = useThreadRepository()
   const { showElapsedTime } = use(AnswerableContext)
@@ -115,7 +143,7 @@ function MessageBody({ message }: { message: Message }) {
                     <Highlighted text={segment.text} />
                   </WebLink>
                 ) : (
-                  <Highlighted key={index} text={segment.text} />
+                  <WithThreadMentions key={index} text={segment.text} />
                 ),
               )}
             </FindPartContext>
