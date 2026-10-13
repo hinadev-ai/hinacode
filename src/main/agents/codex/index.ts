@@ -20,6 +20,7 @@ import { AgentError, type AgentProvider } from "../provider.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, makeRolloutUsage } from "./rollouts.ts"
+import { elementContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import { GetAccountResponse } from "./protocol.ts"
 import type {
@@ -102,14 +103,14 @@ const userInputResponse = (answers: QuestionAnswers): ToolRequestUserInputRespon
 
 const textInput = (text: string): UserInput => ({ type: "text", text, text_elements: [] })
 
-/** Images go in as local paths; other files are named by path so the agent reads them with its own tools. */
+/** Images go in as local paths, a picked element with its context; other files are named by path for the agent to read. */
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<UserInput> => [
   ...(text === "" ? [] : [textInput(text)]),
-  ...attachments.map((attachment) =>
-    attachment.kind === "image"
-      ? { type: "localImage" as const, path: attachment.path }
-      : textInput(`Attached file: ${attachment.path}`),
-  ),
+  ...attachments.flatMap((attachment): Array<UserInput> => {
+    if (attachment.kind !== "image") return [textInput(`Attached file: ${attachment.path}`)]
+    const image: UserInput = { type: "localImage", path: attachment.path }
+    return attachment.element ? [image, textInput(elementContext(attachment.element))] : [image]
+  }),
 ]
 
 /** Codex expands a skill only when it arrives as its own input item next to the `$name` in the text. */

@@ -640,6 +640,27 @@
       }
     }
   ],
+  "command_view_browser": "Show browser",
+  "panel_tab_browser": "Browser",
+  "browser_address": "Address",
+  "browser_address_placeholder": "URL or localhost:port",
+  "browser_back": "Back",
+  "browser_forward": "Forward",
+  "browser_reload": "Reload",
+  "browser_stop": "Stop loading",
+  "browser_pick": "Select element",
+  "browser_pick_cancel": "Stop selecting",
+  "browser_pick_hint": "Click an element to add it to your message. Arrow keys move, Enter picks, Esc cancels.",
+  "browser_pick_added": "Added {element} to your message",
+  "browser_pick_failed": "Could not add the element: {message}",
+  "browser_page": "Page",
+  "browser_start_title": "Open a page",
+  "browser_start_hint": "Type a URL above, or open a port this thread listens on.",
+  "browser_start_open_port": "Open localhost:{port}",
+  "browser_load_failed": "Could not load {url}",
+  "attachment_element": "Element {element}",
+  "attachment_element_url": "URL",
+  "attachment_element_selector": "Selector",
   "tool_commands_ran": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

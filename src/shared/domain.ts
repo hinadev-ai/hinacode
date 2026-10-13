@@ -219,6 +219,21 @@ export type Thread = typeof Thread.Type
 export const ToolCallStatus = Schema.Literals(["running", "done", "error"])
 export type ToolCallStatus = typeof ToolCallStatus.Type
 
+/**
+ * An element the user picked in the in-app browser. The page produced every field, so the limits hold even when
+ * its scripts tamper with the picker, and agents read it as page content, not as instructions.
+ */
+export const PickedElement = Schema.Struct({
+  url: Schema.String.check(Schema.isMaxLength(2048)),
+  selector: Schema.String.check(Schema.isMaxLength(1000)),
+  /** The element's outerHTML, cut to 4000 characters. */
+  html: Schema.String.check(Schema.isMaxLength(4000)),
+  text: Schema.String.check(Schema.isMaxLength(500)),
+  /** The React components it sits in, nearest first. Empty unless the page is a React development build. */
+  components: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(5)),
+})
+export type PickedElement = typeof PickedElement.Type
+
 /** A file the user attached, copied into the app's attachments dir so `path` outlives the source. */
 export const Attachment = Schema.Struct({
   id: Schema.String,
@@ -228,6 +243,8 @@ export const Attachment = Schema.Struct({
   mime: Schema.String,
   kind: Schema.Literals(["image", "file"]),
   bytes: Schema.Number,
+  /** Set when the image is a screenshot of an element picked in the in-app browser. */
+  element: Schema.optional(PickedElement),
 })
 export type Attachment = typeof Attachment.Type
 
