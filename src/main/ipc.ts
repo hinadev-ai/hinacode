@@ -98,14 +98,17 @@ const knownRoot = (root: string) =>
 /** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
+export const bringToFront = (window: BrowserWindow) => {
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
+
 const handlers: Handlers = {
   "app.ready": (_, window) => Effect.sync(() => window?.show()),
   "app.focus": (_, window) =>
     Effect.sync(() => {
-      if (!window) return
-      if (window.isMinimized()) window.restore()
-      window.show()
-      window.focus()
+      if (window) bringToFront(window)
     }),
   "projects.list": () => Projects.use((projects) => projects.list),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
