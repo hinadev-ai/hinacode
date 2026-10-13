@@ -17,8 +17,12 @@ export type PagePick = typeof PagePick.Type
  */
 /* oxlint-disable unicorn/consistent-function-scoping -- the page gets this function's source alone, so helpers stay inside */
 function pickElement(): Promise<unknown> {
+  // The limits of `PickedElement`, which rejects the whole pick when one field is longer.
+  const MAX_URL = 2048
+  const MAX_SELECTOR = 1000
   const MAX_HTML = 4000
   const MAX_TEXT = 500
+  const MAX_COMPONENT = 200
   const scope = window as unknown as { __kkcodePicker?: { cancel: () => void } }
   scope.__kkcodePicker?.cancel()
 
@@ -118,11 +122,11 @@ function pickElement(): Promise<unknown> {
       const text = element instanceof HTMLElement ? element.innerText : (element.textContent ?? "")
       return {
         element: {
-          url: location.href,
-          selector: selector(element),
+          url: location.href.slice(0, MAX_URL),
+          selector: selector(element).slice(0, MAX_SELECTOR),
           html: element.outerHTML.slice(0, MAX_HTML),
           text: text.trim().replace(/\s+/g, " ").slice(0, MAX_TEXT),
-          components: components(element),
+          components: components(element).map((component) => component.slice(0, MAX_COMPONENT)),
         },
         rect: {
           x: left,
