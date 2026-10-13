@@ -111,7 +111,7 @@ export function ModelPicker({ thread, onError }: ControlProps) {
       <SelectTrigger size="sm" aria-label={m.thread_model_picker()} className={`min-w-24 ${triggerClass}`}>
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="w-auto min-w-(--anchor-width)">
         {items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             {item.label}
