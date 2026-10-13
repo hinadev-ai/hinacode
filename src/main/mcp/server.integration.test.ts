@@ -395,16 +395,22 @@ layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
     }),
   )
 
-  it.effect("read_thread returns the status and the latest messages", () =>
+  it.effect("read_thread returns the status, the metadata and the latest messages", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
+      const pullRequests = yield* PullRequests.PullRequests
       const { a } = yield* Seeded
       const child = yield* childOf(a, "Read child")
+      yield* pullRequests.link(child, "https://github.com/o/r/pull/7")
       yield* runner.send(child, "Look into the flaky test", [])
       const result = yield* callFrom(a, "read_thread", { threadId: child })
       expect(result.isError).toBe(false)
       expect(result.text).toContain(`Thread ${child} "Read child" is running.`)
-      expect(result.text).toContain("## user\nLook into the flaky test")
+      expect(result.text).toContain("Agent: claude, model m.")
+      expect(result.text).toContain("Workspace: the project root.")
+      expect(result.text).toMatch(/Created by user at \S+, last updated \S+\./)
+      expect(result.text).toContain("Pull requests:\n- https://github.com/o/r/pull/7")
+      expect(result.text).toMatch(/## user \(\S+\)\nLook into the flaky test/)
       yield* runner.interrupt(child)
     }),
   )

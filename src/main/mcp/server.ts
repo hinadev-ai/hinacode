@@ -5,7 +5,7 @@ import { McpProtocol, McpSchema, McpServer as AiMcpServer, Tool } from "effect/a
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
 import { SqlClient } from "effect/sql"
 import { ProviderId } from "../../shared/agent.ts"
-import { isThreadBusy, type Message, type Thread } from "../../shared/domain.ts"
+import { isThreadBusy, type Message, type Thread, type Worktree } from "../../shared/domain.ts"
 import { AgentRunner } from "../services/AgentRunner.ts"
 import { Events } from "../services/Events.ts"
 import { PullRequests } from "../services/PullRequests.ts"
@@ -123,7 +123,22 @@ const renderPart = (part: Message["parts"][number]): string | null => {
 }
 
 const renderMessage = (message: Message) =>
-  [`## ${message.role}`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
+  [`## ${message.role} (${message.createdAt})`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
+
+const renderMetadata = (
+  thread: Thread,
+  worktree: Worktree | null,
+  pullRequestUrls: ReadonlyArray<string>,
+): ReadonlyArray<string> => [
+  `Agent: ${thread.provider}, model ${thread.model}.`,
+  worktree === null
+    ? "Workspace: the project root."
+    : `Workspace: worktree on branch ${worktree.branch} at ${worktree.path}.`,
+  `Created by ${thread.createdBy} at ${thread.createdAt}, last updated ${thread.updatedAt}.`,
+  pullRequestUrls.length === 0
+    ? "Pull requests: none."
+    : ["Pull requests:", ...pullRequestUrls.map((url) => `- ${url}`)].join("\n"),
+]
 
 const registerTools = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -414,7 +429,7 @@ const registerTools = Layer.effectDiscard(
       tool({
         name: "read_thread",
         description:
-          "Read another thread of this project: its status, whether it is waiting on the user, and its latest messages.",
+          "Read another thread of this project: its status, agent and model, workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
         parameters: Schema.Struct({
           threadId: TargetThreadId,
           limit: Schema.optionalKey(
@@ -427,6 +442,14 @@ const registerTools = Layer.effectDiscard(
           Effect.gen(function* () {
             const target = yield* projectThread(threadId, targetId)
             const transcript = yield* runner.transcript(targetId).pipe(Effect.mapError(failure))
+            const worktree =
+              target.worktreeId === null
+                ? null
+                : yield* worktrees.get(target.worktreeId).pipe(
+                    Effect.catchTag("NotFoundError", () => Effect.succeed(null)),
+                    Effect.mapError(failure),
+                  )
+            const links = yield* pullRequests.list(targetId).pipe(Effect.mapError(failure))
             const waiting = [
               ...transcript.approvals.map((request) => `- approval: ${request.title}`),
               ...transcript.questions.flatMap((request) =>
@@ -437,6 +460,11 @@ const registerTools = Layer.effectDiscard(
             const messages = transcript.messages.slice(-(limit ?? DEFAULT_READ_LIMIT))
             return [
               `Thread ${target.id} "${target.title}" is ${target.status}.`,
+              ...renderMetadata(
+                target,
+                worktree,
+                links.map((link) => link.url),
+              ),
               ...(waiting.length > 0 ? ["Waiting on the user for:", ...waiting] : []),
               "",
               messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
