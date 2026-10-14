@@ -165,6 +165,7 @@ sequenceDiagram
   participant R as Renderer
   participant AR as AgentRunner
   participant WT as Worktrees
+  participant G as Git
   participant P as Provider
   participant DB as SQLite
 
@@ -179,7 +180,9 @@ sequenceDiagram
   Note over R,AR: Stop cancels the pending send; the setup script continues
   AR->>WT: exclusive(re-read thread, check cancellation, resolve cwd)
   Note over AR,WT: Resolving the cwd and marking the thread running happen in one critical section, so a worktree removal can't delete the directory mid-start
-  AR->>DB: insert user message + open assistant message
+  AR->>G: captureTurnBase(cwd)
+  AR->>AR: recheck Stop and guarded delivery
+  AR->>DB: recordTurnBase + insert user message + open assistant message
   AR-->>R: push message.created, thread.updated(running)
   AR->>P: runTurn(cwd, model, resumeSessionId, mcpServer)
   loop each AgentEvent
@@ -384,6 +387,7 @@ erDiagram
 ```
 
 - `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`.
+- `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
 ## Lifecycles

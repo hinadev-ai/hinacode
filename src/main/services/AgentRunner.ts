@@ -490,9 +490,10 @@ const make = Effect.gen(function* () {
             const provider = yield* providerFor(thread.provider)
             const home = yield* accounts.home(thread.accountId)
             const { cwd } = yield* activeWorkspace(threadId)
-            yield* threads.snapshotTurnBase(threadId, cwd)
+            const tree = yield* threads.captureTurnBase(cwd)
             yield* checkStopped
             if (!(yield* when)) return null
+            yield* threads.recordTurnBase({ threadId, tree })
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
             yield* insertMessage(userMessage(threadId, prompt, attachments, now))

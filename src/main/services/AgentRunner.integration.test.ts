@@ -126,7 +126,8 @@ const withPreparingThread = async (
     runTurn: (input) =>
       Stream.suspend(() => {
         turns.push({ provider: id, input })
-        return input.prompt === "accepted input" ? Stream.make<AgentEvent>({ type: "turn_completed" }) : Stream.never
+        const completed: AgentEvent = { type: "turn_completed" }
+        return input.prompt === "accepted input" ? Stream.make(completed) : Stream.never
       }),
     steer: () => Effect.void,
     interrupt: () => Effect.void,
@@ -189,14 +190,14 @@ const withPreparingThread = async (
             Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
             Layer.succeed(Threads.Threads, {
               ...threads,
-              snapshotTurnBase: (id, cwd) =>
+              captureTurnBase: (cwd) =>
                 Effect.gen(function* () {
                   if (holdSnapshot) {
                     holdSnapshot = false
                     snapshotting.resolve()
                     yield* Effect.promise(() => snapshotReady.promise)
                   }
-                  yield* threads.snapshotTurnBase(id, cwd)
+                  return yield* threads.captureTurnBase(cwd)
                 }),
             }),
             Layer.mock(GitHub.GitHub, {

@@ -138,8 +138,11 @@ export class Threads extends Context.Service<
       id: string,
       scope: ChangesScope,
     ) => Effect.Effect<Changes | null, PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError>
-    /** Records `cwd` as it is now as the base of the `turn` scope. Outside a git checkout the base is cleared. */
-    readonly snapshotTurnBase: (id: string, cwd: string) => Effect.Effect<void, PersistenceError>
+    readonly captureTurnBase: (cwd: string) => Effect.Effect<string | null>
+    readonly recordTurnBase: (input: {
+      readonly threadId: string
+      readonly tree: string | null
+    }) => Effect.Effect<void, PersistenceError>
     /** Turns do not survive a restart, so threads left mid-turn by a crash go back to idle. */
     readonly resetInterrupted: Effect.Effect<void, PersistenceError>
   }
@@ -358,16 +361,17 @@ const make = Effect.gen(function* () {
       return yield* diffWorkingTree(cwd, turnBaseTree).pipe(Effect.provideContext(gitContext))
     })
 
-  const snapshotTurnBase = (id: string, cwd: string) =>
-    Effect.gen(function* () {
-      const tree = yield* snapshotWorkingTree(cwd).pipe(
-        Effect.provideContext(gitContext),
-        Effect.orElseSucceed(() => null),
-      )
-      yield* sql`UPDATE thread SET turn_base_tree = ${tree} WHERE id = ${id}`.pipe(
-        Effect.mapError(persistence("threads.snapshotTurnBase")),
-      )
-    })
+  const captureTurnBase = (cwd: string) =>
+    snapshotWorkingTree(cwd).pipe(
+      Effect.provideContext(gitContext),
+      Effect.orElseSucceed(() => null),
+    )
+
+  const recordTurnBase: typeof Threads.Service.recordTurnBase = ({ threadId, tree }) =>
+    sql`UPDATE thread SET turn_base_tree = ${tree} WHERE id = ${threadId}`.pipe(
+      Effect.mapError(persistence("threads.recordTurnBase")),
+      Effect.asVoid,
+    )
 
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
@@ -405,7 +409,8 @@ const make = Effect.gen(function* () {
     attachWorktree,
     listFiles,
     changes,
-    snapshotTurnBase,
+    captureTurnBase,
+    recordTurnBase,
     archive,
     unarchive,
     remove,

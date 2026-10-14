@@ -592,13 +592,18 @@ describe("thread changes", () => {
         writeFileSync(join(root, "before-turn.txt"), "old\n")
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
 
-        yield* Threads.use((threads) => threads.snapshotTurnBase(thread.id, root))
+        const captured = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
+        yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: captured }))
         writeFileSync(join(root, "during-turn.txt"), "new\n")
 
         const changes = yield* Threads.use((threads) => threads.changes(thread.id, "turn"))
         expect(changes?.files).toStrictEqual([{ path: "during-turn.txt", status: "added" }])
 
-        yield* Threads.use((threads) => threads.snapshotTurnBase(thread.id, join(root, "missing")))
+        const missing = yield* Threads.use((threads) => threads.captureTurnBase(join(root, "missing")))
+        expect(missing).toBeNull()
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toStrictEqual(changes)
+        yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: missing }))
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
       }),
     ),
