@@ -60,8 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-      # pnpm installs only the host's platform packages, and the Windows build needs the win32 Claude binary.
-      - run: pnpm install --frozen-lockfile --os linux,win32 --cpu x64 --libc glibc
+      - run: pnpm install --frozen-lockfile
       - run: pnpm dist --linux --win
         env:
           # Actions mounts HOME at /github/home, which Wine refuses because root does not own it.

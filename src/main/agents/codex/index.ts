@@ -16,7 +16,7 @@ import type {
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
-import { resolveBinary, resolveBinaryOnce } from "../binary.ts"
+import { installedBinary } from "../binary.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
@@ -162,7 +162,6 @@ const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn inter
 
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
-  const binaryPath = resolveBinary("codex")
   const clientLock = yield* Semaphore.make(1)
   /** Keyed by `JSON.stringify(home)`, so the CLI's own login is "null". */
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
@@ -179,10 +178,11 @@ const make = Effect.gen(function* () {
         const current = clients.get(key)
         if (current?.client.isAlive()) return current.client
         if (current) yield* Scope.close(current.scope, Exit.void)
+        const binaryPath = yield* installedBinary("codex", home?.binary ?? "codex")
         const scope = yield* Scope.make()
         const env = home === null ? { ...process.env } : { ...process.env, CODEX_HOME: home.dir }
         const client = yield* makeCodexClient({
-          binaryPath: home === null ? binaryPath : resolveBinaryOnce(home.binary),
+          binaryPath,
           clientVersion: CLIENT_VERSION,
           env,
         }).pipe(

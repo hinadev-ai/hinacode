@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
 import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
@@ -100,9 +100,12 @@ const knownRoot = (root: string) =>
 /** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
+/** Only for when the user asked for the window, such as a notification click or opening kkcode again. */
 export const bringToFront = (window: BrowserWindow) => {
   if (window.isMinimized()) window.restore()
   window.show()
+  // macOS won't activate an app behind another one on window.focus() alone.
+  app.focus({ steal: true })
   window.focus()
 }
 

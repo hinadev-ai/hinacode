@@ -80,7 +80,7 @@ vi.mock("electron", () => ({
       this.emit(electron.notificationOutcome)
     }
   },
-  app: { getPath: () => electron.userData },
+  app: { getPath: () => electron.userData, focus: () => {} },
   ipcMain: { handle: (channel: string, handler: IpcHandler) => electron.handlers.set(channel, handler) },
   BrowserWindow: {
     getAllWindows: () => [

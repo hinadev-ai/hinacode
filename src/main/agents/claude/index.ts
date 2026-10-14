@@ -1,6 +1,5 @@
-import { execFileSync, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
-import { createRequire } from "node:module"
 import {
   type AccountInfo,
   type EffortLevel,
@@ -12,7 +11,7 @@ import {
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Context, Duration, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import { Cache, Cause, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 import type {
   AccountHome,
   AgentAccount,
@@ -24,7 +23,7 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
-import { resolveBinaryOnce } from "../binary.ts"
+import { installedBinary } from "../binary.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
@@ -172,37 +171,6 @@ const agentError = (message: string) => (cause: unknown) =>
     message: `${message}: ${cause instanceof Error ? cause.message : String(cause)}`,
   })
 
-/**
- * GUI-launched Electron apps (notably on macOS) get a minimal PATH, so fall back to a login shell
- * to find the user's `claude` install.
- */
-export function resolveClaudeExecutable(): string | undefined {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", ["claude"]],
-    [process.env.SHELL ?? "/bin/sh", ["-lc", "command -v claude"]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim()
-      if (path !== "") return path
-    } catch {}
-  }
-  return bundledClaudeExecutable()
-}
-
-/** The SDK finds its bundled binary inside app.asar, where it cannot be spawned, so point it at the unpacked copy. */
-function bundledClaudeExecutable(): string | undefined {
-  try {
-    const sdk = createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk")
-    const binary = process.platform === "win32" ? "claude.exe" : "claude"
-    return createRequire(sdk)
-      .resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${binary}`)
-      .replace("app.asar", "app.asar.unpacked")
-  } catch {
-    return undefined
-  }
-}
-
 /** The Messages API rejects base64 images above 5 MB. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -256,24 +224,74 @@ const isSteerAbort = (message: SDKMessage) =>
   message.type === "result" &&
   (message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools")
 
+const baseOptions = (home: AccountHome | null) =>
+  Effect.map(installedBinary("claude", home?.binary ?? "claude"), (path): Options => ({
+    // The SDK replaces the child env instead of merging it.
+    env: homeEnv(home),
+    pathToClaudeCodeExecutable: path,
+  }))
+
+/** Asks a throwaway CLI one question, then closes it. It loads no settings unless `options` asks for them. */
+const probe = <A>(
+  read: (probe: Query) => Promise<A>,
+  failure: string,
+  home: AccountHome | null,
+  options: Options = {},
+) =>
+  Effect.gen(function* () {
+    const prompts = yield* Queue.unbounded<SDKUserMessage>()
+    const base = yield* baseOptions(home)
+    const cli = query({
+      prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
+      options: { ...base, settingSources: [], persistSession: false, ...options },
+    })
+    return yield* Effect.tryPromise({ try: () => read(cli), catch: agentError(failure) }).pipe(
+      Effect.timeout(Duration.seconds(30)),
+      Effect.catchTag("TimeoutError", () =>
+        Effect.fail(new AgentError({ provider: "claude", message: `${failure}: timed out` })),
+      ),
+      Effect.ensuring(Effect.sync(() => cli.close())),
+    )
+  })
+
+const account = (home: AccountHome | null) =>
+  probe((cli) => cli.accountInfo(), "Failed to read the Claude account", home).pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(AccountInfoSchema)),
+    Effect.catchTag("SchemaError", () =>
+      Effect.fail(
+        new AgentError({ provider: "claude", message: "Failed to read the Claude account: invalid response" }),
+      ),
+    ),
+    Effect.map(toAccount),
+  )
+const planLimits = (home: AccountHome | null) =>
+  probe(
+    (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
+    "Failed to read Claude plan limits",
+    home,
+  ).pipe(
+    Effect.flatMap((raw) => Effect.map(nowIso, (readAt) => toPlanLimits(raw, readAt))),
+    Effect.orElseSucceed(() => null),
+  )
+
+/**
+ * A throwaway CLI in `cwd` that loads the same settings, skills and plugins a thread there would. Keyed
+ * by `commandsKey`, since the account's home holds the user-level ones.
+ */
+const probeCommands = (key: string) => {
+  const { cwd, home } = JSON.parse(key) as { cwd: string; home: AccountHome | null }
+  return probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
+    cwd,
+    settingSources: ["user", "project", "local"],
+  })
+}
+
 export const layer = Layer.effect(
   ClaudeProvider,
   Effect.gen(function* () {
     const layerScope = yield* Effect.scope
-    const executable = resolveClaudeExecutable()
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
-
-    const executableFor = (home: AccountHome | null) => (home === null ? executable : resolveBinaryOnce(home.binary))
-
-    const baseOptions = (home: AccountHome | null): Options => {
-      const path = executableFor(home)
-      return {
-        // The SDK replaces the child env instead of merging it.
-        env: homeEnv(home),
-        ...(path === undefined ? {} : { pathToClaudeCodeExecutable: path }),
-      }
-    }
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
@@ -456,12 +474,13 @@ export const layer = Layer.effect(
         const previous = resumable.get(input.threadId)
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
+        const base = yield* baseOptions(input.home)
         const handle = yield* Effect.try({
           try: () =>
             query({
               prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
               options: {
-                ...baseOptions(input.home),
+                ...base,
                 cwd: input.cwd,
                 model: input.model,
                 ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
@@ -626,28 +645,6 @@ export const layer = Layer.effect(
         yield* Queue.offer(session.prompts, message)
       })
 
-    /** Asks a throwaway CLI one question, then closes it. It loads no settings unless `options` asks for them. */
-    const probe = <A>(
-      read: (probe: Query) => Promise<A>,
-      failure: string,
-      home: AccountHome | null,
-      options: Options = {},
-    ) =>
-      Effect.gen(function* () {
-        const prompts = yield* Queue.unbounded<SDKUserMessage>()
-        const cli = query({
-          prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
-          options: { ...baseOptions(home), settingSources: [], persistSession: false, ...options },
-        })
-        return yield* Effect.tryPromise({ try: () => read(cli), catch: agentError(failure) }).pipe(
-          Effect.timeout(Duration.seconds(30)),
-          Effect.catchTag("TimeoutError", () =>
-            Effect.fail(new AgentError({ provider: "claude", message: `${failure}: timed out` })),
-          ),
-          Effect.ensuring(Effect.sync(() => cli.close())),
-        )
-      })
-
     const fetchModels = Effect.gen(function* () {
       const models = yield* probe((cli) => cli.supportedModels(), "Failed to list Claude models", null)
       const byId = new Map<string, ModelInfo>()
@@ -666,40 +663,13 @@ export const layer = Layer.effect(
         })
       }
       return [...byId.values()]
-    }).pipe(Effect.orElseSucceed(() => FALLBACK_MODELS))
+    })
 
-    const listModels = yield* Effect.cachedWithTTL(fetchModels, Duration.minutes(10))
-
-    /**
-     * A throwaway CLI in `cwd` that loads the same settings, skills and plugins a thread there would. Keyed
-     * by `commandsKey`, since the account's home holds the user-level ones.
-     */
-    const probeCommands = (key: string) => {
-      const { cwd, home } = JSON.parse(key) as { cwd: string; home: AccountHome | null }
-      return probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
-        cwd,
-        settingSources: ["user", "project", "local"],
-      })
-    }
-    const account = (home: AccountHome | null) =>
-      probe((cli) => cli.accountInfo(), "Failed to read the Claude account", home).pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(AccountInfoSchema)),
-        Effect.catchTag("SchemaError", () =>
-          Effect.fail(
-            new AgentError({ provider: "claude", message: "Failed to read the Claude account: invalid response" }),
-          ),
-        ),
-        Effect.map(toAccount),
-      )
-    const planLimits = (home: AccountHome | null) =>
-      probe(
-        (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
-        "Failed to read Claude plan limits",
-        home,
-      ).pipe(
-        Effect.flatMap((raw) => Effect.map(nowIso, (readAt) => toPlanLimits(raw, readAt))),
-        Effect.orElseSucceed(() => null),
-      )
+    // A failure is not cached, so a fresh install of Claude Code shows its models right away.
+    const cachedModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
+      Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
+    )
+    const listModels = Effect.orElseSucceed(cachedModels, () => FALLBACK_MODELS)
 
     const transcriptUsage = perHome(makeTranscriptUsage)
     const usage = (sessionId: string, home: AccountHome | null) =>
