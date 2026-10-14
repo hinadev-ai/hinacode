@@ -59,7 +59,7 @@ const SCREENSHOT_TIMEOUT_SECONDS = 30
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 /** How long control stays with the user after their last view closes, so a view that reconnects keeps it. */
-const HAND_BACK_GRACE = "2 seconds"
+export const HAND_BACK_GRACE = "2 seconds"
 
 const NONE: ThreadVm = { status: "none" }
 
@@ -101,8 +101,9 @@ const make = (source: LoginSource) =>
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
-    // Socket callbacks run outside any fiber.
-    const publishUnsafe = (event: PushEvent) => Effect.runFork(events.publish(event))
+    // Socket callbacks run outside any fiber. Forking with the layer's context keeps its clock.
+    const runFork = Effect.runForkWith(yield* Effect.context<never>())
+    const publishUnsafe = (event: PushEvent) => runFork(events.publish(event))
 
     const setVm = (threadId: string, vm: ThreadVm) =>
       Effect.suspend(() => {
@@ -359,7 +360,7 @@ const make = (source: LoginSource) =>
       // Nobody can hand control back once no view is open, so it goes back to the agent. Moving the screen
       // between the side panel and floating closes one view before the next opens, hence the grace.
       if (!unwatchedByUser(screen.threadId)) return
-      Effect.runFork(
+      runFork(
         Effect.sleep(HAND_BACK_GRACE).pipe(
           Effect.andThen(
             Effect.suspend(() =>

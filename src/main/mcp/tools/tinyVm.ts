@@ -6,7 +6,7 @@ import { TinyVm } from "../../services/tinyVm/TinyVm.ts"
 import * as McpTool from "./tool.ts"
 
 /** Waits this long after acting before the screenshot, so the screen has reacted. */
-const SETTLE_MS = 500
+export const SETTLE_MS = 500
 const MAX_OUTPUT_CHARS = 20_000
 
 const tail = (label: string, bytes: Uint8Array) => {
