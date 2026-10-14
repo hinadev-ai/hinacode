@@ -1,32 +1,37 @@
 # Releasing
 
-Use this to publish a signed, notarized macOS arm64 build to `kjj6198/kkcode-releases`, where installed apps pick it up as an update.
+Use this to publish kkcode for macOS (arm64), Windows (x64) and Linux (x64) to `kjj6198/kkcode-releases`, where installed apps pick it up as an update.
+
+The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows on `ubuntu-latest` in the `electronuserland/builder:24-wine` image. A pull request that changes packaging gets unsigned builds as workflow artifacts. A `v*` tag gets a signed, notarized macOS build and a release.
 
 ## Steps
 
 1. Once, create the public feed repository: `gh repo create kjj6198/kkcode-releases --public`.
-2. On an Apple Silicon Mac, install the Developer ID Application certificate in the login keychain.
+2. Once, add these repository secrets to `kjj6198/kkcode`:
+
+   | Secret                     | Value                                                                       |
+   | -------------------------- | --------------------------------------------------------------------------- |
+   | `MAC_CERTIFICATE_P12`      | The Developer ID Application certificate exported as `.p12`, base64 encoded |
+   | `MAC_CERTIFICATE_PASSWORD` | The `.p12` password                                                         |
+   | `APPLE_API_KEY_P8`         | The contents of `AuthKey_XXXX.p8`                                           |
+   | `APPLE_API_KEY_ID`         | The key id                                                                  |
+   | `APPLE_API_ISSUER`         | The issuer uuid                                                             |
+   | `RELEASES_TOKEN`           | A token that can write releases to `kjj6198/kkcode-releases`                |
+
 3. Bump `version` in `package.json` and merge it to `main`.
-4. Export the notarization key and a token that can write releases to `kjj6198/kkcode-releases`:
+4. Tag that commit and push the tag:
 
    ```sh
-   export APPLE_API_KEY=/path/to/AuthKey_XXXX.p8 APPLE_API_KEY_ID=XXXX APPLE_API_ISSUER=<issuer uuid>
-   export GH_TOKEN=<token>
+   git tag v0.2.0 && git push origin v0.2.0
    ```
 
-5. Build, sign, notarize and publish:
+   The `release` job checks that the tag matches `package.json`, then uploads the DMG, the macOS zip, the Windows installer, the AppImage, their blockmaps, and `latest-mac.yml`, `latest.yml` and `latest-linux.yml`.
 
-   ```sh
-   pnpm install
-   pnpm release
-   ```
-
-   This uploads `kkcode-<version>-arm64.dmg`, `kkcode-<version>-arm64-mac.zip`, their blockmaps and `latest-mac.yml` to a release named after the version.
-
-For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist`. The output lands in `dist/`.
+For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 
 ## If it goes wrong
 
 - **The app quits at startup with `ERR_MODULE_NOT_FOUND`.** A main-process import pulls in a package that is not packaged. Only packages that `out/main` imports belong in `dependencies`; the renderer is bundled by Vite, so its packages are `devDependencies`. Import a subpath instead of a barrel (for example `@effect/platform-node/NodeHttpServer`), or move the package to `dependencies`.
-- **Claude threads fail to start in the packaged app.** Check that `Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude` exists in the build.
-- **Installed apps do not update.** Check that the release is published, not a draft, and that it has `latest-mac.yml`. Squirrel.Mac also refuses a build signed with a different identity than the running app.
+- **Claude threads fail to start in the packaged app.** Check that `resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-<platform>-<arch>/` exists in the build. The Windows build only has it because CI installs with `--os linux,win32`.
+- **Installed apps do not update.** Check that the release is published, not a draft, and that it has the `latest*.yml` for that platform. Squirrel.Mac also refuses a build signed with a different identity than the running app.
+- **The Windows build fails in `wine`.** It needs real x64. Wine crashes under Docker's x64 emulation on Apple Silicon, so build Windows in CI.
