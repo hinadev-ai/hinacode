@@ -48,8 +48,9 @@ export function MessagePartView({ part }: { part: MessagePart }) {
   }
 }
 
+/** How the agent got to its reply recedes, and comes back to full contrast once the user reaches for it. */
 const disclosureTrigger =
-  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
 
 function Chevron() {
   return (
@@ -110,7 +111,7 @@ export function formatOutput(output: unknown): string {
 
 const statusIcon = {
   running: <RiLoader4Line aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />,
-  done: <RiCheckLine aria-hidden className="size-3.5 text-emerald-500" />,
+  done: <RiCheckLine aria-hidden className="size-3.5" />,
   error: <RiErrorWarningLine aria-hidden className="size-3.5 text-destructive" />,
 } satisfies Record<ToolCallStatus, ReactNode>
 
@@ -130,7 +131,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">
+        <span className="shrink-0 font-medium">
           <Highlighted text={name} />
         </span>
         <span className="min-w-0 flex-1 truncate font-mono" title={summary}>
@@ -169,7 +170,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
     <button type="button" onClick={() => open(part.callId)} className={`my-1 ${disclosureTrigger}`}>
       <span className="size-3.5 shrink-0" />
       {provider ? <ProviderIcon provider={provider} /> : <RiToolsLine aria-hidden className="size-3.5 shrink-0" />}
-      <span className="shrink-0 font-medium text-foreground">
+      <span className="shrink-0 font-medium">
         <Highlighted text={name} />
       </span>
       <span className="min-w-0 flex-1 truncate" title={summary}>
@@ -228,7 +229,7 @@ export function CommandGroup({
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiTerminalBoxLine aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">
+        <span className="shrink-0 font-medium">
           {running ? m.tool_commands_running({ count }) : m.tool_commands_ran({ count })}
         </span>
         {running && (
@@ -361,9 +362,9 @@ function ToolSection({ label, text }: { label: string; text: string }) {
 function FileChangePart({ path, diff }: { path: string; diff: string }) {
   const row = (
     <>
-      <RiFileEditLine aria-hidden className="size-3.5 shrink-0 text-emerald-500" />
+      <RiFileEditLine aria-hidden className="size-3.5 shrink-0" />
       <span className="shrink-0">{m.file_change_label()}</span>
-      <span className="min-w-0 truncate font-mono text-foreground" title={path}>
+      <span className="min-w-0 truncate font-mono" title={path}>
         <Highlighted text={path} />
       </span>
     </>
