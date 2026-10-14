@@ -352,7 +352,7 @@ const make = Effect.gen(function* () {
       const worktree: Worktree = {
         id,
         projectId: project.id,
-        path,
+        path: yield* resolve(path),
         branch: input.branch,
         baseRef: input.baseRef,
         status: "preparing",
