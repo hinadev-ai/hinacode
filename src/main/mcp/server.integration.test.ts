@@ -4,7 +4,8 @@ import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
-import { Context, Deferred, Effect, Fiber, Layer, Option, Stream } from "effect"
+import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -26,11 +27,12 @@ import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
-import { TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
+import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
+import { SETTLE_MS } from "./tools/tinyVm.ts"
 
 vi.mock("electron", () => ({ BrowserWindow: {}, safeStorage: { isEncryptionAvailable: () => false } }))
 
@@ -157,8 +159,14 @@ const withAuthorization = (connection: McpConnection, authorization: string) => 
 /** Polls on the live clock until `check` returns a value. */
 const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
   Effect.flatMap(check, (found) =>
-    Option.isSome(found) ? Effect.succeed(found.value) : Effect.andThen(Effect.sleep("20 millis"), until(check)),
+    Option.isSome(found)
+      ? Effect.succeed(found.value)
+      : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
+
+/** Moves the test clock on by `step` until `check` passes, since the fiber that sleeps may not have started yet. */
+const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
+  until(Effect.andThen(TestClock.adjust(step), check))
 
 const pendingSecretRequest = (threadId: string) =>
   Effect.gen(function* () {
@@ -171,8 +179,7 @@ const pendingSecretRequest = (threadId: string) =>
     )
   })
 
-// The HTTP server runs on the live clock; the test services would freeze its timeouts.
-layer(testLayer, { excludeTestServices: true })("mcp server credentials", (it) => {
+layer(testLayer)("mcp server credentials", (it) => {
   it.effect("a credential acts only as the thread it was issued for", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
@@ -256,7 +263,7 @@ layer(testLayer, { excludeTestServices: true })("mcp server credentials", (it) =
   )
 })
 
-layer(testLayer, { excludeTestServices: true })("request_secret", (it) => {
+layer(testLayer)("request_secret", (it) => {
   const VALUE = "sk-live-never-in-the-transcript"
 
   it.effect("stores what the user enters and returns only the name", () =>
@@ -339,7 +346,7 @@ layer(testLayer, { excludeTestServices: true })("request_secret", (it) => {
   )
 })
 
-layer(testLayer, { excludeTestServices: true })("create_thread", (it) => {
+layer(testLayer)("create_thread", (it) => {
   it.effect("starts a thread in the caller's project with the caller's provider and model", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
@@ -404,7 +411,7 @@ const callFrom = (threadId: string, name: string, args: Record<string, unknown> 
     return yield* callAs(yield* mcp.connectionFor(threadId), name, args)
   })
 
-layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
+layer(testLayer)("thread controls", (it) => {
   it.effect("list_threads shows this project's threads and marks the caller", () =>
     Effect.gen(function* () {
       const { a, b } = yield* Seeded
@@ -511,7 +518,7 @@ const setTinyVm = (on: boolean) =>
 
 const VM_TOOLS = ["vm_screenshot", "vm_click", "vm_move", "vm_drag", "vm_scroll", "vm_type", "vm_key", "vm_exec"]
 
-layer(testLayer, { excludeTestServices: true })("tiny vm tools while the toggle is off", (it) => {
+layer(testLayer)("tiny vm tools while the toggle is off", (it) => {
   it.effect("are not listed and cannot be called", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
@@ -531,7 +538,7 @@ layer(testLayer, { excludeTestServices: true })("tiny vm tools while the toggle 
   )
 })
 
-layer(testLayer, { excludeTestServices: true })("tiny vm tools", (it) => {
+layer(testLayer)("tiny vm tools", (it) => {
   it.effect("are listed once the toggle is on", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
@@ -567,7 +574,7 @@ layer(testLayer, { excludeTestServices: true })("tiny vm tools", (it) => {
     }),
   )
 
-  it.effect("vm_click moves, presses and releases the left button at the point", () =>
+  it.effect("vm_click presses at the point and shows the screen once it settles", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
       const vm = yield* TinyVm
@@ -575,7 +582,16 @@ layer(testLayer, { excludeTestServices: true })("tiny vm tools", (it) => {
       const { a } = yield* Seeded
       yield* setTinyVm(true)
       fake.inputs.length = 0
-      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_click", { x: 640, y: 400 })
+      const call = yield* Effect.forkChild(callAs(yield* mcp.connectionFor(a), "vm_click", { x: 640, y: 400 }))
+      yield* until(Effect.sync(() => (fake.inputs.length === 3 ? Option.some(true) : Option.none())))
+      yield* TestClock.withLive(Effect.sleep("50 millis"))
+      expect(call.pollUnsafe()).toBeUndefined()
+
+      yield* advanceUntil(
+        SETTLE_MS,
+        Effect.sync(() => Option.fromNullishOr(call.pollUnsafe())),
+      )
+      const result = yield* Fiber.join(call)
       expect(result.isError).toBe(false)
       expect(result.images).toHaveLength(1)
       const running = yield* vm.get(a)
@@ -685,7 +701,9 @@ layer(testLayer, { excludeTestServices: true })("tiny vm tools", (it) => {
             : Option.none(),
         ),
       )
-      yield* until(
+      expect(yield* vm.get(a)).toMatchObject({ control: "user" })
+      yield* advanceUntil(
+        HAND_BACK_GRACE,
         Effect.map(vm.get(a), (current) =>
           current.status === "running" && current.control === "agent" ? Option.some(true) : Option.none(),
         ),
@@ -727,7 +745,7 @@ const instructionsOfNextTurn = (threadId: string) =>
     return input.instructions
   })
 
-layer(testLayer, { excludeTestServices: true })("agent instructions", (it) => {
+layer(testLayer)("agent instructions", (it) => {
   it.effect("carry the tiny VM block only while the toggle is on", () =>
     Effect.gen(function* () {
       const { b } = yield* Seeded

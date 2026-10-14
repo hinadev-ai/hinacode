@@ -59,7 +59,7 @@ const SCREENSHOT_TIMEOUT_SECONDS = 30
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 /** How long control stays with the user after their last view closes, so a view that reconnects keeps it. */
-const HAND_BACK_GRACE = "2 seconds"
+export const HAND_BACK_GRACE = "2 seconds"
 
 const NONE: ThreadVm = { status: "none" }
 
