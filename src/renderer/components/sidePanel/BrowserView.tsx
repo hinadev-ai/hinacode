@@ -25,7 +25,7 @@ import {
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { threadPortsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
-import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
+import { selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { useUi } from "../../stores/ui.ts"
 import { Button } from "../ui/button.tsx"
 import { Input } from "../ui/input.tsx"
@@ -62,7 +62,13 @@ export function BrowserView({ thread }: { thread: Thread }) {
   return (
     <div className="relative min-h-0 flex-1">
       {tabs.map((tab) => (
-        <BrowserPage key={tab.id} threadId={thread.id} tab={tab} active={tab.id === activeId} />
+        <BrowserPage
+          key={tab.id}
+          threadId={thread.id}
+          tabId={tab.id}
+          initialUrl={tab.url}
+          active={tab.id === activeId}
+        />
       ))}
     </div>
   )
@@ -70,14 +76,15 @@ export function BrowserView({ thread }: { thread: Thread }) {
 
 interface BrowserPageProps {
   readonly threadId: string
-  readonly tab: BrowserTab
+  readonly tabId: string
+  /** Where the page starts. After that the page navigates on its own and reports back through the store. */
+  readonly initialUrl: string | null
   /** Hidden tabs stay mounted, so their pages keep running and come back without a reload. */
   readonly active: boolean
 }
 
-function BrowserPage({ threadId, tab, active }: BrowserPageProps) {
-  const tabId = tab.id
-  const [src, setSrc] = useState(tab.url)
+function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) {
+  const [src, setSrc] = useState(initialUrl)
   const [address, setAddress] = useState(src ?? "")
   const [invalid, setInvalid] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -103,11 +110,11 @@ function BrowserPage({ threadId, tab, active }: BrowserPageProps) {
     setPicking(false)
   }, [])
 
+  // The cancelled pick resolves null, and `startPick` ends it like an Escape.
   useEffect(() => {
     if (active || !pick.current) return
-    endPick()
     viewRef.current?.executeJavaScript(CANCEL_PICK_SCRIPT).catch(() => {})
-  }, [active, endPick])
+  }, [active])
 
   const attachView = useCallback(
     (view: WebviewElement | null) => {
