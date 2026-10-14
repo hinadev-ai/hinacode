@@ -12,7 +12,7 @@
     "start:xvfb": "DISPLAY=:99 electron-vite preview -- --no-sandbox --disable-gpu --remote-debugging-port=9222",
     "paraglide": "paraglide-js compile --project ./project.inlang --outdir ./src/renderer/paraglide --strategy globalVariable baseLocale --silent",
     "typecheck": "pnpm paraglide && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json && tsc --noEmit -p tsconfig.e2e.json",
-    "lint": "oxlint",
+    "lint": "oxlint --report-unused-disable-directives-severity=error",
     "check:specs": "node scripts/tlc.mjs",
     "format": "oxfmt",
     "test": "vitest run",
