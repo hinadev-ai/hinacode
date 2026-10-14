@@ -21,6 +21,7 @@ import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, toWorktreeSource, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
+import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import {
   ComposerActions,
@@ -81,6 +82,10 @@ export function Composer({ thread }: { thread: Thread }) {
     : null
   const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesAtom(key))
+  const threadsById = useThreads((state) => state.byId)
+  const otherThreads = selectProjectThreads(thread.projectId)({ byId: threadsById }).filter(
+    (other) => other.id !== thread.id,
+  )
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
@@ -227,6 +232,7 @@ export function Composer({ thread }: { thread: Thread }) {
             onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
             commands={commands}
             files={files}
+            threads={otherThreads}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             onDragOver={onDragOver}

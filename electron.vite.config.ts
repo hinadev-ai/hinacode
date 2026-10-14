@@ -1,8 +1,13 @@
+import { createRequire } from "node:module"
 import { resolve } from "node:path"
 import { paraglideVitePlugin } from "@inlang/paraglide-js"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
+
+// Electron 44 no longer downloads its binary on install. It downloads on the first `require("electron")`, which
+// electron-vite 5 never calls, so `pnpm dev` failed with "Electron uninstall". See docs/operations/electron-binary.md.
+process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
 
 export default defineConfig({
   main: {

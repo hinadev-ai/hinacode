@@ -17,7 +17,9 @@ flowchart LR
     runner["AgentRunner"]
     mcp["MCP server<br/>127.0.0.1:random/mcp"]
     autos["Automations<br/>webhook + pollers"]
+    remote["Remote listener<br/>ws://bindHost:port/remote"]
   end
+  phone["Phone app<br/>apps/mobile (Expo)"]
   db[("kkcode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
   codex["codex app-server<br/>JSON-RPC over stdio"]
@@ -28,6 +30,7 @@ flowchart LR
   ui <--> stores
   stores -- "rpc (request/response)" --> preload --> ipc
   ipc -- "event (push)" --> preload --> stores
+  phone -- "auth, then the same calls and pushes" <--> remote --> ipc
   ipc --> services & runner
   runner --> claude & codex & muse
   claude & codex & muse -- "Bearer threadId.secret" --> mcp
@@ -62,6 +65,10 @@ flowchart LR
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
+Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, sends `{ type: "auth", token }` first, and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` as the Electron channel with a null window, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`.
+
+The visible thread owns its renderer history. Leaving it unloads the transcript even while its agent runs; the main process owns ongoing turns and pending approvals. Reopening reads a fresh sequence-numbered snapshot. Each load has an identity so a response from an earlier visit cannot replace a newer snapshot.
+
 Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
 
 The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document, diffs, and Mermaid; the selected theme remains in SQLite.
@@ -76,10 +83,11 @@ flowchart BT
   db["Db.layer<br/>SQLite + migrations"]
   infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
-  features["McpCredentials, Ports"]
+  features["McpCredentials, Ports, RemoteAccess"]
   runner["AgentRunner"]
   autos["Automations, AutoArchive,<br/>PullRequestWatcher"]
   mcp["MCP server"]
+  remote["Remote listener"]
 
   node --> db --> domain
   infra --> domain
@@ -87,7 +95,10 @@ flowchart BT
   domain --> runner
   runner --> autos
   runner --> mcp
+  autos & mcp --> remote
 ```
+
+The remote listener sits above everything because it dispatches every rpc method, including the automation ones.
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 
@@ -110,7 +121,7 @@ classDiagram
     setAccessMode(threadId, accessMode)
   }
   class ClaudeProvider {
-    one long-lived query() per thread
+    one query() per active thread, expires after 60 seconds idle
     canUseTool → approvals, AskUserQuestion → questions
     permissionMode from the thread's access mode
     loads user, project and local settings
@@ -133,6 +144,8 @@ classDiagram
 An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. kkcode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
+
+Claude keeps a live CLI for immediate follow-ups, then closes it after 60 idle seconds. Starting a turn cancels expiry before changing model or permission settings. Active turns, approval waits, control requests, and unfinished non-ambient background tasks keep the process alive. The countdown restarts when that work finishes. A small resume record retains the provider session ID and session-scoped grants for the same workspace, account, and instructions. The next turn starts a new CLI with that session ID. Transcript data remains in SQLite and the provider's session files. The memory workload and comparison commands live in [`scripts/perf/README.md`](../scripts/perf/README.md#measure-retained-memory).
 
 Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
@@ -474,6 +487,8 @@ flowchart TB
   main -- "openExternal: http(s) only" --> browser["System browser"]
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
+  main -- "kkcode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
+  main -- "kkcode-github-asset: gh token stays in main" --> renderer
 ```
 
 Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, and [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.
@@ -482,7 +497,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 
 | Concern                                   | Path                                                       |
 | ----------------------------------------- | ---------------------------------------------------------- |
-| Layer graph, window, attachment protocol  | `src/main/index.ts`                                        |
+| Layer graph, window, custom protocols     | `src/main/index.ts`                                        |
 | rpc handlers, event push                  | `src/main/ipc.ts`                                          |
 | Navigation, external links, sender checks | `src/main/security.ts`                                     |
 | Turn orchestration                        | `src/main/services/AgentRunner.ts`                         |

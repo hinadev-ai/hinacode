@@ -1,10 +1,11 @@
+import { EventEmitter } from "node:events"
 import { expect, layer } from "@effect/vitest"
 import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, Effect, Fiber, Layer, Option, Stream } from "effect"
-import type { AgentEvent, McpConnection, ProviderId } from "../../shared/agent.ts"
+import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -24,6 +25,8 @@ import * as PullRequests from "../services/PullRequests.ts"
 import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
+import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
+import { TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
@@ -32,6 +35,7 @@ import { layer as serverLayer } from "./server.ts"
 vi.mock("electron", () => ({ BrowserWindow: {}, safeStorage: { isEncryptionAvailable: () => false } }))
 
 const pushes: Array<PushEvent> = []
+const turnInputs: Array<RunTurnInput> = []
 
 /** Two threads that exist in the database the server checks credentials against. */
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
@@ -55,10 +59,11 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
     planLimits: () => Effect.succeed(null),
     usage: () => Effect.succeed(null),
     listCommands: () => Effect.succeed([]),
-    runTurn: ({ threadId }) =>
+    runTurn: (input) =>
       Stream.unwrap(
         Effect.map(Deferred.make<void>(), (done) => {
-          turns.set(threadId, done)
+          turnInputs.push(input)
+          turns.set(input.threadId, done)
           return Stream.fromEffect(Deferred.await(done)).pipe(Stream.as({ type: "turn_completed" } as AgentEvent))
         }),
       ),
@@ -87,13 +92,19 @@ const core = Layer.mergeAll(
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
-    Layer.provide(Settings.layer),
+    Layer.provideMerge(Settings.layer),
   ),
   Messages.layer,
   secretsLayer,
   credentialsLayer,
 )
-const domain = Layer.mergeAll(core, PullRequests.layer.pipe(Layer.provide(core)))
+const tinyVm = Layer.unwrap(
+  Effect.gen(function* () {
+    const fake = yield* FakeSbxServer
+    return tinyVmLayer({ configPath: fake.configPath, env: {} })
+  }),
+).pipe(Layer.provideMerge(fakeSbxLayer))
+const domain = Layer.mergeAll(core, PullRequests.layer.pipe(Layer.provide(core)), tinyVm.pipe(Layer.provide(core)))
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(agents)), agents, seeded).pipe(
   Layer.provide(Layer.mergeAll(stubs, Git.layer)),
@@ -105,21 +116,35 @@ const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(agents)), agents
 interface ToolResult {
   readonly text: string
   readonly isError: boolean
+  /** Base64 data of each image block. */
+  readonly images: ReadonlyArray<string>
 }
 
-/** Calls one tool the way an agent does and returns its text. */
-const callAs = ({ url, headers }: McpConnection, name: string, args: Record<string, unknown> = {}) =>
-  Effect.tryPromise(async (): Promise<ToolResult> => {
+const withClient = <A>({ url, headers }: McpConnection, use: (client: Client) => Promise<A>) =>
+  Effect.tryPromise(async () => {
     const client = new Client({ name: "test", version: "0" })
     await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers } }))
     try {
-      const result = await client.callTool({ name, arguments: args })
-      const content = result.content as Array<{ type: string; text?: string }>
-      return { text: content.map((part) => part.text ?? "").join(""), isError: result.isError === true }
+      return await use(client)
     } finally {
       await client.close()
     }
   })
+
+/** Calls one tool the way an agent does and returns its text. */
+const callAs = (connection: McpConnection, name: string, args: Record<string, unknown> = {}) =>
+  withClient(connection, async (client): Promise<ToolResult> => {
+    const result = await client.callTool({ name, arguments: args })
+    const content = result.content as Array<{ type: string; text?: string; data?: string }>
+    return {
+      text: content.map((part) => part.text ?? "").join(""),
+      isError: result.isError === true,
+      images: content.flatMap((part) => (part.type === "image" && part.data !== undefined ? [part.data] : [])),
+    }
+  })
+
+const toolNames = (connection: McpConnection) =>
+  withClient(connection, async (client) => (await client.listTools()).tools.map((listed) => listed.name))
 
 /** Passes only when the server turns the connection away. */
 const rejects = (connection: McpConnection) => Effect.flip(callAs(connection, "list_thread_pull_requests"))
@@ -195,7 +220,7 @@ layer(testLayer, { excludeTestServices: true })("mcp server credentials", (it) =
       const forged = new URL(connection.url)
       forged.searchParams.set("thread", b)
       const result = yield* callAs({ ...connection, url: forged.toString() }, "list_thread_pull_requests").pipe(
-        Effect.orElseSucceed((): ToolResult => ({ text: "", isError: true })),
+        Effect.orElseSucceed((): ToolResult => ({ text: "", isError: true, images: [] })),
       )
       expect(result.text).not.toContain("pull/2")
     }),
@@ -393,16 +418,38 @@ layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
     }),
   )
 
-  it.effect("read_thread returns the status and the latest messages", () =>
+  it.effect("read_thread returns the status, the metadata and the latest messages", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
+      const pullRequests = yield* PullRequests.PullRequests
       const { a } = yield* Seeded
       const child = yield* childOf(a, "Read child")
+      yield* pullRequests.link(child, "https://github.com/o/r/pull/7")
       yield* runner.send(child, "Look into the flaky test", [])
       const result = yield* callFrom(a, "read_thread", { threadId: child })
       expect(result.isError).toBe(false)
-      expect(result.text).toContain(`Thread ${child} "Read child" is running.`)
-      expect(result.text).toContain("## user\nLook into the flaky test")
+      expect(result.text).toMatch(
+        new RegExp(
+          [
+            "^<metadata>",
+            `thread_id: ${child}`,
+            "title: Read child",
+            "status: running",
+            "provider: claude",
+            "model: m",
+            "created_by: user",
+            "created_at: \\S+",
+            "updated_at: \\S+",
+            "pull_requests:",
+            "- https://github.com/o/r/pull/7",
+            "</metadata>",
+            "<environment>",
+            "workspace: project root",
+            "</environment>",
+          ].join("\n"),
+        ),
+      )
+      expect(result.text).toMatch(/## user \(\S+\)\nLook into the flaky test/)
       yield* runner.interrupt(child)
     }),
   )
@@ -435,10 +482,10 @@ layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
       const { a, b } = yield* Seeded
       for (const name of ["read_thread", "send_to_thread", "stop_thread"]) {
         const result = yield* callFrom(a, name, { threadId: b, prompt: "x" })
-        expect(result).toStrictEqual({ text: `Thread ${b} is not in this project.`, isError: true })
+        expect(result).toStrictEqual({ text: `Thread ${b} is not in this project.`, isError: true, images: [] })
       }
       const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
-      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true })
+      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
     }),
   )
 
@@ -450,6 +497,247 @@ layer(testLayer, { excludeTestServices: true })("thread controls", (it) => {
         expect(result.isError).toBe(true)
         expect(result.text).toContain("own turn")
       }
+    }),
+  )
+})
+
+const setTinyVm = (on: boolean) =>
+  Effect.gen(function* () {
+    const settings = yield* Settings.Settings
+    const vm = yield* TinyVm
+    yield* settings.set({ experimental: { tinyVm: on } })
+    yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
+  })
+
+const VM_TOOLS = ["vm_screenshot", "vm_click", "vm_move", "vm_drag", "vm_scroll", "vm_type", "vm_key", "vm_exec"]
+
+layer(testLayer, { excludeTestServices: true })("tiny vm tools while the toggle is off", (it) => {
+  it.effect("are not listed and cannot be called", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const names = yield* toolNames(connection)
+      expect(names).toContain("link_pull_request")
+      expect(names.filter((name) => VM_TOOLS.includes(name))).toStrictEqual([])
+      const refused = yield* callAs(connection, "vm_screenshot").pipe(
+        Effect.map((result) => result.isError),
+        Effect.orElseSucceed(() => true),
+      )
+      expect(refused).toBe(true)
+      expect(fake.created()).toBe(0)
+    }),
+  )
+})
+
+layer(testLayer, { excludeTestServices: true })("tiny vm tools", (it) => {
+  it.effect("are listed once the toggle is on", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      expect(yield* toolNames(yield* mcp.connectionFor(a))).toEqual(expect.arrayContaining(VM_TOOLS))
+    }),
+  )
+
+  it.effect("vm_screenshot returns the screen as an image, and racing calls share one sandbox", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.stop(a)
+      const before = fake.created()
+      const connection = yield* mcp.connectionFor(a)
+      const [first, second] = yield* Effect.all(
+        [callAs(connection, "vm_screenshot"), callAs(connection, "vm_screenshot")],
+        {
+          concurrency: "unbounded",
+        },
+      )
+      expect(first.isError).toBe(false)
+      expect(first.text).toContain("1280×800")
+      expect(first.images).toStrictEqual([FAKE_PNG.toString("base64")])
+      expect(second.images).toStrictEqual([FAKE_PNG.toString("base64")])
+      expect(fake.created() - before).toBe(1)
+      expect(yield* vm.get(a)).toMatchObject({ status: "running", control: "agent" })
+      expect(pushes).toContainEqual({ type: "vm.updated", threadId: a, vm: { status: "starting" } })
+    }),
+  )
+
+  it.effect("vm_click moves, presses and releases the left button at the point", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      fake.inputs.length = 0
+      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_click", { x: 640, y: 400 })
+      expect(result.isError).toBe(false)
+      expect(result.images).toHaveLength(1)
+      const running = yield* vm.get(a)
+      if (running.status !== "running") throw new Error(`VM is ${running.status}`)
+      expect(fake.inputs).toStrictEqual(
+        [0, 1, 0].map((mask) => ({ sandboxId: running.sandboxId, event: { type: "pointer", x: 640, y: 400, mask } })),
+      )
+    }),
+  )
+
+  it.effect("a coordinate off the screen is an error that names the limit", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_click", { x: 5000, y: 10 })
+      expect(result.isError).toBe(true)
+      expect(result.text).toContain("x must be between 0 and 1279")
+    }),
+  )
+
+  it.effect("vm_exec reports the exit code and output", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const connection = yield* mcp.connectionFor(a)
+      const result = yield* callAs(connection, "vm_exec", { command: "echo hi" })
+      expect(result.text).toContain("Exit code 0")
+      expect(result.text).toContain("echo hi")
+      const background = yield* callAs(connection, "vm_exec", { command: "chromium", background: true })
+      expect(background.text).toBe("Started in the background as pid 4242. Output goes to /tmp/sbx-4242.log.")
+    }),
+  )
+
+  it.effect("a click waits while the user has control and skips its action on hand back", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      expect(yield* vm.setControl(a, "user")).toMatchObject({ control: "user", agentWaiting: false })
+      fake.inputs.length = 0
+      const call = yield* Effect.forkChild(callAs(yield* mcp.connectionFor(a), "vm_click", { x: 10, y: 10 }))
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "user" && current.agentWaiting
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      expect(call.pollUnsafe()).toBeUndefined()
+      expect(fake.inputs).toStrictEqual([])
+
+      yield* vm.setControl(a, "agent")
+      const result = yield* Fiber.join(call)
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain("handed it back")
+      expect(result.images).toHaveLength(1)
+      expect(fake.inputs).toStrictEqual([])
+    }),
+  )
+
+  it.effect("a sandbox sbx destroyed makes the tool say so and resets the VM", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const running = yield* vm.start(a)
+      if (running.status !== "running") throw new Error(`VM is ${running.status}`)
+      fake.expire(running.sandboxId)
+      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_screenshot")
+      expect(result.isError).toBe(true)
+      expect(result.text).toContain("The VM was destroyed")
+      expect(yield* vm.get(a)).toStrictEqual({ status: "none" })
+    }),
+  )
+
+  it.effect("a screen stream relays the VNC server and hands control back when its window goes away", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      const owner = new EventEmitter()
+      pushes.length = 0
+      yield* vm.openScreen(a, "stream-1", owner)
+      const duplicate = yield* Effect.flip(vm.openScreen(a, "stream-1", owner))
+      expect(duplicate.message).toContain("already open")
+      const greeting = yield* until(
+        Effect.sync(() =>
+          Option.fromNullishOr(pushes.find((push) => push.type === "vm.screen.data" && push.streamId === "stream-1")),
+        ),
+      )
+      expect(greeting.type === "vm.screen.data" && Buffer.from(greeting.data).toString()).toBe("RFB 003.008\n")
+
+      yield* vm.setControl(a, "user")
+      owner.emit("destroyed")
+      yield* until(
+        Effect.sync(() =>
+          pushes.some((push) => push.type === "vm.screen.closed" && push.streamId === "stream-1")
+            ? Option.some(true)
+            : Option.none(),
+        ),
+      )
+      yield* until(
+        Effect.map(vm.get(a), (current) =>
+          current.status === "running" && current.control === "agent" ? Option.some(true) : Option.none(),
+        ),
+      )
+      yield* vm.sendScreen("stream-1", new Uint8Array([1]))
+    }),
+  )
+
+  it.effect("turning the toggle off destroys every VM", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a, b } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      yield* vm.start(b)
+      yield* setTinyVm(false)
+      yield* until(Effect.sync(() => (fake.sandboxes.size === 0 ? Option.some(true) : Option.none())))
+      expect(yield* vm.get(a)).toStrictEqual({ status: "none" })
+      expect(yield* vm.get(b)).toStrictEqual({ status: "none" })
+    }),
+  )
+})
+
+const instructionsOfNextTurn = (threadId: string) =>
+  Effect.gen(function* () {
+    const runner = yield* AgentRunner
+    turnInputs.length = 0
+    yield* until(
+      runner.send(threadId, "hi", []).pipe(
+        Effect.as(Option.some(true)),
+        Effect.orElseSucceed(() => Option.none()),
+      ),
+    )
+    const input = yield* until(
+      Effect.sync(() => Option.fromNullishOr(turnInputs.find((turn) => turn.threadId === threadId))),
+    )
+    yield* runner.interrupt(threadId)
+    return input.instructions
+  })
+
+layer(testLayer, { excludeTestServices: true })("agent instructions", (it) => {
+  it.effect("carry the tiny VM block only while the toggle is on", () =>
+    Effect.gen(function* () {
+      const { b } = yield* Seeded
+      const off = yield* instructionsOfNextTurn(b)
+      expect(off).toContain("<kkcode>")
+      expect(off).not.toContain("<tiny-vm>")
+      yield* setTinyVm(true)
+      const on = yield* instructionsOfNextTurn(b)
+      expect(on).toContain("<kkcode>")
+      expect(on).toContain("<tiny-vm>")
     }),
   )
 })

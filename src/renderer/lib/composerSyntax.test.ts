@@ -1,7 +1,11 @@
 import { describe, expect, test } from "@effect/vitest"
-import { completionAt, highlight, matchFiles } from "./composerSyntax.ts"
+import { completionAt, highlight, matchFiles, matchThreads } from "./composerSyntax.ts"
 
-const known = { commands: new Set(["/kalan-mode", "$verify-kkcode"]), files: new Set(["src/main/ipc.ts"]) }
+const known = {
+  commands: new Set(["/kalan-mode", "$verify-kkcode"]),
+  files: new Set(["src/main/ipc.ts"]),
+  threads: new Set(["t-1"]),
+}
 
 describe("highlight", () => {
   test("marks bullets, inline code and known commands, and keeps every character", () => {
@@ -24,6 +28,12 @@ describe("highlight", () => {
     expect(highlight(text, known).filter((segment) => segment.kind !== "text")).toStrictEqual([
       { kind: "code", text: "```\n/kalan-mode\n```" },
     ])
+  })
+
+  test("marks mentions of known threads only", () => {
+    expect(
+      highlight("ask @thread:t-1. and @thread:t-2", known).filter((segment) => segment.kind !== "text"),
+    ).toStrictEqual([{ kind: "mention", text: "@thread:t-1" }])
   })
 
   test("leaves an unclosed backtick as text", () => {
@@ -61,5 +71,21 @@ describe("matchFiles", () => {
 
   test("lists the shortest paths first for an empty query", () => {
     expect(matchFiles(files, "").at(0)).toBe("README.md")
+  })
+})
+
+describe("matchThreads", () => {
+  const threads = [
+    { id: "a", title: "Refactor login form" },
+    { id: "b", title: "Login flaky test" },
+    { id: "c", title: "Docs" },
+  ]
+
+  test("ranks titles starting with the query before titles containing it, ignoring case", () => {
+    expect(matchThreads(threads, "login").map((thread) => thread.id)).toStrictEqual(["b", "a"])
+  })
+
+  test("keeps the given order for an empty query", () => {
+    expect(matchThreads(threads, "").map((thread) => thread.id)).toStrictEqual(["a", "b", "c"])
   })
 })

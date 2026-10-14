@@ -13,16 +13,20 @@ import {
 import { flushSync } from "react-dom"
 import { RiFileLine } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
+import type { Thread } from "../../shared/domain.ts"
+import { threadMention } from "../../shared/threadMention.ts"
 import {
   type CompletionQuery,
   completionAt,
   highlight,
   matchCommands,
   matchFiles,
+  matchThreads,
   type SyntaxKind,
 } from "../lib/composerSyntax.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
+import { ProviderIcon } from "./ProviderIcon.tsx"
 
 const MAX_SUGGESTIONS = 50
 
@@ -42,16 +46,29 @@ const textLayout =
 type Suggestion =
   | { readonly type: "command"; readonly insert: string; readonly command: AgentCommand }
   | { readonly type: "file"; readonly insert: string; readonly path: string }
+  | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
 
 const suggestionsFor = (
   completion: CompletionQuery,
   commands: ReadonlyArray<AgentCommand>,
   files: ReadonlyArray<string>,
+  threads: ReadonlyArray<Thread>,
 ): ReadonlyArray<Suggestion> => {
   const { trigger } = completion
   const suggestions: ReadonlyArray<Suggestion> =
     trigger === "@"
-      ? matchFiles(files, completion.query).map((path) => ({ type: "file", insert: `@${path}`, path }))
+      ? [
+          ...matchThreads(threads, completion.query).map((thread): Suggestion => ({
+            type: "thread",
+            insert: threadMention(thread.id),
+            thread,
+          })),
+          ...matchFiles(files, completion.query).map((path): Suggestion => ({
+            type: "file",
+            insert: `@${path}`,
+            path,
+          })),
+        ]
       : matchCommands(commands, { ...completion, trigger }).map((command) => ({
           type: "command",
           insert: `${command.trigger}${command.name}`,
@@ -67,11 +84,13 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
   readonly commands: ReadonlyArray<AgentCommand>
   /** Workspace paths offered after `@`. */
   readonly files: ReadonlyArray<string>
+  /** Other threads offered after `@`, before the files. */
+  readonly threads: ReadonlyArray<Thread>
 }
 
 /**
  * The composer's textarea with Markdown-ish highlighting and completion of `/commands`, `$skills` and
- * `@files`. The textarea's own text is transparent and sits over a highlighted copy of the same text.
+ * `@` mentions of threads and files. The textarea's own text is transparent and sits over a highlighted copy of the same text.
  * The suggestion list is positioned against the nearest positioned ancestor, the composer box.
  */
 export function ComposerInput({
@@ -80,6 +99,7 @@ export function ComposerInput({
   onValueChange,
   commands,
   files,
+  threads,
   onKeyDown,
   className,
   ...props
@@ -94,13 +114,18 @@ export function ComposerInput({
   useImperativeHandle(ref, () => textareaRef.current!, [])
 
   const known = useMemo(
-    () => ({ commands: new Set(commands.map((command) => command.trigger + command.name)), files: new Set(files) }),
-    [commands, files],
+    () => ({
+      commands: new Set(commands.map((command) => command.trigger + command.name)),
+      files: new Set(files),
+      threads: new Set(threads.map((thread) => thread.id)),
+    }),
+    [commands, files, threads],
   )
   const segments = useMemo(() => highlight(value, known), [value, known])
 
   const completion = completionAt(value, caret)
-  const suggestions = completion && completion.start !== dismissedAt ? suggestionsFor(completion, commands, files) : []
+  const suggestions =
+    completion && completion.start !== dismissedAt ? suggestionsFor(completion, commands, files, threads) : []
   const open = completion !== null && suggestions.length > 0
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
@@ -190,7 +215,7 @@ export function ComposerInput({
         <div
           id={listId}
           role="listbox"
-          aria-label={completion.trigger === "@" ? m.composer_files_label() : m.composer_commands_label()}
+          aria-label={completion.trigger === "@" ? m.composer_mentions_label() : m.composer_commands_label()}
           className="absolute inset-x-0 bottom-full mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {suggestions.map((suggestion, index) => (
@@ -216,6 +241,18 @@ export function ComposerInput({
 }
 
 function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
+  if (suggestion.type === "thread") {
+    const { thread } = suggestion
+    return (
+      <>
+        <span className="self-center">
+          <ProviderIcon provider={thread.provider} />
+        </span>
+        <span className="min-w-0 truncate">{thread.title}</span>
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">{thread.model}</span>
+      </>
+    )
+  }
   if (suggestion.type === "file") {
     const slash = suggestion.path.lastIndexOf("/")
     return (

@@ -106,6 +106,7 @@ Feature: Streaming Markdown
       | completes |
       | fails     |
 
+  @desktop
   Scenario: Typing and scrolling remain usable during paced output
-    When I type and scroll while the agent streams many Markdown blocks
+    When I type, scroll and resize while the agent streams many Markdown blocks
     Then my draft and reading position survive the continuing stream

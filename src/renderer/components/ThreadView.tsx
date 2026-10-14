@@ -2,14 +2,13 @@ import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useMemo, useRef } from "react"
-import { isThreadBusy, type Thread, type ThreadStatus } from "../../shared/domain.ts"
+import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
-import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
@@ -34,7 +33,15 @@ const statusLabel = {
 } satisfies Record<ThreadStatus, () => string>
 
 /** `agent` is the `callId` of the sub-agent to show instead of the thread's own transcript. */
-export function ThreadView({ thread, agent, actions }: { thread: Thread; agent?: string; actions?: ReactNode }) {
+interface ThreadViewProps {
+  readonly thread: Thread
+  readonly agent?: string
+  readonly actions?: ReactNode
+  /** Floats over the top of the transcript, below the header. */
+  readonly overlay?: ReactNode
+}
+
+export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps) {
   const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -54,10 +61,13 @@ export function ThreadView({ thread, agent, actions }: { thread: Thread; agent?:
         </span>
         {actions}
       </header>
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-        <ThreadRepository value={repository}>
-          <Transcript thread={thread} agent={agent} />
-        </ThreadRepository>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          <ThreadRepository value={repository}>
+            <Transcript thread={thread} agent={agent} />
+          </ThreadRepository>
+        </div>
+        {overlay}
       </div>
       {thread.status === "limited" && thread.usageLimit !== null && (
         <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />
@@ -82,12 +92,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
 
   useEffect(() => {
     void load(thread.id)
-    // Leaving a thread frees its transcript. A thread mid-turn keeps its copy so the events still
-    // streaming in have something to fold into.
-    return () => {
-      const status = useThreads.getState().byId[thread.id]?.status
-      if (status === undefined || !isThreadBusy(status)) unload(thread.id)
-    }
+    return () => unload(thread.id)
   }, [load, unload, thread.id])
 
   // The Retry button disappears into the loading state, so focus moves on before it does.

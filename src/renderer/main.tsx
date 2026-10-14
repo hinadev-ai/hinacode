@@ -54,6 +54,8 @@ onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
       return useThreads.getState().upsert(event.thread)
+    case "thread.removed":
+      return useThreads.getState().remove(event.id)
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)

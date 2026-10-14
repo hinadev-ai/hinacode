@@ -50,6 +50,8 @@ export class Files extends Context.Service<
       root: string,
       path: string,
     ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | PersistenceError>
+    /** The real absolute path of `path` under `root`, checked like `list`. */
+    readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
     /** Up to the first `MAX_READ_BYTES` of the file `path` under `root`, checked like `list`. */
     readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
     /**
@@ -287,10 +289,15 @@ const make = Effect.gen(function* () {
         .toSorted(byKindThenName)
     })
 
-  const read = (root: string, path: string) =>
+  const resolve = (root: string, path: string) =>
     Effect.gen(function* () {
       yield* knownRoot(root)
-      const file = yield* resolveInside(root, path)
+      return yield* resolveInside(root, path)
+    })
+
+  const read = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const file = yield* resolve(root, path)
       return yield* Effect.tryPromise({
         try: () => readStart(file),
         catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
@@ -299,8 +306,7 @@ const make = Effect.gen(function* () {
 
   const write = (root: string, path: string, content: string, expected: string | null) =>
     Effect.gen(function* () {
-      yield* knownRoot(root)
-      const file = yield* resolveInside(root, path)
+      const file = yield* resolve(root, path)
       if (expected !== null) {
         const current = yield* Effect.tryPromise({
           try: () => readFile(file, "utf8"),
@@ -368,7 +374,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, read, write, watch })
+  return Files.of({ list, resolve, read, write, watch })
 })
 
 export const layer = Layer.effect(Files, make)

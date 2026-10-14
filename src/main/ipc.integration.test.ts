@@ -1,17 +1,20 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
-import { basename, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, Subagent, ThreadUsage } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
+import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
@@ -19,7 +22,7 @@ import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { AgentError, type AgentProvider } from "./agents/provider.ts"
 import * as Db from "./db/client.ts"
-import { eventsLayer, registerIpc } from "./ipc.ts"
+import { makeEventsLayer, registerIpc } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
@@ -27,16 +30,21 @@ import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Files from "./services/Files.ts"
 import { Automations } from "./services/automations/Automations.ts"
+import { Events } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
+import * as RemoteAccess from "./remote/access.ts"
+import * as RemoteServer from "./remote/server.ts"
+import * as Secrets from "./services/Secrets.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
+import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -218,15 +226,19 @@ const makeLayer = (dbPath: string) => {
     Search.layer,
     Files.layer,
   )
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer).pipe(Layer.provide(domain))
+  const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const tinyVm = TinyVm.layer({ configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} })
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
   const base = Layer.mergeAll(agents, automationsStub, logins)
-  return Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base))).pipe(
-    Layer.provide(eventsLayer),
+  const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
+  return RemoteServer.layer.pipe(
+    Layer.provideMerge(app),
+    Layer.provideMerge(makeEventsLayer()),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provide(Db.layer(dbPath)),
     Layer.provide(NodeServices.layer),
@@ -879,5 +891,183 @@ describe("agent accounts over rpc", () => {
     expect(result(await invoke("accounts.list", undefined))).not.toContainEqual(
       expect.objectContaining({ id: account.id }),
     )
+  })
+})
+
+/** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
+const phone = (port: number) => {
+  const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }))
+  const frames: Array<ServerFrame> = []
+  const watchers = new Set<() => void>()
+  let closed: { code: number; reason: string } | null = null
+  socket.on("message", (raw) => {
+    frames.push(JSON.parse(String(raw)) as ServerFrame)
+    for (const notify of watchers) notify()
+  })
+  socket.on("close", (code, reason) => {
+    closed = { code, reason: String(reason) }
+    for (const notify of watchers) notify()
+  })
+  const until = <A>(pick: () => A | undefined) =>
+    new Promise<A>((resolve) => {
+      const check = () => {
+        const found = pick()
+        if (found === undefined) return
+        watchers.delete(check)
+        resolve(found)
+      }
+      watchers.add(check)
+      check()
+    })
+  const opened = new Promise<void>((resolve) => socket.once("open", resolve))
+  let nextId = 1
+  return {
+    send: async (frame: ClientFrame) => {
+      await opened
+      socket.send(JSON.stringify(frame))
+    },
+    call: async <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>) => {
+      const id = nextId++
+      await opened
+      socket.send(JSON.stringify({ type: "call", id, method, payload } satisfies ClientFrame))
+      const frame = await until(() => frames.find((f) => f.type === "result" && f.id === id) ?? closed ?? undefined)
+      if (!("type" in frame)) throw new Error(`socket closed before the answer: ${frame.code} ${frame.reason}`)
+      return (frame as Extract<ServerFrame, { type: "result" }>).envelope as RpcEnvelope<RpcResponseEncoded<M>>
+    },
+    ready: () => until(() => frames.find((f) => f.type === "ready")),
+    event: (predicate: (event: PushEvent) => boolean) =>
+      until(() => frames.find((f) => f.type === "event" && predicate(f.event as PushEvent))),
+    closed: () => until(() => closed ?? undefined),
+    frames,
+    opened,
+    socket,
+  }
+}
+
+describe("remote mode", () => {
+  const port = 40000 + Math.floor(Math.random() * 20000)
+
+  beforeAll(async () => {
+    result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+  })
+
+  test("refuses a call before auth and a wrong token", async () => {
+    const early = phone(port)
+    await early.send({ type: "call", id: 1, method: "projects.list", payload: undefined })
+    expect((await early.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+
+    const wrong = phone(port)
+    await wrong.send({ type: "auth", token: "not-the-token" })
+    expect((await wrong.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+  })
+
+  test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {
+    const pairing = result(await invoke("remote.pairing", undefined))
+    expect(pairing.port).toBe(port)
+    expect(pairing.hosts).toEqual(["127.0.0.1"])
+
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: pairing.token })
+    await paired.ready()
+    expect(result(await invoke("remote.status", undefined)).connected).toBe(1)
+
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-project"))
+
+    const thread = result(await paired.call("threads.create", { projectId: project.id }))
+    const push = await paired.event((event) => event.type === "thread.updated" && event.thread.id === thread.id)
+    expect(push.type).toBe("event")
+
+    expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
+    expect(await paired.call("threads.interrupt", { threadId: thread.id })).toStrictEqual({})
+    paired.socket.close()
+  })
+
+  test("a phone does not receive the VNC bytes and folder changes only the desktop window asked for", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await paired.ready()
+
+    await runtime.runPromise(
+      Events.use((events) =>
+        Effect.all([
+          events.publish({ type: "vm.screen.data", streamId: "s1", data: new Uint8Array([1, 2, 3]) }),
+          events.publish({ type: "vm.screen.closed", streamId: "s1" }),
+          events.publish({ type: "fs.changed", root: repo, path: "a.txt" }),
+          events.publish({ type: "thread.removed", id: "marker" }),
+        ]),
+      ),
+    )
+    await paired.event((event) => event.type === "thread.removed" && event.id === "marker")
+    const types = paired.frames.flatMap((frame) => (frame.type === "event" ? [(frame.event as PushEvent).type] : []))
+    expect(types).not.toContain("vm.screen.data")
+    expect(types).not.toContain("vm.screen.closed")
+    expect(types).not.toContain("fs.changed")
+    paired.socket.close()
+  })
+
+  test("rotating the token disconnects every phone and the old token stops working", async () => {
+    const before = result(await invoke("remote.pairing", undefined))
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: before.token })
+    await paired.ready()
+
+    const after = result(await invoke("remote.rotateToken", undefined))
+    expect(after.token).not.toBe(before.token)
+    expect((await paired.closed()).code).toBe(RemoteServer.CLOSE_TOKEN_ROTATED)
+
+    const stale = phone(port)
+    await stale.send({ type: "auth", token: before.token })
+    expect((await stale.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+  })
+
+  test("turning remote off closes a socket that has not authenticated yet", async () => {
+    const pending = phone(port)
+    await pending.opened
+    result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
+    await pending.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await pending.closed()).code).toBe(RemoteServer.CLOSE_LISTENER_STOPPED)
+
+    result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+  })
+
+  test("a port already in use is reported as a listen error", async () => {
+    const occupied = createServer()
+    await new Promise<void>((resolve) => occupied.listen(0, "127.0.0.1", resolve))
+    const busyPort = (occupied.address() as AddressInfo).port
+    try {
+      result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port: busyPort } }))
+      await vi.waitFor(async () =>
+        expect(result(await invoke("remote.status", undefined)).listenError).toMatch(/EADDRINUSE/),
+      )
+      expect(result(await invoke("remote.status", undefined)).listening).toBe(false)
+    } finally {
+      occupied.close()
+      result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+      await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+    }
+  })
+
+  test("turning remote off releases the port and turning it back on listens again", async () => {
+    result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
+    const refused = await new Promise<string>((resolve) => {
+      const probe = createConnection({ host: "127.0.0.1", port })
+      probe.once("error", (error: NodeJS.ErrnoException) => resolve(error.code ?? "error"))
+      probe.once("connect", () => {
+        probe.destroy()
+        resolve("connected")
+      })
+    })
+    expect(refused).toBe("ECONNREFUSED")
+
+    result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+    const back = phone(port)
+    await back.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await back.ready()
+    back.socket.close()
   })
 })

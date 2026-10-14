@@ -340,6 +340,16 @@ export const ArchiveSettings = Schema.Struct({
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
+/** Features that are off until the user opts in. Each may change shape or go away. */
+export const ExperimentalSettings = Schema.Struct({
+  /**
+   * Gives each thread a disposable Linux desktop on the user's sbx host: the Tiny VM side panel view,
+   * the `vm_*` MCP tools, and the agent instructions that describe them.
+   */
+  tinyVm: Schema.Boolean,
+})
+export type ExperimentalSettings = typeof ExperimentalSettings.Type
+
 /**
  * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
  * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
@@ -370,6 +380,12 @@ export const Settings = Schema.Struct({
     bindHost: Schema.String,
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   }),
+  /** The remote control listener phones connect to. Off by default; 0.0.0.0 exposes it on the LAN and Tailscale. */
+  remote: Schema.Struct({
+    enabled: Schema.Boolean,
+    bindHost: Schema.String,
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  }),
   appearance: Appearance,
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
@@ -377,6 +393,7 @@ export const Settings = Schema.Struct({
   defaultAccessMode: AccessMode,
   notifications: NotificationSettings,
   archive: ArchiveSettings,
+  experimental: ExperimentalSettings,
 })
 export type Settings = typeof Settings.Type
 
@@ -387,12 +404,48 @@ export const defaultSettings: Settings = {
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
+  remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
   archive: { whenMerged: false, removeWorktree: false },
+  experimental: { tinyVm: false },
 }
+
+/** Who drives a tiny VM's pointer and keyboard. The agent's pointer and keyboard tools wait while it is `user`. */
+export const VmControl = Schema.Literals(["agent", "user"])
+export type VmControl = typeof VmControl.Type
+
+/** A thread's tiny VM: an sbx sandbox kkcode created for it. */
+export const ThreadVm = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("none") }),
+  Schema.Struct({ status: Schema.Literal("starting") }),
+  Schema.Struct({ status: Schema.Literal("running"), sandboxId: Schema.String, control: Schema.Literal("agent") }),
+  Schema.Struct({
+    status: Schema.Literal("running"),
+    sandboxId: Schema.String,
+    control: Schema.Literal("user"),
+    /** An agent pointer or keyboard tool is waiting for the user to hand control back. */
+    agentWaiting: Schema.Boolean,
+  }),
+  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
+])
+export type ThreadVm = typeof ThreadVm.Type
+
+/** Whether kkcode reaches the sbx host that tiny VMs run on, as Settings shows it. */
+export const VmHostStatus = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("connected"),
+    url: Schema.String,
+    sandboxes: Schema.Number,
+    maxSandboxes: Schema.Number,
+  }),
+  /** Neither `SBX_URL` and `SBX_TOKEN` nor the config file `sbx login` writes. */
+  Schema.Struct({ status: Schema.Literal("notConfigured") }),
+  Schema.Struct({ status: Schema.Literal("unreachable"), url: Schema.String, message: Schema.String }),
+])
+export type VmHostStatus = typeof VmHostStatus.Type
 
 /** What a pull request watch can report. The absence of news, such as pending checks, is not an event. */
 export const WatchEventKind = Schema.Literals([
@@ -562,3 +615,19 @@ export const FileSearchHit = Schema.Struct({
   text: Schema.String,
 })
 export type FileSearchHit = typeof FileSearchHit.Type
+
+/** What Settings > Remote shows: whether phones can connect right now, and how many do. */
+export const RemoteStatus = Schema.Struct({
+  listening: Schema.Boolean,
+  listenError: Schema.NullOr(Schema.String),
+  connected: Schema.Int,
+})
+export type RemoteStatus = typeof RemoteStatus.Type
+
+/** Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first. */
+export const RemotePairing = Schema.Struct({
+  hosts: Schema.Array(Schema.String),
+  port: Schema.Int,
+  token: Schema.String,
+})
+export type RemotePairing = typeof RemotePairing.Type

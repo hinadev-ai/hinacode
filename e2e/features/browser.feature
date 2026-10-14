@@ -1,3 +1,4 @@
+@desktop
 Feature: Browser
   The thread's Browser view opens the dev server it runs, and an element picked there goes into the
   message as a screenshot with its selector and markup.

@@ -1,7 +1,7 @@
 import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
 import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
-import type { Project, Settings } from "../../shared/domain.ts"
+import type { ExperimentalSettings, Project, Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
 import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
@@ -16,6 +16,7 @@ export interface CommandContext {
   readonly threadId: string | null
   readonly projects: ReadonlyArray<Project>
   readonly updateSettings: (patch: RpcRequest<"settings.set">) => Promise<Settings>
+  readonly experimental: ExperimentalSettings
 }
 
 export interface Command {
@@ -24,7 +25,12 @@ export interface Command {
   readonly defaultKeys: string
   readonly title: () => string
   readonly run: (ctx: CommandContext) => void
+  /** The experiment the command belongs to. While it is off, the palette hides the command and its chord does nothing. */
+  readonly experiment?: keyof ExperimentalSettings
 }
+
+export const isCommandAvailable = (command: Command, experimental: ExperimentalSettings) =>
+  command.experiment === undefined || experimental[command.experiment]
 
 const threadsInSidebarOrder = (projects: ReadonlyArray<Project>) => {
   const state = useThreads.getState()
@@ -142,6 +148,13 @@ export const commands = [
     defaultKeys: "mod+shift+b",
     title: m.command_view_browser,
     run: (ctx) => showView(ctx, "browser"),
+  },
+  {
+    id: "view.tinyVm",
+    defaultKeys: "",
+    title: m.command_view_tiny_vm,
+    run: (ctx) => showView(ctx, "tinyVm"),
+    experiment: "tinyVm",
   },
   {
     id: "turn.interrupt",

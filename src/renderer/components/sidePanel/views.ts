@@ -1,4 +1,4 @@
-import type { ComponentType } from "react"
+import { type ComponentType, useMemo } from "react"
 import type { IconType } from "react-icons"
 import {
   RiFileCopy2Line,
@@ -8,9 +8,11 @@ import {
   RiRobot2Line,
   RiFileEditLine,
   RiGlobalLine,
+  RiComputerLine,
 } from "react-icons/ri"
-import type { Thread } from "../../../shared/domain.ts"
+import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
+import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { GitGraphView } from "../GitGraphView.tsx"
@@ -20,6 +22,7 @@ import { ChangesView } from "./ChangesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { FilesView } from "./FilesView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
+import { TinyVmView } from "./TinyVmView.tsx"
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
@@ -30,6 +33,8 @@ export interface SidePanelView {
   readonly component: ComponentType<{ thread: Thread }>
   /** A hook the activity bar calls on every render. A count above 0 shows on the icon. */
   readonly badge?: (threadId: string) => number
+  /** The experiment the view belongs to. It is hidden while the experiment is off. */
+  readonly experiment?: keyof ExperimentalSettings
 }
 
 /** Every side panel view, in activity bar order. The bar and the content area render from this alone. */
@@ -60,6 +65,25 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     badge: useRunningSubagentCount,
   },
   { id: "browser", icon: RiGlobalLine, title: m.panel_tab_browser, commandId: "view.browser", component: BrowserView },
+  {
+    id: "tinyVm",
+    icon: RiComputerLine,
+    title: m.panel_tab_tiny_vm,
+    commandId: "view.tinyVm",
+    component: TinyVmView,
+    experiment: "tinyVm",
+  },
 ]
 
-export const viewById = (id: SidePanelViewId) => sidePanelViews.find((view) => view.id === id) ?? sidePanelViews[0]!
+/** The views whose experiment, if any, is turned on. */
+export const useSidePanelViews = (): ReadonlyArray<SidePanelView> => {
+  const { experimental } = useSettings()
+  return useMemo(
+    () => sidePanelViews.filter((view) => view.experiment === undefined || experimental[view.experiment]),
+    [experimental],
+  )
+}
+
+/** The view to show for `id`, or the first one when `id` is not among `views`, such as a view whose experiment was turned off. */
+export const viewById = (views: ReadonlyArray<SidePanelView>, id: SidePanelViewId) =>
+  views.find((view) => view.id === id) ?? views[0]!

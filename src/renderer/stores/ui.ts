@@ -8,11 +8,14 @@ import {
   SIDE_PANEL_BOUNDS,
   SIDEBAR_BOUNDS,
   SIDEBAR_DEFAULT_WIDTH,
+  type WidthBounds,
 } from "../lib/panelWidth.ts"
 
-export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser"
+export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser" | "tinyVm"
 export type SidePanelSize = "normal" | "wide"
 export type SidebarTab = "threads" | "archived"
+/** Where a thread's tiny VM screen shows: its side panel view, or floating over the conversation. */
+export type VmPlacement = "panel" | "floating"
 
 const pullRequestSections = ["checks", "description"] as const
 export type PullRequestSection = (typeof pullRequestSections)[number]
@@ -22,6 +25,9 @@ let findRevealRequests = 0
 const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "kkcode.sidebarProjects"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "kkcode.collapsedPullRequestSections"
+const VM_FLOATING_WIDTH_KEY = "kkcode.vmFloatingWidth"
+export const VM_FLOATING_BOUNDS: WidthBounds = { min: 240, max: 960 }
+export const VM_FLOATING_DEFAULT_WIDTH = 320
 
 function loadStrings(key: string): ReadonlyArray<string> {
   try {
@@ -64,6 +70,13 @@ interface UiState {
   readonly viewFocusRequest: SidePanelViewId | null
   /** The file whose diff the Changes view shows open. */
   readonly changesPath: string | null
+  /** Threads whose tiny VM screen floats over the conversation. The rest show it in the side panel. */
+  readonly vmPlacements: Readonly<Record<string, VmPlacement>>
+  /** The floating screen's width; its height follows the VM's aspect ratio. */
+  readonly vmFloatingWidth: number
+  readonly setVmPlacement: (threadId: string, placement: VmPlacement) => void
+  /** Clamps, applies and persists the floating screen's width. Null restores the default. */
+  readonly setVmFloatingWidth: (width: number | null) => void
   /** The page each thread's Browser view shows. Threads not in here have not opened one. */
   readonly browserUrls: Readonly<Record<string, string>>
   /** Bumped to ask the composer to take focus. Subscribers react to changes, the value is meaningless. */
@@ -144,6 +157,15 @@ export const useUi = create<UiState>()((set, get) => ({
   },
   viewFocusRequest: null,
   changesPath: null,
+  vmPlacements: {},
+  vmFloatingWidth: loadWidth(VM_FLOATING_WIDTH_KEY, VM_FLOATING_BOUNDS) ?? VM_FLOATING_DEFAULT_WIDTH,
+  setVmPlacement: (threadId, placement) =>
+    set((state) => ({ vmPlacements: { ...state.vmPlacements, [threadId]: placement } })),
+  setVmFloatingWidth: (width) => {
+    const clamped = width === null ? null : clampWidth(VM_FLOATING_BOUNDS, width)
+    saveWidth(VM_FLOATING_WIDTH_KEY, clamped)
+    set({ vmFloatingWidth: clamped ?? VM_FLOATING_DEFAULT_WIDTH })
+  },
   browserUrls: {},
   composerFocusRequest: 0,
   interruptRequest: 0,
