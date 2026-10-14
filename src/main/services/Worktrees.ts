@@ -36,6 +36,7 @@ import { Events } from "./Events.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError, type PullRequestHead } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
+import { Settings } from "./Settings.ts"
 import { diffWorkingTree } from "./workingTree.ts"
 
 export interface CreateWorktree {
@@ -128,11 +129,12 @@ export class Worktrees extends Context.Service<
   }
 >()("kkcode/Worktrees") {}
 
-const checkoutsDir = (rootPath: string) => join(dirname(rootPath), ".kkcode-worktrees", basename(rootPath))
+const checkoutsDir = (rootPath: string, worktreeRoot: string | null) =>
+  join(worktreeRoot ?? join(dirname(rootPath), ".kkcode-worktrees"), basename(rootPath))
 
 // The id suffix keeps branches like `kk/fix` and `kk-fix` apart, and gives every row its own path.
-const checkoutPath = (rootPath: string, branch: string, id: string) =>
-  join(checkoutsDir(rootPath), `${branch.replaceAll("/", "-")}-${id.slice(0, 8)}`)
+const checkoutPath = (checkouts: string, branch: string, id: string) =>
+  join(checkouts, `${branch.replaceAll("/", "-")}-${id.slice(0, 8)}`)
 
 const removalKey = (projectId: string, branch: string) => `${projectId}\0${branch}`
 
@@ -155,6 +157,8 @@ const make = Effect.gen(function* () {
   const events = yield* Events
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const fs = yield* FileSystem.FileSystem
+  const settings = yield* Settings
+  const resolve = (path: string) => fs.realPath(path).pipe(Effect.orElseSucceed(() => path))
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
 
   const findAll = SqlSchema.findAll({
@@ -304,10 +308,10 @@ const make = Effect.gen(function* () {
    * A checkout of `branch` in this project's checkouts dir that no row records was left by a crash
    * between `git worktree add` and the insert, so it is safe to adopt.
    */
-  const findOrphan = (rootPath: string, branch: string) =>
+  const findOrphan = (rootPath: string, checkouts: string, branch: string) =>
     Effect.gen(function* () {
       const checkout = (yield* registeredCheckouts(rootPath)).find(
-        ({ path, ref }) => ref === `refs/heads/${branch}` && dirname(path) === checkoutsDir(rootPath),
+        ({ path, ref }) => ref === `refs/heads/${branch}` && dirname(path) === checkouts,
       )
       if (!checkout) return Option.none()
       const recorded = yield* findByPath(checkout.path).pipe(Effect.mapError(persistence("worktrees.create")))
@@ -326,12 +330,15 @@ const make = Effect.gen(function* () {
         return yield* new WorktreeTakenError({ branch: input.branch, path: live.value.path })
       }
 
-      // git reports checkouts by their resolved path, so ours derive from the resolved root to compare equal.
-      // A root that cannot be resolved does not exist, and the git calls below report that.
-      const rootPath = yield* fs.realPath(project.rootPath).pipe(Effect.orElseSucceed(() => project.rootPath))
+      // git reports checkouts by their resolved path, so ours derive from resolved paths to compare equal.
+      // A project root that cannot be resolved does not exist, and the git calls below report that.
+      // A worktree root that cannot be resolved does not exist yet, and `git worktree add` creates it.
+      const rootPath = yield* resolve(project.rootPath)
+      const { worktreeRoot } = yield* settings.get
+      const checkouts = checkoutsDir(rootPath, worktreeRoot === null ? null : yield* resolve(worktreeRoot))
       const id = randomUUID()
-      const orphan = yield* findOrphan(rootPath, input.branch)
-      const path = Option.getOrElse(orphan, () => checkoutPath(rootPath, input.branch, id))
+      const orphan = yield* findOrphan(rootPath, checkouts, input.branch)
+      const path = Option.getOrElse(orphan, () => checkoutPath(checkouts, input.branch, id))
       if (Option.isNone(orphan)) {
         const args = (yield* branchExists(rootPath, input.branch))
           ? ["worktree", "add", path, input.branch]
@@ -345,7 +352,7 @@ const make = Effect.gen(function* () {
       const worktree: Worktree = {
         id,
         projectId: project.id,
-        path,
+        path: yield* resolve(path),
         branch: input.branch,
         baseRef: input.baseRef,
         status: "preparing",
