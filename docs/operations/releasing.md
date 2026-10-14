@@ -32,6 +32,6 @@ For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVER
 ## If it goes wrong
 
 - **The app quits at startup with `ERR_MODULE_NOT_FOUND`.** A main-process import pulls in a package that is not packaged. Only packages that `out/main` imports belong in `dependencies`; the renderer is bundled by Vite, so its packages are `devDependencies`. Import a subpath instead of a barrel (for example `@effect/platform-node/NodeHttpServer`), or move the package to `dependencies`.
-- **Claude threads fail to start in the packaged app.** Check that `resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-<platform>-<arch>/` exists in the build. The Windows build only has it because CI installs with `--os linux,win32`.
+- **A thread says its agent is not installed.** The app ships no agent CLI. It runs the user's own `claude`, `codex` or `muse`, found with `which <name>`, then `$SHELL -ilc 'command -v <name>'`. Run both in a terminal to see which one misses.
 - **Installed apps do not update.** Check that the release is published, not a draft, and that it has the `latest*.yml` for that platform. Squirrel.Mac also refuses a build signed with a different identity than the running app.
 - **The Windows build fails in `wine`.** It needs real x64. Wine crashes under Docker's x64 emulation on Apple Silicon, so build Windows in CI.

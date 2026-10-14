@@ -5,16 +5,16 @@ directories:
 files:
   - out/**
   - package.json
+  # Claude threads run the user's own `claude`, which updates faster than kkcode ships.
+  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
 # node-pty ships N-API prebuilds for macOS and Windows, and Linux builds it from source at install time.
 # N-API binaries load in Electron as they are, and rebuilding cannot cross-compile node-pty for Windows on Linux.
 npmRebuild: false
-# The Claude SDK and node-pty spawn native binaries, which cannot run from inside app.asar.
+# node-pty spawns a native binary, which cannot run from inside app.asar.
 asarUnpack:
-  - "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
   - "**/node_modules/node-pty/**"
 mac:
   files:
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,win32,darwin-x64}*/**"
     - "!**/node_modules/node-pty/prebuilds/{win32,darwin-x64}*/**"
   target:
     - target: dmg
@@ -28,7 +28,6 @@ mac:
   notarize: true
 win:
   files:
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,darwin,win32-arm64}*/**"
     - "!**/node_modules/node-pty/prebuilds/{darwin,win32-arm64}*/**"
     - "!**/node_modules/node-pty/build/**"
   target:
@@ -40,7 +39,6 @@ nsis:
   artifactName: ${productName}-${version}-setup.${ext}
 linux:
   files:
-    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{win32,darwin,linux-arm64,linux-x64-musl}*/**"
     - "!**/node_modules/node-pty/prebuilds/**"
   target:
     - target: AppImage
