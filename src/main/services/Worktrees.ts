@@ -100,6 +100,11 @@ export class Worktrees extends Context.Service<
     readonly branches: (projectId: string) => Effect.Effect<ReadonlyArray<string>, Failure>
     /** `origin`'s default branch, or `main` when the checkout does not know it. */
     readonly defaultBranch: (projectId: string) => Effect.Effect<string, PersistenceError | NotFoundError>
+    /**
+     * The worktree once its setup script has finished, ready or failed. A send waits on this so the
+     * turn never starts in a checkout the setup script is still preparing.
+     */
+    readonly whenPrepared: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
   }
 >()("kkcode/Worktrees") {}
 
@@ -251,6 +256,19 @@ const make = Effect.gen(function* () {
       ),
     )
 
+  /** Setup scripts still running, by worktree id, so a send can wait for the one preparing its checkout. */
+  const setups = new Map<string, Fiber.Fiber<unknown>>()
+
+  const whenPrepared = (id: string) =>
+    Effect.gen(function* () {
+      const running = setups.get(id)
+      if (running !== undefined) {
+        yield* Fiber.await(running)
+        setups.delete(id)
+      }
+      return yield* get(id)
+    })
+
   /**
    * Deletions still running, by project and branch, so a create of the same branch waits for the old
    * checkout to let go of it.
@@ -308,7 +326,7 @@ const make = Effect.gen(function* () {
       }
       yield* sql`INSERT INTO worktree ${sql.insert(worktree)}`.pipe(Effect.mapError(persistence("worktrees.create")))
       yield* events.publish({ type: "worktree.updated", worktree })
-      yield* Effect.forkDetach(setup(worktree, project))
+      setups.set(worktree.id, yield* Effect.forkDetach(setup(worktree, project)))
       return worktree
     }).pipe(exclusive)
 
@@ -451,6 +469,7 @@ const make = Effect.gen(function* () {
     branches,
     defaultBranch,
     renameBranch,
+    whenPrepared,
   })
 })
 

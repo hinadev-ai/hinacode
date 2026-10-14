@@ -395,6 +395,9 @@ const make = Effect.gen(function* () {
         yield* push.publish({ type: "thread.updated", thread })
         if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
       }
+      // The message is only written once the worktree is prepared: while this waits, the thread shows
+      // the preparation steps and the setup log instead of a turn racing its own setup script.
+      if (thread.worktreeId !== null) yield* worktrees.whenPrepared(thread.worktreeId)
       const provider = yield* providerFor(thread.provider)
       // Resolved before anything is written, so a thread whose account is gone fails here instead of on another login.
       const home = yield* accounts.home(thread.accountId)

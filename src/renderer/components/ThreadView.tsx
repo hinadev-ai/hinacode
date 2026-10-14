@@ -10,6 +10,7 @@ import { ThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useThreads } from "../stores/threads.ts"
+import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { Composer } from "./Composer.tsx"
@@ -21,6 +22,7 @@ import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { SubagentTranscript } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
+import { WorktreePreparation } from "./WorktreePreparation.tsx"
 import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
@@ -69,6 +71,7 @@ export function ThreadView({ thread, agent, actions }: { thread: Thread; agent?:
 
 function Transcript({ thread, agent }: { thread: Thread; agent: string | undefined }) {
   const history = useMessages((state) => state.byThread[thread.id])
+  const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
   const unload = useMessages((state) => state.unload)
   const label = providerLabel[thread.provider]()
@@ -121,7 +124,11 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           providerLabel={label}
         />
       ) : history.messages.length === 0 ? (
-        <EmptyThread providerLabel={label} />
+        worktree?.status === "preparing" ? (
+          <WorktreePreparation worktree={worktree} />
+        ) : (
+          <EmptyThread providerLabel={label} />
+        )
       ) : (
         <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />
       )}
