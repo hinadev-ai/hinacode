@@ -663,12 +663,13 @@ export const layer = Layer.effect(
         })
       }
       return [...byId.values()]
-    }).pipe(Effect.orElseSucceed(() => FALLBACK_MODELS))
+    })
 
     // A failure is not cached, so a fresh install of Claude Code shows its models right away.
-    const listModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
+    const cachedModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
       Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
     )
+    const listModels = Effect.orElseSucceed(cachedModels, () => FALLBACK_MODELS)
 
     const transcriptUsage = perHome(makeTranscriptUsage)
     const usage = (sessionId: string, home: AccountHome | null) =>
