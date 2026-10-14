@@ -17,8 +17,8 @@ const NO_MESSAGES: ReadonlyArray<Message> = []
 
 const statusIcon: Record<TodoStatus, { readonly icon: IconType; readonly className: string }> = {
   pending: { icon: RiCheckboxBlankCircleLine, className: "text-muted-foreground" },
-  in_progress: { icon: RiLoader4Line, className: "animate-spin text-foreground motion-reduce:animate-none" },
-  completed: { icon: RiCheckboxCircleLine, className: "text-emerald-600 dark:text-emerald-500" },
+  in_progress: { icon: RiLoader4Line, className: "animate-spin motion-reduce:animate-none" },
+  completed: { icon: RiCheckboxCircleLine, className: "text-muted-foreground" },
   cancelled: { icon: RiCloseCircleLine, className: "text-muted-foreground" },
 }
 
@@ -66,7 +66,8 @@ export function TodoBar({ thread }: { thread: Thread }) {
         aria-expanded={expanded}
         aria-label={m.composer_todos_label()}
         onClick={() => setExpanded((open) => !open)}
-        className="pressable flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+        // Recedes like a tool row until the user reaches for it.
+        className="pressable flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:text-foreground"
       >
         <span className="shrink-0 text-muted-foreground tabular-nums">
           {m.composer_todos_progress({ done: String(done), total: String(todos.length) })}

@@ -115,9 +115,20 @@ export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
-/** Branches a new worktree can fork from. Asked again when the window comes back, in case one was made meanwhile. */
+/**
+ * Fetches `origin` while the workspace picker shows, and again when the window comes back, so the picker
+ * offers what origin has now. Fails quietly offline; nothing waits on it.
+ */
+const remoteFetchAtom = Atom.family((projectId: string) =>
+  Atom.make(call("projects.fetch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
+
+/** Branches the workspace picker offers. Listed at once, then again whenever a fetch of `origin` settles. */
 export const branchesAtom = Atom.family((projectId: string) =>
-  Atom.make(call("projects.branches", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+  Atom.make((get) => {
+    get(remoteFetchAtom(projectId))
+    return call("projects.branches", { id: projectId })
+  }),
 )
 
 /** The repository's open pull requests, through `gh`. Asked again when the window comes back. */
@@ -126,7 +137,10 @@ export const pullRequestsAtom = Atom.family((projectId: string) =>
 )
 
 export const defaultBranchAtom = Atom.family((projectId: string) =>
-  Atom.make(call("projects.defaultBranch", { id: projectId })),
+  Atom.make((get) => {
+    get(remoteFetchAtom(projectId))
+    return call("projects.defaultBranch", { id: projectId })
+  }),
 )
 
 /** The start of the file `path` under `root`, keyed by `JSON.stringify([root, path])`. */

@@ -174,8 +174,8 @@ sequenceDiagram
   Dev->>R: send prompt
   R->>AR: rpc threads.send
   AR->>AR: claim busyThreads (reject a second send)
-  opt first message with worktree
-    AR->>WT: Threads.attachWorktree (branch kk/<placeholder title>)
+  opt first message with a workspace choice
+    AR->>WT: Threads.prepareWorkspace (local: git switch in the root; worktree: branch kk/<placeholder title>)
   end
   AR->>WT: whenPrepared (outside the transcript lock)
   WT-->>R: worktree.setupLog, worktree.updated

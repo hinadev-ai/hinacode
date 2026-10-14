@@ -28,7 +28,7 @@ import type {
   SecretRequest,
   ThreadUsage,
 } from "../../shared/agent.ts"
-import type { AccessMode, Attachment, Message, Thread, ThreadStatus, WorktreeSource } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, Message, Thread, ThreadStatus, WorkspaceChoice } from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -43,6 +43,7 @@ import type {
   NotFoundError,
   PersistenceError,
   PullRequestElsewhereError,
+  RootBusyError,
   ThreadStartedError,
   WorktreeTakenError,
 } from "./errors.ts"
@@ -62,8 +63,8 @@ const PERSIST_INTERVAL_MS = 500
 const interruptedSend = () => new AgentError({ provider: "kkcode", message: "Message send interrupted" })
 
 export interface SendOptions {
-  /** Only with the first message: moves the thread into a new worktree first. */
-  readonly worktree?: WorktreeSource | undefined
+  /** Only with the first message: sets up where the thread runs first. */
+  readonly workspace?: WorkspaceChoice | undefined
 }
 
 type SendError =
@@ -77,6 +78,7 @@ type SendError =
   | Schema.SchemaError
   | PullRequestElsewhereError
   | PullRequestUrlInvalidError
+  | RootBusyError
 
 export class AgentRunner extends Context.Service<
   AgentRunner,
@@ -461,11 +463,11 @@ const make = Effect.gen(function* () {
         if (!(yield* when)) return null
         let thread = yield* threads.get(threadId)
         const first = !(yield* threads.started(threadId))
-        if (options.worktree) {
-          const attached = yield* threads.attachWorktree(threadId, options.worktree)
-          thread = attached.thread
+        if (options.workspace) {
+          const prepared = yield* threads.prepareWorkspace(threadId, options.workspace)
+          thread = prepared.thread
           yield* push.publish({ type: "thread.updated", thread })
-          if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
+          if (prepared.pullRequestUrl !== null) yield* pullRequests.link(threadId, prepared.pullRequestUrl)
         }
         return { first, worktreeId: thread.worktreeId }
       }).pipe(exclusive(threadId))
