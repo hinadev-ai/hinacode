@@ -51,6 +51,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
   const viewId = view.id
   const maximum = useSidePanelMaxWidth()
   const content = useMemo(() => createElement(view.component, { thread }), [view, thread])
+  const header = useMemo(() => view.header && createElement(view.header, { thread }), [view, thread])
   const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))
   const width = useUi((state) => state.sidePanelWidths[size])
   const setWidth = useUi((state) => state.setSidePanelWidth)
@@ -93,8 +94,13 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
           onReset={() => setWidth(size, null)}
         />
       )}
-      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border pr-2 pl-4">
-        <h2 className="truncate text-sm font-medium">{view.title()}</h2>
+      <header
+        className={cn(
+          "flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border pr-2",
+          header ? "pl-2" : "pl-4",
+        )}
+      >
+        {header ?? <h2 className="truncate text-sm font-medium">{view.title()}</h2>}
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
       </header>
       {content}
