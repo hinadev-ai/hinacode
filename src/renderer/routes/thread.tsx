@@ -1,6 +1,6 @@
 import { getRouteApi } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { useRef } from "react"
+import { useEffect, useRef } from "react"
 import { FloatingTinyVm } from "../components/FloatingTinyVm.tsx"
 import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
@@ -10,8 +10,19 @@ import { usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { useUnseen } from "../stores/unseen.ts"
 
 const route = getRouteApi("/thread/$threadId")
+
+/** Opening a thread shows its latest result. While the window is in the background, the result waits for focus. */
+function useMarkSeen(threadId: string) {
+  useEffect(() => {
+    const markSeen = () => useUnseen.getState().clear(threadId)
+    markSeen()
+    window.addEventListener("focus", markSeen)
+    return () => window.removeEventListener("focus", markSeen)
+  }, [threadId])
+}
 
 export function ThreadRoute() {
   const { threadId } = route.useParams()
@@ -22,6 +33,7 @@ export function ThreadRoute() {
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
   const docked = usePanelLayout() === "wide"
   const toggleRef = useRef<HTMLButtonElement>(null)
+  useMarkSeen(threadId)
 
   if (!thread) {
     return <p className="m-auto text-sm text-muted-foreground">{m.thread_not_found()}</p>

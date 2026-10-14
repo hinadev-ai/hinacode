@@ -11,7 +11,7 @@ import { applyAppearance, useTheme } from "./lib/appearance.ts"
 import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useSettings } from "./lib/settings.ts"
-import { notifyThreadEvent } from "./lib/threadNotifications.ts"
+import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
@@ -19,6 +19,7 @@ import { usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
 import { useThreads } from "./stores/threads.ts"
+import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
 const registry = AtomRegistry.make()
@@ -55,12 +56,14 @@ onPushEvent((event) => {
     case "thread.updated":
       return useThreads.getState().upsert(event.thread)
     case "thread.removed":
+      useUnseen.getState().clear(event.id)
       return useThreads.getState().remove(event.id)
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
     case "thread.event": {
       useMessages.getState().receive(event)
+      recordUnseenOutcome(event.threadId, event.event)
       const { notifications } = AsyncResult.getOrElse(registry.get(settingsAtom), () => settings)
       return notifyThreadEvent(event.threadId, event.event, notifications)
     }

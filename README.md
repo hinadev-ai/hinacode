@@ -70,7 +70,7 @@ src/main      Electron main process. One Effect runtime, services under services
 src/preload   contextBridge exposing window.kkcode (rpc, onEvent, pathForFile).
 src/renderer  React 19 + TanStack Router. components/, routes/, stores/ (zustand), keybindings/, paraglide/ (generated).
 src/shared    Effect Schema contracts shared by all three: domain types, the rpc method map, agent events.
-messages/     Paraglide catalogs, en.json and zh-TW.json. Every UI string lives here.
+messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json. Every UI string lives here.
 ```
 
 Renderer and main talk over a single `rpc` IPC channel. Each method in `src/shared/contract.ts` has a request and response schema that both sides decode. Main pushes live updates on the `event` channel.
