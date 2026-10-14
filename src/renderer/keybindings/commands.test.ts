@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { conflictsOf, resolveKeymap } from "./commands.ts"
+import { conflictsOf, resolveKeymap, whenHolds } from "./commands.ts"
 
 // Commands import the ui store, which reads the saved sidebar width from localStorage when it is created.
 vi.hoisted(() => {
@@ -36,5 +36,21 @@ describe("conflictsOf", () => {
   test("unbound commands conflict with nothing", () => {
     const keymap = resolveKeymap({ "thread.new": "", "project.add": "" })
     expect(conflictsOf(keymap, "thread.new")).toStrictEqual([])
+  })
+})
+
+describe("whenHolds", () => {
+  test("a negated key holds only while the key is false", () => {
+    expect(whenHolds("!terminalFocus", { terminalFocus: false })).toBe(true)
+    expect(whenHolds("!terminalFocus", { terminalFocus: true })).toBe(false)
+  })
+
+  test("a plain key holds only while the key is true", () => {
+    expect(whenHolds("terminalFocus", { terminalFocus: true })).toBe(true)
+    expect(whenHolds("terminalFocus", { terminalFocus: false })).toBe(false)
+  })
+
+  test("no clause holds everywhere", () => {
+    expect(whenHolds(undefined, { terminalFocus: true })).toBe(true)
   })
 })
