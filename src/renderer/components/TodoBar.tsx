@@ -18,7 +18,7 @@ const NO_MESSAGES: ReadonlyArray<Message> = []
 const statusIcon: Record<TodoStatus, { readonly icon: IconType; readonly className: string }> = {
   pending: { icon: RiCheckboxBlankCircleLine, className: "text-muted-foreground" },
   in_progress: { icon: RiLoader4Line, className: "animate-spin text-foreground motion-reduce:animate-none" },
-  completed: { icon: RiCheckboxCircleLine, className: "text-emerald-600 dark:text-emerald-500" },
+  completed: { icon: RiCheckboxCircleLine, className: "text-muted-foreground" },
   cancelled: { icon: RiCloseCircleLine, className: "text-muted-foreground" },
 }
 
