@@ -173,11 +173,12 @@
 
 .dark {
   --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
+  /* Not white: near-white on near-black reads as glare. Still 15.6:1 on the background. */
+  --foreground: oklch(0.92 0 0);
   --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
+  --card-foreground: oklch(0.92 0 0);
   --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  --popover-foreground: oklch(0.92 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --working: oklch(0.702 0.183 293.541);
@@ -191,11 +192,12 @@
   --graph-lane-5: oklch(0.74 0.12 130);
   --syntax-token: #a78bfa;
   --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
+  --secondary-foreground: oklch(0.92 0 0);
   --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  /* Keeps the 2.5:1 step from foreground that the brighter palette had. 4.9:1 on muted surfaces. */
+  --muted-foreground: oklch(0.66 0 0);
   --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent-foreground: oklch(0.92 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --attention: oklch(0.828 0.189 84.429);
   --border: oklch(1 0 0 / 10%);
@@ -208,11 +210,11 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.92 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-accent-foreground: oklch(0.92 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.8 0 0);
 }
@@ -320,7 +322,8 @@
     scrollbar-color: var(--input) transparent;
   }
   body {
-    @apply bg-background text-foreground;
+    /* macOS thickens light text on dark backgrounds unless smoothing is set to grayscale. */
+    @apply bg-background text-foreground antialiased;
   }
   html {
     @apply font-sans;
