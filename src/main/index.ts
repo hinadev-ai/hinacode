@@ -164,9 +164,7 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
     PullRequestWatcher.layer,
     Mcp.serverLayer,
     AgentLogins.layer,
-  ).pipe(
-    Layer.provideMerge(agents),
-  )
+  ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   return RemoteServer.layer.pipe(
     Layer.provideMerge(services),
