@@ -544,6 +544,29 @@ describe("worktree ownership", () => {
   )
 })
 
+describe("removal", () => {
+  it.live("keeps the row removed when deleting the branch fails after its checkout is gone", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "locked", "kk/locked")
+        yield* waitUntilSetUp(thread.worktreeId)
+        const worktree = yield* worktreeOf(thread.worktreeId)
+        // git refuses to delete a branch whose ref is locked, after `git worktree remove` already succeeded.
+        writeFileSync(join(root, ".git", "refs", "heads", "kk", "locked.lock"), "")
+
+        yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "force"))
+        // A create of the same branch waits for the deletion to finish.
+        yield* Effect.exit(
+          Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/locked", baseRef: "main" })),
+        )
+
+        expect(existsSync(worktree.path)).toBe(false)
+        expect((yield* worktreeOf(worktree.id)).status).toBe("removed")
+      }),
+    ),
+  )
+})
+
 describe("startup", () => {
   it.live("fails setup a quit or crash interrupted, the same way on every start", () =>
     withRepo(({ projectId, restart }) =>
