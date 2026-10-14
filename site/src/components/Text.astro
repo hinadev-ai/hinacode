@@ -1,0 +1,9 @@
+---
+interface Props {
+  text: string
+}
+const { text } = Astro.props
+const parts = text.split(/(\{\w+\})/g)
+---
+
+{parts.map((part) => (part.startsWith("{") && part.endsWith("}") ? <slot name={part.slice(1, -1)} /> : part))}

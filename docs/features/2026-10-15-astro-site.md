@@ -19,6 +19,8 @@ Add `site` as a pnpm workspace package with static Astro pages. Extract a shared
 
 Build HTML, CSS, and JavaScript into `site/dist`. Wrangler serves that directory with Workers Static Assets. The pages do not need server rendering or a Worker entry point. This follows [Cloudflare's static Astro deployment guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/astro/).
 
+[Marketing site languages](2026-10-15-site-languages.md) covers the subsequent Traditional Chinese and Japanese routes and language menu.
+
 ## Out of scope
 
 New copy, a new visual design, backend services, and publishing to a Cloudflare account. This change prepares and verifies deployment locally.
@@ -27,4 +29,4 @@ New copy, a new visual design, backend services, and publishing to a Cloudflare 
 
 Compare the original and built pages at desktop and mobile widths with fonts loaded and animations pinned. Exercise Allow, Deny, Replay, steering, FAQ disclosure, navigation, platform labels, and keyboard hints. Run Astro checking and build, Wrangler deployment dry run, a local Workers preview, and the repository's typecheck, lint, and tests.
 
-Eight comparisons at desktop and mobile widths preserve the layout. Four match pixel for pixel; the remaining four differ by at most 2 out of 255 levels in an RGB channel. The comparison caught a dropped standard `backdrop-filter` during CSS minification and a changed navigation line height from Tailwind; both are corrected. The approval buttons and shortcuts, replay, steering, FAQ, and page navigation work in the local Workers preview. The build, Astro checks, deployment dry run, and repository checks pass.
+Before adding the language menu, eight comparisons at desktop and mobile widths preserved the layout. Four matched pixel for pixel; the remaining four differed by at most 2 out of 255 levels in an RGB channel. The comparison caught a dropped standard `backdrop-filter` during CSS minification and a changed navigation line height from Tailwind; both are corrected. The approval buttons and shortcuts, replay, steering, FAQ, and page navigation work in the local Workers preview. The build, Astro checks, deployment dry run, and repository checks pass.
