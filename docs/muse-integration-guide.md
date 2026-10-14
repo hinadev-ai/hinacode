@@ -81,7 +81,9 @@ Each session's `config.mcpServers` carries the kkcode MCP server with the thread
 
 `skill/list` needs a loaded session. The composer asks the thread's own loaded session, another session in the same cwd, or a cached probe session for that cwd. A probe never runs a turn. When the host respawns, kkcode resumes the probe instead of starting another.
 
-A prompt beginning with a known `/selector` becomes a structured `skill` input with its remaining text as `arguments`. The host expands the skill. Images remain image parts; attached-file and selected-element notes join the arguments. Unknown selectors stay plain text. Steering uses the same input conversion.
+A new turn beginning with a known `/selector` uses a structured `skill` input with its remaining text as `arguments`. The host expands the skill. Images remain image parts; attached-file and selected-element notes join the arguments. Unknown selectors stay plain text.
+
+Muse 1.4.7 rejects `skill` parts on `turn/steer` with `invalidParams`: `turn/steer does not accept skill parts; submit on turn/start`. The SDK's shared input type does not express this constraint. Steering keeps slash prompts as ordinary text and sends attachments through the existing text and image conversion. To request host skill expansion, send the slash command as a new turn.
 
 ## Access modes and the sandbox
 
