@@ -59,6 +59,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
+const interruptedSend = () => new AgentError({ provider: "kkcode", message: "Message send interrupted" })
 
 export interface SendOptions {
   /** Only with the first message: moves the thread into a new worktree first. */
@@ -246,6 +247,7 @@ const make = Effect.gen(function* () {
 
   const turns = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
+  const pendingSends = new Map<string, Deferred.Deferred<void>>()
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
   const questions = new Map<string, QuestionRequest>()
@@ -305,6 +307,7 @@ const make = Effect.gen(function* () {
     cwd: string,
     home: AccountHome | null,
     initial: Message,
+    stop: Deferred.Deferred<void>,
   ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
@@ -400,31 +403,39 @@ const make = Effect.gen(function* () {
 
     /** Never fails: provider errors become turn_failed. */
     const run = (prompt: string, attachments: ReadonlyArray<Attachment>) =>
-      Effect.all([mcp.connectionFor(thread.id), settings.get]).pipe(
-        Effect.flatMap(([mcpServer, { experimental }]) =>
-          provider
-            .runTurn({
-              threadId: thread.id,
-              prompt,
-              attachments,
-              cwd,
-              model: thread.model,
-              effort: thread.effort,
-              fastMode: thread.fastMode,
-              accessMode: thread.accessMode,
-              resumeSessionId: thread.providerSessionId,
-              home,
-              mcpServer,
-              instructions: agentInstructions(experimental),
-            })
-            .pipe(Stream.runForEach(handle)),
-        ),
+      Effect.gen(function* () {
+        const [mcpServer, { experimental }] = yield* Effect.all([mcp.connectionFor(thread.id), settings.get])
+        if (yield* Deferred.isDone(stop)) {
+          return yield* handle({ type: "turn_failed", message: "Turn interrupted" })
+        }
+        yield* provider
+          .runTurn({
+            threadId: thread.id,
+            prompt,
+            attachments,
+            cwd,
+            model: thread.model,
+            effort: thread.effort,
+            fastMode: thread.fastMode,
+            accessMode: thread.accessMode,
+            resumeSessionId: thread.providerSessionId,
+            home,
+            mcpServer,
+            instructions: agentInstructions(experimental),
+          })
+          .pipe(Stream.runForEach(handle))
+      }).pipe(
         Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
       )
 
-    return { provider, steer, run, handle, messages: () => turnMessages }
+    const interrupt = Effect.gen(function* () {
+      yield* Deferred.succeed(stop, undefined)
+      yield* provider.interrupt(thread.id)
+    })
+
+    return { provider, steer, run, handle, interrupt, messages: () => turnMessages }
   }
 
   const nameThreadWithPullRequestScope = (thread: Thread, prompt: string) =>
@@ -438,44 +449,69 @@ const make = Effect.gen(function* () {
     prompt: string,
     attachments: ReadonlyArray<Attachment>,
     options: SendOptions,
+    stop: Deferred.Deferred<void>,
     when: Effect.Effect<boolean, PersistenceError>,
   ) =>
     Effect.gen(function* () {
-      if (!(yield* when)) return false
-      let thread = yield* threads.get(threadId)
-      const first = !(yield* threads.started(threadId))
-      if (options.worktree) {
-        const attached = yield* threads.attachWorktree(threadId, options.worktree)
-        thread = attached.thread
-        yield* push.publish({ type: "thread.updated", thread })
-        if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
-      }
-      const provider = yield* providerFor(thread.provider)
-      // Resolved before anything is written, so a thread whose account is gone fails here instead of on another login.
-      const home = yield* accounts.home(thread.accountId)
-      // Marking the thread running in the same critical section as resolving its cwd stops a
-      // worktree removal from deleting the directory this turn is about to run in.
-      const turn = yield* worktrees.exclusive(
-        Effect.gen(function* () {
-          if (!(yield* when)) return null
-          const { cwd } = yield* activeWorkspace(thread.id)
-          yield* threads.snapshotTurnBase(threadId, cwd)
-          const now = yield* nowIso
-          const assistant = openAssistantMessage(threadId, now)
-          yield* insertMessage(userMessage(threadId, prompt, attachments, now))
-          yield* insertMessage(assistant)
-          yield* updateThread({ id: threadId, status: "running" })
-          return makeTurn(thread, provider, cwd, home, assistant)
-        }),
+      const checkStopped = Deferred.isDone(stop).pipe(
+        Effect.flatMap((stopped) => (stopped ? Effect.fail(interruptedSend()) : Effect.void)),
       )
-      if (turn === null) return false
-      activeTurns.set(threadId, turn)
-      yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
-      // Automations title their threads from their own template.
-      if (first && thread.createdBy === "user" && prompt.trim() !== "")
-        yield* Effect.forkDetach(nameThreadWithPullRequestScope(thread, prompt))
-      return true
-    }).pipe(exclusive(threadId))
+      const pending = yield* Effect.gen(function* () {
+        yield* checkStopped
+        if (!(yield* when)) return null
+        let thread = yield* threads.get(threadId)
+        const first = !(yield* threads.started(threadId))
+        if (options.worktree) {
+          const attached = yield* threads.attachWorktree(threadId, options.worktree)
+          thread = attached.thread
+          yield* push.publish({ type: "thread.updated", thread })
+          if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
+        }
+        return { first, worktreeId: thread.worktreeId }
+      }).pipe(exclusive(threadId))
+      if (pending === null) return false
+
+      if (pending.worktreeId !== null) {
+        yield* Effect.raceFirst(
+          worktrees.whenPrepared(pending.worktreeId),
+          Deferred.await(stop).pipe(Effect.andThen(Effect.fail(interruptedSend()))),
+        )
+      }
+
+      return yield* Effect.gen(function* () {
+        const admitted = yield* worktrees.exclusive(
+          Effect.gen(function* () {
+            yield* checkStopped
+            if (!(yield* when)) return null
+            const thread = yield* threads.get(threadId)
+            if (thread.status === "archived") {
+              return yield* new AgentError({ provider: "kkcode", message: "Cannot send to an archived thread" })
+            }
+            const provider = yield* providerFor(thread.provider)
+            const home = yield* accounts.home(thread.accountId)
+            const { cwd } = yield* activeWorkspace(threadId)
+            const tree = yield* threads.captureTurnBase(cwd)
+            yield* checkStopped
+            if (!(yield* when)) return null
+            yield* threads.recordTurnBase({ threadId, tree })
+            const now = yield* nowIso
+            const assistant = openAssistantMessage(threadId, now)
+            yield* insertMessage(userMessage(threadId, prompt, attachments, now))
+            yield* insertMessage(assistant)
+            yield* updateThread({ id: threadId, status: "running" })
+            return { thread, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
+          }),
+        )
+        if (admitted === null) return false
+        const { thread: currentThread, turn } = admitted
+        activeTurns.set(threadId, turn)
+        pendingSends.delete(threadId)
+        yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
+        if (pending.first && currentThread.createdBy === "user" && prompt.trim() !== "")
+          yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
+        return true
+      }).pipe(exclusive(threadId))
+    })
 
   const sendWhen = (
     threadId: string,
@@ -488,10 +524,12 @@ const make = Effect.gen(function* () {
       if (busyThreads.has(threadId)) {
         return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
       }
-      // Claimed before the first await so two quick sends cannot both start a turn.
       busyThreads.add(threadId)
-      const accepted = yield* startTurn(threadId, prompt, attachments, options, when).pipe(
+      const stop = Deferred.makeUnsafe<void>()
+      pendingSends.set(threadId, stop)
+      const accepted = yield* startTurn(threadId, prompt, attachments, options, stop, when).pipe(
         Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
+        Effect.ensuring(Effect.sync(() => pendingSends.get(threadId) === stop && pendingSends.delete(threadId))),
       )
       if (!accepted) busyThreads.delete(threadId)
       return accepted
@@ -600,7 +638,12 @@ const make = Effect.gen(function* () {
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
     interrupt: (threadId) =>
-      Effect.suspend(() => activeTurns.get(threadId)?.provider.interrupt(threadId) ?? Effect.void),
+      Effect.suspend(() => {
+        const turn = activeTurns.get(threadId)
+        if (turn !== undefined) return turn.interrupt
+        const pending = pendingSends.get(threadId)
+        return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
+      }),
     setAccessMode: (threadId, accessMode) =>
       Effect.suspend(() => activeTurns.get(threadId)?.provider.setAccessMode(threadId, accessMode) ?? Effect.void),
     respondApproval: (requestId, decision) =>

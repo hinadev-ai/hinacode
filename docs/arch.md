@@ -113,6 +113,7 @@ classDiagram
     id: ProviderId
     listModels: Effect~ModelInfo[]~
     account(home) / planLimits(home) / usage(sessionId, home)
+    listCommands(threadId, cwd, home)
     runTurn(input) Stream~AgentEvent~
     steer(threadId, text, attachments)
     interrupt(threadId)
@@ -164,6 +165,7 @@ sequenceDiagram
   participant R as Renderer
   participant AR as AgentRunner
   participant WT as Worktrees
+  participant G as Git
   participant P as Provider
   participant DB as SQLite
 
@@ -173,9 +175,14 @@ sequenceDiagram
   opt first message with worktree
     AR->>WT: Threads.attachWorktree (branch kk/<placeholder title>)
   end
-  AR->>WT: exclusive(resolve cwd)
+  AR->>WT: whenPrepared (outside the transcript lock)
+  WT-->>R: worktree.setupLog, worktree.updated
+  Note over R,AR: Stop cancels the pending send; the setup script continues
+  AR->>WT: exclusive(re-read thread, check cancellation, resolve cwd)
   Note over AR,WT: Resolving the cwd and marking the thread running happen in one critical section, so a worktree removal can't delete the directory mid-start
-  AR->>DB: insert user message + open assistant message
+  AR->>G: captureTurnBase(cwd)
+  AR->>AR: recheck Stop and guarded delivery
+  AR->>DB: recordTurnBase + insert user message + open assistant message
   AR-->>R: push message.created, thread.updated(running)
   AR->>P: runTurn(cwd, model, resumeSessionId, mcpServer)
   loop each AgentEvent
@@ -219,6 +226,8 @@ sequenceDiagram
 - `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`.
 - Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
 - On boot, `resetInterrupted` and `closeInterrupted` mark anything a killed app left running as over.
+
+A first send waiting for setup keeps its private send claim and cancellation signal, while the thread remains idle with no messages. Transcript reads stay available. Before delivery, the runner re-reads the thread under the worktree lock, rejects an archived or deleted thread, and uses its current provider, account, and model. Acceptance starts at the final cancellation check before message insertion. The same signal reaches the provider-start handoff, so Stop during insertion leaves an accepted, interrupted message without starting the provider. The submitting composer offers Stop through its local sending transition. Reopening shows preparation progress but does not recover that transition's Stop button.
 
 ## Renderer sync: snapshot plus pushes
 
@@ -378,6 +387,7 @@ erDiagram
 ```
 
 - `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`.
+- `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
 ## Lifecycles

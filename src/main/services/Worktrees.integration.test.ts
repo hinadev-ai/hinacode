@@ -238,6 +238,71 @@ describe("background setup", () => {
       }
     })
   }
+  it("whenPrepared stays pending while setup runs and resolves with the ready worktree", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kk-worktrees-when-prepared-test-"))
+    const root = join(dir, "repo")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    const releasePath = join(root, "setup-release")
+    const started = Promise.withResolvers<void>()
+    const runtime = ManagedRuntime.make(
+      makeLayer(
+        join(dir, "kkcode.sqlite"),
+        Effect.runSync(PubSub.unbounded<PushEvent>()),
+        Events.of({
+          publish: (event) =>
+            Effect.sync(() => {
+              if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
+            }),
+        }),
+      ),
+    )
+    try {
+      const project = await runtime.runPromise(
+        Projects.use((projects) =>
+          projects.create({
+            name: "repo",
+            rootPath: root,
+            setupScript: [
+              'printf "setup started\\n"',
+              "attempt=0",
+              'while [ ! -f "$KKCODE_ROOT_PATH/setup-release" ]; do',
+              "  attempt=$((attempt + 1))",
+              '  if [ "$attempt" -ge 1000 ]; then exit 70; fi',
+              "  sleep 0.02",
+              "done",
+            ].join("\n"),
+          }),
+        ),
+      )
+      const thread = await runtime.runPromise(createThread(project.id, "waiting", "kk/waiting"))
+      const preparing = await runtime.runPromise(worktreeOf(thread.worktreeId))
+      expect(preparing.status).toBe("preparing")
+
+      let settled = false
+      const prepared = runtime
+        .runPromise(Worktrees.use((worktrees) => worktrees.whenPrepared(preparing.id)))
+        .then((worktree) => {
+          settled = true
+          return worktree
+        })
+      // The setup script is running and blocked on the release file, so the wait cannot have settled.
+      await started.promise
+      expect(settled).toBe(false)
+
+      writeFileSync(releasePath, "")
+      expect(await prepared).toMatchObject({ id: preparing.id, status: "ready" })
+      expect(settled).toBe(true)
+      // A worktree that is already prepared answers at once.
+      expect(
+        await runtime.runPromise(Worktrees.use((worktrees) => worktrees.whenPrepared(preparing.id))),
+      ).toMatchObject({ id: preparing.id, status: "ready" })
+    } finally {
+      writeFileSync(releasePath, "")
+      await runtime.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("worktree ownership", () => {
@@ -527,13 +592,18 @@ describe("thread changes", () => {
         writeFileSync(join(root, "before-turn.txt"), "old\n")
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
 
-        yield* Threads.use((threads) => threads.snapshotTurnBase(thread.id, root))
+        const captured = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
+        yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: captured }))
         writeFileSync(join(root, "during-turn.txt"), "new\n")
 
         const changes = yield* Threads.use((threads) => threads.changes(thread.id, "turn"))
         expect(changes?.files).toStrictEqual([{ path: "during-turn.txt", status: "added" }])
 
-        yield* Threads.use((threads) => threads.snapshotTurnBase(thread.id, join(root, "missing")))
+        const missing = yield* Threads.use((threads) => threads.captureTurnBase(join(root, "missing")))
+        expect(missing).toBeNull()
+        expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toStrictEqual(changes)
+        yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: missing }))
         expect(yield* Threads.use((threads) => threads.changes(thread.id, "turn"))).toBeNull()
       }),
     ),

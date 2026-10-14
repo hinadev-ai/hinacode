@@ -33,6 +33,7 @@ import {
   type SessionContextUsageParams,
   type SessionResumeResult,
   type SessionStartResult,
+  SkillList,
   SubscriptionUsage,
   type TurnCompletedParams,
   type TurnInputPart,
@@ -42,6 +43,7 @@ import {
   ViewPage,
 } from "./protocol.ts"
 import { toAnswers, toQuestion } from "./questions.ts"
+import { parseSkillInvocation, toCommand } from "./skills.ts"
 import { makeSessionUsage } from "./usage.ts"
 
 const CLIENT_VERSION = "0.1.0"
@@ -75,6 +77,7 @@ const SUMMARY_BREAK = "\n\n"
 interface LoadedSession {
   model: string | null
   approvalMode: ApprovalMode | null
+  cwd: string
 }
 
 interface HostEntry {
@@ -132,6 +135,52 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>) =>
     )
   }).pipe(Effect.map((parts) => [...(text === "" ? [] : [textPart(text)]), ...parts.flat()]))
 
+const listSkills = (host: MuseHost, sessionId: string) =>
+  Effect.gen(function* () {
+    const raw = yield* host.request("skill/list", { sessionId }).pipe(Effect.mapError(toAgentError))
+    const { skills } = yield* Schema.decodeUnknownEffect(SkillList)(raw).pipe(
+      Effect.mapError(() => museError("Failed to list the Muse Code skills: invalid response")),
+    )
+    return skills
+  })
+
+/**
+ * The parts one prompt goes in as, kkcode's instructions first. A prompt typed as `/skill arguments`
+ * becomes the `skill` part the host expands, the wire twin of the TUI's typed dispatch. A skill part
+ * combines only with image parts, so a skill turn folds its file notes into the skill arguments and
+ * leaves the instructions to the next text turn, which sends them again anyway. Text the session has
+ * no skill for goes in as typed.
+ */
+const promptParts = (
+  host: MuseHost,
+  sessionId: string,
+  text: string,
+  attachments: ReadonlyArray<Attachment>,
+  instructions: string | null,
+) =>
+  Effect.gen(function* () {
+    const invocation = text.trimStart().startsWith("/")
+      ? yield* listSkills(host, sessionId).pipe(
+          Effect.map((skills) => parseSkillInvocation(text, new Set(skills.map((skill) => skill.selector)))),
+          Effect.catch(() => Effect.succeed(null)),
+        )
+      : null
+    if (invocation === null) {
+      const parts = yield* userInput(text, attachments)
+      return instructions === null ? parts : [textPart(instructions), ...parts]
+    }
+    const attached = yield* userInput("", attachments)
+    const notes = attached.flatMap((part) => (part.type === "text" && part.text !== undefined ? [part.text] : []))
+    const images = attached.filter((part) => part.type === "image")
+    const args = [invocation.arguments, ...notes].filter((note) => note !== "").join("\n")
+    const skill: TurnInputPart = {
+      type: "skill",
+      selector: invocation.selector,
+      ...(args === "" ? {} : { arguments: args }),
+    }
+    return [skill, ...images]
+  })
+
 const interruptTurn = (host: MuseHost, sessionId: string, turnId: string) =>
   Effect.suspend(() =>
     host.isAlive()
@@ -185,6 +234,14 @@ const make = Effect.gen(function* () {
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
   /** Pending questions keyed by the kkcode question id handed to the UI. */
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
+  /** Each thread's Muse session, so `skill/list` can ask the session a turn would run in. */
+  const threadSessions = new Map<string, string>()
+  /**
+   * One throwaway session per workspace, started only to read its `skill/list` before the thread's first
+   * turn. It never runs a turn, and a respawned host resumes it instead of starting another.
+   */
+  const probeSessions = new Map<string, string>()
+  const probeLock = yield* Semaphore.make(1)
   /** In-flight runs keyed by kkcode threadId, for steer, interrupt and access mode changes. */
   const runs = new Map<string, Run>()
   /** "Allow for session" grants keyed by kkcode threadId. They last until kkcode quits. */
@@ -229,6 +286,53 @@ const make = Effect.gen(function* () {
         )
       : Effect.succeed(null)
 
+  const probeSession = (entry: HostEntry, cwd: string) =>
+    Semaphore.withPermit(
+      probeLock,
+      Effect.gen(function* () {
+        const { host, sessions } = entry
+        const known = probeSessions.get(cwd)
+        if (known !== undefined && sessions.has(known)) return known
+        if (known !== undefined) {
+          const resumed = yield* host
+            .command<SessionResumeResult>("session/resume", { sessionId: known, excludeItems: true })
+            .pipe(
+              Effect.map(({ session }) => session),
+              Effect.catch(() => Effect.succeed(undefined)),
+            )
+          if (resumed !== undefined) {
+            sessions.set(known, { model: resumed.modelId, approvalMode: resumed.approvalMode?.mode ?? null, cwd })
+            return known
+          }
+        }
+        const { session } = yield* host
+          .command<SessionStartResult>("session/start", { workspaceRoot: cwd })
+          .pipe(Effect.mapError(toAgentError))
+        sessions.set(session.sessionId, { model: session.modelId ?? null, approvalMode: null, cwd })
+        probeSessions.set(cwd, session.sessionId)
+        return session.sessionId
+      }),
+    )
+
+  const listCommands = ({
+    threadId,
+    cwd,
+    home,
+  }: {
+    readonly threadId: string
+    readonly cwd: string
+    readonly home: AccountHome | null
+  }) =>
+    Effect.gen(function* () {
+      const entry = yield* getEntry(home)
+      const own = threadSessions.get(threadId)
+      const inWorkspace = [...entry.sessions.entries()].find(([, session]) => session.cwd === cwd)?.[0]
+      const sessionId =
+        own !== undefined && entry.sessions.has(own) ? own : (inWorkspace ?? (yield* probeSession(entry, cwd)))
+      const skills = yield* listSkills(entry.host, sessionId)
+      return skills.map(toCommand)
+    })
+
   /** Starts the thread's session or loads it into the host, then brings its model and approval mode up to date. */
   const openSession = (entry: HostEntry, input: RunTurnInput) =>
     Effect.gen(function* () {
@@ -247,7 +351,8 @@ const make = Effect.gen(function* () {
           approvalMode,
           config,
         })
-        sessions.set(session.sessionId, { model: input.model, approvalMode })
+        sessions.set(session.sessionId, { model: input.model, approvalMode, cwd: input.cwd })
+        threadSessions.set(input.threadId, session.sessionId)
         return session.sessionId
       }
       const sessionId = input.resumeSessionId
@@ -258,9 +363,10 @@ const make = Effect.gen(function* () {
           excludeItems: true,
           config,
         })
-        loaded = { model: session.modelId, approvalMode: session.approvalMode?.mode ?? null }
+        loaded = { model: session.modelId, approvalMode: session.approvalMode?.mode ?? null, cwd: input.cwd }
         sessions.set(sessionId, loaded)
       }
+      threadSessions.set(input.threadId, sessionId)
       if (loaded.model !== input.model) {
         yield* host.command("session/setModel", { sessionId, model: { modelId: input.model } })
         loaded.model = input.model
@@ -295,12 +401,13 @@ const make = Effect.gen(function* () {
           run.sessionId = sessionId
           yield* emit({ type: "session_bound", providerSessionId: sessionId })
 
-          const prompt = yield* userInput(input.prompt, input.attachments)
+          // MSP has no developer instructions, so kkcode's ride in front of the prompt.
+          const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
           run.turnStart = yield* host
             .command<TurnStartResult>("turn/start", {
               sessionId,
-              // MSP has no developer instructions, so kkcode's ride in front of the prompt. Muse shows `displayText`.
-              input: [textPart(input.instructions), ...prompt],
+              // Muse shows `displayText`, never the instructions in front of the prompt.
+              input: prompt,
               displayText: input.prompt,
               ...(input.effort === null ? {} : { reasoningEffort: input.effort }),
             })
@@ -645,6 +752,7 @@ const make = Effect.gen(function* () {
       const run = runs.get(threadId)
       const { entry, sessionId, turnId } = run ?? {}
       if (!entry?.host.isAlive() || !sessionId || !turnId) return yield* museError("No turn is running on this thread")
+      // Muse 1.4.7 rejects skill parts on turn/steer; only turn/start expands them.
       const input = yield* userInput(text, attachments)
       yield* entry.host
         .command("turn/steer", { sessionId, expectedTurnId: turnId, input })
@@ -682,8 +790,7 @@ const make = Effect.gen(function* () {
     account,
     planLimits,
     usage,
-    // `skill/list` needs a loaded session, which the composer does not have yet.
-    listCommands: () => Effect.succeed([]),
+    listCommands,
     runTurn,
     steer,
     interrupt,
