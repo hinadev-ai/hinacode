@@ -1,0 +1,490 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro"
+import Download from "../components/Download.astro"
+import Closing from "../components/Closing.astro"
+---
+
+<SiteLayout
+  title="kkcode · Agent harness with taste and focus"
+  description="Run Claude Code and Codex side by side, each in its own worktree. kkcode stays quiet until an agent needs you."
+  page="home"
+>
+  <div class="hero">
+    <span class="backed rise" tabindex="0" style="--i: 0">
+      Backed by{" "}
+      <span class="logo" aria-hidden="true">
+        K
+      </span>
+      <b>Kalan</b>
+      <span class="backed-tip" role="tooltip">
+        Not a fund. One person with strong opinions.
+      </span>
+    </span>
+
+    <h1 class="rise" style="--i: 1">
+      Agent harness with <span class="taste">taste</span> and <span class="focus">focus</span>.
+    </h1>
+
+    <p class="lede rise" style="--i: 2">
+      Run Claude Code and Codex side by side, each in its own worktree. kkcode stays quiet while your agents work, and
+      tells you exactly which one needs you.
+    </p>
+
+    <div class="ctas rise" style="--i: 3">
+      <Download />
+      <a class="btn" href="#demo">
+        See it work
+      </a>
+    </div>
+    <p class="fineprint rise" style="--i: 4">
+      macOS on Apple Silicon and Linux. Uses the <code>claude</code> and <code>codex</code> you already signed in to.
+    </p>
+  </div>
+
+  <div class="stage rise" id="demo" style="--i: 5">
+    <div class="window" role="region" aria-label="Interactive kkcode demo">
+      <div class="titlebar" aria-hidden="true">
+        <div class="lights">
+          <i></i>
+          <i></i>
+          <i></i>
+        </div>
+        <div class="titlebar-title">kkcode</div>
+      </div>
+
+      <aside class="side" aria-label="Threads">
+        <div class="side-label">Projects</div>
+        <div class="project">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M2 4.5c0-.83.67-1.5 1.5-1.5h3l1.5 1.5h4.5c.83 0 1.5.67 1.5 1.5v5.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5v-7Z"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+          </svg>
+          acme-web
+        </div>
+        <ul class="threads">
+          <li class="thread active" data-thread="main" data-state="working">
+            <span class="status" role="img" aria-label="Working"></span>
+            <span class="thread-title">Tighten address validation</span>
+            <span class="thread-meta">
+              <span class="thread-time">now</span>
+              <span class="tag-needs">Needs you</span>
+            </span>
+            <span class="thread-branch">feat/address-validation</span>
+          </li>
+          <li class="thread" data-state="working">
+            <span class="status" role="img" aria-label="Working"></span>
+            <span class="thread-title">Fix flaky checkout e2e</span>
+            <span class="thread-meta">2m</span>
+            <span class="thread-branch">fix/checkout-e2e</span>
+          </li>
+          <li class="thread" data-state="done">
+            <span class="status" role="img" aria-label="Done"></span>
+            <span class="thread-title">Webhook retry backoff</span>
+            <span class="thread-meta">1h</span>
+            <span class="thread-branch">fix/webhook-retry</span>
+          </li>
+        </ul>
+        <div class="project">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M2 4.5c0-.83.67-1.5 1.5-1.5h3l1.5 1.5h4.5c.83 0 1.5.67 1.5 1.5v5.5c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5v-7Z"
+              stroke="currentColor"
+              stroke-width="1.2"
+            />
+          </svg>
+          kkcode
+        </div>
+        <ul class="threads">
+          <li class="thread" data-state="working">
+            <span class="status" role="img" aria-label="Working"></span>
+            <span class="thread-title">Resizable side panel</span>
+            <span class="thread-meta">5m</span>
+            <span class="thread-branch">feat/resizable-side-panel</span>
+          </li>
+          <li class="thread" data-state="failed">
+            <span class="status" role="img" aria-label="Failed"></span>
+            <span class="thread-title">Setup: copy .env</span>
+            <span class="thread-meta">12m</span>
+            <span class="thread-branch">fix/loading-flash</span>
+          </li>
+          <li class="thread" data-state="done">
+            <span class="status" role="img" aria-label="Done"></span>
+            <span class="thread-title">Paraglide zh-TW catalog</span>
+            <span class="thread-meta">3h</span>
+            <span class="thread-branch">feat/zh-tw</span>
+          </li>
+        </ul>
+      </aside>
+
+      <div class="main">
+        <div class="main-head">
+          <b>Tighten address validation</b>
+          <span class="chip mono">feat/address-validation</span>
+          <span class="chip" data-chip data-state="working">
+            <span class="status" aria-hidden="true"></span>
+            <span data-chip-label>Working</span>
+          </span>
+        </div>
+
+        <div class="transcript" data-transcript aria-live="polite">
+          <div class="msg-user">
+            Tighten address validation. Canadian postal codes slip through, and a missing country passes.
+          </div>
+          <div class="msg-agent step" data-stream>
+            I'll make the country check explicit, add a Canadian postal path, and cover both with tests.
+          </div>
+          <div class="tool step">
+            <span class="glyph" aria-hidden="true">
+              →
+            </span>
+            Read
+            <span class="path">src/checkout/validators.ts</span>
+          </div>
+          <div class="tool step">
+            <span class="glyph" aria-hidden="true">
+              ✎
+            </span>
+            Edit <span class="path">validators.ts</span>
+            <span class="add">+8</span>
+            <span class="del">−3</span>
+          </div>
+          <div class="tool step">
+            <span class="glyph" aria-hidden="true">
+              $
+            </span>
+            pnpm test validators
+            <span class="ok">27 passed</span>
+          </div>
+          <div class="approval step" data-approval>
+            <div class="approval-head" data-state="needs">
+              <span class="status" aria-hidden="true"></span>
+              <span data-approval-title>Claude Code wants to run a command</span>
+            </div>
+            <code>git push -u origin feat/address-validation</code>
+            <div class="approval-actions">
+              <button class="btn" type="button" data-deny>
+                Deny <kbd>D</kbd>
+              </button>
+              <button class="btn btn-primary" type="button" data-allow>
+                Allow <kbd>A</kbd>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <form class="composer" data-composer autocomplete="off">
+          <label class="sr-only" for="steer">
+            Steer the agent
+          </label>
+          <input id="steer" maxlength="120" placeholder="Steer the running turn. Try typing something." />
+          <div class="composer-bar" aria-hidden="true">
+            <span>Claude Code</span>
+            <span>Opus 5.5</span>
+            <span>Worktree</span>
+            <span class="send">↑</span>
+          </div>
+        </form>
+      </div>
+
+      <aside class="panel" aria-label="Thread details">
+        <div>
+          <h3>Changes</h3>
+          <ul class="files">
+            <li>
+              <span class="name">validators.ts</span>
+              <span class="m">M</span>
+              <span class="add">+8</span>
+              <span class="del">−3</span>
+            </li>
+            <li>
+              <span class="name">validators.test.ts</span>
+              <span class="a">A</span>
+              <span class="add">+42</span>
+            </li>
+            <li>
+              <span class="name">AddressForm.tsx</span>
+              <span class="m">M</span>
+              <span class="add">+2</span>
+              <span class="del">−1</span>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h3>Ports</h3>
+          <div class="port">
+            <span>:3000</span>
+            <span>next dev</span>
+            <span class="kill">Stop</span>
+          </div>
+        </div>
+        <div>
+          <h3>Pull request</h3>
+          <div data-pr-slot>
+            <p class="pr-empty" data-pr-empty>
+              No pull request yet.
+            </p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <p class="stage-hint" data-hint aria-live="polite">
+      <span>The agent waits for you. Nothing else will.</span>
+    </p>
+  </div>
+
+  <section class="rule" id="quiet" style="margin-top: 120px">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Signal over chrome</p>
+        <h2>
+          Quiet until it <em>matters</em>.
+        </h2>
+        <p class="section-lede">
+          Most of the time, nothing needs you. The screen should look like it. kkcode spends color on one thing: the
+          thread that is waiting for a human. Glance at the sidebar between other work and you know where to go.
+        </p>
+      </div>
+      <ul class="legend">
+        <li data-state="working">
+          <span class="status" aria-hidden="true"></span>
+          <b>Working</b>
+          <p>The agent is busy. Nothing for you to do.</p>
+        </li>
+        <li data-state="needs">
+          <span class="status" aria-hidden="true"></span>
+          <b>Needs you</b>
+          <p>An approval, a question, or a setup script that stopped.</p>
+        </li>
+        <li data-state="failed">
+          <span class="status" aria-hidden="true"></span>
+          <b>Failed</b>
+          <p>The turn or the setup failed. The log is one click away.</p>
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>
+          <b>Done</b>
+          <p>Finished, with the pull request and its merge state linked.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="rule" id="features">
+    <div class="split">
+      <div>
+        <p class="eyebrow">The harness</p>
+        <h2>Everything around the loop. Nothing in its way.</h2>
+      </div>
+      <p class="section-lede split-aside">
+        Start a thread, steer it, review what changed, ship the PR. kkcode handles the parts between, so the agent
+        output stays the content.
+      </p>
+    </div>
+    <div class="grid">
+      <article class="cell">
+        <h3>A worktree per thread</h3>
+        <p>
+          Every thread gets its own branch and checkout. Your setup script copies the <code>.env</code> in one line.
+        </p>
+        <code>$KKCODE_WORKTREE_PATH</code>
+      </article>
+      <article class="cell">
+        <h3>Approvals, inline</h3>
+        <p>Commands, edits and MCP calls wait inside the conversation. Allow once, or for the session.</p>
+        <code>Allow for session</code>
+      </article>
+      <article class="cell">
+        <h3>Steer a running turn</h3>
+        <p>Send another message while the agent works. No stop, no restart, no lost context.</p>
+        <code>threads.steer</code>
+      </article>
+      <article class="cell">
+        <h3>A built-in MCP server</h3>
+        <p>
+          Both agents can review their diff, link a pull request and read Linear. Every call is scoped to one thread.
+        </p>
+        <code>review_changes</code>
+      </article>
+      <article class="cell">
+        <h3>Pull requests with state</h3>
+        <p>Draft, open, merged or closed, with CI checks and the review decision. Refreshed every minute.</p>
+        <code>gh pr create --fill</code>
+      </article>
+      <article class="cell">
+        <h3>Ports you can see</h3>
+        <p>The dev servers a thread started, listed by port. Stop one without hunting for a PID.</p>
+        <code>:3000 next dev</code>
+      </article>
+      <article class="cell">
+        <h3>Automations</h3>
+        <p>Start a thread from a signed webhook, a new GitHub issue, a Linear ticket or a Slack mention.</p>
+        <code>{"{{issue.title}}"}</code>
+      </article>
+      <article class="cell">
+        <h3>Your setup, unchanged</h3>
+        <p>CLAUDE.md, AGENTS.md and skills load from the project and your home, the same as in the CLIs.</p>
+        <code>AGENTS.md</code>
+      </article>
+    </div>
+  </section>
+
+  <section class="rule" id="keyboard">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Keyboard first</p>
+        <h2>
+          Your hands stay <em>home</em>.
+        </h2>
+        <p class="section-lede">
+          Every frequent action has a shortcut. Every shortcut can be rebound, with chord recording and conflict
+          detection built in.
+        </p>
+      </div>
+      <div>
+        <ul class="keys" data-keys>
+          <li>
+            <span>New thread</span>
+            <span>
+              <kbd data-key="mod">⌘</kbd>
+              <kbd data-key="n">N</kbd>
+            </span>
+          </li>
+          <li>
+            <span>Next thread</span>
+            <span>
+              <kbd data-key="mod">⌘</kbd>
+              <kbd data-key="shift">⇧</kbd>
+              <kbd data-key="]">]</kbd>
+            </span>
+          </li>
+          <li>
+            <span>Focus composer</span>
+            <span>
+              <kbd data-key="mod">⌘</kbd>
+              <kbd data-key="l">L</kbd>
+            </span>
+          </li>
+          <li>
+            <span>Interrupt turn</span>
+            <span>
+              <kbd data-key="mod">⌘</kbd>
+              <kbd data-key="shift">⇧</kbd>
+              <kbd data-key="c">C</kbd>
+            </span>
+          </li>
+          <li>
+            <span>Show changes</span>
+            <span>
+              <kbd data-key="mod">⌘</kbd>
+              <kbd data-key="shift">⇧</kbd>
+              <kbd data-key="d">D</kbd>
+            </span>
+          </li>
+          <li>
+            <span>Toggle terminal</span>
+            <span>
+              <kbd data-key="mod">⌘</kbd>
+              <kbd data-key="j">J</kbd>
+            </span>
+          </li>
+        </ul>
+        <p class="keys-note">Go on, press a few. The keys will press back.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="rule" id="simple">
+    <p class="eyebrow">Ambitious ideas, simple systems</p>
+    <h2>
+      Built with <em>kkcode</em>.
+    </h2>
+    <p class="section-lede">
+      Every feature here was shipped by agents running inside kkcode. When the loop hurts while we work, that is a
+      product bug, and it gets fixed.
+    </p>
+    <div class="numbers">
+      <div>
+        <b>1</b>
+        <span>SQLite file for everything</span>
+      </div>
+      <div>
+        <b>1</b>
+        <span>channel between the UI and the app</span>
+      </div>
+      <div>
+        <b>1</b>
+        <span>interface per agent backend</span>
+      </div>
+      <div>
+        <b>0</b>
+        <span>background daemons</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="rule" id="faq">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Questions</p>
+        <h2>Asked, and answered.</h2>
+      </div>
+      <div class="faq">
+        <details>
+          <summary>What is kkcode?</summary>
+          <p>
+            A desktop app that runs Claude Code and Codex side by side. Each thread can live in its own git worktree,
+            and the sidebar shows which one needs you.
+          </p>
+        </details>
+        <details>
+          <summary>Which agents does it run?</summary>
+          <p>
+            Claude Code through the Agent SDK, and Codex through its app-server protocol. Pick the agent and the model
+            for each thread.
+          </p>
+        </details>
+        <details>
+          <summary>Do I need new API keys?</summary>
+          <p>
+            No. kkcode uses the <code>claude</code> and <code>codex</code> CLIs you are already signed in to.
+          </p>
+        </details>
+        <details>
+          <summary>Where does my code go?</summary>
+          <p>
+            Nowhere new. Agents run on your machine against your repositories. Keys such as a Linear token are kept in
+            the OS keychain.
+          </p>
+        </details>
+        <details>
+          <summary>Does it replace my editor?</summary>
+          <p>
+            No. kkcode is the harness around the agent loop: start, steer, review, ship. Open the worktree in your
+            editor whenever you want to.
+          </p>
+        </details>
+        <details>
+          <summary>How much does it cost?</summary>
+          <p>
+            Nothing. Every feature is free, with no seats, tiers or trial.
+            <a class="inline" href="/pricing/">
+              See pricing
+            </a>
+            .
+          </p>
+        </details>
+        <details>
+          <summary>Which platforms are supported?</summary>
+          <p>macOS on Apple Silicon, and Linux as an AppImage.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <Closing />
+</SiteLayout>
+<script src="../scripts/demo.ts"></script>

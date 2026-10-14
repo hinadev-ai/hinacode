@@ -67,6 +67,8 @@ KKCODE_USER_DATA=/tmp/kkcode-test DISPLAY=:99 pnpm exec electron --no-sandbox --
 
 ## Layout
 
+The marketing site in [`site/`](site/README.md) uses Astro and Tailwind. Run it with `pnpm --dir site dev` and deploy it to Cloudflare Workers with `pnpm --dir site deploy`.
+
 ```
 src/main      Electron main process. One Effect runtime, services under services/, agents under agents/,
               the MCP server under mcp/, SQLite client and migrations under db/.
