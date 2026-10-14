@@ -52,7 +52,8 @@ On macOS, `--use-mock-keychain` keeps verification out of the login Keychain. Sa
 Simulate an exhausted Claude account without using the account:
 
 ```sh
-KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit pnpm dev
+KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit \
+  ELECTRON_CLI_ARGS='["--use-mock-keychain"]' pnpm dev
 ```
 
 The first message in each thread reaches the limit. The next attempt succeeds. The callout offers **Resume at reset**, which retries once at the provider's reset time and survives restart. Set `KKCODE_MOCK_RESET_MS=5000` for a five-second reset. Use `KKCODE_MOCK_CLAUDE=org-spend-limit` to simulate the organization monthly spend cap and its `/usage-credits` guidance. That case has no automatic reset action.
