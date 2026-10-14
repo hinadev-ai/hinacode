@@ -150,14 +150,19 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
   )
 }
 
-function ToolCallDetails({ call, summary }: { call: ToolCall; summary: string }) {
-  if (call.name === "Bash") return <CommandView call={call} command={summary} />
+/** Inside a tool group the group scrolls, so the details grow to full height instead of scrolling on their own. */
+function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; summary: string; inGroup?: boolean }) {
+  if (call.name === "Bash") {
+    return <CommandView call={call} command={summary} scroll={inGroup ? "" : "max-h-80 overflow-auto"} />
+  }
+  const scroll = inGroup ? "" : "max-h-64 overflow-auto"
   return (
     <div className="flex flex-col gap-2">
-      <ToolSection label={m.tool_input()} text={JSON.stringify(call.input, null, 2)} />
+      <ToolSection label={m.tool_input()} text={JSON.stringify(call.input, null, 2)} scroll={scroll} />
       <ToolSection
         label={m.tool_output()}
         text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
+        scroll={scroll}
       />
     </div>
   )
@@ -302,7 +307,7 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="px-3 pb-2 text-xs">
-        <ToolCallDetails call={call} summary={summary} />
+        <ToolCallDetails call={call} summary={summary} inGroup />
       </CollapsibleContent>
     </Collapsible>
   )
@@ -339,10 +344,10 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
 }
 
 /** A shell command as it would read in a terminal: the command, highlighted, then what it printed. */
-function CommandView({ call, command }: { call: ToolCall; command: string }) {
+function CommandView({ call, command, scroll }: { call: ToolCall; command: string; scroll: string }) {
   const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
   return (
-    <div className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono">
+    <div className={cn("rounded-md bg-muted/50 p-2 font-mono", scroll)}>
       <section>
         <h4 className="sr-only">{m.tool_command()}</h4>
         <pre className="whitespace-pre-wrap wrap-anywhere">
@@ -394,11 +399,11 @@ function ShellTokens({ code, theme }: { code: string; theme: string }) {
   ])
 }
 
-function ToolSection({ label, text }: { label: string; text: string }) {
+function ToolSection({ label, text, scroll }: { label: string; text: string; scroll: string }) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
-      <pre className="max-h-64 overflow-auto rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap">{text}</pre>
+      <pre className={cn("rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere", scroll)}>{text}</pre>
     </section>
   )
 }
