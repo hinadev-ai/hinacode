@@ -25,7 +25,7 @@ import { Secrets } from "./Secrets.ts"
 import { layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
-import { layer as threadsLayer } from "./Threads.ts"
+import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-watch-delivery-")))
@@ -34,7 +34,9 @@ afterAll(() => rmSync(base, { recursive: true, force: true }))
 type Hold = { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }
 const providerHolds = new Map<string, Hold>()
 const transcriptHolds = new Map<string, Hold>()
+const archiveHolds = new Map<string, Hold>()
 const currentReads = new Map<string, Deferred.Deferred<void>>()
+let worktreeQueued: Deferred.Deferred<void> | undefined
 const inputs: Array<{ readonly threadId: string; readonly text: string }> = []
 const starts: Array<{ readonly threadId: string; readonly text: string }> = []
 
@@ -95,9 +97,39 @@ const observedPullRequests = Layer.effect(
   })),
 )
 
+const observedTerminals = Layer.effect(
+  Terminals.Terminals,
+  Effect.map(Terminals.Terminals, (terminals) => ({
+    ...terminals,
+    closeThread: (threadId: string) =>
+      Effect.gen(function* () {
+        const hold = archiveHolds.get(threadId)
+        if (hold) {
+          yield* Deferred.succeed(hold.asked, undefined)
+          yield* Deferred.await(hold.release)
+        }
+        yield* terminals.closeThread(threadId)
+      }),
+  })),
+).pipe(Layer.provide(Terminals.layer))
+
+const observedWorktrees = Layer.effect(
+  Worktrees.Worktrees,
+  Effect.map(Worktrees.Worktrees, (worktrees) => ({
+    ...worktrees,
+    exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.suspend(() => {
+        const signal = worktreeQueued
+        return (signal === undefined ? Effect.void : Deferred.succeed(signal, undefined)).pipe(
+          Effect.andThen(worktrees.exclusive(effect)),
+        )
+      }),
+  })),
+).pipe(Layer.provide(Worktrees.layer))
+
 const domain = threadsLayer.pipe(
-  Layer.provideMerge(Terminals.layer),
-  Layer.provideMerge(Worktrees.layer),
+  Layer.provideMerge(observedTerminals),
+  Layer.provideMerge(observedWorktrees),
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(AgentAccounts.layer),
   Layer.provideMerge(settingsLayer),
@@ -233,5 +265,74 @@ describe("PullRequestWatcher queued delivery", () => {
         expect(transcript.messages[0]?.parts).toStrictEqual([{ type: "text", text: "next input" }])
       }),
     )
+
+    it.effect("keeps a thread archived when its watch delivery waited for a transcript read", () =>
+      Effect.gen(function* () {
+        const { threadId, asked } = yield* watchedThread("archived-behind-transcript")
+        const busy = yield* hold
+        transcriptHolds.set(threadId, busy)
+        const reading = yield* Effect.forkChild(AgentRunner.use((runner) => runner.transcript(threadId)))
+        yield* Deferred.await(busy.asked)
+        const polling = yield* Effect.forkChild(sweep)
+        yield* Deferred.await(asked)
+
+        yield* Threads.use((threads) => threads.archive(threadId))
+        expect((yield* Threads.use((threads) => threads.get(threadId))).status).toBe("archived")
+        yield* Deferred.succeed(busy.release, undefined)
+        yield* Fiber.join(reading)
+        yield* Fiber.join(polling)
+
+        expect((yield* Threads.use((threads) => threads.get(threadId))).status).toBe("archived")
+        expect((yield* AgentRunner.use((runner) => runner.transcript(threadId))).messages).toStrictEqual([])
+        expect(starts.filter((input) => input.threadId === threadId)).toStrictEqual([])
+      }),
+    )
+
+    it.effect("keeps a thread archived when archive won the worktree lock before watch delivery", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* watchedThread("archived-behind-worktree")
+        const busy = yield* hold
+        archiveHolds.set(threadId, busy)
+        const archiving = yield* Effect.forkChild(Threads.use((threads) => threads.archive(threadId)))
+        yield* Deferred.await(busy.asked)
+
+        const queued = yield* Deferred.make<void>()
+        worktreeQueued = queued
+        const polling = yield* Effect.forkChild(sweep)
+        yield* Deferred.await(queued)
+        worktreeQueued = undefined
+        yield* Deferred.succeed(busy.release, undefined)
+        yield* Fiber.join(archiving)
+        yield* Fiber.join(polling)
+
+        expect((yield* Threads.use((threads) => threads.get(threadId))).status).toBe("archived")
+        expect((yield* AgentRunner.use((runner) => runner.transcript(threadId))).messages).toStrictEqual([])
+        expect(starts.filter((input) => input.threadId === threadId)).toStrictEqual([])
+      }),
+    )
+
+    for (const status of ["awaiting_approval", "limited"] as const) {
+      it.effect(`defers queued watch delivery when a thread becomes ${status}`, () =>
+        Effect.gen(function* () {
+          const { threadId, asked, link } = yield* watchedThread(`became-${status}`)
+          const busy = yield* hold
+          transcriptHolds.set(threadId, busy)
+          const reading = yield* Effect.forkChild(AgentRunner.use((runner) => runner.transcript(threadId)))
+          yield* Deferred.await(busy.asked)
+          const polling = yield* Effect.forkChild(sweep)
+          yield* Deferred.await(asked)
+
+          yield* Threads.use((threads) => threads.update({ id: threadId, status }))
+          yield* Deferred.succeed(busy.release, undefined)
+          yield* Fiber.join(reading)
+          yield* Fiber.join(polling)
+
+          expect((yield* Threads.use((threads) => threads.get(threadId))).status).toBe(status)
+          expect((yield* AgentRunner.use((runner) => runner.transcript(threadId))).messages).toStrictEqual([])
+          expect((yield* PullRequests.use((pullRequests) => pullRequests.find(link.id)))?.watch?.snapshot).toBeNull()
+          expect(starts.filter((input) => input.threadId === threadId)).toStrictEqual([])
+        }),
+      )
+    }
   })
 })
