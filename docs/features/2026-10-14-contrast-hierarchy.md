@@ -46,7 +46,7 @@ Color carries status on top of the tiers, as `AGENTS.md` describes: amber needs 
 
 ## Where it applies
 
-**Transcript.** User messages and replies are Read. Tool calls, command groups, reasoning, sub-agent calls and file edits are Receding, with the tool name in medium weight so the row still scans. The per-call green check is gone. A failed call keeps its red icon.
+**Transcript.** User messages and replies are Read. Tool calls, command groups, reasoning, sub-agent calls and file edits are Receding, with the tool name in medium weight so the row still scans. The per-call green check is gone. A failed call keeps its red icon. The todo bar above the composer is a trigger like a tool row. Its current step is Receding until hovered, focused or expanded, and the list inside reads at normal contrast.
 
 **Sidebar.** A row's tier comes from its thread's status:
 
