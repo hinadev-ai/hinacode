@@ -62,8 +62,6 @@ interface UiState {
   /** The side panel view each thread last showed. Threads not in here show `lastSidePanelView`. */
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
-  /** A view asked for room, such as Files with a file open. */
-  readonly sidePanelWide: boolean
   /** Docked side panel width per size, remembered separately. Null keeps the size's CSS default. */
   readonly sidePanelWidths: Readonly<Record<SidePanelSize, number | null>>
   /** Set by a view shortcut until the view takes focus. */
@@ -106,7 +104,6 @@ interface UiState {
   /** Like `showView`, but hides the panel when it already shows `view`, as clicking an active activity bar icon does. */
   readonly toggleView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly clearViewFocusRequest: () => void
-  readonly setSidePanelWide: (wide: boolean) => void
   readonly setChangesPath: (path: string | null) => void
   readonly setBrowserUrl: (threadId: string, url: string) => void
   readonly requestComposerFocus: () => void
@@ -149,7 +146,6 @@ export const useUi = create<UiState>()((set, get) => ({
   collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
   sidePanelViews: {},
   lastSidePanelView: "details",
-  sidePanelWide: false,
   sidePanelWidths: {
     normal: loadWidth(sidePanelWidthKeys.normal, SIDE_PANEL_BOUNDS),
     wide: loadWidth(sidePanelWidthKeys.wide, SIDE_PANEL_BOUNDS),
@@ -215,7 +211,6 @@ export const useUi = create<UiState>()((set, get) => ({
     else state.showView(threadId, view, options)
   },
   clearViewFocusRequest: () => set({ viewFocusRequest: null }),
-  setSidePanelWide: (sidePanelWide) => set({ sidePanelWide }),
   setChangesPath: (changesPath) => set({ changesPath }),
   setBrowserUrl: (threadId, url) => set((state) => ({ browserUrls: { ...state.browserUrls, [threadId]: url } })),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),

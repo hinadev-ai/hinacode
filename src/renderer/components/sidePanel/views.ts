@@ -16,7 +16,7 @@ import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { GitGraphView } from "../GitGraphView.tsx"
-import { useRunningSubagentCount } from "../ThreadAgents.tsx"
+import { AgentBadge } from "./AgentBadge.tsx"
 import { BrowserView } from "./BrowserView.tsx"
 import { ChangesView } from "./ChangesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
@@ -31,8 +31,8 @@ export interface SidePanelView {
   /** The command that shows the view, whose chord the activity bar tooltip shows. */
   readonly commandId: CommandId
   readonly component: ComponentType<{ thread: Thread }>
-  /** A hook the activity bar calls on every render. A count above 0 shows on the icon. */
-  readonly badge?: (threadId: string) => number
+  readonly wide?: boolean
+  readonly badge?: ComponentType<{ threadId: string }>
   /** The experiment the view belongs to. It is hidden while the experiment is off. */
   readonly experiment?: keyof ExperimentalSettings
 }
@@ -62,15 +62,23 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     title: m.panel_tab_agents,
     commandId: "view.agents",
     component: AgentsView,
-    badge: useRunningSubagentCount,
+    badge: AgentBadge,
   },
-  { id: "browser", icon: RiGlobalLine, title: m.panel_tab_browser, commandId: "view.browser", component: BrowserView },
+  {
+    id: "browser",
+    icon: RiGlobalLine,
+    title: m.panel_tab_browser,
+    commandId: "view.browser",
+    component: BrowserView,
+    wide: true,
+  },
   {
     id: "tinyVm",
     icon: RiComputerLine,
     title: m.panel_tab_tiny_vm,
     commandId: "view.tinyVm",
     component: TinyVmView,
+    wide: true,
     experiment: "tinyVm",
   },
 ]

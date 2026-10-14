@@ -1,5 +1,12 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/interactive-supports-focus, jsx-a11y/click-events-have-key-events -- the WAI-ARIA listbox pattern with aria-activedescendant, which <select> cannot render: the listbox keeps focus and handles keys, a click on an option only moves the selection. The divider is a focusable WAI-ARIA window splitter.
-import { useAtom, useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-react"
+import {
+  useAtom,
+  useAtomMount,
+  useAtomRefresh,
+  useAtomSubscribe,
+  useAtomSuspense,
+  useAtomValue,
+} from "@effect/atom-react"
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { parsePatchFiles } from "@pierre/diffs"
 import { FileDiff } from "@pierre/diffs/react"
@@ -13,7 +20,6 @@ import {
   Suspense,
   useCallback,
   useDeferredValue,
-  useEffect,
   useId,
   useMemo,
   useRef,
@@ -26,9 +32,10 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
 import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
+import { threadStatusSignal } from "../lib/threadSignals.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
-import { useUi } from "../stores/ui.ts"
+import { useWideContent } from "./sidePanel/wideContent.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
@@ -57,24 +64,18 @@ export function GitGraphView({ thread }: { thread: Thread }) {
   const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => undefined)
   const root = inWorktree ? worktree.path : project?.rootPath
   if (!root) return null
-  return (
-    <GitGraph key={root} root={root} branch={inWorktree ? worktree.branch : rootBranch} threadStatus={thread.status} />
-  )
+  return <GitGraph key={root} root={root} branch={inWorktree ? worktree.branch : rootBranch} threadId={thread.id} />
 }
 
-function GitGraph({ root, branch, threadStatus }: { root: string; branch?: string; threadStatus: Thread["status"] }) {
+function GitGraph({ root, branch, threadId }: { root: string; branch?: string; threadId: string }) {
   const logAtom = gitLogAtom(root)
   const log = useAtomValue(logAtom)
   const refresh = useAtomRefresh(logAtom)
   const [limit, setLimit] = useAtom(gitLogLimitAtom(root))
 
-  // A turn ending is when an agent's commits land, so a status change asks again.
-  const lastStatus = useRef(threadStatus)
-  useEffect(() => {
-    if (lastStatus.current === threadStatus) return
-    lastStatus.current = threadStatus
-    refresh()
-  }, [threadStatus, refresh])
+  const statusSignal = threadStatusSignal(threadId)
+  useAtomMount(statusSignal)
+  useAtomSubscribe(statusSignal, refresh)
 
   const commits = AsyncResult.getOrElse(log, () => [] as ReadonlyArray<GitCommit>)
   const loadMore = () => {
@@ -194,11 +195,7 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
   )
 
   const showDiff = diffOpen && selectedCommit !== undefined
-  // A diff needs the room a file viewer gets.
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(showDiff)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [showDiff])
+  useWideContent(showDiff)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div

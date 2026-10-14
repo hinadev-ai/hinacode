@@ -99,24 +99,12 @@ function ActivityTab({ view, threadId, chord, selected, focusable, panelId }: Ac
       >
         {createElement(view.icon, { "aria-hidden": true, className: "size-[1.125rem]" })}
         <span className="sr-only">{view.title()}</span>
-        {view.badge && <ViewBadge useCount={view.badge} threadId={threadId} />}
+        {view.badge && createElement(view.badge, { threadId })}
       </TooltipTrigger>
       <TooltipContent side="left">
         {view.title()}
         {chord && <ChordKeys chord={chord} />}
       </TooltipContent>
     </Tooltip>
-  )
-}
-
-function ViewBadge({ useCount, threadId }: { useCount: (threadId: string) => number; threadId: string }) {
-  // oxlint-disable-next-line react/rules-of-hooks -- the registry is a module constant, so each keyed badge always gets the same hook.
-  const count = useCount(threadId)
-  if (count === 0) return null
-  return (
-    <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-working px-1 text-[0.625rem] font-medium text-background tabular-nums">
-      <span aria-hidden>{count}</span>
-      <span className="sr-only">{m.agents_running_count({ count })}</span>
-    </span>
   )
 }

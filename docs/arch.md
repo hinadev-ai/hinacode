@@ -246,8 +246,10 @@ flowchart LR
   registry --> bar["ActivityBar<br/>tablist, badges, chords"]
   registry --> content["ThreadSidePanel<br/>tabpanel for the selected view"]
   registry --> commands["view.* commands"]
-  commands & bar --> ui["useUi<br/>view per thread, wide flag"]
+  commands & bar --> ui["useUi<br/>view per thread, saved widths"]
   ui --> content
+  registry --> width["ViewContent<br/>static or open-content width"]
+  width --> content
 ```
 
 The Files view reads the disk only through `Files` in main. `fs.list` lists one folder level with ignore and git status, `fs.read` returns up to 1 MB of one file, `fs.write` replaces the text of an existing file unless it changed on disk since the edit began, and `fs.watch` sets the folders that push `fs.changed`. All four accept only a known project root or live worktree as `root` and refuse any `path` whose realpath leaves it.

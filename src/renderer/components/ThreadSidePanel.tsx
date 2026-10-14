@@ -1,6 +1,6 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
-import { createElement, type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
+import { createElement, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
@@ -10,6 +10,7 @@ import { selectSidePanelView, useUi } from "../stores/ui.ts"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
+import { WideContent } from "./sidePanel/wideContent.ts"
 import { Button } from "./ui/button.tsx"
 
 /** Hiding the panel (mod+.) takes the focused element with it; hand focus to the composer instead of <body>. */
@@ -51,7 +52,8 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
   const viewId = view.id
   const maximum = useSidePanelMaxWidth()
   const content = useMemo(() => createElement(view.component, { thread }), [view, thread])
-  const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))
+  const [contentWide, setContentWide] = useState(false)
+  const size = view.wide || contentWide ? "wide" : "normal"
   const width = useUi((state) => state.sidePanelWidths[size])
   const setWidth = useUi((state) => state.setSidePanelWidth)
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
@@ -97,7 +99,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
         <h2 className="truncate text-sm font-medium">{view.title()}</h2>
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
       </header>
-      {content}
+      <WideContent value={setContentWide}>{content}</WideContent>
     </section>
   )
 }

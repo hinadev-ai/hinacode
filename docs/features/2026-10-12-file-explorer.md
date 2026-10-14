@@ -38,9 +38,9 @@ Details and Pull requests do not use `mod+shift+i` and `mod+shift+r`. kkcode kee
 
 ### Activity bar
 
-`src/renderer/components/sidePanel/views.ts` is a registry of `SidePanelView { id, icon, title, commandId, component, badge? }`, one entry per view in bar order. `ActivityBar` renders the entries as a vertical `role="tablist"` with roving focus; `ThreadSidePanel` renders the selected entry's component in a `role="tabpanel"` named after the view. Neither has a branch per view. A view that is not built yet, such as Git, is an entry whose component is a one-line empty state, so the git graph replaces one component.
+`src/renderer/components/sidePanel/views.ts` is a registry of `SidePanelView { id, icon, title, commandId, component, wide?, badge?, experiment? }`, one entry per view in bar order. Badges are components. `ActivityBar` renders the entries as a vertical `role="tablist"` with roving focus; `ThreadSidePanel` renders the selected entry's component in a `role="tabpanel"` named after the view. Neither has a branch per view.
 
-`useUi` keeps `sidePanelViews` (thread id to view), `lastSidePanelView`, and `sidePanelWide`, which a view sets while it shows a file or a diff. The commands `view.details`, `view.files`, `view.changes`, `view.git`, `view.pullRequests` and `view.agents` call `toggleView`, which shows the view and asks it to take focus, or hides the panel when that view is already shown. Docked, the bar stays on screen while the view is hidden. In the narrow layout the bar and the view open together in the overlay.
+`useUi` keeps `sidePanelViews` (thread id to view), `lastSidePanelView`, and the saved normal and wide widths. `ThreadSidePanel` owns the active content's width request; Browser and Tiny VM declare a wide layout in the registry, while Files, Changes and Git report when their file or diff is open. The commands `view.details`, `view.files`, `view.changes`, `view.git`, `view.pullRequests` and `view.agents` call `toggleView`, which shows the view and asks it to take focus, or hides the panel when that view is already shown. Docked, the bar stays on screen while the view is hidden. In the narrow layout the bar and the view open together in the overlay.
 
 ### File explorer
 

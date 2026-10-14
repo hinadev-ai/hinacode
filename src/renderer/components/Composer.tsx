@@ -1,4 +1,4 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
@@ -81,12 +81,10 @@ export function Composer({ thread }: { thread: Thread }) {
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
   const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
-  const refreshFiles = useAtomRefresh(filesAtom(key))
   const threadsById = useThreads((state) => state.byId)
   const otherThreads = selectProjectThreads(thread.projectId)({ byId: threadsById }).filter(
     (other) => other.id !== thread.id,
   )
-  const refreshCommands = useAtomRefresh(commandsAtom(key))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
@@ -170,16 +168,6 @@ export function Composer({ thread }: { thread: Thread }) {
     event.preventDefault()
     send()
   }
-
-  // A finished turn may have added files worth mentioning, and gives a failed command load another chance.
-  const wasBusy = useRef(busy)
-  useEffect(() => {
-    if (wasBusy.current && !busy) {
-      refreshFiles()
-      refreshCommands()
-    }
-    wasBusy.current = busy
-  }, [busy, refreshFiles, refreshCommands])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.

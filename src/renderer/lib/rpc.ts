@@ -3,6 +3,7 @@ import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread, ThreadVm } from "../../shared/domain.ts"
+import { threadSettledSignal, threadStatusSignal } from "./threadSignals.ts"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   tag: Schema.String,
@@ -101,10 +102,16 @@ export const completionKey = (thread: Pick<Thread, "id" | "provider" | "accountI
 const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
 
 export const commandsAtom = Atom.family((key: string) =>
-  Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
+  Atom.make(call("commands.list", { threadId: threadIdOf(key) })).pipe(
+    Atom.makeRefreshOnSignal(threadSettledSignal(threadIdOf(key))),
+  ),
 )
 
-export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
+export const filesAtom = Atom.family((key: string) =>
+  Atom.make(call("files.list", { threadId: threadIdOf(key) })).pipe(
+    Atom.makeRefreshOnSignal(threadSettledSignal(threadIdOf(key))),
+  ),
+)
 
 export const projectIconAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.icon", { id: projectId })).pipe(Atom.keepAlive),
@@ -138,6 +145,7 @@ export const threadChangesAtom = Atom.family((key: string) => {
   const [threadId = "", scope] = key.split("\n")
   return Atom.make(call("threads.changes", { threadId, scope: scope === "turn" ? "turn" : "worktree" })).pipe(
     Atom.makeRefreshOnSignal(windowReturnSignal),
+    Atom.makeRefreshOnSignal(threadStatusSignal(threadId)),
   )
 })
 

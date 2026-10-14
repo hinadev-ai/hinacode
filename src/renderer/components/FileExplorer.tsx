@@ -1,11 +1,13 @@
 // oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/interactive-supports-focus -- the WAI-ARIA tree with aria-activedescendant: focus stays on the tree, which handles the keys for every row, so rows that scroll out of the virtual list never hold focus.
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
+import { useAtomMount, useAtomSubscribe } from "@effect/atom-react"
 import { cn } from "cn"
 import {
   createElement,
   type KeyboardEvent,
   type PointerEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -30,15 +32,17 @@ import {
   RiMarkdownLine,
   RiRefreshLine,
 } from "react-icons/ri"
-import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
+import { type FsEntry, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
+import { threadSettledSignal } from "../lib/threadSignals.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { emptyTree, flattenTree, parentOf, type TreeRow, useExplorer } from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
 import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
 import { FileViewer } from "./FileViewer.tsx"
+import { useWideContent } from "./sidePanel/wideContent.ts"
 import { Button } from "./ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
@@ -137,13 +141,10 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     [load, root],
   )
 
-  // A turn can commit or stage without touching a watched folder, which changes the colors.
-  const busy = isThreadBusy(thread.status)
-  const wasBusy = useRef(busy)
-  useEffect(() => {
-    if (wasBusy.current && !busy) void refresh(root)
-    wasBusy.current = busy
-  }, [busy, refresh, root])
+  const refreshRoot = useCallback(() => void refresh(root), [refresh, root])
+  const settledSignal = threadSettledSignal(thread.id)
+  useAtomMount(settledSignal)
+  useAtomSubscribe(settledSignal, refreshRoot)
 
   // The tree element only exists once the root is listed, so a request made on mount waits for that.
   const focusRequested = useUi((state) => state.viewFocusRequest === "files")
@@ -178,12 +179,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     treeRef.current?.focus()
   }
 
-  // A file needs the room an editor gets.
-  const fileOpen = tree.opened !== null
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(fileOpen)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [fileOpen])
+  useWideContent(tree.opened !== null)
 
   const showChanges = (entry: FsEntry) => {
     useUi.getState().setChangesPath(entry.path)

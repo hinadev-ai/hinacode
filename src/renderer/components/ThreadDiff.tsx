@@ -3,7 +3,7 @@ import { PatchDiff } from "@pierre/diffs/react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useId, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useId, useState } from "react"
 import { RiRefreshLine } from "react-icons/ri"
 import type { ChangedFileStatus, ChangesScope, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
@@ -14,6 +14,7 @@ import { m } from "../paraglide/messages.js"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
 import { useUi } from "../stores/ui.ts"
+import { useWideContent } from "./sidePanel/wideContent.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
@@ -74,14 +75,6 @@ function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
   const changes = useAtomValue(changesAtom)
   const refresh = useAtomRefresh(changesAtom)
 
-  // A turn starting or ending is when the diff moves; ask again then instead of polling.
-  const lastStatus = useRef(thread.status)
-  useEffect(() => {
-    if (lastStatus.current === thread.status) return
-    lastStatus.current = thread.status
-    refresh()
-  }, [thread.status, refresh])
-
   return (
     <section
       aria-label={baseLabel}
@@ -108,10 +101,7 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
   const openPath = useUi((state) => state.changesPath)
   const setOpenPath = useUi((state) => state.setChangesPath)
 
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(openPath !== null)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [openPath])
+  useWideContent(openPath !== null)
 
   if (AsyncResult.isFailure(changes)) {
     return (

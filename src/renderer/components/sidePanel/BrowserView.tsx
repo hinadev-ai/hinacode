@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { type FormEvent, type KeyboardEvent, useCallback, useRef, useState } from "react"
 import {
   RiArrowLeftLine,
   RiArrowRightLine,
@@ -61,12 +61,6 @@ export function BrowserView({ thread }: { thread: Thread }) {
   const viewRef = useRef<WebviewElement | null>(null)
   const addressRef = useRef<HTMLInputElement | null>(null)
   const pick = useRef<AbortController | null>(null)
-
-  // A page needs the room an editor gets.
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
 
   const endPick = useCallback(() => {
     pick.current?.abort()
