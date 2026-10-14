@@ -49,6 +49,8 @@ import icon from "../../assets/icon.png?asset"
 
 // Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves.
 app.setName("kkcode")
+// Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
+if (process.platform === "win32") app.setAppUserModelId("dev.kkcode.app")
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)

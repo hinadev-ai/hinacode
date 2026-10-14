@@ -194,8 +194,9 @@ export function resolveClaudeExecutable(): string | undefined {
 function bundledClaudeExecutable(): string | undefined {
   try {
     const sdk = createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk")
+    const binary = process.platform === "win32" ? "claude.exe" : "claude"
     return createRequire(sdk)
-      .resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`)
+      .resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${binary}`)
       .replace("app.asar", "app.asar.unpacked")
   } catch {
     return undefined
