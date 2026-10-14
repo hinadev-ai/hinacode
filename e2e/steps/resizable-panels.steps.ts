@@ -120,3 +120,19 @@ Then("the resize maximum matches the displayed panel width", async ({ app }) => 
 When("I press ArrowLeft {int} times on {string}", async ({ app }, count: number, name: string) => {
   for (let index = 0; index < count; index++) await handle(app.page, name).press("ArrowLeft")
 })
+
+When("I show the {string} side panel view", async ({ app }, name: string) => {
+  const tab = app.page.getByRole("tab", { name, exact: true })
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click()
+})
+
+When("I open the commit {string} in the graph", async ({ app }, subject: string) => {
+  await app.page
+    .getByRole("listbox", { name: "Commit history" })
+    .getByRole("option", { name: new RegExp(`^${subject} by `) })
+    .click()
+})
+
+When("I press Enter in the commit graph", async ({ app }) => {
+  await app.page.getByRole("listbox", { name: "Commit history" }).press("Enter")
+})

@@ -54,3 +54,38 @@ Feature: Resizable panels
     Then the thread details panel is 280 pixels wide
     When I press ArrowLeft 5 times on "Resize thread details"
     Then the thread details panel is 360 pixels wide
+
+  Scenario: Files keep a separate wide width when their viewer opens and closes
+    When I press "Home" on "Resize thread details"
+    And I press ArrowLeft 5 times on "Resize thread details"
+    And I open Files in the activity bar
+    And I click "README.md" in the file tree
+    Then the file viewer shows "README.md" with "e2e"
+    When I press "Home" on "Resize thread details"
+    And I press ArrowLeft 10 times on "Resize thread details"
+    Then the thread details panel is 440 pixels wide
+    When I press Escape in the file tree
+    Then the thread details panel is 360 pixels wide
+    When I click "README.md" in the file tree
+    Then the thread details panel is 440 pixels wide
+    When I show the "Details" side panel view
+    Then the thread details panel is 360 pixels wide
+    When I show the "Files" side panel view
+    Then the thread details panel is 440 pixels wide
+    When I reload the app and open the thread "Resize"
+    And I show the "Browser" side panel view
+    Then the thread details panel is 440 pixels wide
+
+  Scenario: Opening and closing a commit diff switches panel size
+    When I press "Home" on "Resize thread details"
+    And I press ArrowLeft 5 times on "Resize thread details"
+    And I show the "Git" side panel view
+    Then the thread details panel is 360 pixels wide
+    When I open the commit "init" in the graph
+    And I press "Home" on "Resize thread details"
+    And I press ArrowLeft 10 times on "Resize thread details"
+    Then the thread details panel is 440 pixels wide
+    When I press Enter in the commit graph
+    Then the thread details panel is 360 pixels wide
+    When I press Enter in the commit graph
+    Then the thread details panel is 440 pixels wide
