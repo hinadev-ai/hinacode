@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { Effect, Schema } from "effect"
+import { Toolkit } from "effect/ai"
+import { makeActiveWorkspace } from "../../services/workspace.ts"
+import * as McpTool from "./tool.ts"
 
 const execFileAsync = promisify(execFile)
 
@@ -38,14 +41,14 @@ const truncate = (report: string) =>
     ? report
     : `${report.slice(0, MAX_REPORT_CHARS)}\n\n> Truncated: the report was ${report.length} characters, only the first ${MAX_REPORT_CHARS} are shown. Run \`git diff\` in the workspace for the rest.`
 
-export interface ReviewTarget {
+interface ReviewTarget {
   readonly cwd: string
   /** Set when the thread runs in a worktree: also diff against the merge-base with this ref. */
   readonly baseRef: string | null
 }
 
 /** Markdown report of a workspace's changes: `git status`, the diff against HEAD and, for worktrees, against the base. */
-export const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
+const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
   Effect.gen(function* () {
     const [status, headDiff] = yield* Effect.all(
       [git(cwd, ["status", "--porcelain"]), git(cwd, ["diff", ...DIFF_FLAGS, "HEAD"])],
@@ -65,3 +68,26 @@ export const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
     }
     return truncate(sections.join("\n\n"))
   })
+
+export const ReviewTools = Toolkit.make(
+  McpTool.make("review_changes", {
+    description:
+      "Review this thread's uncommitted and branch changes: git status plus the unified diff against HEAD and, in a worktree, against the merge-base with its base branch.",
+  }),
+)
+
+export const reviewToolsLayer = ReviewTools.toLayer(
+  Effect.gen(function* () {
+    const activeWorkspace = yield* makeActiveWorkspace
+    return ReviewTools.of({
+      review_changes: () =>
+        Effect.gen(function* () {
+          const threadId = yield* McpTool.CallingThread
+          const workspace = yield* activeWorkspace(threadId).pipe(
+            Effect.catchTag("NotFoundError", () => Effect.fail({ message: `Thread ${threadId} no longer exists.` })),
+          )
+          return yield* reviewChanges(workspace)
+        }),
+    })
+  }),
+)

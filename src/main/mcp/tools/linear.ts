@@ -1,5 +1,10 @@
 import type { Issue } from "@linear/sdk"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
+import { Toolkit } from "effect/ai"
+import { Secrets } from "../../services/Secrets.ts"
+import * as McpTool from "./tool.ts"
+
+export const LINEAR_API_KEY_SECRET = "linear.apiKey"
 
 export class LinearRequestError extends Schema.TaggedError<LinearRequestError>()("LinearRequestError", {
   reason: Schema.String,
@@ -30,13 +35,13 @@ const issueSummary = async (issue: Issue) => {
   ].join("\n")
 }
 
-export type Linear = Effect.Success<ReturnType<typeof makeLinear>>
+type Linear = Effect.Success<ReturnType<typeof makeLinear>>
 
 /**
- * Linear operations exposed as MCP tools. Each returns markdown for the agent.
+ * Linear operations behind the tools. Each returns markdown for the agent.
  * The SDK is loaded on the first call: it costs ~30 MB of main-process memory that most sessions never need.
  */
-export const makeLinear = (apiKey: string) =>
+const makeLinear = (apiKey: string) =>
   Effect.map(
     Effect.promise(() => import("@linear/sdk")),
     ({ LinearClient }) => makeTools(new LinearClient({ apiKey })),
@@ -82,3 +87,59 @@ const makeTools = (client: InstanceType<typeof import("@linear/sdk").LinearClien
       }),
   }
 }
+
+const IssueKey = Schema.String.annotate({ description: "Linear issue identifier, for example ENG-123" })
+
+export const LinearTools = Toolkit.make(
+  McpTool.make("linear_get_issue", {
+    description: "Read a Linear issue: title, state, assignee, priority, URL and description.",
+    parameters: Schema.Struct({ key: IssueKey }),
+  }),
+  McpTool.make("linear_search_issues", {
+    description: "Full-text search Linear issues. Returns identifier, title and URL per match.",
+    parameters: Schema.Struct({
+      query: Schema.String,
+      limit: Schema.optionalKey(
+        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })).annotate({
+          description: "Maximum results, 1-50. Defaults to 10.",
+        }),
+      ),
+    }),
+  }),
+  McpTool.make("linear_create_comment", {
+    description: "Post a markdown comment on a Linear issue.",
+    parameters: Schema.Struct({ key: IssueKey, body: Schema.String.annotate({ description: "Markdown body" }) }),
+  }),
+  McpTool.make("linear_update_issue_state", {
+    description: "Move a Linear issue to a workflow state of its team, matched by name (case-insensitive).",
+    parameters: Schema.Struct({
+      key: IssueKey,
+      stateName: Schema.String.annotate({ description: "Workflow state name, for example In Review" }),
+    }),
+  }),
+)
+
+export const linearToolsLayer = LinearTools.toLayer(
+  Effect.gen(function* () {
+    const secrets = yield* Secrets
+    const withLinear = <A>(use: (linear: Linear) => Effect.Effect<A, LinearRequestError>) =>
+      Effect.flatMap(
+        secrets.get(LINEAR_API_KEY_SECRET),
+        Option.match({
+          onNone: () =>
+            Effect.fail({
+              message:
+                "No Linear API key is configured. Ask the user to add one in kkcode Settings > Integrations, then retry.",
+            }),
+          onSome: (apiKey) => Effect.flatMap(makeLinear(apiKey), use),
+        }),
+      )
+    return LinearTools.of({
+      linear_get_issue: ({ key }) => withLinear((linear) => linear.getIssue(key)),
+      linear_search_issues: ({ query, limit }) => withLinear((linear) => linear.searchIssues(query, limit ?? 10)),
+      linear_create_comment: ({ key, body }) => withLinear((linear) => linear.createComment(key, body)),
+      linear_update_issue_state: ({ key, stateName }) =>
+        withLinear((linear) => linear.updateIssueState(key, stateName)),
+    })
+  }),
+)
