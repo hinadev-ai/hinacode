@@ -108,6 +108,8 @@ const serveRfb = (socket: Socket, head: Buffer, onEvent: (event: RfbEvent) => vo
     step()
   })
   socket.on("error", () => {})
+  // Upgraded sockets are half-open; a VNC server closes its side when the client does.
+  socket.on("end", () => socket.end())
   socket.write("RFB 003.008\n")
   step()
 }
