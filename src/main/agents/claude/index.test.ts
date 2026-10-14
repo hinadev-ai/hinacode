@@ -97,6 +97,12 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: vi.fn(),
 }))
 
+// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
+vi.mock("../binary.ts", async () => {
+  const { succeed } = await import("effect/Effect")
+  return { installedBinary: (_provider: string, name: string) => succeed(name) }
+})
+
 const TTL = "60 seconds"
 
 const init = (sessionId: string) => ({ type: "system", subtype: "init", session_id: sessionId })
