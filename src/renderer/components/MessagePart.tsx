@@ -21,9 +21,10 @@ import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { useSettings } from "../lib/settings.ts"
-import { describeCommand, describeToolCall } from "../lib/toolCall.ts"
+import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
+import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
@@ -141,20 +142,23 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
           <span className="sr-only">{statusLabel[part.status]()}</span>
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 flex flex-col gap-2 text-xs">
-        {part.name === "Bash" ? (
-          <CommandView call={part} command={summary} />
-        ) : (
-          <>
-            <ToolSection label={m.tool_input()} text={JSON.stringify(part.input, null, 2)} />
-            <ToolSection
-              label={m.tool_output()}
-              text={part.output === undefined ? m.tool_no_output() : formatOutput(part.output)}
-            />
-          </>
-        )}
+      <CollapsibleContent className="mt-1 text-xs">
+        <ToolCallDetails call={part} summary={summary} />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function ToolCallDetails({ call, summary }: { call: ToolCall; summary: string }) {
+  if (call.name === "Bash") return <CommandView call={call} command={summary} />
+  return (
+    <div className="flex flex-col gap-2">
+      <ToolSection label={m.tool_input()} text={JSON.stringify(call.input, null, 2)} />
+      <ToolSection
+        label={m.tool_output()}
+        text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
+      />
+    </div>
   )
 }
 
@@ -197,11 +201,28 @@ export function useFindDisclosure(request: FindRevealRequest | null) {
   return [open, setOpen] as const
 }
 
+const toolKindLabel = {
+  command: m.tool_kind_command,
+  read: m.tool_kind_read,
+  edit: m.tool_kind_edit,
+  search: m.tool_kind_search,
+  other: m.tool_kind_other,
+} satisfies Record<ToolKind, (inputs: { count: number }) => string>
+
+/** "Ran 2 commands and read 1 file", in the reader's language. */
+function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
+  const locale = getLocale()
+  const summary = new Intl.ListFormat(locale, { type: "conjunction" }).format(
+    countToolKinds(calls).map(({ kind, count }) => toolKindLabel[kind]({ count })),
+  )
+  return summary.charAt(0).toLocaleUpperCase(locale) + summary.slice(1)
+}
+
 /**
- * Back-to-back shell commands as one line that opens into a list of them, each opening into its output.
- * `index` is the first command's part index in message `messageId`.
+ * Back-to-back tool calls as one line that opens into a list of them, each opening into its output.
+ * `index` is the first call's part index in message `messageId`.
  */
-export function CommandGroup({
+export function ToolGroup({
   messageId,
   index,
   calls,
@@ -227,10 +248,8 @@ export function CommandGroup({
     <Collapsible open={open} onOpenChange={setOpen} className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
-        <RiTerminalBoxLine aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">
-          {running ? m.tool_commands_running({ count }) : m.tool_commands_ran({ count })}
-        </span>
+        <RiToolsLine aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0 shrink truncate font-medium text-foreground">{summarizeTools(calls)}</span>
         {running && (
           <span className="min-w-0 flex-1 truncate">
             <Highlighted text={describeCommand(running)} />
@@ -244,12 +263,12 @@ export function CommandGroup({
         )}
         {running && <span className="ml-auto shrink-0">{statusIcon.running}</span>}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 overflow-hidden rounded-lg border border-border">
+      <CollapsibleContent className="mt-1 max-h-96 overflow-y-auto rounded-lg border border-border">
         <ul className="divide-y divide-border">
           {calls.map((call, position) => (
             <li key={call.callId}>
               <FindPartContext value={index + position}>
-                <CommandRow call={call} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
+                <ToolRow call={call} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
               </FindPartContext>
             </li>
           ))}
@@ -259,20 +278,17 @@ export function CommandGroup({
   )
 }
 
-function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
-  const { distinctLabel, command } = commandFindText(call)
+/** A command reads as its command and description. Any other tool reads as its name and summary. */
+function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
+  const isCommand = call.name === "Bash"
+  const { summary } = describeToolCall(call)
+  const Icon = toolIcons[call.name] ?? RiToolsLine
   return (
     <Collapsible>
       <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-        <span className={cn("min-w-0 font-mono text-foreground", truncate)} title={command}>
-          <Highlighted text={command} />
-        </span>
-        {distinctLabel !== null && (
-          <span className={cn("min-w-0 max-w-1/2 shrink-0", truncate)} title={distinctLabel}>
-            <Highlighted text={distinctLabel} />
-          </span>
-        )}
+        <Icon aria-hidden className="size-3.5 shrink-0" />
+        {isCommand ? <CommandLabel call={call} truncate={truncate} /> : <ToolLabel call={call} truncate={truncate} />}
         <RiArrowRightSLine
           aria-hidden
           className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
@@ -285,9 +301,39 @@ function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealReques
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="px-3 pb-2 text-xs">
-        <CommandView call={call} command={command} />
+        <ToolCallDetails call={call} summary={summary} />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
+  const { distinctLabel, command } = commandFindText(call)
+  return (
+    <>
+      <span className={cn("min-w-0 font-mono text-foreground", truncate)} title={command}>
+        <Highlighted text={command} />
+      </span>
+      {distinctLabel !== null && (
+        <span className={cn("min-w-0 max-w-1/2 shrink-0", truncate)} title={distinctLabel}>
+          <Highlighted text={distinctLabel} />
+        </span>
+      )}
+    </>
+  )
+}
+
+function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
+  const { name, summary } = describeToolCall(call)
+  return (
+    <>
+      <span className="shrink-0 font-medium text-foreground">
+        <Highlighted text={name} />
+      </span>
+      <span className={cn("min-w-0 font-mono", truncate)} title={summary}>
+        <Highlighted text={summary} />
+      </span>
+    </>
   )
 }
 
