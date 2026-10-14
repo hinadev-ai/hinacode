@@ -301,6 +301,13 @@ export const RpcMethods = {
   "pullRequests.unlink": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
   /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. Returns the URL. */
   "pullRequests.create": rpc(Schema.Struct({ threadId: Schema.String }), Schema.String),
+  /**
+   * Watches the pull request for the thread, linking it first when needed. Changes wake the thread
+   * until the watch stops, the pull request merges or closes, or it gives up. Watches for every event kind.
+   */
+  "pullRequests.watch": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), PullRequestLink),
+  /** Stops watching the pull request. The link itself stays. */
+  "pullRequests.unwatch": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),

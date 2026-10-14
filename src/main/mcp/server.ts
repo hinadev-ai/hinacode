@@ -5,7 +5,7 @@ import { McpProtocol, McpSchema, McpServer as AiMcpServer, Tool } from "effect/a
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"
 import { SqlClient } from "effect/sql"
 import { ProviderId } from "../../shared/agent.ts"
-import { isThreadBusy, type Message, type Thread, type Worktree } from "../../shared/domain.ts"
+import { isThreadBusy, type Message, type Thread, WatchEventKind, type Worktree } from "../../shared/domain.ts"
 import { AgentRunner } from "../services/AgentRunner.ts"
 import { Events } from "../services/Events.ts"
 import { PullRequests } from "../services/PullRequests.ts"
@@ -532,20 +532,52 @@ const registerTools = Layer.effectDiscard(
       }),
       tool({
         name: "list_thread_pull_requests",
-        description: "List the pull requests linked to this thread.",
+        description: "List the pull requests linked to this thread, marking the ones this thread is watching.",
         parameters: NoParams,
         run: (_, threadId) =>
           Effect.map(pullRequests.list(threadId), (links) =>
             links.length === 0
               ? "No pull requests are linked to this thread."
-              : links.map((link) => `- ${link.url}`).join("\n"),
+              : links
+                  .map((link) =>
+                    link.watch === null
+                      ? `- ${link.url}`
+                      : `- ${link.url} (watching for ${link.watch.events.join(", ")}; ${link.watch.wakes} ${link.watch.wakes === 1 ? "wake" : "wakes"})`,
+                  )
+                  .join("\n"),
           ),
       }),
       tool({
         name: "unlink_pull_request",
-        description: "Remove a pull request link from this thread.",
+        description: "Remove a pull request link from this thread. A watch on it ends with the link.",
         parameters: Schema.Struct({ url: PullRequestUrl }),
         run: ({ url }, threadId) => Effect.as(pullRequests.unlink(threadId, url), `Unlinked ${url}.`),
+      }),
+      tool({
+        name: "watch_pull_request",
+        description:
+          "Watch a pull request for this thread instead of polling it yourself. kkcode checks it every minute and sends this thread a new message when something you care about changes, so end your turn after calling this. The watch ends on its own when the pull request merges or closes. Links the pull request first when it is not linked yet.",
+        parameters: Schema.Struct({
+          url: PullRequestUrl,
+          events: Schema.optionalKey(
+            Schema.Array(WatchEventKind).annotate({
+              description:
+                "What to be woken for. Defaults to all of checksFailed, checksPassed, reviewChanged, conflicting and mergedOrClosed.",
+            }),
+          ),
+        }),
+        run: ({ url, events: kinds }, threadId) =>
+          Effect.map(
+            pullRequests.watch(threadId, url, kinds ?? []),
+            (link) =>
+              `Watching ${link.url} for ${link.watch?.events.join(", ") ?? ""}. kkcode checks it every minute and will send this thread a message when one of those changes. Do not poll for it.`,
+          ),
+      }),
+      tool({
+        name: "unwatch_pull_request",
+        description: "Stop watching a pull request for this thread. The link itself stays.",
+        parameters: Schema.Struct({ url: PullRequestUrl }),
+        run: ({ url }, threadId) => Effect.as(pullRequests.unwatch(threadId, url), `Stopped watching ${url}.`),
       }),
       tool({
         name: "linear_get_issue",

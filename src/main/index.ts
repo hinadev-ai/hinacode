@@ -33,6 +33,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as RemoteServer from "./remote/server.ts"
 import * as Secrets from "./services/Secrets.ts"
@@ -158,9 +159,14 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
   )
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  const services = Layer.mergeAll(Automations.layer, AutoArchive.layer, Updates.layer, Mcp.serverLayer, AgentLogins.layer).pipe(
-    Layer.provideMerge(agents),
-  )
+  const services = Layer.mergeAll(
+    Automations.layer,
+    AutoArchive.layer,
+    PullRequestWatcher.layer,
+    Updates.layer,
+    Mcp.serverLayer,
+    AgentLogins.layer,
+  ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   return RemoteServer.layer.pipe(
     Layer.provideMerge(services),
