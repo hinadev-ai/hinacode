@@ -6,17 +6,14 @@ EXTENDS Naturals, Sequences
 CONSTANTS
   MaxEvents,  \* events main publishes for the thread
   MaxLoads,   \* times the user opens the thread
-  IpcOrdered, \* TRUE: pushes and rpc replies share one FIFO to the renderer
-  Design      \* "current" | "fixed": settle checks a load token and receive drops seqs already folded
-
-ASSUME Design \in {"current", "fixed"}
+  IpcOrdered  \* TRUE: pushes and rpc replies share one FIFO to the renderer
 
 \* An event is identified by its seq, so main's transcript is always 1..seq.
 VARIABLES
-  seq,        \* AgentRunner.ts:103
+  seq,        \* AgentRunner.ts:263
   requests,   \* load ids whose threads.transcript rpc main has not run yet
   toRenderer, \* oldest first
-  byThread,   \* messages.ts:21, the entry for the modeled thread
+  byThread,   \* messages.ts:27, the entry for the modeled thread
   loads       \* how many times `load` has started; also the latest load id
 
 vars == <<seq, requests, toRenderer, byThread, loads>>
@@ -24,13 +21,11 @@ vars == <<seq, requests, toRenderer, byThread, loads>>
 Push(s)     == [type |-> "push", seq |-> s]
 Reply(l, s) == [type |-> "reply", load |-> l, seq |-> s]
 
-\* Status "missing" stands for an absent key. `load` is the load that set "loading": a ghost under
-\* "current", the token under "fixed". `snapshotFrom` is a ghost; `lastSeq` exists only under "fixed".
+\* Status "missing" stands for an absent key. `load` is the `loadId` token and `snapshotFrom` is a ghost.
 Missing == [status |-> "missing", pending |-> <<>>, folded |-> <<>>,
-            load |-> 0, snapshotFrom |-> 0, lastSeq |-> 0]
+            load |-> 0, snapshotFrom |-> 0, snapshotSeq |-> 0]
 
-Max(a, b) == IF a > b THEN a ELSE b
-Range(n)  == [k \in 1..n |-> k]
+Range(n) == [k \in 1..n |-> k]
 
 TypeOK ==
   /\ seq \in 0..MaxEvents
@@ -46,17 +41,17 @@ Init ==
   /\ loads = 0
 
 -----------------------------------------------------------------------------
-(* Main runs each step under the per-thread `exclusive` lock (AgentRunner.ts:118-124), so publishing and
-   snapshotting are atomic with respect to each other. `webContents.send` (ipc.ts:173) enqueues synchronously. *)
+(* Main runs each step under the per-thread `exclusive` lock (AgentRunner.ts:278-284), so publishing and
+   snapshotting are atomic with respect to each other. `webContents.send` (ipc.ts:360) enqueues synchronously. *)
 
-\* AgentRunner.ts:126 publishTranscript
+\* AgentRunner.ts:296 publishTranscript
 Publish ==
   /\ seq < MaxEvents
   /\ seq' = seq + 1
   /\ toRenderer' = Append(toRenderer, Push(seq + 1))
   /\ UNCHANGED <<requests, byThread, loads>>
 
-\* AgentRunner.ts:273-287, reply sent through ipcMain.handle, ipc.ts:158-162
+\* AgentRunner.ts:666-684, reply sent through ipcMain.handle, ipc.ts:342-346
 Transcript(l) ==
   /\ requests' = requests \ {l}
   /\ toRenderer' = Append(toRenderer, Reply(l, seq))
@@ -64,7 +59,7 @@ Transcript(l) ==
 
 -----------------------------------------------------------------------------
 
-\* ThreadView.tsx:51 -> messages.ts:44-52 up to the await. Errors are not modeled, so `load` only runs on "missing".
+\* ThreadView.tsx:97 -> messages.ts:61-71 up to the await. Errors are not modeled, so `load` only runs on "missing".
 Load ==
   /\ loads < MaxLoads
   /\ byThread.status = "missing"
@@ -73,33 +68,28 @@ Load ==
   /\ requests' = requests \cup {loads + 1}
   /\ UNCHANGED <<seq, toRenderer>>
 
-\* ThreadView.tsx:54-57 -> messages.ts:61. The busy check reads a status that itself arrives by push, so
-\* whether it lets unload through is left nondeterministic.
+\* ThreadView.tsx:98 -> messages.ts:82. The effect cleanup runs whenever the view leaves the thread.
 Unload ==
   /\ byThread.status /= "missing"
   /\ byThread' = Missing
   /\ UNCHANGED <<seq, requests, toRenderer, loads>>
 
-\* messages.ts:53-55 after the await, through `settle` at 49-50
+\* messages.ts:72-76 after the await, through `settle` at 66-69
 Settle(r) ==
-  IF /\ byThread.status = "loading"
-     /\ (Design = "fixed" => byThread.load = r.load)
-  THEN LET replay == SelectSeq(byThread.pending, LAMBDA s : s > r.seq)
-       IN byThread' = [byThread EXCEPT
-                         !.status = "ready",
-                         !.folded = Range(r.seq) \o replay,
-                         !.snapshotFrom = r.load,
-                         !.lastSeq = IF replay = <<>> THEN r.seq ELSE replay[Len(replay)]]
+  IF byThread.status = "loading" /\ byThread.load = r.load
+  THEN byThread' = [byThread EXCEPT
+                      !.status = "ready",
+                      !.folded = Range(r.seq) \o SelectSeq(byThread.pending, LAMBDA s : s > r.seq),
+                      !.snapshotFrom = r.load,
+                      !.snapshotSeq = r.seq]
   ELSE UNCHANGED byThread
 
-\* messages.ts:67-77. Folding is not idempotent (foldEvent.ts:11 text_delta appends).
+\* messages.ts:90-125. Folding is not idempotent (foldEvent.ts:11 text_delta appends).
 Receive(p) ==
   CASE byThread.status = "loading" ->
          byThread' = [byThread EXCEPT !.pending = Append(@, p.seq)]
-    [] byThread.status = "ready" /\ Design = "fixed" /\ p.seq <= byThread.lastSeq ->
-         UNCHANGED byThread
-    [] byThread.status = "ready" ->
-         byThread' = [byThread EXCEPT !.folded = Append(@, p.seq), !.lastSeq = Max(@, p.seq)]
+    [] byThread.status = "ready" /\ p.seq > byThread.snapshotSeq ->
+         byThread' = [byThread EXCEPT !.folded = Append(@, p.seq)]
     [] OTHER -> UNCHANGED byThread
 
 \* Without IpcOrdered, pushes and replies are two FIFOs: the oldest message of either kind can go next.
