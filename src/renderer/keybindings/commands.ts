@@ -125,6 +125,18 @@ export const commands = [
     run: () => useUi.getState().requestComposerFocus(),
     when: "!terminalFocus",
   },
+  {
+    id: "composer.model",
+    defaultKeys: "mod+alt+.",
+    title: m.command_composer_model,
+    run: () => useUi.getState().requestPicker("model"),
+  },
+  {
+    id: "composer.effort",
+    defaultKeys: "mod+alt+,",
+    title: m.command_composer_effort,
+    run: () => useUi.getState().requestPicker("effort"),
+  },
   // mod+shift+r and mod+shift+i belong to Electron's default menu (Force Reload, and Toggle Developer
   // Tools outside macOS), which takes the key before the page sees it.
   {

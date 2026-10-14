@@ -148,6 +148,8 @@
   "command_sidebar_toggle": "Show or hide sidebar",
   "command_side_panel_toggle": "Show or hide side panel",
   "command_composer_focus": "Focus message box",
+  "command_composer_model": "Change model",
+  "command_composer_effort": "Change reasoning effort",
   "command_view_details": "Show details",
   "command_view_files": "Show files",
   "command_view_changes": "Show changes",

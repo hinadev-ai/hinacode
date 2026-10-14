@@ -2,7 +2,7 @@ import { Autocomplete } from "@base-ui/react/autocomplete"
 import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiBrainLine,
@@ -32,6 +32,7 @@ import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
+import { type ComposerPicker, useUi } from "../stores/ui.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
@@ -101,6 +102,33 @@ const composerPopup = {
   className: "max-h-[min(24rem,var(--available-height))] w-auto min-w-(--anchor-width)",
 } as const
 
+/**
+ * Open state for a picker, which `picker`'s shortcut also opens. Opened by the shortcut, it hands focus back
+ * to where it was, usually the message box, instead of to its trigger. Spread `root` on the Select and
+ * `popup` on its content.
+ */
+function usePickerOpen(picker: ComposerPicker | undefined) {
+  const [open, setOpen] = useState(false)
+  const returnFocus = useRef<HTMLElement | null>(null)
+  useEffect(
+    () =>
+      useUi.subscribe((state, previous) => {
+        if (state.pickerRequest === previous.pickerRequest || state.pickerRequest?.picker !== picker) return
+        returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        setOpen(true)
+      }),
+    [picker],
+  )
+  const onOpenChange = (next: boolean) => {
+    if (next) returnFocus.current = null
+    setOpen(next)
+  }
+  return {
+    root: { open, onOpenChange },
+    popup: { finalFocus: () => returnFocus.current ?? true },
+  }
+}
+
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
 /**
@@ -110,6 +138,7 @@ const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a
 export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const selected = useThreadModel(thread) ?? unlistedModel(thread.model, thread.provider)
   const providers = canSwitchAgent ? ProviderId.literals : [thread.provider]
+  const pickerOpen = usePickerOpen("model")
 
   // Another agent starts from its own defaults. On the same agent, effort and fast mode the next model
   // cannot honor go back to its defaults.
@@ -130,6 +159,7 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
 
   return (
     <Select
+      {...pickerOpen.root}
       value={selected}
       onValueChange={change}
       isItemEqualToValue={sameModel}
@@ -139,7 +169,7 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
         <ProviderIcon provider={thread.provider} />
         <SelectValue className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent {...composerPopup}>
+      <SelectContent {...composerPopup} {...pickerOpen.popup}>
         {providers.map((provider) => (
           <ModelGroup key={provider} provider={provider} keep={provider === thread.provider ? thread.model : null} />
         ))}
@@ -366,7 +396,7 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
         className="flex shrink-0 items-center gap-1.5 in-data-[fit=menu]:hidden in-data-[fit=menu]:has-data-popup-open:flex"
       >
         {account && <ChoiceSelect choice={account} />}
-        {effort && <ChoiceSelect choice={effort} />}
+        {effort && <ChoiceSelect choice={effort} picker="effort" />}
         {fast && <FastToggle fast={fast} />}
         <ChoiceSelect choice={access} />
       </div>
@@ -415,11 +445,13 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
 const iconOnly =
   "in-data-[fit=icons]:w-7 in-data-[fit=icons]:justify-center in-data-[fit=icons]:px-0 in-data-[fit=icons]:*:data-[slot=select-icon]:hidden in-data-[fit=icons]:*:data-[slot=select-value]:sr-only"
 
-function ChoiceSelect<V extends string>({ choice }: { choice: Choice<V> }) {
+function ChoiceSelect<V extends string>({ choice, picker }: { choice: Choice<V>; picker?: ComposerPicker }) {
+  const pickerOpen = usePickerOpen(picker)
   const Icon = choice.icon
   const label = choice.items.find((item) => item.value === choice.value)?.label ?? choice.value
   return (
     <Select
+      {...pickerOpen.root}
       items={choice.items}
       value={choice.value}
       disabled={choice.disabled}
@@ -441,7 +473,7 @@ function ChoiceSelect<V extends string>({ choice }: { choice: Choice<V> }) {
         />
         <TooltipContent>{m.thread_option_value({ name: choice.name, value: label })}</TooltipContent>
       </Tooltip>
-      <SelectContent {...composerPopup}>
+      <SelectContent {...composerPopup} {...pickerOpen.popup}>
         {choice.items.map((item) => (
           <SelectItem key={item.value} value={item.value}>
             <ChoiceItemLabel item={item} />

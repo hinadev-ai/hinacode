@@ -148,6 +148,8 @@
   "command_sidebar_toggle": "顯示或隱藏側邊欄",
   "command_side_panel_toggle": "顯示或隱藏側邊面板",
   "command_composer_focus": "聚焦訊息輸入框",
+  "command_composer_model": "切換模型",
+  "command_composer_effort": "調整推理強度",
   "command_view_details": "顯示詳細資訊",
   "command_view_files": "顯示檔案",
   "command_view_changes": "顯示變更",
