@@ -349,6 +349,7 @@ erDiagram
     text provider_session_id
     text status
     int sort_index
+    text pinned_at "null = not pinned"
     text turn_base_tree "git tree at latest turn start"
   }
   message {
