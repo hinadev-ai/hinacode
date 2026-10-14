@@ -34,6 +34,7 @@ import {
   RiDeleteBinLine,
   RiDraggable,
   RiErrorWarningLine,
+  RiEyeLine,
   RiGitBranchLine,
   RiInboxUnarchiveLine,
   RiMoreFill,
@@ -540,6 +541,7 @@ const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
   const latest = links.at(-1)
+  const watching = links.some((link) => link.watch !== null)
   return (
     <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
       {branch !== null && (
@@ -553,6 +555,12 @@ function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof use
         </span>
       )}
       {latest && <PullRequestNumber latest={latest} count={links.length} />}
+      {watching && (
+        <span title={m.sidebar_watching()} className="flex shrink-0">
+          <RiEyeLine aria-hidden className="size-3" />
+          <span className="sr-only">{m.sidebar_watching()}</span>
+        </span>
+      )}
       <LastActive updatedAt={updatedAt} />
     </div>
   )

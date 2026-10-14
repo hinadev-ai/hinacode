@@ -8,6 +8,8 @@ import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
   RiExternalLinkLine,
+  RiEyeFill,
+  RiEyeLine,
   RiGitPullRequestLine,
   RiIndeterminateCircleLine,
   RiLinkUnlinkM,
@@ -20,6 +22,7 @@ import type {
   PullRequest,
   PullRequestDetail,
   PullRequestStatus,
+  PullRequestWatch,
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
@@ -139,6 +142,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const urls = [...linked]
   if (branchPullRequest && !linked.has(branchPullRequest.url)) urls.push(branchPullRequest.url)
   const selected = picked && urls.includes(picked) ? picked : (branchPullRequest?.url ?? urls.at(-1))
+  const watch = links.find((link) => link.url === selected)?.watch ?? null
 
   return (
     <div className="flex flex-col gap-4">
@@ -146,7 +150,13 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
       {urls.length > 1 && (
         <ul aria-label={m.pr_links_title()} className="flex flex-col gap-0.5">
           {urls.map((url) => (
-            <PullRequestRow key={url} url={url} selected={url === selected} onSelect={() => setPicked(url)} />
+            <PullRequestRow
+              key={url}
+              url={url}
+              selected={url === selected}
+              watching={links.some((link) => link.url === url && link.watch !== null)}
+              onSelect={() => setPicked(url)}
+            />
           ))}
         </ul>
       )}
@@ -155,6 +165,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
           key={selected}
           threadId={threadId}
           url={selected}
+          watch={watch}
           linked={linked.has(selected)}
           onUnlinkFailed={setUnlinkError}
         />
@@ -228,7 +239,17 @@ function GitHubAuthHint() {
   }
 }
 
-function PullRequestRow({ url, selected, onSelect }: { url: string; selected: boolean; onSelect: () => void }) {
+function PullRequestRow({
+  url,
+  selected,
+  watching,
+  onSelect,
+}: {
+  url: string
+  selected: boolean
+  watching: boolean
+  onSelect: () => void
+}) {
   const status = useAtomValue(pullRequestStatusAtom(url))
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
 
@@ -248,6 +269,12 @@ function PullRequestRow({ url, selected, onSelect }: { url: string; selected: bo
         <span className="min-w-0 flex-1 truncate" title={pullRequest?.title}>
           {pullRequest ? pullRequestSummary(pullRequest) : null}
         </span>
+        {watching && (
+          <span title={m.pr_watching()} className="flex shrink-0">
+            <RiEyeLine aria-hidden className="size-3.5 text-muted-foreground" />
+            <span className="sr-only">{m.pr_watching()}</span>
+          </span>
+        )}
         {pullRequest?.checks && <ChecksIndicator checks={pullRequest.checks} />}
       </button>
     </li>
@@ -271,11 +298,12 @@ function ChecksIndicator({ checks }: { checks: ChecksStatus }) {
 interface PullRequestDetailViewProps {
   readonly threadId: string
   readonly url: string
+  readonly watch: PullRequestWatch | null
   readonly linked: boolean
   readonly onUnlinkFailed: (message: string | null) => void
 }
 
-function PullRequestDetailView({ threadId, url, linked, onUnlinkFailed }: PullRequestDetailViewProps) {
+function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }: PullRequestDetailViewProps) {
   const detailAtom = pullRequestDetailAtom(url)
   const detail = useAtomValue(detailAtom)
   const refresh = useAtomRefresh(detailAtom)
@@ -291,7 +319,9 @@ function PullRequestDetailView({ threadId, url, linked, onUnlinkFailed }: PullRe
           onUnlinkFailed={onUnlinkFailed}
         />
         <Attention pullRequest={pullRequest} threadId={threadId} />
-        {isOpen(pullRequest.status) && <PullRequestActions pullRequest={pullRequest} onDone={refresh} />}
+        {isOpen(pullRequest.status) && (
+          <PullRequestActions pullRequest={pullRequest} threadId={threadId} watch={watch} onDone={refresh} />
+        )}
         <ChecksSection pullRequest={pullRequest} />
         <Section id="description" title={m.pr_description()}>
           {pullRequest.body.trim() === "" ? (
@@ -507,7 +537,17 @@ const resolveConflictsPrompt = (pullRequest: PullRequestDetail) =>
 
 type PendingAction = { type: "merge"; method: MergeMethod } | { type: "close" }
 
-function PullRequestActions({ pullRequest, onDone }: { pullRequest: PullRequestDetail; onDone: () => void }) {
+function PullRequestActions({
+  pullRequest,
+  threadId,
+  watch,
+  onDone,
+}: {
+  pullRequest: PullRequestDetail
+  threadId: string
+  watch: PullRequestWatch | null
+  onDone: () => void
+}) {
   const [method, setMethod] = useState<MergeMethod>("squash")
   const [confirming, setConfirming] = useState<PendingAction | null>(null)
   const refreshStatus = useAtomRefresh(pullRequestStatusAtom(pullRequest.url))
@@ -521,7 +561,7 @@ function PullRequestActions({ pullRequest, onDone }: { pullRequest: PullRequestD
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div data-slot="button-group" className="flex">
           <Button
             size="sm"
@@ -559,6 +599,7 @@ function PullRequestActions({ pullRequest, onDone }: { pullRequest: PullRequestD
         <Button variant="ghost" size="sm" disabled={!signedIn} onClick={() => setConfirming({ type: "close" })}>
           {m.pr_close()}
         </Button>
+        <WatchButton threadId={threadId} url={pullRequest.url} watch={watch} />
       </div>
       {blocker && <p className="text-xs text-muted-foreground">{blocker}</p>}
       <ConfirmDialog
@@ -571,6 +612,44 @@ function PullRequestActions({ pullRequest, onDone }: { pullRequest: PullRequestD
         }}
       />
     </div>
+  )
+}
+
+function WatchButton({ threadId, url, watch }: { threadId: string; url: string; watch: PullRequestWatch | null }) {
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  const watching = watch !== null
+
+  const toggle = () =>
+    startTransition(async () => {
+      setError(null)
+      try {
+        if (watching) await callPromise("pullRequests.unwatch", { threadId, url })
+        else await callPromise("pullRequests.watch", { threadId, url })
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  return (
+    <>
+      <Button
+        variant={watching ? "secondary" : "ghost"}
+        size="sm"
+        aria-pressed={watching}
+        title={watching ? m.pr_watch_stop({ name: shortName(url) }) : m.pr_watch_hint()}
+        disabled={pending}
+        onClick={toggle}
+      >
+        {watching ? <RiEyeFill aria-hidden /> : <RiEyeLine aria-hidden />}
+        {watching ? m.pr_watching() : m.pr_watch()}
+      </Button>
+      {error && (
+        <p role="alert" className="basis-full text-xs text-destructive">
+          {m.pr_watch_failed({ message: error })}
+        </p>
+      )}
+    </>
   )
 }
 

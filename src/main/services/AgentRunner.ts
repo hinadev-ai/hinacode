@@ -97,6 +97,12 @@ export class AgentRunner extends Context.Service<
       text: string,
       attachments: ReadonlyArray<Attachment>,
     ) => Effect.Effect<void, SendError>
+    readonly steerWhen: (input: {
+      readonly threadId: string
+      readonly text: string
+      readonly attachments: ReadonlyArray<Attachment>
+      readonly when: Effect.Effect<boolean, PersistenceError>
+    }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
@@ -347,8 +353,13 @@ const make = Effect.gen(function* () {
         if (dirty.size > 0 && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
       }).pipe(exclusive(thread.id))
 
-    const steer = (text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steer = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+    ) =>
       Effect.gen(function* () {
+        if (!(yield* when)) return false
         yield* provider.steer(thread.id, text, attachments)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
@@ -361,6 +372,7 @@ const make = Effect.gen(function* () {
         yield* insertMessage(userMessage(thread.id, text, attachments, now))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
+        return true
       }).pipe(exclusive(thread.id))
 
     const finish = Effect.gen(function* () {
@@ -438,35 +450,39 @@ const make = Effect.gen(function* () {
     attachments: ReadonlyArray<Attachment>,
     options: SendOptions,
     stop: Deferred.Deferred<void>,
+    when: Effect.Effect<boolean, PersistenceError>,
   ) =>
     Effect.gen(function* () {
       const checkStopped = Deferred.isDone(stop).pipe(
         Effect.flatMap((stopped) => (stopped ? Effect.fail(interruptedSend()) : Effect.void)),
       )
-      const { first, worktreeId } = yield* Effect.gen(function* () {
+      const pending = yield* Effect.gen(function* () {
         yield* checkStopped
+        if (!(yield* when)) return null
         let thread = yield* threads.get(threadId)
-        const firstMessage = !(yield* threads.started(threadId))
+        const first = !(yield* threads.started(threadId))
         if (options.worktree) {
           const attached = yield* threads.attachWorktree(threadId, options.worktree)
           thread = attached.thread
           yield* push.publish({ type: "thread.updated", thread })
           if (attached.pullRequestUrl !== null) yield* pullRequests.link(threadId, attached.pullRequestUrl)
         }
-        return { first: firstMessage, worktreeId: thread.worktreeId }
+        return { first, worktreeId: thread.worktreeId }
       }).pipe(exclusive(threadId))
+      if (pending === null) return false
 
-      if (worktreeId !== null) {
+      if (pending.worktreeId !== null) {
         yield* Effect.raceFirst(
-          worktrees.whenPrepared(worktreeId),
+          worktrees.whenPrepared(pending.worktreeId),
           Deferred.await(stop).pipe(Effect.andThen(Effect.fail(interruptedSend()))),
         )
       }
 
-      yield* Effect.gen(function* () {
-        const { thread: currentThread, turn } = yield* worktrees.exclusive(
+      return yield* Effect.gen(function* () {
+        const admitted = yield* worktrees.exclusive(
           Effect.gen(function* () {
             yield* checkStopped
+            if (!(yield* when)) return null
             const thread = yield* threads.get(threadId)
             if (thread.status === "archived") {
               return yield* new AgentError({ provider: "kkcode", message: "Cannot send to an archived thread" })
@@ -476,6 +492,7 @@ const make = Effect.gen(function* () {
             const { cwd } = yield* activeWorkspace(threadId)
             yield* threads.snapshotTurnBase(threadId, cwd)
             yield* checkStopped
+            if (!(yield* when)) return null
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
             yield* insertMessage(userMessage(threadId, prompt, attachments, now))
@@ -484,33 +501,47 @@ const make = Effect.gen(function* () {
             return { thread, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
           }),
         )
+        if (admitted === null) return false
+        const { thread: currentThread, turn } = admitted
         activeTurns.set(threadId, turn)
         pendingSends.delete(threadId)
         yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
-        if (first && currentThread.createdBy === "user" && prompt.trim() !== "")
+        if (pending.first && currentThread.createdBy === "user" && prompt.trim() !== "")
           yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
+        return true
       }).pipe(exclusive(threadId))
     })
 
-  const send = (
+  const sendWhen = (
     threadId: string,
     prompt: string,
     attachments: ReadonlyArray<Attachment>,
-    options: SendOptions = {},
-  ): Effect.Effect<void, SendError> =>
+    options: SendOptions,
+    when: Effect.Effect<boolean, PersistenceError>,
+  ): Effect.Effect<boolean, SendError> =>
     Effect.gen(function* () {
       if (busyThreads.has(threadId)) {
         return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
       }
-      // Claimed before the first await so two quick sends cannot both start a turn.
       busyThreads.add(threadId)
       const stop = Deferred.makeUnsafe<void>()
       pendingSends.set(threadId, stop)
-      yield* startTurn(threadId, prompt, attachments, options, stop).pipe(
+      const accepted = yield* startTurn(threadId, prompt, attachments, options, stop, when).pipe(
         Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
         Effect.ensuring(Effect.sync(() => pendingSends.get(threadId) === stop && pendingSends.delete(threadId))),
       )
+      if (!accepted) busyThreads.delete(threadId)
+      return accepted
     })
+
+  const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions = {}) =>
+    sendWhen(threadId, prompt, attachments, options, Effect.succeed(true)).pipe(Effect.asVoid)
+
+  const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
+    Effect.suspend(
+      () =>
+        activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
+    )
 
   const resumeAtReset = (threadId: string, enabled: boolean) =>
     Effect.gen(function* () {
@@ -603,7 +634,8 @@ const make = Effect.gen(function* () {
     send,
     resumeAtReset,
     steer: (threadId, text, attachments) =>
-      Effect.suspend(() => activeTurns.get(threadId)?.steer(text, attachments) ?? send(threadId, text, attachments)),
+      steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
+    steerWhen,
     interrupt: (threadId) =>
       Effect.suspend(() => {
         const turn = activeTurns.get(threadId)

@@ -517,6 +517,7 @@
   "message_worked_for": "Worked for {duration}",
   "sidebar_pull_request": "Open pull request #{number}",
   "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
+  "sidebar_watching": "Watching a pull request",
   "thread_workspace_picker": "Workspace",
   "settings_text_generation_model": "Thread naming",
   "settings_text_generation_model_hint": "Names a thread and its branch from its first message.",
@@ -623,6 +624,11 @@
       }
     }
   ],
+  "pr_watch": "Watch for changes",
+  "pr_watching": "Watching",
+  "pr_watch_stop": "Stop watching {name}",
+  "pr_watch_hint": "kkcode checks every minute and sends changes to this thread's agent",
+  "pr_watch_failed": "Could not change watching: {message}",
   "settings_notifications": "Notifications",
   "settings_notifications_hint": "KKCode notifies you about threads you are not looking at.",
   "settings_notifications_completed": "Finished turns",

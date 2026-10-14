@@ -236,6 +236,9 @@ const handlers: Handlers = {
   "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
   "pullRequests.create": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.create(threadId)),
+  "pullRequests.watch": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.watch(threadId, url)),
+  "pullRequests.unwatch": ({ threadId, url }) =>
+    PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
   "github.pullRequestDetail": ({ url }) => GitHub.use((github) => github.pullRequestDetail(url)),
