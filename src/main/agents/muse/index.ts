@@ -752,7 +752,8 @@ const make = Effect.gen(function* () {
       const run = runs.get(threadId)
       const { entry, sessionId, turnId } = run ?? {}
       if (!entry?.host.isAlive() || !sessionId || !turnId) return yield* museError("No turn is running on this thread")
-      const input = yield* promptParts(entry.host, sessionId, text, attachments, null)
+      // Muse 1.4.7 rejects skill parts on turn/steer; only turn/start expands them.
+      const input = yield* userInput(text, attachments)
       yield* entry.host
         .command("turn/steer", { sessionId, expectedTurnId: turnId, input })
         .pipe(Effect.mapError(toAgentError))
