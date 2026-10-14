@@ -884,5 +884,8 @@
   "vm_exit_fullscreen": "Exit full screen",
   "vm_floating_body": "The screen is floating over the conversation.",
   "vm_dock": "Move to side panel",
-  "vm_floating_resize": "Resize the VM screen"
+  "vm_floating_resize": "Resize the VM screen",
+  "settings_worktree_root": "Worktree root",
+  "settings_worktree_root_hint": "Directory for new worktrees, with one folder per project. Leave blank to keep them in .kkcode-worktrees beside each project. Existing worktrees stay where they are.",
+  "settings_worktree_root_absolute": "Enter an absolute path that starts with /."
 }

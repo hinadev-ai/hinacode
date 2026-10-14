@@ -3,6 +3,7 @@ import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
+import { MotionConfig } from "motion/react"
 import { StrictMode, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { Toaster } from "./components/ui/sonner.tsx"
@@ -34,11 +35,13 @@ function App() {
   }, [])
   // Remount on locale change so every message function runs again; router and atoms live outside.
   return (
-    <TooltipProvider key={locale}>
-      <RouterProvider router={router} />
-      {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
-      <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
-    </TooltipProvider>
+    <MotionConfig reducedMotion="user">
+      <TooltipProvider key={locale}>
+        <RouterProvider router={router} />
+        {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
+        <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
+      </TooltipProvider>
+    </MotionConfig>
   )
 }
 
