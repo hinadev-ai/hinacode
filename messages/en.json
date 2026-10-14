@@ -203,6 +203,8 @@
   "settings_keybindings_shortcut": "Shortcut",
   "settings_keybindings_actions": "Actions",
   "settings_keybindings_unbound": "Not set",
+  "settings_keybindings_when_terminal": "Only in the terminal",
+  "settings_keybindings_when_not_terminal": "Not in the terminal",
   "settings_keybindings_record": "Record",
   "settings_keybindings_record_for": "Record a shortcut for {command}",
   "settings_keybindings_recording": "Press a shortcut…",

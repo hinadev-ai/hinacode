@@ -203,6 +203,8 @@
   "settings_keybindings_shortcut": "快捷鍵",
   "settings_keybindings_actions": "操作",
   "settings_keybindings_unbound": "未設定",
+  "settings_keybindings_when_terminal": "僅在終端機中",
+  "settings_keybindings_when_not_terminal": "終端機中無效",
   "settings_keybindings_record": "錄製",
   "settings_keybindings_record_for": "為「{command}」錄製快捷鍵",
   "settings_keybindings_recording": "請按下快捷鍵…",
