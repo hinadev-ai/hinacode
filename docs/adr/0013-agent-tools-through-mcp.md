@@ -11,7 +11,7 @@ Every agent we run, and every one we are likely to add, can connect to an HTTP M
 
 ## Decision
 
-- Agent tools live on the one built-in MCP server (`src/main/mcp/server.ts`). A tool is one entry with an Effect Schema for its input and a handler that receives the calling thread's id.
+- Agent tools live on the one built-in MCP server (`src/main/mcp/`). A tool is an Effect AI `Tool` with an Effect Schema for its input, grouped into a `Toolkit` under `mcp/tools/`. Its handler reads the calling thread's id from `CallingThread`.
 - Each provider is wired to that server once. Codex gets the URL and headers in its thread config. Claude reaches it through an in-process relay (`agents/claude/mcp.ts`).
 - We don't define tools through provider-specific APIs.
 

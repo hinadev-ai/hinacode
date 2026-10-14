@@ -5,7 +5,7 @@ import * as Credentials from "./credentials.ts"
 import * as Server from "./server.ts"
 
 export { McpCredentials } from "./credentials.ts"
-export { LINEAR_API_KEY_SECRET } from "./server.ts"
+export { LINEAR_API_KEY_SECRET } from "./tools/index.ts"
 
 /** The credential store, which the agent runner needs before the server can be built. */
 export const credentialsLayer = Layer.mergeAll(Credentials.layer, PullRequests.layer, Secrets.layer)
