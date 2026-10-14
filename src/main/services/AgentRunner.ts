@@ -487,7 +487,6 @@ const make = Effect.gen(function* () {
         activeTurns.set(threadId, turn)
         pendingSends.delete(threadId)
         yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
-        // Automations title their threads from their own template.
         if (first && currentThread.createdBy === "user" && prompt.trim() !== "")
           yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
       }).pipe(exclusive(threadId))
