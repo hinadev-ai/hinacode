@@ -27,7 +27,7 @@ Color carries status on top of the tiers, as `AGENTS.md` describes: amber needs 
 
 - Text never goes below 4.5:1 against its surface, in either theme. The light palette's `muted-foreground` is already at 4.64:1 on `accent`, so there is no room for a fourth, fainter tier.
 - Dim with a color token, never with `opacity` on a row. Opacity also fades the muted text inside it, which drops to 2.9:1 in dark and 2.3:1 in light at 60% opacity. It also fades the status dot, which is the one part of a working row that should stay visible.
-- Expanding something is asking for it. A tool call's trigger brightens to `foreground` on hover and while it is open, and the output inside it keeps its normal contrast.
+- Expanding something is asking for it. A tool call's trigger brightens to `foreground` on hover, on keyboard focus and while it is open, and the output inside it keeps its normal contrast.
 
 ### Dark mode
 
