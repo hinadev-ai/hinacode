@@ -244,7 +244,6 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
       toast.error(m.sidebar_unarchive_failed({ message: errorMessage(cause) }))
     }
   }
-  /** The linked pull requests this thread is watching; the store hears about the stop from the push. */
   const watched = meta.links.filter((link) => link.watch !== null)
   const unwatch = async (url: string) => {
     try {
