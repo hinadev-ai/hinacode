@@ -44,8 +44,10 @@ pnpm test         # node --test for the pure logic (pollers, templates, signatur
 Run a built app with its own data directory, for example to keep a test profile apart from your real one:
 
 ```sh
-KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron out/main/index.js
+KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron --use-mock-keychain out/main/index.js
 ```
+
+On macOS, `--use-mock-keychain` keeps verification out of the login Keychain. Save only dummy secrets in these profiles. A separate data directory does not isolate the login Keychain. The e2e suite supplies this flag automatically.
 
 Simulate an exhausted Claude account without using the account:
 
@@ -59,7 +61,7 @@ Headless verification on a machine without a display uses Xvfb and Chrome DevToo
 
 ```sh
 Xvfb :99 -screen 0 1600x1000x24 &
-DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=9222 out/main/index.js
+KKCODE_USER_DATA=/tmp/kkcode-test DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --use-mock-keychain --remote-debugging-port=9222 out/main/index.js
 ```
 
 ## Layout

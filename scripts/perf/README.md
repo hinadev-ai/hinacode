@@ -38,7 +38,7 @@ python3 scripts/perf/instrument-bundle.py
 ! curl -fs "http://127.0.0.1:$PORT/json/version" >/dev/null
 ! curl -fs "http://127.0.0.1:$MAIN_PORT/json/list" >/dev/null
 setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env KKCODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
-  --no-sandbox --disable-gpu --remote-debugging-port="$3" --inspect="127.0.0.1:$4" out/main/index.js' \
+  --no-sandbox --disable-gpu --use-mock-keychain --remote-debugging-port="$3" --inspect="127.0.0.1:$4" out/main/index.js' \
   _ "$DATA" "$REPO" "$PORT" "$MAIN_PORT" >"$DATA/electron.log" 2>&1 </dev/null &
 
 node "$S/rpc.mjs" "$PORT" settings.get
