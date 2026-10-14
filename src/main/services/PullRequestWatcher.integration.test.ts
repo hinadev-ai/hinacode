@@ -184,6 +184,27 @@ describe("PullRequestWatcher", () => {
       }),
     )
 
+    it.effect("drops a stopped watch's poll after a replacement watch starts", () =>
+      Effect.gen(function* () {
+        const { threadId, url } = yield* watchedThread("restarted-after-stop", (u) => failing(u))
+        const hold = { asked: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
+        held.set(url, hold)
+        const pullRequests = yield* PullRequests
+        const original = yield* linkOf(threadId)
+
+        const running = yield* Effect.forkChild(sweep)
+        yield* Deferred.await(hold.asked)
+        yield* pullRequests.unwatch(threadId, url)
+        const replacement = yield* pullRequests.watch(threadId, url, ["reviewChanged"])
+        yield* Deferred.succeed(hold.release, undefined)
+        yield* Fiber.join(running)
+
+        expect(wakesFor(threadId)).toStrictEqual([])
+        expect((yield* linkOf(threadId))?.watch).toStrictEqual(replacement.watch)
+        expect(replacement.watch?.generation).not.toBe(original?.watch?.generation)
+      }),
+    )
+
     it.effect("gives up after repeated read failures and tells the thread why", () =>
       Effect.gen(function* () {
         const { threadId, url } = yield* watchedThread("unreadable", (u) => detailFor(u))
