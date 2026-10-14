@@ -2,8 +2,7 @@ import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "
 import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { type ExperimentalSettings, Locale, type Project, type Settings } from "../../shared/domain.ts"
-import { startThread } from "../lib/startThread.ts"
-import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
+import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { useTerminals } from "../stores/terminals.ts"
@@ -75,9 +74,7 @@ export const commands = [
     defaultKeys: "mod+n",
     title: m.command_thread_new,
     run: (ctx) => {
-      const current = ctx.threadId ? useThreads.getState().byId[ctx.threadId] : undefined
-      const projectId = current?.projectId ?? ctx.projects[0]?.id
-      if (projectId) void startThread(projectId, ctx.navigate)
+      if (ctx.projects.length > 0) usePalette.getState().show(NEW_THREAD_PREFIX)
       else useUi.getState().setAddProjectOpen(true)
     },
   },

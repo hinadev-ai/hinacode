@@ -155,6 +155,21 @@ Then("the open tab does not list the thread {string}", async ({ app, names }, ti
   await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeHidden()
 })
 
+const openThreadProjectId = async (page: Page) => {
+  const title = await page.getByRole("heading", { level: 1 }).textContent()
+  const threads = await rpc(page, "threads.list", undefined)
+  return threads.find((thread) => thread.title === title)?.projectId
+}
+
+Then("the open thread belongs to the project {string}", async ({ app, projectIds }, project: string) => {
+  expect(await openThreadProjectId(app.page)).toBe(projectIds.get(project))
+})
+
+Then("the open thread belongs to the first project", async ({ app }) => {
+  const [first] = await rpc(app.page, "projects.list", undefined)
+  expect(await openThreadProjectId(app.page)).toBe(first?.id)
+})
+
 Then("the thread {string} is stored as {string}", async ({ app, names }, title: string, status: string) => {
   await expect
     .poll(async () => {

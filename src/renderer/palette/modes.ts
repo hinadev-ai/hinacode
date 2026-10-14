@@ -1,8 +1,9 @@
 import { m } from "../paraglide/messages.js"
+import { rankPalette } from "./rank.ts"
 import { fileSearchSource, rankLiteral, threadSearchSource } from "./search.tsx"
-import { commandsSource, filesSource, projectsSource, threadsSource } from "./sources.tsx"
+import { commandsSource, filesSource, newThreadSource, projectsSource, threadsSource } from "./sources.tsx"
 import type { PaletteGroup, PaletteMode } from "./types.ts"
-import { COMMAND_PREFIX, SEARCH_PREFIX } from "./usePalette.ts"
+import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX } from "./usePalette.ts"
 
 const goTo: PaletteMode = {
   id: "goto",
@@ -20,6 +21,15 @@ export const paletteModes: ReadonlyArray<PaletteMode> = [
     placeholder: m.palette_search_placeholder,
     sources: [threadSearchSource, fileSearchSource],
     rank: rankLiteral,
+  },
+  {
+    id: "newThread",
+    prefix: NEW_THREAD_PREFIX,
+    placeholder: m.palette_new_thread_placeholder,
+    sources: [newThreadSource],
+    // The source's order, without recent items first, so Enter picks the open thread's project.
+    rank: (items, query) => rankPalette(items, query, []),
+    runsChords: true,
   },
   goTo,
 ]
