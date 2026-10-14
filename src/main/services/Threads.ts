@@ -10,7 +10,8 @@ import {
   isThreadBusy,
   Thread,
   type ThreadStatus,
-  type WorktreeSource,
+  type CheckoutTarget,
+  type WorkspaceChoice,
 } from "../../shared/domain.ts"
 import { parseGitHubRepository } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
@@ -19,6 +20,7 @@ import {
   type PersistenceError,
   persistence,
   PullRequestElsewhereError,
+  type RootBusyError,
   ThreadBusyError,
   ThreadStartedError,
   type WorktreeBusyError,
@@ -99,13 +101,14 @@ export class Threads extends Context.Service<
     /** Whether the thread has any message yet. */
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
     /**
-     * Moves a thread that has not started into a new worktree. A `branch` source forks a branch named after
-     * the thread's title from `baseRef`, or from the project's current branch when it is empty. A
-     * `pullRequest` source checks out that pull request, and `pullRequestUrl` names it so it can be linked.
+     * Sets up where a thread that has not started runs. `local` switches the project root to the target.
+     * `worktree` moves the thread into a new worktree: a `branch` target forks a branch named after the
+     * thread's title from `ref`, or from the project's current branch when it is empty. A `pullRequest`
+     * target checks out that pull request, and `pullRequestUrl` names it so it can be linked.
      */
-    readonly attachWorktree: (
+    readonly prepareWorkspace: (
       id: string,
-      source: WorktreeSource,
+      choice: WorkspaceChoice,
     ) => Effect.Effect<
       { readonly thread: Thread; readonly pullRequestUrl: string | null },
       | PersistenceError
@@ -116,6 +119,7 @@ export class Threads extends Context.Service<
       | GitHubError
       | Schema.SchemaError
       | PullRequestElsewhereError
+      | RootBusyError
     >
     /**
      * Marks the thread archived and ends its terminals. With `Settings.archive.removeWorktree` on, it first
@@ -298,7 +302,7 @@ const make = Effect.gen(function* () {
       return next
     })
 
-  const pullRequestWorktree = (projectId: string, selector: string) =>
+  const resolvePullRequest = (projectId: string, selector: string) =>
     Effect.gen(function* () {
       const { rootPath } = yield* projects.get(projectId)
       const head = yield* github.pullRequestHead(rootPath, selector)
@@ -312,29 +316,54 @@ const make = Effect.gen(function* () {
       ) {
         return yield* new PullRequestElsewhereError({ url: head.url, repository: `${origin.owner}/${origin.name}` })
       }
+      return head
+    })
+
+  const checkoutRoot = (thread: Thread, target: CheckoutTarget) =>
+    Effect.gen(function* () {
+      if (target._tag === "pullRequest") {
+        const head = yield* resolvePullRequest(thread.projectId, target.selector)
+        yield* worktrees.checkoutPullRequest(thread.projectId, head, thread.id)
+        return { thread, pullRequestUrl: head.url }
+      }
+      const ref = target.ref.trim()
+      if (ref !== "" && ref !== (yield* worktrees.currentBranch(thread.projectId))) {
+        yield* worktrees.checkout(thread.projectId, ref, thread.id)
+      }
+      return { thread, pullRequestUrl: null }
+    })
+
+  const pullRequestWorktree = (projectId: string, selector: string) =>
+    Effect.gen(function* () {
+      const head = yield* resolvePullRequest(projectId, selector)
       return { worktree: yield* worktrees.createFromPullRequest(projectId, head), pullRequestUrl: head.url }
     })
 
-  const attachWorktree = (id: string, source: WorktreeSource) =>
+  const attachWorktree = (thread: Thread, target: CheckoutTarget) =>
     Effect.gen(function* () {
-      const thread = yield* get(id)
-      if (thread.worktreeId !== null || (yield* started(id))) return yield* new ThreadStartedError({ id })
       const { worktree, pullRequestUrl } =
-        source._tag === "pullRequest"
-          ? yield* pullRequestWorktree(thread.projectId, source.selector)
+        target._tag === "pullRequest"
+          ? yield* pullRequestWorktree(thread.projectId, target.selector)
           : {
               worktree: yield* worktrees.create({
                 projectId: thread.projectId,
                 branch: `kk/${slugifyBranch(thread.title) || randomName()}`,
-                baseRef: source.baseRef.trim() || (yield* worktrees.currentBranch(thread.projectId)),
+                baseRef: target.ref.trim() || (yield* worktrees.currentBranch(thread.projectId)),
               }),
               pullRequestUrl: null,
             }
       const updatedAt = yield* nowIso
-      yield* sql`UPDATE thread SET worktree_id = ${worktree.id}, updated_at = ${updatedAt} WHERE id = ${id}`.pipe(
+      yield* sql`UPDATE thread SET worktree_id = ${worktree.id}, updated_at = ${updatedAt} WHERE id = ${thread.id}`.pipe(
         Effect.mapError(persistence("threads.attachWorktree")),
       )
       return { thread: { ...thread, worktreeId: worktree.id, updatedAt }, pullRequestUrl }
+    })
+
+  const prepareWorkspace = (id: string, { mode, target }: WorkspaceChoice) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (thread.worktreeId !== null || (yield* started(id))) return yield* new ThreadStartedError({ id })
+      return yield* mode === "local" ? checkoutRoot(thread, target) : attachWorktree(thread, target)
     })
 
   const listFiles = (id: string) =>
@@ -406,7 +435,7 @@ const make = Effect.gen(function* () {
     create,
     update,
     started,
-    attachWorktree,
+    prepareWorkspace,
     listFiles,
     changes,
     captureTurnBase,

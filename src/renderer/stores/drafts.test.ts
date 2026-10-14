@@ -29,7 +29,7 @@ describe("useDrafts", () => {
     const { setText, addAttachments } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null, comments: [] })
+    expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], workspace: null, comments: [] })
     expect(draftOf("b")).toStrictEqual(emptyDraft)
   })
 
@@ -37,7 +37,7 @@ describe("useDrafts", () => {
     const { setText, addAttachments, take } = useDrafts.getState()
     setText("a", "hello")
     addAttachments("a", [attachment("x")])
-    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], worktree: null, comments: [] })
+    expect(take("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], workspace: null, comments: [] })
     expect(draftOf("a")).toStrictEqual(emptyDraft)
   })
 
@@ -60,7 +60,7 @@ describe("useDrafts", () => {
     expect(draftOf("a")).toStrictEqual({
       text: "first\nsecond",
       attachments: [attachment("x"), attachment("y")],
-      worktree: null,
+      workspace: null,
       comments: [],
     })
   })
