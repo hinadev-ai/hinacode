@@ -162,7 +162,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
 export const { Given, When, Then, AfterScenario } = createBdd(test)
 
-/** Scenarios share a worker's app, so each one hands it back in English, unbound and on the home route. */
+/** Scenarios share a worker's app, so each one hands it back in English, unbound, on the Threads tab and on the home route. */
 AfterScenario(async ({ app, $testInfo }) => {
   if ($testInfo.status !== $testInfo.expectedStatus) {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
@@ -175,7 +175,10 @@ AfterScenario(async ({ app, $testInfo }) => {
     appearance: defaultSettings.appearance,
   })
   await app.page.emulateMedia({ colorScheme: null })
-  await app.page.evaluate(() => localStorage.removeItem("kkcode.sidebarProjects"))
+  await app.page.evaluate(() => {
+    localStorage.removeItem("kkcode.sidebarProjects")
+    localStorage.removeItem("kkcode.sidebarTab")
+  })
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
