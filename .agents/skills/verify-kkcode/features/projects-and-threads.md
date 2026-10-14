@@ -4,13 +4,15 @@ A user adds a local repository as a project, starts threads in it, and organizes
 
 ## Automated coverage
 
-`e2e/features/projects.feature` and `e2e/features/threads.feature`: adding a project from a typed path, the not-a-folder and folder-already-used errors, creating a thread from the sidebar, opening it, collapsing and expanding a project group, keyboard reorder and its persistence, inline rename, archive and unarchive through the Archived tab, the text filter and the project filter with its persistence, delete from the row menu, and projects and threads surviving a restart.
+`e2e/features/projects.feature` and `e2e/features/threads.feature`: adding a project from a typed path, the not-a-folder and folder-already-used errors, creating a thread from the sidebar, opening it, collapsing and expanding a project group, keyboard reorder and its persistence, inline rename, archive and unarchive through the Archived tab, the Inbox order and its persistence, pin and unpin with persistence, the text filter and the project filter with its persistence, delete from the row menu, and projects and threads surviving a restart.
 
 ## Sub-features
 
 - `project-add` (e2e) adds a project from a typed root path, with an optional setup script.
 - `project-add-errors` (e2e) rejects a path that is not a folder and a folder another project already uses.
-- `thread-new` (e2e) creates a thread immediately with a placeholder title and focuses the composer; `Ctrl+N` and the home page button use the same action.
+- `thread-new` (e2e) creates a thread immediately with a placeholder title and focuses the composer. `Ctrl+N` and the home page button open the palette's `+` project picker, with the open thread's project first and `Ctrl+1` to `Ctrl+9` per project; both are covered in `e2e/features/command-palette.feature`.
+- `sidebar-inbox` (e2e) lists every project's active threads in one list, most recently updated first; the sidebar reopens on the last tab picked.
+- `thread-pin` (e2e) pins a thread from the row menu into the `Pinned` region above the tabs and leaves it out of the tabs until it is unpinned.
 - `sidebar-group` (e2e) lists threads under their project and collapses or expands the group.
 - `thread-reorder` (e2e, keyboard) moves a thread within its project; pointer drag is the same sortable with a pointer sensor.
 - `thread-rename` (e2e) renames a thread inline from the row menu.
@@ -25,9 +27,9 @@ A user adds a local repository as a project, starts threads in it, and organizes
 
 - Sidebar `Add project` button, the home page `Add project Ctrl+Shift+N` button, or `Ctrl+Shift+N`.
 - Sidebar `New thread in <project>` button, the home page `New thread Ctrl+N` button, or `Ctrl+N` (uses the open thread's project, else the first project).
-- Thread row: click the title link to open it; `Actions for <title>` opens `Rename`, `Archive` (or `Archive…` when archiving removes worktrees), `Delete…`; `Reorder <title>` is the drag handle.
+- Thread row: click the title link to open it; `Actions for <title>` opens `Rename`, `Pin` or `Unpin`, `Archive` (or `Archive…` when archiving removes worktrees), `Delete…`; `Reorder <title>` is the drag handle.
 - `Show or hide threads in <project>` collapses a project group.
-- Sidebar tabs `Threads` and `Archived`, the `Filter threads and projects` search field and the `Filter by project` menu. Archived rows have an `Unarchive <title>` button.
+- Sidebar tabs `Inbox`, `Threads` and `Archived`, the `Pinned` region above them, the `Filter threads and projects` search field and the `Filter by project` menu. Archived rows have an `Unarchive <title>` button.
 - There is no UI to edit or remove a project. `projects.update` and `projects.delete` exist only as rpc.
 
 ## Driving it with agent-browser
