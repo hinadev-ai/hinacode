@@ -44,6 +44,17 @@ export type CatalogModel = typeof CatalogModel.Type
 
 export const ModelList = Schema.Struct({ models: Schema.Array(CatalogModel) })
 
+/** One `skill/list` row: a typed-invocable shortcut spelling of a skill. */
+export const SkillCatalogEntry = Schema.Struct({
+  /** The shortcut token without the leading slash, bare or plugin-qualified (`acme:deploy`). */
+  selector: Schema.String,
+  description: Schema.String,
+  argumentHint: Schema.optional(Schema.String),
+})
+export type SkillCatalogEntry = typeof SkillCatalogEntry.Type
+
+export const SkillList = Schema.Struct({ skills: Schema.Array(SkillCatalogEntry) })
+
 /** `usage/changed`: the plan's usage as the host last saw it, with the provider's percentages verbatim. */
 export const SubscriptionUsage = Schema.Struct({
   observedAtMs: Schema.Number,

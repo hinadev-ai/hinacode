@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
@@ -51,13 +51,31 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
   }
 }
 
-const startTurn = (accessMode: AccessMode, setup: (marker: string) => void = () => {}) =>
+const writeProbeSkill = (cwd: string) => {
+  const skillDir = join(cwd, ".agents", "skills", "probe-echo")
+  mkdirSync(skillDir, { recursive: true })
+  writeFileSync(
+    join(skillDir, "SKILL.md"),
+    [
+      "---",
+      "name: probe-echo",
+      "description: Echo the probe marker word back to the user.",
+      'argument-hint: "[word]"',
+      "---",
+      "",
+      "PROBE-SKILL-BODY: reply with the word the user gave.",
+      "",
+    ].join("\n"),
+  )
+}
+
+const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTurnInput) => void = () => {}) =>
   Effect.gen(function* () {
     const provider = yield* MuseProvider
     turns += 1
     const marker = `kk-muse-turn-${turns}-${Date.now()}`
-    setup(marker)
     const turnInput = input(accessMode, marker)
+    setup(marker, turnInput)
     const events: Array<AgentEvent> = []
     const arrived = yield* PubSub.unbounded<AgentEvent>()
     const fiber = yield* provider.runTurn(turnInput).pipe(
@@ -306,6 +324,79 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           ])
           expect(usage!.models[0]!.outputTokens).toBeGreaterThan(0)
           expect(usage!.transcripts).toBeGreaterThan(1)
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "lists the workspace's skills for the composer and expands a typed skill invocation",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const cwd = join(root, "ws-skills")
+          writeProbeSkill(cwd)
+
+          const commands = yield* provider.listCommands({ threadId: "thread-skills", cwd, home: null })
+          expect(commands).toContainEqual({
+            trigger: "/",
+            name: "probe-echo",
+            description: "Echo the probe marker word back to the user.",
+            argumentHint: "[word]",
+          })
+
+          const events: Array<AgentEvent> = []
+          yield* provider
+            .runTurn({
+              threadId: "thread-skills",
+              prompt: "/probe-echo banana",
+              instructions: AGENT_INSTRUCTIONS,
+              attachments: [],
+              cwd,
+              model: FAKE_MODEL_ID,
+              effort: null,
+              fastMode: false,
+              accessMode: "supervised",
+              resumeSessionId: null,
+              home: null,
+              mcpServer: { url: mcp!.url, headers: { authorization: "Bearer [REDACTED]" } },
+            })
+            .pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event))))
+          // The host expands the skill, so its body reaches the model endpoint.
+          yield* Effect.promise(() => endpoint.requested("PROBE-SKILL-BODY"))
+          expect(events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "accepts a known slash skill as ordinary steering text with file attachments",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          let marker = ""
+          let cwd = ""
+          const turn = yield* startTurn("full", (held, turnInput) => {
+            marker = held
+            cwd = turnInput.cwd
+            writeProbeSkill(cwd)
+            endpoint.hold(held)
+          })
+          yield* Effect.promise(() => endpoint.requested(marker))
+          const commands = yield* provider.listCommands({ threadId: turn.threadId, cwd, home: null })
+          expect(commands.some((command) => command.name === "probe-echo")).toBe(true)
+          const path = join(cwd, "attached.txt")
+          writeFileSync(path, "hello")
+          yield* provider.steer(turn.threadId, "/probe-echo steering-fruit", [
+            { id: "steering-file", name: "attached.txt", path, mime: "text/plain", kind: "file", bytes: 5 },
+          ])
+          yield* provider.steer(turn.threadId, "ordinary follow-up", [])
+          yield* provider.interrupt(turn.threadId)
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
         }),
       ),
     TURN_TIMEOUT,
