@@ -103,6 +103,7 @@ describe("toPullRequestDetail", () => {
     body: "Adds a PR tab.",
     baseRefName: "main",
     headRefName: "feat/pr-tab",
+    headRefOid: "abc1234",
     mergeable: "CONFLICTING",
     statusCheckRollup: [
       {
@@ -138,6 +139,7 @@ describe("toPullRequestDetail", () => {
       body: "Adds a PR tab.",
       baseRef: "main",
       headRef: "feat/pr-tab",
+      head: "abc1234",
       mergeable: "conflicting",
       checkRuns: [
         { name: "CI / test", status: "failing", url: "https://github.com/kjj6198/kkcode/actions/runs/1/job/2" },

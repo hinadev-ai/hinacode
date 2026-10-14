@@ -11,6 +11,7 @@ import archive from "./migrations/0009_archive.ts"
 import agentAccounts from "./migrations/0010_agent_accounts.ts"
 import museProvider from "./migrations/0011_muse_provider.ts"
 import accountHome from "./migrations/0012_account_home.ts"
+import pullRequestWatch from "./migrations/0013_pull_request_watch.ts"
 
 const run = Migrator.make({})
 
@@ -31,5 +32,6 @@ export const runMigrations = run({
     "10_agent_accounts": agentAccounts,
     "11_muse_provider": museProvider,
     "12_account_home": accountHome,
+    "13_pull_request_watch": pullRequestWatch,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

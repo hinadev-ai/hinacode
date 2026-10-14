@@ -149,6 +149,8 @@ export const PullRequestDetail = Schema.Struct({
   body: Schema.String,
   baseRef: Schema.String,
   headRef: Schema.String,
+  /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
+  head: Schema.String,
   mergeable: Mergeable,
   checkRuns: Schema.Array(CheckRun),
 })
@@ -445,11 +447,61 @@ export const VmHostStatus = Schema.Union([
 ])
 export type VmHostStatus = typeof VmHostStatus.Type
 
+/** What a pull request watch can report. The absence of news, such as pending checks, is not an event. */
+export const WatchEventKind = Schema.Literals([
+  "checksFailed",
+  "checksPassed",
+  "reviewChanged",
+  "conflicting",
+  "mergedOrClosed",
+])
+export type WatchEventKind = typeof WatchEventKind.Type
+
+export const allWatchEventKinds: ReadonlyArray<WatchEventKind> = [
+  "checksFailed",
+  "checksPassed",
+  "reviewChanged",
+  "conflicting",
+  "mergedOrClosed",
+]
+
+/** The last state of a watched pull request that its thread was told about. */
+export const PullRequestWatchSnapshot = Schema.Struct({
+  status: PullRequestStatus,
+  checks: Schema.NullOr(ChecksStatus),
+  review: Schema.NullOr(ReviewStatus),
+  mergeable: Mergeable,
+  /** Head commit oid. Check news is per head, so a push makes the same failure news again. */
+  head: Schema.String,
+  /** Names of the failing checks, so a second failure still fires while checks stay failing. */
+  failingChecks: Schema.Array(Schema.String),
+})
+export type PullRequestWatchSnapshot = typeof PullRequestWatchSnapshot.Type
+
+/**
+ * A live watch on one linked pull request. `generation` is fresh every time the watch is started, so a
+ * poll that read GitHub under an older generation can tell its result is stale and drop it. `snapshot` is
+ * null until the first poll, and it only moves when a poll's news was delivered or it found no news.
+ */
+export const PullRequestWatch = Schema.Struct({
+  generation: Schema.String,
+  events: Schema.Array(WatchEventKind),
+  snapshot: Schema.NullOr(PullRequestWatchSnapshot),
+  wakes: Schema.Int,
+  /** Consecutive polls that could not read the pull request. */
+  failures: Schema.Int,
+  lastPolledAt: Schema.NullOr(Timestamp),
+  lastWokeAt: Schema.NullOr(Timestamp),
+})
+export type PullRequestWatch = typeof PullRequestWatch.Type
+
 export const PullRequestLink = Schema.Struct({
   id: Schema.String,
   threadId: Schema.String,
   url: Schema.String,
   createdAt: Timestamp,
+  /** Null when nobody watches this link. */
+  watch: Schema.NullOr(PullRequestWatch),
 })
 export type PullRequestLink = typeof PullRequestLink.Type
 /** A listening TCP port and the process that owns it. */

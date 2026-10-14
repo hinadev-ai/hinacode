@@ -96,6 +96,12 @@ export class AgentRunner extends Context.Service<
       text: string,
       attachments: ReadonlyArray<Attachment>,
     ) => Effect.Effect<void, SendError>
+    readonly steerWhen: (input: {
+      readonly threadId: string
+      readonly text: string
+      readonly attachments: ReadonlyArray<Attachment>
+      readonly when: Effect.Effect<boolean, PersistenceError>
+    }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
@@ -344,8 +350,13 @@ const make = Effect.gen(function* () {
         if (dirty.size > 0 && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
       }).pipe(exclusive(thread.id))
 
-    const steer = (text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steer = (
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+      when: Effect.Effect<boolean, PersistenceError>,
+    ) =>
       Effect.gen(function* () {
+        if (!(yield* when)) return false
         yield* provider.steer(thread.id, text, attachments)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
@@ -358,6 +369,7 @@ const make = Effect.gen(function* () {
         yield* insertMessage(userMessage(thread.id, text, attachments, now))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
+        return true
       }).pipe(exclusive(thread.id))
 
     const finish = Effect.gen(function* () {
@@ -421,8 +433,15 @@ const make = Effect.gen(function* () {
       Effect.catch((error) => Effect.logWarning("thread naming failed", error)),
     )
 
-  const startTurn = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions) =>
+  const startTurn = (
+    threadId: string,
+    prompt: string,
+    attachments: ReadonlyArray<Attachment>,
+    options: SendOptions,
+    when: Effect.Effect<boolean, PersistenceError>,
+  ) =>
     Effect.gen(function* () {
+      if (!(yield* when)) return false
       let thread = yield* threads.get(threadId)
       const first = !(yield* threads.started(threadId))
       if (options.worktree) {
@@ -438,6 +457,7 @@ const make = Effect.gen(function* () {
       // worktree removal from deleting the directory this turn is about to run in.
       const turn = yield* worktrees.exclusive(
         Effect.gen(function* () {
+          if (!(yield* when)) return null
           const { cwd } = yield* activeWorkspace(thread.id)
           yield* threads.snapshotTurnBase(threadId, cwd)
           const now = yield* nowIso
@@ -448,29 +468,43 @@ const make = Effect.gen(function* () {
           return makeTurn(thread, provider, cwd, home, assistant)
         }),
       )
+      if (turn === null) return false
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
       // Automations title their threads from their own template.
       if (first && thread.createdBy === "user" && prompt.trim() !== "")
         yield* Effect.forkDetach(nameThreadWithPullRequestScope(thread, prompt))
+      return true
     }).pipe(exclusive(threadId))
 
-  const send = (
+  const sendWhen = (
     threadId: string,
     prompt: string,
     attachments: ReadonlyArray<Attachment>,
-    options: SendOptions = {},
-  ): Effect.Effect<void, SendError> =>
+    options: SendOptions,
+    when: Effect.Effect<boolean, PersistenceError>,
+  ): Effect.Effect<boolean, SendError> =>
     Effect.gen(function* () {
       if (busyThreads.has(threadId)) {
         return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
       }
       // Claimed before the first await so two quick sends cannot both start a turn.
       busyThreads.add(threadId)
-      yield* startTurn(threadId, prompt, attachments, options).pipe(
+      const accepted = yield* startTurn(threadId, prompt, attachments, options, when).pipe(
         Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
       )
+      if (!accepted) busyThreads.delete(threadId)
+      return accepted
     })
+
+  const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions = {}) =>
+    sendWhen(threadId, prompt, attachments, options, Effect.succeed(true)).pipe(Effect.asVoid)
+
+  const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
+    Effect.suspend(
+      () =>
+        activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
+    )
 
   const resumeAtReset = (threadId: string, enabled: boolean) =>
     Effect.gen(function* () {
@@ -563,7 +597,8 @@ const make = Effect.gen(function* () {
     send,
     resumeAtReset,
     steer: (threadId, text, attachments) =>
-      Effect.suspend(() => activeTurns.get(threadId)?.steer(text, attachments) ?? send(threadId, text, attachments)),
+      steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
+    steerWhen,
     interrupt: (threadId) =>
       Effect.suspend(() => activeTurns.get(threadId)?.provider.interrupt(threadId) ?? Effect.void),
     setAccessMode: (threadId, accessMode) =>
