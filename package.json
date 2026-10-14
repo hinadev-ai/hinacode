@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "postinstall": "node scripts/node-pty-spawn-helper.mjs",
+    "postinstall": "node scripts/node-pty-spawn-helper.mjs && node scripts/dev-app-identity.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -66,7 +66,7 @@
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "electron": "44.7.0",
-    "electron-builder": "26.15.3",
+    "electron-builder": "26.17.0",
     "electron-vite": "5.0.0",
     "fuzzysort": "4.0.2",
     "mermaid": "12.1.0",
