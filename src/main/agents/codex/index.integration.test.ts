@@ -53,6 +53,7 @@ const setControl = (control: Control) => writeFileSync(controlPath, JSON.stringi
 const received = (): Array<Received> =>
   readFileSync(logPath, "utf8")
     .split("\n")
+    .slice(0, -1)
     .filter(Boolean)
     .map((line) => JSON.parse(line))
 
