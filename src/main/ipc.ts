@@ -175,6 +175,7 @@ const handlers: Handlers = {
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
+  "projects.fetch": ({ id }) => Worktrees.use((worktrees) => worktrees.fetch(id)),
   "projects.pullRequests": ({ id }) =>
     Effect.gen(function* () {
       const { rootPath } = yield* Projects.use((projects) => projects.get(id))
@@ -221,8 +222,8 @@ const handlers: Handlers = {
   "updates.install": () => Updates.use((updates) => updates.install),
 
   "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
-  "threads.send": ({ threadId, prompt, attachments = [], worktree }) =>
-    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { worktree })),
+  "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
+    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace })),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),

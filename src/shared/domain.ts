@@ -159,12 +159,22 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
 
-/** Where a thread's new worktree starts: a new branch forked from `baseRef`, or an open pull request's head. */
-export const WorktreeSource = Schema.Union([
-  Schema.TaggedStruct("branch", { baseRef: Schema.String }),
+/** A branch or other ref, or an open pull request, as picked in the composer. */
+export const CheckoutTarget = Schema.Union([
+  Schema.TaggedStruct("branch", { ref: Schema.String }),
   Schema.TaggedStruct("pullRequest", { selector: PullRequestSelector }),
 ])
-export type WorktreeSource = typeof WorktreeSource.Type
+export type CheckoutTarget = typeof CheckoutTarget.Type
+
+/**
+ * Where a thread's first turn runs. `local` switches the project root to the target. `worktree` makes a new
+ * checkout: a new branch forked from the target ref, or the pull request's head.
+ */
+export const WorkspaceChoice = Schema.Struct({
+  mode: Schema.Literals(["local", "worktree"]),
+  target: CheckoutTarget,
+})
+export type WorkspaceChoice = typeof WorkspaceChoice.Type
 
 /** An open pull request the worktree picker can check out. */
 export const OpenPullRequest = Schema.Struct({
