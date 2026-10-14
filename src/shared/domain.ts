@@ -296,7 +296,7 @@ export const Message = Schema.Struct({
 })
 export type Message = typeof Message.Type
 
-export const Locale = Schema.Literals(["en", "zh-TW"])
+export const Locale = Schema.Literals(["en", "zh-TW", "ja"])
 export type Locale = typeof Locale.Type
 
 export const ThemeId = Schema.Literals([

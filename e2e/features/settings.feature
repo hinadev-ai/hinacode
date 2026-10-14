@@ -2,16 +2,26 @@ Feature: Settings
   Language, default models, keyboard shortcuts and integration secrets are chosen once and apply
   on every start.
 
-  Scenario: Switching the language re-renders the app in Traditional Chinese
+  Scenario Outline: Switching the language re-renders the app in <language>
     When I open settings
-    And I choose the language "繁體中文"
-    Then the settings heading reads "設定"
-    And the language "zh-TW" is saved
+    And I choose the language "<language>"
+    Then the settings heading reads "<settings>"
+    And the language "<locale>" is saved
 
-  Scenario: The saved language is applied at startup
-    Given the saved language is "zh-TW"
+    Examples:
+      | language | locale | settings |
+      | 繁體中文 | zh-TW  | 設定     |
+      | 日本語   | ja     | 設定     |
+
+  Scenario Outline: The saved language is applied at startup
+    Given the saved language is "<locale>"
     When the app restarts
-    Then the sidebar is labelled "專案與對話串"
+    Then the sidebar is labelled "<sidebar>"
+
+    Examples:
+      | locale | sidebar                |
+      | zh-TW  | 專案與對話串           |
+      | ja     | プロジェクトとスレッド |
 
   Scenario: A default model preselects in the new thread composer
     Given a project "demo" for my repository
