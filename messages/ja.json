@@ -36,6 +36,8 @@
   "thread_status_running": "実行中",
   "thread_status_awaiting_approval": "承認待ち",
   "thread_status_limited": "上限到達",
+  "thread_status_unseen_completed": "完了、まだ開いていません",
+  "thread_status_unseen_failed": "失敗、まだ開いていません",
   "thread_usage_limit_title": "利用上限に達しました",
   "thread_usage_limit_reset": "{time} にリセットされます。",
   "thread_usage_limit_resume_at_reset": "リセット後に再開",

@@ -36,6 +36,8 @@
   "thread_status_running": "Running",
   "thread_status_awaiting_approval": "Awaiting approval",
   "thread_status_limited": "Limited",
+  "thread_status_unseen_completed": "Finished, not yet opened",
+  "thread_status_unseen_failed": "Failed, not yet opened",
   "thread_usage_limit_title": "Usage limit reached",
   "thread_usage_limit_reset": "Resets at {time}.",
   "thread_usage_limit_resume_at_reset": "Resume at reset",
