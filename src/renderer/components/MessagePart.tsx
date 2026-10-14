@@ -178,7 +178,11 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
   return (
     <button type="button" onClick={() => open(part.callId)} className={`my-1 ${disclosureTrigger}`}>
       <span className="size-3.5 shrink-0" />
-      {provider ? <ProviderIcon provider={provider} /> : <RiToolsLine aria-hidden className="size-3.5 shrink-0" />}
+      {provider ? (
+        <ProviderIcon provider={provider} muted />
+      ) : (
+        <RiToolsLine aria-hidden className="size-3.5 shrink-0" />
+      )}
       <span className="shrink-0 font-medium">
         <Highlighted text={name} />
       </span>
