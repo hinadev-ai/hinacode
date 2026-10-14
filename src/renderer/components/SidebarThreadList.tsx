@@ -566,8 +566,10 @@ const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
+  // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
+  // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
       {branch !== null && (
         <span
           className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"
