@@ -111,6 +111,21 @@ test("replays message pushes buffered after the snapshot", async () => {
   ])
 })
 
+test("drops pushes the snapshot already holds when the reply overtakes them", async () => {
+  const loading = store().load(threadId)
+  transcriptResponse.resolve({
+    result: { messages: [assistant("ab")], approvals: [], questions: [], secretRequests: [], seq: 2 },
+  })
+  await loading
+  vi.useFakeTimers()
+  store().receive(event(1, { type: "text_delta", text: "a" }))
+  store().receive(event(2, { type: "text_delta", text: "b" }))
+  store().receive(event(3, { type: "text_delta", text: "c" }))
+  vi.runAllTimers()
+
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abc" }])
+})
+
 test("ignores pushes for threads that were never opened", () => {
   store().receive(event(1, { type: "text_delta", text: "unseen" }))
   expect(store().byThread).toStrictEqual({})
