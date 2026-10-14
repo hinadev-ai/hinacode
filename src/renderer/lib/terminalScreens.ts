@@ -71,7 +71,6 @@ const start = async (id: string, screen: Screen) => {
     onResize: resize,
   })
   await term.init()
-  // init() measures the element for its first size without reporting it through onResize.
   void callPromise("terminal.resize", { id, cols: term.cols, rows: term.rows }).catch(ignore)
   if (!screens.has(id)) return term.destroy()
   screen.term = term

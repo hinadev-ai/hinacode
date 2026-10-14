@@ -55,8 +55,6 @@ export interface IssuePayload {
   readonly createdAt: string
 }
 
-// github.issue
-
 const GithubIssues = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({
@@ -117,8 +115,6 @@ export const pollGithubIssues = (gh: RunGh, trigger: Trigger<"github.issue">, cu
     } satisfies PollResult
   })
 
-// linear.issue
-
 export interface LinearIssueNode {
   readonly id: string
   readonly identifier: string
@@ -175,8 +171,6 @@ export const pollLinearIssues = (list: ListLinearIssues, trigger: Trigger<"linea
       ),
     } satisfies PollResult
   })
-
-// slack.mention
 
 const SlackSearch = Schema.Union([
   Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),

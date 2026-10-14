@@ -59,8 +59,6 @@ const make = Effect.gen(function* () {
           const stream = query({
             prompt: prompt.slice(0, PROMPT_LIMIT),
             options: {
-              // The SDK replaces the child env instead of merging it.
-              env: { ...process.env },
               ...(pathToClaudeCodeExecutable === undefined ? {} : { pathToClaudeCodeExecutable }),
               model,
               effort: "low",

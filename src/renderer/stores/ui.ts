@@ -84,7 +84,6 @@ interface UiState {
   /** Bumped to ask the open thread to interrupt its running turn. */
   readonly interruptRequest: number
   readonly addProjectOpen: boolean
-  /** The thread whose find bar is open, or null. */
   readonly findThreadId: string | null
   readonly findQuery: string
   /** The message to start at, set when global search opens the bar on one of its results. */

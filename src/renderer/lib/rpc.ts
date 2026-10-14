@@ -106,7 +106,6 @@ export const commandsAtom = Atom.family((key: string) =>
 
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 
-/** The branch checked out in the project root. Asked again when the window comes back, in case it changed. */
 export const projectIconAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.icon", { id: projectId })).pipe(Atom.keepAlive),
 )
@@ -115,7 +114,6 @@ export const currentBranchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.currentBranch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
-/** Branches a new worktree can fork from. Asked again when the window comes back, in case one was made meanwhile. */
 export const branchesAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.branches", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )

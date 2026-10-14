@@ -51,8 +51,7 @@ interface WorkerFixtures {
   readonly seed: Seed
 }
 
-// Playwright's `use` callback is not React's hook of the same name.
-/* oxlint-disable react/rules-of-hooks, no-empty-pattern */
+/* oxlint-disable no-empty-pattern -- Playwright fixtures require an object destructuring pattern first. */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   usageLimitApp: async ({}, provide, testInfo) => {
     const app = await spawnApp({ mockClaude: "usage-limit", mockResetMs: 60_000 })
@@ -158,7 +157,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   agent: async ({}, provide) => provide({ connection: null, result: null }),
   webhook: async ({}, provide) => provide({ automations: new Map(), response: null }),
 })
-/* oxlint-enable react/rules-of-hooks, no-empty-pattern */
+/* oxlint-enable no-empty-pattern */
 
 export const { Given, When, Then, AfterScenario } = createBdd(test)
 

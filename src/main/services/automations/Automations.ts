@@ -262,10 +262,6 @@ const make = Effect.gen(function* () {
       yield* runner.send(thread.id, prompt, [])
     })
 
-  /**
-   * Starts a thread for one event. Never fails: a duplicate `eventKey` records a skipped run and
-   * any error records a failed run, both pushed to the renderer like a started one.
-   */
   const startRun = (automation: AutomationRow, eventKey: string, payload: unknown) =>
     Effect.gen(function* () {
       const claimed = yield* insertRun({ automationId: automation.id, eventKey, payload, status: "started" }).pipe(

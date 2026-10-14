@@ -47,7 +47,6 @@ const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
  * preview for media and HTML.
  */
 export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
-  // Switching files keeps the last file on screen until the next one loads.
   const shownPath = useDeferredValue(path)
 
   const onKeyDown = (event: KeyboardEvent) => {
