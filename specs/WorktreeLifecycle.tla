@@ -19,7 +19,7 @@ VARIABLES
   dirs,          \* checkout directories on disk
   branches,      \* git branches that exist
   lock,          \* Worktrees.ts:148, the thread whose create holds it, or "free"
-  removals,      \* Worktrees.ts:237, the one key's deletion fiber, 0 when absent
+  removals,      \* Worktrees.ts:305, the one key's deletion fiber, 0 when absent
   deletions,     \* deletion fibers forked by remove
   createPc, awaited, newBranch, setupRunning,
   threadStatus, busyThreads, turnPc, cwd,
@@ -115,19 +115,19 @@ SetupDone(r) ==
   /\ setupRunning' = setupRunning \ {r}
   /\ UNCHANGED <<dirs, branches, lock, removals, deletions, createPc, awaited, newBranch, turnVars>>
 
-\* Worktrees.ts:291-306 ensureRemovable. Its "shared" check (300-305) is vacuous with one thread per row.
+\* Worktrees.ts:425-438 ensureRemovable. Its "shared" check (434-437) is vacuous with one thread per row.
 Removable(r) == worktreeStatus[r] /= "preparing" /\ threadStatus[r] /= "running"
 
 FreeFiber == CHOOSE f \in Fibers : deletions[f].pc = "unused"
 
-\* Worktrees.ts:329-339 remove: setStatus removed, forkDetach deleteFiles, removals.set
+\* Worktrees.ts:469-473 removeWhileExclusive: setStatus removed, forkDetach deleteFiles, removals.set
 StartRemoval(r) ==
   /\ \E f \in Fibers : deletions[f].pc = "unused"
   /\ worktreeStatus' = [worktreeStatus EXCEPT ![r] = "removed"]
   /\ deletions' = [deletions EXCEPT ![FreeFiber] = [row |-> r, pc |-> "list", old |-> worktreeStatus[r]]]
   /\ removals' = FreeFiber
 
-\* Worktrees.ts:329-339 remove when the row is already removed returns it unchanged
+\* Worktrees.ts:468 remove when the row is already removed returns it unchanged
 CanRemove(r) == lock = "free" /\ worktreeStatus[r] /= "none" /\ (worktreeStatus[r] = "removed" \/ Removable(r))
 Remove(r) ==
   IF worktreeStatus[r] = "removed" THEN UNCHANGED <<worktreeStatus, deletions, removals>> ELSE StartRemoval(r)
@@ -148,46 +148,50 @@ Archive(t) ==
 SetDel(f, pc) == deletions' = [deletions EXCEPT ![f].pc = pc]
 DelUnchanged == UNCHANGED <<worktreeStatus, lock, removals, createVars, turnVars>>
 
-\* Worktrees.ts:310 registeredCheckouts
+\* Worktrees.ts:442 registeredCheckouts
 DelList(f) ==
   /\ deletions[f].pc = "list"
   /\ SetDel(f, IF deletions[f].row \in dirs THEN "remove" ELSE "prune")
   /\ UNCHANGED <<dirs, branches>> /\ DelUnchanged
 
-\* Worktrees.ts:311 git worktree remove --force, may fail
+\* Worktrees.ts:443 git worktree remove --force, may fail
 DelRemove(f) ==
   /\ deletions[f].pc = "remove"
   /\ \/ dirs' = dirs \ {deletions[f].row} /\ SetDel(f, "prune")
      \/ dirs' = dirs /\ SetDel(f, "restore")
   /\ UNCHANGED branches /\ DelUnchanged
 
-\* Worktrees.ts:313 git worktree prune, may fail
+\* Worktrees.ts:445 git worktree prune, may fail
 DelPrune(f) ==
   /\ deletions[f].pc = "prune"
   /\ \E next \in {"branchCheck", "restore"} : SetDel(f, next)
   /\ UNCHANGED <<dirs, branches>> /\ DelUnchanged
 
-\* Worktrees.ts:315-317 branchExists, then isMerged, whose answer is nondeterministic
+\* Worktrees.ts:447-449 branchExists, then isMerged, whose answer is nondeterministic
 DelBranchCheck(f) ==
   /\ deletions[f].pc = "branchCheck"
   /\ IF Branch \in branches THEN \E next \in {"branchD", "cleanup"} : SetDel(f, next) ELSE SetDel(f, "cleanup")
   /\ UNCHANGED <<dirs, branches>> /\ DelUnchanged
 
-\* Worktrees.ts:318 git branch -D, may fail; git refuses a branch checked out in any worktree
+\* Worktrees.ts:450 git branch -D, may fail; git refuses a branch checked out in any worktree
 DelBranchD(f) ==
   /\ deletions[f].pc = "branchD"
   /\ \/ Branch \in branches /\ dirs = {} /\ branches' = {} /\ SetDel(f, "cleanup")
      \/ branches' = branches /\ SetDel(f, "restore")
   /\ UNCHANGED dirs /\ DelUnchanged
 
-\* Worktrees.ts:322-326 on any failure, setStatus back to the status remove read, then removals.delete
+\* Worktrees.ts:455-462 on any failure, setStatus back to the status remove read if the checkout still exists,
+\* then removals.delete. Only this fiber deletes the row's directory, so fs.exists and setStatus are one action.
 DelRestore(f) ==
   /\ deletions[f].pc = "restore"
-  /\ worktreeStatus' = [worktreeStatus EXCEPT ![deletions[f].row] = deletions[f].old] /\ SetDel(f, "done")
+  /\ worktreeStatus' = IF deletions[f].row \in dirs
+                         THEN [worktreeStatus EXCEPT ![deletions[f].row] = deletions[f].old]
+                         ELSE worktreeStatus
+  /\ SetDel(f, "done")
   /\ removals' = 0
   /\ UNCHANGED <<dirs, branches, lock, createVars, turnVars>>
 
-\* Worktrees.ts:326 removals.delete(key), whichever fiber the key now points to
+\* Worktrees.ts:462 removals.delete(key), whichever fiber the key now points to
 DelCleanup(f) ==
   /\ deletions[f].pc = "cleanup"
   /\ removals' = 0 /\ SetDel(f, "done")
