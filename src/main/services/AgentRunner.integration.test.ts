@@ -22,6 +22,7 @@ import * as GitHub from "./GitHub.ts"
 import * as Messages from "./Messages.ts"
 import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
+import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.ts"
 import { Secrets } from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
@@ -36,18 +37,25 @@ interface Probe {
   readonly threads: Threads.Threads["Service"]
   readonly worktrees: Worktrees.Worktrees["Service"]
   readonly accounts: AgentAccounts.AgentAccounts["Service"]
+  readonly pullRequests: PullRequests.PullRequests["Service"]
+  readonly watcher: PullRequestWatcher["Service"]
   readonly root: string
   readonly thread: Thread
   readonly waiting: Promise<void>
   readonly prepared: Promise<void>
   readonly inserting: Promise<void>
+  readonly snapshotting: Promise<void>
   readonly idle: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly release: () => void
   readonly deliver: () => void
+  readonly snapshot: () => void
 }
 
-const withPreparingThread = async (run: (probe: Probe) => Promise<void>, pauseInsertion = false) => {
+const withPreparingThread = async (
+  run: (probe: Probe) => Promise<void>,
+  options: { readonly pauseInsertion?: boolean; readonly pauseSnapshot?: boolean } = {},
+) => {
   const dir = mkdtempSync(join(tmpdir(), "kk-runner-preparation-"))
   const root = join(dir, "repo")
   execFileSync("git", ["init", "-q", "-b", "main", root])
@@ -70,9 +78,13 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>, pauseIn
   const prepared = Promise.withResolvers<void>()
   const inserting = Promise.withResolvers<void>()
   const inserted = Promise.withResolvers<void>()
+  const snapshotting = Promise.withResolvers<void>()
+  const snapshotReady = Promise.withResolvers<void>()
   const idle = Promise.withResolvers<void>()
   const deliver = () => inserted.resolve()
-  let holdInsertion = pauseInsertion
+  const snapshot = () => snapshotReady.resolve()
+  let holdInsertion = options.pauseInsertion ?? false
+  let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -148,9 +160,11 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>, pauseIn
     const context = await domainRuntime.context()
     const worktrees = Context.get(context, Worktrees.Worktrees)
     const messages = Context.get(context, Messages.Messages)
+    const threads = Context.get(context, Threads.Threads)
     const runnerRuntime = ManagedRuntime.make(
-      layer.pipe(
-        Layer.provide(PullRequests.layer),
+      watcherLayer.pipe(
+        Layer.provideMerge(layer),
+        Layer.provideMerge(PullRequests.layer),
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ClaudeProvider, provider("claude")),
@@ -169,6 +183,40 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>, pauseIn
               listening: () => Effect.void,
             }),
             Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+            Layer.succeed(Threads.Threads, {
+              ...threads,
+              snapshotTurnBase: (id, cwd) =>
+                Effect.gen(function* () {
+                  if (holdSnapshot) {
+                    holdSnapshot = false
+                    snapshotting.resolve()
+                    yield* Effect.promise(() => snapshotReady.promise)
+                  }
+                  yield* threads.snapshotTurnBase(id, cwd)
+                }),
+            }),
+            Layer.mock(GitHub.GitHub, {
+              pullRequestDetail: (url) =>
+                Effect.succeed({
+                  url,
+                  number: 7,
+                  title: "Fix the thing",
+                  status: "open",
+                  checks: "failing",
+                  review: null,
+                  author: "octocat",
+                  headRefName: "fix/pending",
+                  baseRefName: "main",
+                  additions: 1,
+                  deletions: 0,
+                  body: "",
+                  baseRef: "main",
+                  headRef: "fix/pending",
+                  head: "abc1234",
+                  mergeable: "mergeable",
+                  checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
+                }),
+            }),
             Layer.succeed(Messages.Messages, {
               ...messages,
               insert: (message) =>
@@ -200,18 +248,23 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>, pauseIn
         threads: Context.get(context, Threads.Threads),
         worktrees,
         accounts: Context.get(context, AgentAccounts.AgentAccounts),
+        pullRequests: await runnerRuntime.runPromise(PullRequests.PullRequests),
+        watcher: await runnerRuntime.runPromise(PullRequestWatcher),
         root,
         thread,
         waiting: waiting.promise,
         prepared: prepared.promise,
         inserting: inserting.promise,
+        snapshotting: snapshotting.promise,
         idle: idle.promise,
         turns,
         release,
         deliver,
+        snapshot,
       })
     } finally {
       deliver()
+      snapshot()
       release()
       await domainRuntime.runPromise(worktrees.whenPrepared(thread.worktreeId!))
       await runnerRuntime.dispose()
@@ -310,21 +363,24 @@ it("cancels a prepared send still waiting to enter the delivery lock", async () 
 })
 
 it("carries Stop during message admission through the provider-start handoff", async () => {
-  await withPreparingThread(async ({ runner, thread, waiting, inserting, idle, turns, release, deliver }) => {
-    const sent = Effect.runPromiseExit(runner.send(thread.id, "accepted then interrupted", []))
-    await waiting
-    release()
-    await inserting
-    await Effect.runPromise(runner.interrupt(thread.id))
-    deliver()
-    expect(Exit.isSuccess(await sent)).toBe(true)
-    await Effect.runPromise(Effect.yieldNow)
-    expect(turns).toStrictEqual([])
-    await idle
-    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
-    expect(messages.map((message) => message.role)).toStrictEqual(["user", "assistant"])
-    expect(messages.every((message) => message.completedAt !== null)).toBe(true)
-  }, true)
+  await withPreparingThread(
+    async ({ runner, thread, waiting, inserting, idle, turns, release, deliver }) => {
+      const sent = Effect.runPromiseExit(runner.send(thread.id, "accepted then interrupted", []))
+      await waiting
+      release()
+      await inserting
+      await Effect.runPromise(runner.interrupt(thread.id))
+      deliver()
+      expect(Exit.isSuccess(await sent)).toBe(true)
+      await Effect.runPromise(Effect.yieldNow)
+      expect(turns).toStrictEqual([])
+      await idle
+      const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+      expect(messages.map((message) => message.role)).toStrictEqual(["user", "assistant"])
+      expect(messages.every((message) => message.completedAt !== null)).toBe(true)
+    },
+    { pauseInsertion: true },
+  )
 })
 
 it("does not deliver a pending send after its thread is deleted", async () => {
@@ -336,4 +392,62 @@ it("does not deliver a pending send after its thread is deleted", async () => {
     expect(Exit.isFailure(await sent)).toBe(true)
     expect(turns).toStrictEqual([])
   })
+})
+
+it("drops stopped watch news after it waits for setup", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, waiting, turns, release, pullRequests, watcher }) => {
+    const url = "https://github.com/o/setup/pull/7"
+    const first = await Effect.runPromise(pullRequests.watch(thread.id, url, ["checksFailed"]))
+    const polling = Effect.runPromise(watcher.sweep)
+    await waiting
+    expect((await Effect.runPromise(runner.transcript(thread.id))).messages).toStrictEqual([])
+    await Effect.runPromise(pullRequests.unwatch(thread.id, url))
+    const replacement = await Effect.runPromise(pullRequests.watch(thread.id, url, ["reviewChanged"]))
+    release()
+    await polling
+
+    expect(turns).toStrictEqual([])
+    expect((await Effect.runPromise(runner.transcript(thread.id))).messages).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle")
+    expect((await Effect.runPromise(pullRequests.find(first.id)))?.watch).toStrictEqual(replacement.watch)
+    expect(Exit.isSuccess(await Effect.runPromiseExit(runner.send(thread.id, "new input", [])))).toBe(true)
+    expect(turns.map((turn) => turn.input.prompt)).toStrictEqual(["new input"])
+  })
+})
+
+it("keeps a thread archived when watch news waits for setup", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, waiting, turns, release, pullRequests, watcher }) => {
+    const url = "https://github.com/o/archived-setup/pull/7"
+    await Effect.runPromise(pullRequests.watch(thread.id, url, ["checksFailed"]))
+    const polling = Effect.runPromise(watcher.sweep)
+    await waiting
+    await Effect.runPromise(threads.archive(thread.id))
+    release()
+    await polling
+
+    expect(turns).toStrictEqual([])
+    expect((await Effect.runPromise(runner.transcript(thread.id))).messages).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("archived")
+  })
+})
+
+it("drops watch news stopped while the turn snapshot is pending", async () => {
+  await withPreparingThread(
+    async ({ runner, thread, snapshotting, turns, release, snapshot, pullRequests, watcher }) => {
+      const url = "https://github.com/o/snapshot/pull/7"
+      const first = await Effect.runPromise(pullRequests.watch(thread.id, url, ["checksFailed"]))
+      release()
+      const polling = Effect.runPromise(watcher.sweep)
+      await snapshotting
+      await Effect.runPromise(pullRequests.unwatch(thread.id, url))
+      const replacement = await Effect.runPromise(pullRequests.watch(thread.id, url, ["reviewChanged"]))
+      snapshot()
+      await polling
+
+      expect(turns).toStrictEqual([])
+      expect((await Effect.runPromise(runner.transcript(thread.id))).messages).toStrictEqual([])
+      expect((await Effect.runPromise(pullRequests.find(first.id)))?.watch).toStrictEqual(replacement.watch)
+    },
+    { pauseSnapshot: true },
+  )
 })
