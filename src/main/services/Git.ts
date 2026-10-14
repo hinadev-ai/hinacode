@@ -65,6 +65,14 @@ export const parseNameStatus = (output: string) => {
   return files
 }
 
+/**
+ * Pins patch output against user config (color, mnemonic or missing prefixes, an external differ) so a parser
+ * finds each file by its `a/… b/…` header.
+ */
+export const PATCH_FLAGS = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"]
+
+export const UNQUOTED_PATHS = ["-c", "core.quotePath=false"]
+
 const LOG_FIELDS = ["%H", "%P", "%an", "%ad", "%D", "%s"]
 export const LOG_FORMAT = LOG_FIELDS.join("%x00")
 
@@ -139,27 +147,21 @@ const make = Effect.gen(function* () {
     ]).pipe(Effect.map(parseLog))
 
   const show = (cwd: string, hash: string) => {
-    // Pinned against user config (mnemonic prefixes, color, quoted paths) like `Worktrees.changes`.
-    // A merge diffs against its first parent: the combined `--cc` diff is not a patch the viewer parses.
-    const diff = (args: ReadonlyArray<string>) =>
+    const diffAgainstFirstParent = (args: ReadonlyArray<string>) =>
       run(cwd, [
-        "-c",
-        "core.quotePath=false",
+        ...UNQUOTED_PATHS,
         "show",
         "--format=",
         "--diff-merges=first-parent",
         "--no-renames",
-        "--no-color",
-        "--no-ext-diff",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
+        ...PATCH_FLAGS,
         ...args,
         hash,
         "--",
       ])
     return Effect.all({
-      patch: diff(["--patch"]),
-      files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
+      patch: diffAgainstFirstParent(["--patch"]),
+      files: diffAgainstFirstParent(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
     })
   }
 

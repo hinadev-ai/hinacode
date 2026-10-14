@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { Effect, Schema } from "effect"
+import { PATCH_FLAGS } from "../services/Git.ts"
 
 const execFileAsync = promisify(execFile)
 
@@ -27,9 +28,6 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
       }),
   })
 
-// Fixed diff output regardless of the user's git config (mnemonic prefixes, color, external diff tools).
-const DIFF_FLAGS = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"]
-
 const fenced = (language: string, body: string) =>
   body.trim() === "" ? "_(none)_" : `\`\`\`${language}\n${body.trimEnd()}\n\`\`\``
 
@@ -48,7 +46,7 @@ export interface ReviewTarget {
 export const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
   Effect.gen(function* () {
     const [status, headDiff] = yield* Effect.all(
-      [git(cwd, ["status", "--porcelain"]), git(cwd, ["diff", ...DIFF_FLAGS, "HEAD"])],
+      [git(cwd, ["status", "--porcelain"]), git(cwd, ["diff", ...PATCH_FLAGS, "HEAD"])],
       {
         concurrency: "unbounded",
       },
@@ -60,7 +58,7 @@ export const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
     ]
     if (baseRef !== null) {
       const mergeBase = (yield* git(cwd, ["merge-base", baseRef, "HEAD"])).trim()
-      const baseDiff = yield* git(cwd, ["diff", ...DIFF_FLAGS, mergeBase])
+      const baseDiff = yield* git(cwd, ["diff", ...PATCH_FLAGS, mergeBase])
       sections.push(`## Diff against merge-base of ${baseRef} (${mergeBase.slice(0, 12)})\n${fenced("diff", baseDiff)}`)
     }
     return truncate(sections.join("\n\n"))

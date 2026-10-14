@@ -6,6 +6,7 @@ import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer } from "effect"
 import * as Git from "./Git.ts"
+import { useHostileDiffConfig } from "./gitTesting.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
@@ -70,6 +71,36 @@ describe("diffWorkingTree", () => {
         const changes = yield* diffWorkingTree(root, base)
         expect(changes.files).toStrictEqual([{ path: "first.txt", status: "added" }])
         expect(git(root, "status", "--porcelain")).toBe("?? first.txt\n")
+      }),
+    ),
+  )
+
+  it.live("pins the patch format against user config, with Unicode paths and staged and new files", () =>
+    withRepo((root) =>
+      Effect.gen(function* () {
+        writeFileSync(join(root, "old.txt"), "same content\n")
+        git(root, "add", "-A")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+        useHostileDiffConfig(root)
+        const base = yield* snapshotWorkingTree(root)
+
+        git(root, "mv", "old.txt", "renamed.txt")
+        writeFileSync(join(root, "staged-日本.txt"), "staged\n")
+        git(root, "add", "staged-日本.txt")
+        writeFileSync(join(root, "新しい.txt"), "untracked\n")
+
+        const changes = yield* diffWorkingTree(root, base)
+        expect(changes.files).toStrictEqual([
+          { path: "old.txt", status: "deleted" },
+          { path: "renamed.txt", status: "added" },
+          { path: "staged-日本.txt", status: "added" },
+          { path: "新しい.txt", status: "added" },
+        ])
+        expect(changes.patch).toContain("diff --git a/新しい.txt b/新しい.txt")
+        expect(changes.patch).toContain("diff --git a/staged-日本.txt b/staged-日本.txt")
+        expect(changes.patch).toContain("diff --git a/old.txt b/old.txt")
+        expect(changes.patch).not.toContain("EXTERNAL DIFF")
+        expect(changes.patch).not.toContain("\x1b[")
       }),
     ),
   )

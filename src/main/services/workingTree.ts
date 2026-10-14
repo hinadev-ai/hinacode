@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { Effect, FileSystem } from "effect"
 import type { Changes } from "../../shared/domain.ts"
-import { Git, parseNameStatus } from "./Git.ts"
+import { Git, PATCH_FLAGS, parseNameStatus, UNQUOTED_PATHS } from "./Git.ts"
 
 /**
  * Writes the whole working tree, untracked but not ignored files included, as a git tree and returns
@@ -26,22 +26,8 @@ export const diffWorkingTree = (cwd: string, base: string) =>
   Effect.gen(function* () {
     const git = yield* Git
     const tree = yield* snapshotWorkingTree(cwd)
-    // Pin the output format against user config (diff.mnemonicPrefix, color.ui, quoted non-ASCII paths)
-    // so the renderer can find each file's section by its `a/… b/…` header.
     const diff = (args: ReadonlyArray<string>) =>
-      git.run(cwd, [
-        "-c",
-        "core.quotePath=false",
-        "diff",
-        "--no-renames",
-        "--no-color",
-        "--no-ext-diff",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        ...args,
-        base,
-        tree,
-      ])
+      git.run(cwd, [...UNQUOTED_PATHS, "diff", "--no-renames", ...PATCH_FLAGS, ...args, base, tree])
     const files = parseNameStatus(yield* diff(["--name-status", "-z"]))
     const patch = yield* diff([])
     return { files, patch } satisfies Changes
