@@ -36,6 +36,8 @@
   "thread_status_running": "執行中",
   "thread_status_awaiting_approval": "等待核准",
   "thread_status_limited": "已達用量上限",
+  "thread_status_unseen_completed": "已完成，尚未開啟",
+  "thread_status_unseen_failed": "失敗，尚未開啟",
   "thread_usage_limit_title": "已達用量上限",
   "thread_usage_limit_reset": "用量將於 {time} 重設。",
   "thread_usage_limit_resume_at_reset": "重設後繼續",
@@ -860,5 +862,8 @@
   "vm_exit_fullscreen": "結束全螢幕",
   "vm_floating_body": "畫面正浮動在對話上方。",
   "vm_dock": "移到側邊面板",
-  "vm_floating_resize": "調整 VM 畫面大小"
+  "vm_floating_resize": "調整 VM 畫面大小",
+  "settings_worktree_root": "Worktree 根目錄",
+  "settings_worktree_root_hint": "新 worktree 存放的目錄，每個專案一個資料夾。留空則放在各專案旁的 .kkcode-worktrees。現有的 worktree 不會移動。",
+  "settings_worktree_root_absolute": "請輸入以 / 開頭的絕對路徑。"
 }

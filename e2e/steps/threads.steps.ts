@@ -133,3 +133,13 @@ Then("the thread {string} no longer exists", async ({ app, names }, title: strin
   const threads = await rpc(app.page, "threads.list", undefined)
   expect(threads.some((thread) => thread.title === names.of(title))).toBe(false)
 })
+
+Then("the row of the thread {string} keeps its height when hovered", async ({ app, names }, title: string) => {
+  const link = sidebar(app.page).getByRole("link", { name: names.of(title) })
+  const row = link.locator("xpath=ancestor::li[1]")
+  const heightOf = async () => (await row.boundingBox())?.height
+  await app.page.mouse.move(0, 0)
+  const resting = await heightOf()
+  await link.hover()
+  await expect.poll(heightOf).toBe(resting)
+})

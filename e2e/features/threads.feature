@@ -80,6 +80,10 @@ Feature: Threads
     Then the sidebar lists the thread "Bump deps"
     And the sidebar does not list the thread "Fix login"
 
+  Scenario: A thread row outside a git repository keeps its height on hover
+    Given another project "notes" has a thread "Jot"
+    Then the row of the thread "Jot" keeps its height when hovered
+
   Scenario: A thread is deleted after confirmation
     Given the project "demo" has a thread "Gone"
     When I delete the thread "Gone" from its menu

@@ -3,6 +3,7 @@ import type { NotificationSettings, ThreadAlert } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { router } from "../router.tsx"
 import { useThreads } from "../stores/threads.ts"
+import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { notify, type Surface } from "./notify.ts"
 
 const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly body: string } | undefined => {
@@ -30,6 +31,19 @@ const isOpen = (threadId: string) => router.matchRoute({ to: "/thread/$threadId"
 const surfaceFor = (threadId: string): Surface | null => {
   if (!document.hasFocus()) return "desktop"
   return isOpen(threadId) ? null : "toast"
+}
+
+const outcomeOf = (event: AgentEvent): Outcome | undefined => {
+  if (event.type === "turn_completed") return "completed"
+  if (event.type === "turn_failed") return "failed"
+  return undefined
+}
+
+/** Marks a thread whose turn ended while the user was not looking at it. Opening the thread clears the mark. */
+export const recordUnseenOutcome = (threadId: string, event: AgentEvent) => {
+  const outcome = outcomeOf(event)
+  if (outcome === undefined || (document.hasFocus() && isOpen(threadId))) return
+  useUnseen.getState().record(threadId, outcome)
 }
 
 const openThread = (threadId: string) => void router.navigate({ to: "/thread/$threadId", params: { threadId } })

@@ -50,23 +50,26 @@ Color carries status on top of the tiers, as `AGENTS.md` describes: amber needs 
 
 **Sidebar.** A row's tier comes from its thread's status:
 
-| Status              | Tier     |
-| ------------------- | -------- |
-| `awaiting_approval` | Read     |
-| `limited`           | Read     |
-| `idle`, `archived`  | Resting  |
-| `running`           | Receding |
+| Status                                 | Tier     | Mark             |
+| -------------------------------------- | -------- | ---------------- |
+| `awaiting_approval`                    | Read     | amber dot        |
+| `limited`                              | Read     | Limited badge    |
+| `idle`, last turn finished, not opened | Read     | neutral dot      |
+| `idle`, last turn failed, not opened   | Read     | red warning icon |
+| `idle`, `archived`                     | Resting  | none             |
+| `running`                              | Receding | emerald dot      |
 
-The open thread is always Read. The status dot and the Limited badge keep their color in every tier.
+The open thread is always Read. The marks keep their color in every tier.
+
+A turn leaves a mark when it ends while its thread is not open or kkcode is in the background. Opening the thread clears it, and so does bringing the window back while the thread is open. Marks live in `localStorage` (`kkcode.unseen`), so they survive a restart. Losing them costs a look at each thread, so they do not belong in SQLite.
 
 **Right-hand panel.** Check runs already list failing first. Failing names are Read and the rest are Receding. Passing and pending checks use muted icons, since neither needs the developer. In Agents, running sub-agents are Receding and finished ones are Read, because their summary is the thing to look at.
 
 ## Out of scope
 
-- A "done but not yet seen" marker. Today an idle thread cannot tell whether the developer has read its last turn, so finished threads stay at Resting. That marker needs its own state and comes next.
 - Re-sorting the sidebar by attention. Rows that move under the pointer cause misclicks, and the list's manual order is a feature. It needs its own design.
 - Named themes keep their own palettes.
 
 ## Verification
 
-Seed an isolated instance with threads in every status and a transcript with tool calls, then compare screenshots in light and dark (`verify-kkcode`). Check that contrast stays above 4.5:1 for every tier on every surface it sits on. Hover and expand a tool call to see it brighten.
+Seed an isolated instance with threads in every status and a transcript with tool calls, then compare screenshots in light and dark (`verify-kkcode`). Check that contrast stays above 4.5:1 for every tier on every surface it sits on. Hover and expand a tool call to see it brighten. `e2e/features/unseen-results.feature` covers marking, clearing and restart.
