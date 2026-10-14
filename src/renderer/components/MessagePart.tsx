@@ -341,7 +341,7 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
 function CommandView({ call, command }: { call: ToolCall; command: string }) {
   const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
   return (
-    <div className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono">
+    <div className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono">
       <section>
         <h4 className="sr-only">{m.tool_command()}</h4>
         <pre className="whitespace-pre-wrap wrap-anywhere">
@@ -397,7 +397,7 @@ function ToolSection({ label, text }: { label: string; text: string }) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
-      <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono whitespace-pre-wrap">
+      <pre className="max-h-64 overflow-auto rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap">
         {text}
       </pre>
     </section>
@@ -425,7 +425,7 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
         {row}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1">
-        <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono text-xs">
+        <pre className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-xs">
           {diff}
         </pre>
       </CollapsibleContent>
