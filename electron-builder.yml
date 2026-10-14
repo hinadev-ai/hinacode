@@ -5,13 +5,17 @@ directories:
 files:
   - out/**
   - package.json
-  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,win32,darwin-x64}*/**"
-  - "!**/node_modules/node-pty/prebuilds/{win32,darwin-x64}*/**"
+# node-pty ships N-API prebuilds for macOS and Windows, and Linux builds it from source at install time.
+# N-API binaries load in Electron as they are, and rebuilding cannot cross-compile node-pty for Windows on Linux.
+npmRebuild: false
 # The Claude SDK and node-pty spawn native binaries, which cannot run from inside app.asar.
 asarUnpack:
   - "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
   - "**/node_modules/node-pty/**"
 mac:
+  files:
+    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,win32,darwin-x64}*/**"
+    - "!**/node_modules/node-pty/prebuilds/{win32,darwin-x64}*/**"
   target:
     - target: dmg
       arch: arm64
@@ -22,6 +26,27 @@ mac:
   icon: assets/icon.png
   hardenedRuntime: true
   notarize: true
+win:
+  files:
+    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,darwin,win32-arm64}*/**"
+    - "!**/node_modules/node-pty/prebuilds/{darwin,win32-arm64}*/**"
+    - "!**/node_modules/node-pty/build/**"
+  target:
+    - target: nsis
+      arch: x64
+  icon: assets/icon.png
+nsis:
+  # GitHub renames assets with spaces, which would break the URL in latest.yml.
+  artifactName: ${productName}-${version}-setup.${ext}
+linux:
+  files:
+    - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{win32,darwin,linux-arm64,linux-x64-musl}*/**"
+    - "!**/node_modules/node-pty/prebuilds/**"
+  target:
+    - target: AppImage
+      arch: x64
+  category: Development
+  icon: assets/icon.png
 publish:
   provider: github
   owner: kjj6198
