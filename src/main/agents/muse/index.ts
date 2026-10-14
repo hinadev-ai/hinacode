@@ -11,7 +11,7 @@ import type {
   SessionScope,
 } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
-import { resolveBinary } from "../binary.ts"
+import { installedBinary } from "../binary.ts"
 import { elementContext } from "../elementContext.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
@@ -190,7 +190,6 @@ const interruptTurn = (host: MuseHost, sessionId: string, turnId: string) =>
 
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
-  const binaryPath = resolveBinary("muse")
   const hostLock = yield* Semaphore.make(1)
   let current: HostEntry | undefined
   /** The plan usage the host last reported. A fresh host has none until it makes a model call. */
@@ -206,6 +205,7 @@ const make = Effect.gen(function* () {
         if (home !== null) return yield* museError("Muse Code runs on its CLI login only")
         if (current?.host.isAlive()) return current
         if (current) yield* Scope.close(current.scope, Exit.void)
+        const binaryPath = yield* installedBinary("muse", "muse")
         const scope = yield* Scope.make()
         const host = yield* makeMuseHost({
           binaryPath,
