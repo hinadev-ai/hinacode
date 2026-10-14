@@ -24,26 +24,6 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Cross-fading one icon into another. */
   --ease-swap: cubic-bezier(0.2, 0, 0, 1);
-  /* Spring with stiffness 500, damping 30, mass 1, sampled to settle in 340ms. */
-  --ease-spring: linear(
-    0,
-    0.099,
-    0.302,
-    0.525,
-    0.721,
-    0.871,
-    0.97,
-    1.027,
-    1.053,
-    1.057,
-    1.05,
-    1.037,
-    1.025,
-    1.014,
-    1.006,
-    1.001,
-    1
-  );
   --spacing-titlebar: 2.5rem;
   /* A faster turn makes the same wait feel shorter. */
   --animate-spin: spin 0.6s linear infinite;
