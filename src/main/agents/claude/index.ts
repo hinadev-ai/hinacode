@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import {
   type AccountInfo,
@@ -23,7 +23,7 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
-import { resolveBinaryOnce } from "../binary.ts"
+import { cachedExecutable } from "../binary.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
@@ -171,24 +171,6 @@ const agentError = (message: string) => (cause: unknown) =>
     message: `${message}: ${cause instanceof Error ? cause.message : String(cause)}`,
   })
 
-/**
- * GUI-launched Electron apps (notably on macOS) get a minimal PATH, so fall back to a login shell
- * to find the user's `claude` install.
- */
-export function resolveClaudeExecutable(): string | undefined {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", ["claude"]],
-    [process.env.SHELL ?? "/bin/sh", ["-lc", "command -v claude"]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim()
-      if (path !== "") return path
-    } catch {}
-  }
-  return undefined
-}
-
 /** The Messages API rejects base64 images above 5 MB. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -246,11 +228,12 @@ export const layer = Layer.effect(
   ClaudeProvider,
   Effect.gen(function* () {
     const layerScope = yield* Effect.scope
-    const executable = resolveClaudeExecutable()
+    const executable = cachedExecutable("claude", { mode: "login" })
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
 
-    const executableFor = (home: AccountHome | null) => (home === null ? executable : resolveBinaryOnce(home.binary))
+    const executableFor = (home: AccountHome | null) =>
+      home === null ? executable : (cachedExecutable(home.binary) ?? home.binary)
 
     const baseOptions = (home: AccountHome | null): Options => {
       const path = executableFor(home)

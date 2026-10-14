@@ -1,9 +1,10 @@
-import { execFileSync, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import { relative } from "node:path"
 import { createInterface } from "node:readline"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { FileSearchHit, ThreadSearchHit } from "../../shared/domain.ts"
+import { lookupExecutable } from "../agents/binary.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
@@ -37,21 +38,6 @@ const likePattern = (query: string) =>
   /[\\%_]/.test(query)
     ? { pattern: `%${query.replace(/[\\%_]/g, "\\$&")}%`, escaped: true }
     : { pattern: `%${query}%`, escaped: false }
-
-/** A GUI-launched app gets a minimal PATH, so fall back to a login shell, as the agent binaries do. */
-function resolveRipgrep(): string | undefined {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", ["rg"]],
-    [process.env.SHELL ?? "/bin/sh", ["-lc", "command -v rg"]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim()
-      if (path.startsWith("/")) return path
-    } catch {}
-  }
-  return undefined
-}
 
 const RipgrepMatch = Schema.Struct({
   type: Schema.Literal("match"),
@@ -136,15 +122,11 @@ const ThreadRow = Schema.Struct({
   at: Schema.String,
 })
 
-/**
- * @param ripgrep finds the `rg` binary, undefined when it is not installed. Called once, on first use,
- * so installing ripgrep takes a restart.
- */
-export const make = (ripgrep: () => string | undefined) =>
+export const make = (findRipgrep: () => string | undefined) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     const activeWorkspace = yield* makeActiveWorkspace
-    let rg: string | undefined | null = null
+    const ripgrep = yield* Effect.cached(Effect.sync(findRipgrep))
 
     const findMessages = SqlSchema.findAll({
       Request: Schema.Struct({ query: Schema.String, limit: Schema.Number }),
@@ -177,7 +159,7 @@ export const make = (ripgrep: () => string | undefined) =>
       Effect.gen(function* () {
         const { cwd } = yield* activeWorkspace(threadId)
         if (query.trim() === "") return []
-        if (rg === null) rg = ripgrep()
+        const rg = yield* ripgrep
         if (rg === undefined) return yield* new RipgrepMissingError()
         return yield* runRipgrep(rg, cwd, query, limit)
       })
@@ -185,4 +167,7 @@ export const make = (ripgrep: () => string | undefined) =>
     return Search.of({ threads, files })
   })
 
-export const layer = Layer.effect(Search, make(resolveRipgrep))
+export const layer = Layer.effect(
+  Search,
+  make(() => lookupExecutable("rg", { mode: "login" })),
+)

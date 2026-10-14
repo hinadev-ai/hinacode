@@ -1,27 +1,41 @@
 import { execFileSync } from "node:child_process"
 
-/** A packaged Electron app may not inherit the shell PATH (mise, Homebrew), so fall back to a login shell. */
-export const resolveBinary = (name: string): string => {
+interface LookupOptions {
+  readonly env?: NodeJS.ProcessEnv
+  readonly mode?: "login" | "interactive"
+}
+
+/** GUI apps may lack the shell's PATH; a login shell can also print profile output around the lookup. */
+export const lookupExecutable = (
+  name: string,
+  { env = process.env, mode = "interactive" }: LookupOptions = {},
+): string | undefined => {
   const attempts: Array<[string, Array<string>]> = [
     ["which", [name]],
-    [process.env.SHELL ?? "/bin/sh", ["-ilc", `command -v ${name}`]],
+    [env.SHELL ?? "/bin/sh", [mode === "interactive" ? "-ilc" : "-lc", `command -v ${name}`]],
   ]
   for (const [command, args] of attempts) {
     try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim().split("\n").at(-1)
-      if (path) return path
+      const output = execFileSync(command, args, {
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 5000,
+      })
+      const path = output.split("\n").findLast((line) => line.startsWith("/"))
+      if (path !== undefined) return path.trim()
     } catch {}
   }
-  return name
+  return undefined
 }
 
-const resolved = new Map<string, string>()
+const found = new Map<string, string | undefined>()
 
-/** `resolveBinary` once per name, since it can block on a login shell. */
-export const resolveBinaryOnce = (name: string): string => {
-  const known = resolved.get(name)
-  if (known !== undefined) return known
-  const path = resolveBinary(name)
-  resolved.set(name, path)
-  return path
+export const cachedExecutable = (
+  name: string,
+  { mode = "interactive" }: Pick<LookupOptions, "mode"> = {},
+): string | undefined => {
+  const key = JSON.stringify([name, mode])
+  if (!found.has(key)) found.set(key, lookupExecutable(name, { mode }))
+  return found.get(key)
 }

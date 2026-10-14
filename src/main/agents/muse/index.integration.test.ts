@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, PubSub, Stream } from "effect"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
-import { resolveBinary } from "../binary.ts"
+import { lookupExecutable } from "../binary.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { FAKE_MODEL_ID, type FakeEndpoint, startFakeEndpoint, startFakeMcpServer } from "./fakeEndpoint.ts"
 import { MuseProvider } from "./index.ts"
@@ -16,8 +16,8 @@ import { MuseProvider } from "./index.ts"
  * HOME and stops resolving once the test points HOME at the fake.
  */
 const findMuse = (): string | undefined => {
-  const found = resolveBinary("muse")
-  if (found === "muse") return undefined
+  const found = lookupExecutable("muse")
+  if (found === undefined) return undefined
   if (basename(realpathSync(found)) !== "mise") return found
   return execFileSync("mise", ["which", "muse"], { encoding: "utf8" }).trim()
 }

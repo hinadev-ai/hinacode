@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { Context, Duration, Effect, Layer, Schema } from "effect"
 import type { Thread } from "../../shared/domain.ts"
-import { resolveClaudeExecutable } from "../agents/claude/index.ts"
+import { cachedExecutable } from "../agents/binary.ts"
 import { AgentError } from "../agents/provider.ts"
 import { slugifyBranch } from "./automations/template.ts"
 import { Events } from "./Events.ts"
@@ -42,49 +42,48 @@ export class ThreadNaming extends Context.Service<
   }
 >()("kkcode/ThreadNaming") {}
 
+const suggest = (model: string, prompt: string) =>
+  Effect.gen(function* () {
+    const pathToClaudeCodeExecutable = yield* Effect.sync(() => cachedExecutable("claude", { mode: "login" }))
+    const output = yield* Effect.tryPromise({
+      try: async (signal) => {
+        const abortController = new AbortController()
+        signal.addEventListener("abort", () => abortController.abort())
+        const stream = query({
+          prompt: prompt.slice(0, PROMPT_LIMIT),
+          options: {
+            ...(pathToClaudeCodeExecutable === undefined ? {} : { pathToClaudeCodeExecutable }),
+            model,
+            effort: "low",
+            systemPrompt: SYSTEM_PROMPT,
+            tools: [],
+            settingSources: [],
+            persistSession: false,
+            outputFormat: { type: "json_schema", schema: SUGGESTION_JSON_SCHEMA },
+            abortController,
+          },
+        })
+        for await (const message of stream) {
+          if (message.type !== "result") continue
+          if (message.subtype !== "success") throw new Error(message.errors.join("\n") || message.subtype)
+          return message.structured_output
+        }
+        throw new Error("Claude Code ended without a result")
+      },
+      catch: (cause) =>
+        new AgentError({
+          provider: "claude",
+          message: `Failed to name thread: ${cause instanceof Error ? cause.message : String(cause)}`,
+        }),
+    }).pipe(Effect.timeout(Duration.seconds(60)))
+    return yield* Schema.decodeUnknownEffect(Suggestion)(output)
+  })
+
 const make = Effect.gen(function* () {
   const threads = yield* Threads
   const worktrees = yield* Worktrees
   const settings = yield* Settings
   const events = yield* Events
-  const executable = yield* Effect.cached(Effect.sync(resolveClaudeExecutable))
-
-  const suggest = (model: string, prompt: string) =>
-    Effect.gen(function* () {
-      const pathToClaudeCodeExecutable = yield* executable
-      const output = yield* Effect.tryPromise({
-        try: async (signal) => {
-          const abortController = new AbortController()
-          signal.addEventListener("abort", () => abortController.abort())
-          const stream = query({
-            prompt: prompt.slice(0, PROMPT_LIMIT),
-            options: {
-              ...(pathToClaudeCodeExecutable === undefined ? {} : { pathToClaudeCodeExecutable }),
-              model,
-              effort: "low",
-              systemPrompt: SYSTEM_PROMPT,
-              tools: [],
-              settingSources: [],
-              persistSession: false,
-              outputFormat: { type: "json_schema", schema: SUGGESTION_JSON_SCHEMA },
-              abortController,
-            },
-          })
-          for await (const message of stream) {
-            if (message.type !== "result") continue
-            if (message.subtype !== "success") throw new Error(message.errors.join("\n") || message.subtype)
-            return message.structured_output
-          }
-          throw new Error("Claude Code ended without a result")
-        },
-        catch: (cause) =>
-          new AgentError({
-            provider: "claude",
-            message: `Failed to name thread: ${cause instanceof Error ? cause.message : String(cause)}`,
-          }),
-      }).pipe(Effect.timeout(Duration.seconds(60)))
-      return yield* Schema.decodeUnknownEffect(Suggestion)(output)
-    })
 
   const nameFromPrompt = (thread: Thread, prompt: string, scope: NamingScope) =>
     Effect.gen(function* () {

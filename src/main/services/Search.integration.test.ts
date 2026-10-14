@@ -123,6 +123,32 @@ describe("Search.threads", () => {
 })
 
 describe("Search.files", () => {
+  it.effect("resolves ripgrep lazily once per service, including a missing executable", () => {
+    let lookups = 0
+    return Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const search = yield* Search.Search
+      expect(lookups).toBe(0)
+      expect(yield* search.files(threadId, "  ")).toStrictEqual([])
+      expect(lookups).toBe(0)
+      for (const query of ["createWorktree", "README"]) {
+        const error = yield* search.files(threadId, query).pipe(Effect.flip)
+        expect(error._tag).toBe("RipgrepMissingError")
+      }
+      expect(lookups).toBe(1)
+    }).pipe(
+      withSearch(
+        Layer.effect(
+          Search.Search,
+          Search.make(() => {
+            lookups++
+            return undefined
+          }),
+        ),
+      ),
+    )
+  })
+
   it.effect("finds lines in the thread's workspace with paths relative to it, skipping ignored files", () =>
     Effect.gen(function* () {
       const { threadId } = yield* seedThread({ rootPath: repo })
