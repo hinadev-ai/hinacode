@@ -5,8 +5,9 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Stream } from "effect"
+import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
-import type { ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import type { AgentEvent, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -50,6 +51,8 @@ interface Probe {
   readonly release: () => void
   readonly deliver: () => void
   readonly snapshot: () => void
+  readonly pauseSnapshot: () => void
+  readonly turnBase: () => Promise<string | null>
 }
 
 const withPreparingThread = async (
@@ -123,7 +126,7 @@ const withPreparingThread = async (
     runTurn: (input) =>
       Stream.suspend(() => {
         turns.push({ provider: id, input })
-        return Stream.never
+        return input.prompt === "accepted input" ? Stream.make<AgentEvent>({ type: "turn_completed" }) : Stream.never
       }),
     steer: () => Effect.void,
     interrupt: () => Effect.void,
@@ -161,6 +164,7 @@ const withPreparingThread = async (
     const worktrees = Context.get(context, Worktrees.Worktrees)
     const messages = Context.get(context, Messages.Messages)
     const threads = Context.get(context, Threads.Threads)
+    const sql = Context.get(context, SqlClient.SqlClient)
     const runnerRuntime = ManagedRuntime.make(
       watcherLayer.pipe(
         Layer.provideMerge(layer),
@@ -261,6 +265,17 @@ const withPreparingThread = async (
         release,
         deliver,
         snapshot,
+        pauseSnapshot: () => {
+          holdSnapshot = true
+        },
+        turnBase: () =>
+          domainRuntime.runPromise(
+            sql<{
+              readonly turnBaseTree: string | null
+            }>`SELECT turn_base_tree FROM thread WHERE id = ${thread.id}`.pipe(
+              Effect.map((rows) => rows[0]?.turnBaseTree ?? null),
+            ),
+          ),
       })
     } finally {
       deliver()
@@ -450,4 +465,55 @@ it("drops watch news stopped while the turn snapshot is pending", async () => {
     },
     { pauseSnapshot: true },
   )
+})
+
+const acceptedTurnWithEdits = async (probe: Probe) => {
+  probe.release()
+  await Effect.runPromise(probe.runner.send(probe.thread.id, "accepted input", []))
+  await probe.idle
+  const messages = (await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages
+  expect(messages).toHaveLength(2)
+  if (probe.thread.worktreeId === null) throw new Error("preparing thread has no worktree")
+  const worktree = await Effect.runPromise(probe.worktrees.get(probe.thread.worktreeId))
+  writeFileSync(join(worktree.path, "edited.txt"), "user edit\n")
+  const baseline = await probe.turnBase()
+  const changes = await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))
+  expect(baseline).not.toBeNull()
+  expect(changes?.files.map((file) => file.path)).toContain("edited.txt")
+  probe.pauseSnapshot()
+  return { baseline, changes, messages }
+}
+
+it("preserves the accepted turn baseline when a watch stops during snapshot capture", async () => {
+  await withPreparingThread(async (probe) => {
+    const before = await acceptedTurnWithEdits(probe)
+    const url = "https://github.com/o/baseline/pull/7"
+    await Effect.runPromise(probe.pullRequests.watch(probe.thread.id, url, ["checksFailed"]))
+    const polling = Effect.runPromise(probe.watcher.sweep)
+    await probe.snapshotting
+    await Effect.runPromise(probe.pullRequests.unwatch(probe.thread.id, url))
+    probe.snapshot()
+    await polling
+
+    expect(probe.turns.map((turn) => turn.input.prompt)).toStrictEqual(["accepted input"])
+    expect((await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages).toStrictEqual(before.messages)
+    expect(await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))).toStrictEqual(before.changes)
+    expect(await probe.turnBase()).toBe(before.baseline)
+  })
+})
+
+it("preserves the accepted turn baseline when pending Stop interrupts snapshot capture", async () => {
+  await withPreparingThread(async (probe) => {
+    const before = await acceptedTurnWithEdits(probe)
+    const sending = Effect.runPromiseExit(probe.runner.send(probe.thread.id, "do not change the baseline", []))
+    await probe.snapshotting
+    await Effect.runPromise(probe.runner.interrupt(probe.thread.id))
+    probe.snapshot()
+    expect(Exit.isFailure(await sending)).toBe(true)
+
+    expect(probe.turns.map((turn) => turn.input.prompt)).toStrictEqual(["accepted input"])
+    expect((await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages).toStrictEqual(before.messages)
+    expect(await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))).toStrictEqual(before.changes)
+    expect(await probe.turnBase()).toBe(before.baseline)
+  })
 })
