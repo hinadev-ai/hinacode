@@ -32,6 +32,16 @@ const make = Effect.gen(function* () {
   const stillCurrent = (linkId: string, generation: PullRequestWatch["generation"]) =>
     Effect.map(pullRequests.find(linkId), (current) => current?.watch?.generation === generation)
 
+  const canDeliver = (link: PullRequestLink, generation: PullRequestWatch["generation"]) =>
+    threads.get(link.threadId).pipe(
+      Effect.flatMap((thread) =>
+        thread.status === "idle" || thread.status === "running"
+          ? stillCurrent(link.id, generation)
+          : Effect.succeed(false),
+      ),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
+
   const record = (link: PullRequestLink, watch: PullRequestWatch, patch: Partial<PullRequestWatch>) =>
     pullRequests.updateWatch(link.id, watch.generation, { ...watch, ...patch })
 
@@ -41,7 +51,7 @@ const make = Effect.gen(function* () {
         threadId: link.threadId,
         text,
         attachments: [],
-        when: stillCurrent(link.id, generation),
+        when: canDeliver(link, generation),
       })
       .pipe(
         Effect.catchCause((cause) =>

@@ -457,6 +457,7 @@ const make = Effect.gen(function* () {
       // worktree removal from deleting the directory this turn is about to run in.
       const turn = yield* worktrees.exclusive(
         Effect.gen(function* () {
+          if (!(yield* when)) return null
           const { cwd } = yield* activeWorkspace(thread.id)
           yield* threads.snapshotTurnBase(threadId, cwd)
           const now = yield* nowIso
@@ -467,6 +468,7 @@ const make = Effect.gen(function* () {
           return makeTurn(thread, provider, cwd, home, assistant)
         }),
       )
+      if (turn === null) return false
       activeTurns.set(threadId, turn)
       yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
       // Automations title their threads from their own template.
