@@ -761,7 +761,7 @@ describe("new worktree from origin's default branch", () => {
         git(root, "fetch", "-q", "origin")
         git(root, "remote", "set-head", "origin", "main")
         const elsewhere = join(dirname(root), "elsewhere")
-        execFileSync("git", ["clone", "-q", join(dirname(root), "origin.git"), elsewhere])
+        execFileSync("git", ["clone", "-q", "-b", "main", join(dirname(root), "origin.git"), elsewhere])
         const pushed = commit(elsewhere, "merged meanwhile")
         git(elsewhere, "push", "-q", "origin", "main")
 
