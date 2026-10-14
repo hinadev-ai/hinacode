@@ -11,7 +11,7 @@ kkcode ships as a downloaded app, and main moves fast. Today a developer has to 
 
 1. The developer installs kkcode once from the DMG on the `kkcode-releases` GitHub releases page.
 2. While kkcode runs, it checks for a newer release at launch and every four hours, and downloads it in the background. Nothing on screen changes while that happens.
-3. Once the download is verified, the status bar shows a quiet `Restart to update` button with the new version in its tooltip.
+3. Once the zip downloads, the status bar shows a quiet `Restart to update` button with the new version in its tooltip. An updater error clears readiness and hides the button.
 4. Clicking it quits kkcode, swaps in the new version and relaunches. Running turns get the same five-second quit window as a normal quit.
 5. If the developer ignores the button, the update installs the next time they quit kkcode.
 
@@ -22,7 +22,7 @@ kkcode ships as a downloaded app, and main moves fast. Today a developer has to 
 `services/Updates.ts` wraps `electron-updater`. It only runs when `app.isPackaged`, so `pnpm dev` never checks. It holds one value, the version that has finished downloading, or `null`. That is the only state the renderer acts on, so checking and downloading are not modelled.
 
 - rpc `updates.ready` returns the downloaded version or `null`, for a renderer that mounts after the download finished.
-- push `update.ready` carries the version when a download finishes.
+- push `update.changed` tells the renderer to ask for readiness again, after a download or updater error.
 - rpc `updates.install` calls `quitAndInstall`.
 
 `electron-updater` checks the `sha512` in `latest-mac.yml`, and Squirrel.Mac refuses a bundle whose code signature does not satisfy the running app's designated requirement. Both checks happen before anything is installed, so the feed needs no extra trust handling.

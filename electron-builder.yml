@@ -21,7 +21,6 @@ mac:
   category: public.app-category.developer-tools
   icon: assets/icon.png
   hardenedRuntime: true
-  # Notarizes only when the APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER env vars are set.
   notarize: true
 publish:
   provider: github

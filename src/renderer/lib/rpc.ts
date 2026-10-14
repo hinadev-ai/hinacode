@@ -293,9 +293,8 @@ export const remotePairingAtom = Atom.make((get) => {
   return call("remote.pairing", undefined)
 })
 
-/** The downloaded release waiting to install, or null. Asked again when a download finishes. */
 export const updateReadyAtom = Atom.make((get) => {
-  get.addFinalizer(onPushEvent((event) => event.type === "update.ready" && get.refreshSelf()))
+  get.addFinalizer(onPushEvent((event) => event.type === "update.changed" && get.refreshSelf()))
   return call("updates.ready", undefined)
 })
 

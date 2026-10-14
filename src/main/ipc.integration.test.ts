@@ -209,11 +209,9 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, scriptedProvider("muse")),
 )
 
-// Automations and Updates are not exercised here: their handlers only forward to the service.
 const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Service)
-const updatesStub = Layer.succeed(Updates, {} as typeof Updates.Service)
+const updatesStub = Layer.succeed(Updates, Updates.of({ ready: Effect.succeed(null), install: Effect.void }))
 
-/** The production composition from `index.ts`, with scripted agent providers and stubbed Automations and Updates. */
 const makeLayer = (dbPath: string) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(

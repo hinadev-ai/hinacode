@@ -493,8 +493,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
   /** Sent after the session's last `terminal.data`. */
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
-  /** A new release finished downloading and installs on restart. */
-  Schema.Struct({ type: Schema.Literal("update.ready"), version: Schema.String }),
+  /** Readiness changed; ask updates.ready for the current downloaded version. */
+  Schema.Struct({ type: Schema.Literal("update.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),

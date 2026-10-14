@@ -21,9 +21,14 @@ const make = Effect.gen(function* () {
   autoUpdater.autoDownload = true
   autoUpdater.on("update-downloaded", ({ version }) => {
     ready = version
-    Effect.runFork(events.publish({ type: "update.ready", version }))
+    Effect.runFork(events.publish({ type: "update.changed" }))
   })
-  autoUpdater.on("error", (error) => Effect.runFork(Effect.logWarning("update failed", error)))
+  autoUpdater.on("error", (error) => {
+    ready = null
+    Effect.runFork(
+      events.publish({ type: "update.changed" }).pipe(Effect.andThen(Effect.logWarning("update failed", error))),
+    )
+  })
 
   // Failures also arrive as the `error` event above.
   const check = Effect.tryPromise(() => autoUpdater.checkForUpdates()).pipe(Effect.ignore)
