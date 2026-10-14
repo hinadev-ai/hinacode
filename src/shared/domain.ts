@@ -404,6 +404,8 @@ export const Settings = Schema.Struct({
   notifications: NotificationSettings,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
+  /** Absolute directory for new worktrees, one folder per project. Null keeps them in `.kkcode-worktrees` beside each project. */
+  worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
 })
 export type Settings = typeof Settings.Type
 
@@ -421,6 +423,7 @@ export const defaultSettings: Settings = {
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
   archive: { whenMerged: false, removeWorktree: false },
   experimental: { tinyVm: false },
+  worktreeRoot: null,
 }
 
 /** Who drives a tiny VM's pointer and keyboard. The agent's pointer and keyboard tools wait while it is `user`. */
