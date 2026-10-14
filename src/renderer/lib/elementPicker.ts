@@ -183,6 +183,7 @@ function pickElement(): Promise<unknown> {
       const pick = element ? describe(element) : null
       host.remove()
       cursor.remove()
+      if (pick === null) return resolve(null)
       // Wait for a frame without the overlay, so the screenshot taken next does not include it.
       requestAnimationFrame(() => requestAnimationFrame(() => resolve(pick)))
     }
