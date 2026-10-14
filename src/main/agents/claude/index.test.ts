@@ -133,6 +133,13 @@ const backgroundTasks = (...tasks: ReadonlyArray<Readonly<Record<string, unknown
   tasks: tasks.map((task) => ({ task_type: "local_bash", description: "npm run dev", ...task })),
 })
 
+const textDelta = (text: string, answering?: string) => ({
+  type: "stream_event",
+  parent_tool_use_id: null,
+  event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+  ...(answering === undefined ? {} : { user_message_uuid: answering }),
+})
+
 const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   threadId: "thread-1",
   prompt: "Hello",
@@ -376,6 +383,33 @@ describe("Claude idle sessions", () => {
         latestCli().push(succeeded)
         yield* Fiber.join(turn.fiber)
         expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("answers a steer sent while Claude finishes within the same turn", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        const turn = yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* until(() => latestCli().prompts.length === 2)
+        const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
+        latestCli().push(
+          { ...succeeded, user_message_uuids: [prompt] },
+          textDelta("Switching to pnpm", steer),
+          { ...succeeded, user_message_uuids: [steer] },
+        )
+
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
+          { type: "text_delta", text: "Switching to pnpm" },
+          expect.objectContaining({ type: "turn_completed" }),
+        ])
       }),
     ),
   )
