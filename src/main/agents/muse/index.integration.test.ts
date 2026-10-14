@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
@@ -304,6 +304,61 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           ])
           expect(usage!.models[0]!.outputTokens).toBeGreaterThan(0)
           expect(usage!.transcripts).toBeGreaterThan(1)
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "lists the workspace's skills for the composer and expands a typed skill invocation",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const cwd = join(root, "ws-skills")
+          const skillDir = join(cwd, ".agents", "skills", "probe-echo")
+          mkdirSync(skillDir, { recursive: true })
+          writeFileSync(
+            join(skillDir, "SKILL.md"),
+            [
+              "---",
+              "name: probe-echo",
+              "description: Echo the probe marker word back to the user.",
+              'argument-hint: "[word]"',
+              "---",
+              "",
+              "PROBE-SKILL-BODY: reply with the word the user gave.",
+              "",
+            ].join("\n"),
+          )
+
+          const commands = yield* provider.listCommands({ threadId: "thread-skills", cwd, home: null })
+          expect(commands).toContainEqual({
+            trigger: "/",
+            name: "probe-echo",
+            description: "Echo the probe marker word back to the user.",
+            argumentHint: "[word]",
+          })
+
+          const events: Array<AgentEvent> = []
+          yield* provider
+            .runTurn({
+              threadId: "thread-skills",
+              prompt: "/probe-echo banana",
+              attachments: [],
+              cwd,
+              model: FAKE_MODEL_ID,
+              effort: null,
+              fastMode: false,
+              accessMode: "supervised",
+              resumeSessionId: null,
+              home: null,
+              mcpServer: { url: mcp!.url, headers: { authorization: "Bearer [REDACTED]" } },
+            })
+            .pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event))))
+          // The host expands the skill, so its body reaches the model endpoint.
+          yield* Effect.promise(() => endpoint.requested("PROBE-SKILL-BODY"))
+          expect(events.at(-1)?.type).toBe("turn_completed")
         }),
       ),
     TURN_TIMEOUT,
