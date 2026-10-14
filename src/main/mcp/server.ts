@@ -1,5 +1,5 @@
 import { createServer } from "node:http"
-import { NodeHttpServer } from "@effect/platform-node"
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { McpProtocol, McpSchema, McpServer as AiMcpServer, Tool } from "effect/ai"
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http"

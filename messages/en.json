@@ -732,6 +732,8 @@
   "status_bar_label": "Status bar",
   "usage_tokens": "{tokens} tokens",
   "usage_label": "{tokens} tokens spent by this thread",
+  "update_restart": "Restart to update",
+  "update_ready_tooltip": "kkcode {version} is ready to install",
   "usage_model": "Model",
   "usage_input": "Input",
   "usage_cache_write": "Cache write",

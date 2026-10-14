@@ -250,6 +250,11 @@ export const RpcMethods = {
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
+  /** The downloaded release version waiting to install, or null. */
+  "updates.ready": rpc(Schema.Void, Schema.NullOr(Schema.String)),
+  /** Quits, installs the downloaded release and relaunches. */
+  "updates.install": rpc(Schema.Void, Schema.Void),
+
   /**
    * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
    * reflects every transcript push up to and including `seq`, and none after.
@@ -495,6 +500,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
   /** Sent after the session's last `terminal.data`. */
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
+  /** Readiness changed; ask updates.ready for the current downloaded version. */
+  Schema.Struct({ type: Schema.Literal("update.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),

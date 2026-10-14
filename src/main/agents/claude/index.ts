@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import {
   type AccountInfo,
   type EffortLevel,
@@ -186,7 +187,19 @@ export function resolveClaudeExecutable(): string | undefined {
       if (path !== "") return path
     } catch {}
   }
-  return undefined
+  return bundledClaudeExecutable()
+}
+
+/** The SDK finds its bundled binary inside app.asar, where it cannot be spawned, so point it at the unpacked copy. */
+function bundledClaudeExecutable(): string | undefined {
+  try {
+    const sdk = createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk")
+    return createRequire(sdk)
+      .resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`)
+      .replace("app.asar", "app.asar.unpacked")
+  } catch {
+    return undefined
+  }
 }
 
 /** The Messages API rejects base64 images above 5 MB. */

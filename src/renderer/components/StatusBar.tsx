@@ -2,9 +2,10 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect } from "react"
+import { RiDownloadLine } from "react-icons/ri"
 import type { ModelUsage, ThreadUsage } from "../../shared/agent.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
-import { threadUsageAtom } from "../lib/rpc.ts"
+import { callPromise, threadUsageAtom, updateReadyAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
@@ -35,7 +36,10 @@ export function StatusBar() {
           }
         />
       </div>
-      {threadId !== undefined && <ThreadTokens key={threadId} threadId={threadId} />}
+      <div className="flex h-full shrink-0 items-center gap-1">
+        {threadId !== undefined && <ThreadTokens key={threadId} threadId={threadId} />}
+        <RestartToUpdate />
+      </div>
     </footer>
   )
 }
@@ -67,6 +71,25 @@ function ThreadTokens({ threadId }: { threadId: string }) {
       </TooltipTrigger>
       <TooltipContent side="top" align="end" className="max-w-none flex-col items-stretch gap-2 py-2">
         <UsageBreakdown usage={usage} />
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function RestartToUpdate() {
+  const version = AsyncResult.getOrElse(useAtomValue(updateReadyAtom), () => null)
+  if (version === null) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        onClick={() => void callPromise("updates.install", undefined)}
+        className="flex h-5 items-center gap-1 rounded-sm px-1.5 outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <RiDownloadLine aria-hidden className="size-3.5" />
+        {m.update_restart()}
+      </TooltipTrigger>
+      <TooltipContent side="top" align="end">
+        {m.update_ready_tooltip({ version })}
       </TooltipContent>
     </Tooltip>
   )

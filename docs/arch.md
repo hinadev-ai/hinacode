@@ -85,7 +85,7 @@ flowchart BT
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports, RemoteAccess"]
   runner["AgentRunner"]
-  autos["Automations, AutoArchive,<br/>PullRequestWatcher"]
+  autos["Automations, AutoArchive,<br/>PullRequestWatcher, Updates"]
   mcp["MCP server"]
   remote["Remote listener"]
 
@@ -97,6 +97,8 @@ flowchart BT
   runner --> mcp
   autos & mcp --> remote
 ```
+
+`Updates` only runs in a packaged app. It checks the public `kjj6198/kkcode-releases` feed at launch and every 4 hours, downloads in the background, and pushes `update.changed` when readiness changes. An updater error clears readiness. Squirrel.Mac validates the bundle before installation. See [ADR 0015](adr/0015-updates-from-a-public-releases-repo.md).
 
 The remote listener sits above everything because it dispatches every rpc method, including the automation ones.
 

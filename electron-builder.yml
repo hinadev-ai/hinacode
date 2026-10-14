@@ -1,0 +1,29 @@
+appId: dev.kkcode.app
+productName: kkcode
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-{linux,win32,darwin-x64}*/**"
+  - "!**/node_modules/node-pty/prebuilds/{win32,darwin-x64}*/**"
+# The Claude SDK and node-pty spawn native binaries, which cannot run from inside app.asar.
+asarUnpack:
+  - "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  - "**/node_modules/node-pty/**"
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    # Squirrel.Mac installs updates from the zip.
+    - target: zip
+      arch: arm64
+  category: public.app-category.developer-tools
+  icon: assets/icon.png
+  hardenedRuntime: true
+  notarize: true
+publish:
+  provider: github
+  owner: kjj6198
+  repo: kkcode-releases
+  releaseType: release

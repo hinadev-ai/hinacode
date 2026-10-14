@@ -32,6 +32,7 @@ import { askNotificationPermission, notificationPermission } from "./notificatio
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
 import { Terminals } from "./services/Terminals.ts"
+import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -56,6 +57,7 @@ export type AppServices =
   | GitHub
   | Files
   | Favicons
+  | Updates
   | RemoteAccess
   | Events
   | TinyVm
@@ -214,6 +216,9 @@ const handlers: Handlers = {
       const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
+
+  "updates.ready": () => Updates.use((updates) => updates.ready),
+  "updates.install": () => Updates.use((updates) => updates.install),
 
   "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
   "threads.send": ({ threadId, prompt, attachments = [], worktree }) =>
