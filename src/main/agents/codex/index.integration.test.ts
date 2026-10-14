@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
@@ -121,6 +121,31 @@ const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) => Fiber.join(fiber)
 /** A fresh app-server per test, torn down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
   effect.pipe(Effect.provide(CodexProvider.layer))
+
+describe("Codex app-server log", () => {
+  it("reads an appended message only after its JSONL terminator arrives", () => {
+    const first = { id: 1, method: "initialize" }
+    const next = { id: 2, method: "turn/start" }
+    const line = JSON.stringify(next)
+    const split = line.indexOf("turn/start") + 4
+    expect(received()).toStrictEqual([])
+
+    appendFileSync(logPath, `${JSON.stringify(first)}\n${line.slice(0, split)}`)
+    expect(received()).toStrictEqual([first])
+
+    appendFileSync(logPath, line.slice(split))
+    expect(received()).toStrictEqual([first])
+
+    appendFileSync(logPath, "\n")
+    expect(received()).toStrictEqual([first, next])
+    expect(countOf("turn/start")).toBe(1)
+  })
+
+  it("rejects malformed newline-terminated messages", () => {
+    writeFileSync(logPath, '{"method":"turn/start"\n')
+    expect(received).toThrow(SyntaxError)
+  })
+})
 
 describe("Codex Stop during startup", () => {
   for (const phase of ["initialize", "thread/start", "turn/start"]) {
