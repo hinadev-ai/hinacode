@@ -867,5 +867,8 @@
   "vm_exit_fullscreen": "フルスクリーンを終了",
   "vm_floating_body": "画面はスレッド会話の上にフローティング表示されています。",
   "vm_dock": "サイドパネルに固定",
-  "vm_floating_resize": "VM ウィンドウのサイズを変更"
+  "vm_floating_resize": "VM ウィンドウのサイズを変更",
+  "settings_worktree_root": "ワークツリーの保存先",
+  "settings_worktree_root_hint": "新しいワークツリーを保存するディレクトリです。プロジェクトごとにフォルダーを作成します。空欄の場合は各プロジェクトと同じ階層の .kkcode-worktrees に保存します。既存のワークツリーは移動しません。",
+  "settings_worktree_root_absolute": "/ で始まる絶対パスを入力してください。"
 }

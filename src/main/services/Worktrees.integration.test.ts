@@ -528,6 +528,20 @@ describe("worktree ownership", () => {
       }),
     ),
   )
+
+  it.live("puts new checkouts in the worktree root setting, in a folder named after the project", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const worktreeRoot = join(dirname(root), "checkouts")
+        yield* Settings.use((settings) => settings.set({ worktreeRoot }))
+
+        const thread = yield* createThread(projectId, "rooted", "kk/rooted")
+        const worktree = yield* worktreeOf(thread.worktreeId)
+        expect(dirname(worktree.path)).toBe(join(realpathSync(worktreeRoot), basename(root)))
+        expect(git(worktree.path, "branch", "--show-current").trim()).toBe("kk/rooted")
+      }),
+    ),
+  )
 })
 
 describe("startup", () => {
