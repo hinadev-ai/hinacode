@@ -25,9 +25,11 @@ import {
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { threadPortsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
+import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { useUi } from "../../stores/ui.ts"
 import { Button } from "../ui/button.tsx"
 import { Input } from "../ui/input.tsx"
+import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 
 /**
  * Without `allowpopups` the page's `window.open` and `target=_blank` links do nothing; with it, main loads them in
@@ -39,6 +41,7 @@ const ALLOW_POPUPS: Record<string, string> = { allowpopups: "" }
 const ERR_ABORTED = -3
 
 type NavigationEvent = Event & { url: string; isMainFrame?: boolean; isInPlace?: boolean }
+type TitleEvent = Event & { title: string }
 type FailLoadEvent = Event & { errorCode: number; errorDescription: string; validatedURL: string; isMainFrame: boolean }
 
 interface Failure {
@@ -46,10 +49,35 @@ interface Failure {
   readonly description: string
 }
 
-/** A browser for the thread's dev server, whose elements can be picked into the message. */
+/** Browser tabs for the thread's dev servers, whose elements can be picked into the message. */
 export function BrowserView({ thread }: { thread: Thread }) {
-  const threadId = thread.id
-  const [src, setSrc] = useState(() => useUi.getState().browserUrls[threadId] ?? null)
+  const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(thread.id))
+
+  // A page needs the room an editor gets.
+  useEffect(() => {
+    useUi.getState().setSidePanelWide(true)
+    return () => useUi.getState().setSidePanelWide(false)
+  }, [])
+
+  return (
+    <div className="relative min-h-0 flex-1">
+      {tabs.map((tab) => (
+        <BrowserPage key={tab.id} threadId={thread.id} tab={tab} active={tab.id === activeId} />
+      ))}
+    </div>
+  )
+}
+
+interface BrowserPageProps {
+  readonly threadId: string
+  readonly tab: BrowserTab
+  /** Hidden tabs stay mounted, so their pages keep running and come back without a reload. */
+  readonly active: boolean
+}
+
+function BrowserPage({ threadId, tab, active }: BrowserPageProps) {
+  const tabId = tab.id
+  const [src, setSrc] = useState(tab.url)
   const [address, setAddress] = useState(src ?? "")
   const [invalid, setInvalid] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -61,18 +89,25 @@ export function BrowserView({ thread }: { thread: Thread }) {
   const viewRef = useRef<WebviewElement | null>(null)
   const addressRef = useRef<HTMLInputElement | null>(null)
   const pick = useRef<AbortController | null>(null)
+  const focusAddress = useBrowserTabs((state) => state.addressFocusRequest === tabId)
 
-  // A page needs the room an editor gets.
   useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
+    if (!focusAddress) return
+    useBrowserTabs.getState().clearAddressFocusRequest()
+    addressRef.current?.focus()
+  }, [focusAddress])
 
   const endPick = useCallback(() => {
     pick.current?.abort()
     pick.current = null
     setPicking(false)
   }, [])
+
+  useEffect(() => {
+    if (active || !pick.current) return
+    endPick()
+    viewRef.current?.executeJavaScript(CANCEL_PICK_SCRIPT).catch(() => {})
+  }, [active, endPick])
 
   const attachView = useCallback(
     (view: WebviewElement | null) => {
@@ -84,7 +119,7 @@ export function BrowserView({ thread }: { thread: Thread }) {
         setPickError(null)
         // A client-side route change or hot reload must not wipe what the user is typing.
         if (document.activeElement !== addressRef.current) setAddress(url)
-        useUi.getState().setBrowserUrl(threadId, url)
+        useBrowserTabs.getState().updateTab(threadId, tabId, { url })
         syncHistory()
       }
       const listeners: Record<string, (event: never) => void> = {
@@ -100,6 +135,8 @@ export function BrowserView({ thread }: { thread: Thread }) {
         "did-navigate-in-page": (event: NavigationEvent) => {
           if (event.isMainFrame) arrived(event.url)
         },
+        "page-title-updated": (event: TitleEvent) =>
+          useBrowserTabs.getState().updateTab(threadId, tabId, { title: event.title }),
         "did-fail-load": (event: FailLoadEvent) => {
           if (!event.isMainFrame || event.errorCode === ERR_ABORTED) return
           setFailure({ url: event.validatedURL, description: event.errorDescription })
@@ -114,7 +151,7 @@ export function BrowserView({ thread }: { thread: Thread }) {
         viewRef.current = null
       }
     },
-    [threadId, endPick],
+    [threadId, tabId, endPick],
   )
 
   const open = (url: string) => {
@@ -169,7 +206,13 @@ export function BrowserView({ thread }: { thread: Thread }) {
   const ready = src !== null
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      id={browserPanelId(threadId, tabId)}
+      role="tabpanel"
+      aria-labelledby={browserTabId(threadId, tabId)}
+      inert={!active}
+      className={cn("absolute inset-0 flex flex-col", !active && "invisible")}
+    >
       <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border px-2">
         <Button
           variant="ghost"

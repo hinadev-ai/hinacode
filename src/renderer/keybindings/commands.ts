@@ -5,6 +5,7 @@ import type { ExperimentalSettings, Project, Settings } from "../../shared/domai
 import { startThread } from "../lib/startThread.ts"
 import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
+import { useBrowserTabs } from "../stores/browserTabs.ts"
 import { useLocale } from "../stores/locale.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -148,6 +149,16 @@ export const commands = [
     defaultKeys: "mod+shift+b",
     title: m.command_view_browser,
     run: (ctx) => showView(ctx, "browser"),
+  },
+  {
+    id: "browser.newTab",
+    defaultKeys: "mod+t",
+    title: m.command_browser_new_tab,
+    run: (ctx) => {
+      if (!ctx.threadId) return
+      useUi.getState().showView(ctx.threadId, "browser")
+      useBrowserTabs.getState().openTab(ctx.threadId)
+    },
   },
   {
     id: "view.tinyVm",
