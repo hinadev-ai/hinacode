@@ -35,6 +35,7 @@ import {
   RiDraggable,
   RiErrorWarningLine,
   RiEyeLine,
+  RiEyeOffLine,
   RiGitBranchLine,
   RiInboxUnarchiveLine,
   RiMoreFill,
@@ -243,6 +244,15 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
       toast.error(m.sidebar_unarchive_failed({ message: errorMessage(cause) }))
     }
   }
+  /** The linked pull requests this thread is watching; the store hears about the stop from the push. */
+  const watched = meta.links.filter((link) => link.watch !== null)
+  const unwatch = async (url: string) => {
+    try {
+      await callPromise("pullRequests.unwatch", { threadId: thread.id, url })
+    } catch (cause) {
+      toast.error(m.pr_watch_failed({ message: errorMessage(cause) }))
+    }
+  }
 
   const queue = (next: RowMode) => () => setQueued(next)
   const closeDialog = (open: boolean) => {
@@ -336,6 +346,21 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
                 <RiPencilLine aria-hidden />
                 {m.sidebar_thread_rename()}
               </DropdownMenuItem>
+              {watched.length === 0 ? (
+                <DropdownMenuItem disabled>
+                  <RiEyeOffLine aria-hidden />
+                  {m.sidebar_thread_unwatch()}
+                </DropdownMenuItem>
+              ) : (
+                watched.map((link) => (
+                  <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
+                    <RiEyeOffLine aria-hidden />
+                    {watched.length > 1
+                      ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                      : m.sidebar_thread_unwatch()}
+                  </DropdownMenuItem>
+                ))
+              )}
               {archived ? (
                 <DropdownMenuItem onClick={() => void unarchive()}>
                   <RiInboxUnarchiveLine aria-hidden />
