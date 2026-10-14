@@ -1,6 +1,6 @@
 import { RiAddLine, RiFileTextLine } from "react-icons/ri"
 import { ProviderIcon } from "../components/ProviderIcon.tsx"
-import { commands } from "../keybindings/commands.ts"
+import { commands, isCommandAvailable } from "../keybindings/commands.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { startThread } from "../lib/startThread.ts"
@@ -46,16 +46,18 @@ export const projectsSource: PaletteSource = {
 export const commandsSource: PaletteSource = {
   group: "commands",
   items: (_query, ctx) =>
-    commands.map((command) => {
-      const chord = ctx.keymap[command.id]
-      return {
-        id: `command:${command.id}`,
-        group: "commands",
-        title: command.title(),
-        ...(chord ? { chord } : {}),
-        run: () => command.run(ctx),
-      }
-    }),
+    commands
+      .filter((command) => isCommandAvailable(command, ctx.experimental))
+      .map((command) => {
+        const chord = ctx.keymap[command.id]
+        return {
+          id: `command:${command.id}`,
+          group: "commands",
+          title: command.title(),
+          ...(chord ? { chord } : {}),
+          run: () => command.run(ctx),
+        }
+      }),
 }
 
 /** Shows `path` in the open thread's Files panel, whose explorer is keyed by the same root `FilesView` picks. */

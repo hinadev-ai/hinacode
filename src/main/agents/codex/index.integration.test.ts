@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, PubSub, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { CodexProvider } from "./index.ts"
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
@@ -87,6 +88,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   resumeSessionId: null,
   home,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
+  instructions: AGENT_INSTRUCTIONS,
 })
 
 const startTurn = (threadId: string, home: AccountHome | null = null) =>

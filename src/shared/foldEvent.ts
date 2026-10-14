@@ -86,7 +86,7 @@ export function foldTranscript(
 
   let next = messages
   const folded = foldEvent(messages[target]!, event, now)
-  if (folded !== messages[target]) next = next.with(target, folded)
+  if (folded !== messages[target]) next = messages.map((message, index) => (index === target ? folded : message))
   if (event.type === "turn_completed" || event.type === "turn_failed" || event.type === "turn_limited") {
     next = next.map((message, index) => {
       if (index === target) return message

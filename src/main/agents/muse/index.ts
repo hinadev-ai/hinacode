@@ -13,7 +13,6 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { resolveBinary } from "../binary.ts"
 import { elementContext } from "../elementContext.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
@@ -403,7 +402,7 @@ const make = Effect.gen(function* () {
           yield* emit({ type: "session_bound", providerSessionId: sessionId })
 
           // MSP has no developer instructions, so kkcode's ride in front of the prompt.
-          const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, AGENT_INSTRUCTIONS)
+          const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
           run.turnStart = yield* host
             .command<TurnStartResult>("turn/start", {
               sessionId,

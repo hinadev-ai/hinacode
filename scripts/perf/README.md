@@ -103,3 +103,64 @@ or final rendered text. It prints frame, parser, and emission deltas and saves
 `baseline-candidate-stream-comparison.json`. Run several fresh labels for each build and retain idle
 and emission timings alongside the frame results. A faster parse does not by itself prove smoother
 frames.
+
+## Measure retained memory
+
+Build first, then run from the checkout root:
+
+```sh
+pnpm build
+node scripts/perf/memory.mjs baseline history
+node scripts/perf/memory.mjs baseline claude
+# Rebuild the candidate before repeating either workload.
+node scripts/perf/memory.mjs candidate history --check
+node scripts/perf/memory.mjs candidate claude --check
+node scripts/perf/compare-memory.mjs baseline candidate history
+node scripts/perf/compare-memory.mjs baseline candidate claude
+```
+
+Each run launches its own built Electron app through the repository's Playwright Electron driver.
+It uses a fresh `/tmp/kk-memory-` profile and repository, checks the renderer path and main-process
+ownership, then closes the app and removes that profile. On Linux, provide `DISPLAY` or use Xvfb.
+On macOS, it uses the native window server. It never attaches to an existing app.
+
+`history` seeds twelve running threads with 128 completed tool calls containing 64 KiB of output
+per thread message. It opens each transcript through the sidebar, leaves all of them, delivers
+completion pushes through the real preload boundary, and reopens the first. The data is synthetic;
+no coding-agent turn runs. `--check` requires hidden histories to retain less than 20 MiB above the
+seeded renderer heap. The workload contains 96 MiB of raw tool output, so this catches accumulating
+histories while allowing normal UI overhead.
+
+`claude` sends three short prompts through the composer using the real default Claude account.
+These turns can incur API charges and load that account's configured hooks and MCP servers. It waits
+70 seconds after the third result to sample idle processes. `--check` requires those Claude CLIs to
+have exited, with no previously observed descendants left orphaned. It then sends a follow-up to
+the first thread and checks that its provider session ID survives. A usage-limit result exercises
+cleanup but does not prove a successful model answer.
+
+Results and per-process RSS samples land in `.context/perf/<label>-<scenario>-memory.json`.
+Screenshots land in `.context/shots/`. Renderer heap is measured after explicit garbage collection.
+RSS is the sum for the owned app's process tree and can count shared pages more than once. Report it
+as process-tree RSS, not private memory. Startup and thread-switch samples include temporary model
+and command probes. The `claude` comparison uses the settled 70-second sample.
+
+The comparator rejects failed captures and different workloads. It saves before, after, absolute
+delta, and percentage change beside the captures. Keep the JSON and the build revision with any
+performance claim. Captures also record a digest of uncommitted changes.
+
+### 2026-10-14 capture
+
+On macOS arm64, baseline `3941d33` and candidate `3a01bf1` used the workloads above:
+
+| Measurement                                                   |    Baseline |  Candidate |  Change |
+| ------------------------------------------------------------- | ----------: | ---------: | ------: |
+| Renderer heap after twelve hidden threads finish              |  115.37 MiB |  19.11 MiB | -83.44% |
+| Process-tree RSS after three Claude turns and 70 idle seconds | 3177.45 MiB | 898.33 MiB | -71.73% |
+
+The Claude turns hit the default account's organization spend limit on both builds. Idle process
+count fell from 29 to 5; no observed child processes remained orphaned. A separate successful
+conversation recalled an earlier marker after its CLI exited and the next turn resumed the same
+session. The 60-second grace preserves immediate follow-ups; later turns pay CLI startup time.
+
+Raw captures use the `baseline-verified` and `final` labels. Mechanical comparisons are saved as
+`.context/perf/baseline-verified-final-{history,claude}-memory-comparison.json`.

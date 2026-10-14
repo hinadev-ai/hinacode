@@ -147,5 +147,5 @@
       }
     }
   ],
-  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**"]
+  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/**"]
 }

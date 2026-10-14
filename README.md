@@ -18,6 +18,7 @@ A local desktop app for running Claude Code, Codex and Muse Code against your re
 - A browser view for the thread's dev server. It lists the ports the thread listens on, and Select element picks a part of the page into the message as a screenshot with its URL, selector, HTML and React component names.
 - GitHub through your `gh` login. Each pull request shows its title, draft, open, merged or closed state, CI checks and review decision, refreshed every minute. A worktree branch without a pull request gets a button that pushes it and runs `gh pr create --fill`. Settings > Integrations shows whether `gh` is installed and signed in.
 - Automations start a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree. Triggers are a signed webhook and pollers for new GitHub issues, Linear issues and Slack mentions.
+- Remote mode. Settings > Remote starts a WebSocket listener and shows a pairing QR code. The phone app in `apps/mobile` (Expo) lists threads, streams transcripts, answers approvals and questions, sends and steers prompts, merges pull requests and opens a shell in the worktree, over the same rpc contract as the desktop window.
 - English and 繁體中文, switchable in settings.
 - Rebindable keyboard shortcuts with chord recording and conflict detection.
 - SQLite persistence through Node's built-in `node:sqlite`, so there is nothing native to rebuild.
@@ -85,6 +86,10 @@ Adding an agent backend means one implementation of `AgentProvider` in `src/main
 | `pnpm test:e2e`         | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
 
 Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own kkcode on a throwaway `KKCODE_USER_DATA`, seeds preconditions through `window.kkcode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
+
+Scenarios that depend on native pointer capture, scrolling or window focus carry `@desktop`. They run with one worker after the parallel scenarios finish, because separate app profiles still share the desktop's focus and input.
+
+Run selected desktop scenarios with `pnpm test:e2e --project desktop --no-deps -g 'Resizable'`. The `--no-deps` flag skips the parallel project for a focused run.
 
 Tests never wait on wall-clock timers; oxlint rejects `setTimeout`, `setInterval` and the `timers` modules in test files. Wait on the thing itself instead: a push event, a `PubSub` the service publishes to, a file change, a Playwright locator assertion, or `TestClock.adjust` for code that sleeps. The verification skill in `.agents/skills/verify-kkcode` picks up where e2e stops: real agent turns, GitHub through `gh`, and native dialogs.
 

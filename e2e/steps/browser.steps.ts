@@ -50,10 +50,7 @@ When("I open the shop page with a {int}-character query in the browser", async (
 
 When("I click the Buy now button while selecting an element", async ({ app }) => {
   await startPicking(app.page)
-  const box = await webview(app.page).boundingBox()
-  if (!box) throw new Error("the browser view is not on screen")
-  await app.page.mouse.move(box.x + 100, box.y + 40)
-  await app.page.mouse.click(box.x + 100, box.y + 40)
+  await webview(app.page).click({ position: { x: 100, y: 40 } })
 })
 
 When("I pick the heading with the keyboard", async ({ app }) => {

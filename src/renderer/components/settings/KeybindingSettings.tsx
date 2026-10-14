@@ -2,7 +2,7 @@ import { useAtomSet } from "@effect/atom-react"
 import { useHotkeyRecorder } from "@tanstack/react-hotkeys"
 import { useState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
-import { type Command, commands, conflictsOf } from "../../keybindings/commands.ts"
+import { type Command, commands, conflictsOf, isCommandAvailable } from "../../keybindings/commands.ts"
 import { useKeymap } from "../../keybindings/useKeybindings.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -15,7 +15,7 @@ import { SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
 export function KeybindingSettings() {
-  const { keybindings: overrides } = useSettings()
+  const { keybindings: overrides, experimental } = useSettings()
   const keymap = useKeymap()
   const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
   const [recordingId, setRecordingId] = useState<string | null>(null)
@@ -92,19 +92,21 @@ export function KeybindingSettings() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {commands.map((command) => (
-            <KeybindingRow
-              key={command.id}
-              command={command}
-              chord={keymap[command.id] ?? ""}
-              conflicts={conflictsOf(keymap, command.id)}
-              overridden={command.id in overrides}
-              recording={recordingId === command.id}
-              onRecord={() => record(command)}
-              onRecordEnd={endRecording}
-              onReset={() => reset(command)}
-            />
-          ))}
+          {commands
+            .filter((command) => isCommandAvailable(command, experimental))
+            .map((command) => (
+              <KeybindingRow
+                key={command.id}
+                command={command}
+                chord={keymap[command.id] ?? ""}
+                conflicts={conflictsOf(keymap, command.id)}
+                overridden={command.id in overrides}
+                recording={recordingId === command.id}
+                onRecord={() => record(command)}
+                onRecordEnd={endRecording}
+                onReset={() => reset(command)}
+              />
+            ))}
         </TableBody>
       </Table>
     </SettingsSection>

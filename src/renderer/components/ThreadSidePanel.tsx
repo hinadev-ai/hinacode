@@ -9,7 +9,7 @@ import { m } from "../paraglide/messages.js"
 import { selectSidePanelView, useUi } from "../stores/ui.ts"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
-import { viewById } from "./sidePanel/views.ts"
+import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
 import { Button } from "./ui/button.tsx"
 
 /** Hiding the panel (mod+.) takes the focused element with it; hand focus to the composer instead of <body>. */
@@ -24,7 +24,8 @@ const returnFocusToComposer = (panel: HTMLElement | null) => () => {
 export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const docked = usePanelLayout() === "wide"
   const open = useUi((state) => (docked ? state.sidePanelOpen : state.sidePanelOverlayOpen))
-  const viewId = useUi(selectSidePanelView(thread.id))
+  const views = useSidePanelViews()
+  const view = viewById(views, useUi(selectSidePanelView(thread.id)))
   const shown = compact || open
   const panelId = `side-panel-${thread.id}`
 
@@ -33,21 +34,21 @@ export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; c
       aria-label={m.panel_label()}
       className={cn("flex min-h-0 shrink-0", compact ? "w-full flex-1" : "border-l border-border")}
     >
-      {shown && <ViewContent thread={thread} viewId={viewId} panelId={panelId} compact={compact} />}
-      <ActivityBar threadId={thread.id} selected={shown ? viewId : null} panelId={panelId} />
+      {shown && <ViewContent thread={thread} view={view} panelId={panelId} compact={compact} />}
+      <ActivityBar threadId={thread.id} views={views} selected={shown ? view.id : null} panelId={panelId} />
     </aside>
   )
 }
 
 interface ViewContentProps {
   readonly thread: Thread
-  readonly viewId: ReturnType<ReturnType<typeof selectSidePanelView>>
+  readonly view: SidePanelView
   readonly panelId: string
   readonly compact: boolean
 }
 
-function ViewContent({ thread, viewId, panelId, compact }: ViewContentProps) {
-  const view = viewById(viewId)
+function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
+  const viewId = view.id
   const maximum = useSidePanelMaxWidth()
   const content = useMemo(() => createElement(view.component, { thread }), [view, thread])
   const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))

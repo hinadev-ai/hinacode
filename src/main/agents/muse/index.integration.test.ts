@@ -7,6 +7,7 @@ import { Effect, Fiber, PubSub, Stream } from "effect"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import { resolveBinary } from "../binary.ts"
+import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import { FAKE_MODEL_ID, type FakeEndpoint, startFakeEndpoint, startFakeMcpServer } from "./fakeEndpoint.ts"
 import { MuseProvider } from "./index.ts"
 
@@ -46,6 +47,7 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
     resumeSessionId: null,
     home: null,
     mcpServer: { url: mcp!.url, headers: { authorization: "Bearer test" } },
+    instructions: AGENT_INSTRUCTIONS,
   }
 }
 
@@ -345,6 +347,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             .runTurn({
               threadId: "thread-skills",
               prompt: "/probe-echo banana",
+              instructions: AGENT_INSTRUCTIONS,
               attachments: [],
               cwd,
               model: FAKE_MODEL_ID,

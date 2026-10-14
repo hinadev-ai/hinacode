@@ -1,6 +1,7 @@
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test"
 import electronBinary, { type BrowserWindow as ElectronWindow } from "electron"
 import { Schema } from "effect"
+import { spawn } from "node:child_process"
 import { mkdtempSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -22,6 +23,10 @@ type AppearanceSnapshot = typeof AppearanceSnapshot.Type
 const StartupAppearance = Schema.Struct({ firstVisible: AppearanceSnapshot, firstPaint: AppearanceSnapshot })
 type StartupAppearance = typeof StartupAppearance.Type
 
+declare global {
+  var kkcodeStartupAppearance: Promise<unknown>
+}
+
 export interface KkcodeApp {
   readonly userData: string
   readonly dbPath: string
@@ -37,6 +42,8 @@ export interface KkcodeApp {
   readonly windowState: () => Promise<{ readonly minimized: boolean; readonly focused: boolean }>
   readonly setWindow: (size: { width: number; height: number; zoom: number }) => Promise<void>
   readonly pushEvents: (events: ReadonlyArray<PushEvent>, intervalMs?: number) => Promise<void>
+  /** Starts a second process on the same user data and resolves with its exit code, or null if it keeps running. */
+  readonly launchAgain: (timeoutMs: number) => Promise<number | null>
   readonly close: () => Promise<void>
 }
 
@@ -59,60 +66,46 @@ interface SpawnAppOptions {
   readonly mockResetMs?: number
 }
 
+const appArgs = [
+  "--no-sandbox",
+  "--disable-gpu",
+  "--mute-audio",
+  "-r",
+  join(import.meta.dirname, "startup-observer.cjs"),
+  join(projectRoot, "out/main/index.js"),
+]
+
+const appEnv = (userData: string, options: SpawnAppOptions) => {
+  const env = { ...process.env }
+  // Electron-based agent hosts may export this; the test instance must launch its GUI.
+  delete env.ELECTRON_RUN_AS_NODE
+  return {
+    ...env,
+    KKCODE_USER_DATA: userData,
+    ...(options.mockClaude === undefined ? {} : { KKCODE_MOCK_CLAUDE: options.mockClaude }),
+    ...(options.mockResetMs === undefined ? {} : { KKCODE_MOCK_RESET_MS: String(options.mockResetMs) }),
+  }
+}
+
 const launch = async (
   userData: string,
   options: SpawnAppOptions,
 ): Promise<{ app: ElectronApplication; page: Page } & StartupAppearance> => {
-  const env = { ...process.env }
-  // Electron-based agent hosts may export this; the test instance must launch its GUI.
-  delete env.ELECTRON_RUN_AS_NODE
-  const app = await electron.launch({
-    executablePath,
-    args: ["--no-sandbox", "--disable-gpu", "--mute-audio", join(projectRoot, "out/main/index.js")],
-    cwd: projectRoot,
-    env: {
-      ...env,
-      KKCODE_USER_DATA: userData,
-      ...(options.mockClaude === undefined ? {} : { KKCODE_MOCK_CLAUDE: options.mockClaude }),
-      ...(options.mockResetMs === undefined ? {} : { KKCODE_MOCK_RESET_MS: String(options.mockResetMs) }),
-    },
-  })
+  const app = await electron.launch({ executablePath, args: appArgs, cwd: projectRoot, env: appEnv(userData, options) })
+  await app.evaluate(
+    ({ app: electronApp, BrowserWindow }) =>
+      new Promise<void>((done) => {
+        const waitForShow = (nativeWindow: ElectronWindow) => {
+          if (nativeWindow.isVisible()) done()
+          else nativeWindow.once("show", () => done())
+        }
+        const existingWindow = BrowserWindow.getAllWindows()[0]
+        if (existingWindow) waitForShow(existingWindow)
+        else electronApp.once("browser-window-created", (_, createdWindow) => waitForShow(createdWindow))
+      }),
+  )
   const startup = Schema.decodeUnknownSync(StartupAppearance)(
-    await app.evaluate(
-      ({ app: electronApp, BrowserWindow }) =>
-        new Promise<unknown>((done, fail) => {
-          const observe = (nativeWindow: ElectronWindow) => {
-            if (nativeWindow.isVisible()) {
-              fail(new Error("The window became visible before startup observation"))
-              return
-            }
-            nativeWindow.once("show", () => {
-              void nativeWindow.webContents
-                .executeJavaScript(`(() => {
-                  const snapshot = () => ({
-                    scheme: document.documentElement.classList.contains("dark") ? "dark" : "light",
-                    rendered: (document.getElementById("root")?.childElementCount ?? 0) > 0,
-                    background: getComputedStyle(document.body).backgroundColor
-                  })
-                  const firstVisible = snapshot()
-                  return new Promise(done => {
-                    const observer = new PerformanceObserver(list => {
-                      if (list.getEntries().some(entry => entry.name === "first-contentful-paint")) {
-                        observer.disconnect()
-                        done({ firstVisible, firstPaint: snapshot() })
-                      }
-                    })
-                    observer.observe({ type: "paint", buffered: true })
-                  })
-                })()`)
-                .then(done, fail)
-            })
-          }
-          const existingWindow = BrowserWindow.getAllWindows()[0]
-          if (existingWindow) observe(existingWindow)
-          else electronApp.once("browser-window-created", (_, createdWindow) => observe(createdWindow))
-        }),
-    ),
+    await app.evaluate(() => globalThis.kkcodeStartupAppearance),
   )
   const page = await app.firstWindow()
   await waitForRenderer(page)
@@ -175,6 +168,23 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<KkcodeApp
         { events, intervalMs },
       )
     },
+    launchAgain: (timeoutMs) =>
+      new Promise((done, fail) => {
+        const second = spawn(executablePath, appArgs, {
+          cwd: projectRoot,
+          env: appEnv(userData, options),
+          stdio: "ignore",
+        })
+        const timer = setTimeout(() => {
+          second.kill("SIGKILL")
+          done(null)
+        }, timeoutMs)
+        second.once("error", fail)
+        second.once("exit", (code) => {
+          clearTimeout(timer)
+          done(code)
+        })
+      }),
     close: async () => {
       await current.app.close()
       rmSync(userData, { recursive: true, force: true })

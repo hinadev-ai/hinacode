@@ -17,7 +17,9 @@ import {
 import { RiCloseLine, RiFileCopyLine } from "react-icons/ri"
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
+import { projectFileUrl } from "../../shared/channels.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { type FilePreview, hasSource, previewOf } from "../lib/filePreview.ts"
 import { callPromise, fileContentAtom, onPushEvent, RpcError } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
@@ -40,7 +42,10 @@ const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
   editStateKey?: string,
 ) => new Editor<EType, LAnnotation, Caret>(type, options, editStateKey)
 
-/** An editable, highlighted view of one file whose lines take comments for the thread's next message. */
+/**
+ * One file: an editable, highlighted view whose lines take comments for the thread's next message, or a
+ * preview for media and HTML.
+ */
 export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
   // Switching files keeps the last file on screen until the next one loads.
   const shownPath = useDeferredValue(path)
@@ -58,20 +63,100 @@ export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
       <div
         className={cn("flex min-h-0 flex-1 flex-col transition-opacity", shownPath !== path && "opacity-60 delay-150")}
       >
-        <EditProvider createEditor={createEditor}>
-          <Suspense
-            fallback={
-              <>
-                <ViewerHeader path={path} onClose={onClose} />
-                <Note text={m.viewer_loading()} className="animate-reveal" />
-              </>
-            }
-          >
-            <FileContent key={shownPath} threadId={threadId} root={root} path={shownPath} onClose={onClose} />
-          </Suspense>
-        </EditProvider>
+        <FileBody key={shownPath} threadId={threadId} root={root} path={shownPath} onClose={onClose} />
       </div>
     </section>
+  )
+}
+
+function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
+  const preview = previewOf(path)
+  const [showSource, setShowSource] = useState(false)
+
+  if (preview !== null && !showSource) {
+    return (
+      <>
+        <ViewerHeader path={path} onClose={onClose}>
+          {hasSource(preview) && (
+            <Button variant="ghost" size="xs" onClick={() => setShowSource(true)}>
+              {m.viewer_source()}
+            </Button>
+          )}
+        </ViewerHeader>
+        <FilePreviewPane preview={preview} root={root} path={path} />
+      </>
+    )
+  }
+
+  const backToPreview = preview !== null && (
+    <Button variant="ghost" size="xs" onClick={() => setShowSource(false)}>
+      {m.viewer_preview()}
+    </Button>
+  )
+  return (
+    <EditProvider createEditor={createEditor}>
+      <Suspense
+        fallback={
+          <>
+            <ViewerHeader path={path} onClose={onClose} />
+            <Note text={m.viewer_loading()} className="animate-reveal" />
+          </>
+        }
+      >
+        <FileContent threadId={threadId} root={root} path={path} onClose={onClose} headerActions={backToPreview} />
+      </Suspense>
+    </EditProvider>
+  )
+}
+
+/** The file served by main, reloaded when its folder changes on disk. HTML runs in main's CSP sandbox. */
+function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: string; path: string }) {
+  const [version, setVersion] = useState(0)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type !== "fs.changed" || event.root !== root || event.path !== parentOf(path)) return
+        setVersion((current) => current + 1)
+        setFailed(false)
+      }),
+    [root, path],
+  )
+
+  if (failed) return <Note text={m.viewer_preview_failed()} />
+  const src = `${projectFileUrl(root, path)}?v=${version}`
+  const fail = () => setFailed(true)
+
+  if (preview === "html") {
+    return (
+      <iframe
+        src={src}
+        title={path}
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        className="min-h-0 flex-1 border-0 bg-white"
+      />
+    )
+  }
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+      {/* A file in the repository comes without a caption track. */}
+      {preview === "video" ? (
+        // oxlint-disable-next-line jsx-a11y/media-has-caption
+        <video src={src} controls aria-label={path} onError={fail} className="max-h-full max-w-full" />
+      ) : preview === "audio" ? (
+        // oxlint-disable-next-line jsx-a11y/media-has-caption
+        <audio src={src} controls aria-label={path} onError={fail} className="w-full max-w-md" />
+      ) : (
+        <img
+          src={src}
+          alt={path}
+          onError={fail}
+          className="max-h-full max-w-full bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-size-[16px_16px] object-contain"
+        />
+      )}
+    </div>
   )
 }
 
@@ -112,7 +197,7 @@ const linesOf = (text: string, startLine: number, endLine: number) =>
     .join("\n")
 
 /** Suspends until the file is read, then reloads it in place when its folder changes on disk. */
-function FileContent({ threadId, root, path, onClose }: Omit<FileViewerProps, "path"> & { path: string }) {
+function FileContent({ threadId, root, path, onClose, headerActions }: FileViewerProps & { headerActions: ReactNode }) {
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
   const reload = useAtomRefresh(contentAtom)
@@ -137,7 +222,9 @@ function FileContent({ threadId, root, path, onClose }: Omit<FileViewerProps, "p
   if (AsyncResult.isFailure(content)) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose} />
+        <ViewerHeader path={path} onClose={onClose}>
+          {headerActions}
+        </ViewerHeader>
         <p role="alert" className="p-3 text-xs text-destructive">
           {m.viewer_failed({ message: errorMessage(Cause.squash(content.cause)) })}
         </p>
@@ -148,7 +235,9 @@ function FileContent({ threadId, root, path, onClose }: Omit<FileViewerProps, "p
   if (binary) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose} />
+        <ViewerHeader path={path} onClose={onClose}>
+          {headerActions}
+        </ViewerHeader>
         <Note text={m.viewer_binary()} />
       </>
     )
@@ -254,6 +343,7 @@ function FileContent({ threadId, root, path, onClose }: Omit<FileViewerProps, "p
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- mod+s bubbles up from the editor.
     <div onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
       <ViewerHeader path={path} onClose={onClose}>
+        {headerActions}
         {base !== undefined && (
           <>
             <span className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">

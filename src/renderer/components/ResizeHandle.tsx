@@ -85,6 +85,11 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     element.style.width = `${current.width}px`
   }
 
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    onPointerMove(event)
+    endDrag()
+  }
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const element = targetRef.current
     if (!element) return
@@ -120,7 +125,7 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
       data-dragging={dragging || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
+      onPointerUp={onPointerUp}
       onPointerCancel={endDrag}
       onLostPointerCapture={endDrag}
       onKeyDown={onKeyDown}
