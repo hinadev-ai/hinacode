@@ -50,7 +50,7 @@ export function MessagePartView({ part }: { part: MessagePart }) {
 
 /** How the agent got to its reply recedes, and comes back to full contrast once the user reaches for it. */
 const disclosureTrigger =
-  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
+  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
 
 function Chevron() {
   return (
