@@ -2,11 +2,11 @@
 
 TLA+ models of the protocols in kkcode where several actors share state: the main process, the renderer, the agent CLIs, and git. TLC, the TLA+ model checker, runs every interleaving of their steps within small bounds. A test runs one.
 
-| Spec                    | Models                                                                   | Known bugs it pins                                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ClaudeTurnRouting.tla` | `agents/claude/index.ts` pump, steer, interrupt, with AgentRunner's turn | None. Checks that every answer reaches the turn that sent its prompt (`NoCrossTurnLeak`, `NoSilentDrop`) and every turn ends (`TurnsEnd`)                         |
-| `TranscriptSync.tla`    | `stores/messages.ts` snapshot plus `seq` replay over Electron IPC        | None. Checks that each event is folded once (`NoDuplicateApply`, `NoGapAtQuiescence`) and a superseded snapshot is never applied (`StaleSnapshotNeverApplied`)    |
-| `WorktreeLifecycle.tla` | `Worktrees.ts` create, remove and archive racing with turns              | A failed deletion restores a row whose checkout is gone (`LiveRowHasDirectory`). A turn sent to a live worktree can run in the project root (`TurnRunsWhereSent`) |
+| Spec                    | Models                                                                   | Checks                                                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClaudeTurnRouting.tla` | `agents/claude/index.ts` pump, steer, interrupt, with AgentRunner's turn | Every answer reaches the turn that sent its prompt (`NoCrossTurnLeak`, `NoSilentDrop`) and every turn ends (`TurnsEnd`)                      |
+| `TranscriptSync.tla`    | `stores/messages.ts` snapshot plus `seq` replay over Electron IPC        | Each event is folded once (`NoDuplicateApply`, `NoGapAtQuiescence`) and a superseded snapshot is never applied (`StaleSnapshotNeverApplied`) |
+| `WorktreeLifecycle.tla` | `Worktrees.ts` create, remove and archive racing with turns              | A live row has its checkout (`LiveRowHasDirectory`) and a turn sent to a worktree runs there (`TurnRunsWhereSent`)                           |
 
 ## Run
 

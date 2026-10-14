@@ -21,14 +21,22 @@ describe("activeWorkspace", () => {
   it.effect("is the project root with no base for a thread without a worktree", () =>
     Effect.gen(function* () {
       const result = yield* resolve({ rootPath: "/repo" })
-      expect(result._tag === "Success" && result.success).toStrictEqual({ cwd: "/repo", baseRef: null })
+      expect(result._tag === "Success" && result.success).toStrictEqual({
+        cwd: "/repo",
+        worktreeId: null,
+        baseRef: null,
+      })
     }),
   )
 
   it.effect("is the worktree and its base while the worktree is active", () =>
     Effect.gen(function* () {
       const result = yield* resolve({ rootPath: "/repo", worktree: { path: "/wt", baseRef: "main", status: "ready" } })
-      expect(result._tag === "Success" && result.success).toStrictEqual({ cwd: "/wt", baseRef: "main" })
+      expect(result._tag === "Success" && result.success).toStrictEqual({
+        cwd: "/wt",
+        worktreeId: expect.any(String),
+        baseRef: "main",
+      })
     }),
   )
 
@@ -38,7 +46,11 @@ describe("activeWorkspace", () => {
         rootPath: "/repo",
         worktree: { path: "/wt", baseRef: "main", status: "removed" },
       })
-      expect(result._tag === "Success" && result.success).toStrictEqual({ cwd: "/repo", baseRef: null })
+      expect(result._tag === "Success" && result.success).toStrictEqual({
+        cwd: "/repo",
+        worktreeId: null,
+        baseRef: null,
+      })
     }),
   )
 
@@ -48,7 +60,11 @@ describe("activeWorkspace", () => {
         { rootPath: "/repo", worktree: { path: "/wt", baseRef: "main", status: "ready" } },
         (sql) => sql`DELETE FROM worktree`,
       )
-      expect(result._tag === "Success" && result.success).toStrictEqual({ cwd: "/repo", baseRef: null })
+      expect(result._tag === "Success" && result.success).toStrictEqual({
+        cwd: "/repo",
+        worktreeId: null,
+        baseRef: null,
+      })
     }),
   )
 
