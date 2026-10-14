@@ -36,6 +36,8 @@
   "thread_status_running": "執行中",
   "thread_status_awaiting_approval": "等待核准",
   "thread_status_limited": "已達用量上限",
+  "thread_status_unseen_completed": "已完成，尚未開啟",
+  "thread_status_unseen_failed": "失敗，尚未開啟",
   "thread_usage_limit_title": "已達用量上限",
   "thread_usage_limit_reset": "用量將於 {time} 重設。",
   "thread_usage_limit_resume_at_reset": "重設後繼續",
@@ -57,6 +59,7 @@
   "settings_back": "返回對話串",
   "locale_en": "English",
   "locale_zh_tw": "繁體中文",
+  "locale_ja": "日本語",
   "common_cancel": "取消",
   "common_close": "關閉",
   "common_copied": "已複製",
@@ -148,6 +151,8 @@
   "command_sidebar_toggle": "顯示或隱藏側邊欄",
   "command_side_panel_toggle": "顯示或隱藏側邊面板",
   "command_composer_focus": "聚焦訊息輸入框",
+  "command_composer_model": "切換模型",
+  "command_composer_effort": "調整推理強度",
   "command_view_details": "顯示詳細資訊",
   "command_view_files": "顯示檔案",
   "command_view_changes": "顯示變更",
@@ -203,6 +208,8 @@
   "settings_keybindings_shortcut": "快捷鍵",
   "settings_keybindings_actions": "操作",
   "settings_keybindings_unbound": "未設定",
+  "settings_keybindings_when_terminal": "僅在終端機中",
+  "settings_keybindings_when_not_terminal": "終端機中無效",
   "settings_keybindings_record": "錄製",
   "settings_keybindings_record_for": "為「{command}」錄製快捷鍵",
   "settings_keybindings_recording": "請按下快捷鍵…",
@@ -497,6 +504,8 @@
   "project_cloning": "正在複製…",
   "message_writing": "撰寫中…",
   "message_worked_for": "已工作 {duration}",
+  "message_show_activity": "顯示工具活動",
+  "message_hide_activity": "隱藏工具活動",
   "sidebar_pull_request": "開啟合併請求 #{number}",
   "sidebar_pull_request_stack": "開啟合併請求 #{number}，{count} 個連結中最新的一個",
   "sidebar_watching": "正在監看合併請求",
@@ -760,26 +769,60 @@
   "browser_start_hint": "在上方輸入網址，或開啟這個對話串監聽的連接埠。",
   "browser_start_open_port": "開啟 localhost:{port}",
   "browser_load_failed": "無法載入 {url}",
+  "command_browser_new_tab": "新增瀏覽器分頁",
+  "browser_tabs": "瀏覽器分頁",
+  "browser_new_tab": "新分頁",
+  "browser_close_tab": "關閉 {title}",
   "attachment_element": "元素 {element}",
   "attachment_element_url": "網址",
   "attachment_element_selector": "選擇器",
-  "tool_commands_ran": [
+  "tool_kind_command": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "已執行 {count} 個指令",
-        "countPlural=other": "已執行 {count} 個指令"
+        "countPlural=one": "執行了 {count} 個指令",
+        "countPlural=other": "執行了 {count} 個指令"
       }
     }
   ],
-  "tool_commands_running": [
+  "tool_kind_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "正在執行 {count} 個指令",
-        "countPlural=other": "正在執行 {count} 個指令"
+        "countPlural=one": "讀取了 {count} 個檔案",
+        "countPlural=other": "讀取了 {count} 個檔案"
+      }
+    }
+  ],
+  "tool_kind_edit": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "編輯了 {count} 個檔案",
+        "countPlural=other": "編輯了 {count} 個檔案"
+      }
+    }
+  ],
+  "tool_kind_search": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "搜尋了 {count} 次",
+        "countPlural=other": "搜尋了 {count} 次"
+      }
+    }
+  ],
+  "tool_kind_other": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "使用了 {count} 個工具",
+        "countPlural=other": "使用了 {count} 個工具"
       }
     }
   ],
@@ -858,5 +901,8 @@
   "vm_exit_fullscreen": "結束全螢幕",
   "vm_floating_body": "畫面正浮動在對話上方。",
   "vm_dock": "移到側邊面板",
-  "vm_floating_resize": "調整 VM 畫面大小"
+  "vm_floating_resize": "調整 VM 畫面大小",
+  "settings_worktree_root": "Worktree 根目錄",
+  "settings_worktree_root_hint": "新 worktree 存放的目錄，每個專案一個資料夾。留空則放在各專案旁的 .kkcode-worktrees。現有的 worktree 不會移動。",
+  "settings_worktree_root_absolute": "請輸入以 / 開頭的絕對路徑。"
 }

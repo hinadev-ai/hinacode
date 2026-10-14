@@ -16,6 +16,8 @@ export type SidePanelSize = "normal" | "wide"
 export type SidebarTab = "threads" | "archived"
 /** Where a thread's tiny VM screen shows: its side panel view, or floating over the conversation. */
 export type VmPlacement = "panel" | "floating"
+/** Composer pickers a shortcut can open. */
+export type ComposerPicker = "model" | "effort"
 
 const pullRequestSections = ["checks", "description"] as const
 export type PullRequestSection = (typeof pullRequestSections)[number]
@@ -77,12 +79,12 @@ interface UiState {
   readonly setVmPlacement: (threadId: string, placement: VmPlacement) => void
   /** Clamps, applies and persists the floating screen's width. Null restores the default. */
   readonly setVmFloatingWidth: (width: number | null) => void
-  /** The page each thread's Browser view shows. Threads not in here have not opened one. */
-  readonly browserUrls: Readonly<Record<string, string>>
   /** Bumped to ask the composer to take focus. Subscribers react to changes, the value is meaningless. */
   readonly composerFocusRequest: number
   /** Bumped to ask the open thread to interrupt its running turn. */
   readonly interruptRequest: number
+  /** Replaced to ask the composer to open one of its pickers. */
+  readonly pickerRequest: { readonly picker: ComposerPicker } | null
   readonly addProjectOpen: boolean
   /** The thread whose find bar is open, or null. */
   readonly findThreadId: string | null
@@ -109,9 +111,9 @@ interface UiState {
   readonly clearViewFocusRequest: () => void
   readonly setSidePanelWide: (wide: boolean) => void
   readonly setChangesPath: (path: string | null) => void
-  readonly setBrowserUrl: (threadId: string, url: string) => void
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
+  readonly requestPicker: (picker: ComposerPicker) => void
   readonly setAddProjectOpen: (open: boolean) => void
   /** Opens and focuses the thread's find bar, replacing its query when one is given. */
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
@@ -166,9 +168,9 @@ export const useUi = create<UiState>()((set, get) => ({
     saveWidth(VM_FLOATING_WIDTH_KEY, clamped)
     set({ vmFloatingWidth: clamped ?? VM_FLOATING_DEFAULT_WIDTH })
   },
-  browserUrls: {},
   composerFocusRequest: 0,
   interruptRequest: 0,
+  pickerRequest: null,
   addProjectOpen: false,
   findThreadId: null,
   findQuery: "",
@@ -218,9 +220,9 @@ export const useUi = create<UiState>()((set, get) => ({
   clearViewFocusRequest: () => set({ viewFocusRequest: null }),
   setSidePanelWide: (sidePanelWide) => set({ sidePanelWide }),
   setChangesPath: (changesPath) => set({ changesPath }),
-  setBrowserUrl: (threadId, url) => set((state) => ({ browserUrls: { ...state.browserUrls, [threadId]: url } })),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
+  requestPicker: (picker) => set({ pickerRequest: { picker } }),
   setAddProjectOpen: (addProjectOpen) => set({ addProjectOpen }),
   openFind: (threadId, query, messageId) =>
     set((state) => ({

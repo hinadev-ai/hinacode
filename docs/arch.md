@@ -174,8 +174,8 @@ sequenceDiagram
   Dev->>R: send prompt
   R->>AR: rpc threads.send
   AR->>AR: claim busyThreads (reject a second send)
-  opt first message with worktree
-    AR->>WT: Threads.attachWorktree (branch kk/<placeholder title>)
+  opt first message with a workspace choice
+    AR->>WT: Threads.prepareWorkspace (local: git switch in the root; worktree: branch kk/<placeholder title>)
   end
   AR->>WT: whenPrepared (outside the transcript lock)
   WT-->>R: worktree.setupLog, worktree.updated
@@ -311,7 +311,8 @@ flowchart LR
 - **One normalization point.** `resolveKeymap` accepts any chord TanStack can parse: lowercase defaults, overrides saved before the switch, and recordings such as `Mod+Shift+[KeyK]`. The recorder stores physical keys, so a binding stays on the same key across layouts. Defaults are logical keys with a physical fallback.
 - **Conflicts** compare chords by their display label (`sameChord`), so a recorded physical key and a default on the same key count as one shortcut. `useKeybindings` binds each chord once, first command in registry order winning.
 - **Fields.** Plain keys and Shift or Alt combos typed into a field never run a command. Control and Meta chords do.
-- **Terminal scope.** `useTerminalScope(ref)` marks an element that owns every key without Control or Meta, including Escape. App commands skip those keys there and leave the event untouched. Control and Meta chords still run app commands when the element lets the keydown bubble, so the terminal engine lets every keydown for which `isAppChord(event)` is true reach the app.
+- **`when` clauses.** A command may set `when`, a VS Code style condition on where the keydown happened, such as `"!terminalFocus"`. A chord whose clause fails does nothing and keeps its default action. The palette ignores `when`.
+- **Terminal.** wterm sends the Control chords it can encode to the shell and stops them, so they never bubble to document. `useKeybindings` therefore also listens in the capture phase: a Control or Meta chord typed into a terminal whose command's `when` holds runs there and never reaches the shell, like VS Code's `commandsToSkipShell`. Defaults the shell already uses outside macOS (Ctrl+L, Ctrl+B, Ctrl+N, Ctrl+F, Ctrl+Shift+C, Ctrl+Shift+A) set `!terminalFocus`. Keys without Control or Meta always go to the shell.
 
 ## Data model
 

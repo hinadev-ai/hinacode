@@ -33,6 +33,7 @@ import {
   RiArchiveLine,
   RiDeleteBinLine,
   RiDraggable,
+  RiErrorWarningFill,
   RiErrorWarningLine,
   RiEyeLine,
   RiEyeOffLine,
@@ -54,6 +55,7 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
+import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
@@ -224,6 +226,10 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread)
+  const state = rowState(
+    thread.status,
+    useUnseen((unseen) => unseen.byThreadId[thread.id]),
+  )
 
   // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
   const moveOut = (updated: Thread) => {
@@ -270,7 +276,8 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
       ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
-      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
+      data-emphasis={rowEmphasis[state]}
+      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -292,7 +299,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
           <span className="min-w-0 flex-1 truncate text-[0.9375rem]" title={thread.title}>
             {thread.title}
           </span>
-          <StatusIndicator status={thread.status} />
+          <StatusIndicator state={state} />
         </Link>
       )}
       <ThreadMeta {...meta} />
@@ -517,7 +524,28 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
   )
 }
 
-const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: string }>> = {
+/** What a row shows: the thread's status, or for an idle thread, a result the user has not opened yet. */
+type RowState = ThreadStatus | `unseen_${Outcome}`
+
+const rowState = (status: ThreadStatus, unseen: Outcome | undefined): RowState =>
+  status === "idle" && unseen !== undefined ? `unseen_${unseen}` : status
+
+/**
+ * How loudly a row reads. A thread that needs the user is at full contrast and a working one recedes to
+ * muted. Color, not opacity, so the muted branch line stays above 4.5:1 and the status dot keeps its color.
+ */
+const rowEmphasis = {
+  awaiting_approval: "attention",
+  limited: "attention",
+  unseen_completed: "attention",
+  unseen_failed: "attention",
+  idle: "resting",
+  archived: "resting",
+  running: "working",
+} satisfies Record<RowState, "attention" | "resting" | "working">
+
+const statusDot: Partial<Record<RowState, { label: () => string; className: string }>> = {
+  unseen_completed: { label: m.thread_status_unseen_completed, className: "bg-sidebar-foreground" },
   running: { label: m.thread_status_running, className: "bg-emerald-500 animate-pulse motion-reduce:animate-none" },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
   awaiting_approval: {
@@ -527,8 +555,16 @@ const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: 
   },
 }
 
-function StatusIndicator({ status }: { status: ThreadStatus }): ReactNode {
-  if (status === "limited") {
+function StatusIndicator({ state }: { state: RowState }): ReactNode {
+  if (state === "unseen_failed") {
+    return (
+      <span title={m.thread_status_unseen_failed()} className="flex shrink-0 items-center">
+        <RiErrorWarningFill aria-hidden className="size-3.5 text-destructive" />
+        <span className="sr-only">{m.thread_status_unseen_failed()}</span>
+      </span>
+    )
+  }
+  if (state === "limited") {
     return (
       <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-attention/10 px-1.5 py-0.5 text-xs whitespace-nowrap text-attention">
         <RiErrorWarningLine aria-hidden className="size-3" />
@@ -536,7 +572,7 @@ function StatusIndicator({ status }: { status: ThreadStatus }): ReactNode {
       </span>
     )
   }
-  const dot = statusDot[status]
+  const dot = statusDot[state]
   if (!dot) return null
   return (
     <span title={dot.label()} className="flex shrink-0 items-center">
@@ -566,8 +602,10 @@ const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
+  // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
+  // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
       {branch !== null && (
         <span
           className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"

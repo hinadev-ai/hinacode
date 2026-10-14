@@ -159,12 +159,22 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
 
-/** Where a thread's new worktree starts: a new branch forked from `baseRef`, or an open pull request's head. */
-export const WorktreeSource = Schema.Union([
-  Schema.TaggedStruct("branch", { baseRef: Schema.String }),
+/** A branch or other ref, or an open pull request, as picked in the composer. */
+export const CheckoutTarget = Schema.Union([
+  Schema.TaggedStruct("branch", { ref: Schema.String }),
   Schema.TaggedStruct("pullRequest", { selector: PullRequestSelector }),
 ])
-export type WorktreeSource = typeof WorktreeSource.Type
+export type CheckoutTarget = typeof CheckoutTarget.Type
+
+/**
+ * Where a thread's first turn runs. `local` switches the project root to the target. `worktree` makes a new
+ * checkout: a new branch forked from the target ref, or the pull request's head.
+ */
+export const WorkspaceChoice = Schema.Struct({
+  mode: Schema.Literals(["local", "worktree"]),
+  target: CheckoutTarget,
+})
+export type WorkspaceChoice = typeof WorkspaceChoice.Type
 
 /** An open pull request the worktree picker can check out. */
 export const OpenPullRequest = Schema.Struct({
@@ -286,7 +296,7 @@ export const Message = Schema.Struct({
 })
 export type Message = typeof Message.Type
 
-export const Locale = Schema.Literals(["en", "zh-TW"])
+export const Locale = Schema.Literals(["en", "zh-TW", "ja"])
 export type Locale = typeof Locale.Type
 
 export const ThemeId = Schema.Literals([
@@ -394,6 +404,8 @@ export const Settings = Schema.Struct({
   notifications: NotificationSettings,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
+  /** Absolute directory for new worktrees, one folder per project. Null keeps them in `.kkcode-worktrees` beside each project. */
+  worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
 })
 export type Settings = typeof Settings.Type
 
@@ -411,6 +423,7 @@ export const defaultSettings: Settings = {
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
   archive: { whenMerged: false, removeWorktree: false },
   experimental: { tinyVm: false },
+  worktreeRoot: null,
 }
 
 /** Who drives a tiny VM's pointer and keyboard. The agent's pointer and keyboard tools wait while it is `user`. */

@@ -36,6 +36,8 @@
   "thread_status_running": "Running",
   "thread_status_awaiting_approval": "Awaiting approval",
   "thread_status_limited": "Limited",
+  "thread_status_unseen_completed": "Finished, not yet opened",
+  "thread_status_unseen_failed": "Failed, not yet opened",
   "thread_usage_limit_title": "Usage limit reached",
   "thread_usage_limit_reset": "Resets at {time}.",
   "thread_usage_limit_resume_at_reset": "Resume at reset",
@@ -57,6 +59,7 @@
   "settings_back": "Back to threads",
   "locale_en": "English",
   "locale_zh_tw": "繁體中文",
+  "locale_ja": "日本語",
   "common_cancel": "Cancel",
   "common_close": "Close",
   "common_copied": "Copied",
@@ -148,6 +151,8 @@
   "command_sidebar_toggle": "Show or hide sidebar",
   "command_side_panel_toggle": "Show or hide side panel",
   "command_composer_focus": "Focus message box",
+  "command_composer_model": "Change model",
+  "command_composer_effort": "Change reasoning effort",
   "command_view_details": "Show details",
   "command_view_files": "Show files",
   "command_view_changes": "Show changes",
@@ -203,6 +208,8 @@
   "settings_keybindings_shortcut": "Shortcut",
   "settings_keybindings_actions": "Actions",
   "settings_keybindings_unbound": "Not set",
+  "settings_keybindings_when_terminal": "Only in the terminal",
+  "settings_keybindings_when_not_terminal": "Not in the terminal",
   "settings_keybindings_record": "Record",
   "settings_keybindings_record_for": "Record a shortcut for {command}",
   "settings_keybindings_recording": "Press a shortcut…",
@@ -515,6 +522,8 @@
   "project_cloning": "Cloning…",
   "message_writing": "Writing…",
   "message_worked_for": "Worked for {duration}",
+  "message_show_activity": "Show tool activity",
+  "message_hide_activity": "Hide tool activity",
   "sidebar_pull_request": "Open pull request #{number}",
   "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
   "sidebar_watching": "Watching a pull request",
@@ -778,26 +787,60 @@
   "browser_start_hint": "Type a URL above, or open a port this thread listens on.",
   "browser_start_open_port": "Open localhost:{port}",
   "browser_load_failed": "Could not load {url}",
+  "command_browser_new_tab": "New browser tab",
+  "browser_tabs": "Browser tabs",
+  "browser_new_tab": "New tab",
+  "browser_close_tab": "Close {title}",
   "attachment_element": "Element {element}",
   "attachment_element_url": "URL",
   "attachment_element_selector": "Selector",
-  "tool_commands_ran": [
+  "tool_kind_command": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Ran {count} command",
-        "countPlural=other": "Ran {count} commands"
+        "countPlural=one": "ran {count} command",
+        "countPlural=other": "ran {count} commands"
       }
     }
   ],
-  "tool_commands_running": [
+  "tool_kind_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Running {count} command",
-        "countPlural=other": "Running {count} commands"
+        "countPlural=one": "read {count} file",
+        "countPlural=other": "read {count} files"
+      }
+    }
+  ],
+  "tool_kind_edit": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "edited {count} file",
+        "countPlural=other": "edited {count} files"
+      }
+    }
+  ],
+  "tool_kind_search": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "searched once",
+        "countPlural=other": "searched {count} times"
+      }
+    }
+  ],
+  "tool_kind_other": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "used {count} tool",
+        "countPlural=other": "used {count} tools"
       }
     }
   ],
@@ -876,5 +919,8 @@
   "vm_exit_fullscreen": "Exit full screen",
   "vm_floating_body": "The screen is floating over the conversation.",
   "vm_dock": "Move to side panel",
-  "vm_floating_resize": "Resize the VM screen"
+  "vm_floating_resize": "Resize the VM screen",
+  "settings_worktree_root": "Worktree root",
+  "settings_worktree_root_hint": "Directory for new worktrees, with one folder per project. Leave blank to keep them in .kkcode-worktrees beside each project. Existing worktrees stay where they are.",
+  "settings_worktree_root_absolute": "Enter an absolute path that starts with /."
 }

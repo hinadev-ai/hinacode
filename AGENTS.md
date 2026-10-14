@@ -37,14 +37,14 @@ src/main      Electron main. One Effect ManagedRuntime built in index.ts.
 src/preload   contextBridge exposing window.kkcode { rpc, onEvent, pathForFile }
 src/renderer  React 19, TanStack Router, zustand stores, Tailwind 4, shadcn on Base UI
 src/shared    Effect Schema contracts only: contract.ts (rpc method map), domain.ts, agent.ts
-messages/     Paraglide catalogs, en.json and zh-TW.json
+messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 ```
 
 - Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/ipc.ts`. Main pushes live updates on the `event` channel.
 - Main-process code is Effect services: `class X extends Context.Service<...>` plus an exported `layer`. Follow `services/Threads.ts`.
 - Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped.
 - A new agent backend is one `AgentProvider` in `src/main/agents/` plus the registrations listed under "Agent providers" in `docs/arch.md`.
-- Every UI string lives in `messages/en.json` and `messages/zh-TW.json`. Add both. Don't hardcode copy in components.
+- Every UI string lives in `messages/en.json`, `messages/zh-TW.json` and `messages/ja.json`. Add all three; `src/renderer/messages.test.ts` fails when a catalog misses a key or a placeholder. Don't hardcode copy in components.
 
 ## Conventions
 
@@ -103,13 +103,14 @@ Developers who run several Claude Code and Codex agents at once across repositor
 - **Anti-references:** chat-app bubbles, gradient AI glow, sparkle icons, dashboard confetti, cards inside cards, and color used as decoration.
 - **Color:** a grayscale OKLCH base (shadcn neutral in `src/renderer/index.css`) with the brand violet `#7c3aed` from `assets/icon.svg`. Use violet sparingly for focus, the primary action, and "agent is working". Status colors are semantic and stay consistent: amber means it needs you, emerald means it is running, red means failed or destructive. Pull these into tokens instead of scattering raw Tailwind palette classes.
 - **Type:** Geist Variable for UI. Code and paths use a monospace stack. Rely on weight and size for hierarchy before color.
-- **Theme:** light and dark are equal citizens, and every UI change is checked in both. Today the app is dark only: `index.html` hardcodes `class="dark"`, and the diff viewer and mermaid are themed dark. Theme parity is open work. Don't add new dark-only assumptions.
+- **Theme:** light and dark are equal citizens, and every UI change is checked in both. New profiles follow the system appearance. Don't add dark-only assumptions.
 - **Motion:** use the easings in `index.css` (`--ease-out` and the rest), keep it short (under 200 ms for UI feedback), and use the `pressable` utility for press feedback. Every animation has a reduced-motion variant.
 
 ### Design Principles
 
 1. **Signal over chrome.** Color, motion and badges are reserved for states that need a human. A screen where nothing needs attention should look quiet.
-2. **Glanceable state.** Whether a thread is running, waiting, failed or done should be readable from the sidebar alone, without opening the thread.
-3. **Keyboard first, pointer friendly.** Every frequent action has a rebindable shortcut, shown as `Kbd`. Hit areas stay generous.
-4. **Show the work.** Diffs, worktree paths, commands and PR state are first class and inspectable. Never hide what an agent did behind a summary.
-5. **Accessible by default.** Meet WCAG 2.2 AA contrast in both themes and keep focus rings at 3:1. Use roles and accessible names, which also make the UI drivable by `verify-kkcode`. Respect `prefers-reduced-motion`. Never use color as the only signal.
+2. **Contrast follows attention.** The agent's reply and the developer's own messages read at full contrast. Tool calls, metadata and anything still in progress recede to `muted-foreground`. Dim with a color token, never with opacity, and never below 4.5:1. See `docs/features/2026-10-14-contrast-hierarchy.md`.
+3. **Glanceable state.** Whether a thread is running, waiting, failed or done should be readable from the sidebar alone, without opening the thread.
+4. **Keyboard first, pointer friendly.** Every frequent action has a rebindable shortcut, shown as `Kbd`. Hit areas stay generous.
+5. **Show the work.** Diffs, worktree paths, commands and PR state are first class and inspectable. Never hide what an agent did behind a summary.
+6. **Accessible by default.** Meet WCAG 2.2 AA contrast in both themes and keep focus rings at 3:1. Use roles and accessible names, which also make the UI drivable by `verify-kkcode`. Respect `prefers-reduced-motion`. Never use color as the only signal.

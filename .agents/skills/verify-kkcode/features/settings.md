@@ -8,7 +8,7 @@ The settings page has five sections: `General` (language), `Models` (default mod
 
 ## Sub-features
 
-- `language` (e2e) switches between `English` and `繁體中文`; the whole UI re-renders and the choice persists.
+- `language` (e2e) switches between `English`, `繁體中文` and `日本語`; the whole UI re-renders and the choice persists.
 - `default-model` (e2e for Claude) sets the default model per agent; the new thread composer then preselects it.
 - `keybinding-record`, `keybinding-conflict`, `keybinding-reset`, `keybinding-effect` (e2e).
 - `secret-linear` (e2e) stores, replaces and clears the Linear API key; the UI only ever says `A key is stored.` or `No key stored.`
@@ -34,6 +34,6 @@ Preconditions:
 ## Gotchas
 
 - Chords are stored canonically (`mod` is Ctrl on Linux). Assert on the stored value and on the effect, not only on the rendered keys.
-- After switching to zh-TW, English accessible names no longer match. Switch back before running other recipes.
+- After switching away from English, English accessible names no longer match. Switch back before running other recipes.
 - Secrets are encrypted with Electron safeStorage. On Xvfb without a keyring safeStorage falls back to plaintext with a warning in the log; that is environment, not a kkcode bug.
 - Do not paste the user's real Linear or Slack secrets into a verification profile unless they asked for it.

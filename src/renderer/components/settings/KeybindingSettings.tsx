@@ -2,7 +2,7 @@ import { useAtomSet } from "@effect/atom-react"
 import { useHotkeyRecorder } from "@tanstack/react-hotkeys"
 import { useState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
-import { type Command, commands, conflictsOf, isCommandAvailable } from "../../keybindings/commands.ts"
+import { type Command, commands, conflictsOf, isCommandAvailable, type When } from "../../keybindings/commands.ts"
 import { useKeymap } from "../../keybindings/useKeybindings.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -13,6 +13,11 @@ import { FieldError } from "../ui/field.tsx"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
+
+const whenLabels: Record<When, () => string> = {
+  terminalFocus: m.settings_keybindings_when_terminal,
+  "!terminalFocus": m.settings_keybindings_when_not_terminal,
+}
 
 export function KeybindingSettings() {
   const { keybindings: overrides, experimental } = useSettings()
@@ -140,6 +145,7 @@ function KeybindingRow(props: KeybindingRowProps) {
           ) : (
             <span className="text-sm text-muted-foreground">{m.settings_keybindings_unbound()}</span>
           )}
+          {chord && command.when && <span className="text-xs text-muted-foreground">{whenLabels[command.when]()}</span>}
           {conflicts.length > 0 && (
             <p className="flex items-start gap-1 text-xs whitespace-normal text-destructive">
               <RiErrorWarningLine aria-hidden className="mt-px shrink-0" />

@@ -8,7 +8,7 @@ import { Deferred, Effect, Layer, PubSub, Stream } from "effect"
 import { vi } from "vitest"
 import type { AgentEvent } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
-import type { WorktreeSource } from "../../shared/domain.ts"
+import type { CheckoutTarget } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -213,8 +213,10 @@ const nameAfter = <E>(
 
 const PROMPT = "Review this pull request"
 
-const send = (threadId: string, worktree?: WorktreeSource) =>
-  AgentRunner.AgentRunner.use((runner) => runner.send(threadId, PROMPT, [], { worktree }))
+const send = (threadId: string, target?: CheckoutTarget) =>
+  AgentRunner.AgentRunner.use((runner) =>
+    runner.send(threadId, PROMPT, [], { workspace: target && { mode: "worktree", target } }),
+  )
 
 describe("naming a thread from its first message", () => {
   it.live("keeps a same-repository pull request's branch and upstream, so a plain push still updates it", () =>
@@ -246,7 +248,7 @@ describe("naming a thread from its first message", () => {
       const named = yield* nameAfter((threadId) =>
         Effect.gen(function* () {
           const { pullRequestUrl } = yield* Threads.Threads.use((threads) =>
-            threads.attachWorktree(threadId, { _tag: "pullRequest", selector: "7" }),
+            threads.prepareWorkspace(threadId, { mode: "worktree", target: { _tag: "pullRequest", selector: "7" } }),
           )
           yield* PullRequests.PullRequests.use((pullRequests) => pullRequests.link(threadId, pullRequestUrl!))
           yield* send(threadId)
@@ -264,7 +266,7 @@ describe("naming a thread from its first message", () => {
 
   it.live("renames a branch created for the new task", () =>
     Effect.gen(function* () {
-      const named = yield* nameAfter((threadId) => send(threadId, { _tag: "branch", baseRef: "main" }))
+      const named = yield* nameAfter((threadId) => send(threadId, { _tag: "branch", ref: "main" }))
       expect({ title: named.title, branch: named.branch, recordedBranch: named.recordedBranch }).toStrictEqual({
         title: "Review login",
         branch: "kk/review-login",

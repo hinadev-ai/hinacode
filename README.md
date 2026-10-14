@@ -11,7 +11,7 @@ A local desktop app for running Claude Code, Codex and Muse Code against your re
 - Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Archiving a thread can remove the worktree too, deleting the branch when it is merged. Threads can archive themselves once every linked pull request merges.
 - CLAUDE.md, AGENTS.md and skills load from the project and your home directory, as they do in the CLIs.
 - Approvals for commands, edits and MCP tool calls appear inline. Steer a running turn by sending another message.
-- Completed responses show elapsed time above the activity and answer. Reasoning, tools, and progress messages keep their existing order and controls.
+- Completed responses show elapsed time above the answer. Selecting Worked for shows the reasoning, tool calls and file changes, which stay hidden by default. Back-to-back tool calls fold into one line, such as `Ran 2 commands and read 3 files`, that opens into a scrollable list.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.
 - Built-in MCP server exposed to both agents: `review_changes`, `link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, `watch_pull_request` and `unwatch_pull_request`, `request_secret`, `create_thread` with `list_threads`, `read_thread`, `send_to_thread` and `stop_thread` to follow up on the threads of a project, and Linear issue tools backed by an API key stored with Electron's safeStorage.
 - An activity bar on the right switches the thread panel between views, each with its own shortcut: details (workspace, setup log, and TCP ports opened by processes the thread spawned, each with a kill button), a file explorer with git status and a read-only highlighted file viewer, changes with diffs, pull requests, and subagents.
@@ -70,7 +70,7 @@ src/main      Electron main process. One Effect runtime, services under services
 src/preload   contextBridge exposing window.kkcode (rpc, onEvent, pathForFile).
 src/renderer  React 19 + TanStack Router. components/, routes/, stores/ (zustand), keybindings/, paraglide/ (generated).
 src/shared    Effect Schema contracts shared by all three: domain types, the rpc method map, agent events.
-messages/     Paraglide catalogs, en.json and zh-TW.json. Every UI string lives here.
+messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json. Every UI string lives here.
 ```
 
 Renderer and main talk over a single `rpc` IPC channel. Each method in `src/shared/contract.ts` has a request and response schema that both sides decode. Main pushes live updates on the `event` channel.
