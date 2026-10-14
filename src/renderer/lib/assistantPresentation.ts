@@ -1,6 +1,6 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { isOwnPart } from "./subagents.ts"
-import { groupCommands, type TranscriptBlock } from "./toolCall.ts"
+import { groupToolCalls, type TranscriptBlock } from "./toolCall.ts"
 
 export interface IndexedMessagePart {
   readonly part: MessagePart
@@ -23,6 +23,10 @@ export function assistantPresentation(message: Message, showElapsedTime = true):
   return { kind: "completed", durationMs, parts }
 }
 
+/** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
+export const isActivity = (part: MessagePart) =>
+  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
+
 export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
   let start = 0
@@ -31,7 +35,7 @@ export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Ar
     if (position === start) firstIndex = index
     if (parts[position + 1]?.index === index + 1) continue
     blocks.push(
-      ...groupCommands(
+      ...groupToolCalls(
         parts.slice(start, position + 1).map(({ part }) => part),
         firstIndex,
       ),

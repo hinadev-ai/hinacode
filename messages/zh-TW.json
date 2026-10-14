@@ -504,6 +504,8 @@
   "project_cloning": "正在複製…",
   "message_writing": "撰寫中…",
   "message_worked_for": "已工作 {duration}",
+  "message_show_activity": "顯示工具活動",
+  "message_hide_activity": "隱藏工具活動",
   "sidebar_pull_request": "開啟合併請求 #{number}",
   "sidebar_pull_request_stack": "開啟合併請求 #{number}，{count} 個連結中最新的一個",
   "sidebar_watching": "正在監看合併請求",
@@ -770,23 +772,53 @@
   "attachment_element": "元素 {element}",
   "attachment_element_url": "網址",
   "attachment_element_selector": "選擇器",
-  "tool_commands_ran": [
+  "tool_kind_command": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "已執行 {count} 個指令",
-        "countPlural=other": "已執行 {count} 個指令"
+        "countPlural=one": "執行了 {count} 個指令",
+        "countPlural=other": "執行了 {count} 個指令"
       }
     }
   ],
-  "tool_commands_running": [
+  "tool_kind_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "正在執行 {count} 個指令",
-        "countPlural=other": "正在執行 {count} 個指令"
+        "countPlural=one": "讀取了 {count} 個檔案",
+        "countPlural=other": "讀取了 {count} 個檔案"
+      }
+    }
+  ],
+  "tool_kind_edit": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "編輯了 {count} 個檔案",
+        "countPlural=other": "編輯了 {count} 個檔案"
+      }
+    }
+  ],
+  "tool_kind_search": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "搜尋了 {count} 次",
+        "countPlural=other": "搜尋了 {count} 次"
+      }
+    }
+  ],
+  "tool_kind_other": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "使用了 {count} 個工具",
+        "countPlural=other": "使用了 {count} 個工具"
       }
     }
   ],
