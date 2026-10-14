@@ -43,7 +43,12 @@ const gitHub = Layer.mock(GitHub, {
 })
 
 const runner = Layer.mock(AgentRunner, {
-  steer: (threadId, text) => Effect.sync(() => void wakes.push({ threadId, text })),
+  steerWhen: ({ threadId, text, when }) =>
+    Effect.gen(function* () {
+      if (!(yield* when)) return false
+      wakes.push({ threadId, text })
+      return true
+    }),
 })
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-pr-watcher-")))
@@ -222,7 +227,7 @@ describe("PullRequestWatcher", () => {
 
 describe("PullRequests watch persistence", () => {
   layer(testLayer)((it) => {
-    it.effect("watching links first, restarting bumps the generation, stale generations cannot write", () =>
+    it.effect("watching links first, restarting replaces the generation, stale generations cannot write", () =>
       Effect.gen(function* () {
         const rootPath = join(base, "persistence")
         mkdirSync(rootPath)
@@ -232,18 +237,20 @@ describe("PullRequests watch persistence", () => {
 
         const pullRequests = yield* PullRequests
         const first = yield* pullRequests.watch(threadId, url, ["checksFailed"])
-        expect(first.watch).toMatchObject({ generation: 1, events: ["checksFailed"], snapshot: null })
+        const firstWatch = first.watch
+        if (firstWatch === null) throw new Error("watch missing after start")
+        expect(firstWatch).toMatchObject({ generation: expect.any(String), events: ["checksFailed"], snapshot: null })
         expect(pushes).toContainEqual(expect.objectContaining({ type: "thread.pullRequests", threadId }))
 
         const restarted = yield* pullRequests.watch(threadId, url)
-        expect(restarted.watch?.generation).toBe(2)
+        expect(restarted.watch?.generation).not.toBe(firstWatch.generation)
         expect(restarted.watch?.events).toHaveLength(5)
 
         const current = restarted.watch
         if (current === null) throw new Error("watch missing after restart")
-        expect(yield* pullRequests.updateWatch(restarted.id, 1, null)).toBe(false)
-        expect((yield* pullRequests.find(restarted.id))?.watch?.generation).toBe(2)
-        expect(yield* pullRequests.updateWatch(restarted.id, 2, { ...current, wakes: 3 })).toBe(true)
+        expect(yield* pullRequests.updateWatch(restarted.id, firstWatch.generation, null)).toBe(false)
+        expect((yield* pullRequests.find(restarted.id))?.watch?.generation).toBe(current.generation)
+        expect(yield* pullRequests.updateWatch(restarted.id, current.generation, { ...current, wakes: 3 })).toBe(true)
         expect((yield* pullRequests.find(restarted.id))?.watch?.wakes).toBe(3)
 
         yield* pullRequests.unwatch(threadId, url)

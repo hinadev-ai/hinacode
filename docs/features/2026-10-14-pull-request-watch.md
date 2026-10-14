@@ -29,7 +29,7 @@ The watch lives on the link, because a watch is meaningless without the thread a
 watch: PullRequestWatch | null
 
 PullRequestWatch = {
-  generation: number              // starts at 1, increments on every restart
+  generation: string              // fresh UUID on every start, including after a stop
   events: WatchEventKind[]         // the interest set, never empty
   snapshot: WatchSnapshot | null   // the last state the agent was told about
   wakes: number
@@ -53,7 +53,7 @@ Migration `0013_pull_request_watch` adds one nullable `watch` text column to `pu
 Three state rules carry the whole feature.
 
 - **A snapshot only moves when its news is delivered.** Polling builds a fresh snapshot and diffs it against the stored one. The stored snapshot is replaced in the same step that wakes the thread. If the wake cannot happen yet, because the thread waits on an approval or sits at a usage limit, the snapshot stays put and the next poll finds the same news again. Delivery is at least once, and several changes between two polls arrive as one message instead of a queue of stale ones.
-- **A generation guards every write.** Starting a watch that already exists increments its generation and resets its snapshot. A poll that read GitHub under an older generation, while the user stopped or restarted the watch in the meantime, drops its result instead of waking a thread nobody is watching anymore.
+- **A generation guards every write.** Each watch start uses a fresh UUID and resets its snapshot. Poll updates compare the stored generation in the same SQL statement that writes the result. A poll that read GitHub before the user stopped or restarted the watch cannot replace or clear the new watch.
 - **A new head resets check news.** Failing check names and a green run are compared per head commit. A push makes the same check failing again worth reporting, and makes "checks passed" mean the new code passed, not the old.
 
 ### Events
@@ -76,7 +76,7 @@ A fresh watch has no snapshot, which the diff treats as a neutral pull request w
 
 `PullRequestWatcher` is one Effect service beside `AutoArchive`, following its shape. It schedules a sweep every minute, reads each watched link's detail through `GitHub.pullRequestDetail` with a concurrency cap, and runs sweeps under one semaphore so a slow sweep never overlaps the next. Watching needs the head commit, so the detail read gains `headRefOid` and `PullRequestDetail` gains a `head` field.
 
-A wake is `AgentRunner.steer` with the rendered message. Steer already does the right thing in both thread states. A running turn receives the news as steering input, and an idle thread starts a turn. Three thread states defer instead. An archived thread ends its watches without a wake. A thread awaiting approval or stopped at a usage limit keeps its snapshot, which defers the wake to a later sweep without any pending queue to store.
+A wake uses `AgentRunner.steerWhen` with the rendered message and a check of the watch generation. The runner checks it after acquiring the thread's existing delivery semaphore, before writing messages or invoking the provider. Stopping or replacing a watch cancels news still waiting for that semaphore. Delivery is accepted at this check, so an accepted message can finish arriving after the watch stops. Stop never waits for a provider response. A running turn receives the news as steering input, and an idle thread starts a turn. Three thread states defer instead. An archived thread ends its watches without a wake. A thread awaiting approval or stopped at a usage limit keeps its snapshot, which defers the wake to a later sweep without any pending queue to store.
 
 The wake message is news, not a merge decision. It tells the agent what changed and suggests the matching action, such as reading the failing logs or reading the review. It never tells the agent to merge. Whether a green and approved pull request should merge stays with the developer.
 
@@ -104,7 +104,8 @@ Nothing new crosses the network. Reads reuse the user's `gh` login from the home
 ## Verification
 
 - `pullRequestWatch.test.ts` covers the diff per event kind, per-head resets, the interest set, fresh-watch behavior, and the wake message text.
-- `PullRequestWatcher.integration.test.ts` runs the real services against in-memory SQLite with a mocked `GitHub` and a recording `AgentRunner`. It proves a failing check wakes the thread once, a repeated poll stays quiet, a busy thread defers, a merged pull request ends its watch, a stopped watch drops an in-flight poll, and repeated read failures end the watch with a reason.
+- `PullRequestWatcher.integration.test.ts` runs the real services against in-memory SQLite with a mocked `GitHub` and a recording `AgentRunner`. It proves a failing check wakes the thread once, a repeated poll stays quiet, a busy thread defers, a merged pull request ends its watch, a stopped watch drops an in-flight poll even after a replacement starts, and repeated read failures end the watch with a reason.
+- `PullRequestWatcher.delivery.integration.test.ts` runs the real runner and SQLite with a scripted provider. It proves that Stop completes while provider steering or a transcript read holds the thread semaphore, and news from the stopped watch is rejected once that semaphore becomes available.
 - The MCP integration tests gain a watch round trip through the real HTTP server.
 - In the real app with `verify-kkcode`, link a pull request, start a watch from the panel, and confirm the eye appears in the panel and the sidebar. Then stop it and confirm both clear. Screenshot light and dark.
 - Full gates: `pnpm typecheck`, `pnpm lint`, `pnpm test`.

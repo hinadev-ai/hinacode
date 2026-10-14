@@ -29,19 +29,27 @@ const make = Effect.gen(function* () {
   const runner = yield* AgentRunner
   const semaphore = Semaphore.makeUnsafe(1)
 
-  const stillCurrent = (linkId: string, generation: number) =>
+  const stillCurrent = (linkId: string, generation: PullRequestWatch["generation"]) =>
     Effect.map(pullRequests.find(linkId), (current) => current?.watch?.generation === generation)
 
   const record = (link: PullRequestLink, watch: PullRequestWatch, patch: Partial<PullRequestWatch>) =>
     pullRequests.updateWatch(link.id, watch.generation, { ...watch, ...patch })
 
-  const wake = (threadId: string, text: string) =>
-    runner.steer(threadId, text, []).pipe(
-      Effect.as(true),
-      Effect.catchCause((cause) =>
-        Effect.logWarning("pull request watch could not wake the thread", threadId, cause).pipe(Effect.as(false)),
-      ),
-    )
+  const wake = (link: PullRequestLink, generation: PullRequestWatch["generation"], text: string) =>
+    runner
+      .steerWhen({
+        threadId: link.threadId,
+        text,
+        attachments: [],
+        when: stillCurrent(link.id, generation),
+      })
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("pull request watch could not wake the thread", link.threadId, cause).pipe(
+            Effect.as(false),
+          ),
+        ),
+      )
 
   /** Ends the watch and tells the thread why, unless the thread cannot take a message right now. */
   const stopWithWake = (link: PullRequestLink, watch: PullRequestWatch, reason: string) =>
@@ -49,7 +57,7 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.get(link.threadId)
       if (thread.status !== "archived" && thread.status !== "awaiting_approval" && thread.status !== "limited") {
         if (yield* stillCurrent(link.id, watch.generation)) {
-          yield* wake(link.threadId, watchStoppedMessage(link.url, reason))
+          yield* wake(link, watch.generation, watchStoppedMessage(link.url, reason))
         }
       }
       yield* pullRequests.updateWatch(link.id, watch.generation, null)
@@ -103,7 +111,7 @@ const make = Effect.gen(function* () {
       const text = capped
         ? `${watchMessage(detail, watch.snapshot, events)}\n\nWatching has ended after ${MAX_WAKES} updates. Call the kkcode \`watch_pull_request\` tool to watch it again.`
         : watchMessage(detail, watch.snapshot, events)
-      if (!(yield* wake(link.threadId, text))) {
+      if (!(yield* wake(link, watch.generation, text))) {
         yield* record(link, watch, { failures: 0, lastPolledAt: now })
         return
       }

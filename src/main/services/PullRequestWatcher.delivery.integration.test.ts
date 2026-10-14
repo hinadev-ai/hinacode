@@ -227,6 +227,10 @@ describe("PullRequestWatcher queued delivery", () => {
         expect(starts.filter((input) => input.threadId === threadId)).toStrictEqual([])
         expect((yield* pullRequests.find(link.id))?.watch).toStrictEqual(replacement.watch)
         expect((yield* AgentRunner.use((runner) => runner.transcript(threadId))).messages).toStrictEqual([])
+
+        yield* AgentRunner.use((runner) => runner.send(threadId, "next input", []))
+        const transcript = yield* AgentRunner.use((runner) => runner.transcript(threadId))
+        expect(transcript.messages[0]?.parts).toStrictEqual([{ type: "text", text: "next input" }])
       }),
     )
   })

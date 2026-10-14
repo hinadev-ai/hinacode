@@ -479,12 +479,12 @@ export const PullRequestWatchSnapshot = Schema.Struct({
 export type PullRequestWatchSnapshot = typeof PullRequestWatchSnapshot.Type
 
 /**
- * A live watch on one linked pull request. `generation` increments every time the watch is restarted, so a
+ * A live watch on one linked pull request. `generation` is fresh every time the watch is started, so a
  * poll that read GitHub under an older generation can tell its result is stale and drop it. `snapshot` is
  * null until the first poll, and it only moves when a poll's news was delivered or it found no news.
  */
 export const PullRequestWatch = Schema.Struct({
-  generation: Schema.Int,
+  generation: Schema.String,
   events: Schema.Array(WatchEventKind),
   snapshot: Schema.NullOr(PullRequestWatchSnapshot),
   wakes: Schema.Int,

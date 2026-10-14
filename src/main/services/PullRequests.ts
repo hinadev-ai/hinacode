@@ -59,7 +59,7 @@ export class PullRequests extends Context.Service<
      */
     readonly updateWatch: (
       linkId: string,
-      generation: number,
+      generation: PullRequestWatch["generation"],
       watch: PullRequestWatch | null,
     ) => Effect.Effect<boolean, PersistenceError>
     /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. */
@@ -80,6 +80,7 @@ const make = Effect.gen(function* () {
   const git = yield* Git
   const github = yield* GitHub
   const encodeRow = Schema.encodeEffect(LinkRow)
+  const encodeWatch = Schema.encodeEffect(Schema.NullOr(Schema.fromJsonString(PullRequestWatch)))
 
   const findByThread = SqlSchema.findAll({
     Request: Schema.String,
@@ -156,7 +157,7 @@ const make = Effect.gen(function* () {
       }
       const kinds = [...new Set(requested)]
       return yield* setWatch(current, {
-        generation: (current.watch?.generation ?? 0) + 1,
+        generation: randomUUID(),
         events: kinds.length > 0 ? kinds : [...allWatchEventKinds],
         snapshot: null,
         wakes: 0,
@@ -174,11 +175,17 @@ const make = Effect.gen(function* () {
       yield* setWatch(current, null)
     })
 
-  const updateWatch = (linkId: string, generation: number, next: PullRequestWatch | null) =>
+  const updateWatch = (linkId: string, generation: PullRequestWatch["generation"], next: PullRequestWatch | null) =>
     Effect.gen(function* () {
-      const current = yield* find(linkId)
-      if (current === null || current.watch === null || current.watch.generation !== generation) return false
-      yield* setWatch(current, next)
+      const encoded = yield* encodeWatch(next).pipe(Effect.mapError(persistence("pullRequests.updateWatch")))
+      const updated = yield* sql<{ readonly threadId: string }>`
+        UPDATE pull_request_link SET watch = ${encoded}
+        WHERE id = ${linkId} AND json_extract(watch, '$.generation') = ${generation}
+        RETURNING thread_id
+      `.pipe(Effect.mapError(persistence("pullRequests.updateWatch")))
+      const row = updated[0]
+      if (row === undefined) return false
+      yield* broadcast(row.threadId)
       return true
     })
 
