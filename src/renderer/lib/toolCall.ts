@@ -1,4 +1,5 @@
 import type { MessagePart } from "../../shared/domain.ts"
+import { spawnsSubagent } from "./subagents.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]
 
@@ -43,28 +44,54 @@ type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 export type TranscriptBlock =
   | { readonly type: "part"; readonly part: MessagePart; readonly index: number }
-  | { readonly type: "commands"; readonly calls: ReadonlyArray<ToolCall>; readonly index: number }
+  | { readonly type: "tools"; readonly calls: ReadonlyArray<ToolCall>; readonly index: number }
 
-const isCommand = (part: MessagePart): part is ToolCall => part.type === "tool_call" && part.name === "Bash"
+/** A sub-agent's row opens its own view, so it never folds into a run of tool calls. */
+const isFoldable = (part: MessagePart): part is ToolCall => part.type === "tool_call" && !spawnsSubagent(part)
 
 /**
- * Folds each run of two or more back-to-back shell commands into one block, so a burst of commands reads
+ * Folds each run of two or more back-to-back tool calls into one block, so a burst of tool use reads
  * as one line. `index` is the block's first part, which stays put as parts are appended.
  */
-export function groupCommands(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
+export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
   for (const [position, part] of parts.entries()) {
     const index = startIndex + position
     const previous = blocks.at(-1)
     const run =
-      previous?.type === "commands" ? previous.calls : previous && isCommand(previous.part) ? [previous.part] : null
-    if (previous && run && isCommand(part)) {
-      blocks[blocks.length - 1] = { type: "commands", calls: [...run, part], index: previous.index }
+      previous?.type === "tools" ? previous.calls : previous && isFoldable(previous.part) ? [previous.part] : null
+    if (previous && run && isFoldable(part)) {
+      blocks[blocks.length - 1] = { type: "tools", calls: [...run, part], index: previous.index }
     } else {
       blocks.push({ type: "part", part, index })
     }
   }
   return blocks
+}
+
+export type ToolKind = "command" | "read" | "edit" | "search" | "other"
+
+const toolKinds: Record<string, ToolKind> = {
+  Bash: "command",
+  Read: "read",
+  Edit: "edit",
+  MultiEdit: "edit",
+  Write: "edit",
+  NotebookEdit: "edit",
+  Glob: "search",
+  Grep: "search",
+}
+
+/** How many calls of each kind a run holds, in the order its summary names them. */
+export function countToolKinds(calls: ReadonlyArray<ToolCall>): Array<{ kind: ToolKind; count: number }> {
+  const counts = new Map<ToolKind, number>(
+    (["command", "read", "edit", "search", "other"] as const).map((kind) => [kind, 0]),
+  )
+  for (const call of calls) {
+    const kind = toolKinds[call.name] ?? "other"
+    counts.set(kind, (counts.get(kind) ?? 0) + 1)
+  }
+  return [...counts].flatMap(([kind, count]) => (count > 0 ? [{ kind, count }] : []))
 }
 
 /** What a shell command's row says: the agent's description of it when it gave one, else the command. */
