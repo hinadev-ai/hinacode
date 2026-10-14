@@ -1,4 +1,4 @@
-import type { Options, PermissionResult, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { ModelInfo, Options, PermissionResult, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
 import { Effect, Fiber, Stream } from "effect"
@@ -81,7 +81,7 @@ const sdk = vi.hoisted(() => {
     setModel: (): Promise<void> => Promise.resolve(),
     setPermissionMode: (): Promise<void> => Promise.resolve(),
     supportedCommands: (): Promise<Array<never>> => Promise.resolve([]),
-    supportedModels: (): Promise<Array<never>> => Promise.resolve([]),
+    supportedModels: (): Promise<Array<ModelInfo>> => Promise.resolve([]),
     FakeQuery,
   }
   return state
@@ -96,6 +96,12 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   tool: vi.fn(),
   createSdkMcpServer: vi.fn(),
 }))
+
+// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
+vi.mock("../binary.ts", async () => {
+  const { succeed } = await import("effect/Effect")
+  return { installedBinary: (_provider: string, name: string) => succeed(name) }
+})
 
 const TTL = "60 seconds"
 
@@ -637,6 +643,22 @@ describe("Claude idle sessions", () => {
         yield* TestClock.adjust(TTL)
         yield* settle
         expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+})
+
+describe("Claude models", () => {
+  it.effect("asks the CLI again after a failed listing, so a fresh install shows its models", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.supportedModels = () => Promise.reject(new Error("spawn claude ENOENT"))
+        expect(yield* provider.listModels).not.toHaveLength(0)
+
+        sdk.supportedModels = () =>
+          Promise.resolve([{ value: "claude-next", displayName: "Claude Next", description: "" }])
+        expect((yield* provider.listModels).map((model) => model.id)).toEqual(["claude-next"])
       }),
     ),
   )
