@@ -71,6 +71,15 @@ export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()
   }
 }
 
+/** Switching the project root's branch would pull the files out from under another thread's turn. */
+export class RootBusyError extends Schema.TaggedError<RootBusyError>()("RootBusyError", {
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `Cannot switch branches in ${this.path}: another thread is still running in it`
+  }
+}
+
 /** Removing the account would leave threads with transcripts nobody can resume. */
 export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("AccountInUseError", {
   id: Schema.String,

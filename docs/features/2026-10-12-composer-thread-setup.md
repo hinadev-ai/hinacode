@@ -19,7 +19,7 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 
 - `threads.create` takes only `projectId`. Main picks a random title, the `claude` agent, and that agent's default model (the user's setting, else the first model the agent lists).
 - `threads.update` accepts `provider`, with the picked `model` or else that agent's default model. `Threads.update` refuses a provider change once the thread has a message (`ThreadStartedError`).
-- `threads.send` accepts `worktree: { baseRef }`. `AgentRunner.send` passes it to `Threads.attachWorktree`, which also refuses once the thread has a message or a worktree.
+- `threads.send` accepts `workspace: { mode, target }`. `AgentRunner.send` passes it to `Threads.prepareWorkspace`, which also refuses once the thread has a message or a worktree. See `2026-10-14-workspace-ref-picker.md`.
 - `ThreadNaming` makes one Claude Agent SDK call with no tools, low effort and JSON schema output. It updates the title only if it's unchanged, then calls `Worktrees.renameBranch` (`git branch -m`). The checkout path keeps the placeholder name. Any failure is logged and the placeholder names stay.
 - `settings.textGenerationModel` defaults to `claude-sonnet-5-5` and can be changed in Settings → Models.
 - The workspace choice lives in the renderer's in-memory draft until the message is sent.
@@ -33,7 +33,7 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 ## Verification
 
 - `ipc.integration.test.ts`: a thread is created with the default agent and model, and switches agent only before its first message.
-- `Worktrees.integration.test.ts`: `attachWorktree` branches from the title and `renameBranch` moves the checkout's branch.
+- `Worktrees.integration.test.ts`: a new worktree branches from the title and `renameBranch` moves the checkout's branch.
 - `verify-kkcode`: create a thread, switch to `New worktree`, send a message, and see the title and branch change in the sidebar and side panel.
 
 ## Effort and fast mode

@@ -1,7 +1,7 @@
 import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
 import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
-import type { ExperimentalSettings, Project, Settings } from "../../shared/domain.ts"
+import { type ExperimentalSettings, Locale, type Project, type Settings } from "../../shared/domain.ts"
 import { startThread } from "../lib/startThread.ts"
 import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
@@ -248,7 +248,8 @@ export const commands = [
     defaultKeys: "",
     title: m.command_language_switch,
     run: (ctx) => {
-      const next = useLocale.getState().locale === "en" ? "zh-TW" : "en"
+      const locales = Locale.literals
+      const next = locales[(locales.indexOf(useLocale.getState().locale) + 1) % locales.length]
       void ctx.updateSettings({ locale: next }).then((saved) => useLocale.getState().apply(saved.locale))
     },
   },

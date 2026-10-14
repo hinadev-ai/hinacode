@@ -87,10 +87,11 @@ export const reviewLabel = {
   reviewRequired: m.pr_review_required,
 } satisfies Record<ReviewStatus, () => string>
 
+/** Only failing checks need the user, so only they get a color. Amber would claim pending checks need them. */
 export const checksIndicator = {
-  passing: { Icon: RiCheckboxCircleFill, className: "text-emerald-500", label: m.pr_checks_passing },
+  passing: { Icon: RiCheckboxCircleFill, className: "text-muted-foreground", label: m.pr_checks_passing },
   failing: { Icon: RiCloseCircleFill, className: "text-destructive", label: m.pr_checks_failing },
-  pending: { Icon: RiTimeLine, className: "text-amber-500", label: m.pr_checks_pending },
+  pending: { Icon: RiTimeLine, className: "text-muted-foreground", label: m.pr_checks_pending },
 } satisfies Record<ChecksStatus, { Icon: IconType; className: string; label: () => string }>
 
 const checkRunIndicator = {
@@ -741,7 +742,13 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
         {ran.map((run, index) => {
           const { Icon, className, label } = checkRunIndicator[run.status]
           return (
-            <li key={`${index}:${run.name}`} className="flex min-w-0 items-center gap-2 text-xs">
+            <li
+              key={`${index}:${run.name}`}
+              className={cn(
+                "flex min-w-0 items-center gap-2 text-xs",
+                run.status === "failing" ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               <Icon aria-label={label()} className={cn("size-3.5 shrink-0", className)} />
               {run.url ? (
                 <a

@@ -701,3 +701,79 @@ describe("branch suggestions", () => {
     ),
   )
 })
+
+describe("project root checkout", () => {
+  it.live("switches the root to a fetched origin branch on a local branch that tracks it", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const { branchHead } = withOrigin(root)
+        yield* Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const thread = yield* createThread(projectId, "root")
+        yield* Worktrees.use((worktrees) => worktrees.checkout(projectId, "origin/feature/login", thread.id))
+        expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("feature/login")
+        expect(git(root, "rev-parse", "HEAD").trim()).toBe(branchHead)
+        expect(git(root, "rev-parse", "--abbrev-ref", "@{upstream}").trim()).toBe("origin/feature/login")
+      }),
+    ),
+  )
+
+  it.live("checks out a fork's pull request in the root on a local kk/pr-<number> branch", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const { forkHead } = withOrigin(root)
+        const thread = yield* createThread(projectId, "root")
+        yield* Worktrees.use((worktrees) =>
+          worktrees.checkoutPullRequest(
+            projectId,
+            pullRequestHead({ number: 8, headRefName: "fork-work", isCrossRepository: true }),
+            thread.id,
+          ),
+        )
+        expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("kk/pr-8")
+        expect(git(root, "rev-parse", "HEAD").trim()).toBe(forkHead)
+      }),
+    ),
+  )
+
+  it.live("refuses to switch branches while another thread runs in the root", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        git(root, "branch", "other")
+        const busy = yield* createThread(projectId, "busy")
+        yield* Threads.use((threads) => threads.update({ id: busy.id, status: "running" }))
+        const thread = yield* createThread(projectId, "root")
+
+        const switched = yield* Effect.exit(
+          Worktrees.use((worktrees) => worktrees.checkout(projectId, "other", thread.id)),
+        )
+        expect(switched._tag).toBe("Failure")
+        expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main")
+      }),
+    ),
+  )
+})
+
+describe("new worktree from origin's default branch", () => {
+  it.live("forks from what origin has after a fetch, without tracking it", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        git(root, "fetch", "-q", "origin")
+        git(root, "remote", "set-head", "origin", "main")
+        const elsewhere = join(dirname(root), "elsewhere")
+        execFileSync("git", ["clone", "-q", "-b", "main", join(dirname(root), "origin.git"), elsewhere])
+        const pushed = commit(elsewhere, "merged meanwhile")
+        git(elsewhere, "push", "-q", "origin", "main")
+
+        yield* Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const baseRef = yield* Worktrees.use((worktrees) => worktrees.defaultBranch(projectId))
+        expect(baseRef).toBe("origin/main")
+        const worktree = yield* Worktrees.use((worktrees) =>
+          worktrees.create({ projectId, branch: "kk/fresh", baseRef }),
+        )
+        expect(git(worktree.path, "rev-parse", "HEAD").trim()).toBe(pushed)
+        expect(git(worktree.path, "for-each-ref", "--format=%(upstream)", "refs/heads/kk/fresh").trim()).toBe("")
+      }),
+    ),
+  )
+})

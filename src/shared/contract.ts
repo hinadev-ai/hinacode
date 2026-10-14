@@ -53,7 +53,7 @@ import {
   VmControl,
   VmHostStatus,
   Worktree,
-  WorktreeSource,
+  WorkspaceChoice,
   OpenPullRequest,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
@@ -155,12 +155,14 @@ export const RpcMethods = {
   /** Brings an archived thread back as idle. A removed worktree stays removed. */
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
-  /** The ref a new worktree forks from unless the user picks another: origin's default branch, else `main`. */
+  /** The ref a new worktree forks from unless the user picks another: `origin/<default branch>`, else `main`. */
   "projects.defaultBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   /** Local branches, most recently committed first, then `origin/*` branches that have no local copy. */
   "projects.branches": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(Schema.String)),
   /** Open pull requests of the project's repository, newest first. Empty when `gh` is missing or signed out. */
   "projects.pullRequests": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(OpenPullRequest)),
+  /** Fetches `origin`, so the branch picker and a new worktree's default base are current. */
+  "projects.fetch": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** The project's own favicon as a data URL, or null when it has none. */
   "projects.icon": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(Schema.String)),
   /**
@@ -271,15 +273,14 @@ export const RpcMethods = {
   ),
   /**
    * Starts a turn and returns once it is running; progress arrives as `message.created` and `thread.event`.
-   * `worktree` is only accepted with the first message: the thread moves into a new worktree forked from
-   * `baseRef`, or from the project's current branch when it is empty.
+   * `workspace` is only accepted with the first message, and is set up before the turn starts.
    */
   "threads.send": rpc(
     Schema.Struct({
       threadId: Schema.String,
       prompt: Schema.String,
       attachments: Schema.optional(Schema.Array(Attachment)),
-      worktree: Schema.optional(WorktreeSource),
+      workspace: Schema.optional(WorkspaceChoice),
     }),
     Schema.Void,
   ),
