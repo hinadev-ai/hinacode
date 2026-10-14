@@ -60,6 +60,10 @@ export function commandFindText(call: ToolCall): CommandFindText {
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
   distinctLabel === null ? command : `${command}\n${distinctLabel}`
 
+/** What a folded tool call's row shows: a command and its description, or the tool and its summary. */
+const toolRowSearchText = (call: ToolCall) =>
+  call.name === "Bash" ? commandSearchText(commandFindText(call)) : searchableText(call)
+
 /** Every match of `query` in the transcript, in reading order. */
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
   const pattern = findPattern(query)
@@ -77,7 +81,7 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
         continue
       }
       for (const [position, call] of block.calls.entries()) {
-        search(message.id, block.index + position, commandSearchText(commandFindText(call)))
+        search(message.id, block.index + position, toolRowSearchText(call))
       }
     }
   }

@@ -103,3 +103,24 @@ test("follows the original order of questions, progress, and the final answer", 
     { messageId: "m1", partIndex: 3, offset: 0 },
   ])
 })
+
+test("searches every call folded into a run, by its command or by its tool name and summary", () => {
+  const bash: MessagePart = {
+    type: "tool_call",
+    callId: "c",
+    name: "Bash",
+    input: { command: "cat a.ts" },
+    status: "done",
+  }
+  const read: MessagePart = {
+    type: "tool_call",
+    callId: "r",
+    name: "Read",
+    input: { file_path: "a.ts" },
+    status: "done",
+  }
+  expect(findMatches([message("m", [bash, read])], "a.ts")).toEqual([
+    { messageId: "m", partIndex: 0, offset: 4 },
+    { messageId: "m", partIndex: 1, offset: 5 },
+  ])
+})

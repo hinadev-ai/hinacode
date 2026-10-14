@@ -518,6 +518,8 @@
   "project_cloning": "Cloning…",
   "message_writing": "Writing…",
   "message_worked_for": "Worked for {duration}",
+  "message_show_activity": "Show tool activity",
+  "message_hide_activity": "Hide tool activity",
   "sidebar_pull_request": "Open pull request #{number}",
   "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
   "sidebar_watching": "Watching a pull request",
@@ -784,23 +786,53 @@
   "attachment_element": "Element {element}",
   "attachment_element_url": "URL",
   "attachment_element_selector": "Selector",
-  "tool_commands_ran": [
+  "tool_kind_command": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Ran {count} command",
-        "countPlural=other": "Ran {count} commands"
+        "countPlural=one": "ran {count} command",
+        "countPlural=other": "ran {count} commands"
       }
     }
   ],
-  "tool_commands_running": [
+  "tool_kind_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Running {count} command",
-        "countPlural=other": "Running {count} commands"
+        "countPlural=one": "read {count} file",
+        "countPlural=other": "read {count} files"
+      }
+    }
+  ],
+  "tool_kind_edit": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "edited {count} file",
+        "countPlural=other": "edited {count} files"
+      }
+    }
+  ],
+  "tool_kind_search": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "searched once",
+        "countPlural=other": "searched {count} times"
+      }
+    }
+  ],
+  "tool_kind_other": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "used {count} tool",
+        "countPlural=other": "used {count} tools"
       }
     }
   ],
