@@ -6,6 +6,7 @@ import { RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiStopCircleLine } from
 import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { loadSubagentsAtom, useSubagents } from "../stores/subagents.ts"
@@ -155,7 +156,12 @@ function SubagentRow({
         <SubagentStatusIcon status={subagent.status} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex min-w-0 items-center gap-1.5 text-sm">
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-1.5 text-sm",
+            subagent.status === "running" && "text-muted-foreground",
+          )}
+        >
           <ProviderIcon provider={provider} />
           <span className="truncate" title={subagent.label}>
             {subagent.label}

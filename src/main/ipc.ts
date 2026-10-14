@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
 import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
@@ -100,9 +100,12 @@ const knownRoot = (root: string) =>
 /** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
+/** Only for when the user asked for the window, such as a notification click or opening kkcode again. */
 export const bringToFront = (window: BrowserWindow) => {
   if (window.isMinimized()) window.restore()
   window.show()
+  // macOS won't activate an app behind another one on window.focus() alone.
+  app.focus({ steal: true })
   window.focus()
 }
 
@@ -175,6 +178,7 @@ const handlers: Handlers = {
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
+  "projects.fetch": ({ id }) => Worktrees.use((worktrees) => worktrees.fetch(id)),
   "projects.pullRequests": ({ id }) =>
     Effect.gen(function* () {
       const { rootPath } = yield* Projects.use((projects) => projects.get(id))
@@ -221,8 +225,8 @@ const handlers: Handlers = {
   "updates.install": () => Updates.use((updates) => updates.install),
 
   "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
-  "threads.send": ({ threadId, prompt, attachments = [], worktree }) =>
-    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { worktree })),
+  "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
+    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace })),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),

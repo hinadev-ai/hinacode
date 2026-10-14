@@ -17,9 +17,9 @@ import type { RpcRequest } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
-import { callPromise, commandsAtom, completionKey, filesAtom } from "../lib/rpc.ts"
+import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { emptyDraft, toWorktreeSource, useDrafts } from "../stores/drafts.ts"
+import { emptyDraft, toCheckoutTarget, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -63,7 +63,7 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread }: { thread: Thread }) {
-  const { text, attachments, worktree, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
   // Agent and workspace stay open to change until the first message.
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -87,6 +87,7 @@ export function Composer({ thread }: { thread: Thread }) {
     (other) => other.id !== thread.id,
   )
   const refreshCommands = useAtomRefresh(commandsAtom(key))
+  const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
   const busy = thread.status === "running" || thread.status === "awaiting_approval"
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
@@ -104,11 +105,16 @@ export function Composer({ thread }: { thread: Thread }) {
               threadId: thread.id,
               prompt,
               attachments: sent.attachments,
-              worktree: unstarted && sent.worktree ? toWorktreeSource(sent.worktree.ref) : undefined,
+              workspace:
+                unstarted && sent.workspace
+                  ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
+                  : undefined,
             }))
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
+      } finally {
+        if (sent.workspace?.mode === "local") refreshRootBranch()
       }
     })
   }
@@ -251,7 +257,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>
-      {unstarted && <WorkspacePicker thread={thread} worktree={worktree} />}
+      {unstarted && <WorkspacePicker thread={thread} workspace={workspace} />}
       {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )

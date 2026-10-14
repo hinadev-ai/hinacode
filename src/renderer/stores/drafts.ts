@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Attachment, WorktreeSource } from "../../shared/domain.ts"
+import type { Attachment, CheckoutTarget } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
 
 /** A comment on lines of a file, sent as context with the next message. */
@@ -19,19 +19,19 @@ export interface Draft {
   readonly text: string
   readonly attachments: ReadonlyArray<Attachment>
   /**
-   * Before the first message only: run the thread in a new worktree. `ref` is what the user typed: a branch to fork
-   * from, or a pull request number or URL to check out.
+   * Before the first message only. `ref` is what the user typed: a branch, or a pull request number or URL.
+   * `local` switches the project root to it, `worktree` makes a new worktree from it. Null keeps the root as it is.
    */
-  readonly worktree: { readonly ref: string } | null
+  readonly workspace: { readonly mode: "local" | "worktree"; readonly ref: string } | null
   readonly comments: ReadonlyArray<LineComment>
 }
 
-export const toWorktreeSource = (ref: string): WorktreeSource => {
+export const toCheckoutTarget = (ref: string): CheckoutTarget => {
   const selector = parsePullRequestSelector(ref)
-  return selector === undefined ? { _tag: "branch", baseRef: ref.trim() } : { _tag: "pullRequest", selector }
+  return selector === undefined ? { _tag: "branch", ref: ref.trim() } : { _tag: "pullRequest", selector }
 }
 
-export const emptyDraft: Draft = { text: "", attachments: [], worktree: null, comments: [] }
+export const emptyDraft: Draft = { text: "", attachments: [], workspace: null, comments: [] }
 
 interface DraftsState {
   readonly byThreadId: Readonly<Record<string, Draft>>
@@ -40,7 +40,7 @@ interface DraftsState {
   readonly appendMention: (threadId: string, path: string) => void
   readonly addAttachments: (threadId: string, attachments: ReadonlyArray<Attachment>) => void
   readonly removeAttachment: (threadId: string, attachmentId: string) => void
-  readonly setWorktree: (threadId: string, worktree: Draft["worktree"]) => void
+  readonly setWorkspace: (threadId: string, workspace: Draft["workspace"]) => void
   readonly addComment: (threadId: string, comment: LineComment) => void
   readonly updateComment: (threadId: string, commentId: string, body: string) => void
   readonly removeComment: (threadId: string, commentId: string) => void
@@ -53,7 +53,7 @@ interface DraftsState {
 
 const withDraft = (byThreadId: Readonly<Record<string, Draft>>, threadId: string, draft: Draft) => {
   const { [threadId]: _previous, ...rest } = byThreadId
-  return draft.text === "" && draft.attachments.length === 0 && draft.worktree === null && draft.comments.length === 0
+  return draft.text === "" && draft.attachments.length === 0 && draft.workspace === null && draft.comments.length === 0
     ? rest
     : { ...rest, [threadId]: draft }
 }
@@ -83,7 +83,7 @@ export const useDrafts = create<DraftsState>()((set, get) => {
         ...draft,
         attachments: draft.attachments.filter((attachment) => attachment.id !== attachmentId),
       })),
-    setWorktree: (threadId, worktree) => update(threadId, (draft) => ({ ...draft, worktree })),
+    setWorkspace: (threadId, workspace) => update(threadId, (draft) => ({ ...draft, workspace })),
     addComment: (threadId, comment) =>
       update(threadId, (draft) => ({ ...draft, comments: [...draft.comments, comment] })),
     updateComment: (threadId, commentId, body) =>
@@ -105,7 +105,7 @@ export const useDrafts = create<DraftsState>()((set, get) => {
       update(threadId, (draft) => ({
         text: [sent.text, draft.text].filter((text) => text !== "").join("\n"),
         attachments: [...sent.attachments, ...draft.attachments],
-        worktree: draft.worktree ?? sent.worktree,
+        workspace: draft.workspace ?? sent.workspace,
         comments: [...sent.comments, ...draft.comments],
       })),
     discard: (threadId) => update(threadId, () => emptyDraft),

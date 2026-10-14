@@ -49,8 +49,9 @@ export function MessagePartView({ part }: { part: MessagePart }) {
   }
 }
 
+/** How the agent got to its reply recedes, and comes back to full contrast once the user reaches for it. */
 const disclosureTrigger =
-  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
 
 function Chevron() {
   return (
@@ -111,7 +112,7 @@ export function formatOutput(output: unknown): string {
 
 const statusIcon = {
   running: <RiLoader4Line aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />,
-  done: <RiCheckLine aria-hidden className="size-3.5 text-emerald-500" />,
+  done: <RiCheckLine aria-hidden className="size-3.5" />,
   error: <RiErrorWarningLine aria-hidden className="size-3.5 text-destructive" />,
 } satisfies Record<ToolCallStatus, ReactNode>
 
@@ -131,7 +132,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium text-foreground">
+        <span className="shrink-0 font-medium">
           <Highlighted text={name} />
         </span>
         <span className="min-w-0 flex-1 truncate font-mono" title={summary}>
@@ -173,7 +174,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
     <button type="button" onClick={() => open(part.callId)} className={`my-1 ${disclosureTrigger}`}>
       <span className="size-3.5 shrink-0" />
       {provider ? <ProviderIcon provider={provider} /> : <RiToolsLine aria-hidden className="size-3.5 shrink-0" />}
-      <span className="shrink-0 font-medium text-foreground">
+      <span className="shrink-0 font-medium">
         <Highlighted text={name} />
       </span>
       <span className="min-w-0 flex-1 truncate" title={summary}>
@@ -249,7 +250,7 @@ export function ToolGroup({
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiToolsLine aria-hidden className="size-3.5 shrink-0" />
-        <span className="min-w-0 shrink truncate font-medium text-foreground">{summarizeTools(calls)}</span>
+        <span className="min-w-0 shrink truncate font-medium">{summarizeTools(calls)}</span>
         {running && (
           <span className="min-w-0 flex-1 truncate">
             <Highlighted text={describeCommand(running)} />
@@ -286,7 +287,7 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
   const Icon = toolIcons[call.name] ?? RiToolsLine
   return (
     <Collapsible>
-      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:text-foreground">
         <Icon aria-hidden className="size-3.5 shrink-0" />
         {isCommand ? <CommandLabel call={call} truncate={truncate} /> : <ToolLabel call={call} truncate={truncate} />}
         <RiArrowRightSLine
@@ -311,7 +312,7 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
   const { distinctLabel, command } = commandFindText(call)
   return (
     <>
-      <span className={cn("min-w-0 font-mono text-foreground", truncate)} title={command}>
+      <span className={cn("min-w-0 font-mono", truncate)} title={command}>
         <Highlighted text={command} />
       </span>
       {distinctLabel !== null && (
@@ -327,7 +328,7 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
   const { name, summary } = describeToolCall(call)
   return (
     <>
-      <span className="shrink-0 font-medium text-foreground">
+      <span className="shrink-0 font-medium">
         <Highlighted text={name} />
       </span>
       <span className={cn("min-w-0 font-mono", truncate)} title={summary}>
@@ -397,9 +398,7 @@ function ToolSection({ label, text }: { label: string; text: string }) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
-      <pre className="max-h-64 overflow-auto rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap">
-        {text}
-      </pre>
+      <pre className="max-h-64 overflow-auto rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap">{text}</pre>
     </section>
   )
 }
@@ -407,9 +406,9 @@ function ToolSection({ label, text }: { label: string; text: string }) {
 function FileChangePart({ path, diff }: { path: string; diff: string }) {
   const row = (
     <>
-      <RiFileEditLine aria-hidden className="size-3.5 shrink-0 text-emerald-500" />
+      <RiFileEditLine aria-hidden className="size-3.5 shrink-0" />
       <span className="shrink-0">{m.file_change_label()}</span>
-      <span className="min-w-0 truncate font-mono text-foreground" title={path}>
+      <span className="min-w-0 truncate font-mono" title={path}>
         <Highlighted text={path} />
       </span>
     </>
@@ -425,9 +424,7 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
         {row}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1">
-        <pre className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-xs">
-          {diff}
-        </pre>
+        <pre className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-xs">{diff}</pre>
       </CollapsibleContent>
     </Collapsible>
   )

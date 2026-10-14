@@ -592,7 +592,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
   )
 }
 
-/** Free text for a new worktree's ref, suggesting the repository's open pull requests and branches. */
+/** Free text for the workspace's ref, suggesting the repository's open pull requests and branches. */
 function RefInput({
   projectId,
   value,
@@ -655,12 +655,17 @@ function RefInput({
   )
 }
 
-/** Where the first turn runs: the project root, or a new worktree forked from a branch or checked out from a PR. */
-export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree: Draft["worktree"] }) {
+/**
+ * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new worktree
+ * forked from a branch or checked out from a pull request.
+ */
+export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspace: Draft["workspace"] }) {
   const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
   const defaultBranch = AsyncResult.getOrElse(useAtomValue(defaultBranchAtom(thread.projectId)), () => "main")
-  const setWorktree = (next: Draft["worktree"]) => useDrafts.getState().setWorktree(thread.id, next)
-  const RefIcon = worktree && parsePullRequestSelector(worktree.ref) ? RiGitPullRequestLine : RiGitBranchLine
+  const setWorkspace = (next: Draft["workspace"]) => useDrafts.getState().setWorkspace(thread.id, next)
+  const mode = workspace?.mode ?? "local"
+  const ref = workspace?.ref ?? currentBranch
+  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : RiGitBranchLine
 
   return (
     <div className="mx-auto mt-1 flex w-full max-w-3xl px-1">
@@ -670,17 +675,13 @@ export function WorkspacePicker({ thread, worktree }: { thread: Thread; worktree
       >
         <div className="flex min-w-0 items-center gap-1.5 pr-2 pl-2.5">
           <RefIcon aria-hidden className="size-3.5 shrink-0" />
-          {worktree === null ? (
-            <span className="truncate font-mono text-foreground">{currentBranch}</span>
-          ) : (
-            <RefInput projectId={thread.projectId} value={worktree.ref} onChange={(ref) => setWorktree({ ref })} />
-          )}
+          <RefInput projectId={thread.projectId} value={ref} onChange={(next) => setWorkspace({ mode, ref: next })} />
         </div>
         <div aria-hidden className="h-4 w-px shrink-0 bg-border" />
         <label className="flex h-full cursor-pointer items-center gap-1.5 rounded-r-full pr-3 pl-2 hover:text-foreground">
           <Checkbox
-            checked={worktree !== null}
-            onCheckedChange={(checked) => setWorktree(checked ? { ref: defaultBranch } : null)}
+            checked={mode === "worktree"}
+            onCheckedChange={(checked) => setWorkspace(checked ? { mode: "worktree", ref: defaultBranch } : null)}
           />
           {m.thread_worktree_toggle()}
         </label>

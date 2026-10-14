@@ -270,7 +270,8 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
       ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
-      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80"
+      data-emphasis={rowEmphasis[thread.status]}
+      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -517,6 +518,18 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
   )
 }
 
+/**
+ * How loudly a row reads. A thread that needs the user is at full contrast and a working one recedes to
+ * muted. Color, not opacity, so the muted branch line stays above 4.5:1 and the status dot keeps its color.
+ */
+const rowEmphasis = {
+  awaiting_approval: "attention",
+  limited: "attention",
+  idle: "resting",
+  archived: "resting",
+  running: "working",
+} satisfies Record<ThreadStatus, "attention" | "resting" | "working">
+
 const statusDot: Partial<Record<ThreadStatus, { label: () => string; className: string }>> = {
   running: { label: m.thread_status_running, className: "bg-emerald-500 animate-pulse motion-reduce:animate-none" },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
@@ -566,8 +579,10 @@ const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
+  // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
+  // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
       {branch !== null && (
         <span
           className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"

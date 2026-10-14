@@ -24,7 +24,14 @@ import {
   type WorktreeStatus,
 } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
-import { NotFoundError, type PersistenceError, persistence, WorktreeBusyError, WorktreeTakenError } from "./errors.ts"
+import {
+  NotFoundError,
+  type PersistenceError,
+  persistence,
+  RootBusyError,
+  WorktreeBusyError,
+  WorktreeTakenError,
+} from "./errors.ts"
 import { Events } from "./Events.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError, type PullRequestHead } from "./GitHub.ts"
@@ -65,6 +72,17 @@ export class Worktrees extends Context.Service<
       head: PullRequestHead,
     ) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
     /**
+     * Switches the project root to `ref`. An `origin/<name>` ref gets a local `<name>` branch that tracks it.
+     * `owner` is the thread asking; a turn of any other thread running in the root refuses the switch.
+     */
+    readonly checkout: (projectId: string, ref: string, owner: string) => Effect.Effect<void, Failure | RootBusyError>
+    /** `checkout` of the pull request's head, fetched and named the way `createFromPullRequest` does. */
+    readonly checkoutPullRequest: (
+      projectId: string,
+      head: PullRequestHead,
+      owner: string,
+    ) => Effect.Effect<void, Failure | RootBusyError>
+    /**
      * Marks the worktree removed and returns at once; the checkout and (per `deleteBranch`) the
      * branch are deleted in the background, so a large tree does not hold up the caller.
      * Refuses while its setup script or a turn of a thread using it runs.
@@ -100,6 +118,8 @@ export class Worktrees extends Context.Service<
     readonly branches: (projectId: string) => Effect.Effect<ReadonlyArray<string>, Failure>
     /** `origin`'s default branch, or `main` when the checkout does not know it. */
     readonly defaultBranch: (projectId: string) => Effect.Effect<string, PersistenceError | NotFoundError>
+    /** Fetches `origin`. Without `--prune`, since a worktree's base ref may be a remote branch deleted since. */
+    readonly fetch: (projectId: string) => Effect.Effect<void, Failure>
     /**
      * The worktree once its setup script has finished, ready or failed. A send waits on this so the
      * turn never starts in a checkout the setup script is still preparing.
@@ -157,6 +177,11 @@ const make = Effect.gen(function* () {
     Request: Schema.String,
     Result: Worktree,
     execute: (path) => sql`SELECT * FROM worktree WHERE path = ${path}`,
+  })
+  const findRootUsers = SqlSchema.findAll({
+    Request: Schema.String,
+    Result: Schema.Struct({ id: Schema.String, status: ThreadStatus }),
+    execute: (projectId) => sql`SELECT id, status FROM thread WHERE project_id = ${projectId} AND worktree_id IS NULL`,
   })
   const findUsers = SqlSchema.findAll({
     Request: Schema.String,
@@ -310,7 +335,10 @@ const make = Effect.gen(function* () {
       if (Option.isNone(orphan)) {
         const args = (yield* branchExists(rootPath, input.branch))
           ? ["worktree", "add", path, input.branch]
-          : ["worktree", "add", "-b", input.branch, path, input.startPoint ?? input.baseRef]
+          : input.startPoint === undefined
+            ? // Forking from `origin/main` would otherwise make it the upstream, and a plain `git push` would fail.
+              ["worktree", "add", "--no-track", "-b", input.branch, path, input.baseRef]
+            : ["worktree", "add", "-b", input.branch, path, input.startPoint]
         yield* git.run(rootPath, args)
       }
 
@@ -330,14 +358,50 @@ const make = Effect.gen(function* () {
       return worktree
     }).pipe(exclusive)
 
-  const createFromPullRequest = (projectId: string, head: PullRequestHead) =>
+  /** Fetches the pull request's head and names the local branch it goes on. */
+  const fetchPullRequest = (rootPath: string, head: PullRequestHead) =>
     Effect.gen(function* () {
-      const { rootPath } = yield* projects.get(projectId)
       const [branch, source, fetched] = head.isCrossRepository
         ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/kkcode/pull/${head.number}`]
         : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
       yield* git.run(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
-      return yield* create({ projectId, branch, baseRef: head.baseRefName, startPoint: fetched })
+      return { branch, startPoint: fetched }
+    })
+
+  const createFromPullRequest = (projectId: string, head: PullRequestHead) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const { branch, startPoint } = yield* fetchPullRequest(rootPath, head)
+      return yield* create({ projectId, branch, baseRef: head.baseRefName, startPoint })
+    })
+
+  /** Runs `git switch` in the root while no turn can start, unless another thread's turn is already running there. */
+  const switchRoot = (projectId: string, rootPath: string, owner: string, args: ReadonlyArray<string>) =>
+    Effect.gen(function* () {
+      const users = yield* findRootUsers(projectId).pipe(Effect.mapError(persistence("worktrees.checkout")))
+      if (users.some((thread) => thread.id !== owner && isThreadBusy(thread.status))) {
+        return yield* new RootBusyError({ path: rootPath })
+      }
+      yield* git.run(rootPath, ["switch", ...args])
+    }).pipe(exclusive)
+
+  const checkout = (projectId: string, ref: string, owner: string) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const remote =
+        ref.startsWith("origin/") &&
+        (yield* git
+          .run(rootPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${ref}`], { okExitCodes: [1] })
+          .pipe(Effect.map((output) => output.trim() !== "")))
+      yield* switchRoot(projectId, rootPath, owner, remote ? ["--track", ref] : [ref])
+    })
+
+  const checkoutPullRequest = (projectId: string, head: PullRequestHead, owner: string) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* projects.get(projectId)
+      const { branch, startPoint } = yield* fetchPullRequest(rootPath, head)
+      const args = (yield* branchExists(rootPath, branch)) ? [branch] : ["-c", branch, startPoint]
+      yield* switchRoot(projectId, rootPath, owner, args)
     })
 
   const renameBranch = (id: string, branch: string) =>
@@ -368,7 +432,7 @@ const make = Effect.gen(function* () {
 
   const deleteFiles = (rootPath: string, worktree: Worktree, deleteBranch: DeleteBranch) =>
     Effect.gen(function* () {
-      if ((yield* registeredCheckouts(rootPath)).some((checkout) => checkout.path === worktree.path)) {
+      if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
         yield* git.run(rootPath, ["worktree", "remove", "--force", worktree.path])
       }
       yield* git.run(rootPath, ["worktree", "prune"])
@@ -449,10 +513,19 @@ const make = Effect.gen(function* () {
     projects.get(projectId).pipe(
       Effect.flatMap(({ rootPath }) =>
         git.run(rootPath, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]).pipe(
-          Effect.map((output) => output.trim().replace(/^origin\//, "")),
+          Effect.map((output) => output.trim()),
           Effect.orElseSucceed(() => "main"),
         ),
       ),
+    )
+
+  const fetch = (projectId: string) =>
+    projects.get(projectId).pipe(
+      // Nobody is there to answer a credential prompt for a fetch the user did not ask for.
+      Effect.flatMap(({ rootPath }) =>
+        git.run(rootPath, ["fetch", "--quiet", "origin"], { env: { GIT_TERMINAL_PROMPT: "0" } }),
+      ),
+      Effect.asVoid,
     )
 
   return Worktrees.of({
@@ -460,6 +533,8 @@ const make = Effect.gen(function* () {
     get,
     create,
     createFromPullRequest,
+    checkout,
+    checkoutPullRequest,
     remove,
     removeWhileExclusive,
     exclusive,
@@ -468,6 +543,7 @@ const make = Effect.gen(function* () {
     currentBranch,
     branches,
     defaultBranch,
+    fetch,
     renameBranch,
     whenPrepared,
   })
