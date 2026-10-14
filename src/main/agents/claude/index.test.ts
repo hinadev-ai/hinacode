@@ -375,12 +375,13 @@ describe("Claude idle sessions", () => {
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
         yield* provider.steer("thread-1", "Use pnpm instead", [])
         yield* until(() => latestCli().prompts.length === 2)
-        latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming" })
+        const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
+        latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [prompt] })
 
         yield* TestClock.adjust("10 minutes")
         expect(latestCli().close).not.toHaveBeenCalled()
 
-        latestCli().push(succeeded)
+        latestCli().push({ ...succeeded, user_message_uuids: [steer] })
         yield* Fiber.join(turn.fiber)
         expect(turn.events.at(-1)?.type).toBe("turn_completed")
       }),

@@ -4,7 +4,7 @@ TLA+ models of the protocols in kkcode where several actors share state: the mai
 
 | Spec                    | Models                                                                   | Known bugs it pins                                                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ClaudeTurnRouting.tla` | `agents/claude/index.ts` pump, steer, interrupt, with AgentRunner's turn | A steer sent while Claude finishes is answered but never shown (`NoSilentDrop`), and that answer can land in the next turn (`NoCrossTurnLeak`)                    |
+| `ClaudeTurnRouting.tla` | `agents/claude/index.ts` pump, steer, interrupt, with AgentRunner's turn | None. Checks that every answer reaches the turn that sent its prompt (`NoCrossTurnLeak`, `NoSilentDrop`) and every turn ends (`TurnsEnd`)                         |
 | `TranscriptSync.tla`    | `stores/messages.ts` snapshot plus `seq` replay over Electron IPC        | None. Checks that each event is folded once (`NoDuplicateApply`, `NoGapAtQuiescence`) and a superseded snapshot is never applied (`StaleSnapshotNeverApplied`)    |
 | `WorktreeLifecycle.tla` | `Worktrees.ts` create, remove and archive racing with turns              | A failed deletion restores a row whose checkout is gone (`LiveRowHasDirectory`). A turn sent to a live worktree can run in the project root (`TurnRunsWhereSent`) |
 
