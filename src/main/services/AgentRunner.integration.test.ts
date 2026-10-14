@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Stream } from "effect"
 import { vi } from "vitest"
 import type { ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
@@ -34,13 +34,20 @@ vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false }
 interface Probe {
   readonly runner: AgentRunner["Service"]
   readonly threads: Threads.Threads["Service"]
+  readonly worktrees: Worktrees.Worktrees["Service"]
+  readonly accounts: AgentAccounts.AgentAccounts["Service"]
+  readonly root: string
   readonly thread: Thread
   readonly waiting: Promise<void>
+  readonly prepared: Promise<void>
+  readonly inserting: Promise<void>
+  readonly idle: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly release: () => void
+  readonly deliver: () => void
 }
 
-const withPreparingThread = async (run: (probe: Probe) => Promise<void>) => {
+const withPreparingThread = async (run: (probe: Probe) => Promise<void>, pauseInsertion = false) => {
   const dir = mkdtempSync(join(tmpdir(), "kk-runner-preparation-"))
   const root = join(dir, "repo")
   execFileSync("git", ["init", "-q", "-b", "main", root])
@@ -60,6 +67,12 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>) => {
   const release = () => writeFileSync(join(root, "release"), "")
   const started = Promise.withResolvers<void>()
   const waiting = Promise.withResolvers<void>()
+  const prepared = Promise.withResolvers<void>()
+  const inserting = Promise.withResolvers<void>()
+  const inserted = Promise.withResolvers<void>()
+  const idle = Promise.withResolvers<void>()
+  const deliver = () => inserted.resolve()
+  let holdInsertion = pauseInsertion
   const turns: Probe["turns"] = []
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -79,6 +92,7 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>) => {
           publish: (event) =>
             Effect.sync(() => {
               if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
+              if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
             }),
         }),
       ),
@@ -133,6 +147,7 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>) => {
     await started.promise
     const context = await domainRuntime.context()
     const worktrees = Context.get(context, Worktrees.Worktrees)
+    const messages = Context.get(context, Messages.Messages)
     const runnerRuntime = ManagedRuntime.make(
       layer.pipe(
         Layer.provide(PullRequests.layer),
@@ -148,15 +163,31 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>) => {
               clear: () => Effect.void,
             }),
             Layer.succeed(McpCredentials, {
-              connectionFor: () => Effect.succeed({ url: "http://127.0.0.1:1", headers: {} }),
+              connectionFor: () =>
+                Effect.succeed({ url: "http://127.0.0.1:1", headers: { authorization: "Bearer test" } }),
               authenticate: () => Option.none(),
               listening: () => Effect.void,
             }),
             Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+            Layer.succeed(Messages.Messages, {
+              ...messages,
+              insert: (message) =>
+                Effect.gen(function* () {
+                  if (holdInsertion && message.role === "user") {
+                    holdInsertion = false
+                    inserting.resolve()
+                    yield* Effect.promise(() => inserted.promise)
+                  }
+                  yield* messages.insert(message)
+                }),
+            }),
             Layer.succeed(Worktrees.Worktrees, {
               ...worktrees,
               whenPrepared: (id) =>
-                Effect.sync(() => waiting.resolve()).pipe(Effect.andThen(worktrees.whenPrepared(id))),
+                Effect.sync(() => waiting.resolve()).pipe(
+                  Effect.andThen(worktrees.whenPrepared(id)),
+                  Effect.tap(() => Effect.sync(() => prepared.resolve())),
+                ),
             }),
           ),
         ),
@@ -167,12 +198,20 @@ const withPreparingThread = async (run: (probe: Probe) => Promise<void>) => {
       await run({
         runner: await runnerRuntime.runPromise(AgentRunner),
         threads: Context.get(context, Threads.Threads),
+        worktrees,
+        accounts: Context.get(context, AgentAccounts.AgentAccounts),
+        root,
         thread,
         waiting: waiting.promise,
+        prepared: prepared.promise,
+        inserting: inserting.promise,
+        idle: idle.promise,
         turns,
         release,
+        deliver,
       })
     } finally {
+      deliver()
       release()
       await domainRuntime.runPromise(worktrees.whenPrepared(thread.worktreeId!))
       await runnerRuntime.dispose()
@@ -227,15 +266,65 @@ it("interrupts an unsent first message and releases its send claim", async () =>
   })
 })
 
-it("uses the current provider and model after preparation", async () => {
-  await withPreparingThread(async ({ runner, threads, thread, waiting, turns, release }) => {
+it("uses the current provider, account and model after preparation", async () => {
+  await withPreparingThread(async ({ runner, threads, accounts, root, thread, waiting, turns, release }) => {
     const sent = Effect.runPromiseExit(runner.send(thread.id, "use my new selection", []))
     await waiting
-    await Effect.runPromise(threads.update({ id: thread.id, provider: "codex", model: "current-model" }))
+    const account = await Effect.runPromise(
+      accounts.create({ provider: "codex", name: "Selected", configDir: join(root, "profile"), binary: "test-codex" }),
+    )
+    await Effect.runPromise(
+      threads.update({ id: thread.id, provider: "codex", accountId: account.id, model: "current-model" }),
+    )
     release()
     expect(Exit.isSuccess(await sent)).toBe(true)
-    expect(turns).toMatchObject([{ provider: "codex", input: { model: "current-model" } }])
+    expect(turns).toMatchObject([
+      { provider: "codex", input: { model: "current-model", home: { dir: account.configDir, binary: "test-codex" } } },
+    ])
   })
+})
+
+it("cancels a prepared send still waiting to enter the delivery lock", async () => {
+  await withPreparingThread(async ({ runner, worktrees, thread, waiting, prepared, turns, release }) => {
+    const sent = Effect.runPromiseExit(runner.send(thread.id, "cancel at the boundary", []))
+    await waiting
+    const unlock = Effect.runSync(Deferred.make<void>())
+    const locked = Promise.withResolvers<void>()
+    const holder = Effect.runFork(
+      worktrees.exclusive(Effect.sync(() => locked.resolve()).pipe(Effect.andThen(Deferred.await(unlock)))),
+    )
+    try {
+      await locked.promise
+      release()
+      await prepared
+      await Effect.runPromise(runner.interrupt(thread.id))
+      await Effect.runPromise(Deferred.succeed(unlock, undefined))
+      expect(Exit.isFailure(await sent)).toBe(true)
+      expect(turns).toStrictEqual([])
+      expect((await Effect.runPromise(runner.transcript(thread.id))).messages).toStrictEqual([])
+    } finally {
+      await Effect.runPromise(Deferred.succeed(unlock, undefined))
+      await Effect.runPromise(Fiber.join(holder))
+    }
+  })
+})
+
+it("carries Stop during message admission through the provider-start handoff", async () => {
+  await withPreparingThread(async ({ runner, thread, waiting, inserting, idle, turns, release, deliver }) => {
+    const sent = Effect.runPromiseExit(runner.send(thread.id, "accepted then interrupted", []))
+    await waiting
+    release()
+    await inserting
+    await Effect.runPromise(runner.interrupt(thread.id))
+    deliver()
+    expect(Exit.isSuccess(await sent)).toBe(true)
+    await Effect.runPromise(Effect.yieldNow)
+    expect(turns).toStrictEqual([])
+    await idle
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.map((message) => message.role)).toStrictEqual(["user", "assistant"])
+    expect(messages.every((message) => message.completedAt !== null)).toBe(true)
+  }, true)
 })
 
 it("does not deliver a pending send after its thread is deleted", async () => {
