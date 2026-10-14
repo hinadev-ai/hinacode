@@ -154,7 +154,7 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   const interruptIfBusy = useEffectEvent(() => {
-    if (busy) stop()
+    if (busy || isSending) stop()
   })
 
   useEffect(
@@ -247,7 +247,7 @@ export function Composer({ thread }: { thread: Thread }) {
               <ThreadOptions thread={thread} onError={setError} />
             </ComposerActions>
             <ContextRing threadId={thread.id} />
-            <SendButton busy={busy} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
+            <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>

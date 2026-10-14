@@ -36,6 +36,7 @@ flowchart LR
 | `protocol.ts`                              | Type re-exports, and the schemas for answers that reach kkcode's own types                                 |
 | `catalog.ts`, `limits.ts`                  | Models, account and plan limits                                                                            |
 | `items.ts`, `approvals.ts`, `questions.ts` | Pure mappings from MSP items, approvals and questions                                                      |
+| `skills.ts`                                | Slash completions and typed skill invocations                                                              |
 | `usage.ts`                                 | Thread tokens from `view/page`, memoized per session                                                       |
 
 ## A turn
@@ -72,9 +73,15 @@ sequenceDiagram
 
 kkcode renames Muse's tools to the names the transcript has icons for. `bash` becomes `Bash`, `read_file` becomes `Read`, `write_file` becomes `Write`, `edit_file` becomes `Edit`, `search` becomes `Grep`, and `web_fetch` and `web_search` become `WebFetch` and `WebSearch`. `bash` reports a JSON receipt whose `output` field is what the command printed.
 
-MSP has no developer-instructions field, so kkcode sends its instructions as the first text part of every `turn/start`. `displayText` keeps them out of Muse's own transcript.
+MSP has no developer-instructions field, so kkcode prepends its instructions to ordinary text turns. `displayText` keeps them out of Muse's own transcript. Skill turns omit that text, so a thread started with a skill receives kkcode's instructions on its next ordinary text turn.
 
 Each session's `config.mcpServers` carries the kkcode MCP server with the thread's own credential, which needs the `sessionMcp` capability from the handshake. Muse treats that server as required. If it cannot reach it, every turn fails with `Required MCP server 'kkcode' failed during startup`.
+
+## Slash skills
+
+`skill/list` needs a loaded session. The composer asks the thread's own loaded session, another session in the same cwd, or a cached probe session for that cwd. A probe never runs a turn. When the host respawns, kkcode resumes the probe instead of starting another.
+
+A prompt beginning with a known `/selector` becomes a structured `skill` input with its remaining text as `arguments`. The host expands the skill. Images remain image parts; attached-file and selected-element notes join the arguments. Unknown selectors stay plain text. Steering uses the same input conversion.
 
 ## Access modes and the sandbox
 
@@ -119,5 +126,4 @@ Muse Code runs on its CLI login only. The experimental `account/read` reports th
 - A turn stays running until Muse's reminder agents settle, often 20 to 40 seconds after the last reply. They can make the agent continue, so kkcode waits for `turn/completed`, not `turn/foregroundCompleted`.
 - The reminder agents are most of a short turn's cost. With the fake endpoint, one text turn made 13 model requests: one for the agent and twelve from reminder agents that offer only `submit_reminder_decision`. A one-word reply on Muse Wonder Full counted about 42K tokens.
 - The live catalog's `displayLabel` is the model id; kkcode spells `muse-wonder-full-1.0` as "Muse Wonder Full 1.0".
-- `skill/list` needs a loaded session, so the composer offers no Muse skills yet.
 - The SDK is a developer preview, pinned in `package.json`. On an upgrade, re-run the integration test against the matching `muse` and check `fingerprintWarning` on the handshake.
