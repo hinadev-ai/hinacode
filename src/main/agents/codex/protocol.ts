@@ -199,6 +199,13 @@ export type ServerNotificationParams = {
   "item/started": { threadId: string; turnId: string; item: ThreadItem }
   "item/completed": { threadId: string; turnId: string; item: ThreadItem }
   "thread/tokenUsage/updated": { threadId: string; turnId: string; tokenUsage: ThreadTokenUsage }
+  /** The whole plan after an `update_plan` call, not a patch. Statuses arrive already camelCased. */
+  "turn/plan/updated": {
+    threadId: string
+    turnId: string
+    explanation: string | null
+    plan: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>
+  }
   "turn/completed": { threadId: string; turn: Turn }
   error: { error: TurnError; willRetry: boolean; threadId: string; turnId: string }
 }
@@ -307,16 +314,3 @@ export const GetAccountRateLimitsResponse = Schema.Struct({
   rateLimitsByLimitId: Schema.NullOr(Schema.Record(Schema.String, RateLimitSnapshot)),
 })
 export type GetAccountRateLimitsResponse = typeof GetAccountRateLimitsResponse.Type
-export type LoginAccountParams = { type: "chatgpt" }
-export const LoginAccountResponse = Schema.Struct({
-  type: Schema.Literal("chatgpt"),
-  loginId: Schema.String,
-  /** URL the client should open in a browser to initiate the OAuth flow. */
-  authUrl: Schema.String,
-})
-export type CancelLoginAccountParams = { loginId: string }
-export const AccountLoginCompletedNotification = Schema.Struct({
-  loginId: Schema.NullOr(Schema.String),
-  success: Schema.Boolean,
-  error: Schema.NullOr(Schema.String),
-})

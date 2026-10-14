@@ -1,8 +1,8 @@
 import { Effect, Schedule, Schema, Stream } from "effect"
-import { Atom } from "effect/reactivity"
+import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
-import type { Thread } from "../../shared/domain.ts"
+import type { Thread, ThreadVm } from "../../shared/domain.ts"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   tag: Schema.String,
@@ -92,11 +92,12 @@ export const deleteAccountAtom = Atom.fn((id: string) =>
 )
 
 /**
- * Identifies a thread together with its agent and workspace, since switching either changes what the
- * composer can complete. Key for `commandsAtom` and `filesAtom`.
+ * Identifies a thread together with its agent, account and workspace, since switching any of them
+ * changes what the composer can complete: user-level commands and skills live in the account's home.
+ * Key for `commandsAtom` and `filesAtom`.
  */
-export const completionKey = (thread: Pick<Thread, "id" | "provider" | "worktreeId">) =>
-  [thread.id, thread.provider, thread.worktreeId ?? ""].join("\n")
+export const completionKey = (thread: Pick<Thread, "id" | "provider" | "accountId" | "worktreeId">) =>
+  [thread.id, thread.provider, thread.accountId ?? "", thread.worktreeId ?? ""].join("\n")
 const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
 
 export const commandsAtom = Atom.family((key: string) =>
@@ -231,6 +232,24 @@ export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
 )
 
+/** The thread's tiny VM, kept current by `vm.updated`. A push that lands before `vm.get` answers wins over it. */
+export const threadVmAtom = Atom.family((threadId: string) =>
+  Atom.make((get) => {
+    let pushed: ThreadVm | undefined
+    get.addFinalizer(
+      onPushEvent((event) => {
+        if (event.type !== "vm.updated" || event.threadId !== threadId) return
+        pushed = event.vm
+        get.setSelf(AsyncResult.success(event.vm))
+      }),
+    )
+    return Effect.map(call("vm.get", { threadId }), (fetched) => pushed ?? fetched)
+  }),
+)
+
+/** Whether kkcode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
+export const vmHostAtom = Atom.make(call("vm.host", undefined))
+
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
 
 /**
@@ -250,18 +269,28 @@ export const threadUsageAtom = Atom.family((threadId: string) =>
   }),
 )
 
-/**
- * Plan limits of every signed-in account. Re-read every 2 minutes while subscribed, whenever a turn ends, and
- * when a sign-in finishes.
- */
+/** Plan limits of every signed-in account. Re-read every 2 minutes while subscribed and whenever a turn ends. */
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent((event) => {
-      const turnEnded = event.type === "thread.event" && turnEnds.has(event.event.type)
-      if (turnEnded || event.type === "account.signIn") get.refreshSelf()
+      if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
     }),
   )
   return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
+})
+
+/** Polls the remote listener every 2s while subscribed so the device count stays current. */
+export const remoteStatusAtom = Atom.make(
+  Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
+)
+
+/**
+ * Not kept alive, so reopening the page asks again and picks up a changed network. Recomputed when settings change,
+ * since the pairing URL follows the listener's bind host and port.
+ */
+export const remotePairingAtom = Atom.make((get) => {
+  get(settingsAtom)
+  return call("remote.pairing", undefined)
 })
 
 /** The downloaded release waiting to install, or null. Asked again when a download finishes. */

@@ -1,8 +1,10 @@
 allowBuilds:
-  electron: true
   electron-winstaller: false
   esbuild: true
   "node-mac-permissions@git+https://github.com/codebytere/node-mac-permissions.git": true
   node-pty: true
 minimumReleaseAgeExclude:
   - effect@4.0.3
+  - "@muse-code/sdk@1.4.7"
+patchedDependencies:
+  "@legendapp/list@3.6.0": patches/@legendapp__list@3.6.0.patch

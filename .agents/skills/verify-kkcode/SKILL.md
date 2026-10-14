@@ -1,6 +1,6 @@
 ---
 name: verify-kkcode
-description: Launch, drive and screenshot the kkcode Electron desktop app (Claude Code and Codex threads, worktrees, MCP, settings, ports, automations) in an isolated headless instance over CDP. Use when you need to prove a kkcode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
+description: Launch, drive and screenshot the kkcode Electron desktop app (Claude Code, Codex and Muse Code threads, worktrees, MCP, settings, ports, automations) in an isolated headless instance over CDP. Use when you need to prove a kkcode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
 ---
 
 # Verify kkcode
@@ -66,13 +66,13 @@ $AB screenshot "$SHOTS/<feature>-<step>.png"
 
 Run `agent-browser skills get electron` once if you have not used agent-browser with Electron before. Always pass `--session`: the default session is shared with other agents.
 
-Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), comboboxes `Agent` / `Model` / `Effort` / `Access`, group `Workspace` with checkbox `Worktree` and combobox `Branch or pull request`, toggle `Fast`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
+Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW in `messages/zh-TW.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), combobox `Model` (every agent's models before the first message), comboboxes `Effort` / `Access` (folded into button `More options` when the composer is narrow), group `Workspace` with checkbox `Worktree` and combobox `Branch or pull request`, toggle `Fast`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
 
 Rules that came out of real runs:
 
 - Pass `--exact` to `find`. The open thread's sidebar row is itself a `button` whose name contains `Actions for <title>` and `Reorder <title>`, so a substring match clicks the row instead.
 - `find` searches the whole page, including what sits behind a dialog. Settings has comboboxes named after agents (`Claude Code`, `Codex`) and the composer has `Model`; scope with CSS when a name could match twice.
-- Selects are base-ui popups: click the combobox, `$AB wait '[role=option]'`, then `$AB find role option click --name "<label>" --exact`. Composer selects near the top of a short thread (`Agent` especially) can open upward under the header, where a click misses. Use the keyboard there: `$AB focus 'button[aria-label="Agent"]'`, `$AB press Enter`, `$AB press ArrowDown`, `$AB press Enter`, then check the combobox text.
+- Selects are base-ui popups: click the combobox, `$AB wait '[role=option]'`, then `$AB find role option click --name "<label>" --exact`. If a popup opens under the header, where a click misses, use the keyboard: `$AB focus 'button[aria-label="Model"]'`, `$AB press Enter`, `$AB press ArrowDown`, `$AB press Enter`, then check the combobox text.
 - A new thread has no title of its own. `New thread in <project>` and `Ctrl+N` create `thread-xxxxx` at once and focus `Message`. Read the title with `$AB get text h1`, or rename it from the sidebar menu when a fixed title matters. The first send renames it (and its worktree branch) in the background, so do not hard-code the placeholder past that point.
 - `find` does not wait, and menus, select popups (`[role=option]`), inline inputs and dialogs render a beat after the click. After opening wait for `[role=menu]`, `[role=option]`, `[role=dialog]`, `[role=alertdialog]` or the input; after closing a dialog wait with `$AB wait --fn '!document.querySelector("[role=dialog]")'`. A closed select keeps its options in the page, so wait on the combobox's `aria-expanded="false"` instead of on `[role=option]` disappearing. `snapshot` can lag an animation, so trust the wait, not one snapshot.
 - After `stop.sh` and a relaunch the agent-browser session loses its CDP attachment and opens a blank browser. Pass `--cdp $PORT` on every command after a relaunch (or on every command, which is simplest).
@@ -106,7 +106,7 @@ Other helpers:
 
 ### Agents cost money
 
-Every turn calls a real Claude or Codex account. Use `claude-sonnet-5-5` for Claude and the first model in the Codex list, keep prompts to one short sentence, and stop as soon as the behavior is proven. Prefer features that need no turn (projects, settings, ports, MCP tools via `mcp-call.mjs`) when any feature will do.
+Every turn calls a real Claude, Codex or Muse Code account. Use `claude-sonnet-5-5` for Claude, the first model in the Codex list, and `Low` effort for Muse Code, whose reminder agents make even a one-word reply cost tens of thousands of tokens. Keep prompts to one short sentence, and stop as soon as the behavior is proven. Prefer features that need no turn (projects, settings, ports, MCP tools via `mcp-call.mjs`) when any feature will do.
 
 ## Evidence
 

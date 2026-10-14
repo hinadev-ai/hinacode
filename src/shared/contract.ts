@@ -1,11 +1,14 @@
 import { Schema, Struct } from "effect"
 import {
   AccountLimits,
+  AccountProviderId,
   AgentAccount,
   AgentCommand,
   AgentEvent,
   AgentProfile,
   AgentProfileName,
+  AgentConfigDir,
+  AgentBinary,
   ApprovalDecision,
   ApprovalRequest,
   ModelInfo,
@@ -39,11 +42,16 @@ import {
   PullRequest,
   PullRequestDetail,
   PullRequestLink,
+  RemotePairing,
+  RemoteStatus,
   Settings,
   TerminalSession,
   Thread,
   ThreadSearchHit,
   ThreadStatus,
+  ThreadVm,
+  VmControl,
+  VmHostStatus,
   Worktree,
   WorktreeSource,
   OpenPullRequest,
@@ -188,24 +196,18 @@ export const RpcMethods = {
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
-  "accounts.create": rpc(Schema.Struct({ provider: ProviderId, name: AgentProfileName }), AgentProfile),
+  "accounts.create": rpc(
+    Schema.Struct({
+      provider: AccountProviderId,
+      name: AgentProfileName,
+      configDir: AgentConfigDir,
+      binary: AgentBinary,
+    }),
+    AgentProfile,
+  ),
   "accounts.rename": rpc(Schema.Struct({ id: Schema.String, name: AgentProfileName }), AgentProfile),
-  /** Refused while any thread uses the account. Signs it out and deletes its home. */
+  /** Refused while any thread uses the account. Its config directory stays on disk. */
   "accounts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
-  /**
-   * Starts a subscription sign-in and opens its page in the browser. The outcome arrives as an
-   * `account.signIn` push. `acceptsCode` means the page may show a code to hand back with `accounts.submitCode`.
-   */
-  "accounts.signIn": rpc(
-    Schema.Struct({ id: Schema.String }),
-    Schema.Struct({ url: Schema.String, acceptsCode: Schema.Boolean }),
-  ),
-  "accounts.submitCode": rpc(
-    Schema.Struct({ id: Schema.String, code: Schema.String.check(Schema.isMaxLength(1000)) }),
-    Schema.Void,
-  ),
-  "accounts.cancelSignIn": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
-  "accounts.signOut": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** What the thread's agent can complete in the composer, as seen from the thread's working directory. */
   "commands.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(AgentCommand)),
   /** Paths relative to the thread's working directory that git tracks or would track, for `@` mentions. */
@@ -228,6 +230,20 @@ export const RpcMethods = {
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /**
+   * Replaces the text of the existing file `path` under `root`, with the same checks as `fs.read`. `expected` is the
+   * text the edit started from; the write fails with `FsWriteConflict` when the file no longer holds it. `null`
+   * overwrites whatever is there.
+   */
+  "fs.write": rpc(
+    Schema.Struct({
+      root: Schema.String,
+      path: Schema.String,
+      content: Schema.String,
+      expected: Schema.NullOr(Schema.String),
+    }),
+    Schema.Void,
+  ),
   /** Replaces the folders under `root` that push `fs.changed`. An empty `paths` stops watching the root. */
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 
@@ -316,6 +332,23 @@ export const RpcMethods = {
   "terminal.close": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "terminal.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(TerminalSession)),
 
+  "vm.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
+  /** Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. */
+  "vm.start": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
+  /** Destroys the thread's tiny VM. */
+  "vm.stop": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  /** Hands the pointer and keyboard to the user, or back to the agent. */
+  "vm.control": rpc(Schema.Struct({ threadId: Schema.String, control: VmControl }), ThreadVm),
+  "vm.host": rpc(Schema.Void, VmHostStatus),
+  /**
+   * Connects the side panel to the running VM's VNC server. The server's bytes arrive as `vm.screen.data`.
+   * The renderer picks `streamId`, so it can listen before the first push.
+   */
+  "vm.screen.open": rpc(Schema.Struct({ threadId: Schema.String, streamId: Schema.String }), Schema.Void),
+  /** Bytes for the VNC server, written in call order. Ignored once the stream has closed. */
+  "vm.screen.send": rpc(Schema.Struct({ streamId: Schema.String, data: Schema.Uint8Array }), Schema.Void),
+  "vm.screen.close": rpc(Schema.Struct({ streamId: Schema.String }), Schema.Void),
+
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
     Schema.Struct({
@@ -370,6 +403,10 @@ export const RpcMethods = {
     Schema.Array(AutomationRun),
   ),
   /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
+  "remote.status": rpc(Schema.Void, RemoteStatus),
+  "remote.pairing": rpc(Schema.Void, RemotePairing),
+  /** Replaces the access token and disconnects every phone. */
+  "remote.rotateToken": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
     Schema.Struct({ id: Schema.String }),
     Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
@@ -377,6 +414,28 @@ export const RpcMethods = {
 }
 
 export type RpcMethod = keyof typeof RpcMethods
+
+/** Methods that need the desktop window (dialogs, focus) or the desktop renderer (file watching). Refused over remote. */
+export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "app.ready",
+  "app.focus",
+  "dialog.pickFolder",
+  "dialog.pickFiles",
+  "shell.reveal",
+  "attachments.stage",
+  "notifications.permission",
+  "notifications.askPermission",
+  "fs.watch",
+  "vm.screen.open",
+  "remote.pairing",
+  "remote.rotateToken",
+])
+/** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
+export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
+  "vm.screen.data",
+  "vm.screen.closed",
+  "fs.changed",
+])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
 export type RpcRequestEncoded<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Encoded"]
@@ -411,6 +470,8 @@ export type TranscriptPush = typeof TranscriptPush.Type
 export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
+  /** The thread was deleted, from this window, a phone or an automation. */
+  Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({
@@ -424,12 +485,6 @@ export const PushEvent = Schema.Union([
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
   }),
-  /** A sign-in `accounts.signIn` started has finished. `error` is null when the account is signed in. */
-  Schema.Struct({
-    type: Schema.Literal("account.signIn"),
-    accountId: Schema.String,
-    error: Schema.NullOr(Schema.String),
-  }),
   /** Something changed directly inside a folder `fs.watch` asked for. */
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   /** An automation run was recorded or changed status. */
@@ -440,6 +495,11 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
   /** A new release finished downloading and installs on restart. */
   Schema.Struct({ type: Schema.Literal("update.ready"), version: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
+  /** VNC server bytes for an open screen stream, batched to about one push per frame. */
+  Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
+  /** Sent after the stream's last `vm.screen.data`. */
+  Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

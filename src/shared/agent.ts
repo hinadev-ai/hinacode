@@ -2,8 +2,16 @@ import { Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
-export const ProviderId = Schema.Literals(["claude", "codex"])
+export const ProviderId = Schema.Literals(["claude", "codex", "muse"])
 export type ProviderId = typeof ProviderId.Type
+
+/**
+ * The agents an account can be added for. An added account is a home directory the agent reads its login
+ * from, and Muse Code has no such directory: its login sits under `XDG_CONFIG_HOME`, which the commands it
+ * runs also read.
+ */
+export const AccountProviderId = Schema.Literals(["claude", "codex"])
+export type AccountProviderId = typeof AccountProviderId.Type
 
 export const ModelInfo = Schema.Struct({
   id: Schema.String,
@@ -39,12 +47,25 @@ export type AgentAccount = typeof AgentAccount.Type
 /** An account added in kkcode: a separate agent home with its own login and transcripts. */
 export const AgentProfile = Schema.Struct({
   id: Schema.String,
-  provider: ProviderId,
+  provider: AccountProviderId,
   name: Schema.String,
+  /** The agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`), an absolute path. */
+  configDir: Schema.String,
+  /** The CLI run against `configDir`, a path or a name looked up on PATH. */
+  binary: Schema.String,
 })
 export type AgentProfile = typeof AgentProfile.Type
 
 export const AgentProfileName = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty(), Schema.isMaxLength(80))
+/** Absolute, or relative to the user's home with a leading `~`. */
+export const AgentConfigDir = Schema.String.check(Schema.isTrimmed(), Schema.isPattern(/^(~(\/|$)|\/)/))
+export const AgentBinary = Schema.String.check(Schema.isTrimmed(), Schema.isNonEmpty())
+
+/** An added account's agent home and the CLI binary run against it. */
+export interface AccountHome {
+  readonly dir: string
+  readonly binary: string
+}
 
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -253,10 +274,12 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
-  /** The account's agent home (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`). Null uses the CLI's own login. */
-  readonly home: string | null
+  /** The added account to run as. Null uses the CLI's own login and home, the only one Muse Code has. */
+  readonly home: AccountHome | null
   /** The built-in kkcode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
+  /** kkcode's own instructions for the agent, appended to its system prompt. */
+  readonly instructions: string
 }
 
 /** A Streamable HTTP MCP endpoint plus the headers that authenticate the caller. */

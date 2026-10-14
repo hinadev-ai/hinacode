@@ -36,6 +36,8 @@ const ensureDisplay = () => {
 }
 
 export default function globalSetup() {
+  // Fixtures commit in temp repos, where a developer's commit signing or hooks would make them fail.
+  process.env.GIT_CONFIG_GLOBAL = "/dev/null"
   ensureDisplay()
   ensureFreshBuild()
 }

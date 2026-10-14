@@ -1,13 +1,12 @@
 import type { PickedElement } from "../../shared/domain.ts"
-
-/** A fence longer than any backtick run in `text`, so page markup cannot close it and pose as the user. */
-const fenceFor = (text: string) => "`".repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map(([run]) => run.length + 1)))
+import { fenceFor } from "../../shared/fence.ts"
 
 /**
  * What an agent reads about an element the user picked in the in-app browser, next to its screenshot. Every page
  * field is quoted or fenced, so none of them can start a line that reads like the user.
  */
 export const elementContext = (element: PickedElement): string => {
+  // Page markup cannot close the fence and pose as the user.
   const fence = fenceFor(element.html)
   return [
     `The attached screenshot shows an element the user picked on ${JSON.stringify(element.url)}.`,

@@ -1,5 +1,6 @@
+import { DEFAULT_THEMES, type DiffsHighlighter, getSharedHighlighter } from "@pierre/diffs"
 import { useParams } from "@tanstack/react-router"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, Suspense, use, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -16,8 +17,10 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
-import { commandFindText, type FindRevealRequest, isInCommand } from "../lib/find.ts"
+import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
+import { useTheme } from "../lib/appearance.ts"
+import { useSettings } from "../lib/settings.ts"
 import { describeCommand, describeToolCall } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -46,7 +49,7 @@ export function MessagePartView({ part }: { part: MessagePart }) {
 }
 
 const disclosureTrigger =
-  "group/trigger flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
 
 function Chevron() {
   return (
@@ -63,7 +66,7 @@ function ReasoningPart({ text }: { text: string }) {
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiSparkling2Line aria-hidden className="size-3.5 shrink-0" />
-        {m.message_reasoning()}
+        {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
         {text}
@@ -85,13 +88,19 @@ const toolIcons: Record<string, IconType> = {
   WebSearch: RiGlobalLine,
 }
 
+const field = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
+
 /** Tool results are a string or a list of content blocks; only the text blocks are worth showing. */
 export function formatOutput(output: unknown): string {
   if (typeof output === "string") return output
-  if (Array.isArray(output)) {
-    return output
+  // Codex wraps an MCP tool's result in `{ content: [...] }`.
+  const content = Array.isArray(output) ? output : field(output, "content")
+  if (Array.isArray(content)) {
+    return content
       .map((block: unknown) => {
-        const text: unknown = typeof block === "object" && block !== null ? Reflect.get(block, "text") : undefined
+        if (field(block, "type") === "image") return m.tool_output_image()
+        const text = field(block, "text")
         return typeof text === "string" ? text : JSON.stringify(block)
       })
       .join("\n")
@@ -132,12 +141,18 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
           <span className="sr-only">{statusLabel[part.status]()}</span>
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 flex flex-col gap-2 pl-7 text-xs">
-        <ToolSection label={m.tool_input()} text={JSON.stringify(part.input, null, 2)} />
-        <ToolSection
-          label={m.tool_output()}
-          text={part.output === undefined ? m.tool_no_output() : formatOutput(part.output)}
-        />
+      <CollapsibleContent className="mt-1 flex flex-col gap-2 text-xs">
+        {part.name === "Bash" ? (
+          <CommandView call={part} command={summary} />
+        ) : (
+          <>
+            <ToolSection label={m.tool_input()} text={JSON.stringify(part.input, null, 2)} />
+            <ToolSection
+              label={m.tool_output()}
+              text={part.output === undefined ? m.tool_no_output() : formatOutput(part.output)}
+            />
+          </>
+        )}
       </CollapsibleContent>
     </Collapsible>
   )
@@ -229,7 +244,7 @@ export function CommandGroup({
         )}
         {running && <span className="ml-auto shrink-0">{statusIcon.running}</span>}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 ml-7 overflow-hidden rounded-lg border border-border">
+      <CollapsibleContent className="mt-1 overflow-hidden rounded-lg border border-border">
         <ul className="divide-y divide-border">
           {calls.map((call, position) => (
             <li key={call.callId}>
@@ -245,17 +260,19 @@ export function CommandGroup({
 }
 
 function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
-  const text = commandFindText(call)
-  const { distinctLabel, command } = text
-  const revealsCommand = reveal !== null && isInCommand(text, reveal.match.offset)
-  const revealsLabel = reveal !== null && !revealsCommand
-  const [open, setOpen] = useFindDisclosure(revealsCommand ? reveal : null)
+  const { distinctLabel, command } = commandFindText(call)
+  const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-1 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-        <span className={cn("min-w-0", revealsLabel ? "wrap-anywhere" : "truncate")} title={command}>
-          {distinctLabel === null ? command : <Highlighted text={distinctLabel} />}
+    <Collapsible>
+      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+        <span className={cn("min-w-0 font-mono text-foreground", truncate)} title={command}>
+          <Highlighted text={command} />
         </span>
+        {distinctLabel !== null && (
+          <span className={cn("min-w-0 max-w-1/2 shrink-0", truncate)} title={distinctLabel}>
+            <Highlighted text={distinctLabel} />
+          </span>
+        )}
         <RiArrowRightSLine
           aria-hidden
           className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
@@ -267,23 +284,75 @@ function CommandRow({ call, reveal }: { call: ToolCall; reveal: FindRevealReques
           </span>
         )}
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2 px-3 pb-2 text-xs">
-        <ToolSection label={m.tool_command()} text={command} highlighted />
-        <ToolSection
-          label={m.tool_output()}
-          text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
-        />
+      <CollapsibleContent className="px-3 pb-2 text-xs">
+        <CommandView call={call} command={command} />
       </CollapsibleContent>
     </Collapsible>
   )
 }
 
-function ToolSection({ label, text, highlighted = false }: { label: string; text: string; highlighted?: boolean }) {
+/** A shell command as it would read in a terminal: the command, highlighted, then what it printed. */
+function CommandView({ call, command }: { call: ToolCall; command: string }) {
+  const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
+  return (
+    <div className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono">
+      <section>
+        <h4 className="sr-only">{m.tool_command()}</h4>
+        <pre className="whitespace-pre-wrap wrap-anywhere">
+          <ShellCode code={command} />
+        </pre>
+      </section>
+      {(output !== "" || call.status !== "running") && (
+        <section className="mt-2">
+          <h4 className="sr-only">{m.tool_output()}</h4>
+          <pre className="whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+            {output === "" ? m.tool_no_output() : output}
+          </pre>
+        </section>
+      )}
+    </div>
+  )
+}
+
+const shellHighlighters = new Map<string, Promise<DiffsHighlighter>>()
+
+const shellHighlighter = (theme: string) => {
+  let highlighter = shellHighlighters.get(theme)
+  if (highlighter === undefined) {
+    highlighter = getSharedHighlighter({ themes: [theme], langs: ["shellscript"] })
+    shellHighlighters.set(theme, highlighter)
+  }
+  return highlighter
+}
+
+/** Unmarked by Find on purpose: the command's row already carries its marks. */
+function ShellCode({ code }: { code: string }) {
+  const { codeTheme, scheme } = useTheme(useSettings().appearance.theme)
+  return (
+    <Suspense fallback={code}>
+      <ShellTokens code={code} theme={codeTheme ?? DEFAULT_THEMES[scheme]} />
+    </Suspense>
+  )
+}
+
+function ShellTokens({ code, theme }: { code: string; theme: string }) {
+  const { tokens } = use(shellHighlighter(theme)).codeToTokens(code, { lang: "shellscript", theme })
+  return tokens.flatMap((line, index) => [
+    ...(index === 0 ? [] : ["\n"]),
+    ...line.map((token) => (
+      <span key={token.offset} style={{ color: token.color }}>
+        {token.content}
+      </span>
+    )),
+  ])
+}
+
+function ToolSection({ label, text }: { label: string; text: string }) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
       <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono whitespace-pre-wrap">
-        {highlighted ? <Highlighted text={text} /> : text}
+        {text}
       </pre>
     </section>
   )
@@ -300,14 +369,16 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
     </>
   )
   if (diff === "")
-    return <div className="my-1 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    return (
+      <div className="my-1 -mx-2 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+    )
   return (
     <Collapsible className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         {row}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 pl-7">
+      <CollapsibleContent className="mt-1">
         <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/50 p-2 font-mono text-xs">
           {diff}
         </pre>

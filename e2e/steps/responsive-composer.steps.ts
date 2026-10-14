@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test"
 import { Given, Then, When } from "../support/fixtures.ts"
+import { rpc } from "../support/rpc.ts"
 
 Given(
   "the project {string} has an {word} responsive thread {string}",
@@ -98,6 +99,51 @@ Then("the message field and {word} action fit inside the window", async ({ app }
     )
     .toEqual({ usableWidth: true, usableHeight: true, fieldVisible: true, actionVisible: true })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+Then("the composer toolbar stays on one line", async ({ app }) => {
+  const toolbar = app.page.locator("[data-slot=composer-toolbar]")
+  await expect
+    .poll(
+      () =>
+        toolbar.evaluate((node) => {
+          const bounds = node.getBoundingClientRect()
+          const controls = [...node.querySelectorAll("button, [role=meter]")]
+            .filter((control) => control.checkVisibility())
+            .map((control) => control.getBoundingClientRect())
+            .toSorted((a, b) => a.left - b.left)
+          return {
+            oneRow: Math.max(...controls.map((box) => box.top)) < Math.min(...controls.map((box) => box.bottom)),
+            inside: controls.every((box) => box.left >= bounds.left - 0.5 && box.right <= bounds.right + 0.5),
+            apart: controls.every((box, index) => index === 0 || controls[index - 1]!.right <= box.left + 0.5),
+          }
+        }),
+      { message: "every visible toolbar control shares one row inside the composer without overlapping" },
+    )
+    .toEqual({ oneRow: true, inside: true, apart: true })
+})
+
+// A narrow composer folds the options into a menu, so reach Access whichever way it is shown.
+When("I choose {string} access in the composer", async ({ app }, mode: string) => {
+  const page = app.page
+  const access = page.getByRole("combobox", { name: "Access", exact: true })
+  if (await access.isVisible()) {
+    await access.click()
+    await page.getByRole("option", { name: new RegExp(`^${mode}`) }).click()
+    return
+  }
+  await page.getByRole("button", { name: "More options", exact: true }).click()
+  await page.getByRole("menuitem", { name: /^Access/ }).click()
+  await page.getByRole("menuitemradio", { name: new RegExp(`^${mode}`) }).click()
+})
+
+Then("the thread {string} runs with {string} access", async ({ app, names }, title: string, accessMode: string) => {
+  await expect
+    .poll(async () => {
+      const threads = await rpc(app.page, "threads.list", undefined)
+      return threads.find((thread) => thread.title === names.of(title))?.accessMode
+    })
+    .toBe(accessMode)
 })
 
 Then("I can open and dismiss both secondary panels with the keyboard", async ({ app }) => {

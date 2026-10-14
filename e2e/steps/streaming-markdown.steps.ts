@@ -85,7 +85,7 @@ const firstBoundaryText = async (page: Page, selector: string) => {
 }
 
 When("the agent starts streaming in {string}", async ({ app, names }, title: string) => {
-  await expect(app.page.getByRole("heading", { name: "Start the conversation", exact: true })).toBeVisible()
+  await expect(app.page.getByRole("heading", { name: "Do anything", exact: true })).toBeVisible()
   const thread = (await rpc(app.page, "threads.list", undefined)).find((item) => item.title === names.of(title))
   if (!thread) throw new Error(`no seeded thread named ${title}`)
   const { seq } = await rpc(app.page, "threads.transcript", { threadId: thread.id })
@@ -218,13 +218,13 @@ Then("the transcript keeps text on both sides of the tool and reasoning", async 
   const rendered = article(app.page)
   await expect(rendered.locator(":scope > div > p")).toHaveText(["Before tool.", "After tool."])
   await expect(rendered.getByRole("button", { name: /Read.*README\.md.*Running/ })).toBeVisible()
-  await rendered.getByRole("button", { name: "Reasoning", exact: true }).click()
+  await rendered.getByRole("button", { name: "Thinking…", exact: true }).click()
   await expect(rendered).toContainText("Check the result.")
   expect(await rendered.evaluate((node) => Array.from(node.children, (child) => child.textContent))).toEqual([
     "Before tool.",
     "ReadREADME.mdRunning",
     "After tool.",
-    "ReasoningCheck the result.",
+    "Thinking…Check the result.",
     "Writing…",
   ])
 })
@@ -290,7 +290,7 @@ const scrollContainer = (page: Page) =>
     .filter({ has: article(page) })
     .first()
 
-When("I type and scroll while the agent streams many Markdown blocks", async ({ app }) => {
+When("I type, scroll and resize while the agent streams many Markdown blocks", async ({ app }) => {
   const stream = streamOf(app)
   const initial = Array.from({ length: 80 }, (_, index) => `Paragraph ${index}: inspect **this** output.\n\n`).join("")
   await app.pushEvents([
@@ -326,6 +326,7 @@ When("I type and scroll while the agent streams many Markdown blocks", async ({ 
     await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(10)
     await expect(article(app.page)).not.toContainText("Live 299:")
     stream.readingPosition = await viewport.evaluate((node) => node.scrollTop)
+    await app.page.setViewportSize({ width: 1280, height: 760 })
     await production
     await expect(article(app.page)).toContainText("Writing…")
     await expect(article(app.page)).not.toContainText("Live 299:")

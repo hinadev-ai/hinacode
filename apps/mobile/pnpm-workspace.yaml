@@ -1,0 +1,4 @@
+minimumReleaseAgeExclude:
+  - effect@4.0.3
+allowBuilds:
+  unrs-resolver: false

@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process"
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
@@ -228,6 +237,76 @@ describe("fs.read", () => {
       }),
     )
   }
+})
+
+const save = (root: string, path: string, content: string, expected: string | null) =>
+  run(Files.use((files) => files.write(root, path, content, expected)))
+
+/** A fresh file per test, so no test sees what another one saved. */
+const editable = (name: string, text = "before\n") => {
+  const path = `untracked/edits/${name}`
+  write(join(repo, path), text)
+  return path
+}
+
+describe("fs.write", () => {
+  it.effect("replaces the text of a file", () =>
+    Effect.gen(function* () {
+      const path = editable("replace.txt")
+      yield* save(repo, path, "after\n", null)
+      expect(readFileSync(join(repo, path), "utf8")).toBe("after\n")
+    }),
+  )
+
+  it.effect("writes when the file still holds the text the edit started from", () =>
+    Effect.gen(function* () {
+      const path = editable("expected.txt")
+      yield* save(repo, path, "after\n", "before\n")
+      expect(readFileSync(join(repo, path), "utf8")).toBe("after\n")
+    }),
+  )
+
+  it.effect("refuses to save over a change made on disk since the edit began, and leaves it alone", () =>
+    Effect.gen(function* () {
+      const path = editable("stale.txt", "changed by the agent\n")
+      const error = yield* save(repo, path, "after\n", "before\n").pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FsWriteConflict", root: repo, path })
+      expect(readFileSync(join(repo, path), "utf8")).toBe("changed by the agent\n")
+    }),
+  )
+
+  it.effect("overwrites whatever is there when no starting text is given", () =>
+    Effect.gen(function* () {
+      const path = editable("overwrite.txt", "changed by the agent\n")
+      yield* save(repo, path, "after\n", null)
+      expect(readFileSync(join(repo, path), "utf8")).toBe("after\n")
+    }),
+  )
+
+  const refusals: ReadonlyArray<[string, () => [root: string, path: string], string]> = [
+    ["a root that is no project or worktree", () => [outside, "secret.txt"], "unknownRoot"],
+    ["a path through ..", () => [repo, "../outside/secret.txt"], "outsideRoot"],
+    ["an absolute path", () => [repo, join(outside, "secret.txt")], "outsideRoot"],
+    ["a symlink to a file outside the root", () => [repo, "untracked/leak.txt"], "outsideRoot"],
+    ["a folder", () => [repo, "src"], "unwritable"],
+  ]
+  for (const [name, args, reason] of refusals) {
+    it.effect(`refuses ${name}`, () =>
+      Effect.gen(function* () {
+        const error = yield* save(...args(), "overwritten\n", null).pipe(Effect.flip)
+        expect(error).toMatchObject({ _tag: "FsAccessError", reason })
+        expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("secret\n")
+      }),
+    )
+  }
+
+  it.effect("refuses a file that does not exist, and does not create it", () =>
+    Effect.gen(function* () {
+      const error = yield* save(repo, "untracked/edits/missing.txt", "new\n", null).pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unreadable" })
+      expect(existsSync(join(repo, "untracked/edits/missing.txt"))).toBe(false)
+    }),
+  )
 })
 
 describe("fs.watch", () => {

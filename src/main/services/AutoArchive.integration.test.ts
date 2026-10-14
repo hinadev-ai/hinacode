@@ -44,7 +44,7 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
-  Layer.provide(AgentAccounts.layer(join(base, "accounts"))),
+  Layer.provide(AgentAccounts.layer),
   Layer.provideMerge(settingsLayer),
 )
 const testLayer = autoArchiveLayer.pipe(

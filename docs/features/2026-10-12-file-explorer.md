@@ -84,7 +84,7 @@ Measured in the built app on a Mac with a 5,000-file folder: `fs.list` answers i
 ## Out of scope
 
 - Editing the tree: rename, create, delete, move. Agents do that; the explorer shows it.
-- Editing a file. The viewer is read-only; Show in folder hands off to an editor.
+- Editing a file. Basic editing and line comments came later, see `2026-10-13-file-editing-and-line-comments.md`.
 - Images and other binary files. The viewer says the file is binary and shows nothing.
 - Deleted files. They are not on disk, so they are not listed; their folder shows as modified and the Changes list has the diff.
 - Following symlinked folders.

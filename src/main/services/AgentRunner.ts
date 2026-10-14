@@ -1,7 +1,20 @@
 import { randomUUID } from "node:crypto"
-import { Cache, Context, Deferred, Duration, Effect, FiberMap, Layer, type Schema, Semaphore, Stream } from "effect"
+import {
+  Cache,
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  FiberMap,
+  Layer,
+  Predicate,
+  type Schema,
+  Semaphore,
+  Stream,
+} from "effect"
 import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
 import type {
+  AccountHome,
   AccountLimits,
   AgentCommand,
   AgentEvent,
@@ -20,6 +33,8 @@ import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { agentInstructions } from "../agents/instructions.ts"
+import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
@@ -36,6 +51,7 @@ import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Secrets } from "./Secrets.ts"
+import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
@@ -110,8 +126,6 @@ export class AgentRunner extends Context.Service<
      * reports null limits.
      */
     readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
-    /** Drops an account's cached limits, so a sign-in or sign-out shows on the next read. */
-    readonly forgetLimits: (provider: ProviderId, accountId: string | null) => Effect.Effect<void>
     /** Null until the thread's first turn binds an agent session. */
     readonly usage: (
       threadId: string,
@@ -170,6 +184,23 @@ const openAssistantMessage = (threadId: string, now: string): Message => ({
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
+/**
+ * Screenshots are megabytes of base64 nobody reads in the transcript, so only their type is kept. Claude
+ * sends `{ type: "image", source: { media_type, data } }`, MCP `{ type: "image", mimeType, data }`.
+ */
+const withoutImageData = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutImageData)
+  if (!Predicate.isObject(value)) return value
+  const record = value as Record<string, unknown>
+  if (record["type"] === "image") {
+    const source = record["source"]
+    const mimeType =
+      record["mimeType"] ?? (Predicate.isObject(source) ? (source as Record<string, unknown>)["media_type"] : undefined)
+    return { type: "image", mimeType }
+  }
+  return Object.fromEntries(Object.entries(record).map(([key, nested]) => [key, withoutImageData(nested)]))
+}
+
 const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...messages.slice(0, -1), message]
 
 const make = Effect.gen(function* () {
@@ -181,6 +212,7 @@ const make = Effect.gen(function* () {
   const push = yield* Events
   const mcp = yield* McpCredentials
   const secrets = yield* Secrets
+  const settings = yield* Settings
   const naming = yield* ThreadNaming
   const accounts = yield* AgentAccounts
   const activeWorkspace = yield* makeActiveWorkspace
@@ -188,6 +220,7 @@ const make = Effect.gen(function* () {
   const providers: Record<ProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
+    muse: yield* MuseProvider,
   }
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -260,7 +293,13 @@ const make = Effect.gen(function* () {
    * steer closes it and opens another after the steer's user message, so ordering by createdAt keeps
    * the transcript in the order things happened.
    */
-  const makeTurn = (thread: Thread, provider: AgentProvider, cwd: string, home: string | null, initial: Message) => {
+  const makeTurn = (
+    thread: Thread,
+    provider: AgentProvider,
+    cwd: string,
+    home: AccountHome | null,
+    initial: Message,
+  ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
     let persistedAt = Date.now()
@@ -278,8 +317,10 @@ const make = Effect.gen(function* () {
       turnMessages = next
     }
 
-    const handle = (event: AgentEvent) =>
+    const handle = (received: AgentEvent) =>
       Effect.gen(function* () {
+        const event: AgentEvent =
+          received.type === "tool_call_finished" ? { ...received, output: withoutImageData(received.output) } : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
@@ -347,23 +388,25 @@ const make = Effect.gen(function* () {
 
     /** Never fails: provider errors become turn_failed. */
     const run = (prompt: string, attachments: ReadonlyArray<Attachment>) =>
-      Effect.flatMap(mcp.connectionFor(thread.id), (mcpServer) =>
-        provider
-          .runTurn({
-            threadId: thread.id,
-            prompt,
-            attachments,
-            cwd,
-            model: thread.model,
-            effort: thread.effort,
-            fastMode: thread.fastMode,
-            accessMode: thread.accessMode,
-            resumeSessionId: thread.providerSessionId,
-            home,
-            mcpServer,
-          })
-          .pipe(Stream.runForEach(handle)),
-      ).pipe(
+      Effect.all([mcp.connectionFor(thread.id), settings.get]).pipe(
+        Effect.flatMap(([mcpServer, { experimental }]) =>
+          provider
+            .runTurn({
+              threadId: thread.id,
+              prompt,
+              attachments,
+              cwd,
+              model: thread.model,
+              effort: thread.effort,
+              fastMode: thread.fastMode,
+              accessMode: thread.accessMode,
+              resumeSessionId: thread.providerSessionId,
+              home,
+              mcpServer,
+              instructions: agentInstructions(experimental),
+            })
+            .pipe(Stream.runForEach(handle)),
+        ),
         Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
@@ -572,8 +615,6 @@ const make = Effect.gen(function* () {
         concurrency: "unbounded",
       })
     }),
-    forgetLimits: (provider, accountId) =>
-      Cache.invalidate(cachedLimits, JSON.stringify({ provider, accountId } satisfies LimitsKey)),
     usage: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

@@ -27,7 +27,16 @@ export function describeToolCall(part: Extract<MessagePart, { type: "tool_call" 
       summary: summarizeInput(Reflect.get(input, "arguments")),
     }
   }
-  return { name: part.name, summary: summarizeInput(input) }
+  const summary = summarizeInput(input)
+  return { name: part.name, summary: part.name === "Bash" ? unwrapShell(summary) : summary }
+}
+
+/** Codex runs every command as `/bin/zsh -lc '<command>'`; the wrapper says nothing about what ran. */
+const SHELL_WRAPPER = /^(?:\/\S*\/)?(?:ba|z)?sh -l?c '((?:[^']|'\\'')*)'$/s
+
+const unwrapShell = (command: string) => {
+  const inner = SHELL_WRAPPER.exec(command)?.[1]
+  return inner === undefined ? command : inner.replaceAll(`'\\''`, "'")
 }
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
@@ -62,5 +71,5 @@ export function groupCommands(parts: ReadonlyArray<MessagePart>, startIndex = 0)
 export function describeCommand(call: ToolCall): string {
   const description: unknown =
     typeof call.input === "object" && call.input !== null ? Reflect.get(call.input, "description") : undefined
-  return typeof description === "string" && description !== "" ? description : summarizeInput(call.input)
+  return typeof description === "string" && description !== "" ? description : describeToolCall(call).summary
 }

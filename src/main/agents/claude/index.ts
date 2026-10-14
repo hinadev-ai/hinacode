@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import {
@@ -12,13 +12,20 @@ import {
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Context, Deferred, Duration, Effect, Layer, Queue, Schema, Stream } from "effect"
-import type { AgentAccount, AgentCommand, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import { Cache, Cause, Context, Duration, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import type {
+  AccountHome,
+  AgentAccount,
+  AgentCommand,
+  AgentEvent,
+  ModelInfo,
+  RunTurnInput,
+} from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
-import { AGENT_INSTRUCTIONS } from "../instructions.ts"
-import { AgentError, type AgentProvider, type SignIn } from "../provider.ts"
+import { resolveBinaryOnce } from "../binary.ts"
+import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -61,11 +68,13 @@ const toCommand = (command: SlashCommand): AgentCommand => ({
 
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
-/** One long-lived `query()` per thread; follow-up prompts are fed into the same CLI process. */
+const IDLE_SESSION_TTL = Duration.seconds(60)
+
 interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
-  readonly home: string | null
+  readonly home: AccountHome | null
+  readonly instructions: string
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly query: Query
@@ -80,6 +89,26 @@ interface Session extends MapState, ApprovalSession {
   pendingSteers: number
   /** Turns whose consumer left before their result; their remaining messages must not reach the next turn. */
   abandonedTurns: number
+  readonly tasks: Map<string, string | undefined>
+  taskSnapshots: boolean
+  claims: number
+  expiry: Fiber.Fiber<void> | null
+  closed: boolean
+}
+
+const isIdle = (session: Session) =>
+  session.turn === null && session.claims === 0 && session.abandonedTurns === 0 && session.tasks.size === 0
+
+interface SessionContext {
+  readonly cwd: string
+  readonly home: AccountHome | null
+  readonly instructions: string
+}
+
+interface Resumable extends SessionContext {
+  readonly sessionId: string
+  readonly sessionGrants: Set<string>
+  readonly attachmentPaths: Set<string>
 }
 
 const externalServices: Record<Exclude<NonNullable<AccountInfo["apiProvider"]>, "firstParty">, string> = {
@@ -126,11 +155,16 @@ const toAccount = (info: AccountInfo): AgentAccount => {
   return info.apiKeySource === undefined ? { type: "signedOut" } : { type: "apiKey" }
 }
 
-const commandsKey = (cwd: string, home: string | null) => JSON.stringify({ cwd, home })
+const commandsKey = (cwd: string, home: AccountHome | null) => JSON.stringify({ cwd, home })
+
+const sameHome = (a: AccountHome | null, b: AccountHome | null) => a?.dir === b?.dir && a?.binary === b?.binary
+
+const sameContext = (a: SessionContext, b: SessionContext) =>
+  a.cwd === b.cwd && sameHome(a.home, b.home) && a.instructions === b.instructions
 
 /** The CLI's env for an account: its own home, or the user's default one for null. */
-const homeEnv = (home: string | null): NodeJS.ProcessEnv =>
-  home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home }
+const homeEnv = (home: AccountHome | null): NodeJS.ProcessEnv =>
+  home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home.dir }
 
 const agentError = (message: string) => (cause: unknown) =>
   new AgentError({
@@ -227,14 +261,18 @@ export const layer = Layer.effect(
     const layerScope = yield* Effect.scope
     const executable = resolveClaudeExecutable()
     const sessions = new Map<string, Session>()
-    /** Last provider session id per thread, so a crashed CLI can be resumed without the caller's help. */
-    const lastSessionIds = new Map<string, string>()
+    const resumable = new Map<string, Resumable>()
 
-    const baseOptions = (home: string | null): Options => ({
-      // The SDK replaces the child env instead of merging it.
-      env: homeEnv(home),
-      ...(executable === undefined ? {} : { pathToClaudeCodeExecutable: executable }),
-    })
+    const executableFor = (home: AccountHome | null) => (home === null ? executable : resolveBinaryOnce(home.binary))
+
+    const baseOptions = (home: AccountHome | null): Options => {
+      const path = executableFor(home)
+      return {
+        // The SDK replaces the child env instead of merging it.
+        env: homeEnv(home),
+        ...(path === undefined ? {} : { pathToClaudeCodeExecutable: path }),
+      }
+    }
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
@@ -250,13 +288,131 @@ export const layer = Layer.effect(
     const approvals = makeApprovals(emit)
     const questions = makeQuestions(emit)
 
-    const closeSession = (session: Session) =>
-      Effect.sync(() => {
-        if (sessions.get(session.threadId) === session) sessions.delete(session.threadId)
-        Queue.shutdownUnsafe(session.prompts)
-        session.abort.abort()
-        session.query.close()
+    const cancelExpiry = (session: Session) => {
+      session.expiry?.interruptUnsafe()
+      session.expiry = null
+    }
+
+    const closeSessionUnsafe = (session: Session) => {
+      if (session.closed) return
+      session.closed = true
+      cancelExpiry(session)
+      if (sessions.get(session.threadId) === session) sessions.delete(session.threadId)
+      Queue.shutdownUnsafe(session.prompts)
+      session.abort.abort()
+      session.query.close()
+    }
+
+    const closeSession = (session: Session) => Effect.sync(() => closeSessionUnsafe(session))
+
+    const armExpiry = (session: Session) =>
+      Effect.suspend(() => {
+        if (session.closed) return Effect.void
+        if (!isIdle(session)) {
+          cancelExpiry(session)
+          return Effect.void
+        }
+        if (session.expiry !== null) return Effect.void
+        const expire = Effect.sleep(IDLE_SESSION_TTL).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              session.expiry = null
+              if (isIdle(session)) closeSessionUnsafe(session)
+            }),
+          ),
+        )
+        return Effect.map(Effect.forkIn(expire, layerScope), (fiber) => {
+          session.expiry = fiber
+        })
       })
+
+    const claim = (session: Session) => {
+      session.claims++
+      cancelExpiry(session)
+      return session
+    }
+
+    const release = (session: Session) =>
+      Effect.suspend(() => {
+        session.claims--
+        return armExpiry(session)
+      })
+
+    const lease = <A, E>(session: Session, use: (session: Session) => Effect.Effect<A, E>) =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => claim(session)),
+        use,
+        release,
+      )
+
+    /** A run id that sorts before the task's current one belongs to an earlier run of a resumed task. */
+    const isLateRun = (session: Session, taskId: string, runId: string | undefined) => {
+      const current = session.tasks.get(taskId)
+      return runId !== undefined && current !== undefined && runId < current
+    }
+
+    const trackTask = (session: Session, message: SDKMessage) => {
+      if (message.type !== "system") return
+      if (message.subtype === "background_tasks_changed") {
+        session.taskSnapshots = true
+        session.tasks.clear()
+        for (const task of message.tasks) if (task.ambient !== true) session.tasks.set(task.task_id, task.run_id)
+        return
+      }
+      // CLIs that predate snapshots only send these edges, and the SDK says not to correlate the two streams.
+      if (session.taskSnapshots) return
+      switch (message.subtype) {
+        case "task_started":
+          if (
+            message.ambient !== true &&
+            message.is_backgrounded !== false &&
+            !isLateRun(session, message.task_id, message.run_id)
+          )
+            session.tasks.set(message.task_id, message.run_id)
+          return
+        case "task_updated": {
+          if (isLateRun(session, message.task_id, message.run_id)) return
+          const { status, is_backgrounded } = message.patch
+          if (status === "completed" || status === "failed" || status === "killed")
+            session.tasks.delete(message.task_id)
+          else if (is_backgrounded === true) session.tasks.set(message.task_id, message.run_id)
+          return
+        }
+        case "task_notification":
+          if (!isLateRun(session, message.task_id, message.run_id)) session.tasks.delete(message.task_id)
+          return
+      }
+    }
+
+    const route = (session: Session, message: SDKMessage) => {
+      trackTask(session, message)
+      // The CLI handles prompts in order, so everything up to an abandoned turn's result is stale.
+      if (session.abandonedTurns > 0) {
+        if (message.type === "result") {
+          session.abandonedTurns--
+          resetTurnLimits(session)
+        }
+        return
+      }
+      if (session.pendingSteers > 0 && !session.interrupted && isSteerAbort(message)) {
+        session.pendingSteers--
+        resetTurnLimits(session)
+        return
+      }
+      if (message.type === "result") session.pendingSteers = 0
+      if (message.type === "system" && message.subtype === "init") {
+        session.sessionId = message.session_id
+        resumable.set(session.threadId, {
+          cwd: session.cwd,
+          home: session.home,
+          instructions: session.instructions,
+          sessionId: message.session_id,
+          sessionGrants: session.sessionGrants,
+          attachmentPaths: session.attachmentPaths,
+        })
+      }
+      for (const event of mapMessage(message, session, new Date().toISOString())) emit(session, event)
+    }
 
     /** Reads every SDK message of the session for its lifetime and routes it to the active turn. */
     const pump = (session: Session) =>
@@ -266,27 +422,7 @@ export const layer = Layer.effect(
         agentError("Claude Code stream failed"),
       ).pipe(
         Stream.runForEach((message) =>
-          Effect.sync(() => {
-            // The CLI handles prompts in order, so everything up to an abandoned turn's result is stale.
-            if (session.abandonedTurns > 0) {
-              if (message.type === "result") {
-                session.abandonedTurns--
-                resetTurnLimits(session)
-              }
-              return
-            }
-            if (session.pendingSteers > 0 && !session.interrupted && isSteerAbort(message)) {
-              session.pendingSteers--
-              resetTurnLimits(session)
-              return
-            }
-            if (message.type === "result") session.pendingSteers = 0
-            if (message.type === "system" && message.subtype === "init") {
-              session.sessionId = message.session_id
-              lastSessionIds.set(session.threadId, message.session_id)
-            }
-            for (const event of mapMessage(message, session, new Date().toISOString())) emit(session, event)
-          }),
+          Effect.sync(() => route(session, message)).pipe(Effect.andThen(armExpiry(session))),
         ),
         Effect.catchCause((cause) =>
           Effect.sync(() => emit(session, { type: "turn_failed", message: Cause.pretty(cause) })),
@@ -312,12 +448,13 @@ export const layer = Layer.effect(
           )
         : Effect.succeed(permissionMode(accessMode, false))
 
-    const startSession = (input: RunTurnInput) =>
+    const startSession = (input: RunTurnInput, mode: PermissionMode) =>
       Effect.gen(function* () {
-        const mode = yield* permissionModeFor(input.accessMode, input.model)
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
-        const resume = input.resumeSessionId ?? lastSessionIds.get(input.threadId)
+        const previous = resumable.get(input.threadId)
+        const resume = input.resumeSessionId ?? previous?.sessionId
+        const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -331,7 +468,7 @@ export const layer = Layer.effect(
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
-                systemPrompt: { type: "preset", preset: "claude_code", append: AGENT_INSTRUCTIONS },
+                systemPrompt: { type: "preset", preset: "claude_code", append: input.instructions },
                 permissionMode: mode,
                 // Lets a live session switch to full access; the mode above decides what runs unasked.
                 allowDangerouslySkipPermissions: true,
@@ -361,6 +498,7 @@ export const layer = Layer.effect(
           threadId: input.threadId,
           cwd: input.cwd,
           home: input.home,
+          instructions: input.instructions,
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
@@ -368,8 +506,8 @@ export const layer = Layer.effect(
           prompts,
           abort,
           query: handle,
-          sessionGrants: new Set(),
-          attachmentPaths: new Set(),
+          sessionGrants: keepsGrants ? previous.sessionGrants : new Set(),
+          attachmentPaths: keepsGrants ? previous.attachmentPaths : new Set(),
           pendingEdits: new Map(),
           limitMessage: null,
           limitResetAt: null,
@@ -380,20 +518,25 @@ export const layer = Layer.effect(
           interrupted: false,
           pendingSteers: 0,
           abandonedTurns: 0,
+          tasks: new Map(),
+          taskSnapshots: false,
+          claims: 1,
+          expiry: null,
+          closed: false,
         }
         sessions.set(input.threadId, session)
         yield* Effect.forkIn(pump(session), layerScope)
         return session
       })
 
-    const acquireSession = (input: RunTurnInput) =>
+    const acquireSession = (input: RunTurnInput, mode: PermissionMode) =>
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (existing.cwd === input.cwd && existing.home === input.home) return existing
+          if (sameContext(existing, input)) return claim(existing)
           yield* closeSession(existing)
         }
-        return yield* startSession(input)
+        return yield* startSession(input, mode)
       })
 
     const interruptQuery = (session: Session) =>
@@ -402,9 +545,8 @@ export const layer = Layer.effect(
         return Effect.promise(() => session.query.interrupt()).pipe(Effect.ignore)
       })
 
-    const switchPermissionMode = (session: Session, accessMode: AccessMode) =>
+    const switchPermissionMode = (session: Session, mode: PermissionMode) =>
       Effect.gen(function* () {
-        const mode = yield* permissionModeFor(accessMode, session.model)
         if (mode === session.permissionMode) return
         yield* Effect.tryPromise({
           try: () => session.query.setPermissionMode(mode),
@@ -413,53 +555,62 @@ export const layer = Layer.effect(
         session.permissionMode = mode
       })
 
+    const startTurn = (session: Session, input: RunTurnInput, mode: PermissionMode, turn: TurnQueue) =>
+      Effect.gen(function* () {
+        if (session.turn !== null) {
+          return yield* new AgentError({
+            provider: "claude",
+            message: "A turn is already running on this thread",
+          })
+        }
+        if (session.model !== input.model) {
+          yield* Effect.tryPromise({
+            try: () => session.query.setModel(input.model),
+            catch: agentError("Failed to switch model"),
+          })
+          session.model = input.model
+        }
+        if (session.effort !== input.effort || session.fastMode !== input.fastMode) {
+          yield* Effect.tryPromise({
+            try: () =>
+              session.query.applyFlagSettings({
+                effortLevel: isEffortLevel(input.effort) ? input.effort : null,
+                fastMode: input.fastMode,
+              }),
+            catch: agentError("Failed to switch effort or fast mode"),
+          })
+          session.effort = input.effort
+          session.fastMode = input.fastMode
+        }
+        yield* switchPermissionMode(session, mode)
+        const message = yield* userMessage(input.prompt, input.attachments)
+        session.turn = turn
+        resetTurnLimits(session)
+        session.interrupted = false
+        session.pendingSteers = 0
+        session.lastRequest = null
+        // A consumer that stops reading mid-turn means the turn should stop too.
+        yield* Effect.addFinalizer(() =>
+          session.turn === turn
+            ? Effect.sync(() => {
+                session.turn = null
+                session.abandonedTurns++
+              }).pipe(Effect.andThen(interruptQuery(session)))
+            : Effect.void,
+        )
+        for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
+        yield* Queue.offer(session.prompts, message)
+      })
+
     const runTurn = (input: RunTurnInput) =>
       Stream.callback<AgentEvent, AgentError>((turn) =>
-        Effect.gen(function* () {
-          const session = yield* acquireSession(input)
-          if (session.turn !== null) {
-            return yield* new AgentError({
-              provider: "claude",
-              message: "A turn is already running on this thread",
-            })
-          }
-          if (session.model !== input.model) {
-            yield* Effect.tryPromise({
-              try: () => session.query.setModel(input.model),
-              catch: agentError("Failed to switch model"),
-            })
-            session.model = input.model
-          }
-          if (session.effort !== input.effort || session.fastMode !== input.fastMode) {
-            yield* Effect.tryPromise({
-              try: () =>
-                session.query.applyFlagSettings({
-                  effortLevel: isEffortLevel(input.effort) ? input.effort : null,
-                  fastMode: input.fastMode,
-                }),
-              catch: agentError("Failed to switch effort or fast mode"),
-            })
-            session.effort = input.effort
-            session.fastMode = input.fastMode
-          }
-          yield* switchPermissionMode(session, input.accessMode)
-          session.turn = turn
-          resetTurnLimits(session)
-          session.interrupted = false
-          session.pendingSteers = 0
-          session.lastRequest = null
-          // A consumer that stops reading mid-turn means the turn should stop too.
-          yield* Effect.addFinalizer(() =>
-            session.turn === turn
-              ? Effect.sync(() => {
-                  session.turn = null
-                  session.abandonedTurns++
-                }).pipe(Effect.andThen(interruptQuery(session)))
-              : Effect.void,
-          )
-          for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
-          yield* Queue.offer(session.prompts, yield* userMessage(input.prompt, input.attachments))
-        }),
+        Effect.flatMap(permissionModeFor(input.accessMode, input.model), (mode) =>
+          Effect.acquireUseRelease(
+            acquireSession(input, mode),
+            (session) => startTurn(session, input, mode, turn),
+            release,
+          ),
+        ),
       )
 
     const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
@@ -478,7 +629,7 @@ export const layer = Layer.effect(
     const probe = <A>(
       read: (probe: Query) => Promise<A>,
       failure: string,
-      home: string | null,
+      home: AccountHome | null,
       options: Options = {},
     ) =>
       Effect.gen(function* () {
@@ -523,13 +674,13 @@ export const layer = Layer.effect(
      * by `commandsKey`, since the account's home holds the user-level ones.
      */
     const probeCommands = (key: string) => {
-      const { cwd, home } = JSON.parse(key) as { cwd: string; home: string | null }
+      const { cwd, home } = JSON.parse(key) as { cwd: string; home: AccountHome | null }
       return probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
         cwd,
         settingSources: ["user", "project", "local"],
       })
     }
-    const account = (home: string | null) =>
+    const account = (home: AccountHome | null) =>
       probe((cli) => cli.accountInfo(), "Failed to read the Claude account", home).pipe(
         Effect.flatMap(Schema.decodeUnknownEffect(AccountInfoSchema)),
         Effect.catchTag("SchemaError", () =>
@@ -539,7 +690,7 @@ export const layer = Layer.effect(
         ),
         Effect.map(toAccount),
       )
-    const planLimits = (home: string | null) =>
+    const planLimits = (home: AccountHome | null) =>
       probe(
         (cli) => cli.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
         "Failed to read Claude plan limits",
@@ -550,75 +701,12 @@ export const layer = Layer.effect(
       )
 
     const transcriptUsage = perHome(makeTranscriptUsage)
-    const usage = (sessionId: string, home: string | null) =>
+    const usage = (sessionId: string, home: AccountHome | null) =>
       Effect.tryPromise({
-        try: () => transcriptUsage(home ?? claudeHome())(sessionId),
+        try: () => transcriptUsage(home?.dir ?? claudeHome())(sessionId),
         catch: agentError("Failed to read Claude transcripts"),
       })
 
-    /**
-     * `claude auth login` opens the browser on a page that redirects to its own localhost listener. It also
-     * prints a fallback URL whose page shows a code to paste into its stdin. It exits once either lands.
-     */
-    const signIn = (home: string) =>
-      Effect.gen(function* () {
-        const cli = yield* Effect.acquireRelease(
-          Effect.sync(() =>
-            spawn(executable ?? "claude", ["auth", "login", "--claudeai"], {
-              env: homeEnv(home),
-              stdio: ["pipe", "pipe", "pipe"],
-            }),
-          ),
-          (child) => Effect.sync(() => child.exitCode === null && child.kill()),
-        )
-        const url = yield* Deferred.make<string, AgentError>()
-        const exited = yield* Deferred.make<void, AgentError>()
-        let output = ""
-        const read = (chunk: Buffer) => {
-          output = (output + chunk.toString()).slice(-4000)
-          const printed = /visit: (https:\/\/\S+)\s/.exec(output)?.[1]
-          if (printed !== undefined) Deferred.doneUnsafe(url, Effect.succeed(printed))
-        }
-        const fail = (message: string) => {
-          const error = new AgentError({ provider: "claude", message })
-          Deferred.doneUnsafe(url, Effect.fail(error))
-          Deferred.doneUnsafe(exited, Effect.fail(error))
-        }
-        cli.stdout.on("data", read)
-        cli.stderr.on("data", read)
-        cli.stdin.on("error", () => {})
-        cli.on("error", (error) => fail(`Failed to start claude auth login: ${error.message}`))
-        cli.on("exit", (code) =>
-          code === 0
-            ? Deferred.doneUnsafe(exited, Effect.void)
-            : fail(`claude auth login exited with code ${code}. ${output.trim()}`),
-        )
-        const printedUrl = yield* Deferred.await(url).pipe(
-          Effect.timeoutOrElse({
-            duration: Duration.seconds(30),
-            orElse: () =>
-              Effect.fail(new AgentError({ provider: "claude", message: "claude auth login printed no sign-in URL" })),
-          }),
-        )
-        const pending: SignIn = {
-          url: printedUrl,
-          openedBrowser: true,
-          submitCode: (code) => Effect.sync(() => void cli.stdin.write(`${code.trim()}\n`)),
-          completed: Deferred.await(exited),
-        }
-        return pending
-      })
-
-    const signOut = (home: string) =>
-      Effect.tryPromise({
-        try: () =>
-          new Promise<void>((resolve, reject) =>
-            execFile(executable ?? "claude", ["auth", "logout"], { env: homeEnv(home), timeout: 30_000 }, (error) =>
-              error ? reject(error) : resolve(),
-            ),
-          ),
-        catch: agentError("Failed to sign out of Claude Code"),
-      })
     const probedCommands = yield* Cache.make({
       lookup: probeCommands,
       capacity: 32,
@@ -632,19 +720,19 @@ export const layer = Layer.effect(
     }: {
       readonly threadId: string
       readonly cwd: string
-      readonly home: string | null
+      readonly home: AccountHome | null
     }) =>
-      Effect.gen(function* () {
+      Effect.suspend(() => {
         const session = sessions.get(threadId)
-        const commands =
-          session !== undefined && session.cwd === cwd && session.home === home
-            ? yield* Effect.tryPromise({
-                try: () => session.query.supportedCommands(),
+        return session !== undefined && session.cwd === cwd && sameHome(session.home, home)
+          ? lease(session, (leased) =>
+              Effect.tryPromise({
+                try: () => leased.query.supportedCommands(),
                 catch: agentError("Failed to list Claude commands"),
-              })
-            : yield* Cache.get(probedCommands, commandsKey(cwd, home))
-        return commands.map(toCommand)
-      })
+              }),
+            )
+          : Cache.get(probedCommands, commandsKey(cwd, home))
+      }).pipe(Effect.map((commands) => commands.map(toCommand)))
 
     yield* Effect.addFinalizer(() => Effect.forEach([...sessions.values()], closeSession, { discard: true }))
 
@@ -654,8 +742,6 @@ export const layer = Layer.effect(
       account,
       planLimits,
       usage,
-      signIn,
-      signOut,
       listCommands,
       runTurn,
       steer,
@@ -665,10 +751,14 @@ export const layer = Layer.effect(
       },
       respondApproval: approvals.respond,
       respondQuestion: questions.respond,
-      setAccessMode: (threadId, accessMode) => {
-        const session = sessions.get(threadId)
-        return session === undefined ? Effect.void : switchPermissionMode(session, accessMode)
-      },
+      setAccessMode: (threadId, accessMode) =>
+        Effect.gen(function* () {
+          const session = sessions.get(threadId)
+          if (session === undefined) return
+          const mode = yield* permissionModeFor(accessMode, session.model)
+          if (session.closed) return
+          yield* lease(session, (leased) => switchPermissionMode(leased, mode))
+        }),
     })
   }),
 )

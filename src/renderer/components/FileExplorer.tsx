@@ -20,7 +20,9 @@ import {
   RiFileCodeLine,
   RiFileCopyLine,
   RiFileLine,
+  RiFileMusicLine,
   RiFileTextLine,
+  RiFileVideoLine,
   RiFolderLine,
   RiFolderOpenLine,
   RiImageLine,
@@ -29,6 +31,7 @@ import {
   RiRefreshLine,
 } from "react-icons/ri"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
+import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -46,15 +49,17 @@ const TYPEAHEAD_RESET_MS = 600
 const DEFAULT_TREE_HEIGHT = 240
 const MIN_PANE_HEIGHT = 96
 
+const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
+  image: RiImageLine,
+  svg: RiImageLine,
+  video: RiFileVideoLine,
+  audio: RiFileMusicLine,
+  html: RiFileCodeLine,
+}
+
 const iconsByExtension: Readonly<Record<string, IconType>> = {
   md: RiMarkdownLine,
   mdx: RiMarkdownLine,
-  png: RiImageLine,
-  jpg: RiImageLine,
-  jpeg: RiImageLine,
-  gif: RiImageLine,
-  webp: RiImageLine,
-  svg: RiImageLine,
   txt: RiFileTextLine,
   json: RiFileTextLine,
   yaml: RiFileTextLine,
@@ -66,7 +71,9 @@ const CODE = /^(ts|tsx|js|jsx|mjs|cjs|css|html|py|rs|go|rb|java|kt|swift|c|h|cpp
 const fileIcon = (entry: FsEntry, expanded: boolean): IconType => {
   if (entry.kind === "dir") return expanded ? RiFolderOpenLine : RiFolderLine
   if (entry.kind === "symlink") return RiLinksLine
-  const extension = entry.name.slice(entry.name.lastIndexOf(".") + 1).toLowerCase()
+  const preview = previewOf(entry.name)
+  if (preview !== null) return iconsByPreview[preview]
+  const extension = extensionOf(entry.name)
   return iconsByExtension[extension] ?? (CODE.test(extension) ? RiFileCodeLine : RiFileLine)
 }
 
@@ -259,6 +266,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       id={`${rowId}${index}`}
       selected={index === selectedIndex}
       expanded={tree.expanded.has(item.entry.path)}
+      unsaved={item.entry.path in tree.unsaved}
       onClick={onRowClick}
       onContextMenu={(entry) => select(root, entry.path)}
     />
@@ -350,7 +358,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer root={root} path={tree.opened} onClose={closeFile} />
+          <FileViewer threadId={thread.id} root={root} path={tree.opened} onClose={closeFile} />
         </>
       )}
       <p aria-live="polite" className="sr-only">
@@ -425,15 +433,20 @@ interface TreeItemProps {
   readonly id: string
   readonly selected: boolean
   readonly expanded: boolean
+  readonly unsaved: boolean
   readonly onClick: (entry: FsEntry) => void
   readonly onContextMenu: (entry: FsEntry) => void
 }
 
-function TreeItem({ row, id, selected, expanded, onClick, onContextMenu }: TreeItemProps) {
+function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu }: TreeItemProps) {
   const { entry, depth } = row
   const isDir = entry.kind === "dir"
   const mark = entry.gitStatus === null ? null : fileStatusMark[entry.gitStatus]
-  const description = [entry.gitStatus && fileStatusLabel[entry.gitStatus](), entry.ignored && m.explorer_ignored()]
+  const description = [
+    unsaved && m.viewer_unsaved(),
+    entry.gitStatus && fileStatusLabel[entry.gitStatus](),
+    entry.ignored && m.explorer_ignored(),
+  ]
     .filter(Boolean)
     .join(", ")
 
@@ -487,6 +500,7 @@ function TreeItem({ row, id, selected, expanded, onClick, onContextMenu }: TreeI
           {description}
         </span>
       )}
+      {unsaved && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground" />}
       {mark && (
         <span aria-hidden className={cn("shrink-0 font-mono text-[0.6875rem]", mark.className)}>
           {mark.letter}

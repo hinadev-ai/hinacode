@@ -12,7 +12,61 @@ import {
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
-export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "usage-limit", resetAfterMs = 60000) =>
+export type MockScenario = "usage-limit" | "org-spend-limit" | "todos"
+
+const toolCall = (callId: string, name: string, input: unknown, output: string): Array<AgentEvent> => [
+  { type: "tool_call_started", callId, name, input },
+  { type: "tool_call_finished", callId, output, isError: false },
+]
+
+/**
+ * A turn that plans three tasks and starts the second, then a follow-up that finishes the list.
+ * Inputs and outputs match a real Claude Code transcript, so the composer's task list folds the
+ * same calls it would see from the CLI.
+ */
+const todoTurn = (first: boolean): Array<AgentEvent> =>
+  first
+    ? [
+        { type: "session_bound", providerSessionId: usageLimitSessionId },
+        ...toolCall(
+          "todo-create-1",
+          "TaskCreate",
+          {
+            subject: "Read README.md",
+            description: "Read README.md in the working directory",
+            activeForm: "Reading README.md",
+          },
+          "Task #1 created successfully: Read README.md",
+        ),
+        ...toolCall(
+          "todo-create-2",
+          "TaskCreate",
+          {
+            subject: "Read math.js",
+            description: "Read math.js in the working directory",
+            activeForm: "Reading math.js",
+          },
+          "Task #2 created successfully: Read math.js",
+        ),
+        ...toolCall(
+          "todo-create-3",
+          "TaskCreate",
+          { subject: "Summarize", description: "Give a one-line summary of both files", activeForm: "Summarizing" },
+          "Task #3 created successfully: Summarize",
+        ),
+        ...toolCall("todo-update-1", "TaskUpdate", { taskId: "1", status: "completed" }, "Updated task #1 status"),
+        ...toolCall("todo-update-2", "TaskUpdate", { taskId: "2", status: "in_progress" }, "Updated task #2 status"),
+        { type: "text_delta", text: "One task done, two to go." },
+        { type: "turn_completed" },
+      ]
+    : [
+        ...toolCall("todo-update-3", "TaskUpdate", { taskId: "2", status: "completed" }, "Updated task #2 status"),
+        ...toolCall("todo-update-4", "TaskUpdate", { taskId: "3", status: "completed" }, "Updated task #3 status"),
+        { type: "text_delta", text: "All tasks are done." },
+        { type: "turn_completed" },
+      ]
+
+export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAfterMs = 60000) =>
   Layer.effect(
     ClaudeProvider,
     Effect.sync(() => {
@@ -29,11 +83,14 @@ export const usageLimitLayer = (scenario: "usage-limit" | "org-spend-limit" = "u
           }),
         planLimits: () => Effect.succeed(null),
         usage: () => Effect.succeed(null),
-        signIn: () => Effect.die("The simulated Claude Code cannot sign in"),
-        signOut: () => Effect.void,
         listCommands: () => Effect.succeed([]),
         runTurn: (input) =>
           Stream.suspend(() => {
+            if (scenario === "todos") {
+              const first = !attempted.has(input.threadId)
+              attempted.add(input.threadId)
+              return Stream.fromIterable(todoTurn(first))
+            }
             if (attempted.has(input.threadId) || input.resumeSessionId !== null) {
               const events: Array<AgentEvent> = [
                 { type: "text_delta", text: "The retry completed successfully." },

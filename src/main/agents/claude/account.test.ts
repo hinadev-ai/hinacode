@@ -67,7 +67,7 @@ describe("Claude account probe", () => {
       fake.info = { email: "work@example.com" }
       fake.query.mockClear()
       const provider = yield* ClaudeProvider
-      yield* provider.account("/accounts/work")
+      yield* provider.account({ dir: "/accounts/work", binary: "claude" })
       const env = probeEnv()
       expect(env.CLAUDE_CONFIG_DIR).toBe("/accounts/work")
       fake.query.mockClear()

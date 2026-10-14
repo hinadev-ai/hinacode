@@ -4,6 +4,7 @@ import { type ReactNode, useId, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowDownSLine,
+  RiArrowRightSLine,
   RiCheckboxCircleFill,
   RiCloseCircleFill,
   RiExternalLinkLine,
@@ -33,6 +34,7 @@ import {
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
+import { type PullRequestSection, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Markdown } from "./Markdown.tsx"
 import {
@@ -46,6 +48,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx"
 import { Button } from "./ui/button.tsx"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -290,7 +293,7 @@ function PullRequestDetailView({ threadId, url, linked, onUnlinkFailed }: PullRe
         <Attention pullRequest={pullRequest} threadId={threadId} />
         {isOpen(pullRequest.status) && <PullRequestActions pullRequest={pullRequest} onDone={refresh} />}
         <ChecksSection pullRequest={pullRequest} />
-        <Section title={m.pr_description()}>
+        <Section id="description" title={m.pr_description()}>
           {pullRequest.body.trim() === "" ? (
             <p className="text-xs text-muted-foreground">{m.pr_description_empty()}</p>
           ) : (
@@ -650,7 +653,11 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   if (pullRequest.checkRuns.length === 0) return null
 
   return (
-    <Section title={m.pr_checks()}>
+    <Section
+      id="checks"
+      title={m.pr_checks()}
+      collapsedSummary={pullRequest.checks && <ChecksIndicator checks={pullRequest.checks} />}
+    >
       <ul className="flex flex-col gap-0.5">
         {ran.map((run, index) => {
           const { Icon, className, label } = checkRunIndicator[run.status]
@@ -681,14 +688,36 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+interface SectionProps {
+  readonly id: PullRequestSection
+  readonly title: string
+  /** Shown next to the title while the section is collapsed. */
+  readonly collapsedSummary?: ReactNode
+  readonly children: ReactNode
+}
+
+function Section({ id, title, collapsedSummary, children }: SectionProps) {
   const headingId = useId()
+  const open = useUi((state) => !state.collapsedPullRequestSections.includes(id))
+  const setOpen = useUi((state) => state.setPullRequestSectionOpen)
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h4 id={headingId} className="text-xs font-medium text-muted-foreground">
-        {title}
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => setOpen(id, next)}
+      render={<section aria-labelledby={headingId} />}
+      className="flex flex-col gap-2"
+    >
+      <h4 className="text-xs font-medium text-muted-foreground">
+        <CollapsibleTrigger className="group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring">
+          <RiArrowRightSLine
+            aria-hidden
+            className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
+          />
+          <span id={headingId}>{title}</span>
+          {!open && collapsedSummary}
+        </CollapsibleTrigger>
       </h4>
-      {children}
-    </section>
+      <CollapsibleContent className="flex flex-col gap-2">{children}</CollapsibleContent>
+    </Collapsible>
   )
 }

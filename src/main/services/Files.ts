@@ -1,5 +1,5 @@
 import { type Dirent, watch as watchFs } from "node:fs"
-import { open, readdir, realpath } from "node:fs/promises"
+import { open, readdir, readFile, realpath, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
@@ -13,18 +13,29 @@ const reasons = {
   unknownRoot: "is not a project root or worktree",
   outsideRoot: "is not inside",
   unreadable: "cannot be read in",
+  unwritable: "cannot be written in",
 } as const
 
 /** The renderer asked for something outside the folders kkcode manages, or for something that is gone. */
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
-  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable"]),
+  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable"]),
 }) {
   override get message(): string {
     return this.reason === "unknownRoot"
       ? `${this.root} ${reasons.unknownRoot}`
       : `"${this.path}" ${reasons[this.reason]} ${this.root}`
+  }
+}
+
+/** The file no longer holds the text an edit started from, so saving would drop someone else's change. */
+export class FsWriteConflict extends Schema.TaggedError<FsWriteConflict>()("FsWriteConflict", {
+  root: Schema.String,
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `"${this.path}" changed on disk`
   }
 }
 
@@ -39,8 +50,20 @@ export class Files extends Context.Service<
       root: string,
       path: string,
     ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | PersistenceError>
+    /** The real absolute path of `path` under `root`, checked like `list`. */
+    readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
     /** Up to the first `MAX_READ_BYTES` of the file `path` under `root`, checked like `list`. */
     readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
+    /**
+     * Replaces the text of the existing file `path` under `root`, checked like `read`. Fails with
+     * `FsWriteConflict` when `expected` is not null and the file no longer holds it.
+     */
+    readonly write: (
+      root: string,
+      path: string,
+      content: string,
+      expected: string | null,
+    ) => Effect.Effect<void, FsAccessError | FsWriteConflict | PersistenceError>
     /**
      * Replaces the folders under `root` that push `fs.changed`. Folders that no longer exist are skipped,
      * and an empty `paths` closes every watcher of the root.
@@ -266,13 +289,34 @@ const make = Effect.gen(function* () {
         .toSorted(byKindThenName)
     })
 
-  const read = (root: string, path: string) =>
+  const resolve = (root: string, path: string) =>
     Effect.gen(function* () {
       yield* knownRoot(root)
-      const file = yield* resolveInside(root, path)
+      return yield* resolveInside(root, path)
+    })
+
+  const read = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const file = yield* resolve(root, path)
       return yield* Effect.tryPromise({
         try: () => readStart(file),
         catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
+      })
+    })
+
+  const write = (root: string, path: string, content: string, expected: string | null) =>
+    Effect.gen(function* () {
+      const file = yield* resolve(root, path)
+      if (expected !== null) {
+        const current = yield* Effect.tryPromise({
+          try: () => readFile(file, "utf8"),
+          catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
+        })
+        if (current !== expected) return yield* new FsWriteConflict({ root, path })
+      }
+      yield* Effect.tryPromise({
+        try: () => writeFile(file, content),
+        catch: () => new FsAccessError({ root, path, reason: "unwritable" }),
       })
     })
 
@@ -330,7 +374,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, read, watch })
+  return Files.of({ list, resolve, read, write, watch })
 })
 
 export const layer = Layer.effect(Files, make)

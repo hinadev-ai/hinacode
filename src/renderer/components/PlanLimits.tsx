@@ -11,10 +11,8 @@ import { accountAtom, accountKey, accountLimitsAtom, accountsAtom } from "../lib
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-
-const providerLabel = { claude: m.provider_claude, codex: m.provider_codex } satisfies Record<ProviderId, () => string>
 
 const levelText = { normal: "", warning: "text-attention", exhausted: "text-destructive" }
 const levelFill = { normal: "bg-muted-foreground", warning: "bg-attention", exhausted: "bg-destructive" }

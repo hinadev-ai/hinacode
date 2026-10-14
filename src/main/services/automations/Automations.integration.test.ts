@@ -1,7 +1,4 @@
-import { mkdtempSync } from "node:fs"
 import { createServer } from "node:net"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
@@ -12,6 +9,7 @@ import type { AgentEvent } from "../../../shared/agent.ts"
 import type { PushEvent } from "../../../shared/contract.ts"
 import { ClaudeProvider } from "../../agents/claude/index.ts"
 import { CodexProvider } from "../../agents/codex/index.ts"
+import { MuseProvider } from "../../agents/muse/index.ts"
 import type { AgentProvider } from "../../agents/provider.ts"
 import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
@@ -57,8 +55,6 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   account: () => Effect.succeed({ type: "signedOut" }),
   planLimits: () => Effect.succeed(null),
   usage: () => Effect.succeed(null),
-  signIn: () => Effect.die("unused"),
-  signOut: () => Effect.void,
   listCommands: () => Effect.succeed([]),
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
@@ -86,7 +82,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
-      Layer.provideMerge(AgentAccounts.layer(mkdtempSync(join(tmpdir(), "kk-accounts-")))),
+      Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
@@ -112,6 +108,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
         GitHub.layer,
         Layer.succeed(ClaudeProvider, provider("claude")),
         Layer.succeed(CodexProvider, provider("codex")),
+        Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
       ),
     ),

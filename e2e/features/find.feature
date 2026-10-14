@@ -14,8 +14,8 @@ Feature: Find in thread
     When I find "kkcode_group_find_unique" in the thread
     Then Find counts "1 of 1"
     And the current match is in the command "printf kkcode_group_find_unique"
-    When I toggle the command row "Print marker"
-    Then the command "printf kkcode_group_find_unique" is hidden
+    When I toggle the command group "Ran 2 commands"
+    Then the command row "printf kkcode_group_find_unique" is hidden
     When I go to the next match
     Then Find counts "1 of 1"
     And the current match is in the command "printf kkcode_group_find_unique"
@@ -24,7 +24,7 @@ Feature: Find in thread
     Given the agent finished a turn in "Commands" running a command that prints 500 "x" then "kkcode_tail_find_unique"
     When I find "kkcode_tail_find_unique" in the thread
     Then Find counts "1 of 1"
-    And the current match is in an open command ending in "kkcode_tail_find_unique"
+    And the current match is in a command row that shows the whole command ending in "kkcode_tail_find_unique"
 
   Scenario: Find shows a long command description in full while its match is current
     Given the agent finished a turn in "Commands" running "printf ready" described by 500 "x" then "kkcode_description_find_unique"
@@ -32,7 +32,7 @@ Feature: Find in thread
     Then Find counts "1 of 1"
     And the current match is in a command row that shows its whole label
     When I close Find
-    Then the command row "printf ready" truncates its label again
+    Then the command description ending in "kkcode_description_find_unique" is truncated again
 
   Scenario: Find steps between a folded command and later reply text
     Given the agent finished a turn in "Commands" with
@@ -57,7 +57,7 @@ Feature: Find in thread
       | command | pwd                             |              |
     When I find "print marker" in the thread
     Then Find counts "1 of 1"
-    And the current match is in the command row "Print marker"
+    And the current match is in the command description "Print marker"
     When I close Find
     Then nothing in the thread is marked
     When I toggle the command group "Ran 2 commands"
