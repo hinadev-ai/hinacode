@@ -15,6 +15,7 @@ import {
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
+import { useMenuAction } from "../../lib/useMenuAction.ts"
 import { m } from "../../paraglide/messages.js"
 import {
   AlertDialog,
@@ -107,14 +108,9 @@ function AccountRow({ account }: { account: AgentProfile }) {
   const status = useAtomValue(accountAtom(accountKey(account.provider, account.id)))
   const refreshStatus = useAtomRefresh(accountAtom(accountKey(account.provider, account.id)))
   const [dialog, setDialog] = useState<RowDialog | null>(null)
-  const [queued, setQueued] = useState<RowDialog | null>(null)
+  const menuAction = useMenuAction<RowDialog>(setDialog)
   const signedOut = AsyncResult.isSuccess(status) && status.value.type === "signedOut"
 
-  // Menu items queue their dialog and open it once the menu has closed and handed focus back.
-  const runQueued = () => {
-    setDialog(queued)
-    setQueued(null)
-  }
   const closeDialog = (open: boolean) => {
     if (!open) setDialog(null)
   }
@@ -124,11 +120,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
       <div className="flex min-h-8 items-center gap-x-3">
         <span className="w-28 shrink-0 truncate text-sm font-medium">{account.name}</span>
         <AccountStatus provider={account.provider} account={account} />
-        <DropdownMenu
-          onOpenChangeComplete={(open) => {
-            if (!open && queued) runQueued()
-          }}
-        >
+        <DropdownMenu onOpenChangeComplete={menuAction.onOpenChangeComplete}>
           <DropdownMenuTrigger
             render={
               <Button
@@ -142,11 +134,11 @@ function AccountRow({ account }: { account: AgentProfile }) {
             <RiMoreFill aria-hidden />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={() => setQueued("rename")}>
+            <DropdownMenuItem onClick={() => menuAction.queue("rename")}>
               <RiPencilLine aria-hidden />
               {m.settings_account_rename()}
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => setQueued("remove")}>
+            <DropdownMenuItem variant="destructive" onClick={() => menuAction.queue("remove")}>
               <RiDeleteBinLine aria-hidden />
               {m.settings_account_remove()}
             </DropdownMenuItem>

@@ -2,14 +2,13 @@ import { type RefObject, useState } from "react"
 import { RiAddLine, RiDeleteBinLine, RiFolderOpenLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { useMenuAction } from "../lib/useMenuAction.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { Button } from "./ui/button.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
-
-type Action = "edit" | "newThread" | "delete"
 
 interface ProjectMenuProps {
   readonly project: Project
@@ -23,8 +22,10 @@ interface ProjectMenuProps {
 /** The "…" menu on a project header, with the dialogs its items open. */
 export function ProjectMenu({ project, open, onOpenChange, onNewThread, focusAfterDelete }: ProjectMenuProps) {
   const [dialog, setDialog] = useState<"edit" | "delete" | null>(null)
-  // Items queue their action and run it once the menu has closed and handed focus back to the trigger.
-  const [queued, setQueued] = useState<Action | null>(null)
+  const menuAction = useMenuAction((action: "edit" | "newThread" | "delete") => {
+    if (action === "newThread") onNewThread()
+    else setDialog(action)
+  })
   const busy = useThreads((state) =>
     Object.values(state.byId).some(
       (thread) =>
@@ -32,24 +33,13 @@ export function ProjectMenu({ project, open, onOpenChange, onNewThread, focusAft
     ),
   )
 
-  const runQueued = () => {
-    if (queued === "newThread") onNewThread()
-    else setDialog(queued)
-    setQueued(null)
-  }
   const closeDialog = (dialogOpen: boolean) => {
     if (!dialogOpen) setDialog(null)
   }
 
   return (
     <>
-      <DropdownMenu
-        open={open}
-        onOpenChange={onOpenChange}
-        onOpenChangeComplete={(menuOpen) => {
-          if (!menuOpen && queued) runQueued()
-        }}
-      >
+      <DropdownMenu open={open} onOpenChange={onOpenChange} onOpenChangeComplete={menuAction.onOpenChangeComplete}>
         <DropdownMenuTrigger
           render={
             <Button
@@ -63,11 +53,11 @@ export function ProjectMenu({ project, open, onOpenChange, onNewThread, focusAft
           <RiMoreFill aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onClick={() => setQueued("edit")}>
+          <DropdownMenuItem onClick={() => menuAction.queue("edit")}>
             <RiPencilLine aria-hidden />
             {m.sidebar_project_edit()}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setQueued("newThread")}>
+          <DropdownMenuItem onClick={() => menuAction.queue("newThread")}>
             <RiAddLine aria-hidden />
             {m.sidebar_project_new_thread()}
           </DropdownMenuItem>
@@ -75,7 +65,7 @@ export function ProjectMenu({ project, open, onOpenChange, onNewThread, focusAft
             <RiFolderOpenLine aria-hidden />
             {m.sidebar_project_reveal()}
           </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => setQueued("delete")}>
+          <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => menuAction.queue("delete")}>
             <RiDeleteBinLine aria-hidden />
             {m.sidebar_project_delete()}
           </DropdownMenuItem>

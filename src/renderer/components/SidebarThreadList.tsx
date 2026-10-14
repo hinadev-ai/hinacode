@@ -46,6 +46,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
+import { useMenuAction } from "../lib/useMenuAction.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -212,8 +213,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
-  // Menu items queue their mode and apply it once the menu has closed and handed focus back.
-  const [queued, setQueued] = useState<RowMode | null>(null)
+  const menuAction = useMenuAction<RowMode>(setMode)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const worktree = useActiveWorktree(thread)
   const { archive: archiveSettings } = useSettings()
@@ -243,7 +243,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
     }
   }
 
-  const queue = (next: RowMode) => () => setQueued(next)
+  const queue = (next: RowMode) => () => menuAction.queue(next)
   const closeDialog = (open: boolean) => {
     if (!open) setMode("idle")
   }
@@ -316,11 +316,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
           <DropdownMenu
             open={menuOpen}
             onOpenChange={setMenuOpen}
-            onOpenChangeComplete={(open) => {
-              if (open || !queued) return
-              setMode(queued)
-              setQueued(null)
-            }}
+            onOpenChangeComplete={menuAction.onOpenChangeComplete}
           >
             <DropdownMenuTrigger
               ref={menuTriggerRef}
