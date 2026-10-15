@@ -720,7 +720,7 @@ export type RemoteStatus = typeof RemoteStatus.Type
 
 /** Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first. */
 export const RemotePairing = Schema.Struct({
-  hosts: Schema.Array(Schema.String),
+  hosts: Schema.NonEmptyArray(Schema.String),
   port: Schema.Int,
   token: Schema.String,
 })

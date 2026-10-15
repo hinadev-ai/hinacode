@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { isArrayNonEmpty, type NonEmptyReadonlyArray } from "effect/Array"
 import { PushEvent } from "./contract.ts"
 
 /** Path the phone upgrades to a WebSocket on. */
@@ -52,31 +53,40 @@ export const ServerFrame = Schema.Union([
 ])
 export type ServerFrame = typeof ServerFrame.Type
 
-/** Query string the pairing QR code carries, as `kkcode://connect?host=&port=&token=`. */
-export const pairingUrl = (host: string, port: number, token: string) => {
+/** A pairing reaches one desktop on any of `hosts`, tried in order. */
+export interface PairingTarget {
+  readonly hosts: NonEmptyReadonlyArray<string>
+  readonly port: number
+  readonly token: string
+}
+
+/** The text the pairing QR code carries, as `kkcode://connect?host=a&host=b&port=&token=`. */
+export const pairingUrl = ({ hosts, port, token }: PairingTarget) => {
   const url = new URL("kkcode://connect")
-  url.searchParams.set("host", host)
+  for (const host of hosts) url.searchParams.append("host", host)
   url.searchParams.set("port", String(port))
   url.searchParams.set("token", token)
   return url.toString()
 }
 
-export interface PairingTarget {
-  readonly host: string
-  readonly port: number
-  readonly token: string
-}
+export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; readonly port: number }) =>
+  `ws://${host.includes(":") ? `[${host}]` : host}:${port}${REMOTE_PATH}`
 
-/** Reads a pairing URL back. Null for anything that is not a complete `kkcode://connect` URL. */
+/** A hostname, IPv4 or bare IPv6 address that lands in the authority of the socket URL and nowhere else. */
+const isHost = (host: string) =>
+  host !== "" && !/[\s/?#@[\]\\]/.test(host) && URL.parse(remoteWebSocketUrl({ host, port: 1 })) !== null
+
+/**
+ * Reads a pairing URL back, keeping the order of repeated `host`s. Null for anything that is not a
+ * complete `kkcode://connect` URL.
+ */
 export const parsePairingUrl = (text: string): PairingTarget | null => {
   const url = URL.parse(text.trim())
-  if (!url || url.protocol !== "kkcode:") return null
-  const host = url.searchParams.get("host")
+  if (!url || url.protocol !== "kkcode:" || url.host !== "connect") return null
+  const hosts = url.searchParams.getAll("host")
   const port = Number(url.searchParams.get("port"))
   const token = url.searchParams.get("token")
-  if (!host || !token || !Number.isInteger(port) || port < 1 || port > 65535) return null
-  return { host, port, token }
+  if (!isArrayNonEmpty(hosts) || !hosts.every(isHost)) return null
+  if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
+  return { hosts, port, token }
 }
-
-export const remoteWebSocketUrl = ({ host, port }: Pick<PairingTarget, "host" | "port">) =>
-  `ws://${host.includes(":") ? `[${host}]` : host}:${port}${REMOTE_PATH}`

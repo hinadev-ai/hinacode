@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect"
+import type { NonEmptyReadonlyArray } from "effect/Array"
 import type { PushEvent, RpcEnvelope } from "@shared/contract.ts"
 import { type ClientFrame, REMOTE_PROTOCOL_VERSION, ServerFrame } from "@shared/remote.ts"
 
@@ -38,7 +39,8 @@ export interface SocketLike {
 }
 
 export interface TransportOptions {
-  readonly url: string
+  /** One socket URL per address of the desktop, in the pairing's order. */
+  readonly urls: NonEmptyReadonlyArray<string>
   readonly token: string
   /** Whether `method` changes state on the desktop, so a retry must carry a call key. */
   readonly isMutation: (method: string) => boolean
@@ -76,6 +78,10 @@ export class Transport {
   private nextCallId = 1
   private foreground = true
   private stopped = false
+  /** The address of the current or next attempt. */
+  private urlIndex = 0
+  /** The address of the last handshake, where reconnects start. */
+  private preferredIndex = 0
   private readonly pending = new Map<number, PendingCall>()
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private connectTimer: ReturnType<typeof setTimeout> | undefined
@@ -131,6 +137,7 @@ export class Transport {
     if (this.stopped || this.status === "unauthorized") return
     this.onLinkLost()
     this.attempt = 0
+    this.urlIndex = this.preferredIndex
     clearTimeout(this.retryTimer)
     this.open()
   }
@@ -146,7 +153,11 @@ export class Transport {
       this.ping()
       this.startPings()
       this.closeIfSilentFor(PROBE_TIMEOUT_MS)
-    } else if (this.status === "offline") this.reconnectNow()
+    } else if (this.status === "offline") {
+      // The phone may be on another network now, so start again from the address that worked last.
+      this.urlIndex = this.preferredIndex
+      this.reconnectNow()
+    }
   }
 
   /** Skips the remaining backoff. */
@@ -161,7 +172,8 @@ export class Transport {
     if (this.stopped) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
-    const ws = (this.options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike))(this.options.url)
+    const url = this.options.urls[this.urlIndex]!
+    const ws = (this.options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike))(url)
     this.socket = ws
     this.connectTimer = setTimeout(() => {
       if (this.socket === ws) this.onLinkLost()
@@ -227,6 +239,7 @@ export class Transport {
     this.expireOfflineCalls()
     clearTimeout(this.offlineTimer)
     this.attempt = 0
+    this.preferredIndex = this.urlIndex
     this.features = new Set(features)
     this.setStatus("connected", null)
     const now = Date.now()
@@ -285,7 +298,11 @@ export class Transport {
     this.idleTimer = undefined
   }
 
+  
   private onLinkLost() {
+    // A failed attempt moves on to the next address. A link that was up retries the address that worked.
+    this.urlIndex =
+      this.status === "connected" ? this.preferredIndex : (this.urlIndex + 1) % this.options.urls.length
     this.dropSocket()
     const now = Date.now()
     for (const call of [...this.pending.values()]) {

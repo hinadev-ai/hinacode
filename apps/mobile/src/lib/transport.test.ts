@@ -17,6 +17,8 @@ class FakeSocket implements SocketLike {
   readonly sent: Record<string, unknown>[] = []
   closed = false
 
+  constructor(readonly url: string) {}
+
   send(data: string) {
     this.sent.push(JSON.parse(data))
   }
@@ -54,20 +56,20 @@ let statuses: TransportStatus[]
 let ready: number
 let keys: number
 
-function setup() {
+function setup(urls: readonly [string, ...string[]] = ["ws://desktop/remote"]) {
   sockets = []
   statuses = []
   ready = 0
   keys = 0
   const transport = new Transport({
-    url: "ws://desktop/remote",
+    urls,
     token: "secret",
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
     onEvent: () => {},
-    createSocket: () => {
-      const socket = new FakeSocket()
+    createSocket: (url) => {
+      const socket = new FakeSocket(url)
       sockets.push(socket)
       return socket
     },
@@ -277,14 +279,14 @@ describe("Transport", () => {
     it("applies up to 30% jitter", async () => {
       sockets = []
       const transport = new Transport({
-        url: "ws://desktop/remote",
+        urls: ["ws://desktop/remote"],
         token: "secret",
         isMutation: () => false,
         onStatus: () => {},
         onReady: () => {},
         onEvent: () => {},
-        createSocket: () => {
-          const socket = new FakeSocket()
+        createSocket: (url) => {
+          const socket = new FakeSocket(url)
           sockets.push(socket)
           return socket
         },
@@ -469,6 +471,82 @@ describe("Transport", () => {
       expect(statuses.at(-1)).toBe("unauthorized")
       expect(sockets).toHaveLength(1)
       expect(read.error).toMatchObject({ tag: "Unauthorized" })
+    })
+  })
+
+  describe("several addresses", () => {
+    const TAILSCALE = "ws://100.64.0.2:47821/remote"
+    const LAN = "ws://192.168.1.5:47821/remote"
+    const HOSTNAME = "ws://mac.local:47821/remote"
+    const urls = () => sockets.map((socket) => socket.url)
+
+    it("falls back to the next address when the first never answers, then keeps the one that worked", async () => {
+      const transport = setup([TAILSCALE, LAN])
+      const read = track(transport.call("threads.list", undefined))
+      // Blackholed: the socket never opens.
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(sockets[0]!.closed).toBe(true)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(urls()).toEqual([TAILSCALE, LAN])
+      handshake()
+      expect(latest().calls()).toEqual([{ type: "call", id: 1, method: "threads.list" }])
+      latest().result(1, [])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(read.value).toEqual({ result: [] })
+
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(urls().at(-1)).toBe(LAN)
+    })
+
+    it("moves on at each failed attempt, in order, wrapping around", async () => {
+      setup([TAILSCALE, LAN, HOSTNAME])
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      latest().open()
+      latest().drop(4003)
+      await vi.advanceTimersByTimeAsync(1_000)
+      await vi.advanceTimersByTimeAsync(10_000)
+      await vi.advanceTimersByTimeAsync(4_000)
+      expect(urls()).toEqual([TAILSCALE, LAN, HOSTNAME, TAILSCALE])
+
+      handshake()
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(urls().slice(4)).toEqual([TAILSCALE, LAN])
+    })
+
+    it("starts from the address that worked when the network changes or the app returns", async () => {
+      const transport = setup([TAILSCALE, LAN])
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(500)
+      handshake()
+
+      transport.networkChanged()
+      expect(urls().at(-1)).toBe(LAN)
+      // A failed attempt moves on, but the next network change starts from the LAN address again.
+      latest().drop()
+      transport.networkChanged()
+      expect(urls().at(-1)).toBe(LAN)
+
+      latest().drop()
+      transport.setForeground(false)
+      transport.setForeground(true)
+      expect(urls().at(-1)).toBe(LAN)
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(urls().at(-1)).toBe(TAILSCALE)
+    })
+
+    it("stops on a refused token instead of trying the other addresses", async () => {
+      setup([TAILSCALE, LAN])
+      latest().open()
+      latest().drop(CLOSE_UNAUTHORIZED)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(urls()).toEqual([TAILSCALE])
+      expect(statuses.at(-1)).toBe("unauthorized")
     })
   })
 

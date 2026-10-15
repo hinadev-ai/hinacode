@@ -57,7 +57,7 @@ export function RemoteSettings() {
       </div>
       <ListenerSettings remote={remote} pending={pending} onSave={save} />
       {error && <FieldError>{error}</FieldError>}
-      {remote.enabled && <PairPhone fallbackHost={remote.bindHost} />}
+      {remote.enabled && <PairPhone />}
     </SettingsSection>
   )
 }
@@ -178,7 +178,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
   )
 }
 
-function PairPhone({ fallbackHost }: { fallbackHost: string }) {
+function PairPhone() {
   const pairing = useAtomValue(remotePairingAtom)
   const refresh = useAtomRefresh(remotePairingAtom)
   const headingId = useId()
@@ -190,7 +190,7 @@ function PairPhone({ fallbackHost }: { fallbackHost: string }) {
       </h3>
       {AsyncResult.builder(pairing)
         .onInitial(() => <p className="text-sm text-muted-foreground">{m.remote_pair_loading()}</p>)
-        .onSuccess((value) => <PairingDetails pairing={value} fallbackHost={fallbackHost} onRotated={refresh} />)
+        .onSuccess((value) => <PairingDetails pairing={value} onRotated={refresh} />)
         .onError((cause) => (
           <div className="flex items-center gap-2">
             <p className="text-sm text-destructive">{m.remote_pair_failed({ message: errorMessage(cause) })}</p>
@@ -206,18 +206,14 @@ function PairPhone({ fallbackHost }: { fallbackHost: string }) {
 
 interface PairingDetailsProps {
   readonly pairing: RemotePairing
-  readonly fallbackHost: string
   readonly onRotated: () => void
 }
 
-function PairingDetails({ pairing, fallbackHost, onRotated }: PairingDetailsProps) {
-  const [chosenHost, setChosenHost] = useState<string | null>(null)
+function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
-  const host =
-    chosenHost !== null && pairing.hosts.includes(chosenHost) ? chosenHost : (pairing.hosts[0] ?? fallbackHost)
-  const url = pairingUrl(host, pairing.port, pairing.token)
-  const hostItems = pairing.hosts.map((value) => ({ value, label: value }))
+  const url = pairingUrl(pairing)
+  const hostsId = useId()
 
   const rotate = () =>
     startTransition(async () => {
@@ -232,28 +228,17 @@ function PairingDetails({ pairing, fallbackHost, onRotated }: PairingDetailsProp
 
   return (
     <div className="flex flex-col gap-4">
-      {hostItems.length > 0 && (
-        <Field className="w-64">
-          <FieldLabel htmlFor="remote-pair-host">{m.remote_pair_host_label()}</FieldLabel>
-          <Select
-            items={hostItems}
-            value={host}
-            onValueChange={(next) => typeof next === "string" && setChosenHost(next)}
-          >
-            <SelectTrigger id="remote-pair-host" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {hostItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  <span className="font-mono">{item.label}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldDescription>{m.remote_pair_host_hint()}</FieldDescription>
-        </Field>
-      )}
+      <div className="flex flex-col gap-1.5">
+        <p id={hostsId} className="text-sm font-medium">
+          {m.remote_pair_host_label()}
+        </p>
+        <ul aria-labelledby={hostsId} className="flex flex-col gap-0.5 font-mono text-sm">
+          {pairing.hosts.map((host) => (
+            <li key={host}>{host}</li>
+          ))}
+        </ul>
+        <FieldDescription>{m.remote_pair_host_hint()}</FieldDescription>
+      </div>
       <PairingQrCode url={url} />
       <Field className="min-w-0">
         <FieldLabel htmlFor="remote-pair-url">{m.remote_pair_url_label()}</FieldLabel>

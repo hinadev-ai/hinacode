@@ -98,7 +98,11 @@ Both get the same policy:
 
 ### Pairing with every address
 
-`kkcode://connect?host=a&host=b&port=…&token=…` repeats `host`. `PairingTarget` becomes `{ hosts: NonEmptyReadonlyArray<string>, port, token }`, and the parser still accepts the single-host form. The phone tries the last host that worked first, then the others in order, moving on at each failed attempt. The QR code in Settings > Remote carries every reachable host, Tailscale first. Desktop environments keep one host in this change.
+`kkcode://connect?host=a&host=b&port=…&token=…` repeats `host`. `PairingTarget` becomes `{ hosts: NonEmptyReadonlyArray<string>, port, token }`, and the parser still accepts the single-host form. It refuses an empty host and any host that would not sit alone in the socket URL's authority; an IPv6 host is written bare and bracketed only in the socket URL.
+
+The phone's `Transport` takes one socket URL per host. It tries the last host that worked first, then the others in order, moving on at each failed attempt, including the 10 s ready timeout. A drop after a handshake, a network change and a return to the foreground all start again from the host that worked. 4001 and 4002 stop without trying other hosts. The host that worked is remembered for the life of the connection, not stored; a pairing stored by an older app as `{ host }` is read as one host.
+
+The QR code in Settings > Remote carries every reachable host, Tailscale first, and the page lists them instead of asking for one. `kkcode serve` prints that URL for phones and one single-host URL per address for desktops, since desktop environments keep one host in this change: `environments.add` takes the first.
 
 ## Slices
 

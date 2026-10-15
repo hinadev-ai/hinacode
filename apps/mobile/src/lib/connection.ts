@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Array as Arr, Effect, Schema } from "effect"
 import { create } from "zustand"
 import {
   mutations,
@@ -42,7 +42,7 @@ export function connect(target: PairingTarget) {
   transport?.stop()
   useConnection.setState({ target, error: null })
   const current = new Transport({
-    url: remoteWebSocketUrl(target),
+    urls: Arr.map(target.hosts, (host) => remoteWebSocketUrl({ host, port: target.port })),
     token: target.token,
     isMutation: (method) => mutations.has(method),
     onStatus: (status, error) => {

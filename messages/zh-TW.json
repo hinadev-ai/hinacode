@@ -732,7 +732,7 @@
   "remote_pair_loading": "正在載入配對碼…",
   "remote_pair_failed": "無法載入配對碼：{message}",
   "remote_pair_host_label": "位址",
-  "remote_pair_host_hint": "手機用來連線到這台電腦的位址。不在家時請選擇 Tailscale 名稱。",
+  "remote_pair_host_hint": "QR 碼包含所有位址。手機依此順序嘗試，並從上次成功的位址開始，因此離開家中網路後仍可透過 Tailscale 連線。",
   "remote_pair_qr_label": "配對 QR 碼",
   "remote_pair_url_label": "配對網址",
   "remote_pair_url_copy": "複製配對網址",

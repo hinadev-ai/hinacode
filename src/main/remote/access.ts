@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import { hostname, networkInterfaces } from "node:os"
-import { Context, Effect, Layer, Option, PubSub, Stream } from "effect"
+import { Array as Arr, Context, Effect, Layer, Option, PubSub, Stream } from "effect"
+import type { NonEmptyReadonlyArray } from "effect/Array"
 import { SqlClient } from "effect/sql"
 import type { RemotePairing, RemoteStatus } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
@@ -30,13 +31,13 @@ const isTailscale = (address: string) => address.startsWith("100.")
  * Addresses a phone could reach this machine on, Tailscale first, then LAN, then the hostname.
  * Nothing on loopback, since a phone is never on it.
  */
-export const reachableHosts = (bindHost: string): ReadonlyArray<string> => {
+export const reachableHosts = (bindHost: string): NonEmptyReadonlyArray<string> => {
   if (bindHost !== "0.0.0.0" && bindHost !== "::") return [bindHost]
   const addresses = Object.values(networkInterfaces())
     .flatMap((nets) => nets ?? [])
     .filter((net) => net.family === "IPv4" && !net.internal)
     .map((net) => net.address)
-  return [...addresses.filter(isTailscale), ...addresses.filter((a) => !isTailscale(a)), hostname()]
+  return Arr.append([...addresses.filter(isTailscale), ...addresses.filter((a) => !isTailscale(a))], hostname())
 }
 
 /** What the listener reports; `RemoteAccess` keeps it so the settings page can read it without the listener. */
