@@ -7,6 +7,9 @@ export const COMMAND_PREFIX = ">"
 /** Typed first, it searches message text and the open thread's files, as `%` does in VS Code. */
 export const SEARCH_PREFIX = "%"
 
+/** Typed first, it picks the project for a new thread. */
+export const NEW_THREAD_PREFIX = "+"
+
 const MAX_RECENT = 20
 
 interface PaletteState {

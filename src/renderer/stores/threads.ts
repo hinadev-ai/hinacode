@@ -23,14 +23,34 @@ export const useThreads = create<ThreadsState>()((set) => ({
 const inProject = (state: Pick<ThreadsState, "byId">, projectId: string) =>
   Object.values(state.byId).filter((thread) => thread.projectId === projectId)
 
+const isActive = (thread: Thread) => thread.status !== "archived"
+const isPinned = (thread: Thread) => thread.pinnedAt !== null
+const newestFirst = (a: Thread, b: Thread) => b.updatedAt.localeCompare(a.updatedAt)
+
 /** A project's threads that are not archived, in their saved sidebar order. */
 export const selectProjectThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
   inProject(state, projectId)
-    .filter((thread) => thread.status !== "archived")
+    .filter(isActive)
     .toSorted((a, b) => a.sortIndex - b.sortIndex)
+
+/** Like `selectProjectThreads`, without the pinned threads, which the sidebar lists above its tabs. */
+export const selectUnpinnedProjectThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
+  selectProjectThreads(projectId)(state).filter((thread) => !isPinned(thread))
+
+/** Active threads of every project that are not pinned, most recently updated first. */
+export const selectInboxThreads = (state: Pick<ThreadsState, "byId">) =>
+  Object.values(state.byId)
+    .filter((thread) => isActive(thread) && !isPinned(thread))
+    .toSorted(newestFirst)
+
+/** Active pinned threads of every project, in the order they were pinned. */
+export const selectPinnedThreads = (state: Pick<ThreadsState, "byId">) =>
+  Object.values(state.byId)
+    .filter((thread) => isActive(thread) && isPinned(thread))
+    .toSorted((a, b) => (a.pinnedAt ?? "").localeCompare(b.pinnedAt ?? ""))
 
 /** A project's archived threads, most recently updated first. */
 export const selectArchivedThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
   inProject(state, projectId)
-    .filter((thread) => thread.status === "archived")
-    .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .filter((thread) => !isActive(thread))
+    .toSorted(newestFirst)

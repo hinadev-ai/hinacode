@@ -126,6 +126,7 @@ export const RpcMethods = {
       accountId: Schema.optional(Schema.NullOr(Schema.String)),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
+      pinned: Schema.optional(Schema.Boolean),
     }),
     Thread,
   ),

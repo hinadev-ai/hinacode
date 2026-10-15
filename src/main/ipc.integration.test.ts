@@ -532,6 +532,23 @@ describe("projects, threads and settings over rpc", () => {
     expect(listed).toMatchObject({ sortIndex: thread.sortIndex + 10, updatedAt: thread.updatedAt })
   })
 
+  test("pinning a thread stamps pinnedAt once and keeps its updatedAt", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.pinnedAt).toBeNull()
+
+    const pinned = result(await invoke("threads.update", { id: thread.id, pinned: true }))
+    expect(pinned.pinnedAt).not.toBeNull()
+    expect(pinned.updatedAt).toBe(thread.updatedAt)
+    const repinned = result(await invoke("threads.update", { id: thread.id, pinned: true }))
+    expect(repinned.pinnedAt).toBe(pinned.pinnedAt)
+
+    const unpinned = result(await invoke("threads.update", { id: thread.id, pinned: false }))
+    expect(unpinned.pinnedAt).toBeNull()
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed).toMatchObject({ pinnedAt: null, updatedAt: thread.updatedAt })
+  })
+
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))

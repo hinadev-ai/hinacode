@@ -41,20 +41,22 @@ import {
   RiInboxUnarchiveLine,
   RiMoreFill,
   RiPencilLine,
+  RiPushpinLine,
   RiStackLine,
+  RiUnpinLine,
 } from "react-icons/ri"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
-import { callPromise, currentBranchAtom } from "../lib/rpc.ts"
+import { callPromise, currentBranchAtom, projectsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
-import { selectProjectThreads, useThreads } from "../stores/threads.ts"
+import { selectUnpinnedProjectThreads, useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -83,7 +85,7 @@ const titleOf = (id: unknown) => useThreads.getState().byId[String(id)]?.title ?
 const accessibility = (projectId: string) => {
   const position = (source: Draggable) => ({
     position: String((isSortable(source) ? source.index : 0) + 1),
-    total: String(selectProjectThreads(projectId)(useThreads.getState()).length),
+    total: String(selectUnpinnedProjectThreads(projectId)(useThreads.getState()).length),
   })
   return Accessibility.configure({
     screenReaderInstructions: { draggable: m.sidebar_drag_instructions() },
@@ -121,24 +123,38 @@ const sensors = [
 ]
 
 interface SidebarThreadListProps {
-  readonly projectId: string
+  /** A project id when the list is one project's threads; it scopes drag and drop to that project. */
+  readonly group: string
   /** The rows to show, already narrowed to the sidebar's tab and filter. */
   readonly threads: ReadonlyArray<Thread>
   /** Only a project's full list of active threads can be reordered, since a drop saves every row's position. */
   readonly reorderable: boolean
-  /** Takes focus after a delete leaves the project without threads. */
-  readonly newThreadButtonRef: RefObject<HTMLButtonElement | null>
+  /** Names each row's project, for lists that mix projects. */
+  readonly showProject?: boolean
+  /** Says the project has no threads when the list is empty. */
+  readonly showEmptyHint?: boolean
+  /** Takes focus after a delete leaves the list empty. */
+  readonly newThreadButtonRef?: RefObject<HTMLButtonElement | null>
+  readonly className?: string
 }
 
-/** Threads of one project, reorderable by drag when the list is complete. */
-export function SidebarThreadList({ projectId, threads, reorderable, newThreadButtonRef }: SidebarThreadListProps) {
+/** A list of thread rows, reorderable by drag when it is one project's complete list. */
+export function SidebarThreadList({
+  group,
+  threads,
+  reorderable,
+  showProject = false,
+  showEmptyHint = false,
+  newThreadButtonRef,
+  className = "",
+}: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
-  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef.current
+  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
-    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(projectId)],
-    [projectId],
+    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(group)],
+    [group],
   )
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
@@ -175,8 +191,8 @@ export function SidebarThreadList({ projectId, threads, reorderable, newThreadBu
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
-        <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5">
-          {threads.length === 0 && reorderable && (
+        <ul ref={listRef} className={`flex flex-col gap-0.5 py-0.5 ${className}`}>
+          {threads.length === 0 && showEmptyHint && (
             <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
@@ -184,8 +200,9 @@ export function SidebarThreadList({ projectId, threads, reorderable, newThreadBu
               key={thread.id}
               thread={thread}
               index={index}
-              group={projectId}
+              group={group}
               reorderable={reorderable}
+              showProject={showProject}
               linkRef={index === 0 ? firstRowRef : undefined}
               focusAfterRemoval={focusAfterRemoval}
             />
@@ -208,11 +225,12 @@ interface ThreadRowProps {
   readonly index: number
   readonly group: string
   readonly reorderable: boolean
+  readonly showProject: boolean
   readonly linkRef: RefObject<HTMLAnchorElement | null> | undefined
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemoval }: ThreadRowProps) {
+function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -225,7 +243,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
   const archived = thread.status === "archived"
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
-  const meta = useThreadMeta(thread)
+  const meta = useThreadMeta(thread, showProject)
   const state = rowState(
     thread.status,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
@@ -248,6 +266,14 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
       moveOut(await callPromise("threads.unarchive", { threadId: thread.id }))
     } catch (cause) {
       toast.error(m.sidebar_unarchive_failed({ message: errorMessage(cause) }))
+    }
+  }
+  const pinned = thread.pinnedAt !== null
+  const togglePin = async () => {
+    try {
+      moveOut(await callPromise("threads.update", { id: thread.id, pinned: !pinned }))
+    } catch (cause) {
+      toast.error((pinned ? m.sidebar_unpin_failed : m.sidebar_pin_failed)({ message: errorMessage(cause) }))
     }
   }
   const watched = meta.links.filter((link) => link.watch !== null)
@@ -277,7 +303,9 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
       data-emphasis={rowEmphasis[state]}
-      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
+      data-archived={archived}
+      // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
+      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -293,7 +321,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
           <ProviderIcon provider={thread.provider} />
           <span className="min-w-0 flex-1 truncate text-[0.9375rem]" title={thread.title}>
@@ -324,7 +352,9 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
                 size="icon-xs"
                 aria-label={m.sidebar_thread_reorder({ title: thread.title })}
                 aria-roledescription={m.sidebar_thread_reorder_role()}
-                className="cursor-grab"
+                // Rows drag by the whole row with the mouse, so the handle only shows for keyboard reordering.
+                data-reorder-handle
+                className="sr-only cursor-grab focus-visible:not-sr-only"
               >
                 <RiDraggable aria-hidden />
               </Button>
@@ -352,6 +382,12 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
                 <RiPencilLine aria-hidden />
                 {m.sidebar_thread_rename()}
               </DropdownMenuItem>
+              {!archived && (
+                <DropdownMenuItem onClick={() => void togglePin()}>
+                  {pinned ? <RiUnpinLine aria-hidden /> : <RiPushpinLine aria-hidden />}
+                  {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+                </DropdownMenuItem>
+              )}
               {watched.length === 0 ? (
                 <DropdownMenuItem disabled>
                   <RiEyeOffLine aria-hidden />
@@ -583,11 +619,13 @@ function StatusIndicator({ state }: { state: RowState }): ReactNode {
 }
 
 /** The branch a thread works on: its worktree's, or the one checked out in the project root. */
-function useThreadMeta(thread: Thread) {
+function useThreadMeta(thread: Thread, showProject: boolean) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => null)
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   return {
+    project: showProject ? (projects.find((project) => project.id === thread.projectId)?.name ?? null) : null,
     branch: worktree?.branch ?? rootBranch,
     // A removed worktree's branch is struck through: the thread works in the project root now.
     removed: worktree?.status === "removed",
@@ -599,13 +637,18 @@ function useThreadMeta(thread: Thread) {
 const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
-function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
+function ThreadMeta({ project, branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
   // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+      {project !== null && (
+        <span className="max-w-1/2 shrink-0 truncate" title={project}>
+          {project}
+        </span>
+      )}
       {branch !== null && (
         <span
           className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"

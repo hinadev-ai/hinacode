@@ -29,6 +29,21 @@ Feature: Command palette
     When I press "Enter"
     Then the sidebar is hidden
 
+  Scenario: The new thread shortcut offers the open thread's project first
+    Given another project "tools" has a thread "Bump deps"
+    When I open the thread "Bump deps" from the sidebar
+    And I press "ControlOrMeta+n"
+    Then the first palette result is "tools"
+    When I press "Enter"
+    Then a new thread is open with the composer focused
+    And the open thread belongs to the project "tools"
+
+  Scenario: A number chord in the new thread picker starts a thread in that project
+    When I press "ControlOrMeta+n"
+    And I press "ControlOrMeta+1"
+    Then a new thread is open with the composer focused
+    And the open thread belongs to the first project
+
   Scenario: Escape closes the palette
     When I press "ControlOrMeta+p"
     And I press "Escape"

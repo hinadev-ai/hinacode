@@ -58,6 +58,27 @@ Feature: Threads
     Then the sidebar lists the thread "Done"
     And the thread "Done" is stored as "idle"
 
+  Scenario: The Inbox lists every project's threads, most recently updated first
+    Given the project "demo" has a thread "Fix login"
+    And another project "tools" has a thread "Bump deps"
+    When I rename the thread "Bump deps" to "Bump all deps"
+    And I open the sidebar tab "Inbox"
+    Then the open tab lists the threads "Bump all deps, Fix login" in that order
+    When the app restarts
+    Then the open tab lists the threads "Bump all deps, Fix login" in that order
+
+  Scenario: A pinned thread moves above the tabs, after a restart too, until it is unpinned
+    Given the project "demo" has a thread "Keep"
+    And the project "demo" has a thread "Other"
+    When I pin the thread "Keep" from its menu
+    Then the pinned threads are "Keep"
+    And the open tab does not list the thread "Keep"
+    When the app restarts
+    Then the pinned threads are "Keep"
+    When I unpin the thread "Keep" from its menu
+    Then no thread is pinned
+    And the open tab lists the threads "Keep, Other" in that order
+
   Scenario: The sidebar filter matches thread titles and project names
     Given the project "demo" has a thread "Fix login"
     And the project "demo" has a thread "Write docs"
