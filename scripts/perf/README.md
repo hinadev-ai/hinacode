@@ -226,3 +226,26 @@ fell from 39.52 to 35.61 MiB. Explicitly importing Linear into the candidate add
 were within run-to-run variation. Raw comparisons use `baseline-3` / `candidate-2`
 and `baseline-repeat` / `candidate-repeat`; repeated startup labels are
 `baseline-startup-1` through `4` and `candidate-startup-1` through `4`.
+
+Bundling Effect with its Node and SQLite adapters in main was measured against
+the lazy-Linear package. Four alternating runs per package reduced median
+settings-ready startup from 759.84 to 674.80 ms, initial main CPU through the first
+post-GC sample from 739.26 to 623.37 ms, and empty main heap from 32.627 to
+20.000 MiB. App RSS fell from 597.20 to 582.52 MiB, excluding CLIs. These startup
+runs used warm package files and fresh profiles; wall-clock ranges overlap.
+The first new-package pilot took 2.09 seconds and is not used as a speed claim.
+
+Raw labels are `linear-bundle-startup-1` through `4` for the control and
+`bundled-bundle-startup-1` through `4` for the candidate, summarized in
+`.context/perf/bundle-startup-summary.json`. The live debugger counted 327 external
+Effect scripts in the alpha and zero in the bundled app. The packaged candidate
+also completed a mock Claude turn through the composer, served an authenticated
+MCP call, and restored the transcript after restart. Its full long-transcript
+capture is `bundled-full-2`; the later alpha control is `alpha-final-control`.
+
+The direct final alpha/candidate pair used the same workload and 300-second idle:
+main heap 39.522 to 22.149 MiB (-43.96%), app RSS 704.89 to 685.81 MiB (-2.71%),
+renderer heap 24.377 to 24.417 MiB. Older RSS captures were substantially lower in
+both unchanged and changed processes. Preserve all captures and use the adjacent
+pair for this long-idle RSS comparison; the repeatable heap reduction is stronger
+evidence. Run `compare-memory.mjs alpha-final-control bundled-full-2 footprint`.
