@@ -7,7 +7,7 @@ import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
 type StepState = "done" | "running" | "pending"
 
 const stepIcon: Record<StepState, ReactNode> = {
-  done: <RiCheckLine aria-hidden className="size-4 shrink-0 text-emerald-500" />,
+  done: <RiCheckLine aria-hidden className="size-4 shrink-0 text-success" />,
   running: <RiLoader4Line aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
   pending: <RiCircleLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
 }

@@ -22,10 +22,10 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
   return (
     <section
       aria-labelledby={`approval-${request.id}`}
-      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
+      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={`approval-${request.id}`} className="flex items-center gap-2 text-sm font-semibold">
-        <RiShieldCheckLine aria-hidden className="size-4 text-amber-500" />
+        <RiShieldCheckLine aria-hidden className="size-4 text-attention" />
         {m.approval_title({ provider: providerLabel })}
       </h2>
       <p className="text-sm">{request.title}</p>
@@ -51,7 +51,7 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
 
 function SessionScopeNote({ scope }: { scope: SessionScope }) {
   if (scope.kind === "tool") {
-    return <p className="text-xs text-amber-600 dark:text-amber-400">{m.approval_scope_tool({ tool: scope.tool })}</p>
+    return <p className="text-xs text-attention">{m.approval_scope_tool({ tool: scope.tool })}</p>
   }
   const label = {
     command: m.approval_scope_command(),

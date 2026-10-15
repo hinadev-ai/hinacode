@@ -1,4 +1,5 @@
 import type { Mermaid, MermaidConfig } from "mermaid"
+import { cn } from "cn"
 import { isValidElement, memo, type ReactNode, use, useEffect, useId, useMemo, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -28,10 +29,19 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
  */
 const imageSrc = (src: string) => githubAssetUrl(src) ?? (src.startsWith("/") ? attachmentUrl(decodeURI(src)) : src)
 
+// Prose stops near 75 characters a line; a wide transcript runs past 100. Code and tables keep the full width.
+// In em, not ch: DM Sans digits are wide, so 70ch still fit about 90 characters.
+const measure = "max-w-[34em]"
+const heading = cn(measure, "leading-snug font-semibold text-balance first:mt-0")
+
 const components: Components = {
   p: ({ children, node }) => {
     const asset = bareGitHubAsset(node)
-    return asset ? <GitHubAttachment src={asset} /> : <p className="my-2 first:mt-0 last:mb-0">{children}</p>
+    return asset ? (
+      <GitHubAttachment src={asset} />
+    ) : (
+      <p className={cn(measure, "my-2 first:mt-0 last:mb-0")}>{children}</p>
+    )
   },
   img: ({ src, alt }) => (
     <img
@@ -50,18 +60,20 @@ const components: Components = {
         {children}
       </a>
     ),
-  ul: ({ children }) => <ul className="my-2 list-disc pl-5">{children}</ul>,
+  ul: ({ children }) => <ul className={cn(measure, "my-2 list-disc pl-5")}>{children}</ul>,
   ol: ({ children, start }) => (
-    <ol start={start} className="my-2 list-decimal pl-5">
+    <ol start={start} className={cn(measure, "my-2 list-decimal pl-5")}>
       {children}
     </ol>
   ),
   li: ({ children }) => <li className="my-0.5">{children}</li>,
-  h1: ({ children }) => <h1 className="mt-4 mb-2 text-base font-semibold">{children}</h1>,
-  h2: ({ children }) => <h2 className="mt-4 mb-2 text-sm font-semibold">{children}</h2>,
-  h3: ({ children }) => <h3 className="mt-3 mb-1 text-sm font-semibold">{children}</h3>,
+  h1: ({ children }) => <h1 className={cn(heading, "mt-5 mb-2 text-lg")}>{children}</h1>,
+  h2: ({ children }) => <h2 className={cn(heading, "mt-4 mb-2 text-base")}>{children}</h2>,
+  h3: ({ children }) => <h3 className={cn(heading, "mt-3 mb-1 text-sm")}>{children}</h3>,
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-border pl-3 text-muted-foreground">{children}</blockquote>
+    <blockquote className={cn(measure, "my-2 border-l-2 border-border pl-3 text-muted-foreground")}>
+      {children}
+    </blockquote>
   ),
   // A fenced block arrives as <pre><code class="language-x">, so the block is built here and `code` below is only ever inline.
   pre: ({ children }) => {

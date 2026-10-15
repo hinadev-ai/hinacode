@@ -49,7 +49,7 @@ function Ring({ context }: { context: ContextWindow }) {
             aria-valuetext={m.thread_context_value({ percent, used, max })}
             className={cn(
               "inline-flex size-7 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              fraction >= WARNING_FRACTION ? "text-amber-500" : "text-muted-foreground",
+              fraction >= WARNING_FRACTION ? "text-attention" : "text-muted-foreground",
             )}
           >
             <svg viewBox="0 0 16 16" className="size-4 -rotate-90" aria-hidden>

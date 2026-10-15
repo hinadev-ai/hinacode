@@ -45,17 +45,17 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
   return (
     <section
       aria-labelledby={`secret-${request.id}`}
-      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
+      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={`secret-${request.id}`} className="flex items-center gap-2 text-sm font-semibold">
-        <RiKey2Line aria-hidden className="size-4 text-amber-500" />
+        <RiKey2Line aria-hidden className="size-4 text-attention" />
         {m.secret_request_title({ provider: providerLabel })}
       </h2>
       <p className="text-sm">{request.description}</p>
       <p className="text-xs text-muted-foreground">
         {m.secret_request_name()} <code className="font-mono text-foreground">{request.name}</code>
       </p>
-      {exists && <p className="text-xs text-amber-600 dark:text-amber-400">{m.secret_request_exists()}</p>}
+      {exists && <p className="text-xs text-attention">{m.secret_request_exists()}</p>}
       <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-2">
         <label htmlFor={inputId} className="sr-only">
           {m.secret_request_value()}

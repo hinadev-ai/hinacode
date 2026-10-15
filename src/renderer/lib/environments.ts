@@ -53,7 +53,7 @@ export const statusLabel: Record<EnvironmentStatus, () => string> = {
 
 export const statusDot: Record<EnvironmentStatus, string> = {
   connecting: "bg-muted-foreground",
-  connected: "bg-emerald-500",
+  connected: "bg-success",
   offline: "bg-destructive",
   unauthorized: "bg-attention",
   incompatible: "bg-attention",

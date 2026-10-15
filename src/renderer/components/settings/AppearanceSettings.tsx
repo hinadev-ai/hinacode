@@ -1,9 +1,9 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { useState } from "react"
+import { useId, useState } from "react"
 import { type Appearance, ThemeId } from "../../../shared/domain.ts"
-import { installedFontsAtom, themes, useTheme } from "../../lib/appearance.ts"
+import { applyContrast, installedFontsAtom, themes, useTheme } from "../../lib/appearance.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateClientSettingsAtom } from "../../lib/rpc.ts"
 import { useClientSettings } from "../../lib/settings.ts"
@@ -11,6 +11,7 @@ import { m } from "../../paraglide/messages.js"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
+import { Slider } from "../ui/slider.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 
 const fontSizes = [12, 13, 14, 15, 16, 17, 18, 20].map((size) => ({ value: size, label: `${size}px` }))
@@ -24,8 +25,10 @@ export function AppearanceSettings() {
     setError(null)
     try {
       await updateClientSettings({ appearance: { ...appearance, ...patch } })
+      return true
     } catch (cause) {
       setError(errorMessage(cause))
+      return false
     }
   }
 
@@ -33,6 +36,7 @@ export function AppearanceSettings() {
     <SettingsSection title={m.settings_appearance()}>
       <FieldGroup>
         <ThemePicker current={appearance.theme} onPick={(theme) => void save({ theme })} />
+        <ContrastField saved={appearance.contrast} onCommit={(contrast) => save({ contrast })} />
         <Field>
           <FieldLabel htmlFor="settings-font-size">{m.settings_font_size()}</FieldLabel>
           <div>
@@ -126,6 +130,54 @@ function ThemePreview({ id }: { id: ThemeId }) {
         <span className="mt-auto h-3 w-8 self-end rounded-sm bg-primary" />
       </div>
     </div>
+  )
+}
+
+const contrastLabel = (contrast: number) =>
+  contrast === 0
+    ? m.settings_contrast_standard()
+    : contrast > 0
+      ? m.settings_contrast_higher({ percent: contrast })
+      : m.settings_contrast_lower({ percent: -contrast })
+
+/**
+ * Previews on the root while the thumb moves and saves once it settles, so a drag never waits on the rpc.
+ * A failed save keeps the draft, so the slider still matches what the app renders next to the error.
+ */
+function ContrastField({ saved, onCommit }: { saved: number; onCommit: (contrast: number) => Promise<boolean> }) {
+  const labelId = useId()
+  const [draft, setDraft] = useState<number | null>(null)
+  const contrast = draft ?? saved
+  const preview = (value: number) => {
+    setDraft(value)
+    applyContrast(value)
+  }
+  const commit = async (value: number) => {
+    if (await onCommit(value)) setDraft(null)
+  }
+  return (
+    <Field>
+      <div>
+        <div className="flex w-72 flex-col gap-2">
+          <div className="flex items-baseline justify-between">
+            <FieldLabel id={labelId}>{m.settings_contrast()}</FieldLabel>
+            <span className="text-sm text-muted-foreground tabular-nums">{contrastLabel(contrast)}</span>
+          </div>
+          <Slider
+            aria-labelledby={labelId}
+            className="py-1.5"
+            min={-100}
+            max={100}
+            step={10}
+            value={contrast}
+            onValueChange={preview}
+            onValueCommitted={(value) => void commit(value)}
+            thumbAlignment="center"
+          />
+        </div>
+      </div>
+      <FieldDescription>{m.settings_contrast_hint()}</FieldDescription>
+    </Field>
   )
 }
 

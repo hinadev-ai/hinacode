@@ -1,7 +1,10 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/dm-sans";
+/* The opsz files carry DM Sans' optical-size axis, so small UI text gets the sturdier small-size cut. Italics are real faces. */
+@import "@fontsource-variable/dm-sans/opsz.css";
+@import "@fontsource-variable/dm-sans/opsz-italic.css";
 @import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/geist-mono/wght-italic.css";
 @import "@fontsource-variable/noto-sans-tc";
 @import "@fontsource-variable/noto-sans-jp";
 @import "@wterm/dom/css";
@@ -25,6 +28,9 @@
   /* Cross-fading one icon into another. */
   --ease-swap: cubic-bezier(0.2, 0, 0, 1);
   --spacing-titlebar: 2.5rem;
+  /* Badges and dense labels such as git refs. In rem, so it follows the font size setting. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
   /* A faster turn makes the same wait feel shorter. */
   --animate-spin: spin 0.6s linear infinite;
   /* Opacity only, so reduced motion keeps it. */
@@ -57,20 +63,14 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-attention: var(--attention);
+  --color-success: var(--success);
   --color-provider-claude: var(--provider-claude);
   --color-provider-codex: var(--provider-codex);
   --color-provider-muse: var(--provider-muse);
@@ -92,8 +92,6 @@
   --color-find-match-ring: var(--syntax-token);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -126,11 +124,8 @@
 :root,
 [data-theme="light"] {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --palette-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   /* Commands and mentions in the composer: the brand violet, since the default primary is gray. */
   --syntax-token: #7c3aed;
@@ -148,32 +143,22 @@
   --graph-lane-4: oklch(0.55 0.15 350);
   --graph-lane-5: oklch(0.56 0.12 130);
   --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.54 0 0);
+  --palette-muted-foreground: oklch(0.54 0 0);
   --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --attention: oklch(0.473 0.137 46.201);
-  /* Brand marks, darkened from the brand color where needed to clear 3:1 on the light surfaces. OpenAI's mark is monochrome. */
+  /* Connected, signed in or done. It shares a value with --vcs-added, not a role. */
+  --success: oklch(0.508 0.118 165.612);
+  /* Brand marks, darkened from the brand color where needed to clear 3:1 on the light surfaces. */
   --provider-claude: #c15f3c;
-  --provider-codex: var(--foreground);
   --provider-muse: #0064e0;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.25 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.25 0 0);
 }
@@ -181,11 +166,8 @@
 .dark {
   --background: oklch(0.145 0 0);
   /* Not white: near-white on near-black reads as glare. Still 15.6:1 on the background. */
-  --foreground: oklch(0.92 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.92 0 0);
+  --palette-foreground: oklch(0.92 0 0);
   --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.92 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --working: oklch(0.702 0.183 293.541);
@@ -199,34 +181,61 @@
   --graph-lane-5: oklch(0.74 0.12 130);
   --syntax-token: #a78bfa;
   --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.92 0 0);
   --muted: oklch(0.269 0 0);
   /* Keeps the 2.5:1 step from foreground that the brighter palette had. 4.9:1 on muted surfaces. */
-  --muted-foreground: oklch(0.66 0 0);
+  --palette-muted-foreground: oklch(0.66 0 0);
   --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.92 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --attention: oklch(0.828 0.189 84.429);
+  --success: oklch(0.765 0.177 163.223);
   --provider-claude: #d97757;
-  --provider-codex: var(--foreground);
   --provider-muse: #0081fb;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   /* Focus rings draw this at 50% opacity, which still clears 3:1 against the background. */
   --ring: oklch(0.8 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.92 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.92 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.8 0 0);
+}
+
+/*
+ * Palettes set --palette-foreground and --palette-muted-foreground; the contrast setting derives the rendered text
+ * from them. Higher mixes both toward black or white, muted text 60% of the way, so the two tiers stay apart.
+ * Lower mixes foreground 75% toward muted text and leaves muted text alone, because the palettes put it at 4.5:1.
+ * Previews put data-theme or .dark on their own element, so the rule recomputes there from that palette.
+ * See docs/features/2026-10-15-contrast-setting.md.
+ */
+:root,
+[data-theme] {
+  --contrast-ink: #000;
+}
+.dark {
+  --contrast-ink: #fff;
+}
+:root,
+[data-theme],
+.dark {
+  --contrast-higher: max(var(--contrast, 0), 0);
+  --contrast-lower: max(-1 * var(--contrast, 0), 0);
+  --foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--palette-foreground), var(--palette-muted-foreground) calc(var(--contrast-lower) * 75%)),
+    var(--contrast-ink) calc(var(--contrast-higher) * 100%)
+  );
+  --muted-foreground: color-mix(
+    in oklab,
+    var(--palette-muted-foreground),
+    var(--contrast-ink) calc(var(--contrast-higher) * 60%)
+  );
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent-foreground: var(--foreground);
+  /* OpenAI's mark is monochrome. */
+  --provider-codex: var(--foreground);
 }
 
 /*
@@ -237,30 +246,21 @@
 
 [data-theme]:not([data-theme="light"]) {
   --syntax-token: var(--primary);
-  --card: var(--surface);
-  --card-foreground: var(--foreground);
   --popover: var(--surface);
-  --popover-foreground: var(--foreground);
   --secondary: var(--muted);
-  --secondary-foreground: var(--foreground);
   --accent: var(--muted);
-  --accent-foreground: var(--foreground);
   --sidebar: var(--surface);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--muted);
-  --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 }
 
 [data-theme="catppuccin-mocha"] {
   --background: #1e1e2e;
-  --foreground: #cdd6f4;
+  --palette-foreground: #cdd6f4;
   --surface: #181825;
   --muted: #313244;
-  --muted-foreground: #a6adc8;
+  --palette-muted-foreground: #a6adc8;
   --border: #313244;
   --input: #45475a;
   --primary: #cba6f7;
@@ -271,10 +271,10 @@
 
 [data-theme="catppuccin-latte"] {
   --background: #eff1f5;
-  --foreground: #4c4f69;
+  --palette-foreground: #4c4f69;
   --surface: #e6e9ef;
   --muted: #dce0e8;
-  --muted-foreground: #5c5f77;
+  --palette-muted-foreground: #5c5f77;
   --border: #ccd0da;
   --input: #bcc0cc;
   --primary: #8839ef;
@@ -285,10 +285,10 @@
 
 [data-theme="tokyo-night"] {
   --background: #1a1b26;
-  --foreground: #c0caf5;
+  --palette-foreground: #c0caf5;
   --surface: #16161e;
   --muted: #292e42;
-  --muted-foreground: #a9b1d6;
+  --palette-muted-foreground: #a9b1d6;
   --border: #292e42;
   --input: #3b4261;
   --primary: #7aa2f7;
@@ -299,10 +299,10 @@
 
 [data-theme="rose-pine"] {
   --background: #191724;
-  --foreground: #e0def4;
+  --palette-foreground: #e0def4;
   --surface: #1f1d2e;
   --muted: #26233a;
-  --muted-foreground: #908caa;
+  --palette-muted-foreground: #908caa;
   --border: #26233a;
   --input: #403d52;
   --primary: #c4a7e7;
@@ -313,10 +313,10 @@
 
 [data-theme="gruvbox-dark"] {
   --background: #282828;
-  --foreground: #ebdbb2;
+  --palette-foreground: #ebdbb2;
   --surface: #1d2021;
   --muted: #3c3836;
-  --muted-foreground: #a89984;
+  --palette-muted-foreground: #a89984;
   --border: #3c3836;
   --input: #504945;
   --primary: #fabd2f;

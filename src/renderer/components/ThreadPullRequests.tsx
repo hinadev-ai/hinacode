@@ -77,7 +77,7 @@ export const pullRequestStatusLabel = {
 
 export const statusColor = {
   draft: "text-muted-foreground",
-  open: "text-emerald-500",
+  open: "text-success",
   merged: "text-violet-500",
   closed: "text-destructive",
 } satisfies Record<PullRequestStatus, string>
@@ -469,7 +469,7 @@ function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; 
 }
 
 const calloutTone = {
-  warning: "border-amber-500/30 bg-amber-500/10",
+  warning: "border-attention/30 bg-attention/10",
   danger: "border-destructive/30 bg-destructive/10",
 } as const
 

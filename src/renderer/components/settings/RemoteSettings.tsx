@@ -100,7 +100,7 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
       return (
         <>
           <span className="flex items-center gap-2">
-            <StatusDot className="bg-emerald-500" />
+            <StatusDot className="bg-success" />
             {m.remote_status_listening({ address: `${remote.bindHost}:${remote.port}` })}
           </span>
           <span className="text-muted-foreground tabular-nums">{m.remote_status_connected({ count: connected })}</span>

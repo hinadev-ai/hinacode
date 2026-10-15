@@ -51,7 +51,7 @@ function GitHubStatus() {
                 case "signedIn":
                   return (
                     <>
-                      <RiCheckboxCircleFill aria-hidden className="size-4 text-emerald-500" />
+                      <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
                       {m.settings_github_signed_in({ host: status.host, login: status.login })}
                     </>
                   )
@@ -126,7 +126,7 @@ function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
           .onSuccess((has) =>
             has ? (
               <>
-                <RiCheckboxCircleFill aria-hidden className="size-4 text-emerald-500" />
+                <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
                 {m.settings_linear_stored()}
               </>
             ) : (

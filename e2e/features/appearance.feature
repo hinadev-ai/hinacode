@@ -34,13 +34,28 @@ Feature: Appearance
     Then the app uses the "light" appearance
     And the existing named theme and font preference is preserved
 
-  Scenario Outline: Default appearances keep text and keyboard focus readable
+  Scenario Outline: Default appearances keep text and keyboard focus readable at every contrast
     When I open settings
     And I open appearance settings
     And I choose the theme "<theme>"
+    And I move the contrast slider to "<contrast>"
     Then text and keyboard focus meet contrast requirements
 
     Examples:
-      | theme |
-      | Light |
-      | Dark  |
+      | theme | contrast |
+      | Light | Standard |
+      | Light | Lowest   |
+      | Light | Highest  |
+      | Dark  | Standard |
+      | Dark  | Lowest   |
+      | Dark  | Highest  |
+
+  Scenario: Higher contrast brightens text and survives restart
+    When I open settings
+    And I open appearance settings
+    And I choose the theme "Dark"
+    And I move the contrast slider to "Highest"
+    Then text reads at higher contrast than the palette
+    And the contrast 100 is saved
+    When the app restarts
+    Then text reads at higher contrast than the palette
