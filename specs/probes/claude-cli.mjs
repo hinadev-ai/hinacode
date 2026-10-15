@@ -2,6 +2,7 @@
 // Each run makes a few Haiku requests.
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,8 +16,12 @@ const prompts = (async function* () {
     await new Promise((resolve) => (wake = resolve))
   }
 })()
+const names = new Map()
 const send = (text, priority) => {
+  const uuid = randomUUID()
+  names.set(uuid, text.match(/(ALPHA|BETA|GAMMA|300)/)?.[1])
   inbox.push({
+    uuid,
     type: "user",
     message: { role: "user", content: text },
     parent_tool_use_id: null,
@@ -26,6 +31,10 @@ const send = (text, priority) => {
 }
 const t0 = Date.now()
 const log = (...args) => console.log(`${String(Date.now() - t0).padStart(6)}ms`, ...args)
+const answers = (m) =>
+  m.user_message_uuid === undefined && m.user_message_uuids === undefined
+    ? ""
+    : ` answers=${(m.user_message_uuids ?? [m.user_message_uuid]).map((uuid) => names.get(uuid) ?? uuid).join(",")}`
 
 let steered = false
 const steer = () => {
@@ -73,6 +82,7 @@ const timer = setTimeout(() => (log("quiet for 25 s, stopping"), q.close(), proc
 for await (const m of q) {
   timer.refresh()
   if (m.type === "stream_event") {
+    if (m.user_message_uuid !== undefined) log(`stream_event${answers(m)}`)
     if (++deltas === 5 && scenario !== "after-generation" && !steered) {
       steer()
       if (scenario === "two-steers") {
@@ -92,13 +102,14 @@ for await (const m of q) {
       .map((c) => c.text)
       .join("")
       .slice(0, 60)
-    log("assistant", JSON.stringify(text))
+    log(`assistant${answers(m)}`, JSON.stringify(text))
   } else if (m.type === "result") {
     results++
     log(
-      `RESULT #${results}`,
+      `RESULT #${results}${answers(m)}`,
       m.subtype,
       "terminal_reason=" + m.terminal_reason,
+      "queued_turn_count=" + m.queued_turn_count,
       JSON.stringify(String(m.result ?? "").slice(0, 40)),
     )
     if (results >= 4) break

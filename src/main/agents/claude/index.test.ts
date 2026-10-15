@@ -133,6 +133,13 @@ const backgroundTasks = (...tasks: ReadonlyArray<Readonly<Record<string, unknown
   tasks: tasks.map((task) => ({ task_type: "local_bash", description: "npm run dev", ...task })),
 })
 
+const textDelta = (text: string, answering?: string) => ({
+  type: "stream_event",
+  parent_tool_use_id: null,
+  event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
+  ...(answering === undefined ? {} : { user_message_uuid: answering }),
+})
+
 const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   threadId: "thread-1",
   prompt: "Hello",
@@ -368,14 +375,81 @@ describe("Claude idle sessions", () => {
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
         yield* provider.steer("thread-1", "Use pnpm instead", [])
         yield* until(() => latestCli().prompts.length === 2)
-        latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming" })
+        const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
+        latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [prompt] })
 
         yield* TestClock.adjust("10 minutes")
         expect(latestCli().close).not.toHaveBeenCalled()
 
-        latestCli().push(succeeded)
+        latestCli().push({ ...succeeded, user_message_uuids: [steer] })
         yield* Fiber.join(turn.fiber)
         expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("answers a steer sent while Claude finishes within the same turn", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        const turn = yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* until(() => latestCli().prompts.length === 2)
+        const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
+        latestCli().push({ ...succeeded, user_message_uuids: [prompt] }, textDelta("Switching to pnpm", steer), {
+          ...succeeded,
+          user_message_uuids: [steer],
+        })
+
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
+          { type: "text_delta", text: "Switching to pnpm" },
+          expect.objectContaining({ type: "turn_completed" }),
+        ])
+      }),
+    ),
+  )
+
+  it.effect("answers a steer the CLI batched with an abandoned turn's steer", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        const abandoned = yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* until(() => latestCli().prompts.length === 2)
+        yield* Fiber.interrupt(abandoned.fiber)
+
+        const turn = yield* startTurn(turnInput({ prompt: "Run the tests" }))
+        yield* until(() => latestCli().prompts.length === 3)
+        yield* provider.steer("thread-1", "Only the unit tests", [])
+        yield* until(() => latestCli().prompts.length === 4)
+        const [first, abandonedSteer, prompt, steer] = latestCli().prompts.map((message) => message.uuid)
+        const mixed = [abandonedSteer, steer]
+        latestCli().push(
+          { ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [first] },
+          { ...textDelta("Running unit tests"), user_message_uuids: mixed },
+          { ...succeeded, user_message_uuids: mixed },
+        )
+        yield* settle
+        expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
+          { type: "text_delta", text: "Running unit tests" },
+        ])
+
+        latestCli().push(textDelta("Done", prompt), { ...succeeded, user_message_uuids: [prompt] })
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
+          { type: "text_delta", text: "Running unit tests" },
+          { type: "text_delta", text: "Done" },
+          expect.objectContaining({ type: "turn_completed" }),
+        ])
       }),
     ),
   )

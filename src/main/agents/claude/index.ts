@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import {
   type AccountInfo,
@@ -84,10 +85,12 @@ interface Session extends MapState, ApprovalSession {
   sessionId: string | null
   turn: TurnQueue | null
   interrupted: boolean
-  /** Steer prompts sent during the current turn; each makes the CLI end its in-flight response with an aborted result. */
-  pendingSteers: number
-  /** Turns whose consumer left before their result; their remaining messages must not reach the next turn. */
-  abandonedTurns: number
+  /** Uuids of the prompts sent during the current turn: the first one and every steer. */
+  readonly turnPrompts: Set<string>
+  /** Uuids of the prompts sent in any turn that no result has answered yet. */
+  readonly unanswered: Set<string>
+  /** Uuids of the prompts the CLI's current response answers, as stamped on its first message. */
+  answering: ReadonlyArray<string>
   readonly tasks: Map<string, string | undefined>
   taskSnapshots: boolean
   claims: number
@@ -96,7 +99,7 @@ interface Session extends MapState, ApprovalSession {
 }
 
 const isIdle = (session: Session) =>
-  session.turn === null && session.claims === 0 && session.abandonedTurns === 0 && session.tasks.size === 0
+  session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
 
 interface SessionContext {
   readonly cwd: string
@@ -210,19 +213,22 @@ const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, pri
     const blocks = (yield* Effect.forEach(attachments, attachmentBlocks)).flat()
     const content: SDKUserMessage["message"]["content"] =
       blocks.length === 0 ? prompt : [...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]), ...blocks]
-    const message: SDKUserMessage = {
+    return {
       type: "user",
+      uuid: randomUUID(),
       message: { role: "user", content },
       parent_tool_use_id: null,
       ...(priority === undefined ? {} : { priority }),
-    }
-    return message
+    } satisfies SDKUserMessage
   })
 
-/** The CLI cuts the response short to pick up a `priority: "now"` prompt, then answers it under a new result. */
-const isSteerAbort = (message: SDKMessage) =>
-  message.type === "result" &&
-  (message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools")
+/** The prompts a response answers. The CLI stamps them on the response's first message and on its result. */
+const answeredPrompts = (message: SDKMessage) => {
+  if (message.type !== "stream_event" && message.type !== "assistant" && message.type !== "result") return undefined
+  return (
+    message.user_message_uuids ?? (message.user_message_uuid === undefined ? undefined : [message.user_message_uuid])
+  )
+}
 
 const baseOptions = (home: AccountHome | null) =>
   Effect.map(installedBinary("claude", home?.binary ?? "claude"), (path): Options => ({
@@ -301,6 +307,7 @@ export const layer = Layer.effect(
       if (isTerminal(event)) {
         Queue.endUnsafe(session.turn)
         session.turn = null
+        session.turnPrompts.clear()
       }
     }
 
@@ -405,20 +412,21 @@ export const layer = Layer.effect(
 
     const route = (session: Session, message: SDKMessage) => {
       trackTask(session, message)
-      // The CLI handles prompts in order, so everything up to an abandoned turn's result is stale.
-      if (session.abandonedTurns > 0) {
-        if (message.type === "result") {
-          session.abandonedTurns--
+      const answered = answeredPrompts(message)
+      if (answered !== undefined) session.answering = answered
+      // A response that answers only prompts of a turn whose consumer left before its result. The CLI can batch
+      // such a steer with a steer of the current turn, and that response belongs to the current turn.
+      const stale = session.answering.length > 0 && session.answering.every((uuid) => !session.turnPrompts.has(uuid))
+      if (message.type === "result") {
+        // CLIs that predate the stamps name no prompt; ending the turn beats waiting for a result that never comes.
+        for (const uuid of answered ?? [...session.unanswered]) session.unanswered.delete(uuid)
+        session.answering = []
+        // A steer the CLI read too late to abort the response gets its own result after this one.
+        if (stale || [...session.turnPrompts].some((uuid) => session.unanswered.has(uuid))) {
           resetTurnLimits(session)
+          return
         }
-        return
-      }
-      if (session.pendingSteers > 0 && !session.interrupted && isSteerAbort(message)) {
-        session.pendingSteers--
-        resetTurnLimits(session)
-        return
-      }
-      if (message.type === "result") session.pendingSteers = 0
+      } else if (stale) return
       if (message.type === "system" && message.subtype === "init") {
         session.sessionId = message.session_id
         resumable.set(session.threadId, {
@@ -536,8 +544,9 @@ export const layer = Layer.effect(
           sessionId: resume ?? null,
           turn: null,
           interrupted: false,
-          pendingSteers: 0,
-          abandonedTurns: 0,
+          turnPrompts: new Set(),
+          unanswered: new Set(),
+          answering: [],
           tasks: new Map(),
           taskSnapshots: false,
           claims: 1,
@@ -607,14 +616,16 @@ export const layer = Layer.effect(
         session.turn = turn
         resetTurnLimits(session)
         session.interrupted = false
-        session.pendingSteers = 0
+        session.turnPrompts.clear()
+        session.turnPrompts.add(message.uuid)
+        session.unanswered.add(message.uuid)
         session.lastRequest = null
         // A consumer that stops reading mid-turn means the turn should stop too.
         yield* Effect.addFinalizer(() =>
           session.turn === turn
             ? Effect.sync(() => {
                 session.turn = null
-                session.abandonedTurns++
+                session.turnPrompts.clear()
               }).pipe(Effect.andThen(interruptQuery(session)))
             : Effect.void,
         )
@@ -640,7 +651,8 @@ export const layer = Layer.effect(
         if (session?.turn == null) {
           return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })
         }
-        session.pendingSteers++
+        session.turnPrompts.add(message.uuid)
+        session.unanswered.add(message.uuid)
         for (const attachment of attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
       })
