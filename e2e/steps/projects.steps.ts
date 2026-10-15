@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
@@ -57,8 +57,15 @@ When(
   },
 )
 
-When("I try to add a project named {string} at a path that does not exist", async ({ app, names }, name: string) => {
-  await addProjectDialog(app.page, join(app.userData, "missing"), names.of(name))
+When("I add a project named {string} at a path that does not exist", async ({ app, names }, name: string) => {
+  const dialog = await addProjectDialog(app.page, join(app.userData, "new", names.of(name)), names.of(name))
+  await expect(dialog).toBeHidden()
+})
+
+When("I try to add a project named {string} at a path that is a file", async ({ app, names }, name: string) => {
+  const file = join(app.userData, "notes.txt")
+  writeFileSync(file, "")
+  await addProjectDialog(app.page, file, names.of(name))
 })
 
 When("I try to add another project named {string} for my repository", async ({ app, repo, names }, name: string) => {
@@ -78,4 +85,11 @@ Then("the sidebar lists the project {string}", async ({ app, names }, name: stri
 Then("the project {string} is stored with my repository path", async ({ app, repo, names }, name: string) => {
   const projects = await rpc(app.page, "projects.list", undefined)
   expect(projects.find((project) => project.name === names.of(name))?.rootPath).toBe(repo)
+})
+
+Then("the project {string} has a folder on disk", async ({ app, names }, name: string) => {
+  const projects = await rpc(app.page, "projects.list", undefined)
+  const rootPath = projects.find((project) => project.name === names.of(name))?.rootPath
+  expect(rootPath).toBe(join(app.userData, "new", names.of(name)))
+  expect(statSync(rootPath ?? "").isDirectory()).toBe(true)
 })

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -44,5 +44,35 @@ describe("GitHub.repository", () => {
     expect(await repository(repoWithOrigin(null))).toBe(null)
     expect(await repository(repoWithOrigin("https://gitlab.com/a/b.git"))).toBe(null)
     expect(await repository(tempDir())).toBe(null)
+  })
+})
+
+const ghToken = (() => {
+  try {
+    return process.env["GH_TOKEN"] ?? execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim()
+  } catch {
+    return undefined
+  }
+})()
+
+describe("GitHub.clone", () => {
+  test.skipIf(ghToken === undefined)("clones over https when gh prefers ssh and ssh has no key", async () => {
+    const ghConfig = tempDir()
+    writeFileSync(join(ghConfig, "config.yml"), "git_protocol: ssh\n")
+    const dest = join(tempDir(), "Hello-World")
+    const saved = { ...process.env }
+    Object.assign(process.env, { GH_CONFIG_DIR: ghConfig, GH_TOKEN: ghToken, GIT_SSH_COMMAND: "false" })
+    try {
+      await Effect.runPromise(
+        GitHub.use((github) => github.clone({ owner: "octocat", name: "Hello-World" }, dest)).pipe(
+          Effect.provide(layer.pipe(Layer.provide(NodeServices.layer))),
+        ),
+      )
+    } finally {
+      process.env = saved
+    }
+    expect(execFileSync("git", ["-C", dest, "remote", "get-url", "origin"], { encoding: "utf8" }).trim()).toBe(
+      "https://github.com/octocat/Hello-World.git",
+    )
   })
 })

@@ -98,18 +98,18 @@ Then("the settings heading reads {string}", async ({ app }, heading: string) => 
 })
 
 Then("the language {string} is saved", async ({ app }, locale: string) => {
-  await expect.poll(async () => (await rpc(app.page, "settings.get", undefined)).locale).toBe(locale)
+  await expect.poll(async () => (await rpc(app.page, "clientSettings.get", undefined)).locale).toBe(locale)
 })
 
 Then("the shortcut {string} is stored for {string}", async ({ app }, chord: string, command: string) => {
   await expect
-    .poll(async () => (await rpc(app.page, "settings.get", undefined)).keybindings[commandId(command)])
+    .poll(async () => (await rpc(app.page, "clientSettings.get", undefined)).keybindings[commandId(command)])
     .toBe(chord)
 })
 
 Then("no shortcut override is stored for {string}", async ({ app }, command: string) => {
   await expect
-    .poll(async () => (await rpc(app.page, "settings.get", undefined)).keybindings[commandId(command)])
+    .poll(async () => (await rpc(app.page, "clientSettings.get", undefined)).keybindings[commandId(command)])
     .toBeUndefined()
 })
 

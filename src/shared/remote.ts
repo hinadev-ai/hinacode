@@ -29,7 +29,12 @@ const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
  * A method that returns nothing answers with `envelope: {}`, since JSON drops an undefined `result`.
  */
 export const ServerFrame = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("ready"), version: Schema.Int }),
+  /** `environment` names the kkcode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it. */
+  Schema.Struct({
+    type: Schema.Literal("ready"),
+    version: Schema.Int,
+    environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  }),
   Schema.Struct({
     type: Schema.Literal("result"),
     id: Schema.Int,

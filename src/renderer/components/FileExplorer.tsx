@@ -32,6 +32,7 @@ import {
 } from "react-icons/ri"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -94,6 +95,7 @@ interface FileExplorerProps {
  * the tree and `aria-activedescendant` points at the selected row, so rows can scroll out of the DOM.
  */
 export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
+  const canReveal = useThreadEnvironment(thread.id) === null
   const tree = useExplorer((state) => state.byRoot[root] ?? emptyTree)
   const load = useExplorer((state) => state.load)
   const refresh = useExplorer((state) => state.refresh)
@@ -282,11 +284,13 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
           {rootName}
         </span>
         <HeaderButton label={m.explorer_collapse_all()} onClick={() => collapseAll(root)} icon={RiContractUpDownLine} />
-        <HeaderButton
-          label={m.panel_reveal()}
-          onClick={() => void callPromise("shell.reveal", { path: root })}
-          icon={RiFolderOpenLine}
-        />
+        {canReveal && (
+          <HeaderButton
+            label={m.panel_reveal()}
+            onClick={() => void callPromise("shell.reveal", { path: root })}
+            icon={RiFolderOpenLine}
+          />
+        )}
         <HeaderButton label={m.explorer_refresh()} onClick={() => void refresh(root)} icon={RiRefreshLine} />
       </header>
       <div
@@ -344,12 +348,14 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                   <RiFileCopyLine aria-hidden />
                   {m.explorer_copy_path()}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => void callPromise("shell.reveal", { path: `${root}/${selectedEntry.path}` })}
-                >
-                  <RiFolderOpenLine aria-hidden />
-                  {m.panel_reveal()}
-                </DropdownMenuItem>
+                {canReveal && (
+                  <DropdownMenuItem
+                    onClick={() => void callPromise("shell.reveal", { path: `${root}/${selectedEntry.path}` })}
+                  >
+                    <RiFolderOpenLine aria-hidden />
+                    {m.panel_reveal()}
+                  </DropdownMenuItem>
+                )}
               </ContextMenuContent>
             )}
           </ContextMenu>

@@ -24,6 +24,8 @@ import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as AutoArchive from "./services/AutoArchive.ts"
+import * as ClientSettings from "./services/ClientSettings.ts"
+import * as Environments from "./services/Environments.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as Files from "./services/Files.ts"
 import * as Favicons from "./services/Favicons.ts"
@@ -158,6 +160,7 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
       Layer.provideMerge(AgentAccounts.layer),
       Layer.provideMerge(Settings.layer),
     ),
+    ClientSettings.layer,
     Messages.layer,
     Attachments.layer,
     Search.layer,
@@ -186,6 +189,7 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
     updates,
     Mcp.serverLayer,
     AgentLogins.layer,
+    Environments.layer.pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   // A cloud's address is written below it, so the listener's first read of its settings already has it.

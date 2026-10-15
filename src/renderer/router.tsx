@@ -17,7 +17,16 @@ export const threadRoute = createRoute({
     typeof search.agent === "string" ? { agent: search.agent } : {},
 })
 
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsRoute })
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsRoute,
+  /** `page` opens one settings page, such as `environments`. `environment` picks the cloud the Environment pages edit. */
+  validateSearch: (search: Record<string, unknown>): { page?: string; environment?: string } => ({
+    ...(typeof search.page === "string" ? { page: search.page } : {}),
+    ...(typeof search.environment === "string" ? { environment: search.environment } : {}),
+  }),
+})
 
 // Electron has no address bar, and memory history keeps working under file:// in production.
 export const router = createRouter({

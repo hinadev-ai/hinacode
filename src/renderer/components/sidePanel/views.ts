@@ -12,6 +12,7 @@ import {
 } from "react-icons/ri"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
+import type { EnvironmentId } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
@@ -86,8 +87,8 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
 ]
 
 /** The views whose experiment, if any, is turned on. */
-export const useSidePanelViews = (): ReadonlyArray<SidePanelView> => {
-  const { experimental } = useSettings()
+export const useSidePanelViews = (environment: EnvironmentId): ReadonlyArray<SidePanelView> => {
+  const { experimental } = useSettings(environment)
   return useMemo(
     () => sidePanelViews.filter((view) => view.experiment === undefined || experimental[view.experiment]),
     [experimental],

@@ -11,6 +11,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   PersistenceError: () => m.error_persistence(),
   ProjectPathTakenError: () => m.error_project_path_taken(),
   ProjectRootInvalidError: () => m.error_project_root_invalid(),
+  ProjectFolderNotEmptyError: () => m.error_project_folder_not_empty(),
   PullRequestUrlInvalidError: () => m.error_pull_request_url_invalid(),
   LinearRequestError: () => m.error_linear_request(),
   SchemaError: () => m.error_schema(),
@@ -21,6 +22,9 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   TerminalError: (detail) => m.error_terminal({ detail }),
   ThreadBusyError: () => m.error_thread_busy(),
   FsAccessError: () => m.error_fs_access(),
+  // InvalidPairingUrl, EnvironmentUnreachable and EnvironmentOffline keep main's message: it names the host, the
+  // cloud, or which of two mistakes the URL has.
+  EnvironmentUnauthorized: () => m.error_environment_unauthorized(),
   Defect: (detail) => m.error_unexpected({ detail }),
 }
 

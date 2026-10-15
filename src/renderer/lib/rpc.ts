@@ -9,17 +9,26 @@ export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   message: Schema.String,
 }) {}
 
+/** Where a named call runs: a cloud's id, or null for this Mac. Other calls find their environment from their ids. */
+export type EnvironmentId = string | null
+
+export interface CallOptions {
+  readonly environment?: EnvironmentId | undefined
+}
+
 /** Calls the main process. Fails with `RpcError` carrying the handler's error tag and message. */
 export const call = <M extends RpcMethod>(
   method: M,
   payload: RpcRequest<M>,
+  options?: CallOptions,
 ): Effect.Effect<RpcResponse<M>, RpcError> => {
   const spec = RpcMethods[method]
   const encodeRequest = Schema.encodeEffect(spec.request)
   const decodeResponse = Schema.decodeUnknownEffect(spec.response)
+  const environment = options?.environment ?? undefined
   return Effect.gen(function* () {
     const encoded = yield* encodeRequest(payload)
-    const envelope = yield* Effect.promise(() => window.kkcode.rpc(method, encoded))
+    const envelope = yield* Effect.promise(() => window.kkcode.rpc(method, encoded, environment))
     if ("error" in envelope) return yield* new RpcError(envelope.error)
     return yield* decodeResponse(envelope.result)
   }).pipe(
@@ -27,67 +36,109 @@ export const call = <M extends RpcMethod>(
   )
 }
 
-export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<M>) =>
-  Effect.runPromise(call(method, payload))
+export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<M>, options?: CallOptions) =>
+  Effect.runPromise(call(method, payload, options))
 
 const decodePushEvent = Schema.decodeUnknownSync(PushEvent)
 
 export const onPushEvent = (listener: (event: PushEvent) => void) =>
   window.kkcode.onEvent((raw) => listener(decodePushEvent(raw)))
 
+/** An atom family over several arguments, keyed by their JSON. Every argument must survive a JSON round trip. */
+const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
+  const family = Atom.family((key: string) => make(...(JSON.parse(key) as Args)))
+  return (...args: Args) => family(JSON.stringify(args))
+}
+
 export const projectsAtom = Atom.make(call("projects.list", undefined)).pipe(Atom.keepAlive)
 
-export const createProjectAtom = Atom.fn((input: RpcRequest<"projects.create">) =>
-  call("projects.create", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
+type InEnvironment<T> = T & { readonly environment: EnvironmentId }
+
+export const createProjectAtom = Atom.fn(({ environment, ...input }: InEnvironment<RpcRequest<"projects.create">>) =>
+  call("projects.create", input, { environment }).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
-export const cloneProjectAtom = Atom.fn((input: RpcRequest<"projects.clone">) =>
-  call("projects.clone", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
+export const cloneProjectAtom = Atom.fn(({ environment, ...input }: InEnvironment<RpcRequest<"projects.clone">>) =>
+  call("projects.clone", input, { environment }).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
 export const updateProjectAtom = Atom.fn((input: RpcRequest<"projects.update">) =>
   call("projects.update", input).pipe(Effect.tap(() => Atom.refresh(projectsAtom))),
 )
 
-export const settingsAtom = Atom.make(call("settings.get", undefined)).pipe(Atom.keepAlive)
+export const settingsAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("settings.get", undefined, { environment })).pipe(Atom.keepAlive),
+)
+
+export const updateSettingsAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.fn((patch: RpcRequest<"settings.set">) =>
+    call("settings.set", patch, { environment }).pipe(Effect.tap(() => Atom.refresh(settingsAtom(environment)))),
+  ),
+)
 
 export const notificationPermissionAtom = Atom.make(call("notifications.permission", undefined))
 
-export const updateSettingsAtom = Atom.fn((patch: RpcRequest<"settings.set">) =>
-  call("settings.set", patch).pipe(Effect.tap(() => Atom.refresh(settingsAtom))),
+/** Settings of this desktop, whichever environment a thread runs in. */
+export const clientSettingsAtom = Atom.make(call("clientSettings.get", undefined)).pipe(Atom.keepAlive)
+
+export const updateClientSettingsAtom = Atom.fn((patch: RpcRequest<"clientSettings.set">) =>
+  call("clientSettings.set", patch).pipe(Effect.tap(() => Atom.refresh(clientSettingsAtom))),
 )
 
-export const modelsAtom = Atom.family((provider: ProviderId) =>
-  Atom.make(call("models.list", { provider })).pipe(Atom.keepAlive),
+/** Paired clouds with their link status. A status push lists them again. */
+export const environmentsAtom = Atom.make((get) => {
+  get.addFinalizer(onPushEvent((event) => event.type === "environment.status" && get.refreshSelf()))
+  return call("environments.list", undefined)
+}).pipe(Atom.keepAlive)
+
+/** Pairing a cloud already listed updates it in place. */
+export const addEnvironmentAtom = Atom.fn((input: RpcRequest<"environments.add">) =>
+  call("environments.add", input).pipe(Effect.tap(() => Atom.refresh(environmentsAtom))),
+)
+
+export const removeEnvironmentAtom = Atom.fn((id: string) =>
+  call("environments.remove", { id }).pipe(
+    Effect.tap(() => Atom.refresh(environmentsAtom)),
+    Effect.tap(() => Atom.refresh(projectsAtom)),
+  ),
+)
+
+export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
+  Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
 )
 
 /**
- * Who an account is signed in as, keyed by `accountKey`. Not kept alive, so reopening the Models tab picks
- * up a sign-in made in a terminal meanwhile.
+ * Who an account is signed in as. `accountId` null is the CLI's own login. Not kept alive, so reopening the
+ * Models tab picks up a sign-in made in a terminal meanwhile.
  */
-export const accountAtom = Atom.family((key: string) => {
-  const [provider, accountId] = JSON.parse(key) as [ProviderId, string | null]
-  return Atom.make(call("agents.account", { provider, accountId }))
-})
-/** `accountId` null is the CLI's own login. */
-export const accountKey = (provider: ProviderId, accountId: string | null) => JSON.stringify([provider, accountId])
-
-/** Accounts added in kkcode, of every agent. */
-export const accountsAtom = Atom.make(call("accounts.list", undefined)).pipe(Atom.keepAlive)
-
-export const createAccountAtom = Atom.fn((input: RpcRequest<"accounts.create">) =>
-  call("accounts.create", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+export const accountAtom = familyOf((environment: EnvironmentId, provider: ProviderId, accountId: string | null) =>
+  Atom.make(call("agents.account", { provider, accountId }, { environment })),
 )
 
-export const renameAccountAtom = Atom.fn((input: RpcRequest<"accounts.rename">) =>
-  call("accounts.rename", input).pipe(Effect.tap(() => Atom.refresh(accountsAtom))),
+/** Accounts added in kkcode, of every agent. */
+export const accountsAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("accounts.list", undefined, { environment })).pipe(Atom.keepAlive),
+)
+
+export const createAccountAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.fn((input: RpcRequest<"accounts.create">) =>
+    call("accounts.create", input, { environment }).pipe(Effect.tap(() => Atom.refresh(accountsAtom(environment)))),
+  ),
+)
+
+export const renameAccountAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.fn((input: RpcRequest<"accounts.rename">) =>
+    call("accounts.rename", input, { environment }).pipe(Effect.tap(() => Atom.refresh(accountsAtom(environment)))),
+  ),
 )
 
 /** Removing the default account also clears it from the settings. */
-export const deleteAccountAtom = Atom.fn((id: string) =>
-  call("accounts.delete", { id }).pipe(
-    Effect.tap(() => Atom.refresh(accountsAtom)),
-    Effect.tap(() => Atom.refresh(settingsAtom)),
+export const deleteAccountAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.fn((id: string) =>
+    call("accounts.delete", { id }, { environment }).pipe(
+      Effect.tap(() => Atom.refresh(accountsAtom(environment))),
+      Effect.tap(() => Atom.refresh(settingsAtom(environment))),
+    ),
   ),
 )
 
@@ -201,11 +252,13 @@ const windowReturnSignal = Atom.readable((get) => {
  * answer is over 30 seconds old. While shown, it is re-asked every minute and when the window comes back,
  * so a merge on GitHub shows up.
  */
-const gitHubLookup = <K, A>(lookup: (key: K) => Effect.Effect<A, RpcError>) => {
+const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
+  lookup: (...args: Args) => Effect.Effect<A, RpcError>,
+) => {
   // Its own family: the wrapper below is dropped on unmount, and a family only holds its atoms weakly.
-  const cached = Atom.family((key: K) => Atom.make(lookup(key)).pipe(Atom.setIdleTTL("10 minutes")))
-  return Atom.family((key: K) =>
-    cached(key).pipe(
+  const cached = familyOf((...args: Args) => Atom.make(lookup(...args)).pipe(Atom.setIdleTTL("10 minutes")))
+  return familyOf((...args: Args) =>
+    cached(...args).pipe(
       Atom.swr({ staleTime: "30 seconds", revalidateOnFocus: true, focusSignal: windowReturnSignal }),
       Atom.withRefresh("60 seconds"),
     ),
@@ -217,17 +270,23 @@ export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) =>
   worktreeId ? call("worktrees.pullRequest", { id: worktreeId }) : Effect.succeed(null),
 )
 
-/** A linked pull request's status. */
-export const pullRequestStatusAtom = gitHubLookup((url: string) => call("github.pullRequest", { url }))
+/** A linked pull request's status, asked through `gh` in the environment of the thread showing it. */
+export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
+  call("github.pullRequest", { url }, { environment }),
+)
 
 /** Everything the PR tab shows about one pull request. */
-export const pullRequestDetailAtom = gitHubLookup((url: string) => call("github.pullRequestDetail", { url }))
+export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
+  call("github.pullRequestDetail", { url }, { environment }),
+)
 
 /**
  * Whether `gh` is signed in. Kept for 12 hours after the last screen showing it closes, since asking `gh`
  * is slow and the answer rarely changes. Settings' Recheck asks again at once.
  */
-export const gitHubAuthAtom = Atom.make(call("github.auth", undefined)).pipe(Atom.setIdleTTL("12 hours"))
+export const gitHubAuthAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("github.auth", undefined, { environment })).pipe(Atom.setIdleTTL("12 hours")),
+)
 
 /** A site's icon as a data URL, or null. Keyed by origin and kept, so scrolling back to a link never asks again. */
 export const faviconAtom = Atom.family((origin: string) =>
@@ -239,11 +298,23 @@ export const repositoryAtom = Atom.family((projectId: string) =>
   Atom.make(call("github.repository", { projectId })).pipe(Atom.keepAlive),
 )
 
-export const secretStoredAtom = Atom.family((name: string) => Atom.make(call("secrets.has", { name })))
+export const secretStoredAtom = familyOf((environment: EnvironmentId, name: string) =>
+  Atom.make(call("secrets.has", { name }, { environment })),
+)
 
-/** Re-lists the thread's open ports every 2s while something subscribes. */
+/**
+ * Re-lists the thread's open ports every 2s while something subscribes. A cloud thread's cloud going offline keeps
+ * the last list on screen and asks again, instead of ending the poll with an error the reconnect would not clear.
+ */
 export const threadPortsAtom = Atom.family((threadId: string) =>
-  Atom.make(Stream.fromEffectSchedule(call("ports.list", { threadId }), Schedule.spaced("2 seconds"))),
+  Atom.make(
+    Stream.fromEffectSchedule(
+      call("ports.list", { threadId }).pipe(
+        Effect.retry({ while: (error) => error.tag === "EnvironmentOffline", schedule: Schedule.spaced("2 seconds") }),
+      ),
+      Schedule.spaced("2 seconds"),
+    ),
+  ),
 )
 
 /** The thread's tiny VM, kept current by `vm.updated`. A push that lands before `vm.get` answers wins over it. */
@@ -262,7 +333,9 @@ export const threadVmAtom = Atom.family((threadId: string) =>
 )
 
 /** Whether kkcode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
-export const vmHostAtom = Atom.make(call("vm.host", undefined))
+export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("vm.host", undefined, { environment })),
+)
 
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
 
@@ -303,7 +376,7 @@ export const remoteStatusAtom = Atom.make(
  * since the pairing URL follows the listener's bind host and port.
  */
 export const remotePairingAtom = Atom.make((get) => {
-  get(settingsAtom)
+  get(settingsAtom(null))
   return call("remote.pairing", undefined)
 })
 
@@ -316,10 +389,15 @@ const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))
 
 /** Re-lists every 15s while subscribed so poll times stay current; a recorded run refreshes it at once. */
-export const automationsAtom = Atom.make((get) => {
-  get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
-  return Stream.fromEffectSchedule(call("automations.list", undefined), Schedule.spaced("15 seconds"))
-})
+export const automationsAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => {
+    get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
+    return Stream.fromEffectSchedule(
+      call("automations.list", undefined, { environment }),
+      Schedule.spaced("15 seconds"),
+    )
+  }),
+)
 
 export const automationRunsAtom = Atom.family((automationId: string) =>
   Atom.make((get) => {
@@ -329,9 +407,9 @@ export const automationRunsAtom = Atom.family((automationId: string) =>
 )
 
 /** Recomputed when settings change, since the URL follows the listener's bind host and port. */
-export const webhookUrlAtom = Atom.family((automationId: string) =>
+export const webhookUrlAtom = familyOf((environment: EnvironmentId, automationId: string) =>
   Atom.make((get) => {
-    get(settingsAtom)
+    get(settingsAtom(environment))
     return call("automations.webhookUrl", { id: automationId })
   }),
 )

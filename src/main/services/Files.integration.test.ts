@@ -13,7 +13,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Layer, Queue } from "effect"
+import { Effect, Layer, Option, Queue } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { FsEntry } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -316,6 +316,13 @@ describe("fs.watch", () => {
       const changed = yield* run(
         Effect.gen(function* () {
           yield* Files.use((files) => files.watch(repo, ["", "src"]))
+          // macOS can start the FSEvents stream after watch() returns and miss writes made before it.
+          for (let attempt = 0; ; attempt++) {
+            write(join(repo, `src/warmup-${attempt}.ts`), "")
+            if (Option.isSome(yield* Effect.timeoutOption(Queue.take(pushes), "250 millis"))) break
+          }
+          yield* Effect.sleep("300 millis")
+          yield* Queue.clear(pushes)
           write(join(repo, "src/burst-1.ts"), "1")
           write(join(repo, "src/burst-2.ts"), "2")
           const first = yield* Queue.take(pushes)

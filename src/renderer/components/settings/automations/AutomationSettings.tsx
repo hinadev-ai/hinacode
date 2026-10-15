@@ -7,6 +7,7 @@ import { RiAddLine, RiArrowDownSLine, RiDeleteBinLine, RiPencilLine } from "reac
 import type { Automation, Project } from "../../../../shared/domain.ts"
 import { automationsAtom, callPromise, projectsAtom, updateSettingsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
+import { environmentOf, useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
 import {
   AlertDialog,
@@ -35,7 +36,11 @@ import { SkeletonList } from "../../ui/skeleton.tsx"
 const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
 export function AutomationSettings() {
-  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
+  const environment = useSettingsEnvironment()
+  // An automation runs where its project lives, so the picked environment offers only its own projects.
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
+    (project) => environmentOf(project) === environment,
+  )
   const [dialog, setDialog] = useState<AutomationDialogState | null>(null)
   const [created, setCreated] = useState<{ automation: Automation; secret: string } | null>(null)
 
@@ -72,8 +77,9 @@ const LOOPBACK = "127.0.0.1"
 const ALL_INTERFACES = "0.0.0.0"
 
 function ListenerSettings() {
-  const { automations: listener } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const { automations: listener } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [port, setPort] = useState(String(listener.port))
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -152,8 +158,9 @@ interface AutomationListProps {
 }
 
 function AutomationList({ projects, onEdit }: AutomationListProps) {
-  const automations = useAtomValue(automationsAtom)
-  const refresh = useAtomRefresh(automationsAtom)
+  const environment = useSettingsEnvironment()
+  const automations = useAtomValue(automationsAtom(environment))
+  const refresh = useAtomRefresh(automationsAtom(environment))
 
   return AsyncResult.builder(automations)
     .onInitial(() => (
@@ -198,7 +205,8 @@ interface AutomationItemProps {
 }
 
 function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps) {
-  const refreshList = useAtomRefresh(automationsAtom)
+  const environment = useSettingsEnvironment()
+  const refreshList = useAtomRefresh(automationsAtom(environment))
   const [expanded, setExpanded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()

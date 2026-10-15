@@ -23,8 +23,8 @@ const ALL_INTERFACES = "0.0.0.0"
 type RemoteSettingsValue = ReturnType<typeof useSettings>["remote"]
 
 export function RemoteSettings() {
-  const { remote } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const { remote } = useSettings(null)
+  const updateSettings = useAtomSet(updateSettingsAtom(null), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 

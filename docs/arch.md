@@ -69,6 +69,25 @@ Remote mode (`src/main/remote/`) is a second transport for the same contract. A 
 
 `kkcode serve` runs the same runtime as a headless cloud (`src/main/serve.ts`): no window, no ipc registration, a stub `Updates`, the remote listener forced on at boot, and the pairing URLs printed to stdout. It takes its own `KKCODE_USER_DATA` and therefore its own database, projects and threads. This is slice 1 of `features/2026-10-14-remote-clouds.md`; the relay server and multi-cloud clients follow there, under [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
+### Environments: routing a window call
+
+A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call by `routes[method]` in `src/main/environments/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
+
+```mermaid
+flowchart LR
+  renderer["renderer: rpc(method, payload, environment?)"] --> route["ipc.ts route"]
+  route -- "client, or an id no cloud owns,<br/>or named without environment" --> dispatch["dispatch: local layers"]
+  route -- "owner: owners.owner(entity, payload[key])<br/>named: environment" --> forward["Environments.forward"]
+  route -- "all" --> both["dispatch + Environments.gather, concatenated"]
+  forward --> cloud["kkcode serve /remote"]
+  cloud -- "result: teaches owners, stamps Project.environmentId" --> forward
+  cloud -- "event: teaches owners" --> windows["WindowPush: windows only, never phone sinks"]
+```
+
+- `environments/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, automation, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
+- A cloud that is not connected answers `EnvironmentOffline`; for `all` routes it contributes its last answer to the same call. Close code 4001 (`unauthorized`) and a `ready` with another `REMOTE_PROTOCOL_VERSION` (`incompatible`) stop reconnecting; anything else retries with jittered backoff from 1 s to 60 s. A ping every 10 s drops a socket silent for 25 s.
+- Every data directory has an id (setting row `environment.id`, read by `RemoteAccess`), sent in the `ready` frame. The desktop keys its `environment` rows by it, so pairing the same cloud again updates one row. Tokens are the secrets `environment.<id>.token`.
+
 The visible thread owns its renderer history. Leaving it unloads the transcript even while its agent runs; the main process owns ongoing turns and pending approvals. Reopening reads a fresh sequence-numbered snapshot. Each load has an identity so a response from an earlier visit cannot replace a newer snapshot.
 
 Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
@@ -385,6 +404,13 @@ erDiagram
     text key PK
     text value
   }
+  environment {
+    text id PK "the cloud's own environment.id"
+    text name
+    text host
+    int port
+    text created_at
+  }
   agent_account {
     text id PK
     text provider "claude|codex"
@@ -395,6 +421,8 @@ erDiagram
 ```
 
 - `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`.
+- `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
+- `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 

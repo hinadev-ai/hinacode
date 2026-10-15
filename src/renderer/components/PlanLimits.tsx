@@ -7,7 +7,7 @@ import type { AccountLimits, ProviderId } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import type { LimitWindow, LimitWindowKind } from "../../shared/limits.ts"
 import { formatMinutes, formatResetIn, limitLevel, mostUsed } from "../lib/planLimits.ts"
-import { accountAtom, accountKey, accountLimitsAtom, accountsAtom } from "../lib/rpc.ts"
+import { accountAtom, accountLimitsAtom, accountsAtom } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -40,7 +40,8 @@ type Shown = AccountLimits & { readonly windows: ReadonlyArray<LimitWindow> }
  */
 export function PlanLimits({ openThread }: { openThread: Pick<Thread, "provider" | "accountId"> | undefined }) {
   const entries = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), () => [])
-  const added = AsyncResult.getOrElse(useAtomValue(accountsAtom), () => [])
+  // Limits carry no environment, so account names and sign-ins come from This Mac.
+  const added = AsyncResult.getOrElse(useAtomValue(accountsAtom(null)), () => [])
   const shown = entries.flatMap((entry): ReadonlyArray<Shown> => {
     const windows = entry.limits?.windows ?? []
     return windows.length === 0 ? [] : [{ ...entry, windows }]
@@ -55,7 +56,7 @@ export function PlanLimits({ openThread }: { openThread: Pick<Thread, "provider"
       : added.find((account) => account.id === entry.accountId)?.name
   return shown.map((entry) => (
     <AccountLimitsGroup
-      key={accountKey(entry.provider, entry.accountId)}
+      key={`${entry.provider}:${entry.accountId ?? ""}`}
       provider={entry.provider}
       accountId={entry.accountId}
       name={nameOf(entry)}
@@ -173,7 +174,7 @@ function AccountHeading({
   accountId: string | null
   name: string | undefined
 }) {
-  const account = AsyncResult.getOrElse(useAtomValue(accountAtom(accountKey(provider, accountId))), () => null)
+  const account = AsyncResult.getOrElse(useAtomValue(accountAtom(null, provider, accountId)), () => null)
   const details = [name, ...(account?.type === "subscription" ? [account.email, account.plan] : [])].filter(
     (detail) => detail != null,
   )

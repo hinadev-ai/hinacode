@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
-import { Cause, Effect, Layer, type ManagedRuntime, Schema } from "effect"
+import { Cause, Effect, Layer, type ManagedRuntime, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import {
@@ -16,7 +16,10 @@ import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { UnknownRootError } from "./services/errors.ts"
-import { Events, PushBroadcast } from "./services/Events.ts"
+import { ClientSettings } from "./services/ClientSettings.ts"
+import { routes } from "./environments/routes.ts"
+import { Environments } from "./services/Environments.ts"
+import { Events, PushBroadcast, WindowPush } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
@@ -44,6 +47,8 @@ export type AppServices =
   | Threads
   | Worktrees
   | Settings
+  | ClientSettings
+  | Environments
   | AgentRunner
   | McpCredentials
   | PullRequests
@@ -115,7 +120,7 @@ const handlers: Handlers = {
     Effect.sync(() => {
       if (window) bringToFront(window)
     }),
-  "projects.list": () => Projects.use((projects) => projects.list),
+  "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
@@ -196,6 +201,11 @@ const handlers: Handlers = {
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
+  "clientSettings.get": () => ClientSettings.use((settings) => settings.get),
+  "clientSettings.set": (patch) => ClientSettings.use((settings) => settings.set(patch)),
+  "environments.list": () => Environments.use((environments) => environments.list),
+  "environments.add": (input) => Environments.use((environments) => environments.add(input)),
+  "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "notifications.permission": () => notificationPermission,
   "notifications.askPermission": ({ title, body }) => askNotificationPermission(title, body),
 
@@ -337,16 +347,53 @@ const untrustedSender: RpcEnvelope<never> = {
   error: { tag: "UntrustedSender", message: "RPC is only available to the kkcode window" },
 }
 
+/** The renderer's envelope: `environment` names a cloud for the methods whose route is `named`. */
+const WindowCall = Schema.Struct({ ...RpcCall.fields, environment: Schema.optional(Schema.String) })
+const decodeWindowCall = Schema.decodeUnknownOption(WindowCall)
+
+const payloadId = (payload: unknown, key: string) => {
+  const id = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>)[key] : undefined
+  return typeof id === "string" ? id : undefined
+}
+
+/** Finds where a window call runs (see `environments/routes.ts`): this desktop, one cloud, or all of them. */
+const route = (raw: unknown, window: BrowserWindow | null) =>
+  Effect.gen(function* () {
+    const decoded = Option.getOrUndefined(decodeWindowCall(raw))
+    if (decoded === undefined) return yield* dispatch(raw, window)
+    const environments = yield* Environments
+    const { method, payload, environment } = decoded
+    const where = routes[method]
+    const owned = where.to === "owner" ? payloadId(payload, where.key) : undefined
+    const target =
+      where.to === "named"
+        ? environment
+        : where.to === "owner" && owned !== undefined
+          ? environments.owner(where.entity, owned)
+          : undefined
+    if (target !== undefined) return yield* environments.forward(target, { method, payload })
+    if (where.to !== "all") return yield* dispatch(raw, window)
+    const [local, clouds] = yield* Effect.all([dispatch(raw, window), environments.gather({ method, payload })], {
+      concurrency: "unbounded",
+    })
+    if ("error" in local || !Array.isArray(local.result)) return local
+    return { result: [...local.result, ...clouds] }
+  })
+
 /** `appUrl` is the renderer document; RPC from any other document or from a subframe is refused. */
 export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
   ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
     isTrustedSender(event.senderFrame, appUrl)
-      ? runtime.runPromise(dispatch(raw, BrowserWindow.fromWebContents(event.sender)))
+      ? runtime.runPromise(route(raw, BrowserWindow.fromWebContents(event.sender)))
       : Promise.resolve(untrustedSender),
   )
 }
 
 const encodePushEvent = Schema.encodeSync(PushEvent)
+
+const sendToWindows = (encoded: typeof PushEvent.Encoded) => {
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
+}
 
 /** Pushes go to every open window and to every sink the remote listener registered. */
 export const makeEventsLayer = () => {
@@ -357,10 +404,14 @@ export const makeEventsLayer = () => {
       publish: (event) =>
         Effect.sync(() => {
           const encoded = encodePushEvent(event)
-          for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
+          sendToWindows(encoded)
           for (const sink of sinks) sink(encoded)
         }),
     }),
+  )
+  const windows = Layer.succeed(
+    WindowPush,
+    WindowPush.of({ send: (event) => Effect.sync(() => sendToWindows(encodePushEvent(event))) }),
   )
   const broadcast = Layer.succeed(
     PushBroadcast,
@@ -372,5 +423,5 @@ export const makeEventsLayer = () => {
         ),
     }),
   )
-  return Layer.mergeAll(events, broadcast)
+  return Layer.mergeAll(events, windows, broadcast)
 }

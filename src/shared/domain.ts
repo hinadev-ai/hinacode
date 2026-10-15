@@ -14,6 +14,13 @@ export const Project = Schema.Struct({
   setupScript: Schema.NullOr(Schema.String),
   createdAt: Timestamp,
   updatedAt: Timestamp,
+  /** The cloud this project lives on, set by the desktop on every project a cloud returns. Absent on this desktop. */
+  environmentId: Schema.optionalKey(Schema.String),
+  /**
+   * The GitHub repository the root checks out, as lower-case `owner/name`, then the root's folder inside the repository
+   * when it is not the top level. Only `projects.list` sets it. Absent without a GitHub `origin`.
+   */
+  repository: Schema.optionalKey(Schema.String),
 })
 export type Project = typeof Project.Type
 
@@ -362,14 +369,29 @@ export const ExperimentalSettings = Schema.Struct({
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
-/**
- * Settings the renderer can read and write. `linear.apiKey` is a setting row too, but it is
- * encrypted with safeStorage and never leaves the main process, so it is not part of this shape.
- */
-export const Settings = Schema.Struct({
+/** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
+export const ClientSettings = Schema.Struct({
   locale: Locale,
   /** CommandId -> canonical chord such as "mod+shift+p". Only user overrides are stored. */
   keybindings: Schema.Record(Schema.String, Schema.String),
+  appearance: Appearance,
+  notifications: NotificationSettings,
+})
+export type ClientSettings = typeof ClientSettings.Type
+
+export const defaultClientSettings: ClientSettings = {
+  locale: "en",
+  keybindings: {},
+  appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
+  notifications: { completed: true, needsInput: true, failed: true, sound: true },
+}
+
+/**
+ * Settings of the environment agents run in: this desktop, or a paired cloud. `linear.apiKey`
+ * is a setting row too, but it is encrypted with safeStorage and never leaves the main process, so it is not part
+ * of this shape.
+ */
+export const Settings = Schema.Struct({
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
@@ -398,12 +420,10 @@ export const Settings = Schema.Struct({
     bindHost: Schema.String,
     port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   }),
-  appearance: Appearance,
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
   /** The access mode new threads start with. */
   defaultAccessMode: AccessMode,
-  notifications: NotificationSettings,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
   /** Absolute directory for new worktrees, one folder per project. Null keeps them in `.kkcode-worktrees` beside each project. */
@@ -412,21 +432,42 @@ export const Settings = Schema.Struct({
 export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
-  locale: "en",
-  keybindings: {},
   defaultModel: { claude: null, codex: null, muse: null },
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
-  appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
-  notifications: { completed: true, needsInput: true, failed: true, sound: true },
   archive: { whenMerged: false, removeWorktree: false },
   experimental: { tinyVm: false },
   worktreeRoot: null,
 }
+
+/** A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret `environment.<id>.token`. */
+export const Environment = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  host: Schema.String,
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  createdAt: Timestamp,
+})
+export type Environment = typeof Environment.Type
+
+/**
+ * The desktop's link to a cloud. `unauthorized` and `incompatible` stop retrying: only a new pairing URL, or
+ * updating one side so both speak the same `REMOTE_PROTOCOL_VERSION`, brings it back.
+ */
+export const EnvironmentStatus = Schema.Literals(["connecting", "connected", "offline", "unauthorized", "incompatible"])
+export type EnvironmentStatus = typeof EnvironmentStatus.Type
+
+/** Every paired cloud with its link. `lastSeenAt` is when it last answered, null before the first connection. */
+export const Environments = Schema.Struct({
+  clouds: Schema.Array(
+    Schema.Struct({ ...Environment.fields, status: EnvironmentStatus, lastSeenAt: Schema.NullOr(Timestamp) }),
+  ),
+})
+export type Environments = typeof Environments.Type
 
 /** Who drives a tiny VM's pointer and keyboard. The agent's pointer and keyboard tools wait while it is `user`. */
 export const VmControl = Schema.Literals(["agent", "user"])

@@ -21,7 +21,7 @@ import { projectFileUrl } from "../../shared/channels.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { type FilePreview, hasSource, previewOf } from "../lib/filePreview.ts"
 import { callPromise, fileContentAtom, onPushEvent, RpcError } from "../lib/rpc.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, type LineComment, useDrafts } from "../stores/drafts.ts"
 import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
@@ -201,7 +201,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
   const reload = useAtomRefresh(contentAtom)
-  const theme = useTheme(useSettings().appearance.theme)
+  const theme = useTheme(useClientSettings().appearance.theme)
   const base = useExplorer((state) => (state.byRoot[root] ?? emptyTree).unsaved[path])
   const setUnsaved = useExplorer((state) => state.setUnsaved)
   const allComments = useDrafts((state) => (state.byThreadId[threadId] ?? emptyDraft).comments)

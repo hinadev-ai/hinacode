@@ -304,12 +304,12 @@ const make = Effect.gen(function* () {
     )
 
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
+    // A full https URL keeps gh from switching to its configured git_protocol, which may be ssh on a
+    // machine that has no ssh key for GitHub.
+    const url = `https://github.com/${owner}/${name}.git`
     // Without a terminal git would wait forever on a credential prompt; fail fast instead.
-    const gitClone = () =>
-      exec("git", ["clone", `https://github.com/${owner}/${name}.git`, dest], dirname(dest), {
-        env: { GIT_TERMINAL_PROMPT: "0" },
-      })
-    return gh(dirname(dest), ["repo", "clone", `${owner}/${name}`, dest]).pipe(
+    const gitClone = () => exec("git", ["clone", url, dest], dirname(dest), { env: { GIT_TERMINAL_PROMPT: "0" } })
+    return gh(dirname(dest), ["repo", "clone", url, dest]).pipe(
       Effect.catchTags({ GitHubCliMissingError: gitClone, GitHubSignedOutError: gitClone }),
       Effect.asVoid,
     )

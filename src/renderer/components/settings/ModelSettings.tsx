@@ -5,6 +5,7 @@ import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent
 import { AccessMode } from "../../../shared/domain.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
+import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { accessModes } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
@@ -32,9 +33,10 @@ export function ModelSettings() {
 }
 
 function DefaultModelField({ provider }: { provider: ProviderId }) {
-  const models = useAtomValue(modelsAtom(provider))
-  const { defaultModel } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const models = useAtomValue(modelsAtom(environment, provider))
+  const { defaultModel } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const current = defaultModel[provider]
   const inputId = `default-model-${provider}`
@@ -90,8 +92,9 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
 
 /** Which of the agent's models the thread model picker lists. Picking none lists them all. */
 function ModelPresetField({ provider, models }: { provider: ProviderId; models: ReadonlyArray<ModelInfo> }) {
-  const { modelPresets } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const { modelPresets } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const inputId = `model-preset-${provider}`
   const items = models.map((model) => ({ value: model.id, label: model.label }))
@@ -145,8 +148,9 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
 }
 
 function DefaultAccessField() {
-  const { defaultAccessMode } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const { defaultAccessMode } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const inputId = "default-access-mode"
   const items = AccessMode.literals.map((value) => ({ value, label: accessModes[value].label() }))
@@ -192,9 +196,10 @@ function DefaultAccessField() {
 
 /** Thread naming runs through the Claude Agent SDK, so only Claude models are offered. */
 function TextGenerationModelField() {
-  const models = useAtomValue(modelsAtom("claude"))
-  const { textGenerationModel } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const models = useAtomValue(modelsAtom(environment, "claude"))
+  const { textGenerationModel } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const inputId = "text-generation-model"
 

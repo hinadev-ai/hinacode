@@ -1,0 +1,147 @@
+import type { RpcMethod } from "../../shared/contract.ts"
+
+/** What an id in a payload names, for finding which environment owns it. */
+export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
+
+/**
+ * Where a call from the desktop window runs.
+ * - `client`: this desktop, always.
+ * - `all`: this desktop and every cloud, the arrays concatenated.
+ * - `owner`: the environment that owns the id at `payload[key]`; this desktop when no cloud claimed it.
+ * - `named`: the environment the call names; this desktop when it names none.
+ */
+export type Route =
+  | { readonly to: "client" }
+  | { readonly to: "all" }
+  | { readonly to: "owner"; readonly entity: Entity; readonly key: string }
+  | { readonly to: "named" }
+
+const client: Route = { to: "client" }
+const all: Route = { to: "all" }
+const named: Route = { to: "named" }
+const owner = (entity: Entity, key: string): Route => ({ to: "owner", entity, key })
+const thread = owner("thread", "threadId")
+const project = owner("project", "id")
+const root = owner("root", "root")
+
+export const routes: Record<RpcMethod, Route> = {
+  "app.ready": client,
+  "app.focus": client,
+  "dialog.pickFolder": client,
+  "dialog.pickFiles": client,
+  "shell.reveal": client,
+  "notifications.permission": client,
+  "notifications.askPermission": client,
+  "clientSettings.get": client,
+  "clientSettings.set": client,
+  "environments.list": client,
+  "environments.add": client,
+  "environments.remove": client,
+  "updates.ready": client,
+  "updates.install": client,
+  "links.favicon": client,
+
+  "projects.list": all,
+  "threads.list": all,
+  "worktrees.list": all,
+  "pullRequests.all": all,
+  "limits.list": named,
+  "search.threads": all,
+
+  "settings.get": named,
+  "settings.set": named,
+  "accounts.list": named,
+  "accounts.create": named,
+  "accounts.rename": named,
+  "accounts.delete": named,
+  "agents.account": named,
+  "models.list": named,
+  "secrets.has": named,
+  "secrets.set": named,
+  "secrets.clear": named,
+  "github.auth": named,
+  "github.pullRequest": named,
+  "github.pullRequestDetail": named,
+  "github.merge": named,
+  "github.close": named,
+  "vm.host": named,
+  "remote.status": named,
+  "remote.pairing": named,
+  "remote.rotateToken": named,
+  "projects.create": named,
+  "projects.clone": named,
+  "ports.kill": named,
+  "automations.list": named,
+
+  "projects.update": project,
+  "projects.delete": project,
+  "projects.currentBranch": project,
+  "projects.defaultBranch": project,
+  "projects.branches": project,
+  "projects.pullRequests": project,
+  "projects.fetch": project,
+  "projects.icon": project,
+  "threads.create": owner("project", "projectId"),
+  "worktrees.create": owner("project", "projectId"),
+  "automations.create": owner("project", "projectId"),
+  "github.repository": owner("project", "projectId"),
+
+  "threads.update": owner("thread", "id"),
+  "threads.delete": owner("thread", "id"),
+  "threads.resumeAtReset": owner("thread", "id"),
+  "threads.changes": thread,
+  "threads.archive": thread,
+  "threads.unarchive": thread,
+  "threads.transcript": thread,
+  "threads.send": thread,
+  "threads.steer": thread,
+  "threads.interrupt": thread,
+  "threads.usage": thread,
+  "commands.list": thread,
+  "files.list": thread,
+  "search.files": thread,
+  "subagents.list": thread,
+  "pullRequests.list": thread,
+  "pullRequests.unlink": thread,
+  "pullRequests.create": thread,
+  "pullRequests.watch": thread,
+  "pullRequests.unwatch": thread,
+  "mcp.connection": thread,
+  "ports.list": thread,
+  "terminal.open": thread,
+  "terminal.list": thread,
+  "vm.get": thread,
+  "vm.start": thread,
+  "vm.stop": thread,
+  "vm.control": thread,
+  "vm.screen.open": thread,
+  "attachments.stage": thread,
+
+  "worktrees.remove": owner("worktree", "id"),
+  "worktrees.setupLog": owner("worktree", "id"),
+  "worktrees.pullRequest": owner("worktree", "id"),
+
+  "terminal.write": owner("terminal", "id"),
+  "terminal.resize": owner("terminal", "id"),
+  "terminal.close": owner("terminal", "id"),
+
+  "automations.update": owner("automation", "id"),
+  "automations.delete": owner("automation", "id"),
+  "automations.runNow": owner("automation", "id"),
+  "automations.runs": owner("automation", "id"),
+  "automations.webhookUrl": owner("automation", "id"),
+
+  "approvals.respond": owner("request", "requestId"),
+  "questions.respond": owner("request", "requestId"),
+  "secrets.respond": owner("request", "requestId"),
+
+  "git.log": root,
+  "git.show": root,
+  "fs.list": root,
+  "fs.read": root,
+  "fs.write": root,
+  "fs.watch": root,
+
+  "vm.screen.send": owner("stream", "streamId"),
+  "vm.screen.close": owner("stream", "streamId"),
+}

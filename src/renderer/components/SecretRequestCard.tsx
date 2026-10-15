@@ -1,6 +1,7 @@
 import { type FormEvent, startTransition, useActionState, useEffect, useId, useState } from "react"
 import { RiKey2Line } from "react-icons/ri"
 import type { SecretRequest } from "../../shared/agent.ts"
+import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -16,6 +17,7 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
   const inputId = useId()
   const [value, setValue] = useState("")
   const [exists, setExists] = useState(false)
+  const environment = useOpenThreadEnvironment()
   const [error, respond, isPending] = useActionState(async (_: string | null, answer: string | null) => {
     try {
       await callPromise("secrets.respond", { requestId: request.id, value: answer })
@@ -27,11 +29,11 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
 
   useEffect(() => {
     let cancelled = false
-    void callPromise("secrets.has", { name: request.name }).then((has) => !cancelled && setExists(has))
+    void callPromise("secrets.has", { name: request.name }, { environment }).then((has) => !cancelled && setExists(has))
     return () => {
       cancelled = true
     }
-  }, [request.name])
+  }, [request.name, environment])
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
