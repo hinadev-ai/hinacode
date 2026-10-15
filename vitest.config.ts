@@ -18,6 +18,8 @@ export default defineConfig({
       },
       {
         // Only the phone's React Native-free logic: its transport against a fake WebSocket, and its stores.
+        // A string skips Vite's Expo tsconfig lookup; CI installs only the root workspace.
+        esbuild: { tsconfigRaw: "{}" },
         // `dedupe` keeps one copy of effect, since schemas built by one copy fail to decode in the other.
         resolve: {
           alias: {
