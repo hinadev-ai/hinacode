@@ -4,7 +4,7 @@
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS
-  CliBatchesSteers,  \* may the CLI answer several queued steers under one result?
+  CliBatchesSteers,  \* may the CLI answer several queued steers, even of different turns, under one result?
   MaxSends, MaxSteers, MaxInterrupts, MaxAbandons, MaxContent
 
 ASSUME CliBatchesSteers \in BOOLEAN
@@ -185,7 +185,7 @@ Pump ==
   /\ LET m == Head(stdout)
          left == IF m.type = "result" THEN unanswered \ m.from ELSE unanswered
      IN /\ unanswered' = left
-        /\ CASE turn = None \/ ~(m.from \subseteq turnPrompts) -> Discard(m)
+        /\ CASE turn = None \/ m.from \cap turnPrompts = {} -> Discard(m)
              [] m.type = "result" /\ turnPrompts \cap left # {} -> Swallow
              [] OTHER -> Emit(m)
   /\ UNCHANGED <<stdin, backlog, cliPhase, answering, contentSent, busy, activeTurn, status, consumer, sent,
@@ -194,25 +194,34 @@ Pump ==
 
 -----------------------------------------------------------------------------
 (* The Claude Code CLI, as observed with 2.1.299 by specs/probes/claude-cli.mjs:
-   - it reads prompts in order and answers each with zero or more content messages and exactly one result;
+   - it answers a prompt, or a batch of steers, with zero or more content messages and exactly one result;
+   - it queues by priority: a steer (`now`) starts before any queued prompt (`next`), even one sent earlier
+     (seen with 2.1.294 in a one-off probe, like the next two cross-turn bullets);
    - a response's first message and its result carry the uuids of the prompts it answers
      (user_message_uuid, user_message_uuids);
    - a steer it reads while the response streams ends that response with an aborted result;
    - a steer it reads after generation, e.g. during a Stop hook, gets no abort: the old response ends with
      a completed result and the steer is answered under its own result;
-   - steers queued together get one combined answer (CliBatchesSteers);
+   - queued steers get one combined answer, even across a queued prompt and across turns (CliBatchesSteers);
+   - it reads input while prompts wait in its queue, so later steers can join that batch;
    - query.interrupt() aborts only the in-flight response and keeps the prompts already queued. *)
 
 Out(type) == stdout' = Append(stdout, [type |-> type, from |-> answering])
 
 unchangedOutsideCli == <<sessionVars, runnerVars, ghostVars>>
 
+\* Starts the oldest steer, batched with the steers queued after it, or else the oldest prompt.
 CliStart ==
   /\ cliPhase = "idle" /\ backlog # <<>>
-  /\ \E n \in 1..Len(backlog) :
-       /\ n = 1 \/ (CliBatchesSteers /\ \A i \in 1..n : backlog[i].steer)
-       /\ answering' = {backlog[i].prompt : i \in 1..n}
-       /\ backlog' = SubSeq(backlog, n + 1, Len(backlog))
+  /\ LET steers == {i \in 1..Len(backlog) : backlog[i].steer} IN
+     \E taken \in SUBSET (1..Len(backlog)) :
+       /\ IF steers = {}
+          THEN taken = {1}
+          ELSE /\ taken # {} /\ taken \subseteq steers
+               /\ \A i \in taken, j \in steers : j < i => j \in taken
+               /\ CliBatchesSteers \/ Cardinality(taken) = 1
+       /\ answering' = {backlog[i].prompt : i \in taken}
+       /\ backlog' = SelectSeq(backlog, LAMBDA e : e.prompt \notin answering')
   /\ cliPhase' = "streaming" /\ contentSent' = 0
   /\ UNCHANGED <<stdin, stdout, unchangedOutsideCli>>
 
@@ -234,9 +243,8 @@ CliSteerAbort ==
   /\ cliPhase' = "idle" /\ Out("result")
   /\ UNCHANGED <<stdin, backlog, answering, contentSent, unchangedOutsideCli>>
 
-\* An idle CLI starts a queued prompt before it reads more input, so it never sits idle with a backlog.
 CliRead ==
-  /\ stdin # <<>> /\ ~(cliPhase = "idle" /\ backlog # <<>>)
+  /\ stdin # <<>>
   /\ stdin' = Tail(stdin)
   /\ IF Head(stdin).kind = "prompt"
      THEN /\ backlog' = Append(backlog, Head(stdin))
@@ -262,7 +270,9 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 
 -----------------------------------------------------------------------------
 
-NoCrossTurnLeak == \A d \in delivered : d.from = {d.to}
+\* Output reaches only a turn it answers. It may also answer a steer of an abandoned turn, which the CLI
+\* batched with this turn's steer; that steer has no consumer left to show it.
+NoCrossTurnLeak == \A d \in delivered : d.to \in d.from /\ d.from \ {d.to} \subseteq abandoned
 
 NoSilentDrop == \A from \in droppedContent : from \subseteq abandoned
 

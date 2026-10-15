@@ -414,8 +414,9 @@ export const layer = Layer.effect(
       trackTask(session, message)
       const answered = answeredPrompts(message)
       if (answered !== undefined) session.answering = answered
-      // A response to a prompt of a turn whose consumer left before its result.
-      const stale = session.answering.some((uuid) => !session.turnPrompts.has(uuid))
+      // A response that answers only prompts of a turn whose consumer left before its result. The CLI can batch
+      // such a steer with a steer of the current turn, and that response belongs to the current turn.
+      const stale = session.answering.length > 0 && session.answering.every((uuid) => !session.turnPrompts.has(uuid))
       if (message.type === "result") {
         // CLIs that predate the stamps name no prompt; ending the turn beats waiting for a result that never comes.
         for (const uuid of answered ?? [...session.unanswered]) session.unanswered.delete(uuid)
