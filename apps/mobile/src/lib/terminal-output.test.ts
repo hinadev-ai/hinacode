@@ -2,6 +2,28 @@ import { describe, expect, it } from "vitest"
 import { RESET, TerminalOutput } from "./terminal-output"
 
 describe("TerminalOutput", () => {
+  it("holds a push that skips output until the missing range is attached", () => {
+    const output = new TerminalOutput()
+    output.attached(output.beginAttach(), { offset: 0, data: "abc" })
+    expect(output.receive({ offset: 6, data: "gh" })).toBe("")
+    expect(output.needsAttach).toBe(true)
+    const attach = output.beginAttach()
+    expect(attach.since).toBe(3)
+    expect(output.attached(attach, { offset: 3, data: "defgh" })).toBe("defgh")
+    expect(output.needsAttach).toBe(false)
+  })
+
+  it("detects a gap in pushes held during an attach", () => {
+    const output = new TerminalOutput()
+    const first = output.beginAttach()
+    output.receive({ offset: 6, data: "gh" })
+    expect(output.attached(first, { offset: 0, data: "abc" })).toBe(RESET + "abc")
+    expect(output.needsAttach).toBe(true)
+    const next = output.beginAttach()
+    expect(next.since).toBe(3)
+    expect(output.attached(next, { offset: 3, data: "defgh" })).toBe("defgh")
+  })
+
   it("repaints from the scrollback on the first attach and trims pushes it already covered", () => {
     const output = new TerminalOutput()
     const attach = output.beginAttach()
