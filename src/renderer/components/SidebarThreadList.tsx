@@ -50,7 +50,7 @@ import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } fr
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, projectsAtom } from "../lib/rpc.ts"
-import { useThreadEnvironment } from "../lib/environments.ts"
+import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -62,6 +62,7 @@ import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
+import { CloudMark } from "./CloudMark.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -239,7 +240,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const [queued, setQueued] = useState<RowMode | null>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const worktree = useActiveWorktree(thread)
-  const { archive: archiveSettings } = useSettings(useThreadEnvironment(thread.id))
+  const environment = useThreadEnvironment(thread.id)
+  const cloud = useCloud(environment)
+  const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
@@ -305,8 +308,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-menu-open={menuOpen}
       data-emphasis={rowEmphasis[state]}
       data-archived={archived}
+      data-stale={isStale(cloud)}
       // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
+      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -331,7 +335,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           <StatusIndicator state={state} />
         </Link>
       )}
-      <ThreadMeta {...meta} />
+      <ThreadMeta {...meta} cloud={cloud} />
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
@@ -638,13 +642,21 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
 const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
-function ThreadMeta({ project, branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
+function ThreadMeta({
+  project,
+  branch,
+  removed,
+  links,
+  updatedAt,
+  cloud,
+}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined }) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
   // collapsing row would slide out from under the pointer and flicker.
   return (
     <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+      {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {project !== null && (
         <span className="max-w-1/2 shrink-0 truncate" title={project}>
           {project}

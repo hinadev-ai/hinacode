@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { AsyncResult } from "effect/reactivity"
-import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine, RiServerLine } from "react-icons/ri"
+import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
 import type { PullRequest, Thread, Worktree, WorktreeStatus } from "../../../shared/domain.ts"
 import { environmentName, useClouds, useThreadEnvironment } from "../../lib/environments.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
@@ -30,8 +30,8 @@ export function DetailsView({ thread }: { thread: Thread }) {
         <Section title={m.panel_workspace()}>
           {!local && (
             <p className="flex items-center gap-1.5 text-sm">
-              <RiServerLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-              {m.panel_workspace_on({ environment: environmentName(environment, clouds) })}
+              <RiCloudLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              {m.environment_on({ environment: environmentName(environment, clouds) })}
             </p>
           )}
           {worktree ? (

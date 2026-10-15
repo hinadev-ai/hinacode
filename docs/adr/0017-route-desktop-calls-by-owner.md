@@ -24,5 +24,5 @@ The window shows every environment at once and has no active environment. Thread
 - The renderer stays almost unaware of environments. Stores keyed by thread id keep working, because ids never collide across machines.
 - Roots are paths, not ids. A cloud project at the same path as a local one takes the `git.*` and `fs.*` calls for that path.
 - The owner index lives in memory and is rebuilt from lists at boot and on every reconnect. An id nobody has claimed belongs to this desktop.
-- Merged lists answer from a cloud's last reply while it is offline, so its sidebar section stays drawn but can be stale.
+- Merged lists answer from a cloud's last reply while it is offline, so its projects and threads stay in the sidebar but can be stale.
 - Revisit when a thread needs to move between machines, or when the same repository on two machines should be one project. Either one turns ownership from a lookup into data the renderer must carry.

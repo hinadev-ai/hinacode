@@ -28,6 +28,14 @@ export function useThreadEnvironment(threadId: string | null | undefined): Envir
   return environmentOf(projects.find((project) => project.id === projectId))
 }
 
+/** The paired cloud an environment id names, or undefined for This Mac. */
+export function useCloud(environment: EnvironmentId): Cloud | undefined {
+  return useClouds().find((cloud) => cloud.id === environment)
+}
+
+/** A cloud that is not connected still lists its last known projects and threads, which may be out of date. */
+export const isStale = (cloud: Cloud | undefined) => cloud !== undefined && cloud.status !== "connected"
+
 export const environmentName = (environment: EnvironmentId, clouds: ReadonlyArray<Cloud>) =>
   environment === null
     ? m.environment_this_mac()
@@ -65,8 +73,8 @@ export function useOpenThreadEnvironment(): EnvironmentId {
 }
 
 /**
- * A cloud's state in words for its sidebar header, or null while connected. Offline says when it last answered,
- * and the two states that stop retrying say what to do.
+ * A cloud's state in words, or null while connected. Offline says when it last answered, and the two states that
+ * stop retrying say what to do.
  */
 export function useCloudStateText(cloud: Cloud): string | null {
   const now = useNow()

@@ -3,7 +3,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
@@ -14,7 +14,7 @@ import {
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, Thread } from "../../shared/domain.ts"
-import { type Cloud, environmentOf, useClouds, useCloudStateText } from "../lib/environments.ts"
+import { environmentOf, isStale, useCloud } from "../lib/environments.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
@@ -30,6 +30,7 @@ import {
   useThreads,
 } from "../stores/threads.ts"
 import { type SidebarTab, useUi } from "../stores/ui.ts"
+import { CloudMark } from "./CloudMark.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
@@ -309,10 +310,6 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
     ),
   )
   const shown = filtered.filter((project) => shownIds.includes(project.id))
-  const clouds = useClouds()
-  const projectGroup = (project: Project) => (
-    <ProjectGroup key={project.id} project={project} tab={tab} query={query} focusAfterDelete={focusAfterDelete} />
-  )
 
   return AsyncResult.builder(projects)
     .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
@@ -333,18 +330,15 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
               {tab === "archived" && query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
             </li>
           )}
-          {clouds.length === 0
-            ? shown.map(projectGroup)
-            : [null, ...clouds].map((cloud) => {
-                const inSection = shown.filter((project) => environmentOf(project) === (cloud?.id ?? null))
-                // Every section shows in the full list, so a cloud with no projects still shows its state.
-                if (inSection.length === 0 && !isFullList(tab, query)) return null
-                return (
-                  <EnvironmentSection key={cloud?.id ?? ""} cloud={cloud}>
-                    {inSection.map(projectGroup)}
-                  </EnvironmentSection>
-                )
-              })}
+          {shown.map((project) => (
+            <ProjectGroup
+              key={project.id}
+              project={project}
+              tab={tab}
+              query={query}
+              focusAfterDelete={focusAfterDelete}
+            />
+          ))}
         </ul>
       ),
     )
@@ -356,42 +350,6 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
         </Button>
       </div>
     ))
-}
-
-/**
- * One environment's projects, once a cloud is paired. A cloud that is not connected names its state in the header,
- * and its rows recede, except threads that need the user.
- */
-function EnvironmentSection({ cloud, children }: { cloud: Cloud | null; children: ReactNode }) {
-  const name = cloud?.name ?? m.environment_this_mac()
-  const headingId = useId()
-  return (
-    <li
-      aria-labelledby={headingId}
-      data-stale={cloud !== null && cloud.status !== "connected"}
-      className="group/environment flex flex-col gap-0.5 pt-2 first:pt-0 data-[stale=true]:text-muted-foreground [&[data-stale=true]_[data-emphasis=resting]]:text-muted-foreground"
-    >
-      <h2 id={headingId} className="flex items-baseline gap-1.5 px-1.5 pt-1 text-xs">
-        <span className="truncate font-medium text-muted-foreground">{name}</span>
-        {cloud && <CloudState cloud={cloud} />}
-      </h2>
-      <ul className="flex flex-col gap-0.5">{children}</ul>
-    </li>
-  )
-}
-
-function CloudState({ cloud }: { cloud: Cloud }) {
-  const text = useCloudStateText(cloud)
-  if (text === null) return null
-  const needsYou = cloud.status === "unauthorized" || cloud.status === "incompatible"
-  return (
-    <span
-      data-needs-you={needsYou}
-      className="min-w-0 truncate text-muted-foreground data-[needs-you=true]:text-attention"
-    >
-      {text}
-    </span>
-  )
 }
 
 interface ProjectGroupProps {
@@ -410,6 +368,8 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
   const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => tabThreads(state, project, tab, query)))
   // A project whose active threads are all pinned is not empty, they are listed above the tabs.
   const hasActiveThreads = useThreads((state) => selectProjectThreads(project.id)(state).length > 0)
+  const cloud = useCloud(environmentOf(project))
+  const cloudMarkId = useId()
 
   return (
     <li>
@@ -424,14 +384,20 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
           className="group/project flex items-center gap-0.5 rounded-md hover:bg-sidebar-accent data-[menu-open=true]:bg-sidebar-accent"
         >
           <CollapsibleTrigger
-            className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            data-stale={isStale(cloud)}
+            className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[stale=true]:text-muted-foreground"
             aria-label={m.sidebar_toggle_project({ project: project.name })}
+            aria-describedby={cloud && cloudMarkId}
           >
             <RiArrowRightSLine
               aria-hidden
               className="size-4 shrink-0 text-muted-foreground transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
             />
-            <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            {cloud ? (
+              <CloudMark cloud={cloud} id={cloudMarkId} className="size-4" />
+            ) : (
+              <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            )}
             <span className="truncate font-medium" title={project.rootPath}>
               {project.name}
             </span>
