@@ -1,28 +1,59 @@
 ---
 import Mark from "./Mark.astro"
+import { locales, languageNames, localizedPath, messages, type Locale, type Page } from "../i18n"
 interface Props {
-  page: "home" | "pricing"
+  page: Page
+  locale: Locale
 }
-const { page } = Astro.props
+const { page, locale } = Astro.props
+const t = messages(locale)
+const home = page === "pricing" ? localizedPath(locale, "home") : ""
 ---
 
 <header class="nav">
   <div class="nav-inner">
-    <a class="brand" href="/" aria-label="kkcode home">
+    <a class="brand" href={localizedPath(locale, "home")} aria-label={t.site_home_name}>
       <Mark class="mark" />
       kkcode
     </a>
-    <nav class="nav-links" aria-label="Sections">
-      <a href={`${page === "pricing" ? "/" : ""}#quiet`}>Quiet</a>
-      <a href={`${page === "pricing" ? "/" : ""}#features`}>Features</a>
-      <a href={`${page === "pricing" ? "/" : ""}#keyboard`}>Keyboard</a>
-      <a href={`${page === "pricing" ? "/" : ""}#faq`}>FAQ</a>
-      <a href="/pricing/" aria-current={page === "pricing" ? "page" : undefined}>
-        Pricing
+    <nav class="nav-links" aria-label={t.site_sections}>
+      <a href={`${home}#quiet`}>{t.site_nav_quiet}</a>
+      <a href={`${home}#features`}>{t.site_nav_features}</a>
+      <a href={`${home}#keyboard`}>{t.site_nav_keyboard}</a>
+      <a href={`${home}#faq`}>{t.site_nav_faq}</a>
+      <a href={localizedPath(locale, "pricing")} aria-current={page === "pricing" ? "page" : undefined}>
+        {t.site_pricing}
       </a>
     </nav>
     <a class="btn btn-primary btn-sm nav-cta" href="https://github.com/kjj6198/kkcode-releases/releases/latest">
-      Download
+      {t.site_download}
     </a>
+    <details class="language-menu">
+      <summary aria-label={`${t.site_language} ${languageNames[locale]}`}>
+        {languageNames[locale]}
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="m4.5 6.5 3.5 3 3.5-3"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </summary>
+      <nav aria-label={t.site_language}>
+        {locales.map((language) => (
+          <a
+            href={localizedPath(language, page)}
+            lang={language}
+            hreflang={language}
+            aria-current={language === locale ? "page" : undefined}
+            data-language-link
+          >
+            {languageNames[language]}
+          </a>
+        ))}
+      </nav>
+    </details>
   </div>
 </header>

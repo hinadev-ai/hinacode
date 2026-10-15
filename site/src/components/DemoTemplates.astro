@@ -1,0 +1,74 @@
+---
+import { messages, type Locale } from "../i18n"
+interface Props {
+  locale: Locale
+}
+const { locale } = Astro.props
+const t = messages(locale)
+---
+
+<template data-demo-template="hint-working">
+  <span>{t.site_demo_hint_working}</span>
+</template>
+<template data-demo-template="hint-needs-touch">
+  <span>{t.site_demo_hint_touch}</span>
+</template>
+<template data-demo-template="hint-needs-keyboard">
+  <span>{t.site_demo_hint_needs}</span>
+  <kbd>A</kbd>
+  <span>{t.site_demo_key_allows}</span>
+  <kbd>D</kbd>
+  <span>{t.site_demo_key_denies}</span>
+</template>
+<template data-demo-template="hint-resolving">
+  <span>{t.site_demo_hint_resolving}</span>
+</template>
+<template data-demo-template="hint-done">
+  <span>{t.site_demo_hint_done}</span>
+  <button class="replay" type="button" data-replay>
+    {t.site_replay}
+  </button>
+</template>
+<template data-demo-template="push">
+  <div class="tool">
+    <span class="glyph" aria-hidden="true">
+      $
+    </span>
+    git push -u origin feat/address-validation <span class="ok">{t.site_command_done}</span>
+  </div>
+</template>
+<template data-demo-template="link-pr">
+  <div class="tool">
+    <span class="glyph" aria-hidden="true">
+      ⇡
+    </span>
+    link_pull_request <span class="path">#128</span>
+  </div>
+</template>
+<template data-demo-template="pr">
+  <div class="pr step on">
+    <div class="pr-title">
+      <span>#128</span>
+      {t.site_demo_address_title}
+    </div>
+    <div class="pr-meta">
+      <span class="pr-state">{t.site_pr_open}</span>
+      <span class="ok">{t.site_demo_checks}</span>
+      <span>{t.site_ready_review}</span>
+    </div>
+  </div>
+</template>
+<template data-demo-template="allowed-response">
+  <div class="msg-agent">{t.site_demo_allowed_response}</div>
+</template>
+<template data-demo-template="denied-response">
+  <div class="msg-agent">{t.site_demo_denied_response}</div>
+</template>
+<template data-demo-template="steer">
+  <div class="msg-user">
+    <small>{t.site_steer}</small>
+  </div>
+</template>
+<template data-demo-template="steered-response">
+  <div class="msg-agent">{t.site_demo_steered_response}</div>
+</template>

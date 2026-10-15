@@ -4,6 +4,7 @@ import { AsyncResult } from "effect/reactivity"
 import { Suspense, useRef, useState } from "react"
 import { RiFullscreenLine, RiPictureInPictureExitLine } from "react-icons/ri"
 import { callPromise, threadVmAtom } from "../lib/rpc.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi, VM_FLOATING_BOUNDS } from "../stores/ui.ts"
@@ -21,7 +22,7 @@ import {
 
 /** The thread's tiny VM screen floating over the top right of the conversation, when the user floated it. */
 export function FloatingTinyVm({ threadId }: { threadId: string }) {
-  const { experimental } = useSettings()
+  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const floating = useUi((state) => state.vmPlacements[threadId] === "floating")
   if (!experimental.tinyVm || !floating) return null
   return <WhenRunning threadId={threadId} />

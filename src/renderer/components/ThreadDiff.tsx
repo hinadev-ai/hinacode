@@ -9,7 +9,7 @@ import type { ChangedFileStatus, ChangesScope, Thread } from "../../shared/domai
 import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
@@ -155,7 +155,7 @@ function ChangedFileRow({ path, status, filePatch, open, onToggle }: ChangedFile
   const diffId = useId()
   const mark = fileStatusMark[status]
   const { added, removed } = lineCounts(filePatch)
-  const theme = useTheme(useSettings().appearance.theme)
+  const theme = useTheme(useClientSettings().appearance.theme)
 
   return (
     <li className="flex flex-col gap-1">

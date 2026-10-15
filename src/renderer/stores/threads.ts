@@ -20,22 +20,28 @@ export const useThreads = create<ThreadsState>()((set) => ({
     }),
 }))
 
-const inProject = (state: Pick<ThreadsState, "byId">, projectId: string) =>
-  Object.values(state.byId).filter((thread) => thread.projectId === projectId)
+const inProjects = (state: Pick<ThreadsState, "byId">, projectIds: ReadonlyArray<string>) => {
+  const ids = new Set(projectIds)
+  return Object.values(state.byId).filter((thread) => ids.has(thread.projectId))
+}
 
 const isActive = (thread: Thread) => thread.status !== "archived"
 const isPinned = (thread: Thread) => thread.pinnedAt !== null
 const newestFirst = (a: Thread, b: Thread) => b.updatedAt.localeCompare(a.updatedAt)
 
-/** A project's threads that are not archived, in their saved sidebar order. */
-export const selectProjectThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
-  inProject(state, projectId)
-    .filter(isActive)
-    .toSorted((a, b) => a.sortIndex - b.sortIndex)
+/** The projects' threads that are not archived, in their saved sidebar order. */
+export const selectProjectThreads =
+  (...projectIds: ReadonlyArray<string>) =>
+  (state: Pick<ThreadsState, "byId">) =>
+    inProjects(state, projectIds)
+      .filter(isActive)
+      .toSorted((a, b) => a.sortIndex - b.sortIndex)
 
 /** Like `selectProjectThreads`, without the pinned threads, which the sidebar lists above its tabs. */
-export const selectUnpinnedProjectThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
-  selectProjectThreads(projectId)(state).filter((thread) => !isPinned(thread))
+export const selectUnpinnedProjectThreads =
+  (...projectIds: ReadonlyArray<string>) =>
+  (state: Pick<ThreadsState, "byId">) =>
+    selectProjectThreads(...projectIds)(state).filter((thread) => !isPinned(thread))
 
 /** Active threads of every project that are not pinned, most recently updated first. */
 export const selectInboxThreads = (state: Pick<ThreadsState, "byId">) =>
@@ -49,8 +55,10 @@ export const selectPinnedThreads = (state: Pick<ThreadsState, "byId">) =>
     .filter((thread) => isActive(thread) && isPinned(thread))
     .toSorted((a, b) => (a.pinnedAt ?? "").localeCompare(b.pinnedAt ?? ""))
 
-/** A project's archived threads, most recently updated first. */
-export const selectArchivedThreads = (projectId: string) => (state: Pick<ThreadsState, "byId">) =>
-  inProject(state, projectId)
-    .filter((thread) => !isActive(thread))
-    .toSorted(newestFirst)
+/** The projects' archived threads, most recently updated first. */
+export const selectArchivedThreads =
+  (...projectIds: ReadonlyArray<string>) =>
+  (state: Pick<ThreadsState, "byId">) =>
+    inProjects(state, projectIds)
+      .filter((thread) => !isActive(thread))
+      .toSorted(newestFirst)

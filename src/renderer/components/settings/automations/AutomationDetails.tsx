@@ -6,6 +6,7 @@ import { type FormEvent, startTransition, useActionState, useId, useState } from
 import type { Automation, AutomationRun, AutomationTriggerType } from "../../../../shared/domain.ts"
 import { automationRunsAtom, callPromise, webhookUrlAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
+import { useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
 import { Button } from "../../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.tsx"
@@ -25,9 +26,10 @@ export function AutomationDetails({ automation }: { automation: Automation }) {
 }
 
 export function WebhookUrlField({ automationId }: { automationId: string }) {
+  const environment = useSettingsEnvironment()
   const id = useId()
-  const result = useAtomValue(webhookUrlAtom(automationId))
-  const { automations: listener } = useSettings()
+  const result = useAtomValue(webhookUrlAtom(environment, automationId))
+  const { automations: listener } = useSettings(environment)
 
   return (
     <Field>

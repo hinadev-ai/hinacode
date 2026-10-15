@@ -14,8 +14,8 @@ const workRow = (page: Page) => responseArticle(page).locator('[data-slot="worke
 
 Given("worked-for uses the {string} appearance", async ({ app }, appearance: string) => {
   if (appearance !== "light" && appearance !== "dark") throw new Error(`Unknown appearance ${appearance}`)
-  const settings = await rpc(app.page, "settings.get", undefined)
-  await rpc(app.page, "settings.set", {
+  const settings = await rpc(app.page, "clientSettings.get", undefined)
+  await rpc(app.page, "clientSettings.set", {
     appearance: { ...settings.appearance, theme: appearance === "light" ? "light" : "default" },
   })
 })

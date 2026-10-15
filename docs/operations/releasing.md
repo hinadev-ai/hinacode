@@ -6,7 +6,7 @@ The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows 
 
 ## Steps
 
-1. Once, create the public feed repository: `gh repo create kjj6198/kkcode-releases --public`.
+1. Once, create the public feed repository with a first commit: `gh repo create kjj6198/kkcode-releases --public --add-readme`. GitHub refuses to create a release in an empty repository.
 2. Once, add these repository secrets to `kjj6198/kkcode`:
 
    | Secret                     | Value                                                                       |

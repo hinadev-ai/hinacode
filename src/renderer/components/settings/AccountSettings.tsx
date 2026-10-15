@@ -7,14 +7,15 @@ import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderI
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
-  accountKey,
   accountsAtom,
   createAccountAtom,
   deleteAccountAtom,
   renameAccountAtom,
+  type EnvironmentId,
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
+import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import {
   AlertDialog,
@@ -66,14 +67,15 @@ const loginCommand = (account: AgentProfile) =>
   ].join(" ")
 
 /** The provider's added accounts, in the order they were added. */
-export function useProviderAccounts(provider: ProviderId): ReadonlyArray<AgentProfile> {
-  const all = AsyncResult.getOrElse(useAtomValue(accountsAtom), (): ReadonlyArray<AgentProfile> => [])
+export function useProviderAccounts(environment: EnvironmentId, provider: ProviderId): ReadonlyArray<AgentProfile> {
+  const all = AsyncResult.getOrElse(useAtomValue(accountsAtom(environment)), (): ReadonlyArray<AgentProfile> => [])
   return all.filter((account) => account.provider === provider)
 }
 
 /** The CLI's own login, then every account added for `provider`, each with who it is signed in as. */
 export function AccountList({ provider }: { provider: ProviderId }) {
-  const accounts = useProviderAccounts(provider)
+  const environment = useSettingsEnvironment()
+  const accounts = useProviderAccounts(environment, provider)
   const [adding, setAdding] = useState(false)
   return (
     <div className="flex flex-col gap-2">
@@ -104,8 +106,9 @@ export function AccountList({ provider }: { provider: ProviderId }) {
 type RowDialog = "rename" | "remove"
 
 function AccountRow({ account }: { account: AgentProfile }) {
-  const status = useAtomValue(accountAtom(accountKey(account.provider, account.id)))
-  const refreshStatus = useAtomRefresh(accountAtom(accountKey(account.provider, account.id)))
+  const environment = useSettingsEnvironment()
+  const status = useAtomValue(accountAtom(environment, account.provider, account.id))
+  const refreshStatus = useAtomRefresh(accountAtom(environment, account.provider, account.id))
   const [dialog, setDialog] = useState<RowDialog | null>(null)
   const [queued, setQueued] = useState<RowDialog | null>(null)
   const signedOut = AsyncResult.isSuccess(status) && status.value.type === "signedOut"
@@ -177,7 +180,8 @@ function AccountRow({ account }: { account: AgentProfile }) {
 
 /** `account` null is the CLI's own login. */
 export function AccountStatus({ provider, account }: { provider: ProviderId; account: AgentProfile | null }) {
-  const status = useAtomValue(accountAtom(accountKey(provider, account?.id ?? null)))
+  const environment = useSettingsEnvironment()
+  const status = useAtomValue(accountAtom(environment, provider, account?.id ?? null))
   return (
     <output
       aria-label={
@@ -243,7 +247,8 @@ function AddAccountDialog({ provider, open, onOpenChange }: AddAccountDialogProp
 }
 
 function AddAccountForm({ provider, onCreated }: { provider: AccountProviderId; onCreated: () => void }) {
-  const createAccount = useAtomSet(createAccountAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const createAccount = useAtomSet(createAccountAtom(environment), { mode: "promise" })
   const [name, setName] = useState("")
   const [binary, setBinary] = useState<string>(provider)
   const [configDir, setConfigDir] = useState("")
@@ -341,7 +346,8 @@ function RenameAccountDialog({ account, open, onOpenChange }: AccountDialogBaseP
 }
 
 function RenameForm({ account, onSaved }: { account: AgentProfile; onSaved: () => void }) {
-  const renameAccount = useAtomSet(renameAccountAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const renameAccount = useAtomSet(renameAccountAtom(environment), { mode: "promise" })
   const [name, setName] = useState(account.name)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -387,7 +393,8 @@ function RenameForm({ account, onSaved }: { account: AgentProfile; onSaved: () =
 }
 
 function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseProps) {
-  const deleteAccount = useAtomSet(deleteAccountAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const deleteAccount = useAtomSet(deleteAccountAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -429,9 +436,10 @@ const CLI_LOGIN = "cli"
 
 /** Which account new threads of `provider` start on. Hidden until the provider has an added account. */
 export function DefaultAccountField({ provider }: { provider: ProviderId }) {
-  const accounts = useProviderAccounts(provider)
-  const { defaultAccount } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const accounts = useProviderAccounts(environment, provider)
+  const { defaultAccount } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const inputId = `default-account-${provider}`
   if (accounts.length === 0) return null

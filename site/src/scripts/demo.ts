@@ -29,7 +29,12 @@ const chip = element("[data-chip]")
 const hint = element("[data-hint]")
 const prSlot = element("[data-pr-slot]")
 const initial = { transcript: transcript.innerHTML, pr: prSlot.innerHTML }
-const labels = { working: "Working", needs: "Needs you", done: "Done" }
+function label(node: HTMLElement, name: string): string {
+  const value = node.getAttribute(`data-label-${name}`)
+  if (value === null) throw new Error(`Missing demo label: ${name}`)
+  return value
+}
+const labels = { working: label(chip, "working"), needs: label(chip, "needs"), done: label(chip, "done") }
 let phase: "idle" | "playing" | "approval" | "resolving" | "done" = "idle"
 let run = 0
 
@@ -40,7 +45,14 @@ function setState(state: keyof typeof labels) {
   chip.dataset.state = state
   element("[data-chip-label]", chip).textContent = labels[state]
 }
-const setHint = (markup: string) => (hint.innerHTML = markup)
+function template(name: string): DocumentFragment {
+  const node = element(`[data-demo-template="${name}"]`)
+  if (!(node instanceof HTMLTemplateElement)) throw new Error(`Invalid demo template: ${name}`)
+  const copy = node.content.cloneNode(true)
+  if (!(copy instanceof DocumentFragment)) throw new Error(`Invalid demo content: ${name}`)
+  return copy
+}
+const setHint = (name: string) => hint.replaceChildren(template(`hint-${name}`))
 
 function trim() {
   while (transcript.scrollHeight > transcript.clientHeight + 4 && transcript.children.length > 3) {
@@ -52,15 +64,11 @@ function append(node: HTMLElement) {
   transcript.append(node)
   trim()
 }
-function html(markup: string): HTMLElement {
-  const template = document.createElement("template")
-  template.innerHTML = markup.trim()
-  const node = template.content.firstElementChild
+function templateElement(name: string): HTMLElement {
+  const node = template(name).firstElementChild
   if (!(node instanceof HTMLElement)) throw new Error("Invalid demo markup")
   return node
 }
-const agentSays = (text: string) =>
-  Object.assign(document.createElement("div"), { className: "msg-agent", textContent: text })
 
 async function play() {
   const id = ++run
@@ -70,14 +78,15 @@ async function play() {
   const text = stream.textContent.trim()
   phase = "playing"
   setState("working")
-  setHint("<span>The agent is working. You could be doing something else.</span>")
+  setHint("working")
   await wait(900)
   stream.textContent = ""
   stream.classList.add("on")
-  for (const word of text.split(" ")) {
+  const words = new Intl.Segmenter(document.documentElement.lang, { granularity: "word" }).segment(text)
+  for (const word of words) {
     if (!alive()) return
-    stream.textContent += (stream.textContent ? " " : "") + word
-    await wait(38)
+    stream.textContent += word.segment
+    if (word.isWordLike) await wait(38)
   }
   for (const step of steps.slice(1)) {
     await wait(step.matches("[data-approval]") ? 800 : 600)
@@ -86,11 +95,7 @@ async function play() {
   }
   setState("needs")
   phase = "approval"
-  setHint(
-    isTouch
-      ? "<span>Now it needs you. Tap Allow or Deny.</span>"
-      : "<span>Now it needs you.</span><kbd>A</kbd><span>allows,</span><kbd>D</kbd><span>denies.</span>",
-  )
+  setHint(isTouch ? "needs-touch" : "needs-keyboard")
 }
 
 async function resolve(allowed: boolean) {
@@ -99,39 +104,28 @@ async function resolve(allowed: boolean) {
   phase = "resolving"
   const approval = element("[data-approval]", transcript)
   approval.classList.add("resolved")
-  element("[data-approval-title]", approval).textContent = allowed ? "Allowed by you" : "Denied by you"
+  const approvalTitle = element("[data-approval-title]", approval)
+  approvalTitle.textContent = label(approvalTitle, allowed ? "allowed" : "denied")
   element(".approval-head", approval).dataset.state = "done"
   setState("working")
-  setHint("<span>Back to work.</span>")
+  setHint("resolving")
   await wait(500)
   if (id !== run) return
   if (allowed) {
-    append(
-      html(
-        '<div class="tool"><span class="glyph" aria-hidden="true">$</span>git push -u origin feat/address-validation <span class="ok">done</span></div>',
-      ),
-    )
+    append(templateElement("push"))
     await wait(700)
     if (id !== run) return
-    append(
-      html(
-        '<div class="tool"><span class="glyph" aria-hidden="true">⇡</span>link_pull_request <span class="path">#128</span></div>',
-      ),
-    )
-    prSlot.innerHTML = `
-      <div class="pr step on">
-        <div class="pr-title"><span>#128</span>Tighten address validation</div>
-        <div class="pr-meta"><span class="pr-state">Open</span><span class="ok">4/4 checks</span><span>Ready for review</span></div>
-      </div>`
+    append(templateElement("link-pr"))
+    prSlot.replaceChildren(template("pr"))
     await wait(800)
     if (id !== run) return
-    append(agentSays("Opened #128 and the checks pass. It's ready for your review."))
+    append(templateElement("allowed-response"))
   } else {
-    append(agentSays("Understood. The branch stays local, and the tests are green whenever you want to push."))
+    append(templateElement("denied-response"))
   }
   setState("done")
   phase = "done"
-  setHint('<span>Done. That is the whole loop.</span><button class="replay" type="button" data-replay>Replay</button>')
+  setHint("done")
 }
 
 function replay() {
@@ -142,13 +136,10 @@ function replay() {
 }
 
 function steer(text: string) {
-  const note = html('<div class="msg-user"><small>Steer</small></div>')
+  const note = templateElement("steer")
   note.append(text)
   append(note)
-  setTimeout(
-    () => append(agentSays("Noted. I'll fold that into the next step without starting over.")),
-    reduceMotion ? 0 : 600,
-  )
+  setTimeout(() => append(templateElement("steered-response")), reduceMotion ? 0 : 600)
 }
 
 document.addEventListener("click", (event) => {

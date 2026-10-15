@@ -1,9 +1,18 @@
+---
+import { messages, localizedPath, type Locale } from "../i18n"
+interface Props {
+  locale: Locale
+}
+const { locale } = Astro.props
+const t = messages(locale)
+---
+
 <footer class="rule">
-  <span>Backed by Kalan. Built with kkcode.</span>
-  <nav aria-label="Footer">
+  <span>{t.site_footer_credit}</span>
+  <nav aria-label={t.site_footer_nav}>
     <a href="https://github.com/kjj6198/kkcode">GitHub</a>
-    <a href="/pricing/">Pricing</a>
-    <a href="https://github.com/kjj6198/kkcode-releases/releases">Releases</a>
-    <a href="#top">Back to top</a>
+    <a href={localizedPath(locale, "pricing")}>{t.site_pricing}</a>
+    <a href="https://github.com/kjj6198/kkcode-releases/releases">{t.site_releases}</a>
+    <a href="#top">{t.site_back_top}</a>
   </nav>
 </footer>

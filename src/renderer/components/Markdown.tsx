@@ -7,7 +7,7 @@ import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
 import { resolveColor, useTheme } from "../lib/appearance.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
@@ -197,7 +197,7 @@ const RENDER_DELAY_MS = 250
 function MermaidDiagram({ code }: { code: string }) {
   const id = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, "")}`
   const [diagram, setDiagram] = useState<Diagram>({ status: "rendering" })
-  const { appearance } = useSettings()
+  const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
 
   useEffect(() => {

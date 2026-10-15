@@ -4,8 +4,8 @@ import { useState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import { type Command, commands, conflictsOf, isCommandAvailable, type When } from "../../keybindings/commands.ts"
 import { useKeymap } from "../../keybindings/useKeybindings.ts"
-import { updateSettingsAtom } from "../../lib/rpc.ts"
-import { useSettings } from "../../lib/settings.ts"
+import { updateClientSettingsAtom } from "../../lib/rpc.ts"
+import { useClientSettings, useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { ChordKeys } from "../ChordKeys.tsx"
 import { Button } from "../ui/button.tsx"
@@ -20,16 +20,17 @@ const whenLabels: Record<When, () => string> = {
 }
 
 export function KeybindingSettings() {
-  const { keybindings: overrides, experimental } = useSettings()
+  const { keybindings: overrides } = useClientSettings()
+  const { experimental } = useSettings(null)
   const keymap = useKeymap()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const updateClientSettings = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
   const [recordingId, setRecordingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const saveOverrides = async (next: Record<string, string>) => {
     setError(null)
     try {
-      await updateSettings({ keybindings: next })
+      await updateClientSettings({ keybindings: next })
     } catch (cause) {
       setError(errorMessage(cause))
     }

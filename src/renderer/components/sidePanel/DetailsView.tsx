@@ -1,8 +1,9 @@
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { AsyncResult } from "effect/reactivity"
-import { RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
+import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
 import type { PullRequest, Thread, Worktree, WorktreeStatus } from "../../../shared/domain.ts"
+import { environmentName, useClouds, useThreadEnvironment } from "../../lib/environments.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { useWorktrees } from "../../stores/worktrees.ts"
@@ -18,12 +19,26 @@ import { Section } from "./Section.tsx"
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
+  const environment = useThreadEnvironment(thread.id)
+  const clouds = useClouds()
+  // A cloud's paths only exist on that machine, so this Mac cannot open them in a folder.
+  const local = environment === null
 
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div ref={sectionsRef} className="flex flex-col gap-6 p-4">
         <Section title={m.panel_workspace()}>
-          {worktree ? <WorktreeWorkspace worktree={worktree} /> : <RootWorkspace projectId={thread.projectId} />}
+          {!local && (
+            <p className="flex items-center gap-1.5 text-sm">
+              <RiCloudLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              {m.environment_on({ environment: environmentName(environment, clouds) })}
+            </p>
+          )}
+          {worktree ? (
+            <WorktreeWorkspace worktree={worktree} canReveal={local} />
+          ) : (
+            <RootWorkspace projectId={thread.projectId} canReveal={local} />
+          )}
         </Section>
         {worktree && (
           <Section title={m.panel_setup_log()}>
@@ -53,7 +68,7 @@ function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) 
   )
 }
 
-function RootWorkspace({ projectId }: { projectId: string }) {
+function RootWorkspace({ projectId, canReveal }: { projectId: string; canReveal: boolean }) {
   const projects = useAtomValue(projectsAtom)
   const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === projectId)
 
@@ -63,7 +78,7 @@ function RootWorkspace({ projectId }: { projectId: string }) {
       {project && (
         <>
           <p className="font-mono text-xs break-all text-muted-foreground">{project.rootPath}</p>
-          <RevealButton path={project.rootPath} />
+          {canReveal && <RevealButton path={project.rootPath} />}
         </>
       )}
     </div>
@@ -84,7 +99,7 @@ const statusVariant = {
   removed: "ghost",
 } as const satisfies Record<WorktreeStatus, string>
 
-function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
+function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canReveal: boolean }) {
   const removed = worktree.status === "removed"
   const pullRequest = useBranchPullRequest(removed ? undefined : worktree.id)
   return (
@@ -102,7 +117,7 @@ function WorktreeWorkspace({ worktree }: { worktree: Worktree }) {
       <p className="font-mono text-xs break-all text-muted-foreground">{worktree.path}</p>
       {removed && <p className="text-xs text-muted-foreground">{m.panel_removed_hint()}</p>}
       {pullRequest?.status === "merged" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
-      <RevealButton path={worktree.path} disabled={removed} />
+      {canReveal && <RevealButton path={worktree.path} disabled={removed} />}
     </div>
   )
 }

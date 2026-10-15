@@ -35,6 +35,7 @@ import {
   pullRequestStatusAtom,
 } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
+import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { type PullRequestSection, useUi } from "../stores/ui.ts"
@@ -184,10 +185,11 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
 
 /** Offered only when `gh` is signed in and the branch has no pull request yet. */
 function CreatePullRequestButton({ threadId, worktreeId }: { threadId: string; worktreeId: string }) {
+  const environment = useOpenThreadEnvironment()
   const branchAtom = branchPullRequestAtom(worktreeId)
   const branchPullRequest = useAtomValue(branchAtom)
   const refreshBranchPullRequest = useAtomRefresh(branchAtom)
-  const auth = useAtomValue(gitHubAuthAtom)
+  const auth = useAtomValue(gitHubAuthAtom(environment))
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -223,7 +225,8 @@ function CreatePullRequestButton({ threadId, worktreeId }: { threadId: string; w
 }
 
 function GitHubAuthHint() {
-  const auth = useAtomValue(gitHubAuthAtom)
+  const environment = useOpenThreadEnvironment()
+  const auth = useAtomValue(gitHubAuthAtom(environment))
   if (!AsyncResult.isSuccess(auth)) return null
   switch (auth.value.type) {
     case "missing":
@@ -251,7 +254,8 @@ function PullRequestRow({
   watching: boolean
   onSelect: () => void
 }) {
-  const status = useAtomValue(pullRequestStatusAtom(url))
+  const environment = useOpenThreadEnvironment()
+  const status = useAtomValue(pullRequestStatusAtom(environment, url))
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
 
   return (
@@ -305,10 +309,11 @@ interface PullRequestDetailViewProps {
 }
 
 function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }: PullRequestDetailViewProps) {
-  const detailAtom = pullRequestDetailAtom(url)
+  const environment = useOpenThreadEnvironment()
+  const detailAtom = pullRequestDetailAtom(environment, url)
   const detail = useAtomValue(detailAtom)
   const refresh = useAtomRefresh(detailAtom)
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom), () => null)?.type === "signedIn"
+  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
 
   return AsyncResult.builder(detail)
     .onSuccess((pullRequest) => (
@@ -549,10 +554,11 @@ function PullRequestActions({
   watch: PullRequestWatch | null
   onDone: () => void
 }) {
+  const environment = useOpenThreadEnvironment()
   const [method, setMethod] = useState<MergeMethod>("squash")
   const [confirming, setConfirming] = useState<PendingAction | null>(null)
-  const refreshStatus = useAtomRefresh(pullRequestStatusAtom(pullRequest.url))
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom), () => null)?.type === "signedIn"
+  const refreshStatus = useAtomRefresh(pullRequestStatusAtom(environment, pullRequest.url))
+  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
   const blocker =
     pullRequest.status === "draft"
       ? m.pr_merge_blocked_draft()
@@ -665,6 +671,7 @@ function ConfirmDialog({
   onOpenChange: (open: boolean) => void
   onDone: () => void
 }) {
+  const environment = useOpenThreadEnvironment()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const number = pullRequest.number
@@ -677,8 +684,9 @@ function ConfirmDialog({
       if (!shown) return
       setError(null)
       try {
-        if (shown.type === "merge") await callPromise("github.merge", { url: pullRequest.url, method: shown.method })
-        else await callPromise("github.close", { url: pullRequest.url })
+        if (shown.type === "merge")
+          await callPromise("github.merge", { url: pullRequest.url, method: shown.method }, { environment })
+        else await callPromise("github.close", { url: pullRequest.url }, { environment })
         onOpenChange(false)
         onDone()
       } catch (cause) {

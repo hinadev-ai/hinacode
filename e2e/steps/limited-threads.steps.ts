@@ -18,7 +18,7 @@ const screenshot = async (app: KkcodeApp, name: string) => {
 }
 
 const labels = async (app: KkcodeApp) => {
-  const { locale } = await rpc(app.page, "settings.get", undefined)
+  const { locale } = await rpc(app.page, "clientSettings.get", undefined)
   return locale === "zh-TW"
     ? {
         navigation: "專案與對話串",
@@ -63,7 +63,7 @@ const openThread = async (app: KkcodeApp) => {
 const createThread = async (app: KkcodeApp, repo: string, locale = "en", theme = "default") => {
   if (locale !== "en" && locale !== "zh-TW") throw new Error(`Unsupported locale ${locale}`)
   if (theme !== "default" && theme !== "light") throw new Error(`Unsupported theme ${theme}`)
-  await rpc(app.page, "settings.set", {
+  await rpc(app.page, "clientSettings.set", {
     locale,
     appearance: { theme, fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   })
@@ -110,7 +110,7 @@ Then("the usage-limit thread is visibly limited and ready to send again", async 
   await expect(app.page.getByRole("button", { name: copy.stop, exact: true })).toBeHidden()
   await app.page.getByLabel(copy.message, { exact: true }).fill("Retry the task")
   await expect(app.page.getByRole("button", { name: copy.send, exact: true })).toBeEnabled()
-  const { locale, appearance } = await rpc(app.page, "settings.get", undefined)
+  const { locale, appearance } = await rpc(app.page, "clientSettings.get", undefined)
   const scheme = appearance.theme === "light" ? "light" : "dark"
   await $testInfo.attach("limited-thread", {
     body: await screenshot(app, `usage-limit-${locale}-${scheme}`),

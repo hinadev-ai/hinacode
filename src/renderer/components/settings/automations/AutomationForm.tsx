@@ -6,6 +6,7 @@ import { ProviderId } from "../../../../shared/agent.ts"
 import type { Automation, AutomationTrigger, AutomationTriggerType, Project } from "../../../../shared/domain.ts"
 import { callPromise, modelsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
+import { useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
 import { ProviderIcon, providerLabel } from "../../ProviderIcon.tsx"
 import { Button } from "../../ui/button.tsx"
@@ -160,7 +161,8 @@ interface AutomationFormProps {
 }
 
 function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormProps) {
-  const { defaultModel } = useSettings()
+  const environment = useSettingsEnvironment()
+  const { defaultModel } = useSettings(environment)
   const editing = state.mode === "edit"
   const [draft, setDraft] = useState<Draft>(() =>
     editing ? draftFrom(state.automation) : emptyDraft(projects[0]?.id ?? "", defaultModel.claude ?? ""),
@@ -464,7 +466,8 @@ interface ModelFieldProps {
 
 /** A select of the provider's models, or a free-text model id when it cannot list them. */
 function ModelField({ provider, value, onChange }: ModelFieldProps) {
-  const models = useAtomValue(modelsAtom(provider))
+  const environment = useSettingsEnvironment()
+  const models = useAtomValue(modelsAtom(environment, provider))
   const listed = AsyncResult.getOrElse(models, () => [])
   const items = listed.map((model) => ({ value: model.id, label: model.label }))
   // A stored id the provider no longer lists stays selectable instead of vanishing.

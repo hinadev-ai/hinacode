@@ -25,7 +25,7 @@ import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
 import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useUi } from "../stores/ui.ts"
@@ -450,7 +450,7 @@ function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
 
 function CommitFiles({ root, hash }: { root: string; hash: string }) {
   const diff = useAtomSuspense(commitDiffAtom(commitKey(root, hash)), { includeFailure: true })
-  const theme = useTheme(useSettings().appearance.theme)
+  const theme = useTheme(useClientSettings().appearance.theme)
   const patch = AsyncResult.isSuccess(diff) ? diff.value.patch : ""
   const files = useMemo(() => parsePatchFiles(patch, `commit-${hash}`).flatMap((parsed) => parsed.files), [patch, hash])
   if (AsyncResult.isFailure(diff)) {

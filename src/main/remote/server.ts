@@ -7,15 +7,10 @@ import { ClientFrame, REMOTE_PATH, REMOTE_PROTOCOL_VERSION, type ServerFrame } f
 import { type AppServices, dispatch } from "../ipc.ts"
 import { PushBroadcast } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
-import { RemoteAccess } from "./access.ts"
+import { CLOSE_LISTENER_STOPPED, CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "./access.ts"
 
 /** A socket that has not sent a valid `auth` frame by then is closed. */
 const AUTH_TIMEOUT_MS = 5000
-
-/** Close codes the phone can tell apart from a network drop. */
-export const CLOSE_UNAUTHORIZED = 4001
-export const CLOSE_TOKEN_ROTATED = 4002
-export const CLOSE_LISTENER_STOPPED = 4003
 
 const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
 
@@ -72,7 +67,7 @@ const make = Effect.gen(function* () {
       countConnected()
       runFork(Fiber.interrupt(subscription))
     })
-    send(socket, { type: "ready", version: REMOTE_PROTOCOL_VERSION })
+    send(socket, { type: "ready", version: REMOTE_PROTOCOL_VERSION, environment: access.identity })
   }
 
   const handleCall = (socket: WebSocket, id: number, method: string, payload: unknown) => {

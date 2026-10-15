@@ -5,8 +5,8 @@ import { useId, useState } from "react"
 import { type Appearance, ThemeId } from "../../../shared/domain.ts"
 import { applyContrast, installedFontsAtom, themes, useTheme } from "../../lib/appearance.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { updateSettingsAtom } from "../../lib/rpc.ts"
-import { useSettings } from "../../lib/settings.ts"
+import { updateClientSettingsAtom } from "../../lib/rpc.ts"
+import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
@@ -17,14 +17,14 @@ import { SettingsSection } from "./SettingsSection.tsx"
 const fontSizes = [12, 13, 14, 15, 16, 17, 18, 20].map((size) => ({ value: size, label: `${size}px` }))
 
 export function AppearanceSettings() {
-  const { appearance } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const { appearance } = useClientSettings()
+  const updateClientSettings = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
 
   const save = async (patch: Partial<Appearance>) => {
     setError(null)
     try {
-      await updateSettings({ appearance: { ...appearance, ...patch } })
+      await updateClientSettings({ appearance: { ...appearance, ...patch } })
       return true
     } catch (cause) {
       setError(errorMessage(cause))

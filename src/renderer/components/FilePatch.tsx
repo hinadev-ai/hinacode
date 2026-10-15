@@ -1,7 +1,7 @@
 import { PatchDiff } from "@pierre/diffs/react"
 import type { ChangedFileStatus } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 
 export const fileStatusLabel = {
@@ -28,7 +28,7 @@ const patchForFile = (patch: string, path: string) =>
 /** One file's diff out of a worktree's combined patch, as the Changes list and the file tree show it. */
 export function FilePatch({ patch, path }: { patch: string; path: string }) {
   const filePatch = patchForFile(patch, path)
-  const theme = useTheme(useSettings().appearance.theme)
+  const theme = useTheme(useClientSettings().appearance.theme)
   if (!filePatch) return <p className="p-2 text-muted-foreground">{m.diff_file_missing()}</p>
   return (
     <PatchDiff

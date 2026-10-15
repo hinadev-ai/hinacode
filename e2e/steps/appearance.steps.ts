@@ -33,11 +33,14 @@ Then("the app uses the {string} appearance", async ({ app }, scheme: string) => 
 })
 
 Then("the theme {string} is saved", async ({ app }, theme: string) => {
-  await expect.poll(async () => (await rpc(app.page, "settings.get", undefined)).appearance.theme).toBe(theme)
+  await expect.poll(async () => (await rpc(app.page, "clientSettings.get", undefined)).appearance.theme).toBe(theme)
 })
 
 Then("the existing named theme and font preference is preserved", async ({ app }) => {
-  expect((await rpc(app.page, "settings.get", undefined)).appearance).toEqual({ ...existingAppearance, contrast: 0 })
+  expect((await rpc(app.page, "clientSettings.get", undefined)).appearance).toEqual({
+    ...existingAppearance,
+    contrast: 0,
+  })
   await expect(app.page.locator("html")).toHaveAttribute("data-theme", "catppuccin-latte")
   await expect(app.page.locator("html")).toHaveCSS("font-size", "18px")
 })
@@ -51,7 +54,9 @@ When("I move the contrast slider to {string}", async ({ app }, position: string)
 })
 
 Then("the contrast {int} is saved", async ({ app }, contrast: number) => {
-  await expect.poll(async () => (await rpc(app.page, "settings.get", undefined)).appearance.contrast).toBe(contrast)
+  await expect
+    .poll(async () => (await rpc(app.page, "clientSettings.get", undefined)).appearance.contrast)
+    .toBe(contrast)
 })
 
 Then("text reads at higher contrast than the palette", async ({ app }) => {

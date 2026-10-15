@@ -50,17 +50,19 @@ import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } fr
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, projectsAtom } from "../lib/rpc.ts"
+import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
-import { selectUnpinnedProjectThreads, useThreads } from "../stores/threads.ts"
+import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
+import { CloudMark } from "./CloudMark.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,13 +83,15 @@ type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plug
 
 const titleOf = (id: unknown) => useThreads.getState().byId[String(id)]?.title ?? ""
 
-/** Screen reader instructions and announcements for one project's list, in the current locale. */
-const accessibility = (projectId: string) => {
-  const position = (source: Draggable) => ({
-    position: String((isSortable(source) ? source.index : 0) + 1),
-    total: String(selectUnpinnedProjectThreads(projectId)(useThreads.getState()).length),
-  })
-  return Accessibility.configure({
+// Each list has its own drag and drop manager, so its draggables are exactly the list's rows.
+const position = (source: Draggable) => ({
+  position: String((isSortable(source) ? source.index : 0) + 1),
+  total: String([...(source.manager?.registry.draggables ?? [])].length),
+})
+
+/** Screen reader instructions and announcements for one list, in the current locale. */
+const accessibility = () =>
+  Accessibility.configure({
     screenReaderInstructions: { draggable: m.sidebar_drag_instructions() },
     announcements: {
       dragstart: ({ operation: { source } }: DragStartEvent) =>
@@ -101,7 +105,6 @@ const accessibility = (projectId: string) => {
       },
     },
   })
-}
 
 /**
  * Rows drag by the whole row with the mouse (after a few pixels, so clicks still navigate) and by
@@ -123,11 +126,11 @@ const sensors = [
 ]
 
 interface SidebarThreadListProps {
-  /** A project id when the list is one project's threads; it scopes drag and drop to that project. */
+  /** Names the list, such as a project group's key; it scopes drag and drop to the list. */
   readonly group: string
   /** The rows to show, already narrowed to the sidebar's tab and filter. */
   readonly threads: ReadonlyArray<Thread>
-  /** Only a project's full list of active threads can be reordered, since a drop saves every row's position. */
+  /** Only a project group's full list of active threads can be reordered, since a drop saves every row's position. */
   readonly reorderable: boolean
   /** Names each row's project, for lists that mix projects. */
   readonly showProject?: boolean
@@ -153,8 +156,8 @@ export function SidebarThreadList({
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
-    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(group)],
-    [group],
+    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility()],
+    [],
   )
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
@@ -238,7 +241,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const [queued, setQueued] = useState<RowMode | null>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const worktree = useActiveWorktree(thread)
-  const { archive: archiveSettings } = useSettings()
+  const environment = useThreadEnvironment(thread.id)
+  const cloud = useCloud(environment)
+  const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
@@ -304,8 +309,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-menu-open={menuOpen}
       data-emphasis={rowEmphasis[state]}
       data-archived={archived}
+      data-stale={isStale(cloud)}
       // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
+      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -330,7 +336,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           <StatusIndicator state={state} />
         </Link>
       )}
-      <ThreadMeta {...meta} />
+      <ThreadMeta {...meta} cloud={cloud} />
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
@@ -637,13 +643,21 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
 const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
-function ThreadMeta({ project, branch, removed, links, updatedAt }: ReturnType<typeof useThreadMeta>) {
+function ThreadMeta({
+  project,
+  branch,
+  removed,
+  links,
+  updatedAt,
+  cloud,
+}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined }) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
   // collapsing row would slide out from under the pointer and flicker.
   return (
     <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+      {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {project !== null && (
         <span className="max-w-1/2 shrink-0 truncate" title={project}>
           {project}

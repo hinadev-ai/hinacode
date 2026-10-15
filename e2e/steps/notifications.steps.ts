@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test"
 import type { AgentEvent } from "../../src/shared/agent.ts"
-import { defaultSettings } from "../../src/shared/domain.ts"
+import { defaultClientSettings } from "../../src/shared/domain.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 
@@ -54,7 +54,7 @@ const captured = (page: Page) =>
   )
 
 Given("every notification kind is turned on", async ({ app }) => {
-  await rpc(app.page, "settings.set", { notifications: defaultSettings.notifications })
+  await rpc(app.page, "clientSettings.set", { notifications: defaultClientSettings.notifications })
   await app.reload()
 })
 

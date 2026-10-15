@@ -45,6 +45,20 @@
   --frame: 1200px;
 }
 
+html:lang(zh-TW) {
+  --sans: "Geist", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+  --serif: "Instrument Serif", "Noto Sans TC", ui-serif, Georgia, serif;
+}
+html:lang(ja) {
+  --sans: "Geist", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif;
+  --serif: "Instrument Serif", "Noto Sans JP", ui-serif, Georgia, serif;
+}
+
+html:lang(zh-TW) .taste,
+html:lang(ja) .taste {
+  white-space: nowrap;
+}
+
 *,
 *::before,
 *::after {
@@ -173,6 +187,51 @@ kbd {
 }
 .nav-cta {
   @apply ml-auto;
+}
+
+.language-menu {
+  position: relative;
+  flex: none;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.language-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px;
+  cursor: pointer;
+  list-style: none;
+}
+.language-menu summary::-webkit-details-marker {
+  display: none;
+}
+.language-menu summary svg {
+  width: 14px;
+  height: 14px;
+}
+.language-menu nav {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 136px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.3);
+}
+.language-menu a {
+  padding: 8px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.language-menu a:hover,
+.language-menu a[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 .btn {
@@ -1175,6 +1234,10 @@ footer a:hover {
   }
 }
 @media (max-width: 760px) {
+  .nav-inner {
+    gap: 12px;
+    padding-inline: 16px;
+  }
   .nav-links {
     display: none;
   }
@@ -1222,6 +1285,15 @@ footer a:hover {
   }
   footer {
     padding: 24px;
+  }
+}
+
+@media (max-width: 380px) {
+  .nav-cta {
+    display: none;
+  }
+  .language-menu {
+    margin-left: auto;
   }
 }
 

@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { createBdd, test as base } from "playwright-bdd"
-import { defaultSettings } from "../../src/shared/domain.ts"
+import { defaultClientSettings } from "../../src/shared/domain.ts"
 import { type KkcodeApp, spawnApp } from "./app.ts"
 import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
@@ -175,11 +175,13 @@ AfterScenario(async ({ app, $testInfo }) => {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
   }
   await rpc(app.page, "settings.set", {
-    locale: "en",
-    keybindings: {},
     defaultModel: { claude: null, codex: null, muse: null },
     archive: { whenMerged: false, removeWorktree: false },
-    appearance: defaultSettings.appearance,
+  })
+  await rpc(app.page, "clientSettings.set", {
+    locale: "en",
+    keybindings: {},
+    appearance: defaultClientSettings.appearance,
   })
   await app.page.emulateMedia({ colorScheme: null })
   await app.page.evaluate(() => {
@@ -189,5 +191,5 @@ AfterScenario(async ({ app, $testInfo }) => {
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })
   await app.reload()
-  await expect(app.page.locator("html")).toHaveCSS("font-size", `${defaultSettings.appearance.fontSize}px`)
+  await expect(app.page.locator("html")).toHaveCSS("font-size", `${defaultClientSettings.appearance.fontSize}px`)
 })

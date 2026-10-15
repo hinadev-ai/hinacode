@@ -1,12 +1,25 @@
-import { randomBytes, timingSafeEqual } from "node:crypto"
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import { hostname, networkInterfaces } from "node:os"
 import { Context, Effect, Layer, Option, PubSub, Stream } from "effect"
+import { SqlClient } from "effect/sql"
 import type { RemotePairing, RemoteStatus } from "../../shared/domain.ts"
-import type { PersistenceError } from "../services/errors.ts"
+import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
 
 export const REMOTE_TOKEN_SECRET = "remote.token"
+const ENVIRONMENT_ID_KEY = "environment.id"
+
+/** Who this kkcode is to a desktop that pairs with it. The id is made once per data directory. */
+export interface EnvironmentIdentity {
+  readonly id: string
+  readonly name: string
+}
+
+/** Close codes a client can tell apart from a network drop. */
+export const CLOSE_UNAUTHORIZED = 4001
+export const CLOSE_TOKEN_ROTATED = 4002
+export const CLOSE_LISTENER_STOPPED = 4003
 
 const isTailscale = (address: string) => address.startsWith("100.")
 
@@ -45,11 +58,20 @@ export class RemoteAccess extends Context.Service<
     /** Fires after each rotation, so the listener can drop every socket. */
     readonly rotations: Stream.Stream<void>
     readonly report: (patch: Partial<ListenerReport>) => Effect.Effect<void>
+    readonly identity: EnvironmentIdentity
   }
 >()("kkcode/RemoteAccess") {}
 
+const loadIdentity = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+  yield* sql`INSERT INTO setting (key, value) VALUES (${ENVIRONMENT_ID_KEY}, ${randomUUID()}) ON CONFLICT (key) DO NOTHING`
+  const [row] = yield* sql<{ value: string }>`SELECT value FROM setting WHERE key = ${ENVIRONMENT_ID_KEY}`
+  return { id: row!.value, name: hostname() }
+}).pipe(Effect.mapError(persistence("remote.identity")))
+
 const make = Effect.gen(function* () {
   const secrets = yield* Secrets
+  const identity = yield* loadIdentity
   const settings = yield* Settings
   const rotated = yield* PubSub.unbounded<void>()
   let token = Option.getOrNull(yield* secrets.get(REMOTE_TOKEN_SECRET))
@@ -82,6 +104,7 @@ const make = Effect.gen(function* () {
     },
     rotations: Stream.fromPubSub(rotated),
     report: (patch) => Effect.sync(() => void (report = { ...report, ...patch })),
+    identity,
   })
 })
 
