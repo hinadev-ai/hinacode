@@ -1,20 +1,22 @@
 // `pnpm dev` runs the stock Electron.app, and macOS reads the Dock label, the menu bar title, Cmd+Tab and
 // notifications from that bundle, not from `app.setName`. Rename it and give it our icon, then re-sign it
 // ad hoc, as it was signed before, so the edited Info.plist still matches the signature.
+// Electron downloads its binary on first use, so resolving `electron` here fetches it before we edit it.
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
-const NAME = "kkcode"
+const NAME = "KKCode"
 
-const bundle = join(dirname(createRequire(import.meta.url).resolve("electron/package.json")), "dist", "Electron.app")
-const plist = join(bundle, "Contents", "Info.plist")
+const bundle =
+  process.platform === "darwin" ? join(createRequire(import.meta.url)("electron"), "..", "..", "..") : undefined
+const plist = bundle && join(bundle, "Contents", "Info.plist")
 const plistBuddy = (command) =>
   execFileSync("/usr/libexec/PlistBuddy", ["-c", command, plist], { encoding: "utf8" }).trim()
 
-if (process.platform === "darwin" && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
+if (plist && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
   plistBuddy(`Set :CFBundleName ${NAME}`)
   plistBuddy(`Set :CFBundleDisplayName ${NAME}`)
 
