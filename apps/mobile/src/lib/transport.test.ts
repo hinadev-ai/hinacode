@@ -24,7 +24,6 @@ class FakeSocket implements SocketLike {
     this.closed = true
   }
 
-  /** The server side. */
   open() {
     this.onopen?.()
   }
@@ -81,13 +80,11 @@ function setup() {
 
 const latest = () => sockets.at(-1)!
 
-/** Opens the latest socket and completes the handshake. */
 function handshake(features?: readonly string[]) {
   latest().open()
   latest().ready(features)
 }
 
-/** Settles a promise's state for assertions without awaiting it forever. */
 function track<T>(promise: Promise<T>) {
   const state: { value?: T; error?: Error } = {}
   promise.then(
@@ -163,13 +160,11 @@ describe("Transport", () => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
 
-      // 30 s connecting and failing, then a handshake that does not answer before dropping again.
       await vi.advanceTimersByTimeAsync(9_000)
       latest().drop()
       await vi.advanceTimersByTimeAsync(21_000)
       expect(send.error).toBeUndefined()
       handshake()
-      // Connected time does not count toward the limit.
       await vi.advanceTimersByTimeAsync(20_000)
       expect(send.error).toBeUndefined()
       latest().drop()
@@ -190,7 +185,6 @@ describe("Transport", () => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
       const read = track(transport.call("threads.list", undefined))
-      // Timers stall in the background while the wall clock moves on.
       vi.setSystemTime(Date.now() + 61_000)
       handshake()
       await vi.advanceTimersByTimeAsync(0)

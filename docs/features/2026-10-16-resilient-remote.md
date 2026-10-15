@@ -132,4 +132,4 @@ Each slice is one PR with its own check:
 
 Run `node scripts/flaky-proxy.mjs <proxy-port> <listener-port> <control-port>` on the same machine as the listener. Pair the client with the proxy port. The proxy binds both listeners to `127.0.0.1`.
 
-Send `POST /pass`, `/blackhole`, `/reset`, or `/delay?ms=250` to the control port. `reset` destroys existing connections and refuses new ones until the next mode. `blackhole` discards bytes in both directions while keeping TCP connections open. `GET /` reports the current mode and connection count.
+Send `POST /pass`, `/blackhole`, `/reset`, or `/delay?ms=250` to the control port. `reset` destroys existing connections and refuses new ones until the next mode. `blackhole` pauses reads in both directions while keeping TCP connections open. TCP retains queued bytes until forwarding resumes, so a handshake started during the outage can complete when the link returns. `GET /` reports the current mode and connection count.

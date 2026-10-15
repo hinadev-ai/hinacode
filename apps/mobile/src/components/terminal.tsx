@@ -49,10 +49,14 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
 
   const apply = (push: TerminalPush) => {
     if (push.type === "terminal.exited") setExitCode(push.exitCode)
-    else write(output.receive(push))
+    else {
+      write(output.receive(push))
+      if (output.needsAttach && session.current !== null && useConnection.getState().features.has("terminal-attach")) {
+        attach(session.current)
+      }
+    }
   }
 
-  /** Catches the screen up with the session, holding back pushes until the desktop answers. */
   const attach = (current: Session) => {
     current.generation = useConnection.getState().generation
     const token = output.beginAttach()
@@ -61,6 +65,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         const text = output.attached(token, { offset, data })
         if (text === null) return
         write(text)
+        if (output.needsAttach) attach(current)
         if (attached.status === "exited") setExitCode(attached.exitCode)
       },
       (cause) => {
@@ -84,7 +89,6 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     mounted.current = true
     return () => {
       mounted.current = false
-      // While offline the close waits in the outbox, so the shell does not outlive the screen.
       if (session.current !== null) void call("terminal.close", { id: session.current.id }).catch(() => {})
     }
   }, [])
@@ -118,8 +122,6 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           generation: useConnection.getState().generation,
         }
         session.current = current
-        // A retried open answers with the session it already created, whose output may have been missed,
-        // so a desktop that can attach repaints from its scrollback. Early pushes are held back meanwhile.
         if (useConnection.getState().features.has("terminal-attach")) attach(current)
         for (const push of early.current) if (push.id === opened.id) apply(push)
         early.current = []

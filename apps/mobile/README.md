@@ -37,6 +37,8 @@ The QR scanner (`expo-camera`) and the native terminal (`react-native-webview`) 
 1. On the desktop, open Settings, Remote, and turn on Allow remote control.
 2. In the app, tap Scan QR code and point it at the QR code, or paste the `kkcode://connect?host=...&port=...&token=...` URL into Pairing URL and tap Connect. Opening that URL on the phone also pairs in a development or store build, which registers the `kkcode` scheme; Expo Go does not.
 
+The phone retains the thread while reconnecting and queues actions for up to a minute offline. Supported desktops deduplicate retried mutations and let the terminal attach to its existing shell and retained output.
+
 The pairing is stored in the secure store (`localStorage` on web). Rotating the token on the desktop sends the app back to the pairing screen. Disconnect on the thread list forgets the pairing.
 
 ## Scripts
@@ -50,5 +52,4 @@ The pairing is stored in the secure store (`localStorage` on web). Rotating the 
 - A relay or tunnel; the phone connects to the desktop directly.
 - Push notifications. The app is live only while it is open.
 - Attachments, the file explorer, git graph, settings, automations and secret requests from the phone.
-- Terminal scrollback from before the phone opened the session.
 - TLS. Use Tailscale for an encrypted path.

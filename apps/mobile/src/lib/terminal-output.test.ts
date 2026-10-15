@@ -28,7 +28,6 @@ describe("TerminalOutput", () => {
     const output = new TerminalOutput()
     const attach = output.beginAttach()
     expect(attach.since).toBeNull()
-    // Pushes from before and after the attach snapshot, received while it was in flight.
     expect(output.receive({ data: "abc", offset: 0 })).toBe("")
     expect(output.receive({ data: "def", offset: 3 })).toBe("")
     expect(output.receive({ data: "ghi", offset: 6 })).toBe("")

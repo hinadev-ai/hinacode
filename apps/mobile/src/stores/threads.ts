@@ -8,7 +8,7 @@ interface ThreadsState {
   readonly status: "loading" | "ready" | "error"
   readonly error: string | null
   /**
-   * Reads projects and threads again on every handshake, since pushes were missed while offline. A thread pushed
+   * Reads projects and threads again on every handshake, since pushes were missed while offline. A thread pushedDuringLoad
    * while the read was in flight keeps whichever copy is newer.
    */
   readonly load: () => Promise<void>
@@ -17,8 +17,7 @@ interface ThreadsState {
 }
 
 export const useThreads = create<ThreadsState>()((set) => {
-  /** Threads pushed while `load` waits, which the list it gets back may predate. */
-  let pushed: Map<string, Thread | null> | null = null
+  let pushedDuringLoad: Map<string, Thread | null> | null = null
 
   return {
     projects: [],
@@ -27,10 +26,10 @@ export const useThreads = create<ThreadsState>()((set) => {
     error: null,
     load: async () => {
       const ownPushed = new Map<string, Thread | null>()
-      pushed = ownPushed
+      pushedDuringLoad = ownPushed
       try {
         const [projects, threads] = await Promise.all([call("projects.list", undefined), call("threads.list", undefined)])
-        if (pushed !== ownPushed) return
+        if (pushedDuringLoad !== ownPushed) return
         const byId: Record<string, Thread> = Object.fromEntries(threads.map((thread) => [thread.id, thread]))
         for (const [id, thread] of ownPushed) {
           if (thread === null) delete byId[id]
@@ -38,18 +37,17 @@ export const useThreads = create<ThreadsState>()((set) => {
         }
         set({ projects, byId, status: "ready", error: null })
       } catch (cause) {
-        // A failed reload keeps the threads on screen.
-        if (pushed === ownPushed) set({ status: "error", error: cause instanceof Error ? cause.message : String(cause) })
+        if (pushedDuringLoad === ownPushed) set({ status: "error", error: cause instanceof Error ? cause.message : String(cause) })
       } finally {
-        if (pushed === ownPushed) pushed = null
+        if (pushedDuringLoad === ownPushed) pushedDuringLoad = null
       }
     },
     upsert: (thread) => {
-      pushed?.set(thread.id, thread)
+      pushedDuringLoad?.set(thread.id, thread)
       set((state) => ({ byId: { ...state.byId, [thread.id]: thread } }))
     },
     remove: (id) => {
-      pushed?.set(id, null)
+      pushedDuringLoad?.set(id, null)
       set((state) => {
         const { [id]: _removed, ...byId } = state.byId
         return { byId }

@@ -13,24 +13,32 @@ export interface Attach {
 
 /**
  * Decides what to write to the screen from a session's output pushes and `terminal.attach` answers, so each
- * character is shown once. No React Native imports, so Vitest can drive it.
+ * character is shown once.
  */
 export class TerminalOutput {
-  /** The offset just past the last character shown, or null when the screen may not match the session. */
-  private written: number | null = null
+  private nextOffset: number | null = null
+  private gap: Chunk[] = []
   private attach: { readonly token: Attach; readonly held: Chunk[] } | null = null
 
   /** Starts an attach. Output received until it settles is held back, and a newer attach supersedes this one. */
   beginAttach(): Attach {
-    const token = { since: this.written }
-    this.attach = { token, held: [] }
+    const token = { since: this.nextOffset }
+    this.attach = { token, held: this.gap.splice(0) }
     return token
+  }
+
+  get needsAttach() {
+    return this.gap.length > 0
   }
 
   /** Returns what to write for a push, or "" when it is held back or already shown. */
   receive(chunk: Chunk): string {
     if (this.attach !== null) {
       this.attach.held.push(chunk)
+      return ""
+    }
+    if (this.gap.length > 0 || (this.nextOffset !== null && chunk.offset !== undefined && chunk.offset > this.nextOffset)) {
+      this.gap.push(chunk)
       return ""
     }
     return this.take(chunk)
@@ -42,11 +50,10 @@ export class TerminalOutput {
     const { held } = this.attach
     this.attach = null
     const { since } = token
-    // A screen that may not match, or output dropped from the desktop's scrollback, is repainted.
-    const text =
-      since === null || answer.offset > since ? RESET + answer.data : answer.data.slice(since - answer.offset)
-    this.written = answer.offset + answer.data.length
-    return text + held.map((chunk) => this.take(chunk)).join("")
+    const needsRepaint = since === null || answer.offset > since
+    const text = needsRepaint ? RESET + answer.data : answer.data.slice(since - answer.offset)
+    this.nextOffset = answer.offset + answer.data.length
+    return text + held.map((chunk) => this.receive(chunk)).join("")
   }
 
   /** Returns the output held back for a failed attach, or null when superseded. */
@@ -59,16 +66,15 @@ export class TerminalOutput {
 
   /** The screen could not show some output, so the next attach repaints from the start of the scrollback. */
   lost() {
-    this.written = null
+    this.nextOffset = null
   }
 
   private take({ data, offset }: Chunk): string {
     if (offset === undefined) return data
     const end = offset + data.length
-    if (this.written !== null && end <= this.written) return ""
-    // A gap means output was lost; the next attach repaints it.
-    const skip = this.written === null ? 0 : Math.max(0, this.written - offset)
-    this.written = end
+    if (this.nextOffset !== null && end <= this.nextOffset) return ""
+    const skip = this.nextOffset === null ? 0 : Math.max(0, this.nextOffset - offset)
+    this.nextOffset = end
     return data.slice(skip)
   }
 }

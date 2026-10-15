@@ -88,7 +88,6 @@ describe("reload", () => {
     useMessages.getState().receive(created(3, "c"))
     expect(ids()).toEqual(["a", "b", "c"])
 
-    // The snapshot already holds `b`; `c` came after it.
     calls.shift()!.resolve(snapshot(2, ["a", "b"]))
     await flush()
     expect(ids()).toEqual(["a", "b", "c"])

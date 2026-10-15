@@ -63,20 +63,17 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  // Every handshake reloads the snapshots, since pushes sent while the socket was down are lost.
   useEffect(() => {
     if (generation === 0) return
     void useThreads.getState().load()
     useMessages.getState().reload()
   }, [generation])
 
-  // Histories belong to one desktop, so they go when it refuses us or the phone pairs elsewhere.
   useEffect(() => () => useMessages.getState().reset(), [paired, target])
 
   return restored ? children : null
 }
 
-/** Which network the device is on. A change means sockets opened on the old one are likely dead. */
 const networkIdentity = (state: NetInfoState) =>
   [state.type, state.isConnected, state.details !== null && "ipAddress" in state.details ? state.details.ipAddress : ""].join(
     "|",

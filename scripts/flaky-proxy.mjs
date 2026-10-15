@@ -29,22 +29,36 @@ const reset = () => {
 
 const proxy = tcpServer((client) => {
   const upstream = connect(port(targetArg), process.argv[5] ?? "127.0.0.1")
-  const pair = { client, upstream }
+  const pair = { client, upstream, directions: [] }
   pairs.add(pair)
   const forward = (from, to) => {
+    const held = []
+    const resume = () => {
+      if (mode === "blackhole" || mode === "reset" || to.destroyed) return
+      while (held.length > 0) {
+        if (!to.write(held.shift())) return
+      }
+      from.resume()
+    }
+    pair.directions.push({ resume })
     from.on("data", (data) => {
-      if (mode === "blackhole" || mode === "reset") return
+      if (mode === "reset") return
+      if (mode === "blackhole") {
+        held.push(data)
+        from.pause()
+        return
+      }
       if (mode === "delay") {
         from.pause()
         const timer = setTimeout(() => {
           timers.delete(timer)
-          if (!to.destroyed && mode !== "blackhole" && mode !== "reset") to.write(data)
-          from.resume()
+          held.push(data)
+          resume()
         }, delayMs)
         timers.add(timer)
       } else if (!to.write(data)) from.pause()
     })
-    to.on("drain", () => from.resume())
+    to.on("drain", resume)
     from.on("end", () => to.end())
     from.on("error", () => to.destroy())
     from.on("close", () => {
@@ -54,6 +68,10 @@ const proxy = tcpServer((client) => {
   }
   forward(client, upstream)
   forward(upstream, client)
+  if (mode === "blackhole") {
+    client.pause()
+    upstream.pause()
+  }
   if (mode === "reset") {
     client.destroy()
     upstream.destroy()
@@ -73,6 +91,14 @@ const control = httpServer((request, response) => {
     mode = next
     delayMs = next === "delay" ? delay : 0
     if (mode === "reset") reset()
+    else {
+      for (const pair of pairs) {
+        if (mode === "blackhole") {
+          pair.client.pause()
+          pair.upstream.pause()
+        } else for (const direction of pair.directions) direction.resume()
+      }
+    }
   } else if (request.method !== "GET") return response.writeHead(405).end()
   response
     .writeHead(200, { "content-type": "application/json" })

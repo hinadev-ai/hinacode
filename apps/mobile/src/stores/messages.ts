@@ -50,10 +50,8 @@ export const useMessages = create<MessagesState>()((set, get) => {
     pendingDeltas.delete(threadId)
     return pending.pushes
   }
-  /** The load in flight per thread, so a load that a `reset` abandoned cannot settle a newer one. */
-  const loads = new Map<string, object>()
-  /** Pushes received while a ready history's snapshot is being read again, so the snapshot can catch up. */
-  const reloading = new Map<string, { pushes: TranscriptPush[] }>()
+  const currentLoadToken = new Map<string, object>()
+  const pushesDuringReload = new Map<string, { pushes: TranscriptPush[] }>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
     set((state) => {
       const history = state.byThread[threadId]
@@ -69,42 +67,37 @@ export const useMessages = create<MessagesState>()((set, get) => {
       if (current !== undefined && current.status !== "error") return
       setHistory(threadId, () => ({ status: "loading", pending: [] }))
       const load = {}
-      loads.set(threadId, load)
-      // A `reset` while the request was in flight wins: the snapshot may come from the previous desktop, or
-      // predate pushes we never got. A load started after the reset is not this one.
-      const settle = (update: (pending: readonly TranscriptPush[]) => ThreadHistory) => {
-        if (loads.get(threadId) !== load) return
-        loads.delete(threadId)
+      currentLoadToken.set(threadId, load)
+      const settleIfStillCurrent = (update: (pending: readonly TranscriptPush[]) => ThreadHistory) => {
+        if (currentLoadToken.get(threadId) !== load) return
+        currentLoadToken.delete(threadId)
         setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
       }
       try {
         const { seq, messages, approvals, questions } = await call("threads.transcript", { threadId })
-        settle((pending) =>
+        settleIfStillCurrent((pending) =>
           pending
             .filter((push) => push.seq > seq)
             .reduce<ReadyHistory>(applyPush, { status: "ready", messages, approvals, questions }),
         )
       } catch (cause) {
-        settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+        settleIfStillCurrent(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
       }
     },
 
     reload: () => {
       for (const [threadId, history] of Object.entries(get().byThread)) {
-        // A load still in flight is a read, so the connection sends it again and its snapshot is current.
         if (history.status === "loading") continue
         if (history.status === "error") {
           void get().load(threadId)
           continue
         }
-        // A newer reload supersedes one still in flight; the identity check below drops the older answer.
         const reload = { pushes: [] as TranscriptPush[] }
-        reloading.set(threadId, reload)
+        pushesDuringReload.set(threadId, reload)
         call("threads.transcript", { threadId }).then(
           ({ seq, messages, approvals, questions }) => {
-            if (reloading.get(threadId) !== reload) return
-            reloading.delete(threadId)
-            // Buffered pushes cover every delta still waiting for publication.
+            if (pushesDuringReload.get(threadId) !== reload) return
+            pushesDuringReload.delete(threadId)
             takePending(threadId)
             setHistory(threadId, (current) =>
               current?.status === "ready"
@@ -115,8 +108,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
             )
           },
           () => {
-            // Keep the last known history; the next reconnect tries again.
-            if (reloading.get(threadId) === reload) reloading.delete(threadId)
+            if (pushesDuringReload.get(threadId) === reload) pushesDuringReload.delete(threadId)
           },
         )
       }
@@ -124,14 +116,14 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
     reset: () => {
       for (const threadId of [...pendingDeltas.keys()]) takePending(threadId)
-      loads.clear()
-      reloading.clear()
+      currentLoadToken.clear()
+      pushesDuringReload.clear()
       set({ byThread: {} })
     },
 
     receive: (push) => {
       const threadId = pushThreadId(push)
-      reloading.get(threadId)?.pushes.push(push)
+      pushesDuringReload.get(threadId)?.pushes.push(push)
       const type = deltaType(push)
       const pending = pendingDeltas.get(threadId)
       if (get().byThread[threadId]?.status === "ready" && type !== undefined) {

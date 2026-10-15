@@ -9,7 +9,6 @@ const { useThreads } = await import("./threads")
 const EARLY = "2026-10-16T00:00:00.000Z"
 const LATE = "2026-10-16T00:01:00.000Z"
 
-/** Answers the `projects.list` and `threads.list` calls of one `load`. */
 function answer(threads: readonly unknown[]) {
   calls.find((pending) => pending.method === "projects.list")!.resolve([])
   calls.find((pending) => pending.method === "threads.list")!.resolve(threads)
