@@ -9,6 +9,7 @@ import { IconButton } from "@/components/ui"
 import { Colors, HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
@@ -47,9 +48,10 @@ export function Composer({ thread }: { thread: Thread }) {
   }, [connected, thread.provider])
 
   const send = async () => {
-    if (!hasDraft) return
+    // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
     const sent = useDrafts.getState().take(thread.id)
     const prompt = sent.trim()
+    if (prompt === "") return useDrafts.getState().restore(thread.id, sent)
     setError(null)
     try {
       await useDrafts.getState().trackSending(thread.id, prompt, () =>
@@ -73,7 +75,7 @@ export function Composer({ thread }: { thread: Thread }) {
       {sending?.map((prompt) => (
         <View key={prompt.id} testID="composer-sending" style={styles.sending}>
           <Text style={[styles.sendingLabel, { color: theme.textMuted }]}>
-            {connected ? "Sending" : "Sends when the desktop is back"}
+            {copy(connected ? "mobile_composer_sending" : "mobile_composer_sends_when_back")}
           </Text>
           <Text numberOfLines={2} style={[styles.sendingText, { color: theme.text }]}>
             {prompt.text}

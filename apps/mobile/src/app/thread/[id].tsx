@@ -10,6 +10,7 @@ import { IconButton, Notice, ProviderLabel, ThreadStatusPill } from "@/component
 import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { useThreads } from "@/stores/threads"
 
 const tabs = [
@@ -80,7 +81,7 @@ export default function ThreadScreen() {
       </View>
       {status !== "connected" && (
         <View style={styles.banner}>
-          <Notice text="Reconnecting. Actions send when the desktop is back." tone="attention" />
+          <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
         </View>
       )}
       {thread === undefined ? (
