@@ -1,12 +1,14 @@
 import type { PushEvent } from "@shared/contract.ts"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent, useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { TerminalOutput } from "@/lib/terminal-output"
 import { keySequence, type TerminalKey, terminalKeys, withCtrl } from "./terminal-keys"
 import type { TerminalViewHandle } from "./terminal-types"
 import { TerminalView } from "./terminal-view"
@@ -15,9 +17,6 @@ type TerminalPush = Extract<PushEvent, { type: "terminal.data" | "terminal.exite
 type Session = { readonly id: string; size: string; generation: number }
 
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
-
-/** Clears the screen and scrollback before output that does not continue what is shown. */
-const RESET = "\x1bc"
 
 /**
  * A shell in the thread's worktree. The session opens once the view knows its grid size and is
@@ -34,10 +33,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const mounted = useRef(false)
   // Output can arrive before `terminal.open` answers with the session id.
   const early = useRef<TerminalPush[]>([])
-  // Output that arrives while `terminal.attach` is in flight, applied after what attach returns.
-  const attaching = useRef<TerminalPush[] | null>(null)
-  /** The output offset just past the last character written, or null before any output with an offset. */
-  const written = useRef<number | null>(null)
+  const [output] = useState(() => new TerminalOutput())
   const latestSize = useRef({ cols: 80, rows: 24 })
   const [exitCode, setExitCode] = useState<number | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
@@ -45,31 +41,44 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const [ctrl, setCtrl] = useState(false)
   const keyboardVisible = useKeyboardVisible()
 
-  const apply = (push: TerminalPush) => {
-    if (push.type === "terminal.exited") return setExitCode(push.exitCode)
-    const { data, offset } = push
-    if (offset === undefined) return view.current?.write(data)
-    const end = offset + data.length
-    if (written.current !== null && end <= written.current) return
-    // Trim what attach already wrote. A gap means output was lost; the next attach repaints it.
-    const skip = written.current === null ? 0 : Math.max(0, written.current - offset)
-    view.current?.write(data.slice(skip))
-    written.current = end
+  const write = (text: string | null) => {
+    if (text === null || text === "") return
+    if (view.current === null) output.lost()
+    else view.current.write(text)
   }
 
-  useEffect(
-    () =>
-      onEvent((event) => {
-        if (event.type !== "terminal.data" && event.type !== "terminal.exited") return
-        if (session.current === null) {
-          if (opening.current) early.current.push(event)
-        } else if (event.id === session.current.id) {
-          if (attaching.current !== null) attaching.current.push(event)
-          else apply(event)
-        }
-      }),
-    [],
-  )
+  const apply = (push: TerminalPush) => {
+    if (push.type === "terminal.exited") setExitCode(push.exitCode)
+    else write(output.receive(push))
+  }
+
+  /** Catches the screen up with the session, holding back pushes until the desktop answers. */
+  const attach = (current: Session) => {
+    current.generation = useConnection.getState().generation
+    const token = output.beginAttach()
+    call("terminal.attach", { id: current.id, since: token.since }).then(
+      ({ session: attached, offset, data }) => {
+        const text = output.attached(token, { offset, data })
+        if (text === null) return
+        write(text)
+        if (attached.status === "exited") setExitCode(attached.exitCode)
+      },
+      (cause) => {
+        const text = output.attachFailed(token)
+        if (text === null) return
+        write(text)
+        setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
+      },
+    )
+  }
+
+  const onPush = useEffectEvent((event: PushEvent) => {
+    if (event.type !== "terminal.data" && event.type !== "terminal.exited") return
+    if (session.current === null) {
+      if (opening.current) early.current.push(event)
+    } else if (event.id === session.current.id) apply(event)
+  })
+  useEffect(() => onEvent(onPush), [])
 
   useEffect(() => {
     mounted.current = true
@@ -80,34 +89,12 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     }
   }, [])
 
-  useEffect(() => {
+  const reattach = useEffectEvent(() => {
     const current = session.current
     if (current === null || current.generation === generation) return
-    current.generation = generation
-    const since = written.current
-    const buffered: TerminalPush[] = []
-    attaching.current = buffered
-    const finish = () => {
-      if (attaching.current !== buffered) return false
-      attaching.current = null
-      return true
-    }
-    call("terminal.attach", { id: current.id, since }).then(
-      ({ session: attached, offset, data }) => {
-        if (!finish()) return
-        if (since === null || offset > since) view.current?.write(RESET + data)
-        else view.current?.write(data.slice(since - offset))
-        written.current = offset + data.length
-        if (attached.status === "exited") setExitCode(attached.exitCode)
-        for (const push of buffered) apply(push)
-      },
-      (cause) => {
-        if (!finish()) return
-        setError(`Could not reconnect to the shell: ${errorText(cause)}`)
-        for (const push of buffered) apply(push)
-      },
-    )
-  }, [generation])
+    if (useConnection.getState().features.has("terminal-attach")) attach(current)
+  })
+  useEffect(() => reattach(), [generation])
 
   const resize = (current: Session) => {
     const { cols, rows } = latestSize.current
@@ -131,6 +118,9 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           generation: useConnection.getState().generation,
         }
         session.current = current
+        // A retried open answers with the session it already created, whose output may have been missed,
+        // so a desktop that can attach repaints from its scrollback. Early pushes are held back meanwhile.
+        if (useConnection.getState().features.has("terminal-attach")) attach(current)
         for (const push of early.current) if (push.id === opened.id) apply(push)
         early.current = []
         resize(current)

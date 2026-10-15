@@ -717,6 +717,10 @@
     }
   ],
   "remote_status_error": "無法監聽：{message}",
+  "mobile_reconnecting_banner": "正在重新連線。桌面版恢復後會送出操作",
+  "mobile_composer_sending": "傳送中",
+  "mobile_composer_sends_when_back": "桌面版恢復後送出",
+  "mobile_terminal_reattach_failed": "無法重新連上 shell：{message}",
   "remote_bind_label": "遠端監聽位址",
   "remote_bind_loopback": "僅限這台電腦（127.0.0.1）",
   "remote_bind_all": "所有網路介面（0.0.0.0）",

@@ -735,6 +735,10 @@
     }
   ],
   "remote_status_error": "リスナーを起動できませんでした：{message}",
+  "mobile_reconnecting_banner": "再接続しています。デスクトップに戻り次第、操作を送信します。",
+  "mobile_composer_sending": "送信中",
+  "mobile_composer_sends_when_back": "デスクトップに戻り次第送信",
+  "mobile_terminal_reattach_failed": "シェルに再接続できませんでした：{message}",
   "remote_bind_label": "リスナーの待機インターフェース",
   "remote_bind_loopback": "ローカルマシンのみ (127.0.0.1)",
   "remote_bind_all": "すべてのインターフェース (0.0.0.0)",

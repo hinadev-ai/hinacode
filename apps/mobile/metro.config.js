@@ -3,8 +3,10 @@ const { getDefaultConfig } = require("expo/metro-config")
 
 const config = getDefaultConfig(__dirname)
 const shared = path.resolve(__dirname, "../../src/shared")
+// The repo's copy catalogs, which `src/lib/copy.ts` reads.
+const messages = path.resolve(__dirname, "../../messages")
 
-config.watchFolders = [shared]
+config.watchFolders = [shared, messages]
 config.resolver.nodeModulesPaths = [path.resolve(__dirname, "node_modules"), path.resolve(__dirname, "../../node_modules")]
 
 // src/shared would otherwise resolve `effect` from the repo root, giving the bundle two copies whose
