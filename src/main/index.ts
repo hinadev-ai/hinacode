@@ -36,6 +36,8 @@ import * as Projects from "./services/Projects.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as RemoteServer from "./remote/server.ts"
+import { applyServeConfig, serveConfig } from "./serve.ts"
+import { pairingUrl } from "../shared/remote.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Search from "./services/Search.ts"
 import * as Settings from "./services/Settings.ts"
@@ -51,6 +53,17 @@ import icon from "../../assets/icon.png?asset"
 app.setName("kkcode")
 // Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
 if (process.platform === "win32") app.setAppUserModelId("dev.kkcode.app")
+// `kkcode serve` (or KKCODE_SERVE=1) runs this same binary as a headless cloud: no window, the remote
+// listener on, and pairing printed to stdout. It needs its own KKCODE_USER_DATA, which the lock below enforces.
+const serve = (() => {
+  try {
+    return serveConfig(process.argv, process.env)
+  } catch (error) {
+    // Electron keeps the process alive after a throw at load, so a service manager would never see the failure.
+    console.error(`kkcode serve: ${error instanceof Error ? error.message : String(error)}`)
+    return process.exit(1)
+  }
+})()
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
@@ -58,7 +71,8 @@ if (userDataOverride) app.setPath("userData", userDataOverride)
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
   console.error(`kkcode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
-  app.exit(0)
+  // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
+  app.exit(serve ? 1 : 0)
 }
 const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
 if (
@@ -159,18 +173,24 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess, tinyVm).pipe(
     Layer.provide(domain),
   )
+  // A cloud has no app to update in place; it is replaced as a binary, so the updater never starts there.
+  const updates = serve
+    ? Layer.succeed(Updates.Updates, Updates.Updates.of({ ready: Effect.succeed(null), install: Effect.void }))
+    : Updates.layer
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(
     Automations.layer,
     AutoArchive.layer,
     PullRequestWatcher.layer,
-    Updates.layer,
+    updates,
     Mcp.serverLayer,
     AgentLogins.layer,
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
+  // A cloud's address is written below it, so the listener's first read of its settings already has it.
   return RemoteServer.layer.pipe(
+    Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer)),
     Layer.provideMerge(makeEventsLayer()),
@@ -247,19 +267,41 @@ const createWindow = () => {
   void window.loadURL(appUrl)
 }
 
+const LISTEN_TIMEOUT_MS = 5000
+
+/**
+ * Waits until the `kkcode serve` listener is bound, then prints the pairing URL per reachable host.
+ * Stdout is the daemon's interface: a terminal, launchd or systemd reads it.
+ */
+const startCloud = async (
+  runtime: ManagedRuntime.ManagedRuntime<RemoteAccess.RemoteAccess, unknown>,
+  userData: string,
+) => {
+  const deadline = Date.now() + LISTEN_TIMEOUT_MS
+  for (;;) {
+    const status = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.status))
+    if (status.listening) break
+    if (status.listenError) throw new Error(`remote listener failed: ${status.listenError}`)
+    if (Date.now() > deadline) throw new Error("remote listener did not start in time")
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  const pairing = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.pairing))
+  const lines = [
+    "kkcode cloud",
+    `data: ${userData}`,
+    "pair a client with one of:",
+    ...pairing.hosts.map((host) => `  ${pairingUrl(host, pairing.port, pairing.token)}`),
+  ]
+  process.stdout.write(`${lines.join("\n")}\n`)
+}
+
 app.whenReady().then(async () => {
   const userData = app.getPath("userData")
   // Where `sbx login` keeps its login on macOS and Linux.
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
   const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite"), sbxConfigPath))
-  // Build the layer (open the database, run migrations) before the renderer can call in.
+  // Build the layer (open the database, run migrations) before anything can call in.
   await runtime.runPromise(Effect.void)
-  registerIpc(runtime, appUrl)
-  app.dock?.setIcon(icon)
-  serveAttachments()
-  serveGitHubAssets(runtime)
-  serveProjectFiles(runtime)
-  limitBrowserPermissions()
   let disposed = false
   app.on("before-quit", (event) => {
     if (disposed) return
@@ -270,6 +312,24 @@ app.whenReady().then(async () => {
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
     void Promise.race([disposal, timeout]).then(() => app.quit())
   })
+  if (serve) {
+    app.dock?.hide()
+    process.on("SIGINT", () => app.quit())
+    process.on("SIGTERM", () => app.quit())
+    try {
+      await startCloud(runtime, userData)
+    } catch (cause) {
+      console.error("kkcode serve failed", cause)
+      app.exit(1)
+    }
+    return
+  }
+  registerIpc(runtime, appUrl)
+  app.dock?.setIcon(icon)
+  serveAttachments()
+  serveGitHubAssets(runtime)
+  serveProjectFiles(runtime)
+  limitBrowserPermissions()
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -282,5 +342,5 @@ app.whenReady().then(async () => {
 })
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit()
+  if (!serve && process.platform !== "darwin") app.quit()
 })
