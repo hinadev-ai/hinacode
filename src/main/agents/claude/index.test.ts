@@ -414,6 +414,46 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("answers a steer the CLI batched with an abandoned turn's steer", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        const abandoned = yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* until(() => latestCli().prompts.length === 2)
+        yield* Fiber.interrupt(abandoned.fiber)
+
+        const turn = yield* startTurn(turnInput({ prompt: "Run the tests" }))
+        yield* until(() => latestCli().prompts.length === 3)
+        yield* provider.steer("thread-1", "Only the unit tests", [])
+        yield* until(() => latestCli().prompts.length === 4)
+        const [first, abandonedSteer, prompt, steer] = latestCli().prompts.map((message) => message.uuid)
+        const mixed = [abandonedSteer, steer]
+        latestCli().push(
+          { ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [first] },
+          { ...textDelta("Running unit tests"), user_message_uuids: mixed },
+          { ...succeeded, user_message_uuids: mixed },
+        )
+        yield* settle
+        expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
+          { type: "text_delta", text: "Running unit tests" },
+        ])
+
+        latestCli().push(textDelta("Done", prompt), { ...succeeded, user_message_uuids: [prompt] })
+        yield* Fiber.join(turn.fiber)
+        expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
+          { type: "text_delta", text: "Running unit tests" },
+          { type: "text_delta", text: "Done" },
+          expect.objectContaining({ type: "turn_completed" }),
+        ])
+      }),
+    ),
+  )
+
   it.effect("waits for an abandoned turn's result before the countdown starts", () =>
     lifecycle(
       Effect.gen(function* () {
