@@ -70,6 +70,7 @@
     "electron-vite": "5.0.0",
     "fuzzysort": "4.0.2",
     "mermaid": "12.1.0",
+    "motion": "14.2.0",
     "node-gyp": "12.2.0",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",

@@ -3,15 +3,21 @@ import { Link } from "@tanstack/react-router"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
-import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
+import {
+  assistantPresentation,
+  type IndexedMessagePart,
+  isActivity,
+  presentationBlocks,
+} from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { CommandGroup, MessagePartView } from "./MessagePart.tsx"
+import { MessagePartView, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { WorkedFor } from "./WorkedFor.tsx"
@@ -152,21 +158,40 @@ function MessageBody({ message }: { message: Message }) {
       </article>
     )
   }
+  return <AssistantBody message={message} showElapsedTime={showElapsedTime} />
+}
+
+function AssistantBody({ message, showElapsedTime }: { message: Message; showElapsedTime: boolean }) {
   const presentation = assistantPresentation(message, showElapsedTime)
   const { parts } = presentation
+  const reveal = useUi((state) => state.findReveal)
+  const revealsActivity =
+    reveal !== null &&
+    reveal.match.messageId === message.id &&
+    parts.some(({ part, index }) => index === reveal.match.partIndex && isActivity(part))
+  const [activityShown, setActivityShown] = useFindDisclosure(revealsActivity ? reveal : null)
   const streaming = message.completedAt === null
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const last = parts.at(-1)
   const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
+  const hasActivity = parts.some(({ part }) => isActivity(part))
+  const shownParts =
+    presentation.kind === "completed" && !activityShown ? parts.filter(({ part }) => !isActivity(part)) : parts
   return (
     <article
       aria-busy={streaming}
       data-message-id={message.id}
       className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
     >
-      {presentation.kind === "completed" && <WorkedFor durationMs={presentation.durationMs} />}
-      <AssistantParts message={message} parts={parts} writingIndex={writingIndex} />
+      {presentation.kind === "completed" && (
+        <WorkedFor
+          durationMs={presentation.durationMs}
+          expanded={activityShown}
+          onExpandedChange={hasActivity ? setActivityShown : undefined}
+        />
+      )}
+      <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
         <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
@@ -188,8 +213,8 @@ function AssistantParts({
   const { lastMessageId, providerLabel } = use(AnswerableContext)
   return presentationBlocks(parts).map((block) => {
     const { index } = block
-    if (block.type === "commands") {
-      return <CommandGroup key={index} messageId={message.id} index={index} calls={block.calls} />
+    if (block.type === "tools") {
+      return <ToolGroup key={index} messageId={message.id} index={index} calls={block.calls} />
     }
     const { part } = block
     return (

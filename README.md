@@ -11,7 +11,7 @@ A local desktop app for running Claude Code, Codex and Muse Code against your re
 - Git worktree per thread. A project-level setup script runs in the new worktree with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, so copying a `.env` is one line. Archiving a thread can remove the worktree too, deleting the branch when it is merged. Threads can archive themselves once every linked pull request merges.
 - CLAUDE.md, AGENTS.md and skills load from the project and your home directory, as they do in the CLIs.
 - Approvals for commands, edits and MCP tool calls appear inline. Steer a running turn by sending another message.
-- Completed responses show elapsed time above the activity and answer. Reasoning, tools, and progress messages keep their existing order and controls.
+- Completed responses show elapsed time above the answer. Selecting Worked for shows the reasoning, tool calls and file changes, which stay hidden by default. Back-to-back tool calls fold into one line, such as `Ran 2 commands and read 3 files`, that opens into a scrollable list.
 - Images and files attach by button, paste or drop. Images go to the model, other files are passed by absolute path.
 - Built-in MCP server exposed to both agents: `review_changes`, `link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, `watch_pull_request` and `unwatch_pull_request`, `request_secret`, `create_thread` with `list_threads`, `read_thread`, `send_to_thread` and `stop_thread` to follow up on the threads of a project, and Linear issue tools backed by an API key stored with Electron's safeStorage.
 - An activity bar on the right switches the thread panel between views, each with its own shortcut: details (workspace, setup log, and TCP ports opened by processes the thread spawned, each with a kill button), a file explorer with git status and a read-only highlighted file viewer, changes with diffs, pull requests, and subagents.
@@ -44,13 +44,16 @@ pnpm test         # node --test for the pure logic (pollers, templates, signatur
 Run a built app with its own data directory, for example to keep a test profile apart from your real one:
 
 ```sh
-KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron out/main/index.js
+KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron --use-mock-keychain out/main/index.js
 ```
+
+On macOS, `--use-mock-keychain` keeps verification out of the login Keychain. Save only dummy secrets in these profiles. A separate data directory does not isolate the login Keychain. The e2e suite supplies this flag automatically.
 
 Simulate an exhausted Claude account without using the account:
 
 ```sh
-KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit pnpm dev
+KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit \
+  ELECTRON_CLI_ARGS='["--use-mock-keychain"]' pnpm dev
 ```
 
 The first message in each thread reaches the limit. The next attempt succeeds. The callout offers **Resume at reset**, which retries once at the provider's reset time and survives restart. Set `KKCODE_MOCK_RESET_MS=5000` for a five-second reset. Use `KKCODE_MOCK_CLAUDE=org-spend-limit` to simulate the organization monthly spend cap and its `/usage-credits` guidance. That case has no automatic reset action.
@@ -59,10 +62,12 @@ Headless verification on a machine without a display uses Xvfb and Chrome DevToo
 
 ```sh
 Xvfb :99 -screen 0 1600x1000x24 &
-DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=9222 out/main/index.js
+KKCODE_USER_DATA=/tmp/kkcode-test DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --use-mock-keychain --remote-debugging-port=9222 out/main/index.js
 ```
 
 ## Layout
+
+The marketing site in [`site/`](site/README.md) uses Astro and Tailwind. Run it with `pnpm --dir site dev` and deploy it to Cloudflare Workers with `pnpm --dir site deploy`.
 
 ```
 src/main      Electron main process. One Effect runtime, services under services/, agents under agents/,

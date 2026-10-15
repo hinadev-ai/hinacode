@@ -28,6 +28,11 @@ export interface WebhookState {
   response: { status: number; body: string } | null
 }
 
+export interface ChosenModel {
+  /** The label of the model the scenario picked from the agent's live list. */
+  label: string | null
+}
+
 interface TestFixtures {
   readonly usageLimitApp: KkcodeApp
   readonly automaticResumeApp: KkcodeApp
@@ -44,6 +49,7 @@ interface TestFixtures {
   readonly listeners: Map<string, Listener>
   readonly agent: AgentState
   readonly webhook: WebhookState
+  readonly chosenModel: ChosenModel
 }
 
 interface WorkerFixtures {
@@ -157,6 +163,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
   agent: async ({}, provide) => provide({ connection: null, result: null }),
   webhook: async ({}, provide) => provide({ automations: new Map(), response: null }),
+  chosenModel: async ({}, provide) => provide({ label: null }),
 })
 /* oxlint-enable react/rules-of-hooks, no-empty-pattern */
 

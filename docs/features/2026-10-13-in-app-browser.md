@@ -17,6 +17,7 @@ Claude's desktop app puts a browser next to the conversation and lets the user c
 4. Click the pointer button (Select element) next to the address. The page dims its pointer and highlights the element under it in violet, labelled with its tag, class and size. Arrow Up selects the parent, Arrow Down the first child, Left and Right the siblings, Enter picks, Escape cancels.
 5. Clicking (or Enter) picks the element. Selection mode ends, the composer gains a chip with a screenshot of the element and `<button.primary>`, and focus moves to the composer so the developer types what to change.
 6. On send, the agent receives the message, the screenshot, and a text block with the page URL, a CSS selector, the React components that rendered it (in a React dev build), its text and its HTML.
+7. The panel header is a tab strip, so the app and its admin page, or two dev servers, stay open side by side. `+` or `mod+t` opens a tab and focuses its address field. Each tab is titled after its page. Switching tabs keeps every page running, so a form half filled in one tab is still there when the developer comes back. Arrow keys switch tabs, Delete or middle click closes one, and closing the last tab leaves an empty one.
 
 ## Design
 
@@ -32,7 +33,10 @@ The view is an Electron `<webview>` (see `docs/adr/0014-webview-for-the-in-app-b
 - `will-attach-webview` strips any preload, forces `sandbox`, `contextIsolation` and no node integration, pins the partition, and refuses a `src` that is not http(s). The pure check lives in `security.ts` with a test.
 - The guest may navigate only to http(s). `window.open` and `target=_blank` load in the same view (the webview has `allowpopups`, and main's window-open handler loads the URL in place and denies the window). The browser session refuses every permission except sanitized clipboard writes, which copy buttons need.
 - rpc stays refused, because the guest's top frame is not the app document (`isTrustedSender`) and it has no preload.
-- The URL per thread lives in `useUi.browserUrls` (memory). Switching views unmounts the webview, and coming back loads the last URL again.
+- Each thread's tabs live in `stores/browserTabs.ts` (memory): a never-empty list of `{ id, url, title }` and the shown tab's id. A thread that has not touched the browser shares the `NO_TABS` constant, so selectors stay stable.
+- Every tab keeps its own `<webview>` mounted. Hidden tabs are `invisible` and `inert` rather than unmounted, so they do not reload. A pick in flight is cancelled when its tab is hidden.
+- A side panel view can supply a `header` component in `views.ts`. The Browser view uses it for the tab strip, a horizontal tablist with automatic activation.
+- Switching views unmounts every webview, and coming back loads each tab's last URL again.
 
 ### Picking
 
@@ -47,7 +51,8 @@ The renderer crops with `webview.capturePage(rect)`, scaling the rect by the pag
 ## Out of scope
 
 - Drawing on the page (pen, arrows, boxes), which Claude's app has. Picking covers the precise case; drawing is the next slice if people ask.
-- Tabs, devtools, device-size presets and console capture.
+- Devtools, device-size presets, console capture and favicons. The renderer CSP refuses remote images, so tabs show a globe.
+- Persisting tabs across restarts, and dragging tabs to reorder them.
 - Keeping the page alive while another view shows. It reloads when the Browser view returns.
 - Vue, Svelte and other component names. React is read from the fiber the dev build attaches to DOM nodes.
 

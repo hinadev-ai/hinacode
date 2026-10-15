@@ -175,9 +175,9 @@ export function SidebarThreadList({ projectId, threads, reorderable, newThreadBu
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
-        <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5 pl-5">
+        <ul ref={listRef} className="flex flex-col gap-0.5 py-0.5">
           {threads.length === 0 && reorderable && (
-            <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
+            <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
             <ThreadRow
@@ -193,7 +193,7 @@ export function SidebarThreadList({ projectId, threads, reorderable, newThreadBu
         </ul>
       </DragDropProvider>
       {reorderError && (
-        <p role="alert" className="px-2 py-1 pl-7 text-xs text-destructive">
+        <p role="alert" className="px-1.5 py-1 text-xs text-destructive">
           {m.sidebar_reorder_failed({ message: reorderError })}
         </p>
       )}
@@ -293,7 +293,7 @@ function ThreadRow({ thread, index, group, reorderable, linkRef, focusAfterRemov
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
           <ProviderIcon provider={thread.provider} />
           <span className="min-w-0 flex-1 truncate text-[0.9375rem]" title={thread.title}>
@@ -439,7 +439,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
   // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-2">
+      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5">
         <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
@@ -605,7 +605,7 @@ function ThreadMeta({ branch, removed, links, updatedAt }: ReturnType<typeof use
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
   // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
       {branch !== null && (
         <span
           className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"
