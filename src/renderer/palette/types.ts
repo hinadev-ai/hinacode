@@ -47,4 +47,6 @@ export interface PaletteMode {
    * fuzzy score, and only items run under the default are remembered as recent.
    */
   readonly rank?: (items: ReadonlyArray<PaletteItem>, query: string) => ReadonlyArray<RankedGroup>
+  /** Pressing an item's chord runs it. Off where the chords are global keybindings, which already run. */
+  readonly runsChords?: boolean
 }

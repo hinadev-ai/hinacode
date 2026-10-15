@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react"
-import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { RiAddLine, RiFolderAddLine } from "react-icons/ri"
 import { ChordKeys } from "../components/ChordKeys.tsx"
@@ -7,8 +6,8 @@ import { Button } from "../components/ui/button.tsx"
 import { commands } from "../keybindings/commands.ts"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { projectsAtom } from "../lib/rpc.ts"
-import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
+import { NEW_THREAD_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { useUi } from "../stores/ui.ts"
 
 const commandTitle = (id: "thread.new" | "project.add") => commands.find((command) => command.id === id)?.title() ?? ""
@@ -16,13 +15,12 @@ const commandTitle = (id: "thread.new" | "project.add") => commands.find((comman
 export function HomeRoute() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const keymap = useKeymap()
-  const firstProject = projects[0]
-  const navigate = useNavigate()
+  const hasProjects = projects.length > 0
 
   const addProject = (
     <Button
       size="lg"
-      variant={firstProject ? "outline" : "default"}
+      variant={hasProjects ? "outline" : "default"}
       onClick={() => useUi.getState().setAddProjectOpen(true)}
     >
       <RiFolderAddLine aria-hidden />
@@ -38,8 +36,8 @@ export function HomeRoute() {
         <p className="text-sm text-balance text-muted-foreground">{m.home_description()}</p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        {firstProject && (
-          <Button size="lg" onClick={() => void startThread(firstProject.id, navigate)}>
+        {hasProjects && (
+          <Button size="lg" onClick={() => usePalette.getState().show(NEW_THREAD_PREFIX)}>
             <RiAddLine aria-hidden />
             {commandTitle("thread.new")}
             {keymap["thread.new"] && <ChordKeys chord={keymap["thread.new"]} />}
@@ -47,11 +45,6 @@ export function HomeRoute() {
         )}
         {addProject}
       </div>
-      {firstProject && (
-        <p className="text-xs text-balance text-muted-foreground">
-          {m.home_hint_ready({ project: firstProject.name })}
-        </p>
-      )}
     </div>
   )
 }

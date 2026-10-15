@@ -14,15 +14,24 @@ import {
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, Thread } from "../../shared/domain.ts"
-import { projectIconAtom, projectsAtom } from "../lib/rpc.ts"
+import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
 import { startThread } from "../lib/startThread.ts"
 import { m } from "../paraglide/messages.js"
-import { selectArchivedThreads, selectProjectThreads, type ThreadsState, useThreads } from "../stores/threads.ts"
+import {
+  selectArchivedThreads,
+  selectInboxThreads,
+  selectPinnedThreads,
+  selectProjectThreads,
+  selectUnpinnedProjectThreads,
+  type ThreadsState,
+  useThreads,
+} from "../stores/threads.ts"
 import { type SidebarTab, useUi } from "../stores/ui.ts"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
+import { ProjectIcon } from "./ProjectIcon.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
@@ -100,8 +109,13 @@ export function Sidebar({
         </Button>
       </div>
 
+      <PinnedThreads query={query.trim().toLocaleLowerCase()} />
+
       <Tabs value={tab} onValueChange={(value: SidebarTab) => setTab(value)} className="min-h-0 flex-1 gap-1">
         <TabsList variant="line" className="w-full justify-start px-2">
+          <TabsTrigger value="inbox" className="flex-none px-2 text-xs">
+            {m.sidebar_tab_inbox()}
+          </TabsTrigger>
           <TabsTrigger value="threads" className="flex-none px-2 text-xs">
             {m.sidebar_tab_threads()}
           </TabsTrigger>
@@ -109,6 +123,11 @@ export function Sidebar({
             {m.sidebar_tab_archived()}
           </TabsTrigger>
         </TabsList>
+        <TabsContent value="inbox" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <InboxList query={query.trim().toLocaleLowerCase()} />
+          </ScrollArea>
+        </TabsContent>
         {(["threads", "archived"] as const).map((value) => (
           <TabsContent key={value} value={value} className="flex min-h-0 flex-col">
             <ScrollArea className="min-h-0 flex-1">
@@ -159,35 +178,69 @@ type Query = string
 
 const includes = (text: string, query: Query) => text.toLocaleLowerCase().includes(query)
 
+type ProjectTab = Exclude<SidebarTab, "inbox">
+
 /** A project's rows in one tab: all of them when the query matches the project's name, else those whose title matches. */
-const tabThreads = (state: Pick<ThreadsState, "byId">, project: Project, tab: SidebarTab, query: Query) => {
-  const threads = (tab === "archived" ? selectArchivedThreads : selectProjectThreads)(project.id)(state)
+const tabThreads = (state: Pick<ThreadsState, "byId">, project: Project, tab: ProjectTab, query: Query) => {
+  const threads = (tab === "archived" ? selectArchivedThreads : selectUnpinnedProjectThreads)(project.id)(state)
   return query === "" || includes(project.name, query)
     ? threads
     : threads.filter((thread) => includes(thread.title, query))
+}
+
+/** Threads of the filtered projects whose title or project name matches the query. */
+function useMatchingThreads(select: (state: Pick<ThreadsState, "byId">) => ReadonlyArray<Thread>, query: Query) {
+  const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
+  return useThreads(
+    useShallow((state) =>
+      select(state).filter((thread) => {
+        const project = projects.find((candidate) => candidate.id === thread.projectId)
+        return project !== undefined && (includes(project.name, query) || includes(thread.title, query))
+      }),
+    ),
+  )
+}
+
+/** Pinned threads of every project, above the tabs so they stay in reach whichever tab is open. */
+function PinnedThreads({ query }: { query: Query }) {
+  const threads = useMatchingThreads(selectPinnedThreads, query)
+  if (threads.length === 0) return null
+  return (
+    <section
+      aria-label={m.sidebar_pinned()}
+      className="flex max-h-1/3 shrink-0 flex-col border-b border-sidebar-border pb-1"
+    >
+      <h2 className="px-3.5 pt-1 text-xs font-medium text-muted-foreground">{m.sidebar_pinned()}</h2>
+      <ScrollArea className="min-h-0">
+        <SidebarThreadList group="pinned" threads={threads} reorderable={false} showProject className="px-1.5" />
+      </ScrollArea>
+    </section>
+  )
+}
+
+/** Active threads of every project in one list, the most recently updated on top. */
+function InboxList({ query }: { query: Query }) {
+  const threads = useMatchingThreads(selectInboxThreads, query)
+  return threads.length === 0 ? (
+    <p className="px-3 py-2 text-xs text-muted-foreground">
+      {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
+    </p>
+  ) : (
+    <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+  )
 }
 
 /**
  * The Threads tab with no query lists every project and every active thread. Only this list keeps empty
  * projects, for their new thread button, and only this list can be reordered, since a drop saves every row's position.
  */
-const isFullList = (tab: SidebarTab, query: Query) => tab === "threads" && query === ""
+const isFullList = (tab: ProjectTab, query: Query) => tab === "threads" && query === ""
 
 /** The projects the filter picks. A filter whose projects are all gone shows every project. */
 function useFilteredProjects(projects: ReadonlyArray<Project>) {
   const ids = useUi((state) => state.sidebarProjectIds)
   const picked = projects.filter((project) => ids.includes(project.id))
   return picked.length === 0 ? projects : picked
-}
-
-/** The project's own favicon, or a folder when it has none. */
-function ProjectIcon({ projectId }: { projectId: string }) {
-  const icon = AsyncResult.getOrElse(useAtomValue(projectIconAtom(projectId)), () => null)
-  return icon === null ? (
-    <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-  ) : (
-    <img src={icon} alt="" className="size-4 shrink-0 rounded-sm object-contain" />
-  )
 }
 
 function ProjectFilterMenu() {
@@ -235,7 +288,7 @@ function ProjectFilterMenu() {
 }
 
 interface ProjectListProps {
-  readonly tab: SidebarTab
+  readonly tab: ProjectTab
   readonly query: Query
   readonly onAddProject: () => void
   /** Takes focus after a project is deleted. */
@@ -299,7 +352,7 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
 
 interface ProjectGroupProps {
   readonly project: Project
-  readonly tab: SidebarTab
+  readonly tab: ProjectTab
   readonly query: Query
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
@@ -311,6 +364,8 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
   const [menuOpen, setMenuOpen] = useState(false)
   const [open, setOpen] = useState(true)
   const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => tabThreads(state, project, tab, query)))
+  // A project whose active threads are all pinned is not empty, they are listed above the tabs.
+  const hasActiveThreads = useThreads((state) => selectProjectThreads(project.id)(state).length > 0)
 
   return (
     <li>
@@ -358,9 +413,10 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
         {/* Clips the rows while the height animates, with room left for a row's 2px focus ring. */}
         <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] [overflow-clip-margin:2px] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
           <SidebarThreadList
-            projectId={project.id}
+            group={project.id}
             threads={threads}
             reorderable={isFullList(tab, query)}
+            showEmptyHint={isFullList(tab, query) && !hasActiveThreads}
             newThreadButtonRef={newThreadButtonRef}
           />
         </CollapsibleContent>
