@@ -35,6 +35,7 @@ const SHEET_PADDING = 8
 export function Composer({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const text = useDrafts((state) => state.byThreadId[thread.id] ?? "")
+  const sending = useDrafts((state) => state.sending[thread.id])
   const connected = useConnection((state) => state.status === "connected")
   const [focused, setFocused] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,9 +52,11 @@ export function Composer({ thread }: { thread: Thread }) {
     const prompt = sent.trim()
     setError(null)
     try {
-      await (busy
-        ? call("threads.steer", { threadId: thread.id, text: prompt })
-        : call("threads.send", { threadId: thread.id, prompt }))
+      await useDrafts.getState().trackSending(thread.id, prompt, () =>
+        busy
+          ? call("threads.steer", { threadId: thread.id, text: prompt })
+          : call("threads.send", { threadId: thread.id, prompt }),
+      )
     } catch (cause) {
       useDrafts.getState().restore(thread.id, sent)
       setError(errorText(cause))
@@ -67,6 +70,16 @@ export function Composer({ thread }: { thread: Thread }) {
 
   return (
     <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.background }]}>
+      {sending?.map((prompt) => (
+        <View key={prompt.id} testID="composer-sending" style={styles.sending}>
+          <Text style={[styles.sendingLabel, { color: theme.textMuted }]}>
+            {connected ? "Sending" : "Sends when the desktop is back"}
+          </Text>
+          <Text numberOfLines={2} style={[styles.sendingText, { color: theme.text }]}>
+            {prompt.text}
+          </Text>
+        </View>
+      ))}
       <View
         style={[styles.bar, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : theme.border }]}
       >
@@ -458,6 +471,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   error: { fontSize: 13, paddingHorizontal: 4 },
+  sending: { gap: 2, paddingHorizontal: 4 },
+  sendingLabel: { fontSize: 12, fontWeight: "500" },
+  sendingText: { fontSize: 15, lineHeight: LINE_HEIGHT },
   // The scrim is dark in both themes, so it borrows the dark palette's background.
   backdrop: { backgroundColor: Colors.dark.background, opacity: 0.5 },
   sheet: {

@@ -17,6 +17,18 @@ export default defineConfig({
         },
       },
       {
+        // Only the phone's React Native-free logic, e.g. its transport against a fake WebSocket.
+        // `dedupe` keeps one copy of effect, since schemas built by one copy fail to decode in the other.
+        resolve: {
+          alias: { "@shared": fileURLToPath(new URL("./src/shared", import.meta.url)) },
+          dedupe: ["effect"],
+        },
+        test: {
+          name: "mobile",
+          include: ["apps/mobile/src/lib/*.test.ts"],
+        },
+      },
+      {
         test: {
           name: "integration",
           include: ["src/**/*.integration.test.ts"],

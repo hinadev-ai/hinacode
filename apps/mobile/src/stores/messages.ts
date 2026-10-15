@@ -24,7 +24,12 @@ interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
   /** Loads a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
-  /** Forgets every history, since pushes sent while the socket was down are lost. */
+  /**
+   * Reads every loaded history again after a reconnect, since pushes sent while the socket was down are lost.
+   * The last known history stays on screen until its new snapshot replaces it in one step.
+   */
+  readonly reload: () => void
+  /** Forgets every history, when the phone disconnects or unpairs. */
   readonly reset: () => void
   readonly receive: (push: TranscriptPush) => void
 }
@@ -45,6 +50,8 @@ export const useMessages = create<MessagesState>()((set, get) => {
     pendingDeltas.delete(threadId)
     return pending.pushes
   }
+  /** Pushes received while a ready history's snapshot is being read again, so the snapshot can catch up. */
+  const reloading = new Map<string, { pushes: TranscriptPush[] }>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
     set((state) => {
       const history = state.byThread[threadId]
@@ -74,13 +81,48 @@ export const useMessages = create<MessagesState>()((set, get) => {
       }
     },
 
+    reload: () => {
+      for (const [threadId, history] of Object.entries(get().byThread)) {
+        // A load still in flight is a read, so the connection sends it again and its snapshot is current.
+        if (history.status === "loading") continue
+        if (history.status === "error") {
+          void get().load(threadId)
+          continue
+        }
+        // A newer reload supersedes one still in flight; the identity check below drops the older answer.
+        const reload = { pushes: [] as TranscriptPush[] }
+        reloading.set(threadId, reload)
+        call("threads.transcript", { threadId }).then(
+          ({ seq, messages, approvals, questions }) => {
+            if (reloading.get(threadId) !== reload) return
+            reloading.delete(threadId)
+            // Buffered pushes cover every delta still waiting for publication.
+            takePending(threadId)
+            setHistory(threadId, (current) =>
+              current?.status === "ready"
+                ? reload.pushes
+                    .filter((push) => push.seq > seq)
+                    .reduce<ReadyHistory>(applyPush, { status: "ready", messages, approvals, questions })
+                : current,
+            )
+          },
+          () => {
+            // Keep the last known history; the next reconnect tries again.
+            if (reloading.get(threadId) === reload) reloading.delete(threadId)
+          },
+        )
+      }
+    },
+
     reset: () => {
       for (const threadId of [...pendingDeltas.keys()]) takePending(threadId)
+      reloading.clear()
       set({ byThread: {} })
     },
 
     receive: (push) => {
       const threadId = pushThreadId(push)
+      reloading.get(threadId)?.pushes.push(push)
       const type = deltaType(push)
       const pending = pendingDeltas.get(threadId)
       if (get().byThread[threadId]?.status === "ready" && type !== undefined) {

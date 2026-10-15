@@ -5,28 +5,39 @@ import { Icon } from "@/components/icon"
 import { Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, onEvent } from "@/lib/connection"
+import { call, onEvent, useConnection } from "@/lib/connection"
+import { errorText } from "@/lib/error-text"
 import { keySequence, type TerminalKey, terminalKeys, withCtrl } from "./terminal-keys"
 import type { TerminalViewHandle } from "./terminal-types"
 import { TerminalView } from "./terminal-view"
 
 type TerminalPush = Extract<PushEvent, { type: "terminal.data" | "terminal.exited" }>
+type Session = { readonly id: string; size: string; generation: number }
 
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
 
+/** Clears the screen and scrollback before output that does not continue what is shown. */
+const RESET = "\x1bc"
+
 /**
  * A shell in the thread's worktree. The session opens once the view knows its grid size and is
- * closed when this component unmounts, i.e. when the thread screen goes away.
+ * closed when this component unmounts, i.e. when the thread screen goes away. After a reconnect it
+ * attaches to the same session and catches up from the last output it showed.
  */
 export function TerminalPanel({ threadId }: { threadId: string }) {
   const theme = useTheme()
+  const generation = useConnection((state) => state.generation)
   const view = useRef<TerminalViewHandle>(null)
-  const session = useRef<{ id: string; size: string } | null>(null)
+  const session = useRef<Session | null>(null)
   const opening = useRef(false)
   // `terminal.open` can answer after the screen is gone; that shell has to be closed, not kept.
   const mounted = useRef(false)
   // Output can arrive before `terminal.open` answers with the session id.
   const early = useRef<TerminalPush[]>([])
+  // Output that arrives while `terminal.attach` is in flight, applied after what attach returns.
+  const attaching = useRef<TerminalPush[] | null>(null)
+  /** The output offset just past the last character written, or null before any output with an offset. */
+  const written = useRef<number | null>(null)
   const latestSize = useRef({ cols: 80, rows: 24 })
   const [exitCode, setExitCode] = useState<number | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
@@ -35,8 +46,15 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const keyboardVisible = useKeyboardVisible()
 
   const apply = (push: TerminalPush) => {
-    if (push.type === "terminal.data") view.current?.write(push.data)
-    else setExitCode(push.exitCode)
+    if (push.type === "terminal.exited") return setExitCode(push.exitCode)
+    const { data, offset } = push
+    if (offset === undefined) return view.current?.write(data)
+    const end = offset + data.length
+    if (written.current !== null && end <= written.current) return
+    // Trim what attach already wrote. A gap means output was lost; the next attach repaints it.
+    const skip = written.current === null ? 0 : Math.max(0, written.current - offset)
+    view.current?.write(data.slice(skip))
+    written.current = end
   }
 
   useEffect(
@@ -45,7 +63,10 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         if (event.type !== "terminal.data" && event.type !== "terminal.exited") return
         if (session.current === null) {
           if (opening.current) early.current.push(event)
-        } else if (event.id === session.current.id) apply(event)
+        } else if (event.id === session.current.id) {
+          if (attaching.current !== null) attaching.current.push(event)
+          else apply(event)
+        }
       }),
     [],
   )
@@ -54,11 +75,41 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     mounted.current = true
     return () => {
       mounted.current = false
+      // While offline the close waits in the outbox, so the shell does not outlive the screen.
       if (session.current !== null) void call("terminal.close", { id: session.current.id }).catch(() => {})
     }
   }, [])
 
-  const resize = (current: { id: string; size: string }) => {
+  useEffect(() => {
+    const current = session.current
+    if (current === null || current.generation === generation) return
+    current.generation = generation
+    const since = written.current
+    const buffered: TerminalPush[] = []
+    attaching.current = buffered
+    const finish = () => {
+      if (attaching.current !== buffered) return false
+      attaching.current = null
+      return true
+    }
+    call("terminal.attach", { id: current.id, since }).then(
+      ({ session: attached, offset, data }) => {
+        if (!finish()) return
+        if (since === null || offset > since) view.current?.write(RESET + data)
+        else view.current?.write(data.slice(since - offset))
+        written.current = offset + data.length
+        if (attached.status === "exited") setExitCode(attached.exitCode)
+        for (const push of buffered) apply(push)
+      },
+      (cause) => {
+        if (!finish()) return
+        setError(`Could not reconnect to the shell: ${errorText(cause)}`)
+        for (const push of buffered) apply(push)
+      },
+    )
+  }, [generation])
+
+  const resize = (current: Session) => {
     const { cols, rows } = latestSize.current
     const size = `${cols}x${rows}`
     if (current.size === size) return
@@ -74,7 +125,11 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     call("terminal.open", { threadId, ...latestSize.current }).then(
       (opened) => {
         if (!mounted.current) return void call("terminal.close", { id: opened.id }).catch(() => {})
-        const current = { id: opened.id, size: `${opened.cols}x${opened.rows}` }
+        const current = {
+          id: opened.id,
+          size: `${opened.cols}x${opened.rows}`,
+          generation: useConnection.getState().generation,
+        }
         session.current = current
         for (const push of early.current) if (push.id === opened.id) apply(push)
         early.current = []
@@ -82,7 +137,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
       },
       (cause) => {
         opening.current = false
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setError(`Could not open a shell: ${errorText(cause)}`)
       },
     )
   }
@@ -105,7 +160,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
 
   return (
     <View style={styles.container}>
-      {error !== null && <Notice text={`Could not open a shell: ${error}`} tone="danger" />}
+      {error !== null && <Notice text={error} tone="danger" />}
       {exitCode !== undefined && (
         <Notice text={`Shell exited${exitCode === null ? "" : ` with code ${exitCode}`}.`} />
       )}
