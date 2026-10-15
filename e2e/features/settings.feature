@@ -27,8 +27,9 @@ Feature: Settings
     Given a project "demo" for my repository
     When I open settings
     And I open the settings section "Models"
-    And I choose the default model "Sonnet 5.5" for "Claude Code"
-    Then the new thread composer for "demo" preselects the model "Sonnet 5.5"
+    And I choose the last listed default model for "Claude Code"
+    Then the chosen default model is saved for "Claude Code"
+    And the new thread composer for "demo" preselects the chosen model
 
   Scenario: The sidebar shortcut hides and shows the sidebar
     When I press "ControlOrMeta+b"
