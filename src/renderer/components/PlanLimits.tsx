@@ -54,10 +54,9 @@ export function PlanLimits({ openThread }: { openThread: Pick<Thread, "provider"
         ? m.limits_default_account()
         : undefined
       : added.find((account) => account.id === entry.accountId)?.name
-  // Every environment reports its own CLI login, so a provider and account id can repeat.
-  return shown.map((entry, index) => (
+  return shown.map((entry) => (
     <AccountLimitsGroup
-      key={`${entry.provider}:${entry.accountId ?? ""}:${index}`}
+      key={`${entry.provider}:${entry.accountId ?? ""}`}
       provider={entry.provider}
       accountId={entry.accountId}
       name={nameOf(entry)}

@@ -78,7 +78,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
-  const [environment, setEnvironment] = useState<EnvironmentId>(environmentOf(project))
+  const [environment, setEnvironment] = useState<EnvironmentId>(() => environmentOf(project))
   const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
   // The folder picker shows this Mac's disk, so a cloud project is typed as a path on that machine.
   const canBrowse = environment === null
