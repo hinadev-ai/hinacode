@@ -52,10 +52,10 @@ Project           = { ...today, environmentId?: string }  // set by this desktop
 
 ```ts
 type Route =
-  | { to: "client" }                                  // this desktop answers: window, dialogs, its settings
-  | { to: "all" }                                     // every environment, results concatenated
-  | { to: "owner"; entity: Entity; key: string }      // payload[key] is an id main has seen
-  | { to: "named" }                                   // the call names its environment; This Mac when it does not
+  | { to: "client" } // this desktop answers: window, dialogs, its settings
+  | { to: "all" } // every environment, results concatenated
+  | { to: "owner"; entity: Entity; key: string } // payload[key] is an id main has seen
+  | { to: "named" } // the call names its environment; This Mac when it does not
 type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
 ```
 
