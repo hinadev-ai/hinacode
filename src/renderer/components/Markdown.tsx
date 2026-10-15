@@ -2,7 +2,7 @@ import type { Mermaid, MermaidConfig } from "mermaid"
 import { isValidElement, memo, type ReactNode, use, useEffect, useId, useMemo, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { githubAssetUrl } from "../../shared/channels.ts"
+import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
 import { resolveColor, useTheme } from "../lib/appearance.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
@@ -22,6 +22,12 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
   return text?.type === "text" && text.value === href ? githubAssetUrl(href) : null
 }
 
+/**
+ * Agents embed files they saved on this machine, like `vm_screenshot` captures, by absolute path. Markdown
+ * percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
+ */
+const imageSrc = (src: string) => githubAssetUrl(src) ?? (src.startsWith("/") ? attachmentUrl(decodeURI(src)) : src)
+
 const components: Components = {
   p: ({ children, node }) => {
     const asset = bareGitHubAsset(node)
@@ -29,7 +35,7 @@ const components: Components = {
   },
   img: ({ src, alt }) => (
     <img
-      src={typeof src === "string" ? (githubAssetUrl(src) ?? src) : undefined}
+      src={typeof src === "string" ? imageSrc(src) : undefined}
       alt={alt ?? ""}
       loading="lazy"
       className="inline-block max-w-full rounded-md"
