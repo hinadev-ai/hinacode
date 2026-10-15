@@ -7,8 +7,8 @@ export const REMOTE_PATH = "/remote"
 /** Bumped when a frame changes shape, so an old phone app says "update" instead of failing oddly. */
 export const REMOTE_PROTOCOL_VERSION = 1
 
-export const RemoteFeature = Schema.Literals(["heartbeat", "call-keys", "terminal-attach"])
-export type RemoteFeature = typeof RemoteFeature.Type
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach"] as const
+export type RemoteFeature = (typeof RemoteFeature)[number]
 
 /** Phone -> desktop. The first frame on a socket must be `auth`. */
 export const ClientFrame = Schema.Union([
@@ -37,7 +37,7 @@ export const ServerFrame = Schema.Union([
     type: Schema.Literal("ready"),
     version: Schema.Int,
     environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
-    features: Schema.optionalKey(Schema.Array(RemoteFeature)),
+    features: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),

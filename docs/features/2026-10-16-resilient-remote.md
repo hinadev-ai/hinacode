@@ -37,7 +37,7 @@ ClientFrame =
   | { type: "ping"; at: number }
 
 ServerFrame =
-  | { type: "ready"; version: 1; environment?: {...}; features?: ReadonlyArray<RemoteFeature> }
+  | { type: "ready"; version: 1; environment?: {...}; features?: ReadonlyArray<string> }
   | { type: "result"; id: number; envelope: RpcEnvelope<unknown> }
   | { type: "event"; event: PushEvent }
   | { type: "pong"; at: number }
@@ -46,6 +46,7 @@ RemoteFeature = "heartbeat" | "call-keys" | "terminal-attach"
 ```
 
 - `REMOTE_PROTOCOL_VERSION` stays 1. A client sends `ping` or `key` only when `ready.features` lists it, so a new phone still works against an old desktop, and an old phone ignores the new frames.
+- `ready.features` accepts any string name. Clients check membership of the names they know and ignore the others, so a newer server's capabilities cannot block the handshake. `RemoteFeature` types the capabilities this build offers.
 - `call.method` becomes a plain string. `dispatch` already answers an unknown method with an error envelope, so a version skew fails one call instead of closing the socket.
 
 Close codes, in `src/main/remote/access.ts`:

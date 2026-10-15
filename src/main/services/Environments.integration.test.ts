@@ -23,7 +23,6 @@ import {
   pairingUrl,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
-  type RemoteFeature,
   type ServerFrame,
 } from "../../shared/remote.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -367,7 +366,7 @@ describe("desktop environments", () => {
   })
 })
 
-const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<RemoteFeature>; autoPong?: boolean }) => {
+const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<string>; autoPong?: boolean }) => {
   const server = new WebSocketServer({
     host: "127.0.0.1",
     port: 0,
@@ -388,7 +387,7 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<Rem
         type: "ready",
         version: REMOTE_PROTOCOL_VERSION,
         environment: { id, name: id },
-        features: options.features ?? ["heartbeat", "call-keys"],
+        features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
       }
       if (holdReady) heldReady = ready
       else socket.send(JSON.stringify(ready))
