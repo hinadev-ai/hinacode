@@ -244,8 +244,10 @@ sequenceDiagram
   M-->>S: { messages, approvals, secretRequests, seq }
   S->>S: apply snapshot
   S->>S: replay pending pushes where push.seq > seq
-  M-->>S: later pushes apply directly
+  M-->>S: later pushes apply where push.seq > seq
 ```
+
+Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token. `specs/TranscriptSync.tla` checks both.
 
 ## Thread side panel
 

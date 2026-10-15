@@ -9,6 +9,8 @@ const STREAM_PUBLICATION_INTERVAL_MS = 100
 
 type ReadyHistory = {
   readonly status: "ready"
+  /** Pushes up to this `seq` are already in the snapshot. The rpc reply can overtake them, so they may still arrive. */
+  readonly snapshotSeq: number
   readonly messages: ReadonlyArray<Message>
   readonly approvals: ReadonlyArray<ApprovalRequest>
   readonly questions: ReadonlyArray<QuestionRequest>
@@ -68,7 +70,9 @@ export const useMessages = create<MessagesState>()((set, get) => {
       try {
         const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
         settle((pending) =>
-          pending.filter((push) => push.seq > seq).reduce<ReadyHistory>(applyPush, { status: "ready", ...snapshot }),
+          pending
+            .filter((push) => push.seq > seq)
+            .reduce<ReadyHistory>(applyPush, { status: "ready", snapshotSeq: seq, ...snapshot }),
         )
       } catch (cause) {
         settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
@@ -85,9 +89,11 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
     receive: (push) => {
       const threadId = pushThreadId(push)
+      const current = get().byThread[threadId]
+      if (current?.status === "ready" && push.seq <= current.snapshotSeq) return
       const type = deltaType(push)
       const pending = pendingDeltas.get(threadId)
-      if (get().byThread[threadId]?.status === "ready" && type !== undefined) {
+      if (current?.status === "ready" && type !== undefined) {
         if (pending !== undefined && deltaType(pending.pushes[0]) === type) {
           pending.pushes.push(push)
           return
