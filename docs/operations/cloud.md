@@ -21,12 +21,12 @@ Options, flags first, then environment, then stored settings:
 | `--rotate-token` | `KKCODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
 | (none)           | `KKCODE_SERVE=1`              | Serve mode without the `serve` command, for a service manager |
 
-On Linux the Electron binary still wants a display even with no window, so start it under Xvfb until the plain Node daemon lands: `xvfb-run -a kkcode serve`. On macOS it runs as-is and hides its dock icon.
+On Linux, pass `--ozone-platform=headless` so Electron does not look for an X display: `kkcode serve --ozone-platform=headless`. Without it, a machine with no display aborts at boot with `Missing X server or $DISPLAY`. `pnpm serve` already passes it. On macOS the flag is ignored, and the daemon hides its dock icon.
 
 ## Keep it running
 
-- systemd user unit: `ExecStart=/usr/bin/xvfb-run -a /path/to/kkcode serve`, `Environment=KKCODE_USER_DATA=%h/.kkcode-cloud`, `Restart=on-failure`. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
-- launchd: same command without `xvfb-run`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
+- systemd user unit: `ExecStart=/path/to/kkcode serve --ozone-platform=headless`, `Environment=KKCODE_USER_DATA=%h/.kkcode-cloud`, `Restart=on-failure`. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
+- launchd: `kkcode serve`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
 - Agent logins belong to the cloud: run `claude login`, `codex login`, `muse login` and `gh auth login` in a shell on that machine, once. kkcode never signs in for you.
 
 ## Troubleshooting
