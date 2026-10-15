@@ -50,6 +50,8 @@ export const useMessages = create<MessagesState>()((set, get) => {
     pendingDeltas.delete(threadId)
     return pending.pushes
   }
+  /** The load in flight per thread, so a load that a `reset` abandoned cannot settle a newer one. */
+  const loads = new Map<string, object>()
   /** Pushes received while a ready history's snapshot is being read again, so the snapshot can catch up. */
   const reloading = new Map<string, { pushes: TranscriptPush[] }>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
@@ -66,9 +68,15 @@ export const useMessages = create<MessagesState>()((set, get) => {
       const current = get().byThread[threadId]
       if (current !== undefined && current.status !== "error") return
       setHistory(threadId, () => ({ status: "loading", pending: [] }))
-      // A `reset` while the request was in flight wins: the snapshot may predate pushes we never got.
-      const settle = (update: (pending: readonly TranscriptPush[]) => ThreadHistory) =>
+      const load = {}
+      loads.set(threadId, load)
+      // A `reset` while the request was in flight wins: the snapshot may come from the previous desktop, or
+      // predate pushes we never got. A load started after the reset is not this one.
+      const settle = (update: (pending: readonly TranscriptPush[]) => ThreadHistory) => {
+        if (loads.get(threadId) !== load) return
+        loads.delete(threadId)
         setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
+      }
       try {
         const { seq, messages, approvals, questions } = await call("threads.transcript", { threadId })
         settle((pending) =>
@@ -116,6 +124,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
     reset: () => {
       for (const threadId of [...pendingDeltas.keys()]) takePending(threadId)
+      loads.clear()
       reloading.clear()
       set({ byThread: {} })
     },
