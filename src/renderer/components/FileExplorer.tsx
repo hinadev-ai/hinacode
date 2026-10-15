@@ -502,7 +502,7 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
       )}
       {unsaved && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-foreground" />}
       {mark && (
-        <span aria-hidden className={cn("shrink-0 font-mono text-[0.6875rem]", mark.className)}>
+        <span aria-hidden className={cn("shrink-0 font-mono text-2xs", mark.className)}>
           {mark.letter}
         </span>
       )}

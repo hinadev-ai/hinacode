@@ -1,7 +1,10 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/dm-sans";
+/* The opsz files carry DM Sans' optical-size axis, so small UI text gets the sturdier small-size cut. Italics are real faces. */
+@import "@fontsource-variable/dm-sans/opsz.css";
+@import "@fontsource-variable/dm-sans/opsz-italic.css";
 @import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/geist-mono/wght-italic.css";
 @import "@fontsource-variable/noto-sans-tc";
 @import "@fontsource-variable/noto-sans-jp";
 @import "@wterm/dom/css";
@@ -25,6 +28,9 @@
   /* Cross-fading one icon into another. */
   --ease-swap: cubic-bezier(0.2, 0, 0, 1);
   --spacing-titlebar: 2.5rem;
+  /* Badges and dense labels such as git refs. In rem, so it follows the font size setting. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
   /* A faster turn makes the same wait feel shorter. */
   --animate-spin: spin 0.6s linear infinite;
   /* Opacity only, so reduced motion keeps it. */

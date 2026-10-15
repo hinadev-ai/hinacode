@@ -340,7 +340,7 @@ function RefChips({ refs, branch }: { refs: ReadonlyArray<string>; branch: strin
       <Badge
         variant="outline"
         className={cn(
-          "h-4 min-w-0 shrink px-1.5 font-mono text-[0.6875rem] font-normal",
+          "h-4 min-w-0 shrink px-1.5 font-mono text-2xs font-normal",
           emphasized ? "border-working/50 bg-working/10 text-working" : "text-muted-foreground",
         )}
       >
@@ -348,7 +348,7 @@ function RefChips({ refs, branch }: { refs: ReadonlyArray<string>; branch: strin
         <span className="truncate">{tag ?? first}</span>
       </Badge>
       {shown.length > 1 && (
-        <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
+        <span className="shrink-0 text-2xs text-muted-foreground">
           {m.git_graph_more_refs({ count: shown.length - 1 })}
         </span>
       )}
