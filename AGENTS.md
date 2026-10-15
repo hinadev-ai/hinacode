@@ -104,7 +104,7 @@ Developers who run several Claude Code and Codex agents at once across repositor
 - **Reference:** Linear. Restrained neutrals, crisp type, tight but breathable density, fast and keyboard-driven, motion that confirms rather than performs.
 - **Anti-references:** chat-app bubbles, gradient AI glow, sparkle icons, dashboard confetti, cards inside cards, and color used as decoration.
 - **Color:** a grayscale OKLCH base (shadcn neutral in `src/renderer/index.css`) with the brand violet `#7c3aed` from `assets/icon.svg`. Use violet sparingly for focus, the primary action, and "agent is working". Status colors are semantic and stay consistent: amber means it needs you, emerald means it is running, red means failed or destructive. Pull these into tokens instead of scattering raw Tailwind palette classes.
-- **Type:** Geist Variable for UI. Code and paths use a monospace stack. Rely on weight and size for hierarchy before color.
+- **Type:** DM Sans Variable for UI, with Noto Sans TC or JP for Han and kana. Code and paths use Geist Mono. Sizes come from the Tailwind scale plus `text-2xs`, in rem so they follow the font size setting. Rely on weight and size for hierarchy before color.
 - **Theme:** light and dark are equal citizens, and every UI change is checked in both. New profiles follow the system appearance. Don't add dark-only assumptions.
 - **Motion:** use the easings in `index.css` (`--ease-out` and the rest), keep it short (under 200 ms for UI feedback), and use the `pressable` utility for press feedback. Every animation has a reduced-motion variant.
 
