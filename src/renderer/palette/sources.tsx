@@ -1,4 +1,5 @@
 import { RiAddLine, RiFileTextLine } from "react-icons/ri"
+import { ProjectIcon } from "../components/ProjectIcon.tsx"
 import { ProviderIcon } from "../components/ProviderIcon.tsx"
 import { commands, isCommandAvailable } from "../keybindings/commands.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -40,6 +41,28 @@ export const projectsSource: PaletteSource = {
       icon: <RiAddLine aria-hidden className={iconClass} />,
       run: () => void startThread(project.id, ctx.navigate),
     })),
+}
+
+/**
+ * Projects to start a thread in, the open thread's project first. Mod+1 to Mod+9 follow the project
+ * list, so a project keeps its chord whichever thread is open.
+ */
+export const newThreadSource: PaletteSource = {
+  group: "projects",
+  items: (_query, ctx) => {
+    const items = ctx.projects.map((project, index): PaletteItem => ({
+      id: `new-thread:${project.id}`,
+      group: "projects",
+      title: project.name,
+      subtitle: project.rootPath,
+      icon: <ProjectIcon projectId={project.id} />,
+      ...(index < 9 ? { chord: `Mod+${index + 1}` } : {}),
+      run: () => void startThread(project.id, ctx.navigate),
+    }))
+    const current = ctx.threadId ? `new-thread:${ctx.threads[ctx.threadId]?.projectId}` : undefined
+    const isCurrent = (item: PaletteItem) => item.id === current
+    return [...items.filter(isCurrent), ...items.filter((item) => !isCurrent(item))]
+  },
 }
 
 /** The registry, with each command's effective chord. */

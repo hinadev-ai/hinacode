@@ -220,6 +220,8 @@ export const Thread = Schema.Struct({
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
+  /** When the user pinned the thread to the top of the sidebar, or null when it is not pinned. */
+  pinnedAt: Schema.NullOr(Timestamp),
   /**
    * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,
    * or `thread:<threadId>` for threads an agent started with the MCP `create_thread` tool.

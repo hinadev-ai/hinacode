@@ -76,12 +76,15 @@ export interface UpdateThread {
   readonly status?: ThreadStatus | undefined
   readonly usageLimit?: UsageLimit | null | undefined
   readonly sortIndex?: number | undefined
+  readonly pinned?: boolean | undefined
   readonly providerSessionId?: string | undefined
 }
 
-// Reordering in the sidebar is not activity, so it must not make a thread look fresh.
-const onlyReorders = (input: UpdateThread) =>
-  Object.entries(input).every(([key, value]) => key === "id" || key === "sortIndex" || value === undefined)
+// Arranging the sidebar is not activity, so it must not make a thread look fresh.
+const onlyArranges = (input: UpdateThread) =>
+  Object.entries(input).every(
+    ([key, value]) => key === "id" || key === "sortIndex" || key === "pinned" || value === undefined,
+  )
 
 export class Threads extends Context.Service<
   Threads,
@@ -235,6 +238,7 @@ const make = Effect.gen(function* () {
         status: "idle",
         usageLimit: null,
         sortIndex: next,
+        pinnedAt: null,
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -270,6 +274,7 @@ const make = Effect.gen(function* () {
 
   const write = (current: Thread, input: UpdateThread) =>
     Effect.gen(function* () {
+      const now = yield* nowIso
       const next: Thread = {
         ...current,
         title: input.title ?? current.title,
@@ -287,15 +292,16 @@ const make = Effect.gen(function* () {
               ? current.usageLimit
               : input.usageLimit,
         sortIndex: input.sortIndex ?? current.sortIndex,
+        pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
-        updatedAt: onlyReorders(input) ? current.updatedAt : yield* nowIso,
+        updatedAt: onlyArranges(input) ? current.updatedAt : now,
       }
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
             effort = ${next.effort},
             fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
-            sort_index = ${next.sortIndex}, provider_session_id = ${next.providerSessionId},
+            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))

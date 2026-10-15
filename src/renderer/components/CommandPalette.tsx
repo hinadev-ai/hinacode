@@ -1,5 +1,6 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { normalizeHotkey, useHotkeys } from "@tanstack/react-hotkeys"
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { RiSearchLine } from "react-icons/ri"
 import { useCommandContext, useKeymap } from "../keybindings/useKeybindings.ts"
@@ -42,6 +43,8 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
     [results, settled],
   )
 }
+
+const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 
 /** Bolds the matched characters, so the user sees why a result is there. */
 function Highlighted({ text, matches }: { text: string; matches: ReadonlyArray<number> }) {
@@ -105,6 +108,14 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
     [mode, items, search, recent],
   )
   const choose = (item: PaletteItem) => onChoose(item, mode.rank === undefined)
+  // On the document rather than the field, so a chord pressed right after the palette opens, before the field has focus, still counts.
+  useHotkeys(
+    mode.runsChords
+      ? items.flatMap((item) =>
+          item.chord ? [{ hotkey: normalizeHotkey(item.chord), callback: () => choose(item) }] : [],
+        )
+      : [],
+  )
 
   return (
     <Autocomplete.Root
@@ -123,7 +134,9 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5">
         <RiSearchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        {/* Focused on mount rather than by the dialog a frame later, so Enter pressed right after opening chooses. */}
         <Autocomplete.Input
+          ref={focusOnMount}
           aria-label={m.palette_search_label()}
           placeholder={mode.placeholder()}
           onKeyDown={(event) => {

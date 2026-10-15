@@ -119,6 +119,57 @@ Then("the sidebar lists the threads {string} in that order", async ({ app, names
     .toStrictEqual(expected)
 })
 
+When("I pin the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Pin")
+})
+
+When("I unpin the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Unpin")
+})
+
+const pinned = (page: Page) => sidebar(page).getByRole("region", { name: "Pinned", exact: true })
+
+Then("the pinned threads are {string}", async ({ app, names }, titles: string) => {
+  const expected = titles.split(",").map((title) => names.of(title.trim()))
+  await expect(pinned(app.page).getByRole("link")).toHaveText(expected)
+})
+
+Then("no thread is pinned", async ({ app }) => {
+  await expect(pinned(app.page)).toBeHidden()
+})
+
+// Hidden tab panels stay mounted, so only the open one's rows count.
+const openTab = (page: Page) => sidebar(page).getByRole("tabpanel")
+
+Then("the open tab lists the threads {string} in that order", async ({ app, names }, titles: string) => {
+  const expected = titles.split(",").map((title) => names.of(title.trim()))
+  await expect
+    .poll(async () => {
+      const links = await openTab(app.page).getByRole("link").allTextContents()
+      return links.map((text) => expected.find((title) => text.includes(title))).filter(Boolean)
+    })
+    .toStrictEqual(expected)
+})
+
+Then("the open tab does not list the thread {string}", async ({ app, names }, title: string) => {
+  await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeHidden()
+})
+
+const openThreadProjectId = async (page: Page) => {
+  const title = await page.getByRole("heading", { level: 1 }).textContent()
+  const threads = await rpc(page, "threads.list", undefined)
+  return threads.find((thread) => thread.title === title)?.projectId
+}
+
+Then("the open thread belongs to the project {string}", async ({ app, projectIds }, project: string) => {
+  expect(await openThreadProjectId(app.page)).toBe(projectIds.get(project))
+})
+
+Then("the open thread belongs to the first project", async ({ app }) => {
+  const [first] = await rpc(app.page, "projects.list", undefined)
+  expect(await openThreadProjectId(app.page)).toBe(first?.id)
+})
+
 Then("the thread {string} is stored as {string}", async ({ app, names }, title: string, status: string) => {
   await expect
     .poll(async () => {
