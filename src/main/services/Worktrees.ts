@@ -450,9 +450,13 @@ const make = Effect.gen(function* () {
         if (shouldDelete) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
       }
     }).pipe(
-      // The row already says removed; put it back so the user can retry instead of losing the checkout.
+      // While the checkout survives, put the row back so the user can retry instead of losing it.
+      // Once the checkout is gone, a live row would point turns at a missing directory.
       Effect.catchCause((cause) =>
-        Effect.logError("worktree removal failed", cause).pipe(Effect.andThen(setStatus(worktree.id, worktree.status))),
+        Effect.logError("worktree removal failed", cause).pipe(
+          Effect.andThen(fs.exists(worktree.path)),
+          Effect.flatMap((exists) => (exists ? setStatus(worktree.id, worktree.status) : Effect.void)),
+        ),
       ),
       Effect.ignore,
       Effect.ensuring(Effect.sync(() => removals.delete(removalKey(worktree.projectId, worktree.branch)))),

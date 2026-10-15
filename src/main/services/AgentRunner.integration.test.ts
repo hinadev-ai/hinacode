@@ -378,6 +378,38 @@ it("cancels a prepared send still waiting to enter the delivery lock", async () 
   })
 })
 
+it("refuses a send whose worktree is removed before the turn is admitted", async () => {
+  await withPreparingThread(async ({ runner, threads, worktrees, thread, prepared, turns, release }) => {
+    release()
+    await Effect.runPromise(worktrees.whenPrepared(thread.worktreeId!))
+    const removing = Effect.runSync(Deferred.make<void>())
+    const locked = Promise.withResolvers<void>()
+    const holder = Effect.runFork(
+      worktrees.exclusive(
+        Effect.sync(() => locked.resolve()).pipe(
+          Effect.andThen(Deferred.await(removing)),
+          Effect.andThen(worktrees.removeWhileExclusive(thread.worktreeId!, "keep")),
+        ),
+      ),
+    )
+    try {
+      await locked.promise
+      const sent = Effect.runPromiseExit(runner.send(thread.id, "run in the worktree", []))
+      await prepared
+      await Effect.runPromise(Deferred.succeed(removing, undefined))
+      await Effect.runPromise(Fiber.join(holder))
+
+      const exit = await sent
+      expect(turns.map((turn) => turn.input.cwd)).toStrictEqual([])
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle")
+    } finally {
+      await Effect.runPromise(Deferred.succeed(removing, undefined))
+      await Effect.runPromise(Fiber.await(holder))
+    }
+  })
+})
+
 it("carries Stop during message admission through the provider-start handoff", async () => {
   await withPreparingThread(
     async ({ runner, thread, waiting, inserting, idle, turns, release, deliver }) => {

@@ -453,6 +453,7 @@ const make = Effect.gen(function* () {
     options: SendOptions,
     stop: Deferred.Deferred<void>,
     when: Effect.Effect<boolean, PersistenceError>,
+    sentToWorktreeId: string | null,
   ) =>
     Effect.gen(function* () {
       const checkStopped = Deferred.isDone(stop).pipe(
@@ -491,7 +492,13 @@ const make = Effect.gen(function* () {
             }
             const provider = yield* providerFor(thread.provider)
             const home = yield* accounts.home(thread.accountId)
-            const { cwd } = yield* activeWorkspace(threadId)
+            const { cwd, worktreeId } = yield* activeWorkspace(threadId)
+            if (sentToWorktreeId !== null && worktreeId !== sentToWorktreeId) {
+              return yield* new AgentError({
+                provider: "kkcode",
+                message: "This thread's worktree was removed before the turn started",
+              })
+            }
             const tree = yield* threads.captureTurnBase(cwd)
             yield* checkStopped
             if (!(yield* when)) return null
@@ -529,7 +536,8 @@ const make = Effect.gen(function* () {
       busyThreads.add(threadId)
       const stop = Deferred.makeUnsafe<void>()
       pendingSends.set(threadId, stop)
-      const accepted = yield* startTurn(threadId, prompt, attachments, options, stop, when).pipe(
+      const accepted = yield* activeWorkspace(threadId).pipe(
+        Effect.flatMap(({ worktreeId }) => startTurn(threadId, prompt, attachments, options, stop, when, worktreeId)),
         Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
         Effect.ensuring(Effect.sync(() => pendingSends.get(threadId) === stop && pendingSends.delete(threadId))),
       )
