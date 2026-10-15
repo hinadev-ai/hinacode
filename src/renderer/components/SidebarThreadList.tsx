@@ -582,12 +582,12 @@ const rowEmphasis = {
 
 const statusDot: Partial<Record<RowState, { label: () => string; className: string }>> = {
   unseen_completed: { label: m.thread_status_unseen_completed, className: "bg-sidebar-foreground" },
-  running: { label: m.thread_status_running, className: "bg-emerald-500 animate-pulse motion-reduce:animate-none" },
+  running: { label: m.thread_status_running, className: "bg-success animate-pulse motion-reduce:animate-none" },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
     className:
-      "relative bg-amber-500 after:absolute after:inset-0 after:animate-attention after:rounded-full after:bg-inherit motion-reduce:after:hidden",
+      "relative bg-attention after:absolute after:inset-0 after:animate-attention after:rounded-full after:bg-inherit motion-reduce:after:hidden",
   },
 }
 

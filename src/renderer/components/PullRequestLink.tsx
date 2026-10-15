@@ -95,7 +95,7 @@ function PullRequestDetails({ pullRequest }: { pullRequest: PullRequest }) {
       </p>
       <p className="font-mono">
         <span aria-hidden>
-          <span className="text-emerald-500">+{additions}</span> <span className="text-destructive">−{deletions}</span>
+          <span className="text-vcs-added">+{additions}</span> <span className="text-destructive">−{deletions}</span>
         </span>
         <span className="sr-only">{m.pr_card_size({ additions, deletions })}</span>
       </p>

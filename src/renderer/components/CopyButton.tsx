@@ -38,7 +38,7 @@ export function CopyButton({ value, label, variant = "ghost", className }: CopyB
     >
       <span aria-hidden className="relative size-4">
         <RiFileCopyLine className={cn(iconSwap, copied ? iconHidden : iconShown)} />
-        <RiCheckLine className={cn(iconSwap, "text-emerald-500", copied ? iconShown : iconHidden)} />
+        <RiCheckLine className={cn(iconSwap, "text-success", copied ? iconShown : iconHidden)} />
       </span>
       <output className="sr-only">{copied ? m.common_copied() : ""}</output>
     </Button>

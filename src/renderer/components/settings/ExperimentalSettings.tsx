@@ -89,7 +89,7 @@ function HostStatus({ status }: { status: VmHostStatus }) {
     case "connected":
       return (
         <>
-          <RiCheckboxCircleFill aria-hidden className="size-4 text-emerald-500" />
+          <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
           {m.settings_tiny_vm_connected({
             host: hostOf(status.url),
             sandboxes: String(status.sandboxes),

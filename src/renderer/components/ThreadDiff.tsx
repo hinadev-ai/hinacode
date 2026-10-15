@@ -173,7 +173,7 @@ function ChangedFileRow({ path, status, filePatch, open, onToggle }: ChangedFile
           {path}
         </span>
         <span className="shrink-0 font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
-          <span aria-hidden className="text-emerald-500">
+          <span aria-hidden className="text-vcs-added">
             +{added}
           </span>{" "}
           <span aria-hidden className="text-destructive">

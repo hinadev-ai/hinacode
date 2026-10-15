@@ -108,10 +108,10 @@ function QuestionCard({
   return (
     <section
       aria-labelledby={titleId}
-      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
+      className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={titleId} className="flex items-center gap-2 text-sm font-semibold">
-        <RiQuestionLine aria-hidden className="size-4 text-amber-500" />
+        <RiQuestionLine aria-hidden className="size-4 text-attention" />
         {single
           ? m.question_title({ provider: providerLabel })
           : m.question_title_many({ provider: providerLabel, count: questions.length })}
