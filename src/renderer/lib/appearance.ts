@@ -50,7 +50,7 @@ export function useTheme(theme: ThemeId) {
 const fontFamily = (name: string | null) => (name === null ? "" : JSON.stringify(name))
 
 export function applyAppearance(
-  { theme, fontSize, uiFont, monoFont }: Appearance,
+  { theme, fontSize, uiFont, monoFont, contrast }: Appearance,
   scheme: "dark" | "light" = resolveScheme(theme),
 ) {
   const root = document.documentElement
@@ -61,6 +61,12 @@ export function applyAppearance(
   root.style.fontSize = `${fontSize}px`
   root.style.setProperty("--ui-font", fontFamily(uiFont))
   root.style.setProperty("--mono-font", fontFamily(monoFont))
+  applyContrast(contrast)
+}
+
+/** Sets text contrast on its own, so a slider can preview it before the setting is saved. */
+export function applyContrast(contrast: number) {
+  document.documentElement.style.setProperty("--contrast", String(contrast / 100))
 }
 
 /** Resolves a color custom property on the root to hex, for libraries that cannot read CSS variables or oklch. */

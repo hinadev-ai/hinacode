@@ -320,6 +320,8 @@ export const Appearance = Schema.Struct({
   /** Installed font family names. Null uses the bundled DM Sans and Geist Mono. */
   uiFont: Schema.NullOr(Schema.String),
   monoFont: Schema.NullOr(Schema.String),
+  /** Text contrast relative to the palette. 0 keeps it, 100 is the most contrast and -100 the least. */
+  contrast: Schema.Int.check(Schema.isBetween({ minimum: -100, maximum: 100 })),
 })
 export type Appearance = typeof Appearance.Type
 
@@ -419,7 +421,7 @@ export const defaultSettings: Settings = {
   defaultAccount: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
-  appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null },
+  appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   notifications: { completed: true, needsInput: true, failed: true, sound: true },

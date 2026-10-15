@@ -65,7 +65,7 @@ const createThread = async (app: KkcodeApp, repo: string, locale = "en", theme =
   if (theme !== "default" && theme !== "light") throw new Error(`Unsupported theme ${theme}`)
   await rpc(app.page, "settings.set", {
     locale,
-    appearance: { theme, fontSize: 16, uiFont: null, monoFont: null },
+    appearance: { theme, fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   })
   const project = await rpc(app.page, "projects.create", { name: "Usage limits", rootPath: repo, setupScript: null })
   const thread = await rpc(app.page, "threads.create", { projectId: project.id })
