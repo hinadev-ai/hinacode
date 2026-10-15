@@ -53,6 +53,17 @@ import icon from "../../assets/icon.png?asset"
 app.setName("kkcode")
 // Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
 if (process.platform === "win32") app.setAppUserModelId("dev.kkcode.app")
+// `kkcode serve` (or KKCODE_SERVE=1) runs this same binary as a headless cloud: no window, the remote
+// listener on, and pairing printed to stdout. It needs its own KKCODE_USER_DATA, which the lock below enforces.
+const serve = (() => {
+  try {
+    return serveConfig(process.argv, process.env)
+  } catch (error) {
+    // Electron keeps the process alive after a throw at load, so a service manager would never see the failure.
+    console.error(`kkcode serve: ${error instanceof Error ? error.message : String(error)}`)
+    return process.exit(1)
+  }
+})()
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
@@ -60,7 +71,8 @@ if (userDataOverride) app.setPath("userData", userDataOverride)
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
   console.error(`kkcode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
-  app.exit(0)
+  // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
+  app.exit(serve ? 1 : 0)
 }
 const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
 if (
@@ -71,17 +83,6 @@ if (
 )
   throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit, org-spend-limit or todos")
 if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires KKCODE_USER_DATA")
-// `kkcode serve` (or KKCODE_SERVE=1) runs this same binary as a headless cloud: no window, the remote
-// listener on, and pairing printed to stdout. It needs its own KKCODE_USER_DATA, which the lock above enforces.
-const serve = (() => {
-  try {
-    return serveConfig(process.argv, process.env)
-  } catch (error) {
-    // Electron keeps the process alive after a throw at load, so a service manager would never see the failure.
-    console.error(`kkcode serve: ${error instanceof Error ? error.message : String(error)}`)
-    return process.exit(1)
-  }
-})()
 const mockResetMs = Number(process.env["KKCODE_MOCK_RESET_MS"] ?? 60000)
 if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
   throw new Error("KKCODE_MOCK_RESET_MS must be between 0 and 3600000")
