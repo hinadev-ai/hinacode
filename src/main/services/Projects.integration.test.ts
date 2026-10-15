@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -93,6 +93,58 @@ describe("Projects.listWithRepositories", () => {
     Effect.gen(function* () {
       expect(yield* listedAt(withOrigin(null))).not.toHaveProperty("repository")
       expect(yield* listedAt(withOrigin("https://gitlab.com/acme/web.git"))).not.toHaveProperty("repository")
+    }),
+  )
+})
+
+const emptyDir = () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "kk-projects-test-")))
+  dirs.push(dir)
+  return dir
+}
+
+const provided = <A, E>(effect: Effect.Effect<A, E, Projects>) => effect.pipe(Effect.provide(projectsLayer))
+
+describe("Projects.create", () => {
+  it.live("creates a folder that does not exist yet", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "code", "new-app")
+      const project = yield* provided(
+        Projects.use((projects) => projects.create({ name: "new-app", rootPath, setupScript: null })),
+      )
+      expect(project.rootPath).toBe(rootPath)
+      expect(statSync(rootPath).isDirectory()).toBe(true)
+    }),
+  )
+
+  it.live("refuses a path that is a file", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "notes.txt")
+      writeFileSync(rootPath, "hi")
+      const error = yield* provided(
+        Projects.use((projects) => projects.create({ name: "notes", rootPath, setupScript: null })),
+      ).pipe(Effect.flip)
+      expect(error._tag).toBe("ProjectRootInvalidError")
+    }),
+  )
+})
+
+describe("Projects.clone", () => {
+  it.live("refuses a folder that already holds other files, before cloning", () =>
+    Effect.gen(function* () {
+      const rootPath = repoWith({ "README.md": "mine" })
+      const error = yield* provided(
+        Projects.use((projects) =>
+          projects.clone({
+            repository: { owner: "octocat", name: "Hello-World" },
+            rootPath,
+            name: "x",
+            setupScript: null,
+          }),
+        ),
+      ).pipe(Effect.flip)
+      expect(error._tag).toBe("ProjectFolderNotEmptyError")
+      expect(existsSync(join(rootPath, "README.md"))).toBe(true)
     }),
   )
 })
