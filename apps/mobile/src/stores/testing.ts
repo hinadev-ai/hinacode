@@ -12,7 +12,7 @@ export function fakeCall(calls: PendingCall[]) {
     new Promise((resolve, reject) => calls.push({ method, payload, resolve, reject }))
 }
 
-export const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+export const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve))
 
 export const message = (id: string, threadId = "t1"): Message => ({
   id,
