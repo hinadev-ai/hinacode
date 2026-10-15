@@ -3,6 +3,7 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
 import { RiCheckboxCircleFill } from "react-icons/ri"
 import { callPromise, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
+import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
@@ -34,8 +35,9 @@ export function IntegrationSettings() {
 
 /** Whether `gh` is installed and signed in. kkcode borrows its login rather than storing a token. */
 function GitHubStatus() {
-  const auth = useAtomValue(gitHubAuthAtom)
-  const refresh = useAtomRefresh(gitHubAuthAtom)
+  const environment = useSettingsEnvironment()
+  const auth = useAtomValue(gitHubAuthAtom(environment))
+  const refresh = useAtomRefresh(gitHubAuthAtom(environment))
 
   return (
     <Field>
@@ -87,9 +89,10 @@ interface SecretFieldProps {
 
 /** A write-only secret: it can be set, replaced or cleared, never read back. */
 function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
+  const environment = useSettingsEnvironment()
   const inputId = `secret-${name.replace(/\W/g, "-")}`
-  const stored = useAtomValue(secretStoredAtom(name))
-  const refreshStored = useAtomRefresh(secretStoredAtom(name))
+  const stored = useAtomValue(secretStoredAtom(environment, name))
+  const refreshStored = useAtomRefresh(secretStoredAtom(environment, name))
   const [draft, setDraft] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -109,7 +112,7 @@ function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     run(async () => {
-      await callPromise("secrets.set", { name, value: draft.trim() })
+      await callPromise("secrets.set", { name, value: draft.trim() }, { environment })
       setDraft("")
     })
   }
@@ -152,7 +155,7 @@ function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
             type="button"
             variant="ghost"
             disabled={pending}
-            onClick={() => run(() => callPromise("secrets.clear", { name }))}
+            onClick={() => run(() => callPromise("secrets.clear", { name }, { environment }))}
           >
             {m.settings_linear_clear()}
           </Button>

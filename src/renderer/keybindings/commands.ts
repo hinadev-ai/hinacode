@@ -1,7 +1,7 @@
 import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
 import type { useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { type ExperimentalSettings, Locale, type Project, type Settings } from "../../shared/domain.ts"
+import { type ClientSettings, type ExperimentalSettings, Locale, type Project } from "../../shared/domain.ts"
 import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useBrowserTabs } from "../stores/browserTabs.ts"
@@ -15,7 +15,7 @@ export interface CommandContext {
   /** The open thread, or null outside a thread route. */
   readonly threadId: string | null
   readonly projects: ReadonlyArray<Project>
-  readonly updateSettings: (patch: RpcRequest<"settings.set">) => Promise<Settings>
+  readonly updateClientSettings: (patch: RpcRequest<"clientSettings.set">) => Promise<ClientSettings>
   readonly experimental: ExperimentalSettings
 }
 
@@ -258,7 +258,7 @@ export const commands = [
     run: (ctx) => {
       const locales = Locale.literals
       const next = locales[(locales.indexOf(useLocale.getState().locale) + 1) % locales.length]
-      void ctx.updateSettings({ locale: next }).then((saved) => useLocale.getState().apply(saved.locale))
+      void ctx.updateClientSettings({ locale: next }).then((saved) => useLocale.getState().apply(saved.locale))
     },
   },
 ] as const satisfies ReadonlyArray<Command>

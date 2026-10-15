@@ -9,14 +9,14 @@ import { createRoot } from "react-dom/client"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
-import { callPromise, onPushEvent, settingsAtom } from "./lib/rpc.ts"
+import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
-import { useSettings } from "./lib/settings.ts"
+import { useClientSettings } from "./lib/settings.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
-import { usePullRequests } from "./stores/pullRequests.ts"
+import { loadAllPullRequestsAtom, usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
 import { useThreads } from "./stores/threads.ts"
@@ -27,7 +27,7 @@ const registry = AtomRegistry.make()
 
 function App() {
   const locale = useLocale((state) => state.locale)
-  const { appearance } = useSettings()
+  const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
   useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
   useLayoutEffect(() => {
@@ -45,15 +45,23 @@ function App() {
   )
 }
 
-const [settings, threads, worktrees] = await Promise.all([
-  Effect.runPromise(AtomRegistry.getResult(registry, settingsAtom)),
-  callPromise("threads.list", undefined),
-  callPromise("worktrees.list", undefined),
+/** Threads and worktrees of every environment, which main merges into one list each. */
+async function loadLists() {
+  const [threads, worktrees] = await Promise.all([
+    callPromise("threads.list", undefined),
+    callPromise("worktrees.list", undefined),
+  ])
+  useThreads.getState().replaceAll(threads)
+  useWorktrees.getState().replaceAll(worktrees)
+}
+
+const [settings] = await Promise.all([
+  Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
+  loadLists(),
+  Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
 ])
 useLocale.getState().apply(settings.locale)
 applyAppearance(settings.appearance)
-useThreads.getState().replaceAll(threads)
-useWorktrees.getState().replaceAll(worktrees)
 onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
@@ -67,7 +75,7 @@ onPushEvent((event) => {
     case "thread.event": {
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)
-      const { notifications } = AsyncResult.getOrElse(registry.get(settingsAtom), () => settings)
+      const { notifications } = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => settings)
       return notifyThreadEvent(event.threadId, event.event, notifications)
     }
     case "worktree.updated":
@@ -83,8 +91,33 @@ onPushEvent((event) => {
     case "terminal.exited":
       terminalExited(event.id, event.exitCode)
       return useTerminals.getState().markExited(event.id, event.exitCode)
+    case "environment.status":
+      // A cloud that connects fills its sidebar section from fresh lists.
+      if (event.status !== "connected") return
+      registry.refresh(projectsAtom)
+      registry.refresh(loadAllPullRequestsAtom)
+      reloadTranscripts(event.id)
+      return void loadLists()
   }
 })
+
+/**
+ * Pushes a cloud sent while its socket was down are gone, and a restarted cloud counts `seq` from zero again, so
+ * every open transcript of that cloud is read again from a fresh snapshot.
+ */
+const reloadTranscripts = (environmentId: string) => {
+  const projects = AsyncResult.getOrElse(registry.get(projectsAtom), () => [])
+  const onCloud = new Set(
+    projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
+  )
+  const threads = useThreads.getState().byId
+  const { byThread, unload, load } = useMessages.getState()
+  for (const threadId of Object.keys(byThread)) {
+    if (!onCloud.has(threads[threadId]?.projectId ?? "")) continue
+    unload(threadId)
+    void load(threadId)
+  }
+}
 
 const root = document.getElementById("root")
 if (!root) throw new Error("#root is missing from index.html")

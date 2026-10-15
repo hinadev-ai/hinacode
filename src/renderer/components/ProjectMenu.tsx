@@ -1,6 +1,7 @@
 import { type RefObject, useState } from "react"
 import { RiAddLine, RiDeleteBinLine, RiFolderOpenLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
+import { environmentOf } from "../lib/environments.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
@@ -71,10 +72,12 @@ export function ProjectMenu({ project, open, onOpenChange, onNewThread, focusAft
             <RiAddLine aria-hidden />
             {m.sidebar_project_new_thread()}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void callPromise("shell.reveal", { path: project.rootPath })}>
-            <RiFolderOpenLine aria-hidden />
-            {m.sidebar_project_reveal()}
-          </DropdownMenuItem>
+          {environmentOf(project) === null && (
+            <DropdownMenuItem onClick={() => void callPromise("shell.reveal", { path: project.rootPath })}>
+              <RiFolderOpenLine aria-hidden />
+              {m.sidebar_project_reveal()}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => setQueued("delete")}>
             <RiDeleteBinLine aria-hidden />
             {m.sidebar_project_delete()}

@@ -5,7 +5,8 @@ import { useState, useTransition } from "react"
 import { RiCloseCircleLine } from "react-icons/ri"
 import type { OpenPort } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise, threadPortsAtom } from "../lib/rpc.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
+import { callPromise, type EnvironmentId, threadPortsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
@@ -13,6 +14,7 @@ import { SkeletonList } from "./ui/skeleton.tsx"
 
 /** Listening TCP ports, as the body of a panel section: opened from the thread's workspace or by its agent, refreshed every 2s. */
 export function ThreadPorts({ threadId }: { threadId: string }) {
+  const environment = useThreadEnvironment(threadId)
   const ports = useAtomValue(threadPortsAtom(threadId))
   const refresh = useAtomRefresh(threadPortsAtom(threadId))
   const [killError, setKillError] = useState<string | null>(null)
@@ -38,6 +40,7 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
             <ul ref={listRef} className="flex flex-col">
               {list.map((port) => (
                 <PortRow
+                  environment={environment}
                   key={`${port.port}:${port.pid}`}
                   port={port}
                   onKilled={() => {
@@ -62,12 +65,14 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
 }
 
 interface PortRowProps {
+  /** `ports.kill` names its environment, since a pid alone says nothing about which machine it runs on. */
+  readonly environment: EnvironmentId
   readonly port: OpenPort
   readonly onKilled: () => void
   readonly onKillFailed: (message: string) => void
 }
 
-function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
+function PortRow({ environment, port, onKilled, onKillFailed }: PortRowProps) {
   // Killing takes two clicks: the first arms the button and the tooltip asks for confirmation.
   const [armed, setArmed] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -78,7 +83,7 @@ function PortRow({ port, onKilled, onKillFailed }: PortRowProps) {
     setArmed(false)
     startTransition(async () => {
       try {
-        await callPromise("ports.kill", { pid: port.pid })
+        await callPromise("ports.kill", { pid: port.pid }, { environment })
         onKilled()
       } catch (cause) {
         onKillFailed(errorMessage(cause))

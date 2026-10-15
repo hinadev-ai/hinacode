@@ -5,6 +5,7 @@ import { RiGitPullRequestLine, RiGithubFill } from "react-icons/ri"
 import type { PullRequest } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import type { PullRequestRef } from "../lib/pullRequestRefs.ts"
+import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -47,7 +48,8 @@ export function PullRequestLink({
 
 function PullRequestCard({ pullRequest: { owner, name, number } }: { pullRequest: PullRequestRef }) {
   // The canonical url, so links to a pull request's files or comments share one lookup.
-  const status = useAtomValue(pullRequestStatusAtom(`https://github.com/${owner}/${name}/pull/${number}`))
+  const environment = useOpenThreadEnvironment()
+  const status = useAtomValue(pullRequestStatusAtom(environment, `https://github.com/${owner}/${name}/pull/${number}`))
   return (
     <div className="flex flex-col gap-1.5 text-xs">
       <p className="text-muted-foreground">

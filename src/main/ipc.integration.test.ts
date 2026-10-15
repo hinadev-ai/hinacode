@@ -3,10 +3,9 @@ import { EventEmitter } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
-import { basename, dirname, join } from "node:path"
+import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
 import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
@@ -21,34 +20,13 @@ import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { AgentError, type AgentProvider } from "./agents/provider.ts"
-import * as Db from "./db/client.ts"
-import { makeEventsLayer, registerIpc } from "./ipc.ts"
-import * as Mcp from "./mcp/index.ts"
-import * as AgentAccounts from "./services/AgentAccounts.ts"
-import * as AgentLogins from "./services/AgentLogins.ts"
-import * as AgentRunner from "./services/AgentRunner.ts"
-import * as Attachments from "./services/Attachments.ts"
-import * as Files from "./services/Files.ts"
-import { Automations } from "./services/automations/Automations.ts"
+import { registerIpc } from "./ipc.ts"
+import { makeTestAppLayer } from "./testing.ts"
 import { Events } from "./services/Events.ts"
-import * as Favicons from "./services/Favicons.ts"
-import * as Git from "./services/Git.ts"
-import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
-import * as Ports from "./services/Ports.ts"
 import * as RemoteAccess from "./remote/access.ts"
-import * as RemoteServer from "./remote/server.ts"
-import * as Secrets from "./services/Secrets.ts"
-import * as Terminals from "./services/Terminals.ts"
-import * as Projects from "./services/Projects.ts"
 import * as PullRequests from "./services/PullRequests.ts"
-import * as Search from "./services/Search.ts"
-import * as Settings from "./services/Settings.ts"
-import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import * as Threads from "./services/Threads.ts"
-import { ThreadNaming } from "./services/ThreadNaming.ts"
-import { Updates } from "./services/Updates.ts"
-import * as Worktrees from "./services/Worktrees.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
 interface Frame {
@@ -209,41 +187,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, scriptedProvider("muse")),
 )
 
-const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Service)
-const updatesStub = Layer.succeed(Updates, Updates.of({ ready: Effect.succeed(null), install: Effect.void }))
-
-const makeLayer = (dbPath: string) => {
-  const domain = Layer.mergeAll(
-    Threads.layer.pipe(
-      Layer.provideMerge(Terminals.layer),
-      Layer.provideMerge(Worktrees.layer),
-      Layer.provideMerge(Projects.layer),
-      Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
-    ),
-    Messages.layer,
-    Attachments.layer,
-    Search.layer,
-    Files.layer,
-  )
-  const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const tinyVm = TinyVm.layer({ configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} })
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm).pipe(Layer.provide(domain))
-  const agents = AgentRunner.layer.pipe(
-    Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
-    Layer.provideMerge(Layer.mergeAll(domain, features)),
-  )
-  const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
-  const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins)
-  const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
-  return RemoteServer.layer.pipe(
-    Layer.provideMerge(app),
-    Layer.provideMerge(makeEventsLayer()),
-    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
-    Layer.provide(Db.layer(dbPath)),
-    Layer.provide(NodeServices.layer),
-  )
-}
+const makeLayer = (dbPath: string) => makeTestAppLayer(dbPath, { providers })
 
 let dir = ""
 let repo = ""
@@ -606,21 +550,28 @@ describe("projects, threads and settings over rpc", () => {
   })
 
   test("settings written through rpc are what the next read returns", async () => {
-    const saved = result(await invoke("settings.set", { locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } }))
-    expect(saved).toMatchObject({ locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } })
+    const saved = result(await invoke("settings.set", { textGenerationModel: "claude-haiku", worktreeRoot: "/tmp/wt" }))
+    expect(saved).toMatchObject({ textGenerationModel: "claude-haiku", worktreeRoot: "/tmp/wt" })
+    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+
+    const client = result(
+      await invoke("clientSettings.set", { locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } }),
+    )
+    expect(client).toMatchObject({ locale: "zh-TW", keybindings: { "sidebar.toggle": "mod+k" } })
+    expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(client)
     expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
   })
 
-  test("notification preferences persist through the derived settings patch", async () => {
-    const before = result(await invoke("settings.get", undefined))
+  test("notification preferences persist through the derived client settings patch", async () => {
+    const before = result(await invoke("clientSettings.get", undefined))
     const notifications = { completed: false, needsInput: true, failed: false, sound: false }
-    const saved = result(await invoke("settings.set", { notifications }))
+    const saved = result(await invoke("clientSettings.set", { notifications }))
     expect(saved).toStrictEqual({ ...before, notifications })
-    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+    expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
 
-    const malformed = await invoke("settings.set", { notifications: { ...notifications, sound: "yes" } } as never)
+    const malformed = await invoke("clientSettings.set", { notifications: { ...notifications, sound: "yes" } } as never)
     expect(malformed).toMatchObject({ error: { tag: "SchemaError" } })
-    expect(result(await invoke("settings.get", undefined))).toStrictEqual(saved)
+    expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
   })
 
   test("creating a worktree pushes its state changes to every window", async () => {
@@ -972,11 +923,11 @@ describe("remote mode", () => {
   test("refuses a call before auth and a wrong token", async () => {
     const early = phone(port)
     await early.send({ type: "call", id: 1, method: "projects.list", payload: undefined })
-    expect((await early.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+    expect((await early.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
 
     const wrong = phone(port)
     await wrong.send({ type: "auth", token: "not-the-token" })
-    expect((await wrong.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+    expect((await wrong.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
   })
 
   test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {
@@ -1031,11 +982,11 @@ describe("remote mode", () => {
 
     const after = result(await invoke("remote.rotateToken", undefined))
     expect(after.token).not.toBe(before.token)
-    expect((await paired.closed()).code).toBe(RemoteServer.CLOSE_TOKEN_ROTATED)
+    expect((await paired.closed()).code).toBe(RemoteAccess.CLOSE_TOKEN_ROTATED)
 
     const stale = phone(port)
     await stale.send({ type: "auth", token: before.token })
-    expect((await stale.closed()).code).toBe(RemoteServer.CLOSE_UNAUTHORIZED)
+    expect((await stale.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
   })
 
   test("turning remote off closes a socket that has not authenticated yet", async () => {
@@ -1044,7 +995,7 @@ describe("remote mode", () => {
     result(await invoke("settings.set", { remote: { enabled: false, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(false))
     await pending.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
-    expect((await pending.closed()).code).toBe(RemoteServer.CLOSE_LISTENER_STOPPED)
+    expect((await pending.closed()).code).toBe(RemoteAccess.CLOSE_LISTENER_STOPPED)
 
     result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))

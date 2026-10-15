@@ -13,6 +13,7 @@ import museProvider from "./migrations/0011_muse_provider.ts"
 import accountHome from "./migrations/0012_account_home.ts"
 import pullRequestWatch from "./migrations/0013_pull_request_watch.ts"
 import threadPin from "./migrations/0014_thread_pin.ts"
+import environments from "./migrations/0015_environments.ts"
 
 const run = Migrator.make({})
 
@@ -35,5 +36,6 @@ export const runMigrations = run({
     "12_account_home": accountHome,
     "13_pull_request_watch": pullRequestWatch,
     "14_thread_pin": threadPin,
+    "15_environments": environments,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

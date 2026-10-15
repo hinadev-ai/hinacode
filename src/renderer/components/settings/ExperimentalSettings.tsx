@@ -6,6 +6,7 @@ import type { VmHostStatus } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
+import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
@@ -13,8 +14,9 @@ import { Switch } from "../ui/switch.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 
 export function ExperimentalSettings() {
-  const { experimental } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const { experimental } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
 
   const setTinyVm = async (tinyVm: boolean) => {
@@ -49,8 +51,9 @@ export function ExperimentalSettings() {
 
 /** Whether kkcode reaches the sbx host, through the login `sbx login` wrote. */
 function VmHost() {
-  const host = useAtomValue(vmHostAtom)
-  const refresh = useAtomRefresh(vmHostAtom)
+  const environment = useSettingsEnvironment()
+  const host = useAtomValue(vmHostAtom(environment))
+  const refresh = useAtomRefresh(vmHostAtom(environment))
   const checkAgain = (
     <Button variant="ghost" size="xs" disabled={host.waiting} onClick={refresh}>
       {m.settings_tiny_vm_check_again()}

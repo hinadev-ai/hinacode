@@ -3,8 +3,9 @@ import { type Hotkey, matchesKeyboardEvent, useHotkeys } from "@tanstack/react-h
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useEffectEvent, useMemo } from "react"
-import { projectsAtom, updateSettingsAtom } from "../lib/rpc.ts"
-import { useSettings } from "../lib/settings.ts"
+import { projectsAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
+import { useClientSettings, useSettings } from "../lib/settings.ts"
 import { isInTerminal } from "../lib/terminalScreens.ts"
 import type { ExperimentalSettings } from "../../shared/domain.ts"
 import {
@@ -20,7 +21,7 @@ import {
 
 /** The user's effective keymap: command id -> normalized chord, "" when unbound. */
 export const useKeymap = (): Keymap => {
-  const { keybindings } = useSettings()
+  const { keybindings } = useClientSettings()
   return useMemo(() => resolveKeymap(keybindings), [keybindings])
 }
 
@@ -41,11 +42,11 @@ export const useCommandContext = (): CommandContext => {
   const navigate = useNavigate()
   const { threadId = null } = useParams({ strict: false })
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
-  const { experimental } = useSettings()
+  const updateClientSettings = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
+  const { experimental } = useSettings(useThreadEnvironment(threadId))
   return useMemo(
-    () => ({ navigate, threadId, projects, updateSettings, experimental }),
-    [navigate, threadId, projects, updateSettings, experimental],
+    () => ({ navigate, threadId, projects, updateClientSettings, experimental }),
+    [navigate, threadId, projects, updateClientSettings, experimental],
   )
 }
 

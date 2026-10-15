@@ -1,11 +1,11 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
-import type { Settings } from "../../../shared/domain.ts"
+import type { ClientSettings } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { notify } from "../../lib/notify.ts"
-import { callPromise, notificationPermissionAtom, updateSettingsAtom } from "../../lib/rpc.ts"
-import { useSettings } from "../../lib/settings.ts"
+import { callPromise, notificationPermissionAtom, updateClientSettingsAtom } from "../../lib/rpc.ts"
+import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import {
@@ -20,7 +20,7 @@ import {
 import { Switch } from "../ui/switch.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 
-type Notifications = Settings["notifications"]
+type Notifications = ClientSettings["notifications"]
 
 const toggles: ReadonlyArray<{
   readonly key: keyof Notifications
@@ -41,14 +41,14 @@ const toggles: ReadonlyArray<{
 ]
 
 export function NotificationSettings() {
-  const { notifications } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const { notifications } = useClientSettings()
+  const updateClientSettings = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
 
   const save = async (patch: Partial<Notifications>) => {
     setError(null)
     try {
-      await updateSettings({ notifications: { ...notifications, ...patch } })
+      await updateClientSettings({ notifications: { ...notifications, ...patch } })
     } catch (cause) {
       setError(errorMessage(cause))
     }

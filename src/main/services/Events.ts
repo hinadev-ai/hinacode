@@ -11,3 +11,9 @@ export class PushBroadcast extends Context.Service<
   PushBroadcast,
   { readonly subscribe: (sink: (event: typeof PushEvent.Encoded) => void) => Effect.Effect<void, never, Scope.Scope> }
 >()("kkcode/PushBroadcast") {}
+
+/** Sends a push to the desktop windows only, never to `PushBroadcast` sinks. For a cloud's pushes. */
+export class WindowPush extends Context.Service<
+  WindowPush,
+  { readonly send: (event: PushEvent) => Effect.Effect<void> }
+>()("kkcode/WindowPush") {}

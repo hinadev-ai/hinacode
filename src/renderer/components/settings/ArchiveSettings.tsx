@@ -4,6 +4,7 @@ import type { ArchiveSettings as Archive } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
+import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
@@ -19,8 +20,9 @@ const toggles: ReadonlyArray<{
 ]
 
 export function ArchiveSettings() {
-  const { archive } = useSettings()
-  const updateSettings = useAtomSet(updateSettingsAtom, { mode: "promise" })
+  const environment = useSettingsEnvironment()
+  const { archive } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
 
   const save = async (patch: Partial<Archive>) => {

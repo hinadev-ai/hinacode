@@ -50,6 +50,7 @@ import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } fr
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, projectsAtom } from "../lib/rpc.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -238,7 +239,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const [queued, setQueued] = useState<RowMode | null>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const worktree = useActiveWorktree(thread)
-  const { archive: archiveSettings } = useSettings()
+  const { archive: archiveSettings } = useSettings(useThreadEnvironment(thread.id))
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.

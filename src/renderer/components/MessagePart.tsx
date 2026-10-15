@@ -20,7 +20,7 @@ import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -383,7 +383,7 @@ const shellHighlighter = (theme: string) => {
 
 /** Unmarked by Find on purpose: the command's row already carries its marks. */
 function ShellCode({ code }: { code: string }) {
-  const { codeTheme, scheme } = useTheme(useSettings().appearance.theme)
+  const { codeTheme, scheme } = useTheme(useClientSettings().appearance.theme)
   return (
     <Suspense fallback={code}>
       <ShellTokens code={code} theme={codeTheme ?? DEFAULT_THEMES[scheme]} />

@@ -8,6 +8,7 @@ import { SIDE_PANEL_BOUNDS } from "../lib/panelWidth.ts"
 import { m } from "../paraglide/messages.js"
 import { selectSidePanelView, useUi } from "../stores/ui.ts"
 import { ResizeHandle } from "./ResizeHandle.tsx"
+import { useThreadEnvironment } from "../lib/environments.ts"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
 import { Button } from "./ui/button.tsx"
@@ -24,7 +25,7 @@ const returnFocusToComposer = (panel: HTMLElement | null) => () => {
 export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const docked = usePanelLayout() === "wide"
   const open = useUi((state) => (docked ? state.sidePanelOpen : state.sidePanelOverlayOpen))
-  const views = useSidePanelViews()
+  const views = useSidePanelViews(useThreadEnvironment(thread.id))
   const view = viewById(views, useUi(selectSidePanelView(thread.id)))
   const shown = compact || open
   const panelId = `side-panel-${thread.id}`

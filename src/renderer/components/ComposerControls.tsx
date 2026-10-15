@@ -25,9 +25,11 @@ import {
   callPromise,
   currentBranchAtom,
   defaultBranchAtom,
+  type EnvironmentId,
   modelsAtom,
   pullRequestsAtom,
 } from "../lib/rpc.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
@@ -77,8 +79,11 @@ const update = async (patch: RpcRequest<"threads.update">, onError: (message: st
 }
 
 /** The agent's listed models, plus `keep`, such as a thread's saved model, when the agent no longer lists it. */
-function useAgentModels(provider: ProviderId, keep: string | null) {
-  const listed = AsyncResult.getOrElse(useAtomValue(modelsAtom(provider)), (): ReadonlyArray<ModelInfo> => [])
+function useAgentModels(environment: EnvironmentId, provider: ProviderId, keep: string | null) {
+  const listed = AsyncResult.getOrElse(
+    useAtomValue(modelsAtom(environment, provider)),
+    (): ReadonlyArray<ModelInfo> => [],
+  )
   return keep === null || listed.some((model) => model.id === keep)
     ? listed
     : [unlistedModel(keep, provider), ...listed]
@@ -86,7 +91,9 @@ function useAgentModels(provider: ProviderId, keep: string | null) {
 
 /** The thread's model as its agent lists it, or undefined when the agent no longer lists it. */
 function useThreadModel(thread: Thread) {
-  return useAgentModels(thread.provider, null).find((model) => model.id === thread.model)
+  return useAgentModels(useThreadEnvironment(thread.id), thread.provider, null).find(
+    (model) => model.id === thread.model,
+  )
 }
 
 /**
@@ -136,6 +143,7 @@ const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a
  * another agent's model switches the agent in the same step.
  */
 export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
+  const environment = useThreadEnvironment(thread.id)
   const selected = useThreadModel(thread) ?? unlistedModel(thread.model, thread.provider)
   const providers = canSwitchAgent ? ProviderId.literals : [thread.provider]
   const pickerOpen = usePickerOpen("model")
@@ -171,7 +179,12 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
       </SelectTrigger>
       <SelectContent {...composerPopup} {...pickerOpen.popup}>
         {providers.map((provider) => (
-          <ModelGroup key={provider} provider={provider} keep={provider === thread.provider ? thread.model : null} />
+          <ModelGroup
+            key={provider}
+            environment={environment}
+            provider={provider}
+            keep={provider === thread.provider ? thread.model : null}
+          />
         ))}
       </SelectContent>
     </Select>
@@ -182,15 +195,21 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
  * The agent's preset models, plus the thread's own. A preset none of whose models the agent still lists
  * falls back to every model, so an agent never vanishes from the picker.
  */
-function usePickerModels(provider: ProviderId, keep: string | null) {
-  const listed = useAgentModels(provider, keep)
-  const preset = useSettings().modelPresets[provider]
+function usePickerModels(environment: EnvironmentId, provider: ProviderId, keep: string | null) {
+  const listed = useAgentModels(environment, provider, keep)
+  const preset = useSettings(environment).modelPresets[provider]
   const picked = listed.filter((model) => preset.includes(model.id) || model.id === keep)
   return preset.length === 0 || !picked.some((model) => model.id !== keep) ? listed : picked
 }
 
-function ModelGroup({ provider, keep }: { provider: ProviderId; keep: string | null }) {
-  const models = usePickerModels(provider, keep)
+interface ModelGroupProps {
+  readonly environment: EnvironmentId
+  readonly provider: ProviderId
+  readonly keep: string | null
+}
+
+function ModelGroup({ environment, provider, keep }: ModelGroupProps) {
+  const models = usePickerModels(environment, provider, keep)
   if (models.length === 0) return null
   return (
     <SelectGroup>
@@ -281,7 +300,7 @@ interface FastMode {
 /** The settings beside the model, each shown only when the agent, account or model supports it. */
 function useThreadOptions(thread: Thread, onError: (message: string) => void) {
   const current = useThreadModel(thread)
-  const accounts = useProviderAccounts(thread.provider)
+  const accounts = useProviderAccounts(useThreadEnvironment(thread.id), thread.provider)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
 
   const account: Choice | null =

@@ -21,6 +21,10 @@ import {
 } from "./agent.ts"
 import {
   AccessMode,
+  ClientSettings,
+  Environment,
+  Environments,
+  EnvironmentStatus,
   Attachment,
   Automation,
   Changes,
@@ -192,6 +196,17 @@ export const RpcMethods = {
     PermissionRequestOutcome,
   ),
   "settings.set": rpc(Settings.mapFields(Struct.map(Schema.optional)), Settings),
+  "clientSettings.get": rpc(Schema.Void, ClientSettings),
+  "clientSettings.set": rpc(ClientSettings.mapFields(Struct.map(Schema.optional)), ClientSettings),
+
+  "environments.list": rpc(Schema.Void, Environments),
+  /**
+   * Connects once with the pairing URL's token before saving, so a typo or a rotated token fails here. Pairing a
+   * cloud that is already listed updates its address and token instead of adding it again.
+   */
+  "environments.add": rpc(Schema.Struct({ name: Schema.String, pairingUrl: Schema.String }), Environment),
+  /** Forgets the cloud and its token. Its projects and threads stay on the cloud. */
+  "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
@@ -424,7 +439,10 @@ export const RpcMethods = {
 
 export type RpcMethod = keyof typeof RpcMethods
 
-/** Methods that need the desktop window (dialogs, focus) or the desktop renderer (file watching). Refused over remote. */
+/**
+ * Methods that need the desktop window (dialogs, focus) or the desktop renderer (file watching), or that steer the
+ * desktop itself (its settings and its paired clouds). Refused over remote.
+ */
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
@@ -438,6 +456,11 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.screen.open",
   "remote.pairing",
   "remote.rotateToken",
+  "clientSettings.get",
+  "clientSettings.set",
+  "environments.list",
+  "environments.add",
+  "environments.remove",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
@@ -504,6 +527,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
   /** Readiness changed; ask updates.ready for the current downloaded version. */
   Schema.Struct({ type: Schema.Literal("update.changed") }),
+  /** The desktop's link to a cloud changed state. */
+  Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
@@ -514,9 +539,14 @@ export type PushEvent = typeof PushEvent.Type
 
 /** The bridge preload exposes as `window.kkcode`. */
 export interface KkcodeBridge {
+  /**
+   * `environment` is a cloud's id for the few methods that name where they run (settings, accounts, models, new
+   * projects). Every other method finds its environment from the ids in its payload.
+   */
   readonly rpc: <M extends RpcMethod>(
     method: M,
     payload: RpcRequestEncoded<M>,
+    environment?: string,
   ) => Promise<RpcEnvelope<RpcResponseEncoded<M>>>
   /** Returns an unsubscribe function. */
   readonly onEvent: (listener: (event: typeof PushEvent.Encoded) => void) => () => void
