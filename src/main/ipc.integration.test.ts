@@ -25,6 +25,7 @@ import { makeTestAppLayer } from "./testing.ts"
 import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import { MAX_CALL_KEYS } from "./remote/server.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -906,6 +907,8 @@ const phone = (port: number, options?: { autoPong: boolean }) => {
       return (frame as Extract<ServerFrame, { type: "result" }>).envelope as RpcEnvelope<RpcResponseEncoded<M>>
     },
     ready: () => until(() => frames.find((f) => f.type === "ready")),
+    answered: (count: number) =>
+      until(() => (frames.filter((f) => f.type === "result").length >= count ? true : undefined)),
     pong: (at: number) => until(() => frames.find((f) => f.type === "pong" && f.at === at)),
     pinged: new Promise<void>((resolve) => socket.once("ping", () => resolve())),
     event: (predicate: (event: PushEvent) => boolean) =>
@@ -1132,6 +1135,42 @@ describe("remote mode under a test clock", () => {
     await pending.opened
     await adjust("5 seconds")
     expect((await pending.closed()).code).toBe(RemoteAccess.CLOSE_AUTH_TIMEOUT)
+  })
+
+  const createThread = async (key: string) => {
+    const paired = await pairedPhone()
+    const projects = result(await paired.call("projects.list", undefined))
+    const project =
+      projects[0] ??
+      result(await paired.call("projects.create", { name: "clocked", rootPath: repo, setupScript: null }))
+    const created = result(await paired.call("threads.create", { projectId: project.id }, key))
+    paired.socket.close()
+    return created.id
+  }
+
+  test("a call key answers its stored result for five minutes after it settles, then runs again", async () => {
+    const first = await createThread("ttl")
+    await adjust("299 seconds")
+    expect(await createThread("ttl")).toBe(first)
+    await adjust("1 second")
+    expect(await createThread("ttl")).not.toBe(first)
+  })
+
+  test("a full cache still answers a stored key and evicts the oldest settled key only for a new one", async () => {
+    await adjust("5 minutes")
+    const oldest = await createThread("oldest")
+
+    const invalidPayload = {}
+    const filler = await pairedPhone()
+    for (let id = 1; id < MAX_CALL_KEYS; id++) {
+      await filler.send({ type: "call", id, method: "threads.create", payload: invalidPayload, key: `filler-${id}` })
+    }
+    await filler.answered(MAX_CALL_KEYS - 1)
+    filler.socket.close()
+
+    expect(await createThread("oldest")).toBe(oldest)
+    await createThread("newest")
+    expect(await createThread("oldest")).not.toBe(oldest)
   })
 
   test("the heartbeat terminates a socket that stops answering pings and keeps one that answers", async () => {

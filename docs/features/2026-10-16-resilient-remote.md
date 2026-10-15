@@ -50,25 +50,25 @@ RemoteFeature = "heartbeat" | "call-keys" | "terminal-attach"
 
 Close codes, in `src/main/remote/access.ts`:
 
-| Code | Meaning | Client action |
-|---|---|---|
-| 4001 | wrong token | stop, pair again |
-| 4002 | token rotated | stop, pair again |
-| 4003 | listener stopped | retry |
-| 4004 | no `auth` within the deadline (new; was 4001) | retry |
-| 4005 | malformed frame (new; was 4001) | retry |
-| 4006 | client too slow, `bufferedAmount` over 8 MiB (new) | retry |
+| Code | Meaning                                            | Client action    |
+| ---- | -------------------------------------------------- | ---------------- |
+| 4001 | wrong token                                        | stop, pair again |
+| 4002 | token rotated                                      | stop, pair again |
+| 4003 | listener stopped                                   | retry            |
+| 4004 | no `auth` within the deadline (new; was 4001)      | retry            |
+| 4005 | malformed frame (new; was 4001)                    | retry            |
+| 4006 | client too slow, `bufferedAmount` over 8 MiB (new) | retry            |
 
 ### Which calls are safe to repeat
 
 `src/shared/contract.ts` gains `methodKind: Record<RpcMethod, "read" | "mutation">`. A `Record` over every method makes the compiler refuse a new method until someone decides which kind it is. `mutations` is the derived set.
 
 - A read is retried by sending it again. It must run again, because its answer from before the outage can miss pushes lost during it (a stale `threads.transcript` snapshot would look current).
-- A mutation carries a `key`, a random id the client creates once per user action and reuses on every retry of it.
+- A mutation carries a `key`, a random id the client creates once per user action and reuses on every retry of it. If an older server does not advertise `call-keys`, a mutation sent before a disconnect fails with an uncertain-delivery error instead of replaying. Reads and unsent mutations still queue. Replaying a mutation without server deduplication could run it twice.
 
 ### Server
 
-- **Call keys.** `RemoteServer` keeps `keyed: Map<key, { result: Promise<RpcEnvelope>, settledAt: number | null }>`. A call whose key is in flight waits for the same promise. A settled key answers its stored envelope without running anything. Entries expire 5 minutes after settling, and the map holds at most 2,000 entries, evicting the oldest settled one. The cache lives in memory: after a restart a retried mutation runs again, which is acceptable because a restart also ended the original.
+- **Call keys.** `RemoteServer` keeps `keyed: Map<key, { result: Promise<RpcEnvelope>, settledAt: number | null }>`. A call whose key is in flight waits for the same promise. A settled key answers its stored envelope without running anything. Entries expire 5 minutes after settling, and the map holds at most 2,000 entries, evicting the oldest settled one. When every entry is still running, a new keyed call receives `RemoteBusy` without dispatching; retries of existing keys still join their original call. The cache lives in memory: after a restart a retried mutation runs again, which is acceptable because a restart also ended the original.
 - **Heartbeat.** It answers `ping` with `pong`. Every 20 s it sends a WebSocket protocol ping to each authenticated socket and terminates one that has not answered the previous ping. React Native, browsers and `ws` answer protocol pings on their own. The schedule is an Effect `Schedule`, so tests drive it with `TestClock`.
 - **Slow consumers.** `send` closes the socket with 4006 when `bufferedAmount` is over 8 MiB, instead of letting a dead phone buffer terminal output until TCP gives up.
 - `maxPayload` rises from 1 MiB to 16 MiB, so a large `fs.write` routed to a cloud does not drop the link.
@@ -125,3 +125,9 @@ Each slice is one PR with its own check:
   3. Start `for i in $(seq 1 30); do echo $i; sleep 1; done` in the terminal, blackhole for 8 s, then pass. The output has every number once, and `echo $$` prints the same PID before and after.
   4. Tap Allow during a blackhole. After the reconnect the approval is applied once.
 - The same with the desktop driving a `kkcode serve` cloud through the proxy: a send during a 5 s `reset` lands once.
+
+### Fault injector
+
+Run `node scripts/flaky-proxy.mjs <proxy-port> <listener-port> <control-port>` on the same machine as the listener. Pair the client with the proxy port. The proxy binds both listeners to `127.0.0.1`.
+
+Send `POST /pass`, `/blackhole`, `/reset`, or `/delay?ms=250` to the control port. `reset` destroys existing connections and refuses new ones until the next mode. `blackhole` discards bytes in both directions while keeping TCP connections open. `GET /` reports the current mode and connection count.

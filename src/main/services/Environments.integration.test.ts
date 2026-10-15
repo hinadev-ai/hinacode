@@ -5,8 +5,9 @@ import type { AddressInfo } from "node:net"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
-import { WebSocketServer } from "ws"
+import { Clock, type Duration, Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { TestClock } from "effect/testing"
+import { WebSocket, WebSocketServer } from "ws"
 import { SqlClient } from "effect/sql"
 import { unlistedModel } from "../../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../../shared/channels.ts"
@@ -17,15 +18,23 @@ import {
   type RpcRequestEncoded,
   type RpcResponseEncoded,
 } from "../../shared/contract.ts"
-import { pairingUrl, REMOTE_PATH } from "../../shared/remote.ts"
+import {
+  type ClientFrame,
+  pairingUrl,
+  REMOTE_PATH,
+  REMOTE_PROTOCOL_VERSION,
+  type RemoteFeature,
+  type ServerFrame,
+} from "../../shared/remote.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
-import { RemoteAccess } from "../remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, RemoteAccess } from "../remote/access.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { ClientSettings } from "./ClientSettings.ts"
+import { Environments, type ForwardedCall } from "./Environments.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
 import { Secrets } from "./Secrets.ts"
 import { Settings } from "./Settings.ts"
@@ -312,16 +321,18 @@ describe("desktop environments", () => {
     expect((await cloud.runPromise(ClientSettings.use((settings) => settings.get))).locale).toBe("en")
   })
 
-  test("a stopped cloud answers EnvironmentOffline and keeps its last projects listed", async () => {
+  test("a stopped cloud keeps its last projects listed, and a call made meanwhile lands when it is back", async () => {
     await setCloudRemote(false)
     await pushedEventually(statusOf(cloudId, "offline"))
-    expect(failure(await invoke("threads.update", { id: cloudThread, title: "lost" }))).toStrictEqual({
-      tag: "EnvironmentOffline",
-      message: "home-server is offline",
-    })
+    const update = invoke("threads.update", { id: cloudThread, title: "sent while offline" })
     const projects = result(await invoke("projects.list", undefined))
     expect(projects.map((project) => project.name)).toStrictEqual(["here", "there"])
     result(await invoke("threads.update", { id: localThread, title: "still here" }))
+
+    await setCloudRemote(true)
+    expect(result(await update).title).toBe("sent while offline")
+    const [onCloud] = await cloud.runPromise(Threads.use((threads) => threads.list))
+    expect(onCloud?.title).toBe("sent while offline")
   })
 
   test("removing a cloud forgets it and its token", async () => {
@@ -353,5 +364,200 @@ describe("desktop environments", () => {
     } finally {
       server.close()
     }
+  })
+})
+
+const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<RemoteFeature>; autoPong?: boolean }) => {
+  const server = new WebSocketServer({
+    host: "127.0.0.1",
+    port: 0,
+    path: REMOTE_PATH,
+    autoPong: options.autoPong ?? true,
+  })
+  const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
+  let current: WebSocket | undefined
+  server.on("connection", (socket) => {
+    socket.on("message", (raw) => {
+      const frame = JSON.parse(String(raw)) as ClientFrame
+      if (frame.type === "call") calls.push(frame)
+      if (frame.type !== "auth") return
+      current = socket
+      const ready: ServerFrame = {
+        type: "ready",
+        version: REMOTE_PROTOCOL_VERSION,
+        environment: { id, name: id },
+        features: options.features ?? ["heartbeat", "call-keys"],
+      }
+      socket.send(JSON.stringify(ready))
+    })
+  })
+  await new Promise((resolve) => server.once("listening", resolve))
+  const { port } = server.address() as AddressInfo
+  return {
+    pairingUrl: pairingUrl("127.0.0.1", port, "token"),
+    calls,
+    socket: () => current!,
+    send: (frame: ServerFrame) => current!.send(JSON.stringify(frame)),
+    stop: () => {
+      server.close()
+      for (const socket of server.clients) socket.terminate()
+    },
+  }
+}
+
+describe("desktop environments over a flaky link", () => {
+  let clocked: ManagedRuntime.ManagedRuntime<Environments | TestClock.TestClock, unknown>
+
+  const forward = (environmentId: string, call: ForwardedCall) =>
+    clocked.runPromise(Environments.use((environments) => environments.forward(environmentId, call)))
+  const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
+  const lastSeenAt = async (id: string) =>
+    (await clocked.runPromise(Environments.use((environments) => environments.list))).clouds.find(
+      (entry) => entry.id === id,
+    )?.lastSeenAt
+  const testTime = () => clocked.runPromise(Clock.currentTimeMillis)
+
+  const pair = async (id: string, options: Parameters<typeof scriptedCloud>[1] = {}) => {
+    const scripted = await scriptedCloud(id, options)
+    await clocked.runPromise(
+      Environments.use((environments) => environments.add({ name: "", pairingUrl: scripted.pairingUrl })),
+    )
+    await pushedEventually(statusOf(id, "connected"))
+    return scripted
+  }
+  const remove = (id: string) => clocked.runPromise(Environments.use((environments) => environments.remove(id)))
+
+  const reconnectUntil = (done: () => void) =>
+    vi.waitFor(async () => {
+      await adjust("1 second")
+      done()
+    })
+
+  beforeAll(() => {
+    mkdirSync(join(dir, "clocked"))
+    clocked = ManagedRuntime.make(
+      makeDesktop(join(dir, "clocked", "kkcode.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
+    )
+  })
+
+  afterAll(() => clocked.dispose())
+
+  test("a mutation whose answer was lost is sent again once under the same key, ahead of calls made offline", async () => {
+    const scripted = await pair("flaky")
+    const update = forward("flaky", { method: "threads.update", payload: { id: "t1", title: "once" } })
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    scripted.socket().terminate()
+    await pushedEventually(statusOf("flaky", "offline"))
+    const read = forward("flaky", { method: "settings.get", payload: undefined })
+
+    await reconnectUntil(() => expect(scripted.calls).toHaveLength(3))
+    const [first, again, settings] = scripted.calls
+    expect(first!.key).toStrictEqual(expect.any(String))
+    expect([again, settings].map((call) => [call!.method, call!.key])).toStrictEqual([
+      ["threads.update", first!.key],
+      ["settings.get", undefined],
+    ])
+
+    scripted.send({ type: "result", id: again!.id, envelope: { result: { id: "t1", title: "once" } } })
+    scripted.send({ type: "result", id: settings!.id, envelope: { result: { textGenerationModel: "m" } } })
+    expect(await update).toStrictEqual({ result: { id: "t1", title: "once" } })
+    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    expect(scripted.calls.filter((call) => call.key === first!.key)).toHaveLength(2)
+    await remove("flaky")
+    scripted.stop()
+  })
+
+  test("a call waits through connected time and fails after a minute unreachable", async () => {
+    const scripted = await pair("slow")
+    let answer: RpcEnvelope<unknown> | undefined
+    const update = forward("slow", { method: "threads.update", payload: { id: "t1", title: "slow" } }).then(
+      (envelope) => (answer = envelope),
+    )
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    for (let step = 0; step < 12; step++) {
+      await adjust("10 seconds")
+      const now = new Date(await testTime()).toISOString()
+      await vi.waitFor(async () => expect(await lastSeenAt("slow")).toBe(now))
+    }
+    expect(answer).toBeUndefined()
+
+    scripted.stop()
+    await pushedEventually(statusOf("slow", "offline"))
+    await adjust("59 seconds")
+    expect(answer).toBeUndefined()
+    await adjust("1 second")
+    expect(await update).toStrictEqual({
+      error: { tag: "Timeout", message: "slow was unreachable for a minute. The call may still have run there." },
+    })
+    await remove("slow")
+  })
+
+  test("a link silent for 25 seconds is dropped, and removing the cloud fails the calls it held", async () => {
+    const scripted = await pair("silent", { autoPong: false })
+    await adjust("10 seconds")
+    scripted.send({ type: "pong", at: 0 })
+    const heardAt = new Date(await testTime()).toISOString()
+    await vi.waitFor(async () => expect(await lastSeenAt("silent")).toBe(heardAt))
+
+    await adjust(24_999)
+    let held: RpcEnvelope<unknown> | undefined
+    void forward("silent", { method: "settings.get", payload: undefined }).then((envelope) => (held = envelope))
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    expect(scripted.socket().readyState).toBe(WebSocket.OPEN)
+    await adjust(1)
+    await vi.waitFor(() => expect(scripted.socket().readyState).toBe(WebSocket.CLOSED))
+    expect(held).toBeUndefined()
+
+    await remove("silent")
+    await vi.waitFor(() =>
+      expect(held).toStrictEqual({ error: { tag: "NotFoundError", message: "No environment with id silent" } }),
+    )
+    scripted.stop()
+  })
+
+  test("a rotated token fails pending calls and stops retrying", async () => {
+    const scripted = await pair("rotated")
+    const update = forward("rotated", { method: "threads.update", payload: { id: "t1", title: "x" } })
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    scripted.socket().close(CLOSE_TOKEN_ROTATED)
+    const refused = {
+      error: { tag: "EnvironmentUnauthorized", message: "rotated refused this desktop's token. Pair it again." },
+    }
+    expect(await update).toStrictEqual(refused)
+    await pushedEventually(statusOf("rotated", "unauthorized"))
+    expect(await forward("rotated", { method: "settings.get", payload: undefined })).toStrictEqual(refused)
+    await remove("rotated")
+    scripted.stop()
+  })
+
+  test("a cloud without call keys gets mutations bare, and one cut off is reported instead of sent twice", async () => {
+    const scripted = await pair("old", { features: [] })
+    const update = forward("old", { method: "threads.update", payload: { id: "t1", title: "x" } })
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    expect(scripted.calls[0]).not.toHaveProperty("key")
+    scripted.socket().terminate()
+    expect(await update).toStrictEqual({
+      error: { tag: "EnvironmentOffline", message: "old went offline. The call may still have run there." },
+    })
+    await reconnectUntil(() => expect(electron.pushes.filter(statusOf("old", "connected"))).toHaveLength(2))
+    await vi.waitFor(() => expect(electron.pushes.filter(statusOf("old", "connected"))).toHaveLength(2))
+    expect(scripted.calls).toHaveLength(1)
+    await remove("old")
+    scripted.stop()
+  })
+
+  test("closing the desktop fails the calls still waiting, timers included", async () => {
+    const scripted = await pair("closing")
+    const environments = await clocked.runPromise(Environments.use(Effect.succeed))
+    const forwardOutside = (call: ForwardedCall) => Effect.runPromise(environments.forward("closing", call))
+    const sent = forwardOutside({ method: "threads.update", payload: { id: "t1", title: "x" } })
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    scripted.stop()
+    await pushedEventually(statusOf("closing", "offline"))
+    const queued = forwardOutside({ method: "settings.get", payload: undefined })
+
+    await clocked.dispose()
+    const offline = { error: { tag: "EnvironmentOffline", message: "closing is offline" } }
+    expect(await Promise.all([sent, queued])).toStrictEqual([offline, offline])
   })
 })

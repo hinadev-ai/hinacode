@@ -16,10 +16,13 @@ export interface EnvironmentIdentity {
   readonly name: string
 }
 
-/** Close codes a client can tell apart from a network drop. */
+/** Close codes a client can tell apart from a network drop. Only the first two mean "pair again"; retry the rest. */
 export const CLOSE_UNAUTHORIZED = 4001
 export const CLOSE_TOKEN_ROTATED = 4002
 export const CLOSE_LISTENER_STOPPED = 4003
+export const CLOSE_AUTH_TIMEOUT = 4004
+export const CLOSE_MALFORMED_FRAME = 4005
+export const CLOSE_SLOW_CONSUMER = 4006
 
 const isTailscale = (address: string) => address.startsWith("100.")
 
