@@ -582,6 +582,17 @@ export const TerminalSession = Schema.Struct({
 })
 export type TerminalSession = typeof TerminalSession.Type
 
+/** A count of UTF-16 code units, the unit JavaScript strings slice by. */
+export const TerminalOffset = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
+/** A session with its kept output from `offset`, where the first character of `data` sits in the session's output. */
+export const TerminalAttachment = Schema.Struct({
+  session: TerminalSession,
+  offset: TerminalOffset,
+  data: Schema.String,
+})
+export type TerminalAttachment = typeof TerminalAttachment.Type
+
 /**
  * What starts an automation. A webhook's HMAC secret lives in Secrets, never in this shape,
  * so the renderer only ever sees it once, in the `automations.create` response.

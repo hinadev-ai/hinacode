@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { TerminalSession } from "../../shared/domain.ts"
-import { type TerminalAttachment, TerminalStream } from "./terminalStream.ts"
+import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts"
+import { TerminalStream } from "./terminalStream.ts"
 
 const session: TerminalSession = {
   id: "t1",

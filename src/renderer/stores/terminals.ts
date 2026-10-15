@@ -2,7 +2,7 @@ import { create } from "zustand"
 import type { TerminalSession } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
-import { disposeTerminal } from "../lib/terminalScreens.ts"
+import { attachTerminalOutput, disposeTerminal } from "../lib/terminalScreens.ts"
 
 interface ThreadTerminals {
   readonly sessions: ReadonlyArray<TerminalSession>
@@ -22,6 +22,8 @@ interface TerminalsState {
   /** Starts another shell and shows it. */
   readonly openSession: (threadId: string) => Promise<void>
   readonly close: (threadId: string, id: string) => Promise<void>
+  /** Catches the session's screen up with the output main keeps, as after a reload or a cloud reconnect. */
+  readonly attach: (id: string) => Promise<void>
   readonly markExited: (id: string, exitCode: number | null) => void
 }
 
@@ -44,11 +46,33 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
     update(threadId, () => ({ open: true }))
   }
 
+  const markExited = (id: string, exitCode: number | null) =>
+    set((state) => ({
+      byThreadId: Object.fromEntries(
+        Object.entries(state.byThreadId).map(([threadId, terminals]) => [
+          threadId,
+          {
+            ...terminals,
+            sessions: terminals.sessions.map((session) =>
+              session.id === id ? { ...session, status: "exited" as const, exitCode } : session,
+            ),
+          },
+        ]),
+      ),
+    }))
+
+  const attach = async (id: string) => {
+    const session = await attachTerminalOutput(id)
+    if (session?.status === "exited") markExited(id, session.exitCode)
+  }
+
   const openSession = async (threadId: string) => {
     try {
       const session = await callPromise("terminal.open", { threadId, ...INITIAL_SIZE })
       set({ error: null })
       update(threadId, (current) => ({ sessions: [...current.sessions, session], activeId: session.id, open: true }))
+      // A retried open can answer with a session whose first pushes were lost while the link was down.
+      void attach(session.id)
     } catch (error) {
       fail(threadId, error)
     }
@@ -69,6 +93,7 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
         const running = await callPromise("terminal.list", { threadId })
         if (running.length === 0) return await openSession(threadId)
         update(threadId, () => ({ sessions: running, activeId: running.at(-1)?.id ?? null, open: true }))
+        for (const session of running) void attach(session.id)
       } catch (error) {
         fail(threadId, error)
       }
@@ -85,19 +110,7 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
       disposeTerminal(id)
       await callPromise("terminal.close", { id })
     },
-    markExited: (id, exitCode) =>
-      set((state) => ({
-        byThreadId: Object.fromEntries(
-          Object.entries(state.byThreadId).map(([threadId, terminals]) => [
-            threadId,
-            {
-              ...terminals,
-              sessions: terminals.sessions.map((session) =>
-                session.id === id ? { ...session, status: "exited" as const, exitCode } : session,
-              ),
-            },
-          ]),
-        ),
-      })),
+    attach,
+    markExited,
   }
 })

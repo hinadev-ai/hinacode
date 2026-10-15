@@ -87,7 +87,7 @@ onPushEvent((event) => {
     case "thread.subagents":
       return useSubagents.getState().replace(event.threadId, event.subagents)
     case "terminal.data":
-      return writeTerminal(event.id, event.data)
+      return writeTerminal(event.id, event.data, event.offset)
     case "terminal.exited":
       terminalExited(event.id, event.exitCode)
       return useTerminals.getState().markExited(event.id, event.exitCode)
@@ -97,25 +97,40 @@ onPushEvent((event) => {
       registry.refresh(projectsAtom)
       registry.refresh(loadAllPullRequestsAtom)
       reloadTranscripts(event.id)
+      reattachTerminals(event.id)
       return void loadLists()
   }
 })
+
+const isOnCloud = (environmentId: string) => {
+  const projects = AsyncResult.getOrElse(registry.get(projectsAtom), () => [])
+  const onCloud = new Set(
+    projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
+  )
+  const threads = useThreads.getState().byId
+  return (threadId: string) => onCloud.has(threads[threadId]?.projectId ?? "")
+}
 
 /**
  * Pushes a cloud sent while its socket was down are gone, and a restarted cloud counts `seq` from zero again, so
  * every open transcript of that cloud is read again from a fresh snapshot.
  */
 const reloadTranscripts = (environmentId: string) => {
-  const projects = AsyncResult.getOrElse(registry.get(projectsAtom), () => [])
-  const onCloud = new Set(
-    projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
-  )
-  const threads = useThreads.getState().byId
+  const onCloud = isOnCloud(environmentId)
   const { byThread, unload, load } = useMessages.getState()
   for (const threadId of Object.keys(byThread)) {
-    if (!onCloud.has(threads[threadId]?.projectId ?? "")) continue
+    if (!onCloud(threadId)) continue
     unload(threadId)
     void load(threadId)
+  }
+}
+
+/** Terminal output pushed while the cloud's socket was down is gone too, so its screens catch up from the cloud. */
+const reattachTerminals = (environmentId: string) => {
+  const onCloud = isOnCloud(environmentId)
+  const { byThreadId, attach } = useTerminals.getState()
+  for (const [threadId, terminals] of Object.entries(byThreadId)) {
+    if (onCloud(threadId)) for (const session of terminals.sessions) void attach(session.id)
   }
 }
 

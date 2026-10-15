@@ -276,6 +276,7 @@ const handlers: Handlers = {
   "terminal.resize": ({ id, cols, rows }) => Terminals.use((terminals) => terminals.resize(id, cols, rows)),
   "terminal.close": ({ id }) => Terminals.use((terminals) => terminals.close(id)),
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
+  "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId }) => TinyVm.use((vm) => vm.start(threadId)),

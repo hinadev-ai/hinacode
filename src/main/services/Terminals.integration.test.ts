@@ -128,9 +128,9 @@ describe("Terminals", () => {
           const { threadId } = yield* seedThread({ rootPath: gitRepo("attach") })
           const terminals = yield* Terminals
           const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
-          const pushes = yield* pushesUntil(session.id)
+          const output = yield* pushesUntil(session.id)
           yield* terminals.write(session.id, "echo first-$((1 + 1))\n")
-          const before = yield* pushes((text) => text.includes("first-2"))
+          const before = yield* output((text) => text.includes("first-2"))
 
           yield* terminals.write(session.id, "echo second-$((2 + 1))\n")
           const since = before.length
@@ -138,7 +138,7 @@ describe("Terminals", () => {
           expect(attached.session).toStrictEqual(session)
           expect(attached.offset).toBe(since)
 
-          const pushed = yield* pushes(
+          const pushed = yield* output(
             (text) => text.length >= since + attached.data.length && text.includes("second-3"),
           )
           expect(pushed.slice(since, since + attached.data.length)).toBe(attached.data)
@@ -156,16 +156,16 @@ describe("Terminals", () => {
           const { threadId } = yield* seedThread({ rootPath: gitRepo("wrap") })
           const terminals = yield* Terminals
           const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
-          const pushes = yield* pushesUntil(session.id)
+          const output = yield* pushesUntil(session.id)
           // 70,000 lines of "é\r\n" are 210,000 characters but 280,000 bytes, so only a byte budget wraps.
           yield* terminals.write(session.id, "yes é | head -n 70000; echo wrapped-$((1 + 1))\n")
-          yield* pushes((text) => text.includes("wrapped-2"))
+          yield* output((text) => text.includes("wrapped-2"))
 
           const attached = yield* terminals.attach(session.id, 0)
           expect(attached.offset).toBeGreaterThan(0)
           expect(Buffer.byteLength(attached.data)).toBeLessThanOrEqual(SCROLLBACK_BYTES)
           expect(Buffer.byteLength(attached.data)).toBeGreaterThan(SCROLLBACK_BYTES - 4)
-          const pushed = yield* pushes((text) => text.length >= attached.offset + attached.data.length)
+          const pushed = yield* output((text) => text.length >= attached.offset + attached.data.length)
           expect(pushed.slice(attached.offset, attached.offset + attached.data.length)).toBe(attached.data)
         }).pipe(Effect.scoped),
       30_000,

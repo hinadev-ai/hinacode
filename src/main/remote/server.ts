@@ -37,7 +37,7 @@ const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 
-const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys"]
+const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach"]
 
 const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
 
