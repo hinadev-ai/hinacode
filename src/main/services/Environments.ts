@@ -267,6 +267,15 @@ const make = Effect.gen(function* () {
     call.answer(envelope)
   }
 
+  const expire = (cloud: Cloud, call: Pending) => {
+    const { name } = cloud.environment
+    const message =
+      call.sent && call.key !== undefined
+        ? `${name} was unreachable for a minute. The call may still have run there.`
+        : `Not sent. ${name} was unreachable for a minute.`
+    settle(cloud, call, { error: { tag: "Timeout", message } })
+  }
+
   const startOfflineTimer = (cloud: Cloud, call: Pending) => {
     call.offlineSince = now()
     call.timer = runFork(
@@ -274,12 +283,7 @@ const make = Effect.gen(function* () {
         Effect.andThen(
           Effect.sync(() => {
             call.timer = null
-            const { name } = cloud.environment
-            const message =
-              call.sent && call.key !== undefined
-                ? `${name} was unreachable for a minute. The call may still have run there.`
-                : `Not sent. ${name} was unreachable for a minute.`
-            settle(cloud, call, { error: { tag: "Timeout", message } })
+            expire(cloud, call)
           }),
         ),
       ),
@@ -331,7 +335,8 @@ const make = Effect.gen(function* () {
                   cloud.live = live
                   for (const call of cloud.outbox.values()) {
                     pauseOfflineTimer(call)
-                    send(live, call)
+                    if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
+                    else send(live, call)
                   }
                   return runFork(setStatus(cloud, "connected"))
                 }

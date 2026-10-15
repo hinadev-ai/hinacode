@@ -112,6 +112,7 @@ Each slice is one PR with its own check:
 
 - A server-side event log or resuming from a `seq`. Snapshots after a reconnect already repair gaps, and a log would be a second source of truth.
 - Push notifications to a closed phone app, a relay or tunnel, and TLS, all unchanged from remote mode.
+- Chunking individual response frames. A very large snapshot on a slow link can still exceed the 8 MiB buffer or 25 s silence limits and repeatedly reconnect.
 - Several hosts per desktop environment, and remembering clouds across a desktop restart.
 - Desktop notifications for approvals requested during an outage.
 
