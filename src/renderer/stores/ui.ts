@@ -13,7 +13,8 @@ import {
 
 export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser" | "tinyVm"
 export type SidePanelSize = "normal" | "wide"
-export type SidebarTab = "threads" | "archived"
+const sidebarTabs = ["inbox", "threads", "archived"] as const
+export type SidebarTab = (typeof sidebarTabs)[number]
 /** Where a thread's tiny VM screen shows: its side panel view, or floating over the conversation. */
 export type VmPlacement = "panel" | "floating"
 /** Composer pickers a shortcut can open. */
@@ -26,6 +27,7 @@ let findRevealRequests = 0
 
 const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "kkcode.sidebarProjects"
+const SIDEBAR_TAB_KEY = "kkcode.sidebarTab"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "kkcode.collapsedPullRequestSections"
 const VM_FLOATING_WIDTH_KEY = "kkcode.vmFloatingWidth"
 export const VM_FLOATING_BOUNDS: WidthBounds = { min: 240, max: 960 }
@@ -39,6 +41,9 @@ function loadStrings(key: string): ReadonlyArray<string> {
     return []
   }
 }
+
+const loadSidebarTab = (): SidebarTab =>
+  sidebarTabs.find((tab) => tab === localStorage.getItem(SIDEBAR_TAB_KEY)) ?? "threads"
 
 const isPullRequestSection = (value: string): value is PullRequestSection =>
   pullRequestSections.some((section) => section === value)
@@ -98,6 +103,7 @@ interface UiState {
   readonly toggleSidePanel: () => void
   readonly setSidebarOverlayOpen: (open: boolean) => void
   readonly setSidePanelOverlayOpen: (open: boolean) => void
+  /** Persists the tab, so the sidebar reopens on it. */
   readonly setSidebarTab: (tab: SidebarTab) => void
   readonly setSidebarQuery: (query: string) => void
   /** Persists the sidebar's project filter. */
@@ -146,7 +152,7 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelOpen: true,
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
-  sidebarTab: "threads",
+  sidebarTab: loadSidebarTab(),
   sidebarQuery: "",
   sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),
   collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
@@ -193,7 +199,10 @@ export const useUi = create<UiState>()((set, get) => ({
     set((state) => ({ sidebarOverlayOpen: open, sidePanelOverlayOpen: open ? false : state.sidePanelOverlayOpen })),
   setSidePanelOverlayOpen: (open) =>
     set((state) => ({ sidePanelOverlayOpen: open, sidebarOverlayOpen: open ? false : state.sidebarOverlayOpen })),
-  setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+  setSidebarTab: (sidebarTab) => {
+    localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab)
+    set({ sidebarTab })
+  },
   setSidebarQuery: (sidebarQuery) => set({ sidebarQuery }),
   setSidebarProjectIds: (sidebarProjectIds) => {
     localStorage.setItem(SIDEBAR_PROJECTS_KEY, JSON.stringify(sidebarProjectIds))
