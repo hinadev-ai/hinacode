@@ -168,8 +168,7 @@ Raw captures use the `baseline-verified` and `final` labels. Mechanical comparis
 ## Packaged alpha footprint
 
 Build the release package, preserve that app, then compare packaged builds. Use an
-unused renderer CDP port from 9600 to 9699; the main inspector uses that port plus
-10000. The harness refuses occupied ports and verifies the launched PID, profile,
+unused renderer CDP port from 9600 to 9699; the main inspector uses that port plus 10000. The harness refuses occupied ports and verifies the launched PID, profile,
 and renderer path. It clears `ELECTRON_RUN_AS_NODE`, uses `--use-mock-keychain`,
 leaves GPU behavior enabled, and closes only its own app through CDP.
 
