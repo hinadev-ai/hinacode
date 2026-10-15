@@ -120,7 +120,7 @@ const handlers: Handlers = {
     Effect.sync(() => {
       if (window) bringToFront(window)
     }),
-  "projects.list": () => Projects.use((projects) => projects.list),
+  "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),

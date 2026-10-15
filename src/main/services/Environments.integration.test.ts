@@ -196,6 +196,7 @@ beforeAll(async () => {
   cloudRepo = join(dir, "cloud-repo")
   gitRepo(localRepo)
   gitRepo(cloudRepo)
+  execFileSync("git", ["-C", cloudRepo, "remote", "add", "origin", "git@github.com:Acme/Web.git"])
   mkdirSync(join(dir, "cloud"))
   mkdirSync(join(dir, "desktop"))
   cloudPort = 40000 + Math.floor(Math.random() * 20000)
@@ -271,9 +272,9 @@ describe("desktop environments", () => {
     expect(onCloud.map((thread) => thread.id)).toStrictEqual([cloudThread])
 
     const projects = result(await invoke("projects.list", undefined))
-    expect(projects.map((project) => [project.name, project.environmentId])).toStrictEqual([
-      ["here", undefined],
-      ["there", cloudId],
+    expect(projects.map((project) => [project.name, project.environmentId, project.repository])).toStrictEqual([
+      ["here", undefined, undefined],
+      ["there", cloudId, "acme/web"],
     ])
     const threads = result(await invoke("threads.list", undefined)).map((thread) => thread.id)
     expect(threads.toSorted()).toStrictEqual([localThread, cloudThread].toSorted())

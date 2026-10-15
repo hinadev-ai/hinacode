@@ -16,6 +16,11 @@ export const Project = Schema.Struct({
   updatedAt: Timestamp,
   /** The cloud this project lives on, set by the desktop on every project a cloud returns. Absent on this desktop. */
   environmentId: Schema.optionalKey(Schema.String),
+  /**
+   * The GitHub repository the root checks out, as lower-case `owner/name`, then the root's folder inside the repository
+   * when it is not the top level. Only `projects.list` sets it. Absent without a GitHub `origin`.
+   */
+  repository: Schema.optionalKey(Schema.String),
 })
 export type Project = typeof Project.Type
 

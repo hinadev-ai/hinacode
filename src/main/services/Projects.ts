@@ -39,6 +39,8 @@ export class Projects extends Context.Service<
   Projects,
   {
     readonly list: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
+    /** `list` plus each project's `repository`, read from its checkout, so a desktop can group one repository's machines. */
+    readonly listWithRepositories: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Project, PersistenceError | NotFoundError>
     readonly create: (input: CreateProject) => Effect.Effect<Project, WriteError>
     /**
@@ -122,6 +124,35 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     )
 
+  const repositoryOf = (rootPath: string) =>
+    Effect.all({
+      url: git.run(rootPath, ["remote", "get-url", "origin"]),
+      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
+    }).pipe(
+      Effect.map(({ url, prefix }) => {
+        const origin = parseGitHubRepository(url)
+        if (origin === null) return undefined
+        const folder = prefix.trim().replace(/\/$/, "")
+        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
+      }),
+      Effect.orElseSucceed(() => undefined),
+    )
+
+  const list = findAll(undefined).pipe(Effect.mapError(persistence("projects.list")))
+
+  const listWithRepositories = list.pipe(
+    Effect.flatMap((projects) =>
+      Effect.forEach(
+        projects,
+        (project) =>
+          repositoryOf(project.rootPath).pipe(
+            Effect.map((repository) => (repository === undefined ? project : { ...project, repository })),
+          ),
+        { concurrency: "unbounded" },
+      ),
+    ),
+  )
+
   const clone = ({ repository, ...input }: CloneProject) =>
     Effect.gen(function* () {
       const rootPath = input.rootPath.trim().replace(/^~(?=$|\/)/, homedir())
@@ -176,7 +207,8 @@ const make = Effect.gen(function* () {
     })
 
   return Projects.of({
-    list: findAll(undefined).pipe(Effect.mapError(persistence("projects.list"))),
+    list,
+    listWithRepositories,
     get,
     create,
     clone,

@@ -24,18 +24,30 @@ const repoWith = (files: Record<string, string | Buffer>) => {
   return dir
 }
 
+const projectsLayer = layer.pipe(
+  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Db.layer(":memory:"))),
+  Layer.provide(NodeServices.layer),
+)
+
 const iconOf = (rootPath: string) =>
   Projects.use((projects) =>
     projects
       .create({ name: "repo", rootPath, setupScript: null })
       .pipe(Effect.flatMap((project) => projects.icon(project.id))),
+  ).pipe(Effect.provide(projectsLayer))
+
+const withOrigin = (origin: string | null) => {
+  const dir = repoWith({ "apps/web/README.md": "web" })
+  if (origin !== null) execFileSync("git", ["-C", dir, "remote", "add", "origin", origin])
+  return dir
+}
+
+const listedAt = (rootPath: string) =>
+  Projects.use((projects) =>
+    projects.create({ name: "repo", rootPath, setupScript: null }).pipe(Effect.andThen(projects.listWithRepositories)),
   ).pipe(
-    Effect.provide(
-      layer.pipe(
-        Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Db.layer(":memory:"))),
-        Layer.provide(NodeServices.layer),
-      ),
-    ),
+    Effect.map(([project]) => project),
+    Effect.provide(projectsLayer),
   )
 
 describe("Projects.icon", () => {
@@ -58,6 +70,29 @@ describe("Projects.icon", () => {
     Effect.gen(function* () {
       expect(yield* iconOf(repoWith({ "README.md": "hi" }))).toBeNull()
       expect(yield* iconOf(repoWith({ "favicon.png": Buffer.alloc(200 * 1024) }))).toBeNull()
+    }),
+  )
+})
+
+describe("Projects.listWithRepositories", () => {
+  it.live("names the GitHub repository origin points at, in lower case", () =>
+    Effect.gen(function* () {
+      expect((yield* listedAt(withOrigin("git@github.com:Acme/Web.git")))?.repository).toBe("acme/web")
+      expect((yield* listedAt(withOrigin("https://github.com/acme/web.git")))?.repository).toBe("acme/web")
+    }),
+  )
+
+  it.live("adds the folder when the project is rooted inside the repository", () =>
+    Effect.gen(function* () {
+      const root = join(withOrigin("git@github.com:Acme/Mono.git"), "apps/web")
+      expect((yield* listedAt(root))?.repository).toBe("acme/mono/apps/web")
+    }),
+  )
+
+  it.live("leaves the key out without a GitHub origin", () =>
+    Effect.gen(function* () {
+      expect(yield* listedAt(withOrigin(null))).not.toHaveProperty("repository")
+      expect(yield* listedAt(withOrigin("https://gitlab.com/acme/web.git"))).not.toHaveProperty("repository")
     }),
   )
 })
