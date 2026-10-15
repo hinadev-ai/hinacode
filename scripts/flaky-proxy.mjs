@@ -33,8 +33,10 @@ const proxy = tcpServer((client) => {
   pairs.add(pair)
   const forward = (from, to) => {
     const held = []
+    // Chunks still inside a delay timer must reach `to` before anything read after them.
+    let delayed = 0
     const resume = () => {
-      if (mode === "blackhole" || mode === "reset" || to.destroyed) return
+      if (delayed > 0 || mode === "blackhole" || mode === "reset" || to.destroyed) return
       while (held.length > 0) {
         if (!to.write(held.shift())) return
       }
@@ -50,8 +52,10 @@ const proxy = tcpServer((client) => {
       }
       if (mode === "delay") {
         from.pause()
+        delayed++
         const timer = setTimeout(() => {
           timers.delete(timer)
+          delayed--
           held.push(data)
           resume()
         }, delayMs)
