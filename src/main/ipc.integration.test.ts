@@ -351,10 +351,12 @@ describe("rpc contract", () => {
   })
 
   test("surfaces a handler's tagged error with its message", async () => {
+    const file = join(dir, "notes.txt")
+    writeFileSync(file, "")
     const error = failure(
       await invoke("projects.create", {
         name: "nope",
-        rootPath: join(dir, "missing"),
+        rootPath: file,
         setupScript: null,
       }),
     )

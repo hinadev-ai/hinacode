@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
-import { dirname, extname, isAbsolute, join } from "node:path"
+import { extname, isAbsolute, join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project } from "../../shared/domain.ts"
@@ -9,6 +9,7 @@ import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
   type PersistenceError,
+  ProjectFolderNotEmptyError,
   ProjectPathTakenError,
   ProjectRootInvalidError,
   persistence,
@@ -42,18 +43,27 @@ export class Projects extends Context.Service<
     /** `list` plus each project's `repository`, read from its checkout, so a desktop can group one repository's machines. */
     readonly listWithRepositories: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Project, PersistenceError | NotFoundError>
+    /** Adds the folder at `rootPath` (a leading `~` is the home directory), creating it when it does not exist. */
     readonly create: (input: CreateProject) => Effect.Effect<Project, WriteError>
     /**
      * Clones the repository into `rootPath` (a leading `~` is the home directory) and adds it. A folder
-     * that already holds a clone of the same repository is added as it is.
+     * that already holds a clone of the same repository is added as it is; one holding other files is refused.
      */
-    readonly clone: (input: CloneProject) => Effect.Effect<Project, WriteError | CommandError>
+    readonly clone: (
+      input: CloneProject,
+    ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | CommandError>
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
     /** The project's own favicon as a data URL, or null when it has none in a usual place. */
     readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
 >()("kkcode/Projects") {}
+
+/** The absolute path a typed root means, with a leading `~` as the home directory. */
+const resolveRoot = (rootPath: string) => {
+  const resolved = rootPath.trim().replace(/^~(?=$|\/)/, homedir())
+  return isAbsolute(resolved) ? Effect.succeed(resolved) : Effect.fail(new ProjectRootInvalidError({ rootPath }))
+}
 
 const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) =>
   SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
@@ -104,15 +114,27 @@ const make = Effect.gen(function* () {
       Effect.catchTag("PlatformError", () => Effect.fail(new ProjectRootInvalidError({ rootPath }))),
     )
 
-  const create = (input: CreateProject) =>
+  const makeDirectory = (rootPath: string) =>
     Effect.gen(function* () {
-      yield* ensureDirectory(input.rootPath)
+      if (yield* fs.exists(rootPath)) return yield* ensureDirectory(rootPath)
+      yield* fs.makeDirectory(rootPath, { recursive: true })
+    }).pipe(Effect.catchTag("PlatformError", () => Effect.fail(new ProjectRootInvalidError({ rootPath }))))
+
+  const insert = (input: CreateProject) =>
+    Effect.gen(function* () {
       const now = yield* nowIso
       const project: Project = { id: randomUUID(), ...input, createdAt: now, updatedAt: now }
       yield* sql`INSERT INTO project ${sql.insert(project)}`.pipe(
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
       return project
+    })
+
+  const create = (input: CreateProject) =>
+    Effect.gen(function* () {
+      const rootPath = yield* resolveRoot(input.rootPath)
+      yield* makeDirectory(rootPath)
+      return yield* insert({ ...input, rootPath })
     })
 
   const holdsClone = (rootPath: string, { owner, name }: GitHubRepository) =>
@@ -155,15 +177,16 @@ const make = Effect.gen(function* () {
 
   const clone = ({ repository, ...input }: CloneProject) =>
     Effect.gen(function* () {
-      const rootPath = input.rootPath.trim().replace(/^~(?=$|\/)/, homedir())
-      if (!isAbsolute(rootPath)) return yield* new ProjectRootInvalidError({ rootPath: input.rootPath })
+      const rootPath = yield* resolveRoot(input.rootPath)
       if (!(yield* holdsClone(rootPath, repository))) {
-        yield* fs
-          .makeDirectory(dirname(rootPath), { recursive: true })
-          .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath: dirname(rootPath) })))
+        yield* makeDirectory(rootPath)
+        const entries = yield* fs
+          .readDirectory(rootPath)
+          .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath })))
+        if (entries.length > 0) return yield* new ProjectFolderNotEmptyError({ rootPath })
         yield* github.clone(repository, rootPath)
       }
-      return yield* create({ ...input, rootPath })
+      return yield* insert({ ...input, rootPath })
     })
 
   const update = (input: UpdateProject) =>

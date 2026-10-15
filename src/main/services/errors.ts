@@ -34,6 +34,15 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolderNotEmptyError>()(
+  "ProjectFolderNotEmptyError",
+  { rootPath: Schema.String },
+) {
+  override get message(): string {
+    return `${this.rootPath} already holds other files`
+  }
+}
+
 /** The renderer asked to read a checkout that is neither a project root nor a live worktree. */
 export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("UnknownRootError", {
   root: Schema.String,
