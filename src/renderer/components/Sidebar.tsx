@@ -255,13 +255,12 @@ function useFilteredProjects(projects: ReadonlyArray<Project>) {
   return picked.length === 0 ? projects : picked
 }
 
-const memberIds = (group: Group) => group.projects.map((project) => project.id)
-
 function ProjectFilterMenu() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const ids = useUi((state) => state.sidebarProjectIds)
   const setIds = useUi((state) => state.setSidebarProjectIds)
-  const active = projects.some((project) => ids.includes(project.id))
+  const picked = new Set(ids)
+  const active = projects.some((project) => picked.has(project.id))
   const Icon = active ? RiFilter3Fill : RiFilter3Line
 
   return (
@@ -284,19 +283,22 @@ function ProjectFilterMenu() {
           {m.sidebar_filter_all_projects()}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {groupProjects(projects).map((group) => (
-          <DropdownMenuCheckboxItem
-            key={group.key}
-            checked={memberIds(group).every((id) => ids.includes(id))}
-            onCheckedChange={(checked) => {
-              const others = ids.filter((id) => !memberIds(group).includes(id))
-              setIds(checked ? [...others, ...memberIds(group)] : others)
-            }}
-          >
-            <ProjectIcon projectId={group.projects[0].id} />
-            <span className="truncate">{group.projects[0].name}</span>
-          </DropdownMenuCheckboxItem>
-        ))}
+        {groupProjects(projects).map((group) => {
+          const members = new Set(group.projects.map((project) => project.id))
+          return (
+            <DropdownMenuCheckboxItem
+              key={group.key}
+              checked={[...members].every((id) => picked.has(id))}
+              onCheckedChange={(checked) => {
+                const others = ids.filter((id) => !members.has(id))
+                setIds(checked ? [...others, ...members] : others)
+              }}
+            >
+              <ProjectIcon projectId={group.projects[0].id} />
+              <span className="truncate">{group.projects[0].name}</span>
+            </DropdownMenuCheckboxItem>
+          )
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   )

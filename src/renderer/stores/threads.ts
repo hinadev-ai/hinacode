@@ -20,8 +20,10 @@ export const useThreads = create<ThreadsState>()((set) => ({
     }),
 }))
 
-const inProjects = (state: Pick<ThreadsState, "byId">, projectIds: ReadonlyArray<string>) =>
-  Object.values(state.byId).filter((thread) => projectIds.includes(thread.projectId))
+const inProjects = (state: Pick<ThreadsState, "byId">, projectIds: ReadonlyArray<string>) => {
+  const ids = new Set(projectIds)
+  return Object.values(state.byId).filter((thread) => ids.has(thread.projectId))
+}
 
 const isActive = (thread: Thread) => thread.status !== "archived"
 const isPinned = (thread: Thread) => thread.pinnedAt !== null
