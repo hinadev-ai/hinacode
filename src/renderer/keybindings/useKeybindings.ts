@@ -1,10 +1,11 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
-import { type Hotkey, useHotkeys } from "@tanstack/react-hotkeys"
+import { type Hotkey, matchesKeyboardEvent, useHotkeys } from "@tanstack/react-hotkeys"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useMemo } from "react"
+import { useEffect, useEffectEvent, useMemo } from "react"
 import { projectsAtom, updateSettingsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
+import { isInTerminal } from "../lib/terminalScreens.ts"
 import type { ExperimentalSettings } from "../../shared/domain.ts"
 import {
   type Command,
@@ -14,8 +15,8 @@ import {
   type Keymap,
   resolveKeymap,
   sameChord,
+  whenHolds,
 } from "./commands.ts"
-import { isTerminalKey } from "./terminalScope.ts"
 
 /** The user's effective keymap: command id -> normalized chord, "" when unbound. */
 export const useKeymap = (): Keymap => {
@@ -48,6 +49,14 @@ export const useCommandContext = (): CommandContext => {
   )
 }
 
+/** Runs the command if its `when` clause holds where the keydown happened. Returns whether it ran. */
+const runFromKeydown = (command: Command, event: KeyboardEvent, ctx: CommandContext) => {
+  if (!whenHolds(command.when, { terminalFocus: isInTerminal(event.target) })) return false
+  event.preventDefault()
+  if (!event.repeat) command.run(ctx)
+  return true
+}
+
 /**
  * Binds every command to its effective chord on document. Mount once, in the app shell. TanStack
  * Hotkeys skips plain keys typed into fields, lets Control and Meta chords fire there, and syncs
@@ -56,18 +65,25 @@ export const useCommandContext = (): CommandContext => {
 export function useKeybindings() {
   const keymap = useKeymap()
   const ctx = useCommandContext()
+  const bound = bindings(keymap, ctx.experimental)
 
   useHotkeys(
-    bindings(keymap, ctx.experimental).map(({ hotkey, command }) => ({
-      hotkey,
-      callback: (event) => {
-        if (isTerminalKey(event)) return
-        event.preventDefault()
-        if (!event.repeat) command.run(ctx)
-      },
-    })),
-    // A terminal scope must get its keys untouched, so the default action is prevented only once it has passed.
+    bound.map(({ hotkey, command }) => ({ hotkey, callback: (event) => runFromKeydown(command, event, ctx) })),
+    // A chord whose `when` clause fails must keep its default action.
     // Not requireReset: popups such as dialogs can swallow the keyup it waits for, which leaves the chord dead.
     { preventDefault: false, stopPropagation: false },
   )
+
+  // The terminal sends Control chords to the shell and stops them, so they never bubble to the bindings above.
+  // Like VS Code's commandsToSkipShell, a chord whose command runs in the terminal is taken before the shell sees it.
+  const takeFromTerminal = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.ctrlKey || event.metaKey) || !isInTerminal(event.target)) return
+    const binding = bound.find(({ hotkey }) => matchesKeyboardEvent(event, hotkey))
+    if (binding && runFromKeydown(binding.command, event, ctx)) event.stopPropagation()
+  })
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => takeFromTerminal(event)
+    document.addEventListener("keydown", listener, { capture: true })
+    return () => document.removeEventListener("keydown", listener, { capture: true })
+  }, [])
 }

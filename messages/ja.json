@@ -151,6 +151,8 @@
   "command_sidebar_toggle": "サイドバーの表示/非表示を切り替え",
   "command_side_panel_toggle": "サイドパネルの表示/非表示を切り替え",
   "command_composer_focus": "メッセージ入力欄にフォーカス",
+  "command_composer_model": "モデルを変更",
+  "command_composer_effort": "推論レベルを変更",
   "command_view_details": "詳細を表示",
   "command_view_files": "ファイル一覧を表示",
   "command_view_changes": "変更差分を表示",
@@ -206,6 +208,8 @@
   "settings_keybindings_shortcut": "ショートカット",
   "settings_keybindings_actions": "操作",
   "settings_keybindings_unbound": "未設定",
+  "settings_keybindings_when_terminal": "ターミナル内でのみ有効",
+  "settings_keybindings_when_not_terminal": "ターミナル内では無効",
   "settings_keybindings_record": "記録",
   "settings_keybindings_record_for": "{command} のショートカットを記録",
   "settings_keybindings_recording": "キーを入力してください…",
@@ -518,6 +522,8 @@
   "project_cloning": "クローン中…",
   "message_writing": "回答を生成中…",
   "message_worked_for": "{duration} 処理しました",
+  "message_show_activity": "ツールの実行内容を表示",
+  "message_hide_activity": "ツールの実行内容を折りたたむ",
   "sidebar_pull_request": "プルリクエスト #{number} を開く",
   "sidebar_pull_request_stack": "リンクされた {count} 件のうち最新の PR #{number} を開く",
   "sidebar_watching": "プルリクエストを監視中",
@@ -781,29 +787,18 @@
   "browser_start_hint": "上部に URL を入力するか、このスレッドでリッスンしているローカルポートを開いてください。",
   "browser_start_open_port": "localhost:{port} を開く",
   "browser_load_failed": "{url} を読み込めませんでした",
+  "command_browser_new_tab": "新しいブラウザタブ",
+  "browser_tabs": "ブラウザタブ",
+  "browser_new_tab": "新しいタブ",
+  "browser_close_tab": "{title} を閉じる",
   "attachment_element": "要素 {element}",
   "attachment_element_url": "URL",
   "attachment_element_selector": "セレクタ",
-  "tool_commands_ran": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} 件のコマンドを実行完了",
-        "countPlural=other": "{count} 件のコマンドを実行完了"
-      }
-    }
-  ],
-  "tool_commands_running": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} 件のコマンドを実行中",
-        "countPlural=other": "{count} 件のコマンドを実行中"
-      }
-    }
-  ],
+  "tool_kind_command": "{count} 件のコマンドを実行",
+  "tool_kind_read": "{count} ファイルを読み取り",
+  "tool_kind_edit": "{count} ファイルを編集",
+  "tool_kind_search": "{count} 回検索",
+  "tool_kind_other": "{count} 件のツールを使用",
   "tool_commands_failed": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -869,8 +864,7 @@
   "vm_agent_waiting": "エージェントは操作権限の返却を待機しています",
   "vm_take_control": "手動操作に切り替え",
   "vm_hand_back": "エージェントに操作を戻す",
-  "vm_stop": "VM を停止",
-  "vm_stop_confirm": "もう一度クリックすると VM をシャットダウンします",
+  "vm_stop": "長押しで VM を停止",
   "vm_screen": "Tiny VM ディスプレイ",
   "vm_connecting": "画面に接続中…",
   "vm_disconnected": "画面との接続が切断されました",

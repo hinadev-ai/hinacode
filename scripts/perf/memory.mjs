@@ -40,7 +40,13 @@ delete env.ELECTRON_RUN_AS_NODE
 delete env.ELECTRON_RENDERER_URL
 const app = await electron.launch({
   executablePath,
-  args: ["--no-sandbox", "--disable-gpu", "--mute-audio", join(root, "out/main/index.js")],
+  args: [
+    "--no-sandbox",
+    "--disable-gpu",
+    "--mute-audio",
+    ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
+    join(root, "out/main/index.js"),
+  ],
   cwd: root,
   env,
 })

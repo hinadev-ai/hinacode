@@ -17,6 +17,7 @@ import { callPromise, threadVmAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
 import { ChordKeys } from "../ChordKeys.tsx"
+import { HoldToConfirmButton } from "../HoldToConfirmButton.tsx"
 import { Button } from "../ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
 
@@ -129,7 +130,9 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
           </>
         )}
-        <StopButton disabled={pending} onStop={() => run(() => callPromise("vm.stop", { threadId }))} />
+        <HoldToConfirmButton disabled={pending} onConfirm={() => run(() => callPromise("vm.stop", { threadId }))}>
+          {m.vm_stop()}
+        </HoldToConfirmButton>
       </div>
       {error && (
         <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
@@ -233,26 +236,6 @@ export function ScreenFallback() {
     <div className="flex aspect-[16/10] w-full items-center justify-center rounded-md bg-muted">
       <Spinner label={m.vm_connecting()} />
     </div>
-  )
-}
-
-/** Stopping destroys the sandbox, so it takes two clicks: the first arms the button. */
-function StopButton({ disabled, onStop }: { disabled: boolean; onStop: () => void }) {
-  const [armed, setArmed] = useState(false)
-  return (
-    <Button
-      variant={armed ? "destructive" : "ghost"}
-      size="xs"
-      disabled={disabled}
-      onClick={() => {
-        if (!armed) return setArmed(true)
-        setArmed(false)
-        onStop()
-      }}
-      onBlur={() => setArmed(false)}
-    >
-      {armed ? m.vm_stop_confirm() : m.vm_stop()}
-    </Button>
   )
 }
 
