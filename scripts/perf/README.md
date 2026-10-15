@@ -218,3 +218,12 @@ with scenario `startup`. It records time from process launch to the first settin
 RPC answer, renderer paint entries relative to navigation, and fifteen seconds of
 empty-profile samples. Alternate package order to reduce warm-cache bias. Memory
 and switch samples from `footprint` or `startup` print one JSON line per metric.
+
+Deferring the unused Linear SDK reduced median empty-profile main heap from
+36.073 to 32.623 MiB and app RSS from 608.23 to 596.45 MiB across four alternating
+runs per package. After ten long-thread visits and five minutes idle, main heap
+fell from 39.52 to 35.61 MiB. Explicitly importing Linear into the candidate added
+3.52 MiB retained heap and 12.64 MiB RSS. Startup and thread-switch differences
+were within run-to-run variation. Raw comparisons use `baseline-3` / `candidate-2`
+and `baseline-repeat` / `candidate-repeat`; repeated startup labels are
+`baseline-startup-1` through `4` and `candidate-startup-1` through `4`.
