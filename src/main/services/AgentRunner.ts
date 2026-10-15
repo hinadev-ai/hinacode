@@ -28,7 +28,15 @@ import type {
   SecretRequest,
   ThreadUsage,
 } from "../../shared/agent.ts"
-import type { AccessMode, Attachment, Message, Thread, ThreadStatus, WorkspaceChoice } from "../../shared/domain.ts"
+import type {
+  AccessMode,
+  Attachment,
+  Message,
+  QueuedMessage,
+  Thread,
+  ThreadStatus,
+  WorkspaceChoice,
+} from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -99,6 +107,17 @@ export class AgentRunner extends Context.Service<
       text: string,
       attachments: ReadonlyArray<Attachment>,
     ) => Effect.Effect<void, SendError>
+    /** Queues the message while the thread is busy; sends it like `send` when it is not. */
+    readonly queue: (
+      threadId: string,
+      text: string,
+      attachments: ReadonlyArray<Attachment>,
+    ) => Effect.Effect<void, SendError>
+    /** Takes one message out of the queue. Null when it already left, e.g. because its turn started. */
+    readonly unqueue: (
+      threadId: string,
+      id: string,
+    ) => Effect.Effect<QueuedMessage | null, PersistenceError | NotFoundError | ThreadStartedError>
     readonly steerWhen: (input: {
       readonly threadId: string
       readonly text: string
@@ -313,6 +332,7 @@ const make = Effect.gen(function* () {
   ) => {
     let turnMessages: ReadonlyArray<Message> = [initial]
     let status: ThreadStatus = "running"
+    let completed = false
     let persistedAt = Date.now()
     const dirty = new Set<string>()
 
@@ -343,6 +363,7 @@ const make = Effect.gen(function* () {
         if (event.type === "session_bound" && event.providerSessionId !== thread.providerSessionId) {
           yield* updateThread({ id: thread.id, providerSessionId: event.providerSessionId })
         }
+        if (event.type === "turn_completed" || event.type === "turn_failed") completed = event.type === "turn_completed"
         const nextStatus = statusAfter(event)
         if (nextStatus !== undefined && nextStatus !== status) {
           status = nextStatus
@@ -377,6 +398,8 @@ const make = Effect.gen(function* () {
         return true
       }).pipe(exclusive(thread.id))
 
+    let next: QueuedMessage | undefined
+    /** Hands back the queued message that starts the next turn. The thread stays in `busyThreads` for it. */
     const finish = Effect.gen(function* () {
       for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
       for (const [id, request] of questions) if (request.threadId === thread.id) questions.delete(id)
@@ -392,15 +415,24 @@ const make = Effect.gen(function* () {
       if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
       yield* persist
       if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
+      if (!completed || (yield* Deferred.isDone(stop))) return
+      const [first, ...rest] = (yield* threads.get(thread.id)).queue
+      if (first === undefined) return
+      yield* updateThread({ id: thread.id, queue: rest })
+      next = first
     }).pipe(
       Effect.catch((error) => Effect.logError("failed to finish turn", error)),
       Effect.ensuring(
         Effect.sync(() => {
-          busyThreads.delete(thread.id)
+          if (next === undefined) busyThreads.delete(thread.id)
           activeTurns.delete(thread.id)
         }),
       ),
       exclusive(thread.id),
+      // Forked: the next turn takes this thread's slot in `turns`, which would interrupt the fiber running this.
+      Effect.andThen(
+        Effect.suspend(() => (next === undefined ? Effect.void : Effect.forkDetach(startQueued(thread.id, next)))),
+      ),
     )
 
     /** Never fails: provider errors become turn_failed. */
@@ -522,6 +554,26 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(threadId))
     })
 
+  /** Starts a turn for a thread the caller already added to `busyThreads`. */
+  const startClaimed = (
+    threadId: string,
+    prompt: string,
+    attachments: ReadonlyArray<Attachment>,
+    options: SendOptions,
+    when: Effect.Effect<boolean, PersistenceError>,
+  ): Effect.Effect<boolean, SendError> =>
+    Effect.gen(function* () {
+      const stop = Deferred.makeUnsafe<void>()
+      pendingSends.set(threadId, stop)
+      const accepted = yield* activeWorkspace(threadId).pipe(
+        Effect.flatMap(({ worktreeId }) => startTurn(threadId, prompt, attachments, options, stop, when, worktreeId)),
+        Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
+        Effect.ensuring(Effect.sync(() => pendingSends.get(threadId) === stop && pendingSends.delete(threadId))),
+      )
+      if (!accepted) busyThreads.delete(threadId)
+      return accepted
+    })
+
   const sendWhen = (
     threadId: string,
     prompt: string,
@@ -534,19 +586,47 @@ const make = Effect.gen(function* () {
         return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
       }
       busyThreads.add(threadId)
-      const stop = Deferred.makeUnsafe<void>()
-      pendingSends.set(threadId, stop)
-      const accepted = yield* activeWorkspace(threadId).pipe(
-        Effect.flatMap(({ worktreeId }) => startTurn(threadId, prompt, attachments, options, stop, when, worktreeId)),
-        Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
-        Effect.ensuring(Effect.sync(() => pendingSends.get(threadId) === stop && pendingSends.delete(threadId))),
-      )
-      if (!accepted) busyThreads.delete(threadId)
-      return accepted
+      return yield* startClaimed(threadId, prompt, attachments, options, when)
     })
 
   const send = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>, options: SendOptions = {}) =>
     sendWhen(threadId, prompt, attachments, options, Effect.succeed(true)).pipe(Effect.asVoid)
+
+  const queue = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+    Effect.gen(function* () {
+      const queued = yield* Effect.gen(function* () {
+        if (!busyThreads.has(threadId)) return false
+        const thread = yield* threads.get(threadId)
+        yield* updateThread({ id: threadId, queue: [...thread.queue, { id: randomUUID(), text, attachments }] })
+        return true
+      }).pipe(exclusive(threadId))
+      if (!queued) yield* send(threadId, text, attachments)
+    })
+
+  const unqueue = (threadId: string, id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const message = thread.queue.find((queued) => queued.id === id)
+      if (message === undefined) return null
+      yield* updateThread({ id: threadId, queue: thread.queue.filter((queued) => queued.id !== id) })
+      return message
+    }).pipe(exclusive(threadId))
+
+  /** A queued message that cannot start its turn goes back to the front, so the user can still send it. */
+  const startQueued = (threadId: string, message: QueuedMessage) =>
+    startClaimed(threadId, message.text, message.attachments, {}, Effect.succeed(true)).pipe(
+      Effect.asVoid,
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          yield* Effect.logWarning("queued message did not start", error)
+          const thread = yield* threads.get(threadId)
+          yield* updateThread({ id: threadId, queue: [message, ...thread.queue] })
+        }).pipe(
+          exclusive(threadId),
+          Effect.catch((cause) => Effect.logError("failed to put back a queued message", cause)),
+        ),
+      ),
+    )
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
     Effect.suspend(
@@ -643,6 +723,8 @@ const make = Effect.gen(function* () {
 
   return AgentRunner.of({
     send,
+    queue,
+    unqueue,
     resumeAtReset,
     steer: (threadId, text, attachments) =>
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),

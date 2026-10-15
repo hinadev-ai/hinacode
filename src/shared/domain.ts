@@ -206,39 +206,6 @@ export const isThreadBusy = (status: ThreadStatus) => status === "running" || st
 export const AccessMode = Schema.Literals(["supervised", "auto", "full"])
 export type AccessMode = typeof AccessMode.Type
 
-export const Thread = Schema.Struct({
-  id: Schema.String,
-  projectId: Schema.String,
-  /** Null means the thread runs in the project root. */
-  worktreeId: Schema.NullOr(Schema.String),
-  title: Schema.String,
-  provider: ProviderId,
-  model: Schema.String,
-  /** Reasoning effort for the next turn. Null leaves the model's default. */
-  effort: Schema.NullOr(Schema.String),
-  /** Run turns on the model's faster, pricier service tier. */
-  fastMode: Schema.Boolean,
-  /** Applies from the next turn, or right away on a live Claude session. */
-  accessMode: AccessMode,
-  /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */
-  accountId: Schema.NullOr(Schema.String),
-  /** Claude session_id or Codex thread id, used to resume. */
-  providerSessionId: Schema.NullOr(Schema.String),
-  status: ThreadStatus,
-  usageLimit: Schema.NullOr(UsageLimit),
-  sortIndex: Schema.Number,
-  /** When the user pinned the thread to the top of the sidebar, or null when it is not pinned. */
-  pinnedAt: Schema.NullOr(Timestamp),
-  /**
-   * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,
-   * or `thread:<threadId>` for threads an agent started with the MCP `create_thread` tool.
-   */
-  createdBy: Schema.String,
-  createdAt: Timestamp,
-  updatedAt: Timestamp,
-})
-export type Thread = typeof Thread.Type
-
 export const ToolCallStatus = Schema.Literals(["running", "done", "error"])
 export type ToolCallStatus = typeof ToolCallStatus.Type
 
@@ -270,6 +237,49 @@ export const Attachment = Schema.Struct({
   element: Schema.optional(PickedElement),
 })
 export type Attachment = typeof Attachment.Type
+
+/** A message the user sent while a turn ran. It starts the next turn once the current one completes. */
+export const QueuedMessage = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+  attachments: Schema.Array(Attachment),
+})
+export type QueuedMessage = typeof QueuedMessage.Type
+
+export const Thread = Schema.Struct({
+  id: Schema.String,
+  projectId: Schema.String,
+  /** Null means the thread runs in the project root. */
+  worktreeId: Schema.NullOr(Schema.String),
+  title: Schema.String,
+  provider: ProviderId,
+  model: Schema.String,
+  /** Reasoning effort for the next turn. Null leaves the model's default. */
+  effort: Schema.NullOr(Schema.String),
+  /** Run turns on the model's faster, pricier service tier. */
+  fastMode: Schema.Boolean,
+  /** Applies from the next turn, or right away on a live Claude session. */
+  accessMode: AccessMode,
+  /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */
+  accountId: Schema.NullOr(Schema.String),
+  /** Claude session_id or Codex thread id, used to resume. */
+  providerSessionId: Schema.NullOr(Schema.String),
+  status: ThreadStatus,
+  usageLimit: Schema.NullOr(UsageLimit),
+  sortIndex: Schema.Number,
+  /** When the user pinned the thread to the top of the sidebar, or null when it is not pinned. */
+  pinnedAt: Schema.NullOr(Timestamp),
+  /** Oldest first. */
+  queue: Schema.Array(QueuedMessage),
+  /**
+   * Provenance, not ownership: `user`, `automation:<automationId>` for threads an automation started,
+   * or `thread:<threadId>` for threads an agent started with the MCP `create_thread` tool.
+   */
+  createdBy: Schema.String,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+})
+export type Thread = typeof Thread.Type
 
 export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),

@@ -26,6 +26,7 @@ import {
   Environments,
   EnvironmentStatus,
   Attachment,
+  QueuedMessage,
   Automation,
   Changes,
   ChangesScope,
@@ -382,6 +383,18 @@ export const RpcMethods = {
     }),
     Schema.Void,
   ),
+
+  /** Holds the message until the running turn completes; sends it like `threads.send` when none is running. */
+  "threads.queue": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      text: Schema.String,
+      attachments: Schema.optional(Schema.Array(Attachment)),
+    }),
+    Schema.Void,
+  ),
+  /** Takes a message out of the queue and returns it. Null when it already left, e.g. because its turn started. */
+  "threads.unqueue": rpc(Schema.Struct({ threadId: Schema.String, id: Schema.String }), Schema.NullOr(QueuedMessage)),
 
   /** Copies a file (`path`) or decodes a pasted image (`dataUrl`) into the thread's attachments dir. */
   "attachments.stage": rpc(
