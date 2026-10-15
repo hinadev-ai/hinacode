@@ -15,14 +15,14 @@ This is slice 4 of the remote clouds design, moved ahead of slices 2 and 3 becau
 
 - **T3 Code** merges every environment into one sidebar and puts a quiet machine icon on remote threads. It pays for that with `(environmentId, id)` references through the whole client, a connection registry and supervisor of about 2,300 lines, several routes per machine, DPoP and about 17 auth scopes. Its keybindings live on the server.
 - **Orca** also merges hosts into one sidebar, with section headers per host, but keeps a separate "Active Server" that decides where some actions go. Hosts are addressed three ways (name, `runtime:<id>`, `ssh:<id>`), and pairing tokens sit in a plaintext JSON file.
-- **kkcode** merges too, with no active environment, no section per machine, and no environment-scoped references in the renderer. Thread, project, worktree, terminal and automation ids are already UUIDs, so main can route a call by who owns the id. The renderer names an environment only where the user is choosing one: adding a project, and the environment settings picker. Tokens stay in `safeStorage`. Keybindings, theme and language stay on the desktop.
+- **kkcode** merges too, with no active environment, no section per machine, one group per repository, and no environment-scoped references in the renderer. Thread, project, worktree, terminal and automation ids are already UUIDs, so main can route a call by who owns the id. The renderer names an environment only where the user is choosing one: adding a project, and the environment settings picker. Tokens stay in `safeStorage`. Keybindings, theme and language stay on the desktop.
 
 ## User flow
 
 1. Settings, Environments, Add environment. Paste the `kkcode://connect` URL the daemon printed. kkcode connects once, reads the cloud's own id and name, and lists it with its status. Pasting a new URL for a cloud already listed (after `--rotate-token`, or a new address) updates that entry instead of adding a second one. Pasting this desktop's own URL is refused, since its threads would show twice.
-2. The sidebar lists every machine's projects together, This Mac's first. A section per machine would add a header for every server, so a cloud icon marks each project and thread that lives on a cloud instead, and its label names the machine. While the cloud is not connected the icon is crossed out, and the label adds its state: `Connecting`, `Offline, last seen 4 min ago`, `Pair again` or `Update kkcode on home-server`. The last two need the user, so the icon turns amber. Threads that need the user read at full contrast wherever they run, as they do today.
+2. The sidebar lists every machine's projects together, This Mac's first, with no section per machine. Projects whose `origin` is the same GitHub repository share one group, so `kkcode` on the laptop and `kkcode` on the home server are one entry with both machines' threads. A cloud icon marks each thread that runs on a cloud, and replaces the folder on a group that lives only on clouds. The icon's label names the machine. While the cloud is not connected the icon is crossed out, and the label adds its state: `Connecting`, `Offline, last seen 4 min ago`, `Pair again` or `Update kkcode on home-server`. The last two need the user, so the icon turns amber. Threads that need the user read at full contrast wherever they run, as they do today.
 3. Add project asks where it lives, defaulting to This Mac. For a cloud, type a path on that machine or a GitHub repository to clone there; Browse is hidden because it would open a folder on this Mac.
-4. New thread in a project runs where the project lives. Send a message and the agent runs on the cloud; its events stream into the thread view, and notifications fire as they do for local threads.
+4. New thread in a project runs where the project lives. In a group that spans machines, New thread asks which machine, and the project menu lists each machine's actions under its name. Send a message and the agent runs on the cloud; its events stream into the thread view, and notifications fire as they do for local threads.
 5. Settings has two groups. **App** (General, Appearance, Keybindings, Notifications, Environments) is this desktop. **Environment** (Models, Archive, Workspace, Integrations, Automations, Remote, Experimental) starts with an environment picker, `Editing settings for home-server`, and every page in the group reads and writes that machine.
 6. When a cloud drops, its projects and threads stay listed as last seen, dimmed, and actions on them fail with `home-server is offline`. It reconnects on its own. A refused token or protocol version stops retrying and says what to do.
 
@@ -38,13 +38,15 @@ Settings          = { defaultModel, modelPresets, defaultAccount, automations,  
                       experimental, worktreeRoot }
 Environment       = { id, name, host, port, createdAt }   // id is the cloud's own id
 EnvironmentStatus = "connecting" | "connected" | "offline" | "unauthorized" | "incompatible"
-Project           = { ...today, environmentId?: string }  // set by this desktop on a cloud's projects
+Project           = { ...today, environmentId?: string,      // set by this desktop on a cloud's projects
+                      repository?: string }                  // "owner/name", from the owning machine's origin
 ```
 
 - Both settings structs keep their rows in the `setting` table; their keys never overlap. A cloud only reads `Settings`. The rpc names `settings.get` and `settings.set` stay, so the phone protocol does not change.
 - Every kkcode data directory gets an id once, the setting row `environment.id`, and its `ready` frame gains an optional `environment: { id, name }` (name is the hostname). The phone ignores it. The desktop keys its `environment` table (migration 0015) by that id, so re-pairing converges on one row.
 - The pairing token is the secret `environment.<id>.token` in `Secrets`. It never reaches the renderer.
 - `Project.environmentId` is absent for This Mac. Main stamps it on every project a cloud returns, so the renderer can mark a cloud's projects and learn a thread's environment from its project.
+- `Project.repository` is the GitHub repository of the project's `origin`, lower-cased as `owner/name`, followed by the root's folder inside the repository when the project is a subfolder (`acme/mono/apps/web`). Each machine reads it from its own checkout in the `projects.list` handler, so a cloud's projects arrive with theirs. `Projects.list` itself stays a plain query, because the git-root check calls it on every `git.*` call.
 
 ### Routing
 
@@ -77,7 +79,8 @@ type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "r
 
 - `clientSettingsAtom` holds language, appearance, keybindings and notifications. `settingsAtom` becomes a family keyed by environment.
 - The settings page registry has `scope: "app" | "environment"`. General keeps language; the worktree root moves to a new Workspace page.
-- `Sidebar` keeps one project list. `CloudMark` replaces the folder icon on a cloud's projects and leads the meta line of its threads. The project dialog has a `Where` picker.
+- `groupProjects` (`lib/projectGroups.ts`) folds `projects.list` into groups: a project joins the earlier group with its `repository` unless that group already holds a project on its machine, so two clones on one machine stay apart. A project without a `repository` is a group of one.
+- `Sidebar` renders one entry per group. Its threads are the members' threads in one list, reorderable as one. `CloudMark` leads the meta line of a cloud's threads, and replaces the folder icon on a group with no project on This Mac. The project dialog has a `Where` picker.
 - `call(method, payload, { environment })` passes the environment for named routes.
 
 ### Trust boundary
@@ -86,7 +89,8 @@ The pairing URL crosses from the renderer to main once, in `environments.add`, d
 
 ## Out of scope
 
-- Running a project on another machine. A project, its threads and worktrees stay where they were created. Recognizing one repository on two machines (T3's `repositoryIdentity`, Orca's per-host setup) is the natural next step, once two machines with the same repository are common.
+- Moving a project or a thread to another machine. A project, its threads and worktrees stay where they were created; grouping only lists them together.
+- Grouping by anything but a GitHub `origin`, and a per-project switch to keep a repository's machines apart (T3 has one). They wait for someone who needs them.
 - Methods a cloud refuses as desktop-only: attachments, the live file explorer, the Tiny VM screen and the cloud's own pairing page answer `DesktopOnly` on a cloud's threads.
 - Remembering a cloud's last state across a desktop restart, a QR code from `kkcode serve`, scoped tokens, the relay (slice 3), and updating a cloud from the desktop.
 
@@ -94,4 +98,5 @@ The pairing URL crosses from the renderer to main once, in `environments.add`, d
 
 - `src/main/services/Environments.integration.test.ts` runs against a real SQLite file and a real remote listener on a loopback port. It covers pairing, re-pairing converging on one row, a wrong token as `unauthorized`, forwarding by owner and by name, the merged `threads.list`, a cloud's push reaching the window and not the phone sinks, and `EnvironmentOffline` once the cloud stops.
 - `src/main/environments/routes.test.ts` checks that every route's `key` is a field of that method's request.
+- `src/renderer/lib/projectGroups.test.ts` covers grouping: one group across machines, one project per machine per group, and no grouping without a repository. `Projects.integration.test.ts` reads `repository` from real temp repositories with an SSH and an HTTPS `origin`, a subfolder project and no `origin`.
 - By hand, the desktop on macOS (`--use-mock-keychain`, its own `KKCODE_USER_DATA`) pairs with the VM's cloud. It lists the cloud's project and threads with a cloud icon among This Mac's, adds a project on the cloud, sends a message there, and the turn runs on the VM. It also edits that cloud's default model, and crosses out the cloud icon after the daemon stops. Screenshots in light and dark.

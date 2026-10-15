@@ -7,6 +7,7 @@ import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
+  RiCloudLine,
   RiFilter3Fill,
   RiFilter3Line,
   RiFolder3Line,
@@ -14,7 +15,8 @@ import {
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, Thread } from "../../shared/domain.ts"
-import { environmentOf, isStale, useCloud } from "../lib/environments.ts"
+import { environmentName, environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
+import { groupProjects, type ProjectGroup as Group } from "../lib/projectGroups.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
@@ -182,12 +184,20 @@ const includes = (text: string, query: Query) => text.toLocaleLowerCase().includ
 
 type ProjectTab = Exclude<SidebarTab, "inbox">
 
-/** A project's rows in one tab: all of them when the query matches the project's name, else those whose title matches. */
-const tabThreads = (state: Pick<ThreadsState, "byId">, project: Project, tab: ProjectTab, query: Query) => {
-  const threads = (tab === "archived" ? selectArchivedThreads : selectUnpinnedProjectThreads)(project.id)(state)
-  return query === "" || includes(project.name, query)
-    ? threads
-    : threads.filter((thread) => includes(thread.title, query))
+/** The projects' rows in one tab: those whose title or project name matches the query. */
+const tabThreads = (
+  state: Pick<ThreadsState, "byId">,
+  projects: ReadonlyArray<Project>,
+  tab: ProjectTab,
+  query: Query,
+) => {
+  const select = tab === "archived" ? selectArchivedThreads : selectUnpinnedProjectThreads
+  return select(...projects.map((project) => project.id))(state).filter(
+    (thread) =>
+      query === "" ||
+      includes(thread.title, query) ||
+      projects.some((project) => project.id === thread.projectId && includes(project.name, query)),
+  )
 }
 
 /** Threads of the filtered projects whose title or project name matches the query. */
@@ -245,6 +255,8 @@ function useFilteredProjects(projects: ReadonlyArray<Project>) {
   return picked.length === 0 ? projects : picked
 }
 
+const memberIds = (group: Group) => group.projects.map((project) => project.id)
+
 function ProjectFilterMenu() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const ids = useUi((state) => state.sidebarProjectIds)
@@ -272,16 +284,17 @@ function ProjectFilterMenu() {
           {m.sidebar_filter_all_projects()}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {projects.map((project) => (
+        {groupProjects(projects).map((group) => (
           <DropdownMenuCheckboxItem
-            key={project.id}
-            checked={ids.includes(project.id)}
-            onCheckedChange={(checked) =>
-              setIds(checked ? [...ids, project.id] : ids.filter((id) => id !== project.id))
-            }
+            key={group.key}
+            checked={memberIds(group).every((id) => ids.includes(id))}
+            onCheckedChange={(checked) => {
+              const others = ids.filter((id) => !memberIds(group).includes(id))
+              setIds(checked ? [...others, ...memberIds(group)] : others)
+            }}
           >
-            <ProjectIcon projectId={project.id} />
-            <span className="truncate">{project.name}</span>
+            <ProjectIcon projectId={group.projects[0].id} />
+            <span className="truncate">{group.projects[0].name}</span>
           </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>
@@ -301,15 +314,16 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
-  const filtered = useFilteredProjects(AsyncResult.getOrElse(projects, () => []))
-  const shownIds = useThreads(
+  // Grouped before the query narrows anything, so a search never splits a group or changes its header.
+  const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
+  const shownKeys = useThreads(
     useShallow((state) =>
-      filtered
-        .filter((project) => isFullList(tab, query) || tabThreads(state, project, tab, query).length > 0)
-        .map((project) => project.id),
+      groups
+        .filter((group) => isFullList(tab, query) || tabThreads(state, group.projects, tab, query).length > 0)
+        .map((group) => group.key),
     ),
   )
-  const shown = filtered.filter((project) => shownIds.includes(project.id))
+  const shown = groups.filter((group) => shownKeys.includes(group.key))
 
   return AsyncResult.builder(projects)
     .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
@@ -330,14 +344,8 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
               {tab === "archived" && query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
             </li>
           )}
-          {shown.map((project) => (
-            <ProjectGroup
-              key={project.id}
-              project={project}
-              tab={tab}
-              query={query}
-              focusAfterDelete={focusAfterDelete}
-            />
+          {shown.map((group) => (
+            <ProjectGroup key={group.key} group={group} tab={tab} query={query} focusAfterDelete={focusAfterDelete} />
           ))}
         </ul>
       ),
@@ -353,22 +361,27 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
 }
 
 interface ProjectGroupProps {
-  readonly project: Project
+  readonly group: Group
   readonly tab: ProjectTab
   readonly query: Query
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupProps) {
+function ProjectGroup({ group, tab, query, focusAfterDelete }: ProjectGroupProps) {
+  const { projects } = group
+  const [first] = projects
   const navigate = useNavigate()
-  const newThread = () => void startThread(project.id, navigate)
+  const newThread = (project: Project) => void startThread(project.id, navigate)
   const newThreadButtonRef = useRef<HTMLButtonElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [open, setOpen] = useState(true)
-  const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => tabThreads(state, project, tab, query)))
+  const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => tabThreads(state, projects, tab, query)))
   // A project whose active threads are all pinned is not empty, they are listed above the tabs.
-  const hasActiveThreads = useThreads((state) => selectProjectThreads(project.id)(state).length > 0)
-  const cloud = useCloud(environmentOf(project))
+  const hasActiveThreads = useThreads(
+    (state) => selectProjectThreads(...projects.map((project) => project.id))(state).length > 0,
+  )
+  // This Mac's project comes first, so the group has a cloud only when every member is on one.
+  const cloud = useCloud(environmentOf(first))
   const cloudMarkId = useId()
 
   return (
@@ -386,7 +399,7 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
           <CollapsibleTrigger
             data-stale={isStale(cloud)}
             className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[stale=true]:text-muted-foreground"
-            aria-label={m.sidebar_toggle_project({ project: project.name })}
+            aria-label={m.sidebar_toggle_project({ project: first.name })}
             aria-describedby={cloud && cloudMarkId}
           >
             <RiArrowRightSLine
@@ -398,22 +411,13 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
             ) : (
               <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             )}
-            <span className="truncate font-medium" title={project.rootPath}>
-              {project.name}
+            <span className="truncate font-medium" title={first.rootPath}>
+              {first.name}
             </span>
           </CollapsibleTrigger>
-          <Button
-            ref={newThreadButtonRef}
-            variant="ghost"
-            size="icon-xs"
-            className="opacity-0 group-hover/project:opacity-100 group-data-[menu-open=true]/project:opacity-100 focus:opacity-100"
-            aria-label={m.sidebar_new_thread_in({ project: project.name })}
-            onClick={newThread}
-          >
-            <RiAddLine aria-hidden />
-          </Button>
+          <NewThreadButton projects={projects} buttonRef={newThreadButtonRef} onNewThread={newThread} />
           <ProjectMenu
-            project={project}
+            projects={projects}
             open={menuOpen}
             onOpenChange={setMenuOpen}
             onNewThread={newThread}
@@ -423,7 +427,7 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
         {/* Clips the rows while the height animates, with room left for a row's 2px focus ring. */}
         <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] [overflow-clip-margin:2px] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
           <SidebarThreadList
-            group={project.id}
+            group={group.key}
             threads={threads}
             reorderable={isFullList(tab, query)}
             showEmptyHint={isFullList(tab, query) && !hasActiveThreads}
@@ -432,5 +436,54 @@ function ProjectGroup({ project, tab, query, focusAfterDelete }: ProjectGroupPro
         </CollapsibleContent>
       </Collapsible>
     </li>
+  )
+}
+
+interface NewThreadButtonProps {
+  readonly projects: Group["projects"]
+  readonly buttonRef: RefObject<HTMLButtonElement | null>
+  readonly onNewThread: (project: Project) => void
+}
+
+/** Starts a thread in the project, or asks which machine to start it on when the group spans several. */
+function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonProps) {
+  const clouds = useClouds()
+  const label = m.sidebar_new_thread_in({ project: projects[0].name })
+  const className =
+    "opacity-0 group-hover/project:opacity-100 group-data-[menu-open=true]/project:opacity-100 focus:opacity-100 data-popup-open:opacity-100"
+  if (projects.length === 1)
+    return (
+      <Button
+        ref={buttonRef}
+        variant="ghost"
+        size="icon-xs"
+        className={className}
+        aria-label={label}
+        onClick={() => onNewThread(projects[0])}
+      >
+        <RiAddLine aria-hidden />
+      </Button>
+    )
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        ref={buttonRef}
+        render={<Button variant="ghost" size="icon-xs" className={className} aria-label={label} />}
+      >
+        <RiAddLine aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {projects.map((project) => {
+          const environment = environmentOf(project)
+          const Icon = environment === null ? RiFolder3Line : RiCloudLine
+          return (
+            <DropdownMenuItem key={project.id} onClick={() => onNewThread(project)}>
+              <Icon aria-hidden />
+              {environmentName(environment, clouds)}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

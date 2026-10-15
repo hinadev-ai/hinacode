@@ -57,7 +57,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
-import { selectUnpinnedProjectThreads, useThreads } from "../stores/threads.ts"
+import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -83,13 +83,15 @@ type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plug
 
 const titleOf = (id: unknown) => useThreads.getState().byId[String(id)]?.title ?? ""
 
-/** Screen reader instructions and announcements for one project's list, in the current locale. */
-const accessibility = (projectId: string) => {
-  const position = (source: Draggable) => ({
-    position: String((isSortable(source) ? source.index : 0) + 1),
-    total: String(selectUnpinnedProjectThreads(projectId)(useThreads.getState()).length),
-  })
-  return Accessibility.configure({
+// Each list has its own drag and drop manager, so its draggables are exactly the list's rows.
+const position = (source: Draggable) => ({
+  position: String((isSortable(source) ? source.index : 0) + 1),
+  total: String([...(source.manager?.registry.draggables ?? [])].length),
+})
+
+/** Screen reader instructions and announcements for one list, in the current locale. */
+const accessibility = () =>
+  Accessibility.configure({
     screenReaderInstructions: { draggable: m.sidebar_drag_instructions() },
     announcements: {
       dragstart: ({ operation: { source } }: DragStartEvent) =>
@@ -103,7 +105,6 @@ const accessibility = (projectId: string) => {
       },
     },
   })
-}
 
 /**
  * Rows drag by the whole row with the mouse (after a few pixels, so clicks still navigate) and by
@@ -125,11 +126,11 @@ const sensors = [
 ]
 
 interface SidebarThreadListProps {
-  /** A project id when the list is one project's threads; it scopes drag and drop to that project. */
+  /** Names the list, such as a project group's key; it scopes drag and drop to the list. */
   readonly group: string
   /** The rows to show, already narrowed to the sidebar's tab and filter. */
   readonly threads: ReadonlyArray<Thread>
-  /** Only a project's full list of active threads can be reordered, since a drop saves every row's position. */
+  /** Only a project group's full list of active threads can be reordered, since a drop saves every row's position. */
   readonly reorderable: boolean
   /** Names each row's project, for lists that mix projects. */
   readonly showProject?: boolean
@@ -155,8 +156,8 @@ export function SidebarThreadList({
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
-    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility(group)],
-    [group],
+    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility()],
+    [],
   )
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
