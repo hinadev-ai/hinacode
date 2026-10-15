@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test"
-import { Given, Then, When } from "../support/fixtures.ts"
+import { type ChosenModel, Given, Then, When } from "../support/fixtures.ts"
+import type { ProviderId } from "../../src/shared/agent.ts"
 import { rpc } from "../support/rpc.ts"
 
 /** Commands as the keybindings page names them. */
@@ -12,6 +13,20 @@ const commandId = (title: string) => {
   const id = COMMAND_IDS[title]
   if (!id) throw new Error(`unknown command "${title}"; add it to COMMAND_IDS`)
   return id
+}
+
+/** Agents as the models page names them. */
+const PROVIDER_IDS: Record<string, ProviderId> = { "Claude Code": "claude" }
+
+const providerId = (agent: string) => {
+  const id = PROVIDER_IDS[agent]
+  if (!id) throw new Error(`unknown agent "${agent}"; add it to PROVIDER_IDS`)
+  return id
+}
+
+const chosenLabel = ({ label }: ChosenModel) => {
+  if (label === null) throw new Error("no default model was chosen in this scenario")
+  return label
 }
 
 const shortcutRow = (page: import("@playwright/test").Page, command: string) =>
@@ -43,11 +58,15 @@ When("I choose the language {string}", async ({ app }, language: string) => {
   await app.page.getByRole("option", { name: language, exact: true }).click()
 })
 
-When("I choose the default model {string} for {string}", async ({ app }, model: string, agent: string) => {
+// The agent's CLI lists its models live and the list changes between releases, so the scenario picks
+// one from it. Without a default a new thread takes the first listed model, so the last one proves the setting.
+When("I choose the last listed default model for {string}", async ({ app, chosenModel }, agent: string) => {
   const picker = app.page.getByRole("group", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
   await expect(picker).toBeEnabled({ timeout: 30_000 })
   await picker.click()
-  await app.page.getByRole("option", { name: model, exact: true }).click()
+  const option = app.page.getByRole("option").last()
+  chosenModel.label = (await option.textContent())?.trim() ?? null
+  await option.click()
 })
 
 When("I record the shortcut {string} for {string}", async ({ app }, keys: string, command: string) => {
@@ -102,11 +121,22 @@ Then("the shortcut row for {string} does not read {string}", async ({ app }, com
   await expect(shortcutRow(app.page, command)).not.toContainText(text)
 })
 
+Then("the chosen default model is saved for {string}", async ({ app, chosenModel }, agent: string) => {
+  const provider = providerId(agent)
+  const models = await rpc(app.page, "models.list", { provider })
+  const label = chosenLabel(chosenModel)
+  const chosen = models.find((model) => model.label === label)
+  if (!chosen) throw new Error(`"${label}" is not in the ${agent} model list`)
+  await expect.poll(async () => (await rpc(app.page, "settings.get", undefined)).defaultModel[provider]).toBe(chosen.id)
+})
+
 Then(
-  "the new thread composer for {string} preselects the model {string}",
-  async ({ app, names }, project: string, model: string) => {
+  "the new thread composer for {string} preselects the chosen model",
+  async ({ app, names, chosenModel }, project: string) => {
     await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
-    await expect(app.page.getByLabel("Model", { exact: true })).toHaveText(model, { timeout: 30_000 })
+    await expect(app.page.getByLabel("Model", { exact: true })).toHaveText(chosenLabel(chosenModel), {
+      timeout: 30_000,
+    })
   },
 )
 
