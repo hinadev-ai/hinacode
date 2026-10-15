@@ -71,7 +71,6 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
       const session = await callPromise("terminal.open", { threadId, ...INITIAL_SIZE })
       set({ error: null })
       update(threadId, (current) => ({ sessions: [...current.sessions, session], activeId: session.id, open: true }))
-      // A retried open can answer with a session whose first pushes were lost while the link was down.
       void attach(session.id)
     } catch (error) {
       fail(threadId, error)

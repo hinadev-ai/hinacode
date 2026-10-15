@@ -16,14 +16,12 @@ export class TerminalError extends Schema.TaggedError<TerminalError>()("Terminal
 /** About one frame. A `cat` of a large file becomes a few pushes per frame instead of one per pty read. */
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
-/** What a client gets back when it attaches again, such as a phone after a network switch. */
 const SCROLLBACK_BYTES = 256 * 1024
 
 interface Live {
   session: TerminalSession
   readonly pty: pty.IPty
   readonly unregisterPid: () => void
-  /** Includes `pending`, so an attach never misses output that has not been pushed yet. */
   readonly scrollback: TerminalScrollback
   pending: Array<string>
   pendingSize: number

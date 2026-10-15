@@ -48,8 +48,7 @@ const outputUntil = (id: string, expected: string) =>
       })
   })
 
-/** Every `terminal.data` push of one session, checked to be contiguous by offset, until `done` holds for the text. */
-const pushesUntil = (id: string) =>
+const contiguousOutput = (id: string) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(yield* Pushes)
     let text = ""
@@ -128,7 +127,7 @@ describe("Terminals", () => {
           const { threadId } = yield* seedThread({ rootPath: gitRepo("attach") })
           const terminals = yield* Terminals
           const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
-          const output = yield* pushesUntil(session.id)
+          const output = yield* contiguousOutput(session.id)
           yield* terminals.write(session.id, "echo first-$((1 + 1))\n")
           const before = yield* output((text) => text.includes("first-2"))
 
@@ -156,9 +155,12 @@ describe("Terminals", () => {
           const { threadId } = yield* seedThread({ rootPath: gitRepo("wrap") })
           const terminals = yield* Terminals
           const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
-          const output = yield* pushesUntil(session.id)
-          // 70,000 lines of "é\r\n" are 210,000 characters but 280,000 bytes, so only a byte budget wraps.
-          yield* terminals.write(session.id, "yes é | head -n 70000; echo wrapped-$((1 + 1))\n")
+          const output = yield* contiguousOutput(session.id)
+          const lines = 70_000
+          const line = "é\r\n"
+          expect(line.length * lines).toBeLessThan(SCROLLBACK_BYTES)
+          expect(Buffer.byteLength(line.repeat(lines))).toBeGreaterThan(SCROLLBACK_BYTES)
+          yield* terminals.write(session.id, `yes é | head -n ${lines}; echo wrapped-$((1 + 1))\n`)
           yield* output((text) => text.includes("wrapped-2"))
 
           const attached = yield* terminals.attach(session.id, 0)

@@ -125,7 +125,6 @@ const reloadTranscripts = (environmentId: string) => {
   }
 }
 
-/** Terminal output pushed while the cloud's socket was down is gone too, so its screens catch up from the cloud. */
 const reattachTerminals = (environmentId: string) => {
   const onCloud = isOnCloud(environmentId)
   const { byThreadId, attach } = useTerminals.getState()

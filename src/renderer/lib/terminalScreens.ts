@@ -137,7 +137,6 @@ export function focusTerminal(id: string) {
   else if (screen) screen.wantsFocus = true
 }
 
-/** A `terminal.data` push. */
 export function writeTerminal(id: string, data: string, offset?: number) {
   if (!disposed.has(id)) screenFor(id).stream.data(data, offset)
 }
@@ -155,6 +154,7 @@ export function attachTerminalOutput(id: string) {
 }
 
 export function disposeTerminal(id: string) {
+  screens.get(id)?.stream.dispose()
   screens.get(id)?.term?.destroy()
   screens.get(id)?.element.remove()
   screens.delete(id)
