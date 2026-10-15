@@ -400,11 +400,10 @@ describe("Claude idle sessions", () => {
         yield* provider.steer("thread-1", "Use pnpm instead", [])
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
-        latestCli().push(
-          { ...succeeded, user_message_uuids: [prompt] },
-          textDelta("Switching to pnpm", steer),
-          { ...succeeded, user_message_uuids: [steer] },
-        )
+        latestCli().push({ ...succeeded, user_message_uuids: [prompt] }, textDelta("Switching to pnpm", steer), {
+          ...succeeded,
+          user_message_uuids: [steer],
+        })
 
         yield* Fiber.join(turn.fiber)
         expect(turn.events.filter((event) => event.type !== "session_bound")).toEqual([
