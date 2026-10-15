@@ -616,6 +616,19 @@ describe("projects, threads and settings over rpc", () => {
     result(await invoke("projects.delete", { id: project.id }))
     expect(result(await invoke("terminal.list", { threadId: thread.id }))).toStrictEqual([])
   })
+
+  test("attaching a terminal refuses offsets that are not character counts", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const session = result(await invoke("terminal.open", { threadId: thread.id, cols: 80, rows: 24 }))
+    for (const since of [-1, 1.5, Number.NaN])
+      expect(failure(await invoke("terminal.attach", { id: session.id, since })).tag).toBe("SchemaError")
+    expect(result(await invoke("terminal.attach", { id: session.id, since: null }))).toMatchObject({
+      session,
+      offset: 0,
+    })
+    result(await invoke("terminal.close", { id: session.id }))
+  })
 })
 
 describe("sub-agents over rpc", () => {

@@ -48,6 +48,25 @@ const outputUntil = (id: string, expected: string) =>
       })
   })
 
+/** Every `terminal.data` push of one session, checked to be contiguous by offset, until `done` holds for the text. */
+const pushesUntil = (id: string) =>
+  Effect.gen(function* () {
+    const updates = yield* PubSub.subscribe(yield* Pushes)
+    let text = ""
+    return (done: (text: string) => boolean) =>
+      Effect.gen(function* () {
+        while (!done(text)) {
+          const event = yield* PubSub.take(updates)
+          if (event.type !== "terminal.data" || event.id !== id) continue
+          expect(event.offset).toBe(text.length)
+          text += event.data
+        }
+        return text
+      })
+  })
+
+const SCROLLBACK_BYTES = 256 * 1024
+
 describe("Terminals", () => {
   layer(testLayer)((it) => {
     it.effect(
@@ -98,6 +117,86 @@ describe("Terminals", () => {
             const event = yield* PubSub.take(updates)
             if (event.type === "terminal.exited") running.delete(event.id)
           }
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
+      "attaches since an offset, including output still waiting for its push",
+      () =>
+        Effect.gen(function* () {
+          const { threadId } = yield* seedThread({ rootPath: gitRepo("attach") })
+          const terminals = yield* Terminals
+          const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
+          const pushes = yield* pushesUntil(session.id)
+          yield* terminals.write(session.id, "echo first-$((1 + 1))\n")
+          const before = yield* pushes((text) => text.includes("first-2"))
+
+          yield* terminals.write(session.id, "echo second-$((2 + 1))\n")
+          const since = before.length
+          const attached = yield* terminals.attach(session.id, since)
+          expect(attached.session).toStrictEqual(session)
+          expect(attached.offset).toBe(since)
+
+          const pushed = yield* pushes(
+            (text) => text.length >= since + attached.data.length && text.includes("second-3"),
+          )
+          expect(pushed.slice(since, since + attached.data.length)).toBe(attached.data)
+          const everything = yield* terminals.attach(session.id, null)
+          expect(everything.offset).toBe(0)
+          expect(everything.data.startsWith(pushed.slice(0, since + attached.data.length))).toBe(true)
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
+      "keeps the last 256 KiB of UTF-8 after the scrollback wrapped",
+      () =>
+        Effect.gen(function* () {
+          const { threadId } = yield* seedThread({ rootPath: gitRepo("wrap") })
+          const terminals = yield* Terminals
+          const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
+          const pushes = yield* pushesUntil(session.id)
+          // 70,000 lines of "é\r\n" are 210,000 characters but 280,000 bytes, so only a byte budget wraps.
+          yield* terminals.write(session.id, "yes é | head -n 70000; echo wrapped-$((1 + 1))\n")
+          yield* pushes((text) => text.includes("wrapped-2"))
+
+          const attached = yield* terminals.attach(session.id, 0)
+          expect(attached.offset).toBeGreaterThan(0)
+          expect(Buffer.byteLength(attached.data)).toBeLessThanOrEqual(SCROLLBACK_BYTES)
+          expect(Buffer.byteLength(attached.data)).toBeGreaterThan(SCROLLBACK_BYTES - 4)
+          const pushed = yield* pushes((text) => text.length >= attached.offset + attached.data.length)
+          expect(pushed.slice(attached.offset, attached.offset + attached.data.length)).toBe(attached.data)
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
+      "attaches an exited session until it is closed",
+      () =>
+        Effect.gen(function* () {
+          const { threadId } = yield* seedThread({ rootPath: gitRepo("exited") })
+          const terminals = yield* Terminals
+          const session = yield* terminals.open({ threadId, cols: 80, rows: 24 })
+          const updates = yield* PubSub.subscribe(yield* Pushes)
+          yield* terminals.write(session.id, "echo bye-$((3 + 4)); exit 3\n")
+          let pushed = ""
+          while (true) {
+            const event = yield* PubSub.take(updates)
+            if (event.type === "terminal.data" && event.id === session.id) pushed += event.data
+            if (event.type === "terminal.exited" && event.id === session.id) break
+          }
+          expect(pushed).toContain("bye-7")
+
+          const attached = yield* terminals.attach(session.id, null)
+          expect(attached).toStrictEqual({
+            session: { ...session, status: "exited", exitCode: 3 },
+            offset: 0,
+            data: pushed,
+          })
+
+          yield* terminals.close(session.id)
+          expect(yield* Effect.flip(terminals.attach(session.id, null))).toMatchObject({ _tag: "NotFoundError" })
         }).pipe(Effect.scoped),
       30_000,
     )
