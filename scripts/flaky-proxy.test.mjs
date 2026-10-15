@@ -7,8 +7,12 @@ import { setImmediate as nextTurn } from "node:timers/promises"
 
 // Run with `node --test scripts/flaky-proxy.test.mjs`. Vitest only collects tests under src/.
 
-const until = async (condition) => {
-  while (!(await condition())) await nextTurn()
+const until = async (condition, signal) => {
+  while (!signal.aborted) {
+    if (await condition()) return
+    await nextTurn()
+  }
+  signal.throwIfAborted()
 }
 
 const freePort = async () => {
@@ -53,9 +57,12 @@ test("switching from delay to pass keeps bytes in order", { timeout: 10_000 }, a
   const controlPort = await freePort()
   const post = (path) =>
     new Promise((resolve) => {
-      request({ host: "127.0.0.1", port: controlPort, path, method: "POST", agent: false }, (response) => {
-        response.resume().on("end", () => resolve(true))
-      })
+      request(
+        { host: "127.0.0.1", port: controlPort, path, method: "POST", agent: false, signal: t.signal },
+        (response) => {
+          response.resume().on("end", () => resolve(true))
+        },
+      )
         .on("error", () => resolve(false))
         .end()
     })
@@ -63,16 +70,16 @@ test("switching from delay to pass keeps bytes in order", { timeout: 10_000 }, a
   process.argv = [process.argv[0], "flaky-proxy.mjs", `${proxyPort}`, `${upstream.address().port}`, `${controlPort}`]
   await import("./flaky-proxy.mjs")
 
-  await until(() => post("/delay?ms=500"))
+  await until(() => post("/delay?ms=500"), t.signal)
   const client = connect(proxyPort, "127.0.0.1")
   sockets.add(client)
   await once(client, "connect")
   client.write("first;")
-  await until(() => timeouts.mock.calls.some((call) => call.arguments[1] === 500))
+  await until(() => timeouts.mock.calls.some((call) => call.arguments[1] === 500), t.signal)
   await new Promise((resolve) => client.write("second;", resolve))
   await post("/pass")
   mock.timers.tick(500)
-  await until(() => received.length === "first;second;".length)
+  await until(() => received.length === "first;second;".length, t.signal)
 
   assert.equal(received, "first;second;")
 })
