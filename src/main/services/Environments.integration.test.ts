@@ -376,6 +376,8 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<Rem
   })
   const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
   let current: WebSocket | undefined
+  let holdReady = false
+  let heldReady: ServerFrame | undefined
   server.on("connection", (socket) => {
     socket.on("message", (raw) => {
       const frame = JSON.parse(String(raw)) as ClientFrame
@@ -388,7 +390,8 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<Rem
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys"],
       }
-      socket.send(JSON.stringify(ready))
+      if (holdReady) heldReady = ready
+      else socket.send(JSON.stringify(ready))
     })
   })
   await new Promise((resolve) => server.once("listening", resolve))
@@ -396,6 +399,14 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<Rem
   return {
     pairingUrl: pairingUrl("127.0.0.1", port, "token"),
     calls,
+    holdReady: () => {
+      holdReady = true
+    },
+    hasHeldReady: () => heldReady !== undefined,
+    releaseReady: () => {
+      current!.send(JSON.stringify(heldReady))
+      heldReady = undefined
+    },
     socket: () => current!,
     send: (frame: ServerFrame) => current!.send(JSON.stringify(frame)),
     stop: () => {
@@ -465,6 +476,42 @@ describe("desktop environments over a flaky link", () => {
     expect(scripted.calls.filter((call) => call.key === first!.key)).toHaveLength(2)
     await remove("flaky")
     scripted.stop()
+  })
+
+  test("an overdue offline call is not dispatched when ready arrives before its delayed timeout", async () => {
+    const scripted = await pair("late-ready")
+    scripted.holdReady()
+    scripted.socket().terminate()
+    await pushedEventually(statusOf("late-ready", "offline"))
+    let answer: RpcEnvelope<unknown> | undefined
+    const pending = forward("late-ready", { method: "settings.set", payload: {} }).then((value) => {
+      answer = value
+    })
+    const clock = await clocked.runPromise(
+      Effect.gen(function* () {
+        return yield* Clock.Clock
+      }),
+    )
+    let restore: (() => void) | undefined
+    try {
+      await reconnectUntil(() => expect(scripted.hasHeldReady()).toBe(true))
+      const jumped = clock.currentTimeMillisUnsafe() + 60_001
+      const spy = vi.spyOn(clock, "currentTimeMillisUnsafe").mockReturnValue(jumped)
+      restore = () => spy.mockRestore()
+      scripted.releaseReady()
+      await pushedEventually(statusOf("late-ready", "connected"))
+      expect(scripted.calls).toStrictEqual([])
+      await vi.waitFor(() =>
+        expect(answer).toStrictEqual({
+          error: { tag: "Timeout", message: "Not sent. late-ready was unreachable for a minute." },
+        }),
+      )
+    } finally {
+      restore?.()
+      await remove("late-ready")
+      await pending
+      scripted.stop()
+    }
   })
 
   test("a call waits through connected time and fails after a minute unreachable", async () => {
