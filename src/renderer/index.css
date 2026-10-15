@@ -71,6 +71,9 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-attention: var(--attention);
+  --color-provider-claude: var(--provider-claude);
+  --color-provider-codex: var(--provider-codex);
+  --color-provider-muse: var(--provider-muse);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -152,6 +155,10 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --attention: oklch(0.473 0.137 46.201);
+  /* Brand marks, darkened from the brand color where needed to clear 3:1 on the light surfaces. OpenAI's mark is monochrome. */
+  --provider-claude: #c15f3c;
+  --provider-codex: var(--foreground);
+  --provider-muse: #0064e0;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.25 0 0);
@@ -200,6 +207,9 @@
   --accent-foreground: oklch(0.92 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --attention: oklch(0.828 0.189 84.429);
+  --provider-claude: #d97757;
+  --provider-codex: var(--foreground);
+  --provider-muse: #0081fb;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   /* Focus rings draw this at 50% opacity, which still clears 3:1 against the background. */

@@ -34,7 +34,7 @@ mkdir -p "$data"
 # A new session holds the app and every agent it spawns, so cleanup.sh can stop exactly those.
 # pnpm moves its children into new process groups, so the session id is the handle, not the pgid.
 setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env KKCODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
-  --no-sandbox --disable-gpu --remote-debugging-port="$3" out/main/index.js' _ "$data" "$repo" "$port" \
+  --no-sandbox --disable-gpu --use-mock-keychain --remote-debugging-port="$3" out/main/index.js' _ "$data" "$repo" "$port" \
   >"$data/electron.log" 2>&1 </dev/null &
 
 for _ in $(seq 1 60); do

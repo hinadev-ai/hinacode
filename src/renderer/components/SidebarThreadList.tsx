@@ -146,7 +146,7 @@ export function SidebarThreadList({
   showProject = false,
   showEmptyHint = false,
   newThreadButtonRef,
-  className = "pl-5",
+  className = "",
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
@@ -193,7 +193,7 @@ export function SidebarThreadList({
       >
         <ul ref={listRef} className={`flex flex-col gap-0.5 py-0.5 ${className}`}>
           {threads.length === 0 && showEmptyHint && (
-            <li className="px-2 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
+            <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
           {threads.map((thread, index) => (
             <ThreadRow
@@ -210,7 +210,7 @@ export function SidebarThreadList({
         </ul>
       </DragDropProvider>
       {reorderError && (
-        <p role="alert" className="px-2 py-1 pl-7 text-xs text-destructive">
+        <p role="alert" className="px-1.5 py-1 text-xs text-destructive">
           {m.sidebar_reorder_failed({ message: reorderError })}
         </p>
       )}
@@ -303,7 +303,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
       data-emphasis={rowEmphasis[state]}
-      className="group/thread relative rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
+      data-archived={archived}
+      // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
+      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -319,7 +321,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-2 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14 focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
           <ProviderIcon provider={thread.provider} />
           <span className="min-w-0 flex-1 truncate text-[0.9375rem]" title={thread.title}>
@@ -350,7 +352,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 size="icon-xs"
                 aria-label={m.sidebar_thread_reorder({ title: thread.title })}
                 aria-roledescription={m.sidebar_thread_reorder_role()}
-                className="cursor-grab"
+                // Rows drag by the whole row with the mouse, so the handle only shows for keyboard reordering.
+                data-reorder-handle
+                className="sr-only cursor-grab focus-visible:not-sr-only"
               >
                 <RiDraggable aria-hidden />
               </Button>
@@ -471,7 +475,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
   // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-2">
+      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5">
         <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
@@ -639,7 +643,7 @@ function ThreadMeta({ project, branch, removed, links, updatedAt }: ReturnType<t
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
   // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-8 text-xs text-muted-foreground group-hover/thread:pr-14 group-has-[a:focus-visible,button:focus]/thread:pr-14 group-data-[menu-open=true]/thread:pr-14">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {project !== null && (
         <span className="max-w-1/2 shrink-0 truncate" title={project}>
           {project}

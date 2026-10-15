@@ -59,6 +59,8 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 
 Use the `verify-kkcode` skill (`.agents/skills/verify-kkcode/`) to launch an isolated instance over Xvfb and CDP, drive it, and take screenshots. Each instance gets its own `KKCODE_USER_DATA` and CDP port. Never drive an instance you didn't launch. Put screenshots and scratch files in `.context/`, which is gitignored.
 
+Verification must never access the user's `kkcode Safe Storage` Keychain item. On macOS, launch every test instance with `--use-mock-keychain`, including manual launches and restarts, and save only dummy secrets. `KKCODE_USER_DATA` does not isolate the login Keychain. Never ask the user to approve a Keychain prompt for a test.
+
 Add skills under `.agents/skills/`. `.claude/skills` is a symlink to it.
 
 ## Security

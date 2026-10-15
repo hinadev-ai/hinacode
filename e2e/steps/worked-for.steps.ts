@@ -79,6 +79,25 @@ Then("the worked-for row shows {string} without a collapse control", async ({ ap
   await expect(workRow(app.page).locator("svg")).toHaveCount(0)
 })
 
+Then("the worked-for row shows {string} with its activity hidden", async ({ app }, duration: string) => {
+  const toggle = responseArticle(app.page).getByRole("button", { name: `Worked for ${duration}`, exact: true })
+  await expect(toggle).toHaveAttribute("aria-expanded", "false")
+  await expect(responseArticle(app.page).getByRole("button", { name: /pwd/ })).toHaveCount(0)
+})
+
+When("I toggle the worked-for row with {string}", async ({ app }, key: string) => {
+  await workRow(app.page).focus()
+  await app.page.keyboard.press(key)
+})
+
+Then("the response progress is visible", async ({ app }) => {
+  await expect(responseArticle(app.page).getByText(progress, { exact: true })).toBeVisible()
+})
+
+Then("the timed command contains the current find match", async ({ app }) => {
+  await expect(responseArticle(app.page).locator("mark[data-current]")).toHaveText("pwd")
+})
+
 Then("the finished answer stays visible", async ({ app }) => {
   await expect(responseArticle(app.page).getByText(finishedAnswer, { exact: true })).toBeVisible()
 })
@@ -99,10 +118,6 @@ Then("the timed command output is visible", async ({ app }) => {
 When("I find {string} in the timed response", async ({ app }, query: string) => {
   await app.page.keyboard.press("ControlOrMeta+f")
   await app.page.getByRole("textbox", { name: "Find in thread", exact: true }).fill(query)
-})
-
-Then("the timed progress contains the current find match", async ({ app }) => {
-  await expect(responseArticle(app.page).locator("mark[data-current]")).toHaveText("Checking the repository")
 })
 
 Then("the response has no worked-for row", async ({ app }) => {
