@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { app, BrowserWindow, net, protocol, session, shell } from "electron"
+import { app, BrowserWindow, Menu, net, protocol, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
@@ -299,6 +299,31 @@ const startCloud = async (
   process.stdout.write(`${lines.join("\n")}\n`)
 }
 
+// The default menu labels its app items with `app.name`, which stays "kkcode" to keep userData and the Keychain item.
+const setMacMenu = () =>
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "KKCode",
+        submenu: [
+          { role: "about", label: "About KKCode" },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide", label: "Hide KKCode" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit", label: "Quit KKCode" },
+        ],
+      },
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
+    ]),
+  )
+
 app.whenReady().then(async () => {
   const userData = app.getPath("userData")
   // Where `sbx login` keeps its login on macOS and Linux.
@@ -330,6 +355,7 @@ app.whenReady().then(async () => {
   }
   registerIpc(runtime, appUrl)
   app.dock?.setIcon(icon)
+  if (process.platform === "darwin") setMacMenu()
   serveAttachments()
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
