@@ -12,7 +12,6 @@ const session: TerminalSession = {
   exitCode: null,
 }
 
-/** A stream whose screen is a list of writes, and whose `terminal.attach` calls wait until the test answers them. */
 const setup = () => {
   const screen: Array<string> = []
   const calls: Array<{ since: number; answer: (attachment: TerminalAttachment) => void; fail: () => void }> = []
@@ -31,6 +30,20 @@ const setup = () => {
 }
 
 describe("terminal output ordered by offset", () => {
+  it("ignores an attach that answers after its screen was disposed", async () => {
+    const { screen, calls, stream } = setup()
+    const attached = stream.attach()
+    stream.data("held", 0)
+    stream.dispose()
+    calls[0]!.answer({ session, offset: 0, data: "held" })
+    expect(await attached).toBeNull()
+    stream.data("late", 4)
+    stream.exited(0)
+    expect(await stream.attach()).toBeNull()
+    expect(calls).toHaveLength(1)
+    expect(screen).toStrictEqual([])
+  })
+
   it("trims pushes that overlap what attach returned", async () => {
     const { screen, calls, stream } = setup()
     const attached = stream.attach()
