@@ -119,7 +119,7 @@ const make = Effect.gen(function* () {
       const wakes = watch.wakes + 1
       const capped = !terminal && wakes >= MAX_WAKES
       const text = capped
-        ? `${watchMessage(detail, watch.snapshot, events)}\n\nWatching has ended after ${MAX_WAKES} updates. Call the kkcode \`watch_pull_request\` tool to watch it again.`
+        ? `${watchMessage(detail, watch.snapshot, events)}\n\nWatching has ended after ${MAX_WAKES} updates. Call the KKCode \`watch_pull_request\` tool to watch it again.`
         : watchMessage(detail, watch.snapshot, events)
       if (!(yield* wake(link, watch.generation, text))) {
         yield* record(link, watch, { failures: 0, lastPolledAt: now })

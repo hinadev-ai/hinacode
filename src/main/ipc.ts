@@ -344,7 +344,7 @@ export const dispatch = (
   )
 
 const untrustedSender: RpcEnvelope<never> = {
-  error: { tag: "UntrustedSender", message: "RPC is only available to the kkcode window" },
+  error: { tag: "UntrustedSender", message: "RPC is only available to the KKCode window" },
 }
 
 /** The renderer's envelope: `environment` names a cloud for the methods whose route is `named`. */

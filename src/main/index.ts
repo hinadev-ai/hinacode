@@ -72,7 +72,7 @@ if (userDataOverride) app.setPath("userData", userDataOverride)
 // Electron keys the lock on userData. A second process on the same database would run its own pollers and
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
-  console.error(`kkcode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
+  console.error(`KKCode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
   // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
   app.exit(serve ? 1 : 0)
 }
@@ -242,7 +242,7 @@ const createWindow = () => {
     minHeight: 480,
     show: false,
     backgroundColor: "#0a0a0a",
-    title: "kkcode",
+    title: "KKCode",
     icon,
     // The renderer draws its own title bar around the traffic lights (see TitleBar.tsx).
     ...(process.platform === "darwin" && { titleBarStyle: "hidden", trafficLightPosition: { x: 14, y: 13 } }),
@@ -291,7 +291,7 @@ const startCloud = async (
   }
   const pairing = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.pairing))
   const lines = [
-    "kkcode cloud",
+    "KKCode cloud",
     `data: ${userData}`,
     "pair a client with one of:",
     ...pairing.hosts.map((host) => `  ${pairingUrl(host, pairing.port, pairing.token)}`),

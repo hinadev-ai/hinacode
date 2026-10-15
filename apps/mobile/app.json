@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "kkcode",
+    "name": "KKCode",
     "slug": "kkcode",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -34,7 +34,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "kkcode uses the camera to scan the pairing QR code shown in desktop Settings.",
+          "cameraPermission": "KKCode uses the camera to scan the pairing QR code shown in desktop Settings.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

@@ -95,7 +95,7 @@ export const register = Effect.fnUntraced(function* <Tools extends Record<string
         }).pipe(
           Effect.catchDefect((defect) =>
             Effect.logError("mcp tool defect", tool.name, defect).pipe(
-              Effect.as(text(`${tool.name} failed unexpectedly. See the kkcode logs.`, true)),
+              Effect.as(text(`${tool.name} failed unexpectedly. See the KKCode logs.`, true)),
             ),
           ),
         ),

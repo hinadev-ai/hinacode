@@ -109,7 +109,7 @@ const decodeFrames = (body: Buffer) =>
       else if (type === STDERR) stderr.push(payload)
       else if (type === EXIT) {
         exit = yield* Schema.decodeUnknownEffect(ExecExit)(payload.toString()).pipe(
-          Effect.mapError(() => new SbxError({ message: "sbx sent an exec result kkcode does not understand" })),
+          Effect.mapError(() => new SbxError({ message: "sbx sent an exec result KKCode does not understand" })),
         )
       }
     }
