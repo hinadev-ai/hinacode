@@ -17,8 +17,8 @@ Open Settings, then Appearance. Under the theme picker, drag the Contrast slider
 
 `applyAppearance` writes it to the root as `--contrast`, from -1 to 1. Palettes declare `--palette-foreground` and `--palette-muted-foreground`, and one rule in `index.css` derives the text tokens from them:
 
-- **Higher** mixes `foreground` toward black or white, up to all the way, and `muted-foreground` 40% of the way. Both tiers gain contrast, and the step between them stays near 2:1 in the neutral palettes.
-- **Lower** mixes `foreground` toward `muted-foreground`, up to halfway. `muted-foreground` does not move. The light palette already puts it at 4.64:1, so there is no room below it.
+- **Higher** mixes `foreground` toward black or white, up to all the way, and `muted-foreground` 60% of the way. Both tiers gain contrast. At the end the step between them narrows to 1.2:1 in light and 1.5:1 in dark, which is the price of muted text at 10:1 or more.
+- **Lower** mixes `foreground` up to 75% of the way toward `muted-foreground`. `muted-foreground` does not move. The light palette already puts it at 4.64:1, so there is no room below it. Stopping at 75% keeps body text above 6:1 and a visible step between the tiers.
 
 The mix runs in oklab, so it works the same on the oklch neutral palettes and the hex named themes. Every text token that should follow the setting (`popover-foreground`, `sidebar-foreground` and the rest) now points at `foreground`, instead of repeating its value in each palette. The rule lists `[data-theme]` and `.dark` beside `:root`, so a theme preview recomputes the tokens from its own palette.
 
@@ -26,12 +26,12 @@ The slider keeps a draft while it moves and writes `--contrast` straight to the 
 
 | Pair (worst surface)   | Lowest | Standard | Highest |
 | ---------------------- | -----: | -------: | ------: |
-| Light `foreground`     |  10.68 |    18.15 |   19.25 |
-| Light `muted`          |   4.64 |     4.64 |   11.46 |
-| Dark `foreground`      |   7.82 |    11.93 |   15.12 |
-| Dark `muted`           |   4.86 |     4.86 |    7.98 |
-| Light step, fg / muted |   2.30 |     3.91 |    1.68 |
-| Dark step, fg / muted  |   1.61 |     2.46 |    1.89 |
+| Light `foreground`     |   7.08 |    18.15 |   19.25 |
+| Light `muted`          |   4.64 |     4.64 |   16.02 |
+| Dark `foreground`      |   6.21 |    11.93 |   15.12 |
+| Dark `muted`           |   4.86 |     4.86 |   10.00 |
+| Light step, fg / muted |   1.53 |     3.91 |    1.20 |
+| Dark step, fg / muted  |   1.28 |     2.46 |    1.51 |
 
 "Worst surface" is the lowest ratio across `background`, `sidebar` or `popover`, and `muted`.
 

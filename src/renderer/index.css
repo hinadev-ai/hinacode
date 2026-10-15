@@ -202,8 +202,8 @@
 
 /*
  * Palettes set --palette-foreground and --palette-muted-foreground; the contrast setting derives the rendered text
- * from them. Higher mixes both toward black or white, muted text 40% of the way, so the two tiers stay apart.
- * Lower mixes foreground toward muted text and leaves muted text alone, because the palettes put it at 4.5:1.
+ * from them. Higher mixes both toward black or white, muted text 60% of the way, so the two tiers stay apart.
+ * Lower mixes foreground 75% toward muted text and leaves muted text alone, because the palettes put it at 4.5:1.
  * Previews put data-theme or .dark on their own element, so the rule recomputes there from that palette.
  * See docs/features/2026-10-15-contrast-setting.md.
  */
@@ -221,13 +221,13 @@
   --contrast-lower: max(-1 * var(--contrast, 0), 0);
   --foreground: color-mix(
     in oklab,
-    color-mix(in oklab, var(--palette-foreground), var(--palette-muted-foreground) calc(var(--contrast-lower) * 50%)),
+    color-mix(in oklab, var(--palette-foreground), var(--palette-muted-foreground) calc(var(--contrast-lower) * 75%)),
     var(--contrast-ink) calc(var(--contrast-higher) * 100%)
   );
   --muted-foreground: color-mix(
     in oklab,
     var(--palette-muted-foreground),
-    var(--contrast-ink) calc(var(--contrast-higher) * 40%)
+    var(--contrast-ink) calc(var(--contrast-higher) * 60%)
   );
   --popover-foreground: var(--foreground);
   --secondary-foreground: var(--foreground);
