@@ -76,6 +76,10 @@ export async function launchPackaged({ executablePath, port, cwd, env, log }) {
         )
       })
     }
+    await ready(port)
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 30000 })
+    const context = browser.contexts()[0]
+    const page = context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 30000 }))
     const owner = await evaluate(({ app }) => ({
       pid: process.pid,
       data: process.env.KKCODE_USER_DATA,
@@ -83,10 +87,6 @@ export async function launchPackaged({ executablePath, port, cwd, env, log }) {
     }))
     if (owner.pid !== child.pid || owner.data !== env.KKCODE_USER_DATA || !owner.hasApp)
       throw new Error("wrong main inspector")
-    await ready(port)
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 30000 })
-    const context = browser.contexts()[0]
-    const page = context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 30000 }))
     return {
       firstWindow: async () => page,
       evaluate,
