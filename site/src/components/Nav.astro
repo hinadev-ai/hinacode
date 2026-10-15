@@ -1,0 +1,28 @@
+---
+import Mark from "./Mark.astro"
+interface Props {
+  page: "home" | "pricing"
+}
+const { page } = Astro.props
+---
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/" aria-label="kkcode home">
+      <Mark class="mark" />
+      kkcode
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href={`${page === "pricing" ? "/" : ""}#quiet`}>Quiet</a>
+      <a href={`${page === "pricing" ? "/" : ""}#features`}>Features</a>
+      <a href={`${page === "pricing" ? "/" : ""}#keyboard`}>Keyboard</a>
+      <a href={`${page === "pricing" ? "/" : ""}#faq`}>FAQ</a>
+      <a href="/pricing/" aria-current={page === "pricing" ? "page" : undefined}>
+        Pricing
+      </a>
+    </nav>
+    <a class="btn btn-primary btn-sm nav-cta" href="https://github.com/kjj6198/kkcode-releases/releases/latest">
+      Download
+    </a>
+  </div>
+</header>

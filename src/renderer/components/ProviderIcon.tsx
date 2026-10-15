@@ -2,7 +2,11 @@ import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
 import type { ProviderId } from "../../shared/agent.ts"
 import { m } from "../paraglide/messages.js"
 
-const icons = { claude: RiClaudeFill, codex: RiOpenaiFill, muse: RiMetaFill } satisfies Record<ProviderId, unknown>
+const icons = {
+  claude: { Icon: RiClaudeFill, color: "text-provider-claude" },
+  codex: { Icon: RiOpenaiFill, color: "text-provider-codex" },
+  muse: { Icon: RiMetaFill, color: "text-provider-muse" },
+} satisfies Record<ProviderId, unknown>
 
 export const providerLabel = {
   claude: m.provider_claude,
@@ -10,7 +14,8 @@ export const providerLabel = {
   muse: m.provider_muse,
 } satisfies Record<ProviderId, () => string>
 
-export function ProviderIcon({ provider }: { provider: ProviderId }) {
-  const Icon = icons[provider]
-  return <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+/** In the agent's brand color, or muted where it marks a tool call, which recedes like the rest of the call. */
+export function ProviderIcon({ provider, muted = false }: { provider: ProviderId; muted?: boolean }) {
+  const { Icon, color } = icons[provider]
+  return <Icon aria-hidden className={`size-3.5 shrink-0 ${muted ? "text-muted-foreground" : color}`} />
 }

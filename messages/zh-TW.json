@@ -151,6 +151,8 @@
   "command_sidebar_toggle": "顯示或隱藏側邊欄",
   "command_side_panel_toggle": "顯示或隱藏側邊面板",
   "command_composer_focus": "聚焦訊息輸入框",
+  "command_composer_model": "切換模型",
+  "command_composer_effort": "調整推理強度",
   "command_view_details": "顯示詳細資訊",
   "command_view_files": "顯示檔案",
   "command_view_changes": "顯示變更",
@@ -206,6 +208,8 @@
   "settings_keybindings_shortcut": "快捷鍵",
   "settings_keybindings_actions": "操作",
   "settings_keybindings_unbound": "未設定",
+  "settings_keybindings_when_terminal": "僅在終端機中",
+  "settings_keybindings_when_not_terminal": "終端機中無效",
   "settings_keybindings_record": "錄製",
   "settings_keybindings_record_for": "為「{command}」錄製快捷鍵",
   "settings_keybindings_recording": "請按下快捷鍵…",
@@ -500,6 +504,8 @@
   "project_cloning": "正在複製…",
   "message_writing": "撰寫中…",
   "message_worked_for": "已工作 {duration}",
+  "message_show_activity": "顯示工具活動",
+  "message_hide_activity": "隱藏工具活動",
   "sidebar_pull_request": "開啟合併請求 #{number}",
   "sidebar_pull_request_stack": "開啟合併請求 #{number}，{count} 個連結中最新的一個",
   "sidebar_watching": "正在監看合併請求",
@@ -763,26 +769,60 @@
   "browser_start_hint": "在上方輸入網址，或開啟這個對話串監聽的連接埠。",
   "browser_start_open_port": "開啟 localhost:{port}",
   "browser_load_failed": "無法載入 {url}",
+  "command_browser_new_tab": "新增瀏覽器分頁",
+  "browser_tabs": "瀏覽器分頁",
+  "browser_new_tab": "新分頁",
+  "browser_close_tab": "關閉 {title}",
   "attachment_element": "元素 {element}",
   "attachment_element_url": "網址",
   "attachment_element_selector": "選擇器",
-  "tool_commands_ran": [
+  "tool_kind_command": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "已執行 {count} 個指令",
-        "countPlural=other": "已執行 {count} 個指令"
+        "countPlural=one": "執行了 {count} 個指令",
+        "countPlural=other": "執行了 {count} 個指令"
       }
     }
   ],
-  "tool_commands_running": [
+  "tool_kind_read": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "正在執行 {count} 個指令",
-        "countPlural=other": "正在執行 {count} 個指令"
+        "countPlural=one": "讀取了 {count} 個檔案",
+        "countPlural=other": "讀取了 {count} 個檔案"
+      }
+    }
+  ],
+  "tool_kind_edit": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "編輯了 {count} 個檔案",
+        "countPlural=other": "編輯了 {count} 個檔案"
+      }
+    }
+  ],
+  "tool_kind_search": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "搜尋了 {count} 次",
+        "countPlural=other": "搜尋了 {count} 次"
+      }
+    }
+  ],
+  "tool_kind_other": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "使用了 {count} 個工具",
+        "countPlural=other": "使用了 {count} 個工具"
       }
     }
   ],
@@ -851,8 +891,7 @@
   "vm_agent_waiting": "代理正在等你交還控制權",
   "vm_take_control": "接手控制",
   "vm_hand_back": "交還控制",
-  "vm_stop": "停止 VM",
-  "vm_stop_confirm": "再按一次以停止 VM",
+  "vm_stop": "按住以停止 VM",
   "vm_screen": "Tiny VM 畫面",
   "vm_connecting": "正在連接畫面…",
   "vm_disconnected": "與畫面的連線中斷",

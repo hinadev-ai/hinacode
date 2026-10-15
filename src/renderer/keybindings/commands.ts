@@ -5,6 +5,7 @@ import { type ExperimentalSettings, Locale, type Project, type Settings } from "
 import { startThread } from "../lib/startThread.ts"
 import { COMMAND_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
+import { useBrowserTabs } from "../stores/browserTabs.ts"
 import { useLocale } from "../stores/locale.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
@@ -19,12 +20,29 @@ export interface CommandContext {
   readonly experimental: ExperimentalSettings
 }
 
+/** Facts about where a keydown happened, which a command's `when` clause can test. */
+export type KeyContext = Readonly<{ terminalFocus: boolean }>
+
+/** A VS Code style `when` clause: a context key that must be true, or with `!` false. */
+export type When = keyof KeyContext | `!${keyof KeyContext}`
+
+export const whenHolds = (when: When | undefined, context: KeyContext) => {
+  if (when === undefined) return true
+  const negated = when.startsWith("!")
+  return context[(negated ? when.slice(1) : when) as keyof KeyContext] !== negated
+}
+
 export interface Command {
   readonly id: string
   /** A chord such as "mod+shift+n", or "" for unbound by default. `resolveKeymap` normalizes it. */
   readonly defaultKeys: string
   readonly title: () => string
   readonly run: (ctx: CommandContext) => void
+  /**
+   * Where the chord runs the command. The palette runs it anywhere. A default chord the shell or terminal
+   * already uses outside macOS, such as Ctrl+L (clear) or Ctrl+Shift+C (copy), takes `!terminalFocus`.
+   */
+  readonly when?: When
   /** The experiment the command belongs to. While it is off, the palette hides the command and its chord does nothing. */
   readonly experiment?: keyof ExperimentalSettings
 }
@@ -80,6 +98,7 @@ export const commands = [
       if (projectId) void startThread(projectId, ctx.navigate)
       else useUi.getState().setAddProjectOpen(true)
     },
+    when: "!terminalFocus",
   },
   {
     id: "project.add",
@@ -92,6 +111,7 @@ export const commands = [
     defaultKeys: "mod+b",
     title: m.command_sidebar_toggle,
     run: () => useUi.getState().toggleSidebar(),
+    when: "!terminalFocus",
   },
   {
     id: "sidePanel.toggle",
@@ -104,6 +124,19 @@ export const commands = [
     defaultKeys: "mod+l",
     title: m.command_composer_focus,
     run: () => useUi.getState().requestComposerFocus(),
+    when: "!terminalFocus",
+  },
+  {
+    id: "composer.model",
+    defaultKeys: "mod+alt+.",
+    title: m.command_composer_model,
+    run: () => useUi.getState().requestPicker("model"),
+  },
+  {
+    id: "composer.effort",
+    defaultKeys: "mod+alt+,",
+    title: m.command_composer_effort,
+    run: () => useUi.getState().requestPicker("effort"),
   },
   // mod+shift+r and mod+shift+i belong to Electron's default menu (Force Reload, and Toggle Developer
   // Tools outside macOS), which takes the key before the page sees it.
@@ -142,12 +175,23 @@ export const commands = [
     defaultKeys: "mod+shift+a",
     title: m.command_view_agents,
     run: (ctx) => showView(ctx, "agents"),
+    when: "!terminalFocus",
   },
   {
     id: "view.browser",
     defaultKeys: "mod+shift+b",
     title: m.command_view_browser,
     run: (ctx) => showView(ctx, "browser"),
+  },
+  {
+    id: "browser.newTab",
+    defaultKeys: "mod+t",
+    title: m.command_browser_new_tab,
+    run: (ctx) => {
+      if (!ctx.threadId) return
+      useUi.getState().showView(ctx.threadId, "browser")
+      useBrowserTabs.getState().openTab(ctx.threadId)
+    },
   },
   {
     id: "view.tinyVm",
@@ -161,6 +205,7 @@ export const commands = [
     defaultKeys: "mod+shift+c",
     title: m.command_turn_interrupt,
     run: () => useUi.getState().requestInterrupt(),
+    when: "!terminalFocus",
   },
   {
     id: "thread.next",
@@ -181,6 +226,7 @@ export const commands = [
     run: (ctx) => {
       if (ctx.threadId) useUi.getState().openFind(ctx.threadId)
     },
+    when: "!terminalFocus",
   },
   {
     id: "search.global",

@@ -24,6 +24,8 @@ interface Screen {
 /** Ghostty takes a byte budget, with retained rows depending on terminal width. */
 const SCROLLBACK_BYTES = 4 * 1024 * 1024
 
+const SCREEN_CLASS = "terminal-screen"
+
 const screens = new Map<string, Screen>()
 /** Closed sessions, so output still in flight when a tab closes does not create a new screen. */
 const disposed = new Set<string>()
@@ -32,7 +34,7 @@ const screenFor = (id: string) => {
   let screen = screens.get(id)
   if (!screen) {
     const element = document.createElement("div")
-    element.className = "terminal-screen"
+    element.className = SCREEN_CLASS
     screen = { element, term: null, backlog: new TerminalBacklog(), wantsFocus: false, paused: false }
     screens.set(id, screen)
   }
@@ -80,6 +82,9 @@ const start = async (id: string, screen: Screen) => {
   if (replay.truncated) term.write(`\r\n\x1b[0m\x1b[2m${m.terminal_output_truncated()}\x1b[22m\r\n`)
   if (screen.wantsFocus) term.focus()
 }
+
+export const isInTerminal = (target: EventTarget | null) =>
+  target instanceof Element && target.closest(`.${SCREEN_CLASS}`) !== null
 
 /** Moves the session's screen into `container`, creating it on first use. Returns a function that detaches it. */
 export function attachTerminal(id: string, container: HTMLElement): () => void {

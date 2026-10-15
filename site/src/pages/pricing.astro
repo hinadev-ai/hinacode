@@ -1,0 +1,141 @@
+---
+import SiteLayout from "../layouts/SiteLayout.astro"
+import Download from "../components/Download.astro"
+import Closing from "../components/Closing.astro"
+import Mark from "../components/Mark.astro"
+---
+
+<SiteLayout
+  title="Pricing · kkcode"
+  description="kkcode is free. Every feature, with no seats, tiers or trial."
+  page="pricing"
+>
+  <div class="pricing-hero">
+    <p class="eyebrow rise" style="--i: 0">
+      Pricing
+    </p>
+    <h1 class="rise" style="--i: 1">
+      Free. <span class="taste">All of it.</span>
+    </h1>
+    <p class="lede rise" style="--i: 2">
+      No seats, no tiers, no trial that runs out. Every feature on this site is in the one plan, and the one plan costs
+      nothing.
+    </p>
+  </div>
+
+  <div class="pricing">
+    <div class="plan rise" style="--i: 3">
+      <div class="plan-head">
+        <span>Everything</span>
+        <span class="plan-badge">The only plan</span>
+      </div>
+      <div class="price">
+        <b>$0</b>
+        <span>forever</span>
+      </div>
+      <p class="plan-note">No account. No card. Nothing to cancel.</p>
+      <Download />
+      <ul class="included" aria-label="Included">
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Unlimited threads and projects
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Claude Code and Codex
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>A worktree per thread
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Inline approvals
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Steering a running turn
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>The built-in MCP server
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Pull requests with merge state
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Ports panel
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Automations and pollers
+        </li>
+        <li data-state="done">
+          <span class="status" aria-hidden="true"></span>Rebindable shortcuts
+        </li>
+      </ul>
+    </div>
+
+    <figure class="receipt" aria-label="A receipt for kkcode that totals zero dollars">
+      <header>
+        <Mark />
+        <b>KKCODE</b>Receipt #0000
+      </header>
+      <dl>
+        <div>
+          <dt>Threads</dt>
+          <dd>unlimited · $0.00</dd>
+        </div>
+        <div>
+          <dt>Worktrees</dt>
+          <dd>unlimited · $0.00</dd>
+        </div>
+        <div>
+          <dt>Agents</dt>
+          <dd>2 · $0.00</dd>
+        </div>
+        <div>
+          <dt>Approvals</dt>
+          <dd>any number · $0.00</dd>
+        </div>
+        <div>
+          <dt>PRs</dt>
+          <dd>all of them · $0.00</dd>
+        </div>
+        <div>
+          <dt>Taste</dt>
+          <dd>included · $0.00</dd>
+        </div>
+        <div>
+          <dt>Focus</dt>
+          <dd>included · $0.00</dd>
+        </div>
+      </dl>
+      <div class="total">
+        <span>Total</span>
+        <span>$0.00</span>
+      </div>
+      <footer>
+        Paid with nothing.
+        <br />
+        Thank you for not paying.
+      </footer>
+    </figure>
+  </div>
+
+  <section class="rule">
+    <p class="eyebrow">The fine print</p>
+    <h2>
+      The only bill is <em>your agents</em>.
+    </h2>
+    <p class="section-lede">
+      kkcode runs the <code>claude</code> and <code>codex</code> CLIs you are already signed in to. Your usage goes to
+      those plans, the same as it does in a terminal.
+    </p>
+    <div class="costs">
+      <div>
+        <b>kkcode</b>
+        <p>$0. The harness, the worktrees, the MCP server and every update.</p>
+      </div>
+      <div>
+        <b>Claude Code and Codex</b>
+        <p>Whatever plan or API key you already use. kkcode adds no markup and never sits between you and them.</p>
+      </div>
+    </div>
+  </section>
+
+  <Closing />
+</SiteLayout>
