@@ -177,7 +177,6 @@ const setCloudRemote = (enabled: boolean) =>
 
 const cloudPairing = async (token?: string) => {
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  // The second address is unroutable: an environment keeps the first host and never dials the rest.
   return pairingUrl({ hosts: ["127.0.0.1", "192.0.2.1"], port: pairing.port, token: token ?? pairing.token })
 }
 

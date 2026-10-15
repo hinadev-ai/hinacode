@@ -122,13 +122,12 @@ interface Dial {
   readonly onClose: (code: number) => void
 }
 
-/** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
-/** One address of a cloud. A pairing URL may list several, and an environment keeps the first. */
 interface Address {
   readonly host: string
   readonly port: number
 }
 
+/** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
 const dial = (target: Address, token: string, handlers: Dial) => {
   const socket = new WebSocket(remoteWebSocketUrl(target))
   socket.on("open", () => socket.send(JSON.stringify({ type: "auth", token } satisfies ClientFrame)))

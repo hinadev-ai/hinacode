@@ -78,10 +78,8 @@ export class Transport {
   private nextCallId = 1
   private foreground = true
   private stopped = false
-  /** The address of the current or next attempt. */
-  private urlIndex = 0
-  /** The address of the last handshake, where reconnects start. */
-  private preferredIndex = 0
+  private dialIndex = 0
+  private lastConnectedIndex = 0
   private readonly pending = new Map<number, PendingCall>()
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private connectTimer: ReturnType<typeof setTimeout> | undefined
@@ -137,7 +135,7 @@ export class Transport {
     if (this.stopped || this.status === "unauthorized") return
     this.onLinkLost()
     this.attempt = 0
-    this.urlIndex = this.preferredIndex
+    this.dialIndex = this.lastConnectedIndex
     clearTimeout(this.retryTimer)
     this.open()
   }
@@ -154,8 +152,7 @@ export class Transport {
       this.startPings()
       this.closeIfSilentFor(PROBE_TIMEOUT_MS)
     } else if (this.status === "offline") {
-      // The phone may be on another network now, so start again from the address that worked last.
-      this.urlIndex = this.preferredIndex
+      this.dialIndex = this.lastConnectedIndex
       this.reconnectNow()
     }
   }
@@ -172,7 +169,7 @@ export class Transport {
     if (this.stopped) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
-    const url = this.options.urls[this.urlIndex]!
+    const url = this.options.urls[this.dialIndex]!
     const ws = (this.options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike))(url)
     this.socket = ws
     this.connectTimer = setTimeout(() => {
@@ -239,7 +236,7 @@ export class Transport {
     this.expireOfflineCalls()
     clearTimeout(this.offlineTimer)
     this.attempt = 0
-    this.preferredIndex = this.urlIndex
+    this.lastConnectedIndex = this.dialIndex
     this.features = new Set(features)
     this.setStatus("connected", null)
     const now = Date.now()
@@ -300,9 +297,8 @@ export class Transport {
 
   
   private onLinkLost() {
-    // A failed attempt moves on to the next address. A link that was up retries the address that worked.
-    this.urlIndex =
-      this.status === "connected" ? this.preferredIndex : (this.urlIndex + 1) % this.options.urls.length
+    this.dialIndex =
+      this.status === "connected" ? this.lastConnectedIndex : (this.dialIndex + 1) % this.options.urls.length
     this.dropSocket()
     const now = Date.now()
     for (const call of [...this.pending.values()]) {

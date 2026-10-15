@@ -483,7 +483,6 @@ describe("Transport", () => {
     it("falls back to the next address when the first never answers, then keeps the one that worked", async () => {
       const transport = setup([TAILSCALE, LAN])
       const read = track(transport.call("threads.list", undefined))
-      // Blackholed: the socket never opens.
       await vi.advanceTimersByTimeAsync(10_000)
       expect(sockets[0]!.closed).toBe(true)
       await vi.advanceTimersByTimeAsync(500)
@@ -526,7 +525,6 @@ describe("Transport", () => {
 
       transport.networkChanged()
       expect(urls().at(-1)).toBe(LAN)
-      // A failed attempt moves on, but the next network change starts from the LAN address again.
       latest().drop()
       transport.networkChanged()
       expect(urls().at(-1)).toBe(LAN)

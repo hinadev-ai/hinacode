@@ -72,8 +72,7 @@ export const pairingUrl = ({ hosts, port, token }: PairingTarget) => {
 export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; readonly port: number }) =>
   `ws://${host.includes(":") ? `[${host}]` : host}:${port}${REMOTE_PATH}`
 
-/** A hostname, IPv4 or bare IPv6 address that lands in the authority of the socket URL and nowhere else. */
-const isHost = (host: string) =>
+const isAuthorityOnlyHost = (host: string) =>
   host !== "" && !/[\s/?#@[\]\\]/.test(host) && URL.parse(remoteWebSocketUrl({ host, port: 1 })) !== null
 
 /**
@@ -86,7 +85,7 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   const hosts = url.searchParams.getAll("host")
   const port = Number(url.searchParams.get("port"))
   const token = url.searchParams.get("token")
-  if (!isArrayNonEmpty(hosts) || !hosts.every(isHost)) return null
+  if (!isArrayNonEmpty(hosts) || !hosts.every(isAuthorityOnlyHost)) return null
   if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
   return { hosts, port, token }
 }
