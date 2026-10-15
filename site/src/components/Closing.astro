@@ -1,18 +1,24 @@
 ---
 import Download from "./Download.astro"
+import { messages, type Locale } from "../i18n"
+interface Props {
+  locale: Locale
+}
+const { locale } = Astro.props
+const t = messages(locale)
 ---
 
 <section class="rule closing">
   <h2>
-    Run more agents.
+    {t.site_closing_lead}
     <br />
-    <em>Watch fewer.</em>
+    <em>{t.site_closing_emphasis}</em>
   </h2>
-  <p class="section-lede">One window. Every agent. Only the ones that need you ask for you.</p>
+  <p class="section-lede">{t.site_closing_description}</p>
   <div class="ctas">
-    <Download />
+    <Download locale={locale} />
     <a class="btn" href="https://github.com/kjj6198/kkcode">
-      View on GitHub
+      {t.site_view_github}
     </a>
   </div>
 </section>
