@@ -236,11 +236,13 @@ export class Transport {
       )
       return
     }
+    // The offline timer may not have fired yet, e.g. while the app sat in the background, so expire calls first.
+    this.scheduleOfflineCheck()
+    clearTimeout(this.offlineTimer)
     this.attempt = 0
     this.features = new Set(features)
     this.setStatus("connected", null)
     const now = Date.now()
-    clearTimeout(this.offlineTimer)
     for (const call of [...this.pending.values()].sort((a, b) => a.id - b.id)) {
       if (call.offlineSince !== null) call.offlineMs += now - call.offlineSince
       call.offlineSince = null

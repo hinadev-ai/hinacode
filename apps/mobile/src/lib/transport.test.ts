@@ -186,6 +186,52 @@ describe("Transport", () => {
       expect(send.error).toMatchObject({ tag: "Timeout", message: NOT_SENT_MESSAGE })
     })
 
+    it("expires a call on ready when the clock jumped past the limit before its timer ran", async () => {
+      const transport = setup()
+      const send = track(transport.call("threads.send", {}))
+      const read = track(transport.call("threads.list", undefined))
+      // Timers stall in the background while the wall clock moves on.
+      vi.setSystemTime(Date.now() + 61_000)
+      handshake()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(latest().calls()).toEqual([])
+      expect(send.error).toMatchObject({ tag: "Timeout", message: NOT_SENT_MESSAGE })
+      expect(read.error).toMatchObject({ tag: "Timeout", message: NOT_SENT_MESSAGE })
+    })
+
+    it("counts earlier outages when a late ready arrives", async () => {
+      const transport = setup()
+      handshake()
+      const send = track(transport.call("threads.send", {}))
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(400)
+      vi.setSystemTime(Date.now() + 30_000)
+      await vi.advanceTimersByTimeAsync(100)
+      handshake()
+      expect(latest().calls()).toHaveLength(1)
+
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(400)
+      vi.setSystemTime(Date.now() + 29_600)
+      await vi.advanceTimersByTimeAsync(100)
+      const before = latest().calls().length
+      handshake()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(latest().calls()).toHaveLength(before)
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MAY_HAVE_RUN_MESSAGE })
+    })
+
+    it("still sends a call whose outage stayed under the limit", async () => {
+      const transport = setup()
+      const send = track(transport.call("threads.send", {}))
+      vi.setSystemTime(Date.now() + 59_000)
+      handshake()
+      expect(latest().calls()).toHaveLength(1)
+      latest().result(1)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(send.value).toEqual({ result: null })
+    })
+
     it("never times out a call that waits on a live link", async () => {
       const transport = setup()
       handshake(["call-keys"])
