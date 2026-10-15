@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events"
+import { readFile } from "node:fs/promises"
 import { expect, layer } from "@effect/vitest"
 import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -14,6 +15,7 @@ import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
+import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
 import { ThreadNaming } from "../services/ThreadNaming.ts"
@@ -34,7 +36,17 @@ import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 
-vi.mock("electron", () => ({ BrowserWindow: {}, safeStorage: { isEncryptionAvailable: () => false } }))
+vi.mock("electron", async () => {
+  const { mkdtempSync } = await import("node:fs")
+  const { tmpdir } = await import("node:os")
+  const { join } = await import("node:path")
+  const userData = mkdtempSync(join(tmpdir(), "kkcode-mcp-"))
+  return {
+    app: { getPath: () => userData },
+    BrowserWindow: {},
+    safeStorage: { isEncryptionAvailable: () => false },
+  }
+})
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
@@ -97,6 +109,7 @@ const core = Layer.mergeAll(
     Layer.provideMerge(Settings.layer),
   ),
   Messages.layer,
+  Attachments.layer,
   secretsLayer,
   credentialsLayer,
 )
@@ -571,6 +584,20 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(fake.created() - before).toBe(1)
       expect(yield* vm.get(a)).toMatchObject({ status: "running", control: "agent" })
       expect(pushes).toContainEqual({ type: "vm.updated", threadId: a, vm: { status: "starting" } })
+    }),
+  )
+
+  it.effect("vm_screenshot with save stores the PNG on the host and returns Markdown for it", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_screenshot", { save: true })
+      expect(result.isError).toBe(false)
+      const path = /!\[[^\]]*\]\(<([^>]+)>\)/.exec(result.text)?.[1]
+      expect(path).toMatch(new RegExp(`/attachments/${a}/.+\\.png$`))
+      expect(yield* Effect.promise(() => readFile(path!))).toStrictEqual(FAKE_PNG)
+      expect(result.images).toStrictEqual([FAKE_PNG.toString("base64")])
     }),
   )
 

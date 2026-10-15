@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { type McpSchema, Toolkit } from "effect/ai"
+import { Attachments } from "../../services/Attachments.ts"
 import type { VmAction } from "../../services/tinyVm/rfb.ts"
 import type { ExecResult } from "../../services/tinyVm/sbx.ts"
 import { TinyVm } from "../../services/tinyVm/TinyVm.ts"
@@ -46,6 +47,14 @@ const HANDED_BACK =
 export const VmTools = Toolkit.make(
   McpTool.make("vm_screenshot", {
     description: `Take a screenshot of the tiny VM's 1280×800 desktop. ${STARTS}`,
+    parameters: Schema.Struct({
+      save: Schema.optionalKey(
+        Schema.Boolean.annotate({
+          description:
+            "Also save the PNG on this machine and return Markdown that embeds it, so you can show the screen to the user in your reply.",
+        }),
+      ),
+    }),
   }),
   McpTool.make("vm_click", {
     description: `Click in the tiny VM at a point of the latest screenshot. ${STARTS} ${WAITS} ${SHOWS}`,
@@ -117,15 +126,29 @@ export const VmTools = Toolkit.make(
   }),
 )
 
+const shown = (data: Uint8Array, caption: string): ReadonlyArray<McpSchema.ContentBlock> => [
+  { type: "text", text: caption },
+  { type: "image", data, mimeType: "image/png" },
+]
+
 export const vmToolsLayer = VmTools.toLayer(
   Effect.gen(function* () {
     const tinyVm = yield* TinyVm
+    const attachments = yield* Attachments
 
     const screen = (threadId: string, caption: string) =>
-      Effect.map(tinyVm.screenshot(threadId), (data): ReadonlyArray<McpSchema.ContentBlock> => [
-        { type: "text", text: caption },
-        { type: "image", data, mimeType: "image/png" },
-      ])
+      Effect.map(tinyVm.screenshot(threadId), (data) => shown(data, caption))
+
+    /** The angle brackets keep a path with spaces, like `Application Support`, one Markdown link. */
+    const saveScreen = (threadId: string) =>
+      Effect.gen(function* () {
+        const data = yield* tinyVm.screenshot(threadId)
+        const { path } = yield* attachments.stage(threadId, {
+          dataUrl: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
+          name: "vm-screenshot.png",
+        })
+        return shown(data, `Screen 1280×800, saved to ${path}. Embed it with: ![VM screenshot](<${path}>)`)
+      })
 
     /** Performs one pointer or keyboard action, then shows the agent the screen it left. */
     const actAndLook = (action: VmAction, done: string) =>
@@ -137,7 +160,8 @@ export const vmToolsLayer = VmTools.toLayer(
       })
 
     return VmTools.of({
-      vm_screenshot: () => McpTool.CallingThread.use((threadId) => screen(threadId, "Screen 1280×800.")),
+      vm_screenshot: ({ save = false }) =>
+        McpTool.CallingThread.use((threadId) => (save ? saveScreen(threadId) : screen(threadId, "Screen 1280×800."))),
       vm_click: ({ x, y, button = "left", clicks = 1 }) =>
         actAndLook(
           { type: "click", x, y, button, clicks },
