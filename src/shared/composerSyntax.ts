@@ -1,6 +1,6 @@
-import type { AgentCommand } from "../../shared/agent.ts"
-import type { Thread } from "../../shared/domain.ts"
-import { mentionedThreadId } from "../../shared/threadMention.ts"
+import type { AgentCommand } from "./agent.ts"
+import type { Thread } from "./domain.ts"
+import { mentionedThreadId, threadMention } from "./threadMention.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "command" | "mention"
 
@@ -147,4 +147,42 @@ export function matchThreads<T extends Pick<Thread, "title">>(threads: ReadonlyA
     (thread) => !titleStarts.includes(thread) && thread.title.toLowerCase().includes(needle),
   )
   return [...titleStarts, ...titleContains]
+}
+
+const MAX_SUGGESTIONS = 50
+
+/** One row of the completion list. `insert` replaces the token at the caret. */
+export type Suggestion =
+  | { readonly type: "command"; readonly insert: string; readonly command: AgentCommand }
+  | { readonly type: "file"; readonly insert: string; readonly path: string }
+  | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
+
+/** Threads then files for `@`, else the commands of the typed trigger, at most `MAX_SUGGESTIONS`. */
+export const suggestionsFor = (
+  completion: CompletionQuery,
+  commands: ReadonlyArray<AgentCommand>,
+  files: ReadonlyArray<string>,
+  threads: ReadonlyArray<Thread>,
+): ReadonlyArray<Suggestion> => {
+  const { trigger } = completion
+  const suggestions: ReadonlyArray<Suggestion> =
+    trigger === "@"
+      ? [
+          ...matchThreads(threads, completion.query).map((thread): Suggestion => ({
+            type: "thread",
+            insert: threadMention(thread.id),
+            thread,
+          })),
+          ...matchFiles(files, completion.query).map((path): Suggestion => ({
+            type: "file",
+            insert: `@${path}`,
+            path,
+          })),
+        ]
+      : matchCommands(commands, { ...completion, trigger }).map((command) => ({
+          type: "command",
+          insert: `${command.trigger}${command.name}`,
+          command,
+        }))
+  return suggestions.slice(0, MAX_SUGGESTIONS)
 }
