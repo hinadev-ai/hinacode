@@ -35,14 +35,14 @@ What it does:
 
 1. Refuses if `$PORT` already answers CDP or `$DATA` belongs to a live instance.
 2. Starts the user-local Xvfb (`~/.local/xvfb/usr/bin/Xvfb :99 -screen 0 1600x1000x24`) if `/tmp/.X11-unix/X99` is missing. Xvfb is shared and is never stopped by cleanup.
-3. Runs `pnpm build`, then `KKCODE_USER_DATA=$DATA DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --use-mock-keychain --remote-debugging-port=$PORT out/main/index.js` in a new session. The session id goes to `$DATA/kk-verify.sid`, the log to `$DATA/electron.log`.
+3. Runs `pnpm build`, then `KKCODE_USER_DATA=$DATA DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=$PORT out/main/index.js` in a new session. The session id goes to `$DATA/kk-verify.sid`, the log to `$DATA/electron.log`.
 4. Waits until `window.kkcode.rpc("settings.get")` answers, then moves the automations webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds).
 
 Ready means it printed `kkcode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
 
 Isolation: each instance needs its own `KKCODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own kkcode or another agent's port 9222 to 9234.
 
-Verification must never access the user's `kkcode Safe Storage` Keychain item. On macOS, always pass `--use-mock-keychain`, including hand-run launches and restarts. `KKCODE_USER_DATA` isolates files but does not isolate the login Keychain. The flag uses Chromium's public test key, so save only dummy secrets in these profiles. Never ask the user to approve a Keychain prompt for verification. Stop the test instance if one appears.
+Verification must never access the user's `kkcode Safe Storage` Keychain item. An unpackaged run (`out/main/index.js`) switches itself to Chromium's mock keychain, so no flag is needed. A packaged build does not, so pass `--use-mock-keychain` when you launch one by hand. The mock key is public, so save only dummy secrets in these profiles. Never ask the user to approve a Keychain prompt for verification. Stop the test instance if one appears.
 
 ## Doctor
 

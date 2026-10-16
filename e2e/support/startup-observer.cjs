@@ -1,10 +1,5 @@
 const { app } = require("electron")
 
-if (process.platform === "darwin" && !app.commandLine.hasSwitch("use-mock-keychain")) {
-  process.stderr.write("macOS e2e verification requires --use-mock-keychain; refusing to access the real Keychain.\n")
-  app.exit(1)
-}
-
 globalThis.kkcodeStartupAppearance = new Promise((done, fail) => {
   app.once("browser-window-created", (_, nativeWindow) => {
     if (nativeWindow.isVisible()) {
