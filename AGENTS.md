@@ -1,6 +1,6 @@
-# kkcode
+# KKCode
 
-kkcode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
+KKCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
 We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and automations triggered by webhooks or by GitHub, Linear and Slack pollers. Read `README.md` for the full feature list.
 
@@ -8,7 +8,7 @@ We are building a harness, not a chat app. Our features help a developer manage 
 
 - **Ambitious ideas, simple systems.** Propose the bold version of a feature, then build it with as few moving parts as possible. A single SQLite file, a single `rpc` channel, and one `AgentProvider` interface are deliberate choices. Don't add a queue, a cache, a daemon or a framework until something actually breaks without it.
 - **Delete before you add.** If a feature can be built by removing a special case, do that.
-- **Dogfood.** kkcode is built with kkcode. If the agent workflow is painful while you work here, that pain is a product bug.
+- **Dogfood.** KKCode is built with KKCode. If the agent workflow is painful while you work here, that pain is a product bug.
 - **End to end in small slices.** Ship one vertical path that works in the real app before you generalize it.
 
 ## Commands
@@ -53,6 +53,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
 - Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
+- The product's display name is KKCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `kkcode`: `app.setName` (it picks the userData folder and the `kkcode Safe Storage` Keychain item), the MCP server, `kkcode://`, `kkcode serve`, storage keys and service tags.
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
 
 ## Verifying in the real app
@@ -65,7 +66,7 @@ Add skills under `.agents/skills/`. `.claude/skills` is a symlink to it.
 
 ## Security
 
-kkcode runs agents that execute code on the user's machine. Hold a few boundaries firmly and keep everything else simple.
+KKCode runs agents that execute code on the user's machine. Hold a few boundaries firmly and keep everything else simple.
 
 - **Boundaries we hold:**
   - The renderer is sandboxed and only the top-level app frame may call `rpc`.
@@ -93,7 +94,7 @@ Keep docs short. Update a doc when its feature changes, and delete it when the f
 
 ### Users
 
-Developers who run several Claude Code and Codex agents at once across repositories and worktrees. They glance at kkcode between other work. The job is to see which agent needs them (an approval, a question, a failed setup), steer it, review what it changed, and ship the PR. Their attention is the scarce resource, and the UI should spend it only when an agent actually needs a human.
+Developers who run several Claude Code and Codex agents at once across repositories and worktrees. They glance at KKCode between other work. The job is to see which agent needs them (an approval, a question, a failed setup), steer it, review what it changed, and ship the PR. Their attention is the scarce resource, and the UI should spend it only when an agent actually needs a human.
 
 ### Brand Personality
 
