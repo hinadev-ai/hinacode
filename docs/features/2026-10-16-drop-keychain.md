@@ -31,7 +31,7 @@ One rule: only the packaged desktop app uses the real Keychain.
 
 Migration: none. The release app's rows are untouched. A dev profile or a cloud with rows sealed under the real key reads them as unset once: a cloud prints a new pairing URL and its phones and desktops pair again. A Linear key has to be saved again.
 
-AGENTS.md: secrets still go through `services/Secrets.ts` and `safeStorage`. The new rule is that only the packaged desktop app uses the real Keychain, so a launch never needs `--use-mock-keychain`.
+AGENTS.md: secrets still go through `services/Secrets.ts` and `safeStorage`. The new rule is that only the packaged desktop app uses the real Keychain, so an unpackaged launch never needs `--use-mock-keychain`.
 
 ## Out of scope
 
