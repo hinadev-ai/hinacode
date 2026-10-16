@@ -48,7 +48,7 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
   root: Schema.String,
 }) {
   override get message(): string {
-    return `${this.root} is not a project or worktree kkcode knows`
+    return `${this.root} is not a project or worktree KKCode knows`
   }
 }
 

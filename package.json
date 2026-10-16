@@ -5,8 +5,8 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "postinstall": "node scripts/node-pty-spawn-helper.mjs && node scripts/dev-app-identity.mjs",
-    "dev": "electron-vite dev",
+    "postinstall": "node scripts/node-pty-spawn-helper.mjs",
+    "dev": "node scripts/dev-app-identity.mjs && electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --publish never",

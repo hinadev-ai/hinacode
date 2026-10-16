@@ -554,7 +554,7 @@ const make = Effect.gen(function* () {
                     yield* client.respond(message.id, { action: "decline", content: null, _meta: null })
                   }
                 } else {
-                  yield* client.respondError(message.id, -32601, `kkcode does not support ${message.method}`)
+                  yield* client.respondError(message.id, -32601, `KKCode does not support ${message.method}`)
                 }
                 return false
               }

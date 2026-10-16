@@ -23,7 +23,7 @@ export const PullRequestTools = Toolkit.make(
   }),
   McpTool.make("watch_pull_request", {
     description:
-      "Watch a pull request for this thread instead of polling it yourself. kkcode checks it every minute and sends this thread a new message when something you care about changes, so end your turn after calling this. The watch ends on its own when the pull request merges or closes. Links the pull request first when it is not linked yet.",
+      "Watch a pull request for this thread instead of polling it yourself. KKCode checks it every minute and sends this thread a new message when something you care about changes, so end your turn after calling this. The watch ends on its own when the pull request merges or closes. Links the pull request first when it is not linked yet.",
     parameters: Schema.Struct({
       url: PullRequestUrl,
       events: Schema.optionalKey(
@@ -69,7 +69,7 @@ export const pullRequestToolsLayer = PullRequestTools.toLayer(
           Effect.map(
             pullRequests.watch(threadId, url, kinds ?? []),
             (link) =>
-              `Watching ${link.url} for ${link.watch?.events.join(", ") ?? ""}. kkcode checks it every minute and will send this thread a message when one of those changes. Do not poll for it.`,
+              `Watching ${link.url} for ${link.watch?.events.join(", ") ?? ""}. KKCode checks it every minute and will send this thread a message when one of those changes. Do not poll for it.`,
           ),
         ),
       unwatch_pull_request: ({ url }) =>

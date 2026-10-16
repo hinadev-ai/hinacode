@@ -43,7 +43,9 @@ jobs:
         run: pnpm dist --mac -c.mac.notarize=false
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-      - uses: actions/upload-artifact@v4
+      # Only the release job reads these, so PR builds check packaging without storing installers.
+      - if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v4
         with:
           name: mac
           path: |
@@ -65,7 +67,9 @@ jobs:
         env:
           # Actions mounts HOME at /github/home, which Wine refuses because root does not own it.
           WINEPREFIX: /root/.wine
-      - uses: actions/upload-artifact@v4
+      # Only the release job reads these, so PR builds check packaging without storing installers.
+      - if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v4
         with:
           name: linux-and-windows
           path: |

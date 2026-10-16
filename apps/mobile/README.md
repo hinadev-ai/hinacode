@@ -1,6 +1,6 @@
-# kkcode mobile
+# KKCode mobile
 
-The phone app for kkcode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, merge pull requests, and run a shell in a thread's worktree. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+The phone app for KKCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, merge pull requests, and run a shell in a thread's worktree. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
 
 This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
 

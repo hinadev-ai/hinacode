@@ -196,7 +196,7 @@ const make = Effect.gen(function* () {
   // Setup scripts run in this process, so a row still preparing at boot lost its script to a quit or
   // crash. Rerunning an arbitrary script unasked is not safe, so it ends as failed like any other.
   yield* sql`
-    UPDATE worktree SET status = 'failed', setup_log = setup_log || ${"\nSetup was interrupted when kkcode quit.\n"}
+    UPDATE worktree SET status = 'failed', setup_log = setup_log || ${"\nSetup was interrupted when KKCode quit.\n"}
     WHERE status = 'preparing'
   `.pipe(Effect.mapError(persistence("worktrees.failInterrupted")))
 

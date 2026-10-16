@@ -141,7 +141,7 @@ export const makeCodexClient = (options: {
     }
 
     const initializeParams: InitializeParams = {
-      clientInfo: { name: "kkcode", title: "kkcode", version: options.clientVersion },
+      clientInfo: { name: "kkcode", title: "KKCode", version: options.clientVersion },
       capabilities: { experimentalApi: true },
     }
     yield* request("initialize", initializeParams, INITIALIZE_TIMEOUT).pipe(

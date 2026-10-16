@@ -1,5 +1,5 @@
 appId: dev.kkcode.app
-productName: kkcode
+productName: KKCode
 directories:
   output: dist
 # node-pty ships N-API prebuilds for macOS and Windows, and Linux builds it from source at install time.

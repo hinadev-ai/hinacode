@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { app, BrowserWindow, net, protocol, session, shell } from "electron"
+import { app, BrowserWindow, Menu, net, protocol, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
@@ -72,7 +72,7 @@ if (userDataOverride) app.setPath("userData", userDataOverride)
 // Electron keys the lock on userData. A second process on the same database would run its own pollers and
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
-  console.error(`kkcode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
+  console.error(`KKCode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
   // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
   app.exit(serve ? 1 : 0)
 }
@@ -242,7 +242,7 @@ const createWindow = () => {
     minHeight: 480,
     show: false,
     backgroundColor: "#0a0a0a",
-    title: "kkcode",
+    title: "KKCode",
     icon,
     // The renderer draws its own title bar around the traffic lights (see TitleBar.tsx).
     ...(process.platform === "darwin" && { titleBarStyle: "hidden", trafficLightPosition: { x: 14, y: 13 } }),
@@ -291,13 +291,38 @@ const startCloud = async (
   }
   const pairing = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.pairing))
   const lines = [
-    "kkcode cloud",
+    "KKCode cloud",
     `data: ${userData}`,
     "pair a client with one of:",
     ...pairing.hosts.map((host) => `  ${pairingUrl(host, pairing.port, pairing.token)}`),
   ]
   process.stdout.write(`${lines.join("\n")}\n`)
 }
+
+// The default menu labels its app items with `app.name`, which stays "kkcode" to keep userData and the Keychain item.
+const setMacMenu = () =>
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "KKCode",
+        submenu: [
+          { role: "about", label: "About KKCode" },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide", label: "Hide KKCode" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit", label: "Quit KKCode" },
+        ],
+      },
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
+    ]),
+  )
 
 app.whenReady().then(async () => {
   const userData = app.getPath("userData")
@@ -330,6 +355,7 @@ app.whenReady().then(async () => {
   }
   registerIpc(runtime, appUrl)
   app.dock?.setIcon(icon)
+  if (process.platform === "darwin") setMacMenu()
   serveAttachments()
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)

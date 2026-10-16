@@ -1,6 +1,6 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# kkcode
+# KKCode
 
 A local desktop app for running Claude Code, Codex and Muse Code against your repositories. One sidebar of threads grouped by project, each thread optionally in its own git worktree, every agent streaming into the same chat.
 
@@ -17,7 +17,7 @@ A local desktop app for running Claude Code, Codex and Muse Code against your re
 - An activity bar on the right switches the thread panel between views, each with its own shortcut: details (workspace, setup log, and TCP ports opened by processes the thread spawned, each with a kill button), a file explorer with git status and a read-only highlighted file viewer, changes with diffs, pull requests, and subagents.
 - A browser view for the thread's dev server. It lists the ports the thread listens on, and Select element picks a part of the page into the message as a screenshot with its URL, selector, HTML and React component names.
 - GitHub through your `gh` login. Each pull request shows its title, draft, open, merged or closed state, CI checks and review decision, refreshed every minute. A worktree branch without a pull request gets a button that pushes it and runs `gh pr create --fill`. Settings > Integrations shows whether `gh` is installed and signed in.
-- Pull request watches. A thread can watch a linked pull request, from the pull requests panel or the agent's `watch_pull_request` tool. kkcode checks it every minute and sends the thread a message when checks fail or pass, the review changes, the branch starts to conflict, or the pull request merges or closes, so the agent can fix CI or answer the review without being asked. The watch ends when the pull request does, and an eye in the sidebar shows which threads are watching.
+- Pull request watches. A thread can watch a linked pull request, from the pull requests panel or the agent's `watch_pull_request` tool. KKCode checks it every minute and sends the thread a message when checks fail or pass, the review changes, the branch starts to conflict, or the pull request merges or closes, so the agent can fix CI or answer the review without being asked. The watch ends when the pull request does, and an eye in the sidebar shows which threads are watching.
 - Automations start a thread from a prompt template with `{{issue.title}}`-style placeholders, optionally in its own worktree. Triggers are a signed webhook and pollers for new GitHub issues, Linear issues and Slack mentions.
 - Remote mode. Settings > Remote starts a WebSocket listener and shows a pairing QR code. The phone app in `apps/mobile` (Expo) lists threads, streams transcripts, answers approvals and questions, sends and steers prompts, merges pull requests and opens a shell in the worktree, over the same rpc contract as the desktop window.
 - English and 繁體中文, switchable in settings.
@@ -91,7 +91,7 @@ Adding an agent backend means one implementation of `AgentProvider` in `src/main
 | `pnpm test`             | Both Vitest projects.                                                                                                                                          |
 | `pnpm test:e2e`         | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
 
-Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own kkcode on a throwaway `KKCODE_USER_DATA`, seeds preconditions through `window.kkcode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
+Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own KKCode on a throwaway `KKCODE_USER_DATA`, seeds preconditions through `window.kkcode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
 
 Scenarios that depend on native pointer capture, scrolling or window focus carry `@desktop`. They run with one worker after the parallel scenarios finish, because separate app profiles still share the desktop's focus and input.
 
@@ -101,7 +101,7 @@ Tests never wait on wall-clock timers; oxlint rejects `setTimeout`, `setInterval
 
 ## Acknowledgements
 
-Several designs in kkcode follow [T3 Code](https://github.com/pingdotgg/t3code) (MIT, copyright 2026 T3 Tools Inc.), reimplemented here rather than copied:
+Several designs in KKCode follow [T3 Code](https://github.com/pingdotgg/t3code) (MIT, copyright 2026 T3 Tools Inc.), reimplemented here rather than copied:
 
 - Effect services as `Context.Service` classes with a `make` effect and a `layer` export, and migrations registered through `Migrator.fromRecord`.
 - The MCP server design: Effect's `McpServer.layerHttp` behind bearer auth, one random credential per thread, injected into the agent's MCP config. The pull request tools (`link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests`) and `request_secret` share T3 Code's names.
