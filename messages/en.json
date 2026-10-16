@@ -675,6 +675,7 @@
   "settings_account_loading": "Checking the account…",
   "settings_account_signed_in": "Signed in as {email}",
   "settings_account_signed_in_no_email": "Signed in",
+  "settings_account_reveal": "Click to show",
   "settings_account_api_key": "Uses an API key",
   "settings_account_external": "Uses {service} credentials",
   "settings_account_signed_out_claude": "Not signed in. Run claude in a terminal, then /login.",

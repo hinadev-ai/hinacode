@@ -675,6 +675,7 @@
   "settings_account_loading": "アカウント情報を確認中…",
   "settings_account_signed_in": "{email} としてログイン中",
   "settings_account_signed_in_no_email": "ログイン済み",
+  "settings_account_reveal": "クリックして表示",
   "settings_account_api_key": "API キーを使用中",
   "settings_account_external": "{service} の認証情報を使用中",
   "settings_account_signed_out_claude": "ログインしていません。ターミナルで `claude` を起動し、`/login` を実行してください。",

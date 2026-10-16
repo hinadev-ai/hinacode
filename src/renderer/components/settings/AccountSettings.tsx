@@ -1,7 +1,7 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, useId, useState, useTransition } from "react"
+import { type FormEvent, type ReactNode, useId, useState, useTransition } from "react"
 import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -202,24 +202,8 @@ export function AccountStatus({ provider, account }: { provider: ProviderId; acc
 
 function describeAccount(provider: ProviderId, account: AgentAccount, cliLogin: boolean) {
   switch (account.type) {
-    case "subscription": {
-      const details = [account.plan, account.organization].filter((detail) => detail !== null)
-      return (
-        <>
-          <span className="text-foreground">
-            {account.email === null
-              ? m.settings_account_signed_in_no_email()
-              : m.settings_account_signed_in({ email: account.email })}
-          </span>
-          {details.map((detail) => (
-            <span key={detail}>
-              <span aria-hidden>· </span>
-              {detail}
-            </span>
-          ))}
-        </>
-      )
-    }
+    case "subscription":
+      return <SubscriptionStatus email={account.email} plan={account.plan} organization={account.organization} />
     case "apiKey":
       return m.settings_account_api_key()
     case "external":
@@ -227,6 +211,74 @@ function describeAccount(provider: ProviderId, account: AgentAccount, cliLogin: 
     case "signedOut":
       return cliLogin ? signedOutHint[provider]() : m.settings_account_signed_out()
   }
+}
+
+function signedInTextAroundEmail(): [before: string, after: string] {
+  const slot = "\u0000"
+  const [before = "", after = ""] = m.settings_account_signed_in({ email: slot }).split(slot)
+  return [before, after]
+}
+
+function SubscriptionStatus({
+  email,
+  plan,
+  organization,
+}: {
+  email: string | null
+  plan: string | null
+  organization: string | null
+}) {
+  const [revealed, setRevealed] = useState(false)
+  const reveal = () => setRevealed(true)
+  const [beforeEmail, afterEmail] = signedInTextAroundEmail()
+  return (
+    <>
+      <span className="text-foreground">
+        {email === null ? (
+          m.settings_account_signed_in_no_email()
+        ) : (
+          <>
+            {beforeEmail}
+            <Private revealed={revealed} onReveal={reveal}>
+              {email}
+            </Private>
+            {afterEmail}
+          </>
+        )}
+      </span>
+      {plan !== null && <Detail>{plan}</Detail>}
+      {organization !== null && (
+        <Detail>
+          <Private revealed={revealed} onReveal={reveal}>
+            {organization}
+          </Private>
+        </Detail>
+      )}
+    </>
+  )
+}
+
+function Detail({ children }: { children: ReactNode }) {
+  return (
+    <span>
+      <span aria-hidden>· </span>
+      {children}
+    </span>
+  )
+}
+
+function Private({ revealed, onReveal, children }: { revealed: boolean; onReveal: () => void; children: string }) {
+  if (revealed) return children
+  return (
+    <button
+      type="button"
+      onClick={onReveal}
+      title={m.settings_account_reveal()}
+      className="cursor-pointer rounded-sm blur-xs select-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      {children}
+    </button>
+  )
 }
 
 interface AddAccountDialogProps {

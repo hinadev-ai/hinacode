@@ -657,6 +657,7 @@
   "settings_account_loading": "正在確認帳號…",
   "settings_account_signed_in": "已登入 {email}",
   "settings_account_signed_in_no_email": "已登入",
+  "settings_account_reveal": "點擊以顯示",
   "settings_account_api_key": "使用 API 金鑰",
   "settings_account_external": "使用 {service} 的憑證",
   "settings_account_signed_out_claude": "尚未登入。請在終端機執行 claude，再輸入 /login。",
