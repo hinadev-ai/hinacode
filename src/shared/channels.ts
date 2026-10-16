@@ -4,7 +4,6 @@ export const EVENT_CHANNEL = "event"
 /** Custom scheme main serves staged attachments from, so the sandboxed renderer can show thumbnails. */
 export const ATTACHMENT_PROTOCOL = "hinacode-attachment"
 
-/** `environment` names the cloud the file was staged on; main fetches it from there. */
 export const attachmentUrl = (path: string, environment: string | null = null) =>
   `${ATTACHMENT_PROTOCOL}://file/${encodeURIComponent(path)}${environment === null ? "" : `?environment=${encodeURIComponent(environment)}`}`
 

@@ -114,7 +114,6 @@ type AppRuntime = ManagedRuntime.ManagedRuntime<GitHub.GitHub | Files.Files | En
 
 const decodeCloudFile = Schema.decodeUnknownOption(RpcMethods["fs.preview"].response)
 
-/** Asks a cloud for a file it answers as a data URL, since the path only exists on that machine. */
 const fetchFromCloud = async (runtime: AppRuntime, environment: string, call: Environments.ForwardedCall) => {
   const envelope = await runtime.runPromise(
     Effect.flatMap(Environments.Environments, (environments) => environments.forward(environment, call)),
@@ -129,10 +128,7 @@ const sandboxed = (response: Response) => {
   return new Response(response.body, { status: response.status, headers })
 }
 
-/**
- * Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. With
- * `?environment=<id>` the file was staged on that cloud, which answers with its bytes and checks the dir itself.
- */
+/** Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
 const serveAttachments = (runtime: AppRuntime) =>
   protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {
     const url = new URL(request.url)
@@ -171,9 +167,9 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
   })
 
 /**
- * Serves `hinacode-file://root/<encoded root>/<path>` for files inside a project root or worktree, read from the cloud
- * that owns the root when one does. The CSP sandbox runs every served document in an opaque origin without popups or
- * top navigation, however it is embedded, so an HTML file can run its scripts but never reach the app.
+ * Serves `hinacode-file://root/<encoded root>/<path>` for files inside a project root or worktree. The CSP
+ * sandbox runs every served document in an opaque origin without popups or top navigation, however it is
+ * embedded, so an HTML file can run its scripts but never reach the app.
  */
 const serveProjectFiles = (runtime: AppRuntime) =>
   protocol.handle(PROJECT_FILE_PROTOCOL, async (request) => {

@@ -34,7 +34,6 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
   )
 }
 
-/** Where the image is served from: this desktop, or the cloud the open thread runs on. */
 const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.path, useOpenThreadEnvironment())
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {

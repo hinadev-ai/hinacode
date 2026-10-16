@@ -15,6 +15,7 @@ import {
   REMOTE_PROTOCOL_VERSION,
   type RemoteFeature,
   type ServerFrame,
+  SLOW_CONSUMER_BYTES,
 } from "../../shared/remote.ts"
 import { type AppServices, dispatch } from "../ipc.ts"
 import { PushBroadcast } from "../services/Events.ts"
@@ -33,7 +34,6 @@ import {
 const AUTH_TIMEOUT = Duration.seconds(5)
 const HEARTBEAT_INTERVAL = Duration.seconds(20)
 const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
-const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 

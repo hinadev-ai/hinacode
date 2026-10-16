@@ -1,4 +1,3 @@
-/** Files the viewer previews instead of showing their text, by extension, with the MIME type they are served as. */
 const previewMimes: Readonly<Record<string, string>> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -24,7 +23,6 @@ const previewMimes: Readonly<Record<string, string>> = {
   htm: "text/html",
 }
 
-/** What an HTML preview loads next to itself. */
 const assetMimes: Readonly<Record<string, string>> = {
   css: "text/css",
   js: "text/javascript",
@@ -39,7 +37,6 @@ const assetMimes: Readonly<Record<string, string>> = {
 
 export const extensionOf = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowerCase()
 
-/** The MIME type of a file the viewer previews, or undefined for one it shows as text. */
 export const previewMimeOf = (name: string): string | undefined => previewMimes[extensionOf(name)]
 
 export const mimeOf = (name: string): string =>

@@ -363,8 +363,7 @@ const payloadId = (payload: unknown, key: string) => {
   return typeof id === "string" ? id : undefined
 }
 
-/** The payload a cloud gets. A file picked or dropped on this desktop exists only here, so it travels as bytes. */
-const forwardable = (method: RpcMethod, payload: unknown): Effect.Effect<unknown, HandlerError> =>
+const inlineLocalAttachment = (method: RpcMethod, payload: unknown): Effect.Effect<unknown, HandlerError> =>
   method !== "attachments.stage"
     ? Effect.succeed(payload)
     : Schema.decodeUnknownEffect(RpcMethods[method].request)(payload).pipe(
@@ -391,7 +390,7 @@ const route = (raw: unknown, window: BrowserWindow | null) =>
           ? environments.owner(where.entity, owned)
           : undefined
     if (target !== undefined) {
-      return yield* forwardable(method, payload).pipe(
+      return yield* inlineLocalAttachment(method, payload).pipe(
         Effect.flatMap((forwarded) => environments.forward(target, { method, payload: forwarded })),
         Effect.catch((error) => Effect.succeed({ error: { tag: error._tag, message: error.message } })),
       )

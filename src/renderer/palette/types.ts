@@ -16,7 +16,6 @@ export interface PaletteItem {
   readonly keywords?: ReadonlyArray<string>
   readonly chord?: string
   readonly icon?: ReactNode
-  /** The cloud the item lives on, shown after the title so projects with the same name stay apart. */
   readonly cloud?: Cloud
   readonly run: () => void
 }

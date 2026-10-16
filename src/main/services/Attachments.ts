@@ -97,10 +97,6 @@ const stage = (threadId: string, source: AttachmentSource) =>
     return attachment(id, source.name, path, decoded.mime, decoded.data.byteLength)
   })
 
-/**
- * Reads a file on this machine into the `dataUrl` source, so staging it on a cloud sends its bytes instead of a
- * path that only exists here.
- */
 export const inlineSource = (path: string) =>
   Effect.gen(function* () {
     const name = basename(path)

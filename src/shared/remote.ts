@@ -8,6 +8,9 @@ export const REMOTE_PATH = "/remote"
 /** Bumped when a frame changes shape, so an old phone app says "update" instead of failing oddly. */
 export const REMOTE_PROTOCOL_VERSION = 1
 
+/** The listener closes a socket whose unsent output grows past this, so no single answer may be larger. */
+export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
+
 export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 

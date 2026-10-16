@@ -252,7 +252,7 @@ export const RpcMethods = {
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
-  /** A file as a data URL, so a desktop can preview a cloud's media and HTML. Checked like `fs.read`, up to 6 MiB. */
+  /** A file as a data URL, so a desktop can preview a cloud's media and HTML. Checked like `fs.read`. A file too large for one remote frame fails. */
   "fs.preview": rpc(
     Schema.Struct({ root: Schema.String, path: Schema.String }),
     Schema.Struct({ dataUrl: Schema.String }),

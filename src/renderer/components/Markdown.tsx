@@ -33,7 +33,6 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
 const imageSrc = (src: string, environment: EnvironmentId) =>
   githubAssetUrl(src) ?? (src.startsWith("/") ? attachmentUrl(decodeURI(src), environment) : src)
 
-/** A thread on a cloud embeds paths on that cloud. */
 function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   const environment = useOpenThreadEnvironment()
   return (

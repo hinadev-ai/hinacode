@@ -15,7 +15,6 @@ import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
-/** The project's cloud, also matched by name so typing the machine narrows the list. */
 const cloudOf = (project: Project, ctx: PaletteContext): Pick<PaletteItem, "cloud" | "keywords"> => {
   const cloud = ctx.clouds.find((candidate) => candidate.id === project.environmentId)
   return cloud ? { cloud, keywords: [cloud.name] } : {}

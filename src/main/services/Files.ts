@@ -5,6 +5,7 @@ import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ChangedFileStatus, FsEntry, FsEntryKind, FsFileContent } from "../../shared/domain.ts"
 import { mimeOf } from "../../shared/media.ts"
+import { SLOW_CONSUMER_BYTES } from "../../shared/remote.ts"
 import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
@@ -18,8 +19,7 @@ const reasons = {
   tooLarge: "is too large to preview from",
 } as const
 
-/** A cloud sends a preview in one remote frame, which has to fit under the listener's slow-consumer limit. */
-export const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
+const MAX_PREVIEW_BYTES = (SLOW_CONSUMER_BYTES / 4) * 3
 
 /** The renderer asked for something outside the folders hinacode manages, or for something that is gone. */
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
@@ -59,10 +59,7 @@ export class Files extends Context.Service<
     readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
     /** Up to the first `MAX_READ_BYTES` of the file `path` under `root`, checked like `list`. */
     readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
-    /**
-     * The file `path` under `root` as a data URL, checked like `read`, for a desktop previewing a cloud's media or HTML
-     * and what the HTML loads. Fails with `tooLarge` over `MAX_PREVIEW_BYTES`.
-     */
+    /** The file `path` under `root` as a base64 data URL, checked like `read`. Fails with `tooLarge` over `MAX_PREVIEW_BYTES`. */
     readonly preview: (
       root: string,
       path: string,
