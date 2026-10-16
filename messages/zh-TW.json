@@ -499,8 +499,6 @@
   "pr_card_failed": "無法載入此合併請求。它可能是 issue、私人儲存庫，或 gh 尚未登入。",
   "pr_card_loading": "正在載入合併請求…",
   "pr_card_size": "新增 {additions} 行，刪除 {deletions} 行",
-  "pr_create": "建立合併請求",
-  "pr_creating": "正在建立合併請求…",
   "pr_gh_missing": "安裝 GitHub CLI（gh）即可查看合併請求狀態並建立合併請求。",
   "pr_gh_signed_out_before": "在終端機執行",
   "pr_gh_signed_out_after": "即可查看合併請求狀態並建立合併請求。",

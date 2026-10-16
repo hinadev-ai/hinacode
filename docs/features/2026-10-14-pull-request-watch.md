@@ -11,7 +11,7 @@ hinacode already reads every linked pull request through `gh`. It is the right p
 
 ## User flow
 
-1. A thread has a linked pull request, from **Create pull request**, from the agent's `link_pull_request`, or from checking one out.
+1. A thread has a linked pull request, from the agent's `link_pull_request` or from checking one out.
 2. The developer opens the pull requests panel and clicks **Watch for changes** on the pull request. An agent can do the same with the `watch_pull_request` MCP tool, and the agent instructions tell it to prefer that tool over polling after it opens a pull request.
 3. The pull request row and the sidebar thread row show an eye while the watch is live. One click on **Stop watching**, or the `unwatch_pull_request` tool, ends it.
 4. Once a minute the main process reads each watched pull request. When something the watch cares about changes, the thread gets a message that starts a new turn, or steers the running one. The message names the pull request, what changed, and what to do about it. The agent fixes the failing check, resolves the conflict, or answers the review, then pushes. That push is a new head, so the next failure or green run is news again.

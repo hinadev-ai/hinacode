@@ -517,8 +517,6 @@
   "pr_card_failed": "Couldn't load this pull request. It may be an issue, private, or gh may be signed out.",
   "pr_card_loading": "Loading pull request…",
   "pr_card_size": "{additions} lines added, {deletions} lines removed",
-  "pr_create": "Create pull request",
-  "pr_creating": "Creating pull request…",
   "pr_gh_missing": "Install the GitHub CLI (gh) to see pull request status and create pull requests.",
   "pr_gh_signed_out_before": "Run",
   "pr_gh_signed_out_after": "in a terminal to see pull request status and create pull requests.",
