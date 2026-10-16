@@ -1,6 +1,5 @@
 import { create } from "zustand"
-import type { Attachment, CheckoutTarget } from "../../shared/domain.ts"
-import { parsePullRequestSelector } from "../../shared/github.ts"
+import type { Attachment } from "../../shared/domain.ts"
 
 /** A comment on lines of a file, sent as context with the next message. */
 export interface LineComment {
@@ -24,11 +23,6 @@ export interface Draft {
    */
   readonly workspace: { readonly mode: "local" | "worktree"; readonly ref: string } | null
   readonly comments: ReadonlyArray<LineComment>
-}
-
-export const toCheckoutTarget = (ref: string): CheckoutTarget => {
-  const selector = parsePullRequestSelector(ref)
-  return selector === undefined ? { _tag: "branch", ref: ref.trim() } : { _tag: "pullRequest", selector }
 }
 
 export const emptyDraft: Draft = { text: "", attachments: [], workspace: null, comments: [] }

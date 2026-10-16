@@ -14,21 +14,16 @@ import { flushSync } from "react-dom"
 import { RiFileLine } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import { threadMention } from "../../shared/threadMention.ts"
 import {
-  type CompletionQuery,
   completionAt,
   highlight,
-  matchCommands,
-  matchFiles,
-  matchThreads,
+  type Suggestion,
+  suggestionsFor,
   type SyntaxKind,
-} from "../lib/composerSyntax.ts"
+} from "../../shared/composerSyntax.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-
-const MAX_SUGGESTIONS = 50
 
 /** Colors only, never font or spacing: the highlighted copy must wrap exactly like the textarea above it. */
 const syntaxClass: Record<SyntaxKind, string> = {
@@ -42,40 +37,6 @@ const syntaxClass: Record<SyntaxKind, string> = {
 /** Shared by the textarea and the highlighted copy under it, so both lay text out identically. */
 const textLayout =
   "col-start-1 row-start-1 max-h-60 px-2.5 py-2 text-base whitespace-pre-wrap [overflow-wrap:break-word] [scrollbar-gutter:stable] md:text-sm"
-
-type Suggestion =
-  | { readonly type: "command"; readonly insert: string; readonly command: AgentCommand }
-  | { readonly type: "file"; readonly insert: string; readonly path: string }
-  | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
-
-const suggestionsFor = (
-  completion: CompletionQuery,
-  commands: ReadonlyArray<AgentCommand>,
-  files: ReadonlyArray<string>,
-  threads: ReadonlyArray<Thread>,
-): ReadonlyArray<Suggestion> => {
-  const { trigger } = completion
-  const suggestions: ReadonlyArray<Suggestion> =
-    trigger === "@"
-      ? [
-          ...matchThreads(threads, completion.query).map((thread): Suggestion => ({
-            type: "thread",
-            insert: threadMention(thread.id),
-            thread,
-          })),
-          ...matchFiles(files, completion.query).map((path): Suggestion => ({
-            type: "file",
-            insert: `@${path}`,
-            path,
-          })),
-        ]
-      : matchCommands(commands, { ...completion, trigger }).map((command) => ({
-          type: "command",
-          insert: `${command.trigger}${command.name}`,
-          command,
-        }))
-  return suggestions.slice(0, MAX_SUGGESTIONS)
-}
 
 interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | "onChange" | "ref"> {
   readonly ref?: Ref<HTMLTextAreaElement>
