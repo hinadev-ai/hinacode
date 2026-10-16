@@ -7,7 +7,7 @@ Date: 2026-10-14
 
 Every piece of text in a thread used to read at the same brightness. A shell command the agent ran, its green check, and the answer the developer was waiting for all competed for the eye. In the sidebar, a thread that was still working looked exactly like one that had finished and was waiting to be read. On a dark screen the near-white text (oklch 0.985 on 0.145, 19:1) also looked harsh. macOS thickens light-on-dark glyphs unless the page opts out, and nothing in the app opted out.
 
-Developers glance at kkcode between other work. The first glance should land on whatever needs them.
+Developers glance at hinacode between other work. The first glance should land on whatever needs them.
 
 ## The rule
 
@@ -61,7 +61,7 @@ Color carries status on top of the tiers, as `AGENTS.md` describes: amber needs 
 
 The open thread is always Read. The marks keep their color in every tier.
 
-A turn leaves a mark when it ends while its thread is not open or kkcode is in the background. Opening the thread clears it, and so does bringing the window back while the thread is open. Marks live in `localStorage` (`kkcode.unseen`), so they survive a restart. Losing them costs a look at each thread, so they do not belong in SQLite.
+A turn leaves a mark when it ends while its thread is not open or hinacode is in the background. Opening the thread clears it, and so does bringing the window back while the thread is open. Marks live in `localStorage` (`hinacode.unseen`), so they survive a restart. Losing them costs a look at each thread, so they do not belong in SQLite.
 
 **Right-hand panel.** Check runs already list failing first. Failing names are Read and the rest are Receding. Passing and pending checks use muted icons, since neither needs the developer. In Agents, running sub-agents are Receding and finished ones are Read, because their summary is the thing to look at.
 
@@ -72,4 +72,4 @@ A turn leaves a mark when it ends while its thread is not open or kkcode is in t
 
 ## Verification
 
-Seed an isolated instance with threads in every status and a transcript with tool calls, then compare screenshots in light and dark (`verify-kkcode`). Check that contrast stays above 4.5:1 for every tier on every surface it sits on. Hover and expand a tool call to see it brighten. `e2e/features/unseen-results.feature` covers marking, clearing and restart.
+Seed an isolated instance with threads in every status and a transcript with tool calls, then compare screenshots in light and dark (`verify-hinacode`). Check that contrast stays above 4.5:1 for every tier on every surface it sits on. Hover and expand a tool call to see it brighten. `e2e/features/unseen-results.feature` covers marking, clearing and restart.

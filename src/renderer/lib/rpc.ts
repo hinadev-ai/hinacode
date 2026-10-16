@@ -28,7 +28,7 @@ export const call = <M extends RpcMethod>(
   const environment = options?.environment ?? undefined
   return Effect.gen(function* () {
     const encoded = yield* encodeRequest(payload)
-    const envelope = yield* Effect.promise(() => window.kkcode.rpc(method, encoded, environment))
+    const envelope = yield* Effect.promise(() => window.hinacode.rpc(method, encoded, environment))
     if ("error" in envelope) return yield* new RpcError(envelope.error)
     return yield* decodeResponse(envelope.result)
   }).pipe(
@@ -42,7 +42,7 @@ export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<
 const decodePushEvent = Schema.decodeUnknownSync(PushEvent)
 
 export const onPushEvent = (listener: (event: PushEvent) => void) =>
-  window.kkcode.onEvent((raw) => listener(decodePushEvent(raw)))
+  window.hinacode.onEvent((raw) => listener(decodePushEvent(raw)))
 
 /** An atom family over several arguments, keyed by their JSON. Every argument must survive a JSON round trip. */
 const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
@@ -115,7 +115,7 @@ export const accountAtom = familyOf((environment: EnvironmentId, provider: Provi
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
 )
 
-/** Accounts added in kkcode, of every agent. */
+/** Accounts added in hinacode, of every agent. */
 export const accountsAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("accounts.list", undefined, { environment })).pipe(Atom.keepAlive),
 )
@@ -332,7 +332,7 @@ export const threadVmAtom = Atom.family((threadId: string) =>
   }),
 )
 
-/** Whether kkcode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
+/** Whether hinacode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
 )

@@ -19,7 +19,7 @@ export class McpCredentials extends Context.Service<
     /** Called once by the server when it knows its URL. */
     readonly listening: (url: string) => Effect.Effect<void>
   }
->()("kkcode/McpCredentials") {}
+>()("hinacode/McpCredentials") {}
 
 const make = Effect.gen(function* () {
   const secrets = new Map<string, Buffer>()

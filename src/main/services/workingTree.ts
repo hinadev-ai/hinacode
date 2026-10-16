@@ -12,7 +12,7 @@ export const snapshotWorkingTree = (cwd: string) =>
     const git = yield* Git
     const fs = yield* FileSystem.FileSystem
     const realIndex = (yield* git.run(cwd, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim()
-    const index = join(yield* fs.makeTempDirectoryScoped({ prefix: "kkcode-index-" }), "index")
+    const index = join(yield* fs.makeTempDirectoryScoped({ prefix: "hinacode-index-" }), "index")
     // Starting from the real index keeps its stat cache, so `add -A` only rehashes files that changed.
     // A repo without commits may have no index yet.
     if (yield* fs.exists(realIndex)) yield* fs.copyFile(realIndex, index)

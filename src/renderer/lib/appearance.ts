@@ -86,7 +86,7 @@ export function resolveColor(variable: string): string {
 
 declare global {
   interface Window {
-    /** Local Font Access API. Electron grants its permission because kkcode installs no permission handler. */
+    /** Local Font Access API. Electron grants its permission because hinacode installs no permission handler. */
     queryLocalFonts(): Promise<ReadonlyArray<{ readonly family: string }>>
   }
 }

@@ -15,7 +15,7 @@ export class Updates extends Context.Service<
     readonly check: Effect.Effect<void>
     readonly install: Effect.Effect<void>
   }
->()("kkcode/Updates") {}
+>()("hinacode/Updates") {}
 
 /** For a build that never updates in place: a development build, or a cloud, which is replaced as a binary. */
 export const unsupported = (current: string) =>

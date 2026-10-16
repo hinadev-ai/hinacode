@@ -28,4 +28,4 @@ Changing the model or the reasoning effort also needed the pointer.
 
 ## Verification
 
-`commands.test.ts` covers `whenHolds`. In the real app with `verify-kkcode`: Ctrl+L in the terminal clears the screen and keeps focus, Ctrl+B leaves the sidebar alone, Ctrl+P opens the palette and Ctrl+J closes the terminal, and both picker shortcuts open their select and return focus to the message box.
+`commands.test.ts` covers `whenHolds`. In the real app with `verify-hinacode`: Ctrl+L in the terminal clears the screen and keeps focus, Ctrl+B leaves the sidebar alone, Ctrl+P opens the palette and Ctrl+J closes the terminal, and both picker shortcuts open their select and return focus to the message box.

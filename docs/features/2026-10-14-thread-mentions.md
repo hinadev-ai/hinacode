@@ -12,7 +12,7 @@ A developer running several threads often wants one agent to build on another's 
 1. In the composer, the developer types `@`. The suggestion list shows the project's other threads above the files, each with its agent icon, title and model. Typing filters both by title or path.
 2. Arrow keys and Enter or Tab pick a thread. The composer inserts `@thread:<id>` and colors it like a file mention.
 3. The sent message shows the mention as `@<title>`, a link that opens the thread.
-4. The agent sees `@thread:<id>` in the prompt. Its kkcode instructions say this names another thread, so it calls `read_thread` with the id before acting on it.
+4. The agent sees `@thread:<id>` in the prompt. Its hinacode instructions say this names another thread, so it calls `read_thread` with the id before acting on it.
 
 ## Design
 
@@ -43,4 +43,4 @@ Trust boundary: `read_thread` still refuses threads of another project, so a men
 
 - `mcp/server.integration.test.ts` checks the `read_thread` metadata block.
 - `composerSyntax.test.ts` covers matching and highlighting thread mentions.
-- With `verify-kkcode`, type `@` in a thread of a project with two threads, pick the other one, send, and check the rendered link and the agent's `read_thread` call.
+- With `verify-hinacode`, type `@` in a thread of a project with two threads, pick the other one, send, and check the rendered link and the agent's `read_thread` call.

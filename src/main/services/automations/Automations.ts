@@ -70,7 +70,7 @@ export class Automations extends Context.Service<
     readonly runs: (id: string, limit: number) => Effect.Effect<ReadonlyArray<AutomationRun>, PersistenceError>
     readonly webhookUrl: (id: string) => Effect.Effect<{ url: string; listenError: string | null }, Failure>
   }
->()("kkcode/Automations") {}
+>()("hinacode/Automations") {}
 
 /** The automation table row; `lastRun` is joined in separately. */
 const AutomationRow = Schema.Struct({

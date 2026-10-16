@@ -1,6 +1,6 @@
 # Heading 1 with `code`
 
-A paragraph right under a heading. It runs long enough to wrap, so the line height and the measure of the transcript column are visible. **Bold**, _italic_, **_bold italic_**, ~~strikethrough~~, `inline code`, and a [link to the docs](https://github.com/kjj6198/kkcode). A bare URL autolinks: https://github.com/kjj6198/kkcode. A pull request reference: #1.
+A paragraph right under a heading. It runs long enough to wrap, so the line height and the measure of the transcript column are visible. **Bold**, _italic_, **_bold italic_**, ~~strikethrough~~, `inline code`, and a [link to the docs](https://github.com/hinadev-ai/hinacode). A bare URL autolinks: https://github.com/hinadev-ai/hinacode. A pull request reference: #1.
 
 A second paragraph, to show the gap between paragraphs.
 This line follows a soft break, so it joins the paragraph above.\
@@ -113,9 +113,9 @@ flowchart LR
 
 ## Text in other scripts
 
-這是一段繁體中文，用來檢查中英混排時的行高與字距，例如 `pnpm dev` 與 KKCode 之間的間隔。
+這是一段繁體中文，用來檢查中英混排時的行高與字距，例如 `pnpm dev` 與 HinaCode 之間的間隔。
 
-これは日本語の段落です。行の高さと、英数字の KKCode や `git fetch` との混在を確認します。
+これは日本語の段落です。行の高さと、英数字の HinaCode や `git fetch` との混在を確認します。
 
 ## Edge cases
 

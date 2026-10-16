@@ -9,7 +9,7 @@ A developer on a Claude or ChatGPT subscription runs out of the 5-hour or weekly
 
 ## User flow
 
-1. The status bar's left side shows one group per signed-in account, the CLI's own login and each account added in kkcode: the provider icon, a meter of its most-used window, and its windows as "79% used 0m · 66% used 2d 6h · 56% used Fable". The time is when the window resets.
+1. The status bar's left side shows one group per signed-in account, the CLI's own login and each account added in hinacode: the provider icon, a meter of its most-used window, and its windows as "79% used 0m · 66% used 2d 6h · 56% used Fable". The time is when the window resets.
 2. A group is shown in full when it is its provider's only group, or the account the open thread uses. Any other account collapses to its icon, name, meter and top percentage, so several accounts fit. An added account shows its name. The CLI's own login is labeled "Default" only when its provider has another group.
 3. Hovering or focusing a group shows the provider, account name, email and plan, and every window with its label and reset time.
 4. A window at 80% or more turns amber. One at 100% turns red.
@@ -34,4 +34,4 @@ A developer on a Claude or ChatGPT subscription runs out of the 5-hour or weekly
 ## Verification
 
 - Decoding tests feed real-shaped responses from both providers, including a missing `model_scoped`, a null `utilization` and an unknown Codex window.
-- With `verify-kkcode`, compare the bar against Claude's `/usage` and Codex's `/status` for the same accounts. Check both themes.
+- With `verify-hinacode`, compare the bar against Claude's `/usage` and Codex's `/status` for the same accounts. Check both themes.

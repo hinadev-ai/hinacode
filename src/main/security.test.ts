@@ -12,18 +12,20 @@ import {
   projectFileRequest,
 } from "./security.ts"
 
-const packagedDocument = "file:///opt/kkcode/resources/app.asar/out/renderer/index.html"
+const packagedDocument = "file:///opt/hinacode/resources/app.asar/out/renderer/index.html"
 const resolved = (href: string) => new URL(href, packagedDocument).href
 
 describe("externalUrl", () => {
   test("allows http and https", () => {
-    expect(externalUrl("https://github.com/kjj6198/kkcode/pull/1")).toBe("https://github.com/kjj6198/kkcode/pull/1")
+    expect(externalUrl("https://github.com/hinadev-ai/hinacode/pull/1")).toBe(
+      "https://github.com/hinadev-ai/hinacode/pull/1",
+    )
     expect(externalUrl("http://example.com/a?b=1#c")).toBe("http://example.com/a?b=1#c")
   })
 
   test("rejects file URLs, including relative and UNC-style links resolved against the app document", () => {
     expect(externalUrl("file:///etc/passwd")).toBe(null)
-    expect(externalUrl(resolved("/tmp/kkcode-audit-link-target.txt"))).toBe(null)
+    expect(externalUrl(resolved("/tmp/hinacode-audit-link-target.txt"))).toBe(null)
     expect(externalUrl(resolved("notes/readme.md"))).toBe(null)
     expect(externalUrl(resolved("//host/share/payload.exe"))).toBe(null)
     expect(externalUrl(resolved("\\\\host\\share\\payload.exe"))).toBe(null)
@@ -56,9 +58,9 @@ describe("isAppDocument", () => {
   })
 
   test("rejects other local files, remote pages and opaque URLs from the packaged app", () => {
-    expect(isAppDocument("file:///tmp/kkcode-audit/probe.html", packagedDocument)).toBe(false)
+    expect(isAppDocument("file:///tmp/hinacode-audit/probe.html", packagedDocument)).toBe(false)
     expect(isAppDocument(resolved("other.html"), packagedDocument)).toBe(false)
-    expect(isAppDocument("file://host/opt/kkcode/resources/app.asar/out/renderer/index.html", packagedDocument)).toBe(
+    expect(isAppDocument("file://host/opt/hinacode/resources/app.asar/out/renderer/index.html", packagedDocument)).toBe(
       false,
     )
     expect(isAppDocument("https://example.com/", packagedDocument)).toBe(false)
@@ -90,7 +92,7 @@ describe("isTrustedSender", () => {
   })
 
   test("rejects foreign documents and destroyed frames", () => {
-    expect(isTrustedSender(mainFrame("file:///tmp/kkcode-audit/probe.html"), packagedDocument)).toBe(false)
+    expect(isTrustedSender(mainFrame("file:///tmp/hinacode-audit/probe.html"), packagedDocument)).toBe(false)
     expect(isTrustedSender(mainFrame("https://example.com/"), devServer)).toBe(false)
     expect(isTrustedSender(null, packagedDocument)).toBe(false)
   })
@@ -137,7 +139,7 @@ describe("lockDownWebview", () => {
   })
 
   test("refuses a first URL that is not http(s)", () => {
-    for (const src of ["file:///etc/passwd", "javascript:alert(1)", "kkcode-attachment://file/x", ""]) {
+    for (const src of ["file:///etc/passwd", "javascript:alert(1)", "hinacode-attachment://file/x", ""]) {
       expect(lockDownWebview({}, { src })).toBe(false)
     }
   })
@@ -154,9 +156,9 @@ describe("githubAssetId", () => {
   test("refuses anything but a bare attachment id, so the proxy only ever asks GitHub for an attachment", () => {
     expect(githubAssetUrl(`https://github.com/user-attachments/assets/${id}/../../settings`)).toBe(null)
     expect(githubAssetUrl(`https://evil.example/user-attachments/assets/${id}`)).toBe(null)
-    expect(githubAssetId(`kkcode-github-asset://asset/${id}/x`)).toBe(null)
-    expect(githubAssetId(`kkcode-github-asset://other/${id}`)).toBe(null)
-    expect(githubAssetId(`kkcode-github-asset://asset/..%2F${id}`)).toBe(null)
+    expect(githubAssetId(`hinacode-github-asset://asset/${id}/x`)).toBe(null)
+    expect(githubAssetId(`hinacode-github-asset://other/${id}`)).toBe(null)
+    expect(githubAssetId(`hinacode-github-asset://asset/..%2F${id}`)).toBe(null)
   })
 })
 
@@ -178,9 +180,9 @@ describe("projectFileRequest", () => {
   })
 
   test("refuses other hosts and malformed escapes", () => {
-    expect(projectFileRequest("kkcode-file://other/%2Frepo/a.png")).toBe(null)
-    expect(projectFileRequest("kkcode-file://root/%E0%A4%A/a.png")).toBe(null)
-    expect(projectFileRequest("kkcode-file://root/")).toBe(null)
+    expect(projectFileRequest("hinacode-file://other/%2Frepo/a.png")).toBe(null)
+    expect(projectFileRequest("hinacode-file://root/%E0%A4%A/a.png")).toBe(null)
+    expect(projectFileRequest("hinacode-file://root/")).toBe(null)
   })
 })
 

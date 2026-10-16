@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Problem
 
-When an agent asked the user a multiple-choice question, kkcode showed it as a tool approval. Claude's `AskUserQuestion` went through `canUseTool` like any other tool, so the user saw Allow, Allow for session and Deny with the raw JSON. They could not pick an option or type an answer. Codex sent `item/tool/requestUserInput`, which kkcode rejected. In Default mode Codex uses `request_user_input_async` instead, and kkcode dropped those questions from the transcript.
+When an agent asked the user a multiple-choice question, hinacode showed it as a tool approval. Claude's `AskUserQuestion` went through `canUseTool` like any other tool, so the user saw Allow, Allow for session and Deny with the raw JSON. They could not pick an option or type an answer. Codex sent `item/tool/requestUserInput`, which hinacode rejected. In Default mode Codex uses `request_user_input_async` instead, and hinacode dropped those questions from the transcript.
 
 ## User flow
 
@@ -31,4 +31,4 @@ The Claude tool input is decoded with a schema before it reaches the renderer.
 
 ## Verification
 
-With `verify-kkcode`: ask a Claude thread to use AskUserQuestion with a single-select and a multi-select question, answer with an option, a checkbox and typed text, and check the tool result in `threads.transcript`; repeat with Skip. Ask a Codex thread to use `request_user_input_async` and answer the posted card; the next user message holds the answers. For blocking Codex questions, enable `features.default_mode_request_user_input` in the thread config.
+With `verify-hinacode`: ask a Claude thread to use AskUserQuestion with a single-select and a multi-select question, answer with an option, a checkbox and typed text, and check the tool result in `threads.transcript`; repeat with Skip. Ask a Codex thread to use `request_user_input_async` and answer the posted card; the next user message holds the answers. For blocking Codex questions, enable `features.default_mode_request_user_input` in the thread config.

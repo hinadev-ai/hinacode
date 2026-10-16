@@ -5,11 +5,11 @@ Date: 2026-10-11
 
 ## Context
 
-Harnesses that run a standalone Node server and talk to a web client over WebSocket pay off when the agent runs on another machine. kkcode is local only.
+Harnesses that run a standalone Node server and talk to a web client over WebSocket pay off when the agent runs on another machine. hinacode is local only.
 
 ## Decision
 
-kkcode is a single electron-vite package: main, preload and renderer. Agents, git, SQLite, the MCP server and the automation servers all live in the main process. The build is electron-vite 5 with Electron 44 and Vite 7.
+hinacode is a single electron-vite package: main, preload and renderer. Agents, git, SQLite, the MCP server and the automation servers all live in the main process. The build is electron-vite 5 with Electron 44 and Vite 7.
 
 ## Consequences
 

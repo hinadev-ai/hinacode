@@ -130,5 +130,5 @@ export const watchStoppedMessage = (url: string, reason: string): string =>
   [
     `Pull request watch: watching ${url} has ended. ${reason}`,
     "",
-    "Call the kkcode `watch_pull_request` tool if it should be watched again.",
+    "Call the hinacode `watch_pull_request` tool if it should be watched again.",
   ].join("\n")

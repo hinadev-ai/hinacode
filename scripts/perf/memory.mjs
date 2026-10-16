@@ -13,8 +13,8 @@ if (!/^[\w-]+$/.test(label ?? "") || !["history", "claude", "footprint", "startu
   throw new Error("usage: memory.mjs <label> [history|claude|footprint|startup] [--check]")
 const root = process.cwd()
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-const packagedApp = process.env.KKCODE_PERF_APP
-const port = Number(process.env.KKCODE_PERF_PORT ?? 9600)
+const packagedApp = process.env.HINACODE_PERF_APP
+const port = Number(process.env.HINACODE_PERF_PORT ?? 9600)
 if (packagedApp && (port < 9600 || port > 9699)) throw new Error("use a CDP port from 9600 to 9699")
 mkdirSync(join(root, ".context/perf"), { recursive: true })
 mkdirSync(join(root, ".context/shots"), { recursive: true })
@@ -40,7 +40,7 @@ execFileSync(
   ],
   { stdio: "ignore" },
 )
-const env = { ...process.env, KKCODE_USER_DATA: data }
+const env = { ...process.env, HINACODE_USER_DATA: data }
 delete env.ELECTRON_RUN_AS_NODE
 delete env.ELECTRON_RENDERER_URL
 const startedAt = performance.now()
@@ -93,13 +93,13 @@ try {
     throw new Error("wrong renderer")
   const ownership = await app.evaluate(() => ({
     cwd: process.cwd(),
-    data: process.env.KKCODE_USER_DATA,
+    data: process.env.HINACODE_USER_DATA,
     pid: process.pid,
   }))
   if (ownership.cwd !== root || ownership.data !== data) throw new Error("wrong app")
   results.ownership = ownership
   const rpc = async (method, payload) => {
-    const reply = await page.evaluate(async (request) => window.kkcode.rpc(request.method, request.payload), {
+    const reply = await page.evaluate(async (request) => window.hinacode.rpc(request.method, request.payload), {
       method,
       payload,
     })
@@ -176,10 +176,10 @@ try {
       listeners: metric("JSEventListeners"),
       rssBytes: owned.reduce((n, p) => n + p.rssBytes, 0),
       appRssBytes: owned
-        .filter((p) => p.executable.startsWith(packagedApp ? "kkcode" : "Electron"))
+        .filter((p) => p.executable.startsWith(packagedApp ? "hinacode" : "Electron"))
         .reduce((n, p) => n + p.rssBytes, 0),
       cliRssBytes: owned
-        .filter((p) => !p.executable.startsWith(packagedApp ? "kkcode" : "Electron"))
+        .filter((p) => !p.executable.startsWith(packagedApp ? "hinacode" : "Electron"))
         .reduce((n, p) => n + p.rssBytes, 0),
       processes: owned,
       detachedDescendants,
@@ -225,7 +225,7 @@ try {
         encoding: "utf8",
       }),
     )
-    const db = new DatabaseSync(join(data, "kkcode.sqlite"))
+    const db = new DatabaseSync(join(data, "hinacode.sqlite"))
     const digest = createHash("sha256")
     for (const row of db.prepare("SELECT * FROM message ORDER BY rowid").iterate()) digest.update(JSON.stringify(row))
     results.workload = {
@@ -316,7 +316,7 @@ try {
       outputBytes: output.length,
       sha256: createHash("sha256").update(output).digest("hex"),
     }
-    const db = new DatabaseSync(join(data, "kkcode.sqlite"))
+    const db = new DatabaseSync(join(data, "hinacode.sqlite"))
     const now = "2026-10-14T00:00:00.000Z"
     db.prepare(
       "INSERT INTO project (id,name,root_path,setup_script,created_at,updated_at) VALUES (?,?,?,NULL,?,?)",

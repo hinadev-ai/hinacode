@@ -55,7 +55,12 @@ export function NotificationSettings() {
   }
 
   const sendTest = () =>
-    notify("desktop", { alert: "completed", title: "KKCode", body: m.notification_test(), sound: notifications.sound })
+    notify("desktop", {
+      alert: "completed",
+      title: "HinaCode",
+      body: m.notification_test(),
+      sound: notifications.sound,
+    })
 
   return (
     <SettingsSection
@@ -105,7 +110,7 @@ function PermissionNotice() {
   const [askRefused, setAskRefused] = useState(false)
 
   const ask = async () => {
-    const outcome = await callPromise("notifications.askPermission", { title: "KKCode", body: m.notification_test() })
+    const outcome = await callPromise("notifications.askPermission", { title: "HinaCode", body: m.notification_test() })
     if (outcome === "refused") setAskRefused(true)
     refresh()
   }

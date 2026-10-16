@@ -1,5 +1,5 @@
 // @types/novnc__novnc declares "@novnc/novnc/lib/rfb", not the "@novnc/novnc" entry that 1.7 exports, and only
-// takes a WebSocket or RTCDataChannel. These are the parts of noVNC 1.7 kkcode uses.
+// takes a WebSocket or RTCDataChannel. These are the parts of noVNC 1.7 hinacode uses.
 declare module "@novnc/novnc" {
   export interface RfbOptions {
     readonly shared?: boolean

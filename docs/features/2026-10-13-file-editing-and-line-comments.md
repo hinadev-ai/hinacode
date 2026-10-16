@@ -44,7 +44,7 @@ interface ExplorerTree { …; unsaved: Readonly<Record<string, string>> }  // pa
 
 - Comments belong to the draft, not the file. They are context for the next message, so they live, send, fail and restore with the text. Kept in memory like the rest of the draft.
 - `unsaved` holds a path only while it has unsaved edits. Its value is the text the edits started from. That is the `expected` text of the save, and it decides whether the disk moved on.
-- The edits themselves stay in the editor library. `@pierre/diffs` keeps them in its `EditStateManager`, keyed by root and path, and kkcode does not keep a second copy.
+- The edits themselves stay in the editor library. `@pierre/diffs` keeps them in its `EditStateManager`, keyed by root and path, and hinacode does not keep a second copy.
 
 ### rpc
 

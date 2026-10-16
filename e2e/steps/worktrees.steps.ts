@@ -86,7 +86,7 @@ Then("the setup log ends with the branch of {string}", async ({ app, names }, ti
 When("I commit a change in the worktree", async ({ app }) => {
   const { path } = await openWorktree(app.page)
   appendFileSync(join(path, "README.md"), "committed\n")
-  execFileSync("git", ["-C", path, "-c", "user.email=e2e@kkcode", "-c", "user.name=e2e", "commit", "-qam", "work"])
+  execFileSync("git", ["-C", path, "-c", "user.email=e2e@hinacode", "-c", "user.name=e2e", "commit", "-qam", "work"])
 })
 
 Then("the setup log reports that the script exited with code {int}", async ({ app }, code: number) => {

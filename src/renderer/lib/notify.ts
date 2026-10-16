@@ -32,7 +32,7 @@ const playChime = (alert: ThreadAlert) => {
   })
 }
 
-/** `desktop` when the user is in another app, `toast` when they are in kkcode looking at something else. */
+/** `desktop` when the user is in another app, `toast` when they are in hinacode looking at something else. */
 export type Surface = "desktop" | "toast"
 
 /** Status shows as the icon only: amber when it needs the user, red when it failed. */

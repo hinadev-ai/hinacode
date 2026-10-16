@@ -16,8 +16,8 @@ warn() { echo "warn  $*"; }
 sid=$(cat "$data/kk-verify.sid" 2>/dev/null || true)
 if [[ -n "$sid" ]] && pgrep -s "$sid" >/dev/null; then ok "session $sid alive"; else bad "no live session recorded in $data/kk-verify.sid"; fi
 # Chromium overwrites its own /proc/<pid>/environ, so read the env from the session leader (pnpm).
-env_data=$(tr '\0' '\n' <"/proc/$sid/environ" 2>/dev/null | sed -n 's/^KKCODE_USER_DATA=//p')
-[[ "$env_data" == "$data" ]] && ok "KKCODE_USER_DATA=$env_data" || bad "instance uses KKCODE_USER_DATA='$env_data', expected '$data'"
+env_data=$(tr '\0' '\n' <"/proc/$sid/environ" 2>/dev/null | sed -n 's/^HINACODE_USER_DATA=//p')
+[[ "$env_data" == "$data" ]] && ok "HINACODE_USER_DATA=$env_data" || bad "instance uses HINACODE_USER_DATA='$env_data', expected '$data'"
 
 owner=$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
 if [[ -z "$owner" ]]; then

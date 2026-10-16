@@ -62,7 +62,7 @@ export class Attachments extends Context.Service<
       source: AttachmentSource,
     ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
   }
->()("kkcode/Attachments") {}
+>()("hinacode/Attachments") {}
 
 const stage = (threadId: string, source: AttachmentSource) =>
   Effect.gen(function* () {

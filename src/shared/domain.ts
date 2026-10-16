@@ -98,7 +98,7 @@ export const CommitDiff = Schema.Struct({
 })
 export type CommitDiff = typeof CommitDiff.Type
 
-/** Whether kkcode can operate GitHub through the `gh` CLI on this machine. */
+/** Whether hinacode can operate GitHub through the `gh` CLI on this machine. */
 export const GitHubAuth = Schema.Union([
   Schema.Struct({ type: Schema.Literal("missing") }),
   Schema.Struct({ type: Schema.Literal("signedOut") }),
@@ -370,7 +370,7 @@ export const NotificationSettings = Schema.Struct({
 })
 export type NotificationSettings = typeof NotificationSettings.Type
 
-/** Whether the OS lets kkcode show notifications. `unknown` where kkcode cannot ask, which is everywhere but macOS. */
+/** Whether the OS lets hinacode show notifications. `unknown` where hinacode cannot ask, which is everywhere but macOS. */
 export const NotificationPermission = Schema.Literals(["granted", "denied", "notDetermined", "unknown"])
 export type NotificationPermission = typeof NotificationPermission.Type
 
@@ -453,7 +453,7 @@ export const Settings = Schema.Struct({
   defaultAccessMode: AccessMode,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
-  /** Absolute directory for new worktrees, one folder per project. Null keeps them in `.kkcode-worktrees` beside each project. */
+  /** Absolute directory for new worktrees, one folder per project. Null keeps them in `.hinacode-worktrees` beside each project. */
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
 })
 export type Settings = typeof Settings.Type
@@ -500,7 +500,7 @@ export type Environments = typeof Environments.Type
 export const VmControl = Schema.Literals(["agent", "user"])
 export type VmControl = typeof VmControl.Type
 
-/** A thread's tiny VM: an sbx sandbox kkcode created for it. */
+/** A thread's tiny VM: an sbx sandbox hinacode created for it. */
 export const ThreadVm = Schema.Union([
   Schema.Struct({ status: Schema.Literal("none") }),
   Schema.Struct({ status: Schema.Literal("starting") }),
@@ -516,7 +516,7 @@ export const ThreadVm = Schema.Union([
 ])
 export type ThreadVm = typeof ThreadVm.Type
 
-/** Whether kkcode reaches the sbx host that tiny VMs run on, as Settings shows it. */
+/** Whether hinacode reaches the sbx host that tiny VMs run on, as Settings shows it. */
 export const VmHostStatus = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("connected"),

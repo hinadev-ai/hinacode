@@ -1,11 +1,11 @@
 ---
-name: verify-kkcode
-description: Launch, drive and screenshot the kkcode Electron desktop app (Claude Code, Codex and Muse Code threads, worktrees, MCP, settings, ports, automations) in an isolated headless instance over CDP. Use when you need to prove a kkcode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
+name: verify-hinacode
+description: Launch, drive and screenshot the hinacode Electron desktop app (Claude Code, Codex and Muse Code threads, worktrees, MCP, settings, ports, automations) in an isolated headless instance over CDP. Use when you need to prove a hinacode change works in the real app, reproduce a UI bug, or capture before/after screenshots for a PR.
 ---
 
-# Verify kkcode
+# Verify hinacode
 
-kkcode is an Electron 44 app built with electron-vite. The surface a user touches is one window: a sidebar of projects and threads, a chat view per thread with a composer, a thread details side panel, and a settings page. Agents also touch it through the built-in MCP server, and other programs reach it through the automations webhook. This skill starts an isolated instance on the headless X server, drives it with `agent-browser` over Chrome DevTools Protocol, and stores evidence in `.context/shots/`.
+hinacode is an Electron 44 app built with electron-vite. The surface a user touches is one window: a sidebar of projects and threads, a chat view per thread with a composer, a thread details side panel, and a settings page. Agents also touch it through the built-in MCP server, and other programs reach it through the automations webhook. This skill starts an isolated instance on the headless X server, drives it with `agent-browser` over Chrome DevTools Protocol, and stores evidence in `.context/shots/`.
 
 ## What the e2e suite already proves
 
@@ -16,9 +16,9 @@ This skill is for what a test cannot own: real Claude Code and Codex turns, tool
 All helpers live in `scripts/` next to this file. Run from the repo root and set these once per run:
 
 ```sh
-S=.agents/skills/verify-kkcode/scripts
+S=.agents/skills/verify-hinacode/scripts
 PORT=9235                                   # CDP port, unique per instance
-DATA=/tmp/kk-verify-userdata                # KKCODE_USER_DATA, unique per instance, must start with /tmp/kk-
+DATA=/tmp/kk-verify-userdata                # HINACODE_USER_DATA, unique per instance, must start with /tmp/kk-
 SHOTS="$(git rev-parse --show-toplevel)/.context/shots"; mkdir -p "$SHOTS"
 AB="agent-browser --session kkv-$PORT-<feature>"
 ```
@@ -35,12 +35,12 @@ What it does:
 
 1. Refuses if `$PORT` already answers CDP or `$DATA` belongs to a live instance.
 2. Starts the user-local Xvfb (`~/.local/xvfb/usr/bin/Xvfb :99 -screen 0 1600x1000x24`) if `/tmp/.X11-unix/X99` is missing. Xvfb is shared and is never stopped by cleanup.
-3. Runs `pnpm build`, then `KKCODE_USER_DATA=$DATA DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=$PORT out/main/index.js` in a new session. The session id goes to `$DATA/kk-verify.sid`, the log to `$DATA/electron.log`.
-4. Waits until `window.kkcode.rpc("settings.get")` answers, then moves the automations webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds).
+3. Runs `pnpm build`, then `HINACODE_USER_DATA=$DATA DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=$PORT out/main/index.js` in a new session. The session id goes to `$DATA/kk-verify.sid`, the log to `$DATA/electron.log`.
+4. Waits until `window.hinacode.rpc("settings.get")` answers, then moves the automations webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds).
 
-Ready means it printed `kkcode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
+Ready means it printed `hinacode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
 
-Isolation: each instance needs its own `KKCODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own kkcode or another agent's port 9222 to 9234.
+Isolation: each instance needs its own `HINACODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own hinacode or another agent's port 9222 to 9234.
 
 Verification must never access the user's `kkcode Safe Storage` Keychain item. An unpackaged run (`out/main/index.js`) switches itself to Chromium's mock keychain, so no flag is needed. A packaged build does not, so pass `--use-mock-keychain` when you launch one by hand. The mock key is public, so save only dummy secrets in these profiles. Never ask the user to approve a Keychain prompt for verification. Stop the test instance if one appears.
 
@@ -50,7 +50,7 @@ Verification must never access the user's `kkcode Safe Storage` Keychain item. A
 $S/doctor.sh $PORT $DATA
 ```
 
-Read-only. Exit 0 means: the recorded session is alive, the CDP port belongs to it, it runs with `KKCODE_USER_DATA=$DATA`, the renderer is loaded from this checkout's `out/`, rpc answers, and the webhook listener is ours. It warns when `src/` or `messages/` changed after the last build. Run it first, and again whenever anything looks off. If a line says FAIL, do not drive that instance.
+Read-only. Exit 0 means: the recorded session is alive, the CDP port belongs to it, it runs with `HINACODE_USER_DATA=$DATA`, the renderer is loaded from this checkout's `out/`, rpc answers, and the webhook listener is ours. It warns when `src/` or `messages/` changed after the last build. Run it first, and again whenever anything looks off. If a line says FAIL, do not drive that instance.
 
 ## Drive
 
@@ -83,7 +83,7 @@ Rules that came out of real runs:
 
 ### Seeding and inspecting through rpc
 
-The renderer exposes `window.kkcode.rpc(method, payload)`. The method map with request and response schemas is `src/shared/contract.ts` (`RpcMethods`). `rpc.mjs` calls it over CDP and prints the result, or exits 1 with `{"tag","message"}`:
+The renderer exposes `window.hinacode.rpc(method, payload)`. The method map with request and response schemas is `src/shared/contract.ts` (`RpcMethods`). `rpc.mjs` calls it over CDP and prints the result, or exits 1 with `{"tag","message"}`:
 
 ```sh
 $S/seed-repo.sh $DATA/repo                          # git repo on main + a gitignored .env
@@ -99,7 +99,7 @@ Use rpc to seed preconditions and to read back side effects. Drive the behavior 
 Other helpers:
 
 - `$S/mcp-call.mjs '<connection json>' [tool] ['<json args>']` speaks MCP to the built-in server the way an agent does. Without a tool it lists them.
-- `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` posts a body signed with `X-KKCODE-Signature: sha256=<hmac>` and prints the response and status.
+- `$S/webhook.sh <url> <secret> '<json>' [delivery-id]` posts a body signed with `X-HINACODE-Signature: sha256=<hmac>` and prints the response and status.
 
 ### Things CDP cannot do
 
@@ -139,7 +139,7 @@ Agent CLIs keep their own transcripts (`~/.claude/projects/`, `~/.codex/sessions
 | -------------- | ------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `launch.sh`    | `$S/launch.sh <port> <data> [--no-build]`               | Build, start an isolated instance, wait for rpc, move the webhook port |
 | `doctor.sh`    | `$S/doctor.sh <port> <data>`                            | Read-only health check, exit 1 on any FAIL                             |
-| `rpc.mjs`      | `$S/rpc.mjs <port> <method> ['<json>']`                 | Call `window.kkcode.rpc` over CDP                                      |
+| `rpc.mjs`      | `$S/rpc.mjs <port> <method> ['<json>']`                 | Call `window.hinacode.rpc` over CDP                                    |
 | `seed-repo.sh` | `$S/seed-repo.sh <dir>`                                 | Throwaway git repo with a gitignored `.env`                            |
 | `mcp-call.mjs` | `$S/mcp-call.mjs '<connection json>' [tool] ['<json>']` | Act as an agent against the built-in MCP server                        |
 | `webhook.sh`   | `$S/webhook.sh <url> <secret> '<json>' [delivery-id]`   | Signed webhook delivery                                                |

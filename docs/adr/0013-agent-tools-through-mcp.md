@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Context
 
-kkcode gives agents its own tools, such as `review_changes`, `link_pull_request`, `request_secret`, `create_thread`, the thread controls and the Linear tools. Each agent SDK has its own way to define a tool. Claude's Agent SDK has `tool()` with Zod schemas, wrapped by `createSdkMcpServer()`, which is an in-process MCP server anyway [1]. Codex's app-server has `dynamicTools` on `thread/start`, answered through `item/tool/call`. It's experimental and needs the `experimentalApi` capability [3]. If we wrote kkcode tools against these APIs, every tool would need one implementation per provider. Every new backend would also mean porting every tool, if the backend can define custom tools at all.
+hinacode gives agents its own tools, such as `review_changes`, `link_pull_request`, `request_secret`, `create_thread`, the thread controls and the Linear tools. Each agent SDK has its own way to define a tool. Claude's Agent SDK has `tool()` with Zod schemas, wrapped by `createSdkMcpServer()`, which is an in-process MCP server anyway [1]. Codex's app-server has `dynamicTools` on `thread/start`, answered through `item/tool/call`. It's experimental and needs the `experimentalApi` capability [3]. If we wrote hinacode tools against these APIs, every tool would need one implementation per provider. Every new backend would also mean porting every tool, if the backend can define custom tools at all.
 
 Every agent we run, and every one we are likely to add, can connect to an HTTP MCP server [2] [4].
 

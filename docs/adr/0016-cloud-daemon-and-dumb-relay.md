@@ -5,13 +5,13 @@ Date: 2026-10-14
 
 ## Context
 
-ADR 0001 put everything in the Electron main process because kkcode was local only, and called out that remote access would need a new transport. Remote mode added that transport for phones, but the agents still die with the desktop app. Running agents on an always-on home server needs the layer graph without a window, and reaching that server from anywhere needs a rendezvous point. The open question was where thread state lives once there are three roles (cloud, server, client): one central database the server owns, with clouds as executors, or one database per cloud, with the server forwarding.
+ADR 0001 put everything in the Electron main process because hinacode was local only, and called out that remote access would need a new transport. Remote mode added that transport for phones, but the agents still die with the desktop app. Running agents on an always-on home server needs the layer graph without a window, and reaching that server from anywhere needs a rendezvous point. The open question was where thread state lives once there are three roles (cloud, server, client): one central database the server owns, with clouds as executors, or one database per cloud, with the server forwarding.
 
 A central database makes one global thread list trivial, but it splits Threads, Worktrees, the runner, the PR watcher and automations across a network boundary, puts transcripts and worktree metadata on a machine that never runs the code, and makes every cloud useless while the server is down. Orca's environments and T3 Code's environments both keep each machine's state on that machine and treat the middle as connection plumbing.
 
 ## Decision
 
-Each cloud keeps its own SQLite file, projects, worktrees and agent processes under its own `KKCODE_USER_DATA`. The server is a dumb relay: it tracks which clouds are paired and present, and forwards the existing remote frames between a client and one cloud without decoding them. A thread is pinned to the cloud whose project it was created in and never moves. See `docs/features/2026-10-14-remote-clouds.md`.
+Each cloud keeps its own SQLite file, projects, worktrees and agent processes under its own `HINACODE_USER_DATA`. The server is a dumb relay: it tracks which clouds are paired and present, and forwards the existing remote frames between a client and one cloud without decoding them. A thread is pinned to the cloud whose project it was created in and never moves. See `docs/features/2026-10-14-remote-clouds.md`.
 
 ## Consequences
 

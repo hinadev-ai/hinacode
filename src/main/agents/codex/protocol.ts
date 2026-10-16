@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 
 /**
- * Subset of the Codex app-server v2 protocol used by kkcode.
+ * Subset of the Codex app-server v2 protocol used by hinacode.
  * Copied from `codex app-server generate-ts` (codex-cli 0.161.0), trimmed to the fields we read or send.
  * Regenerate with that command when bumping Codex and re-copy the shapes below.
  */
@@ -190,7 +190,7 @@ export type ThreadTokenUsage = {
   modelContextWindow: number | null
 }
 
-/** Params of the server notifications kkcode handles, keyed by method. */
+/** Params of the server notifications hinacode handles, keyed by method. */
 export type ServerNotificationParams = {
   "item/agentMessage/delta": { threadId: string; turnId: string; itemId: string; delta: string }
   "item/reasoning/summaryTextDelta": { threadId: string; turnId: string; itemId: string; delta: string }
@@ -226,7 +226,7 @@ export type FileChangeRequestApprovalParams = {
   grantRoot?: string | null
 }
 
-/** Shared by CommandExecutionApprovalDecision and FileChangeApprovalDecision for the variants kkcode sends. */
+/** Shared by CommandExecutionApprovalDecision and FileChangeApprovalDecision for the variants hinacode sends. */
 export type ApprovalDecisionWire = "accept" | "acceptForSession" | "decline" | "cancel"
 
 export type ServerRequestParams = {

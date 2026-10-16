@@ -25,7 +25,7 @@ Custom palettes and new font controls belong to separate changes.
 
 ## Verification
 
-Use an isolated Electron instance through `verify-kkcode`. Change the emulated system scheme while System is selected and while explicit themes are selected. Restart the same profile after choosing Light and Dark. Check menus, dialogs, attachments, diffs, and Mermaid in both neutral palettes. Measure rendered text and focus contrast, including translucent rings.
+Use an isolated Electron instance through `verify-hinacode`. Change the emulated system scheme while System is selected and while explicit themes are selected. Restart the same profile after choosing Light and Dark. Check menus, dialogs, attachments, diffs, and Mermaid in both neutral palettes. Measure rendered text and focus contrast, including translucent rings.
 
 Appearance BDD scenarios cover live system changes, restart persistence, named themes, and font preservation. Startup scenarios capture the selected scheme, computed background, and rendered view at the native show event and when Chromium reports its first contentful paint. These checks do not measure native compositor pixels. The IPC integration test rejects foreign frames and invalid RPC envelopes before showing the requesting window.
 

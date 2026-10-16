@@ -98,11 +98,11 @@ Both get the same policy:
 
 ### Pairing with every address
 
-`kkcode://connect?host=a&host=b&port=…&token=…` repeats `host`. `PairingTarget` becomes `{ hosts: NonEmptyReadonlyArray<string>, port, token }`, and the parser still accepts the single-host form. It refuses an empty host and any host that would not sit alone in the socket URL's authority; an IPv6 host is written bare and bracketed only in the socket URL.
+`hinacode://connect?host=a&host=b&port=…&token=…` repeats `host`. `PairingTarget` becomes `{ hosts: NonEmptyReadonlyArray<string>, port, token }`, and the parser still accepts the single-host form. It refuses an empty host and any host that would not sit alone in the socket URL's authority; an IPv6 host is written bare and bracketed only in the socket URL.
 
 The phone's `Transport` takes one socket URL per host. It tries the last host that worked first, then the others in order, moving on at each failed attempt, including the 10 s ready timeout. A drop after a handshake, a network change and a return to the foreground all start again from the host that worked. 4001 and 4002 stop without trying other hosts. The host that worked is remembered for the life of the connection, not stored; a pairing stored by an older app as `{ host }` is read as one host.
 
-The QR code in Settings > Remote carries every reachable host, Tailscale first, and the page lists them instead of asking for one. `kkcode serve` prints that URL for phones and one single-host URL per address for desktops, since desktop environments keep one host in this change: `environments.add` takes the first.
+The QR code in Settings > Remote carries every reachable host, Tailscale first, and the page lists them instead of asking for one. `hinacode serve` prints that URL for phones and one single-host URL per address for desktops, since desktop environments keep one host in this change: `environments.add` takes the first.
 
 ## Slices
 
@@ -125,12 +125,12 @@ Each slice is one PR with its own check:
 
 - Tests as listed per slice. Tests never wait on wall-clock time: the server's schedules run under `TestClock`, and the phone's connection logic runs under Vitest fake timers.
 - `scripts/flaky-proxy.mjs`: a TCP proxy between a client and the remote listener, controlled over HTTP (`pass`, `blackhole` that keeps sockets open but forwards nothing, `reset` that destroys them, `delay <ms>`). It is the fault injector for the runs below and for future debugging.
-- With the phone web export (`npx expo export --platform web`) in agent-browser at 390x844, paired through the proxy to an isolated kkcode:
+- With the phone web export (`npx expo export --platform web`) in agent-browser at 390x844, paired through the proxy to an isolated hinacode:
   1. Blackhole for 30 s while idle. The banner appears within 25 s, the transcript stays, and after `pass` the phone is connected again within 2 s.
   2. Send a prompt, then `reset` before the result arrives. After the reconnect the transcript has exactly one copy of the prompt, and the composer is empty.
   3. Start `for i in $(seq 1 30); do echo $i; sleep 1; done` in the terminal, blackhole for 8 s, then pass. The output has every number once, and `echo $$` prints the same PID before and after.
   4. Tap Allow during a blackhole. After the reconnect the approval is applied once.
-- The same with the desktop driving a `kkcode serve` cloud through the proxy: a send during a 5 s `reset` lands once.
+- The same with the desktop driving a `hinacode serve` cloud through the proxy: a send during a 5 s `reset` lands once.
 
 ### Fault injector
 

@@ -49,7 +49,7 @@ export function ExperimentalSettings() {
   )
 }
 
-/** Whether kkcode reaches the sbx host, through the login `sbx login` wrote. */
+/** Whether hinacode reaches the sbx host, through the login `sbx login` wrote. */
 function VmHost() {
   const environment = useSettingsEnvironment()
   const host = useAtomValue(vmHostAtom(environment))

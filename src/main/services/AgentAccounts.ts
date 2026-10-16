@@ -9,7 +9,7 @@ import { AccountInUseError, NotFoundError, type PersistenceError, persistence } 
 import { Settings } from "./Settings.ts"
 
 /**
- * Accounts added in kkcode. Each one is an agent home the user picked (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`),
+ * Accounts added in hinacode. Each one is an agent home the user picked (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`),
  * which holds its login and its transcripts, and the CLI binary run against it. The user signs it in from a
  * terminal. A null account id is the CLI's own login and default home.
  */
@@ -29,7 +29,7 @@ export class AgentAccounts extends Context.Service<
     /** The account's home and binary. Null for the CLI's own login. */
     readonly home: (id: string | null) => Effect.Effect<AccountHome | null, PersistenceError | NotFoundError>
   }
->()("kkcode/AgentAccounts") {}
+>()("hinacode/AgentAccounts") {}
 
 interface CreateAccount {
   readonly provider: AccountProviderId

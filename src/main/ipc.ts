@@ -90,7 +90,7 @@ const defaultModel = (provider: ProviderId) =>
     return models[0]?.id ?? ""
   })
 
-/** Git history is only read from a checkout kkcode recorded, never from a path the renderer made up. */
+/** Git history is only read from a checkout hinacode recorded, never from a path the renderer made up. */
 const knownRoot = (root: string) =>
   Effect.gen(function* () {
     const projects = yield* Projects.use((service) => service.list)
@@ -105,7 +105,7 @@ const knownRoot = (root: string) =>
 /** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
-/** Only for when the user asked for the window, such as a notification click or opening kkcode again. */
+/** Only for when the user asked for the window, such as a notification click or opening hinacode again. */
 export const bringToFront = (window: BrowserWindow) => {
   if (window.isMinimized()) window.restore()
   window.show()
@@ -349,7 +349,7 @@ export const dispatch = (
   )
 
 const untrustedSender: RpcEnvelope<never> = {
-  error: { tag: "UntrustedSender", message: "RPC is only available to the KKCode window" },
+  error: { tag: "UntrustedSender", message: "RPC is only available to the HinaCode window" },
 }
 
 /** The renderer's envelope: `environment` names a cloud for the methods whose route is `named`. */

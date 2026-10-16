@@ -4,7 +4,7 @@ import type { PersistenceError } from "./services/errors.ts"
 import { Settings } from "./services/Settings.ts"
 
 /**
- * How one `kkcode serve` boot differs from the stored settings. A field left out keeps the stored
+ * How one `hinacode serve` boot differs from the stored settings. A field left out keeps the stored
  * value, so a plain restart converges on the same listener and the same token.
  */
 export interface ServeConfig {
@@ -41,28 +41,28 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 
 /**
  * The serve configuration for this process, or null in desktop mode. Serve mode starts from the
- * `serve` command or `KKCODE_SERVE=1` (the form a service manager can set). Flags win over the
+ * `serve` command or `HINACODE_SERVE=1` (the form a service manager can set). Flags win over the
  * environment, and an invalid value throws, because a daemon that silently picked another port
  * would strand every paired client.
  */
 export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv): ServeConfig | null => {
-  if (!argv.includes("serve") && !envFlag(env, "KKCODE_SERVE")) return null
+  if (!argv.includes("serve") && !envFlag(env, "HINACODE_SERVE")) return null
 
   const portFlag = flagValue(argv, "port")
-  const envPort = env["KKCODE_SERVE_PORT"]
+  const envPort = env["HINACODE_SERVE_PORT"]
   const port =
     portFlag !== undefined
       ? portOf(portFlag, "--port")
       : envPort !== undefined
-        ? portOf(envPort, "KKCODE_SERVE_PORT")
+        ? portOf(envPort, "HINACODE_SERVE_PORT")
         : undefined
-  const bindHost = flagValue(argv, "host") ?? env["KKCODE_SERVE_HOST"]
+  const bindHost = flagValue(argv, "host") ?? env["HINACODE_SERVE_HOST"]
   if (bindHost !== undefined && bindHost.trim() === "") throw new Error("serve host must not be empty")
 
   return {
     ...(bindHost !== undefined && { bindHost }),
     ...(port !== undefined && { port }),
-    rotateToken: argv.includes("--rotate-token") || envFlag(env, "KKCODE_SERVE_ROTATE_TOKEN"),
+    rotateToken: argv.includes("--rotate-token") || envFlag(env, "HINACODE_SERVE_ROTATE_TOKEN"),
   }
 }
 

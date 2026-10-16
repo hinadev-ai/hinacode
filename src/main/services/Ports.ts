@@ -205,7 +205,7 @@ const isInside = (path: string, root: string) =>
 
 /**
  * Whether a process runs in `workspacePath` or descends from one of `agentPids`. The agent CLIs and
- * kkcode's own process tree (Electron helpers, the DevTools port) are never the user's servers, so they
+ * hinacode's own process tree (Electron helpers, the DevTools port) are never the user's servers, so they
  * are left out even when their cwd is the workspace.
  */
 export const belongsToWorkspace =
@@ -274,7 +274,7 @@ export class Ports extends Context.Service<
     /** SIGTERM now, SIGKILL after a grace period if the process is still alive. */
     readonly kill: (pid: number) => Effect.Effect<void, PortsError>
   }
->()("kkcode/Ports") {}
+>()("hinacode/Ports") {}
 
 const kill = (pid: number) =>
   Effect.gen(function* () {

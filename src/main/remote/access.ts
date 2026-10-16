@@ -11,7 +11,7 @@ import { Settings } from "../services/Settings.ts"
 export const REMOTE_TOKEN_SECRET = "remote.token"
 const ENVIRONMENT_ID_KEY = "environment.id"
 
-/** Who this kkcode is to a desktop that pairs with it. The id is made once per data directory. */
+/** Who this hinacode is to a desktop that pairs with it. The id is made once per data directory. */
 export interface EnvironmentIdentity {
   readonly id: string
   readonly name: string
@@ -64,7 +64,7 @@ export class RemoteAccess extends Context.Service<
     readonly report: (patch: Partial<ListenerReport>) => Effect.Effect<void>
     readonly identity: EnvironmentIdentity
   }
->()("kkcode/RemoteAccess") {}
+>()("hinacode/RemoteAccess") {}
 
 const loadIdentity = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient

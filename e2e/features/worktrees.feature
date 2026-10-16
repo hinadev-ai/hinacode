@@ -1,10 +1,10 @@
 Feature: Worktrees
-  A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the
-  project's setup script there with the kkcode variables set, shows the script's output and the
+  A thread can run in its own git worktree. hinacode creates the branch and checkout, runs the
+  project's setup script there with the hinacode variables set, shows the script's output and the
   worktree's changes, and removes the checkout when the thread is archived with worktree removal on.
 
   Scenario: A worktree thread runs the setup script with the project variables
-    Given a project "wt" for my repository with the setup script "cp \"$KKCODE_ROOT_PATH/.env\" .env && echo \"setup ok on $KKCODE_BRANCH\""
+    Given a project "wt" for my repository with the setup script "cp \"$HINACODE_ROOT_PATH/.env\" .env && echo \"setup ok on $HINACODE_BRANCH\""
     When I create a thread titled "wt check" in "wt" in a new worktree
     Then the workspace status becomes "Ready"
     And the setup log ends with the branch of "wt check"

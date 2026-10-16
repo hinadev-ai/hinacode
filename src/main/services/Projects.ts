@@ -57,7 +57,7 @@ export class Projects extends Context.Service<
     /** The project's own favicon as a data URL, or null when it has none in a usual place. */
     readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
->()("kkcode/Projects") {}
+>()("hinacode/Projects") {}
 
 /** The absolute path a typed root means, with a leading `~` as the home directory. */
 const resolveRoot = (rootPath: string) => {

@@ -60,7 +60,7 @@ export class Environments extends Context.Service<
     /** The cloud that owns `id`, or undefined when it is this desktop's. */
     readonly owner: (entity: Entity, id: string) => string | undefined
   }
->()("kkcode/Environments") {}
+>()("hinacode/Environments") {}
 
 const tokenSecret = (id: string) => `environment.${id}.token`
 
@@ -80,7 +80,7 @@ const unauthorized = (name: string): RpcEnvelope<never> => ({
   error: { tag: "EnvironmentUnauthorized", message: `${name} refused this desktop's token. Pair it again.` },
 })
 const incompatible = (name: string): RpcEnvelope<never> => ({
-  error: { tag: "EnvironmentIncompatible", message: `${name} runs a kkcode this desktop cannot talk to` },
+  error: { tag: "EnvironmentIncompatible", message: `${name} runs a hinacode this desktop cannot talk to` },
 })
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
@@ -161,7 +161,7 @@ const probe = (target: Address & { readonly token: string }) => {
           return resume(
             Effect.fail(
               new EnvironmentUnauthorized({
-                message: `${where} refused the token. Copy a new pairing URL from kkcode serve.`,
+                message: `${where} refused the token. Copy a new pairing URL from hinacode serve.`,
               }),
             ),
           )
@@ -471,7 +471,9 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const pairing = parsePairingUrl(input.pairingUrl)
       if (pairing === null) {
-        return yield* new InvalidPairingUrl({ message: "Paste the kkcode://connect URL that kkcode serve printed." })
+        return yield* new InvalidPairingUrl({
+          message: "Paste the hinacode://connect URL that hinacode serve printed.",
+        })
       }
       const target = { host: pairing.hosts[0], port: pairing.port, token: pairing.token }
       const ready = yield* probe(target)

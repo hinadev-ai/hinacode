@@ -6,7 +6,7 @@ import { rpc } from "../support/rpc.ts"
 const deliver = async (url: string, body: string, signature: string | null) => {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(signature ? { "x-kkcode-signature": signature } : {}) },
+    headers: { "content-type": "application/json", ...(signature ? { "x-hinacode-signature": signature } : {}) },
     body,
   })
   return { status: response.status, body: await response.text() }

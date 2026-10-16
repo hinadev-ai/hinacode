@@ -208,7 +208,7 @@ const nameAfter = <E>(
         if (event.type === "worktree.updated" && event.worktree.status === "ready") break
       }
       return yield* inspect(thread.id)
-    }).pipe(Effect.scoped, Effect.provide(makeLayer(join(dir, "kkcode.sqlite"), pushes, named)))
+    }).pipe(Effect.scoped, Effect.provide(makeLayer(join(dir, "hinacode.sqlite"), pushes, named)))
   }).pipe(Effect.scoped)
 
 const PROMPT = "Review this pull request"

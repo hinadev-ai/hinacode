@@ -13,7 +13,7 @@ function fakeBridge() {
   const waiters: Array<{ method: string; seen: number; resolve: (call: Call) => void }> = []
   const listeners = new Set<(event: unknown) => void>()
   vi.stubGlobal("window", {
-    kkcode: {
+    hinacode: {
       rpc: (method: string, payload: Call["payload"]) =>
         new Promise((resolve) => {
           const call = { method, payload, resolve: () => resolve({ result: undefined }) }

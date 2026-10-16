@@ -7,7 +7,7 @@ import type { AutomationRun } from "../../../shared/domain.ts"
 
 export const hookPath = (automationId: string) => `/hooks/${automationId}`
 
-const SIGNATURE_HEADERS = ["x-kkcode-signature", "x-hub-signature-256"]
+const SIGNATURE_HEADERS = ["x-hinacode-signature", "x-hub-signature-256"]
 
 /** Checks a `sha256=<hex>` HMAC of the raw body, the format GitHub uses for X-Hub-Signature-256. */
 export const signatureMatches = (secret: string, body: Uint8Array, header: string | undefined) => {

@@ -10,7 +10,7 @@ const SWEEP_INTERVAL = "3 minutes"
 
 /** Archives threads whose linked pull requests have all merged, while `Settings.archive.whenMerged` is on. */
 export class AutoArchive extends Context.Service<AutoArchive, { readonly sweep: Effect.Effect<void> }>()(
-  "kkcode/AutoArchive",
+  "hinacode/AutoArchive",
 ) {}
 
 const make = Effect.gen(function* () {

@@ -156,7 +156,7 @@ export class Threads extends Context.Service<
     /** Turns do not survive a restart, so threads left mid-turn by a crash go back to idle. */
     readonly resetInterrupted: Effect.Effect<void, PersistenceError>
   }
->()("kkcode/Threads") {}
+>()("hinacode/Threads") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient

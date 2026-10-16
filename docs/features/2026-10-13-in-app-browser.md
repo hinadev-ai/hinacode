@@ -7,7 +7,7 @@ Date: 2026-10-13
 
 An agent changes a web UI, then the developer switches to Chrome, finds the dev server's port, reloads, spots what is wrong, and describes it back in words: "the second button in the settings form, the one under the email field". The agent then guesses which element that is. Every round trip costs a window switch and a description that loses precision.
 
-Claude's desktop app puts a browser next to the conversation and lets the user click an element to add it to the message. kkcode needs the same loop, scoped to the thread whose dev server is running.
+Claude's desktop app puts a browser next to the conversation and lets the user click an element to add it to the message. hinacode needs the same loop, scoped to the thread whose dev server is running.
 
 ## User flow
 
@@ -58,4 +58,4 @@ The renderer crops with `webview.capturePage(rect)`, scaling the rect by the pag
 
 ## Verification
 
-With `verify-kkcode`, start a static server in the thread's workspace, open it from the ports list, pick an element with the mouse and with the keyboard, and screenshot the highlight and the composer chip. Send one short turn and read the user message back with `threads.transcript`. `security.test.ts` covers the webview attach check.
+With `verify-hinacode`, start a static server in the thread's workspace, open it from the ports list, pick an element with the mouse and with the keyboard, and screenshot the highlight and the composer chip. Send one short turn and read the user message back with `threads.transcript`. `security.test.ts` covers the webview attach check.

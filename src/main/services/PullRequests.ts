@@ -70,7 +70,7 @@ export class PullRequests extends Context.Service<
       PersistenceError | NotFoundError | NoBranchError | CommandError | GitHubError | PullRequestUrlInvalidError
     >
   }
->()("kkcode/PullRequests") {}
+>()("hinacode/PullRequests") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient

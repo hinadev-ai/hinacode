@@ -15,7 +15,7 @@ pattern = re.compile(
 matches = []
 for path in (root / "out/renderer/assets").glob("index-*.js"):
     source = path.read_text()
-    if "__kkcodePerfMarkdown" in source:
+    if "__hinacodePerfMarkdown" in source:
         raise SystemExit("Already instrumented. Run pnpm build to restore before instrumenting again.")
     for match in pattern.finditer(source):
         matches.append((path, source, match))
@@ -34,13 +34,13 @@ metadata = {
     "originalSha256": digest,
     "functionName": match[1],
 }
-replacement = f"""globalThis.__kkcodePerfMarkdown = {{ ...{json.dumps(metadata)}, samples: null }};
+replacement = f"""globalThis.__hinacodePerfMarkdown = {{ ...{json.dumps(metadata)}, samples: null }};
 function {match[1]}({match[2]}) {{
   const started = performance.now();
   const processor = createProcessor({match[2]});
   const file = createFile({match[2]});
   const result = post(processor.runSync(processor.parse(file), file), {match[2]});
-  if (globalThis.__kkcodePerfMarkdown.samples) globalThis.__kkcodePerfMarkdown.samples.push({{chars: file.value.length, ms: performance.now() - started}});
+  if (globalThis.__hinacodePerfMarkdown.samples) globalThis.__hinacodePerfMarkdown.samples.push({{chars: file.value.length, ms: performance.now() - started}});
   return result;
 }}"""
 instrumented = (source[:match.start()] + replacement + source[match.end():]).encode()

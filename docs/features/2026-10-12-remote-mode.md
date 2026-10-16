@@ -9,8 +9,8 @@ A developer leaves the desk with agents still running. From the sofa or the trai
 
 ## User flow
 
-1. Settings > Remote. Turn **Allow remote control** on. kkcode generates an access token, starts listening on the chosen host and port, and shows a QR code plus the pairing URL. Tailscale users keep the default `0.0.0.0` bind and see the machine's Tailscale name; LAN users see the hostname.
-2. On the phone, open the kkcode app. Scan the QR code, or paste the pairing URL. The app connects, stores the connection in the secure store, and lands on the thread list.
+1. Settings > Remote. Turn **Allow remote control** on. hinacode generates an access token, starts listening on the chosen host and port, and shows a QR code plus the pairing URL. Tailscale users keep the default `0.0.0.0` bind and see the machine's Tailscale name; LAN users see the hostname.
+2. On the phone, open the hinacode app. Scan the QR code, or paste the pairing URL. The app connects, stores the connection in the secure store, and lands on the thread list.
 3. The thread list is the desktop sidebar on a phone: threads grouped by project, with the status pill (running, waiting, failed, done) and the threads that need a human sorted to the top. Pull to refresh is never needed; pushes keep it live.
 4. Tap a thread. The transcript streams as on the desktop. An approval shows Allow, Allow for session and Deny. A question shows its options. The composer sends a prompt, steers a running turn, or stops it.
 5. The thread's **PRs** tab lists the linked pull requests with their state, checks and review decision, and offers Merge and Close.
@@ -20,7 +20,7 @@ A developer leaves the desk with agents still running. From the sofa or the trai
 
 ## Prior art
 
-T3 Code and Orca both solve this the same way at the core: one WebSocket per host machine, a QR code that carries the endpoint and a device token, a handshake before any method runs, and an Expo app with expo-router on the phone. They differ above that. T3 Code adds scoped sessions, a Cloudflare tunnel relay and a native libghostty terminal. Orca adds its own end to end encryption with the host's key pinned in the QR code, a hosted relay, and a WebView terminal. kkcode takes the shared core and leaves out the relay, the scopes and the extra encryption: Tailscale already gives an encrypted path between the developer's own devices, and one person holds every paired phone.
+T3 Code and Orca both solve this the same way at the core: one WebSocket per host machine, a QR code that carries the endpoint and a device token, a handshake before any method runs, and an Expo app with expo-router on the phone. They differ above that. T3 Code adds scoped sessions, a Cloudflare tunnel relay and a native libghostty terminal. Orca adds its own end to end encryption with the host's key pinned in the QR code, a hosted relay, and a WebView terminal. hinacode takes the shared core and leaves out the relay, the scopes and the extra encryption: Tailscale already gives an encrypted path between the developer's own devices, and one person holds every paired phone.
 
 ## Design
 
@@ -55,7 +55,7 @@ ServerFrame =
 
 The first client frame must be `auth`. Anything else, or no auth within 5 seconds, closes the socket. After `ready`, every `call` is dispatched through the same `dispatch` the Electron `rpc` channel uses, and every `Events.publish` is sent as an `event` frame to each authenticated socket.
 
-Pairing URL: `kkcode://connect?host=<host>&port=<port>&token=<token>`, with `host` repeated for every reachable address (see `2026-10-16-resilient-remote.md`). The token is in the URL of the QR code only. It is not in any HTTP URL: the WebSocket upgrade carries no credential, and the token travels in the first frame.
+Pairing URL: `hinacode://connect?host=<host>&port=<port>&token=<token>`, with `host` repeated for every reachable address (see `2026-10-16-resilient-remote.md`). The token is in the URL of the QR code only. It is not in any HTTP URL: the WebSocket upgrade carries no credential, and the token travels in the first frame.
 
 ### Which methods the phone may call
 
@@ -92,6 +92,6 @@ The listener is reachable from the network when `bindHost` is not loopback. The 
 ## Verification
 
 - `src/main/ipc.integration.test.ts`, "remote mode": a real listener on a random port; a call before auth and a wrong token are closed with 4001, a good token gets `ready`, `projects.list` round trips, `threads.create` arrives back as a `thread.updated` event, `dialog.pickFolder` answers `DesktopOnly`, a void method answers with an empty envelope, rotating the token closes the socket with 4002 and the old token stops working, turning the switch off releases the port, and turning it on again listens.
-- `verify-kkcode` plus the phone app's web export (`npx expo export --platform web`, served with any static server) driven by agent-browser at a 390x844 viewport: pair with the URL from Settings > Remote, create a thread from the phone and watch it appear in the desktop sidebar without a reload, send a prompt, allow the command the agent asks about, open the Terminal tab and run `pwd` in the worktree.
+- `verify-hinacode` plus the phone app's web export (`npx expo export --platform web`, served with any static server) driven by agent-browser at a 390x844 viewport: pair with the URL from Settings > Remote, create a thread from the phone and watch it appear in the desktop sidebar without a reload, send a prompt, allow the command the agent asks about, open the Terminal tab and run `pwd` in the worktree.
 - On a phone over USB (`apps/mobile/README.md`, "Run on a phone over USB"): the native bundle builds under Hermes, pairing by pasted URL, the thread list, the transcript, an approval answered from the phone, and the WebView terminal with typed input. Verified on a Samsung SM-S942Q running Android 16 in Expo Go 57.
 - Not covered by a machine: the QR scanner. It needs a camera pointed at the desktop.

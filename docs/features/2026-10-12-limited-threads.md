@@ -9,7 +9,7 @@ A developer whose Claude account has exhausted its usage sees an idle thread aft
 
 ## User flow
 
-Claude rejects a turn because of a usage limit. The sidebar and thread header show an amber Limited label. A callout preserves the provider's explanation. When Claude supplies a reset timestamp, Resume at reset schedules one retry of the last prompt and attachments. Cancel automatic resume removes the schedule. Both actions work with the keyboard. The schedule survives restart and runs while kkcode is open. If the reset passed while the app was closed, the retry runs after startup.
+Claude rejects a turn because of a usage limit. The sidebar and thread header show an amber Limited label. A callout preserves the provider's explanation. When Claude supplies a reset timestamp, Resume at reset schedules one retry of the last prompt and attachments. Cancel automatic resume removes the schedule. Both actions work with the keyboard. The schedule survives restart and runs while hinacode is open. If the reset passed while the app was closed, the retry runs after startup.
 
 An organization monthly spend cap gets its own callout with the `/usage-credits` instruction. Its message may mention a session reset, which does not clear the organization cap. This case has no automatic resume action. The composer remains available for a manual attempt. Sending again moves the thread to Running. A successful retry returns it to Idle.
 
@@ -19,7 +19,7 @@ An organization monthly spend cap gets its own callout with the `/usage-credits`
 
 The runner persists `limited` and its limit metadata through cleanup and restart. Migration 6 replaces the status column in place and adds `usage_limit` JSON, preserving related messages, pull request links, and automation runs. The existing schema-decoded channels carry the variants. `threads.resumeAtReset` accepts only a thread id and an enable flag. Main refuses scheduling without a provider-confirmed usage reset. A scoped runner fiber checks due requests each second and consumes them before sending, so a failed start does not create a retry loop.
 
-The simulation replaces the Claude provider with typed SDK fixtures passed through the production mapper and disables model-based thread naming. `KKCODE_MOCK_CLAUDE=usage-limit` or `org-spend-limit` requires an explicit `KKCODE_USER_DATA` directory. The first attempt in each thread is limited; subsequent attempts and resumed sessions succeed. `KKCODE_MOCK_RESET_MS` controls the usage reset delay, defaulting to 60000. No Claude account calls are made by the simulation.
+The simulation replaces the Claude provider with typed SDK fixtures passed through the production mapper and disables model-based thread naming. `HINACODE_MOCK_CLAUDE=usage-limit` or `org-spend-limit` requires an explicit `HINACODE_USER_DATA` directory. The first attempt in each thread is limited; subsequent attempts and resumed sessions succeed. `HINACODE_MOCK_RESET_MS` controls the usage reset delay, defaulting to 60000. No Claude account calls are made by the simulation.
 
 ## Out of scope
 

@@ -64,7 +64,7 @@ export default function ConnectScreen() {
               setText(value)
               setInvalid(false)
             }}
-            placeholder="kkcode://connect?host=...&port=...&token=..."
+            placeholder="hinacode://connect?host=...&port=...&token=..."
             placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -76,7 +76,7 @@ export default function ConnectScreen() {
           />
           {invalid && (
             <Text accessibilityRole="alert" style={{ color: theme.danger }}>
-              This is not a KKCode pairing URL. Copy it again from Settings, Remote.
+              This is not a HinaCode pairing URL. Copy it again from Settings, Remote.
             </Text>
           )}
         </View>
@@ -118,7 +118,7 @@ function Scanner({ onClose, onScan }: { onClose: () => void; onScan: (data: stri
           <View style={styles.permission}>
             <Icon name="RiCameraLine" size={28} color={theme.textMuted} />
             <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
-              KKCode needs the camera to read the pairing QR code.
+              HinaCode needs the camera to read the pairing QR code.
             </Text>
             <Button label="Allow camera" variant="primary" onPress={() => void requestPermission()} />
           </View>

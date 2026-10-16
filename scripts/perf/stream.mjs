@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 const root = realpathSync(join(dirname(fileURLToPath(import.meta.url)), "../.."))
 const resultsDir = join(root, ".context/perf")
 const [rendererPort, inspectorPort, label, threadId] = process.argv.slice(2)
-const data = process.env.KKCODE_USER_DATA
+const data = process.env.HINACODE_USER_DATA
 if (
   ![rendererPort, inspectorPort].every((port) => /^\d+$/.test(port ?? "") && +port > 0 && +port < 65536) ||
   !/^[\w-]+$/.test(label ?? "") ||
@@ -17,7 +17,7 @@ if (
   !data?.startsWith("/tmp/kk-")
 ) {
   throw new Error(
-    "usage: KKCODE_USER_DATA=/tmp/kk-<isolated-profile> [PARSE=1] [PROFILE=1] " +
+    "usage: HINACODE_USER_DATA=/tmp/kk-<isolated-profile> [PARSE=1] [PROFILE=1] " +
       "node scripts/perf/stream.mjs <rendererCDP> <mainInspectorPort> <label> <threadId>",
   )
 }
@@ -39,7 +39,7 @@ const stats = (values) => {
     over50: values.filter((value) => value > 50).length,
   }
 }
-const doctor = execFileSync(join(root, ".agents/skills/verify-kkcode/scripts/doctor.sh"), [rendererPort, data], {
+const doctor = execFileSync(join(root, ".agents/skills/verify-hinacode/scripts/doctor.sh"), [rendererPort, data], {
   cwd: root,
   encoding: "utf8",
 })
@@ -133,17 +133,17 @@ try {
   const windowExpression = `process.getBuiltinModule('node:module').createRequire(process.cwd() + '/package.json')('electron').BrowserWindow.getAllWindows().filter(w => w.webContents.getURL() === ${JSON.stringify(renderer.target.url)})`
   const mainInfo = await main.eval(`(() => {
     const windows = ${windowExpression};
-    return { cwd: process.cwd(), data: process.env.KKCODE_USER_DATA, pid: process.pid,
+    return { cwd: process.cwd(), data: process.env.HINACODE_USER_DATA, pid: process.pid,
       windows: windows.map(w => ({ id: w.id, url: w.webContents.getURL() })) };
   })()`)
   assert.equal(realpathSync(mainInfo.cwd), root, "main inspector belongs to another checkout")
   assert.equal(mainInfo.data, data, "main inspector belongs to another profile")
   assert.equal(mainInfo.windows.length, 1, "main must own the selected renderer")
-  assert.equal(await main.eval("Boolean(globalThis.__kkcodePerfStream?.timer)"), false, "another workload is active")
+  assert.equal(await main.eval("Boolean(globalThis.__hinacodePerfStream?.timer)"), false, "another workload is active")
   await main.eval(`(() => { const w = (${windowExpression})[0]; w.show(); w.setAlwaysOnTop(true); w.focus(); })()`)
 
   await renderer.call("Page.enable")
-  await renderer.eval("globalThis.__kkcodePerfReload = true")
+  await renderer.eval("globalThis.__hinacodePerfReload = true")
   await renderer.call("Page.reload", { ignoreCache: true })
   const waitFor = async (expression, description) => {
     const deadline = Date.now() + 20000
@@ -158,11 +158,11 @@ try {
     throw new Error(`timeout: ${description}`)
   }
   await waitFor(
-    "!globalThis.__kkcodePerfReload && Boolean(window.kkcode && document.querySelector('main'))",
+    "!globalThis.__hinacodePerfReload && Boolean(window.hinacode && document.querySelector('main'))",
     "renderer reload",
   )
   const rpc = async (method, payload) => {
-    const envelope = await renderer.eval(`window.kkcode.rpc(${JSON.stringify(method)}, ${JSON.stringify(payload)})`)
+    const envelope = await renderer.eval(`window.hinacode.rpc(${JSON.stringify(method)}, ${JSON.stringify(payload)})`)
     assert(!envelope.error, JSON.stringify(envelope.error))
     return envelope.result
   }
@@ -202,7 +202,7 @@ try {
   )
 
   const marker = await renderer.eval(
-    "globalThis.__kkcodePerfMarkdown && { ...globalThis.__kkcodePerfMarkdown, samples: null }",
+    "globalThis.__hinacodePerfMarkdown && { ...globalThis.__hinacodePerfMarkdown, samples: null }",
   )
   let instrumentation = null
   if (parseEnabled) {
@@ -237,12 +237,12 @@ try {
     settlingMs: 1000,
   }
   await renderer.eval(`(() => {
-    const state = globalThis.__kkcodePerfFrames = { gaps: [], longTasks: [], events: [], hidden: false, active: true };
+    const state = globalThis.__hinacodePerfFrames = { gaps: [], longTasks: [], events: [], hidden: false, active: true };
     state.observer = new PerformanceObserver(list => state.longTasks.push(...list.getEntries().map(e => ({ start: e.startTime, ms: e.duration }))));
     state.observer.observe({ type: 'longtask', buffered: false });
     state.visibilityListener = () => { state.hidden ||= document.visibilityState !== 'visible'; };
     document.addEventListener('visibilitychange', state.visibilityListener);
-    state.off = window.kkcode.onEvent(push => {
+    state.off = window.hinacode.onEvent(push => {
       if (push.message?.threadId === ${JSON.stringify(threadId)} || push.threadId === ${JSON.stringify(threadId)}) state.events.push(push);
     });
     const tick = () => {
@@ -256,7 +256,7 @@ try {
     state.raf = requestAnimationFrame(tick);
   })()`)
   await pause(1000)
-  const idle = await renderer.eval(`({ frames: __kkcodePerfFrames.gaps, hidden: __kkcodePerfFrames.hidden,
+  const idle = await renderer.eval(`({ frames: __hinacodePerfFrames.gaps, hidden: __hinacodePerfFrames.hidden,
     visibility: document.visibilityState, viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio } })`)
   assert.equal(idle.visibility, "visible", "renderer must be visible")
   assert.equal(idle.hidden, false, "renderer was hidden during idle sampling")
@@ -268,12 +268,12 @@ try {
     "transcript changed while preparing",
   )
   assert.equal(
-    await renderer.eval("__kkcodePerfFrames.events.length"),
+    await renderer.eval("__hinacodePerfFrames.events.length"),
     0,
     "thread received live events while preparing",
   )
-  await renderer.eval(`__kkcodePerfFrames.gaps = []; __kkcodePerfFrames.longTasks = []; __kkcodePerfFrames.last = undefined;
-    if (globalThis.__kkcodePerfMarkdown) __kkcodePerfMarkdown.samples = ${parseEnabled ? "[]" : "null"};`)
+  await renderer.eval(`__hinacodePerfFrames.gaps = []; __hinacodePerfFrames.longTasks = []; __hinacodePerfFrames.last = undefined;
+    if (globalThis.__hinacodePerfMarkdown) __hinacodePerfMarkdown.samples = ${parseEnabled ? "[]" : "null"};`)
   if (profileEnabled) {
     await renderer.call("Profiler.enable")
     await renderer.call("Profiler.setSamplingInterval", { interval: 200 })
@@ -292,7 +292,7 @@ try {
   await main.eval(`(() => {
     const w = (${windowExpression})[0];
     const text = ${JSON.stringify(text)};
-    const state = globalThis.__kkcodePerfStream = { runId: ${JSON.stringify(runId)}, done: false, deltas: 0, emittedAtMs: [], start: performance.now() };
+    const state = globalThis.__hinacodePerfStream = { runId: ${JSON.stringify(runId)}, done: false, deltas: 0, emittedAtMs: [], start: performance.now() };
     let seq = ${currentHistory.seq};
     w.webContents.send('event', { type: 'message.created', seq: ++seq, message: ${JSON.stringify(message)} });
     state.timer = setInterval(() => {
@@ -311,7 +311,7 @@ try {
   let timing
   const deadline = Date.now() + 20000
   while (Date.now() < deadline) {
-    timing = await main.eval("({ ...globalThis.__kkcodePerfStream, timer: undefined })")
+    timing = await main.eval("({ ...globalThis.__hinacodePerfStream, timer: undefined })")
     if (timing.done) break
     await pause(100)
   }
@@ -325,11 +325,11 @@ try {
     "completed message and final Markdown headings",
   )
   const raw = await renderer.eval(`(() => {
-    const state = __kkcodePerfFrames;
+    const state = __hinacodePerfFrames;
     state.active = false; cancelAnimationFrame(state.raf); state.observer.disconnect(); state.off(); document.removeEventListener('visibilitychange', state.visibilityListener);
     const el = [...document.querySelectorAll('main article')].at(-1);
     return { frames: state.gaps, longTasks: state.longTasks, events: state.events, hidden: state.hidden,
-      visibility: document.visibilityState, parses: globalThis.__kkcodePerfMarkdown?.samples ?? null,
+      visibility: document.visibilityState, parses: globalThis.__hinacodePerfMarkdown?.samples ?? null,
       dom: { html: el.innerHTML, text: el.textContent, busy: el.getAttribute('aria-busy'),
         headings: el.querySelectorAll('h1').length, tables: el.querySelectorAll('table').length, codeBlocks: el.querySelectorAll('pre').length } };
   })()`)
@@ -420,14 +420,14 @@ try {
 } finally {
   if (profiling) await renderer.call("Profiler.stop").catch(() => {})
   await renderer
-    .eval(`if (globalThis.__kkcodePerfFrames) {
-    const state = __kkcodePerfFrames; state.active = false; cancelAnimationFrame(state.raf); state.observer.disconnect(); state.off(); document.removeEventListener('visibilitychange', state.visibilityListener);
-  } if (globalThis.__kkcodePerfMarkdown) __kkcodePerfMarkdown.samples = null;`)
+    .eval(`if (globalThis.__hinacodePerfFrames) {
+    const state = __hinacodePerfFrames; state.active = false; cancelAnimationFrame(state.raf); state.observer.disconnect(); state.off(); document.removeEventListener('visibilitychange', state.visibilityListener);
+  } if (globalThis.__hinacodePerfMarkdown) __hinacodePerfMarkdown.samples = null;`)
     .catch(() => {})
   if (main) {
     await main
-      .eval(`if (globalThis.__kkcodePerfStream?.runId === ${JSON.stringify(runId)}) {
-      clearInterval(__kkcodePerfStream.timer); __kkcodePerfStream.timer = null;
+      .eval(`if (globalThis.__hinacodePerfStream?.runId === ${JSON.stringify(runId)}) {
+      clearInterval(__hinacodePerfStream.timer); __hinacodePerfStream.timer = null;
     }`)
       .catch(() => {})
   }

@@ -96,7 +96,7 @@ describe("toPullRequest", () => {
 describe("toPullRequestDetail", () => {
   const detailJson = {
     ...json,
-    url: "https://github.com/kjj6198/kkcode/pull/60",
+    url: "https://github.com/hinadev-ai/hinacode/pull/60",
     number: 60,
     title: "feat(github): pull request tab",
     reviewDecision: "REVIEW_REQUIRED",
@@ -112,7 +112,7 @@ describe("toPullRequestDetail", () => {
         workflowName: "CI",
         status: "COMPLETED",
         conclusion: "SUCCESS",
-        detailsUrl: "https://github.com/kjj6198/kkcode/actions/runs/1/job/1",
+        detailsUrl: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/1",
       },
       { __typename: "CheckRun", name: "docs", workflowName: "", status: "COMPLETED", conclusion: "SKIPPED" },
       {
@@ -121,13 +121,13 @@ describe("toPullRequestDetail", () => {
         workflowName: "CI",
         status: "COMPLETED",
         conclusion: "FAILURE",
-        detailsUrl: "https://github.com/kjj6198/kkcode/actions/runs/1/job/2",
+        detailsUrl: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2",
       },
       {
         __typename: "StatusContext",
         context: "vercel",
         state: "PENDING",
-        targetUrl: "https://vercel.com/kjj6198/kkcode/abc",
+        targetUrl: "https://vercel.com/hinadev-ai/hinacode/abc",
       },
       { __typename: "CheckRun", name: "Build", workflowName: "Build", status: "COMPLETED", conclusion: "NEUTRAL" },
     ],
@@ -142,9 +142,9 @@ describe("toPullRequestDetail", () => {
       head: "abc1234",
       mergeable: "conflicting",
       checkRuns: [
-        { name: "CI / test", status: "failing", url: "https://github.com/kjj6198/kkcode/actions/runs/1/job/2" },
-        { name: "vercel", status: "pending", url: "https://vercel.com/kjj6198/kkcode/abc" },
-        { name: "CI / lint", status: "passing", url: "https://github.com/kjj6198/kkcode/actions/runs/1/job/1" },
+        { name: "CI / test", status: "failing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2" },
+        { name: "vercel", status: "pending", url: "https://vercel.com/hinadev-ai/hinacode/abc" },
+        { name: "CI / lint", status: "passing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/1" },
         { name: "docs", status: "skipped", url: null },
         { name: "Build", status: "skipped", url: null },
       ],
@@ -159,17 +159,19 @@ describe("toPullRequestDetail", () => {
 
 describe("parseGitHubPullRequestUrl", () => {
   test("canonicalizes pull request URLs, dropping sub-pages, queries and hashes", () => {
-    const canonical = "https://github.com/kjj6198/kkcode/pull/12"
+    const canonical = "https://github.com/hinadev-ai/hinacode/pull/12"
     expect(parseGitHubPullRequestUrl(canonical)).toBe(canonical)
-    expect(parseGitHubPullRequestUrl("https://github.com/kjj6198/kkcode/pull/12/files?diff=split#r1")).toBe(canonical)
-    expect(parseGitHubPullRequestUrl("https://www.github.com/kjj6198/kkcode/pull/12/")).toBe(canonical)
+    expect(parseGitHubPullRequestUrl("https://github.com/hinadev-ai/hinacode/pull/12/files?diff=split#r1")).toBe(
+      canonical,
+    )
+    expect(parseGitHubPullRequestUrl("https://www.github.com/hinadev-ai/hinacode/pull/12/")).toBe(canonical)
   })
 
   test("rejects anything that is not a GitHub pull request", () => {
-    expect(parseGitHubPullRequestUrl("https://github.com/kjj6198/kkcode/issues/12")).toBeUndefined()
-    expect(parseGitHubPullRequestUrl("http://github.com/kjj6198/kkcode/pull/12")).toBeUndefined()
-    expect(parseGitHubPullRequestUrl("https://gitlab.com/kjj6198/kkcode/pull/12")).toBeUndefined()
-    expect(parseGitHubPullRequestUrl("https://github.com/kjj6198/kkcode/pull/abc")).toBeUndefined()
+    expect(parseGitHubPullRequestUrl("https://github.com/hinadev-ai/hinacode/issues/12")).toBeUndefined()
+    expect(parseGitHubPullRequestUrl("http://github.com/hinadev-ai/hinacode/pull/12")).toBeUndefined()
+    expect(parseGitHubPullRequestUrl("https://gitlab.com/hinadev-ai/hinacode/pull/12")).toBeUndefined()
+    expect(parseGitHubPullRequestUrl("https://github.com/hinadev-ai/hinacode/pull/abc")).toBeUndefined()
     expect(parseGitHubPullRequestUrl("not a url")).toBeUndefined()
   })
 })

@@ -5,7 +5,7 @@ Date: 2026-10-16
 
 ## Problem
 
-While an agent works, every message the developer sends steers the running turn. Often the developer only wants to line up the next task ("then write the tests", "then open the PR") without derailing the work in progress. Today they have to watch the thread and wait for it to finish before typing, which is the attention cost kkcode exists to remove.
+While an agent works, every message the developer sends steers the running turn. Often the developer only wants to line up the next task ("then write the tests", "then open the PR") without derailing the work in progress. Today they have to watch the thread and wait for it to finish before typing, which is the attention cost hinacode exists to remove.
 
 ## User flow
 
@@ -32,4 +32,4 @@ While an agent works, every message the developer sends steers the running turn.
 
 ## Verification
 
-`AgentRunner.integration.test.ts` covers queueing during a turn, draining after completion, keeping the queue after an interrupt, and `unqueue`. In the real app with `verify-kkcode`: queue two messages during a turn and watch them run in order, steer with Mod+Enter, and edit a queued message back into the composer, in light and dark.
+`AgentRunner.integration.test.ts` covers queueing during a turn, draining after completion, keeping the queue after an interrupt, and `unqueue`. In the real app with `verify-hinacode`: queue two messages during a turn and watch them run in order, steer with Mod+Enter, and edit a queued message back into the composer, in light and dark.

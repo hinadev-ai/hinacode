@@ -82,10 +82,10 @@ export async function launchPackaged({ executablePath, port, cwd, env, log }) {
     const page = context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 30000 }))
     const owner = await evaluate(({ app }) => ({
       pid: process.pid,
-      data: process.env.KKCODE_USER_DATA,
+      data: process.env.HINACODE_USER_DATA,
       hasApp: typeof app?.quit === "function",
     }))
-    if (owner.pid !== child.pid || owner.data !== env.KKCODE_USER_DATA || !owner.hasApp)
+    if (owner.pid !== child.pid || owner.data !== env.HINACODE_USER_DATA || !owner.hasApp)
       throw new Error("wrong main inspector")
     return {
       firstWindow: async () => page,

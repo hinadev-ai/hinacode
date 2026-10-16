@@ -2,7 +2,7 @@ import { describe, expect, test } from "@effect/vitest"
 import { completionAt, highlight, matchFiles, matchThreads } from "./composerSyntax.ts"
 
 const known = {
-  commands: new Set(["/kalan-mode", "$verify-kkcode"]),
+  commands: new Set(["/kalan-mode", "$verify-hinacode"]),
   files: new Set(["src/main/ipc.ts"]),
   threads: new Set(["t-1"]),
 }

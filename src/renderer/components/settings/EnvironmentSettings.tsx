@@ -180,7 +180,7 @@ function AddEnvironmentForm({ name, onNameChange, pairingUrlRef }: AddEnvironmen
             required
             value={pairingUrl}
             onChange={(event) => setPairingUrl(event.target.value)}
-            placeholder="kkcode://connect?…"
+            placeholder="hinacode://connect?…"
             spellCheck={false}
             autoComplete="off"
             aria-invalid={error !== null}

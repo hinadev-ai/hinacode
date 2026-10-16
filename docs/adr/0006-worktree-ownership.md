@@ -9,7 +9,7 @@ Issue #5: two threads on the same branch shared one checkout. Settling either th
 
 ## Decision
 
-- Worktrees live in `<parent>/.kkcode-worktrees/<project>/`, and each folder name ends with the worktree id.
+- Worktrees live in `<parent>/.hinacode-worktrees/<project>/`, and each folder name ends with the worktree id.
 - A branch has at most one live worktree (`WorktreeTakenError`).
 - Removal fails with `WorktreeBusyError` while setup runs, while any thread in the checkout is mid-turn, or while another open thread uses it.
 - Create, remove and turn start share one lock, so a removal can't land between a turn resolving its directory and starting in it.

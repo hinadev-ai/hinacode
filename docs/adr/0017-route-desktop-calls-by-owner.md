@@ -5,7 +5,7 @@ Date: 2026-10-15
 
 ## Context
 
-ADR 0016 pins every thread to the cloud whose project it was created in. The desktop now has to drive those clouds next to its own threads. kkcode's job is to show which agent needs a human, so a thread waiting on a cloud cannot sit behind a mode switch.
+ADR 0016 pins every thread to the cloud whose project it was created in. The desktop now has to drive those clouds next to its own threads. hinacode's job is to show which agent needs a human, so a thread waiting on a cloud cannot sit behind a mode switch.
 
 There were three ways to get there:
 

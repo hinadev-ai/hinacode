@@ -16,7 +16,7 @@ const reasons = {
   unwritable: "cannot be written in",
 } as const
 
-/** The renderer asked for something outside the folders kkcode manages, or for something that is gone. */
+/** The renderer asked for something outside the folders hinacode manages, or for something that is gone. */
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
@@ -73,7 +73,7 @@ export class Files extends Context.Service<
       paths: ReadonlyArray<string>,
     ) => Effect.Effect<void, FsAccessError | PersistenceError>
   }
->()("kkcode/Files") {}
+>()("hinacode/Files") {}
 
 const WATCH_DEBOUNCE_MS = 100
 

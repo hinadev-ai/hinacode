@@ -25,8 +25,8 @@ const install: Record<ProviderId, string> = {
 const found = new Map<string, string>()
 
 /**
- * The user's own agent CLI. kkcode ships none, because each one releases faster than kkcode does.
- * Only a hit is cached, so installing the CLI takes effect without restarting kkcode.
+ * The user's own agent CLI. hinacode ships none, because each one releases faster than hinacode does.
+ * Only a hit is cached, so installing the CLI takes effect without restarting hinacode.
  */
 export const installedBinary = (provider: ProviderId, name: string) =>
   Effect.gen(function* () {

@@ -2,11 +2,11 @@ import { expect, type Page } from "@playwright/test"
 import { randomUUID } from "node:crypto"
 import { DatabaseSync } from "node:sqlite"
 import type { Message, MessagePart } from "../../src/shared/domain.ts"
-import type { KkcodeApp } from "../support/app.ts"
+import type { HinacodeApp } from "../support/app.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 
-const responses = new WeakMap<KkcodeApp, Message>()
+const responses = new WeakMap<HinacodeApp, Message>()
 const finishedAnswer = "The finished answer stays visible."
 const progress = "Checking the repository."
 const responseArticle = (page: Page) => page.locator("article[aria-busy]")

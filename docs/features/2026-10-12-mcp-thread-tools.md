@@ -52,7 +52,7 @@ They reach any thread of the caller's project, not only its children, because `c
 
 Services: `AgentRunner` now depends on `Secrets`. The MCP server now depends on `AgentRunner`, `Threads` and `Events`. The runner used to depend on the server for a thread's credential, which would make a cycle, so the credential store moves into its own service, `McpCredentials` (`src/main/mcp/credentials.ts`). It issues credentials, authenticates requests and learns the server URL once the listener is up. The server's HTTP layer and the runner both depend on it and not on each other.
 
-Codex times MCP tool calls out after 60 seconds by default. The kkcode server is configured with `tool_timeout_sec = 600` in the thread overrides, so a user has ten minutes to find and paste a secret. Claude Code's MCP tool timeout is already long enough.
+Codex times MCP tool calls out after 60 seconds by default. The hinacode server is configured with `tool_timeout_sec = 600` in the thread overrides, so a user has ten minutes to find and paste a secret. Claude Code's MCP tool timeout is already long enough.
 
 ## Out of scope
 
@@ -64,4 +64,4 @@ Codex times MCP tool calls out after 60 seconds by default. The kkcode server is
 
 Tests: `src/main/mcp/server.integration.test.ts` runs both tools over HTTP with the real MCP client against the real runner, with a fake agent provider whose turn stays open until the test ends it. It covers the stored and declined answers, the turn ending first, calling with no turn running, the defaults `create_thread` takes from its caller, and that the secret value never appears in a push or a tool result. `src/renderer/stores/messages.test.ts` covers folding the two events into a thread's pending requests.
 
-Real app, with `verify-kkcode`: create a project and a thread, start a cheap Claude turn whose prompt asks it to call `request_secret`, screenshot the card, answer it, and confirm with `secrets.has` that the value landed and with `threads.transcript` that no event or message contains it. Then ask it to call `create_thread` and screenshot the sidebar with the new thread running.
+Real app, with `verify-hinacode`: create a project and a thread, start a cheap Claude turn whose prompt asks it to call `request_secret`, screenshot the card, answer it, and confirm with `secrets.has` that the value landed and with `threads.transcript` that no event or message contains it. Then ask it to call `create_thread` and screenshot the sidebar with the new thread running.

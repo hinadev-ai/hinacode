@@ -1,5 +1,5 @@
 Feature: Built-in MCP server
-  Agents running in a thread call back into kkcode through its MCP server. The credential handed
+  Agents running in a thread call back into hinacode through its MCP server. The credential handed
   to a run decides which thread it acts as, and what the agent links shows up in the thread's panel.
 
   Background:
@@ -17,10 +17,10 @@ Feature: Built-in MCP server
     Then the tool result contains "+change"
 
   Scenario: A pull request linked by the agent shows in the panel until the user unlinks it
-    When the agent links the pull request "https://github.com/kjj6198/kkcode/pull/1"
-    Then the tool result contains "Linked https://github.com/kjj6198/kkcode/pull/1"
-    And the pull requests panel lists "kjj6198/kkcode#1"
-    When I unlink "kjj6198/kkcode#1" in the pull requests panel
+    When the agent links the pull request "https://github.com/hinadev-ai/hinacode/pull/1"
+    Then the tool result contains "Linked https://github.com/hinadev-ai/hinacode/pull/1"
+    And the pull requests panel lists "hinadev-ai/hinacode#1"
+    When I unlink "hinadev-ai/hinacode#1" in the pull requests panel
     Then the pull requests panel is empty
 
   Scenario: A link that is not a pull request is refused

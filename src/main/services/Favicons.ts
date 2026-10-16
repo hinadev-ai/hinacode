@@ -117,7 +117,7 @@ export class Favicons extends Context.Service<
     /** The icon of `url`'s host, or null when it is not http(s) or has no usable icon. Never fails. */
     readonly favicon: (url: string) => Effect.Effect<string | null>
   }
->()("kkcode/Favicons") {}
+>()("hinacode/Favicons") {}
 
 /** A cache key that equals any other for the same host, so every scheme, port and path shares one lookup. */
 class Host implements Equal.Equal {

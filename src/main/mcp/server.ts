@@ -36,7 +36,7 @@ const httpServer = HttpRouter.serve(
   Layer.mergeAll(Tools.layer, requireCredential).pipe(
     Layer.provideMerge(
       AiMcpServer.layerHttp({
-        name: "kkcode",
+        name: "hinacode",
         version: "0.1.0",
         path: MCP_PATH,
         protocols: [McpProtocol.v2025_11_25, McpProtocol.v2025_06_18, McpProtocol.v2025_03_26],

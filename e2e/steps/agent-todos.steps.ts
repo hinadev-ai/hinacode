@@ -1,9 +1,9 @@
 import { expect } from "@playwright/test"
 import { Given, Then, When } from "../support/fixtures.ts"
-import type { KkcodeApp } from "../support/app.ts"
+import type { HinacodeApp } from "../support/app.ts"
 import { rpc } from "../support/rpc.ts"
 
-const openOnlyThread = async (app: KkcodeApp) => {
+const openOnlyThread = async (app: HinacodeApp) => {
   const threads = await rpc(app.page, "threads.list", undefined)
   expect(threads).toHaveLength(1)
   const thread = threads[0]
@@ -15,12 +15,12 @@ const openOnlyThread = async (app: KkcodeApp) => {
     .click()
 }
 
-const sendMessage = async (app: KkcodeApp, message: string) => {
+const sendMessage = async (app: HinacodeApp, message: string) => {
   await app.page.getByLabel("Message", { exact: true }).fill(message)
   await app.page.getByRole("button", { name: "Send", exact: true }).click()
 }
 
-const taskBar = (app: KkcodeApp) => app.page.getByRole("button", { name: "Agent tasks", exact: true })
+const taskBar = (app: HinacodeApp) => app.page.getByRole("button", { name: "Agent tasks", exact: true })
 
 Given("an isolated thread with a simulated agent that plans tasks", async ({ todoApp: app, repo }) => {
   const project = await rpc(app.page, "projects.create", { name: "Tasks", rootPath: repo, setupScript: null })

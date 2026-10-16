@@ -35,5 +35,5 @@ Preconditions:
 
 - Chords are stored canonically (`mod` is Ctrl on Linux). Assert on the stored value and on the effect, not only on the rendered keys.
 - After switching away from English, English accessible names no longer match. Switch back before running other recipes.
-- Secrets are encrypted with Electron safeStorage. On Xvfb without a keyring safeStorage falls back to plaintext with a warning in the log; that is environment, not a kkcode bug.
+- Secrets are encrypted with Electron safeStorage. On Xvfb without a keyring safeStorage falls back to plaintext with a warning in the log; that is environment, not a hinacode bug.
 - Do not paste the user's real Linear or Slack secrets into a verification profile unless they asked for it.

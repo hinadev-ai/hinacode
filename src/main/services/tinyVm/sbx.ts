@@ -109,7 +109,7 @@ const decodeFrames = (body: Buffer) =>
       else if (type === STDERR) stderr.push(payload)
       else if (type === EXIT) {
         exit = yield* Schema.decodeUnknownEffect(ExecExit)(payload.toString()).pipe(
-          Effect.mapError(() => new SbxError({ message: "sbx sent an exec result KKCode does not understand" })),
+          Effect.mapError(() => new SbxError({ message: "sbx sent an exec result HinaCode does not understand" })),
         )
       }
     }
@@ -151,7 +151,7 @@ const readBody = (response: Response) =>
     catch: (cause) => new SbxError({ message: `The connection to sbx broke: ${describeCause(cause)}` }),
   })
 
-/** The sbxd HTTP API, as far as kkcode uses it. */
+/** The sbxd HTTP API, as far as hinacode uses it. */
 export const sbxClient = (login: SbxLogin) => {
   const base = login.url.replace(/\/+$/, "")
   const authorization = () => `Bearer ${Redacted.value(login.token)}`

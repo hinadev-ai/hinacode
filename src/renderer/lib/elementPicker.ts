@@ -13,7 +13,7 @@ export type PagePick = typeof PagePick.Type
 /**
  * Runs inside the browsed page through `executeJavaScript`, so it must not reference anything outside its own
  * body. Highlights the element under the pointer and resolves with a `PagePick` on click or Enter, or null on
- * Escape or `window.__kkcodePicker.cancel()`. Arrow keys walk to the parent, first child and siblings.
+ * Escape or `window.__hinacodePicker.cancel()`. Arrow keys walk to the parent, first child and siblings.
  */
 /* oxlint-disable unicorn/consistent-function-scoping -- the page gets this function's source alone, so helpers stay inside */
 function pickElement(): Promise<unknown> {
@@ -23,8 +23,8 @@ function pickElement(): Promise<unknown> {
   const MAX_HTML = 4000
   const MAX_TEXT = 500
   const MAX_COMPONENT = 200
-  const scope = window as unknown as { __kkcodePicker?: { cancel: () => void } }
-  scope.__kkcodePicker?.cancel()
+  const scope = window as unknown as { __hinacodePicker?: { cancel: () => void } }
+  scope.__hinacodePicker?.cancel()
 
   return new Promise((resolve) => {
     const host = document.createElement("div")
@@ -179,7 +179,7 @@ function pickElement(): Promise<unknown> {
       removeEventListener("scroll", reposition, true)
       removeEventListener("resize", reposition)
       for (const type of blocked) removeEventListener(type, swallow, true)
-      delete scope.__kkcodePicker
+      delete scope.__hinacodePicker
       const pick = element ? describe(element) : null
       host.remove()
       cursor.remove()
@@ -194,14 +194,14 @@ function pickElement(): Promise<unknown> {
     addEventListener("scroll", reposition, true)
     addEventListener("resize", reposition)
     for (const type of blocked) addEventListener(type, swallow, true)
-    scope.__kkcodePicker = { cancel: () => finish(null) }
+    scope.__hinacodePicker = { cancel: () => finish(null) }
   })
 }
 
 /* oxlint-enable unicorn/consistent-function-scoping */
 
 export const PICK_ELEMENT_SCRIPT = `(${pickElement.toString()})()`
-export const CANCEL_PICK_SCRIPT = "window.__kkcodePicker?.cancel()"
+export const CANCEL_PICK_SCRIPT = "window.__hinacodePicker?.cancel()"
 
 /** The part of a `<webview>` the browser view uses. */
 export interface WebviewElement extends HTMLElement {

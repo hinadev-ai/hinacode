@@ -26,7 +26,7 @@ export class Messages extends Context.Service<
      */
     readonly closeInterrupted: Effect.Effect<void, PersistenceError>
   }
->()("kkcode/Messages") {}
+>()("hinacode/Messages") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient

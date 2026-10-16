@@ -1,4 +1,4 @@
-/** How a prompt names another thread. Agents read it with the kkcode `read_thread` tool. */
+/** How a prompt names another thread. Agents read it with the hinacode `read_thread` tool. */
 export const threadMention = (threadId: string) => `@thread:${threadId}`
 
 /** Every thread mention in a text, with the thread id as group 1. */

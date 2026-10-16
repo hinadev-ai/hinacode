@@ -1,5 +1,5 @@
 ---------------------------- MODULE ClaudeTurnRouting ----------------------------
-(* How kkcode routes Claude Code CLI output to the turns of one thread: the CLI, the provider session and
+(* How hinacode routes Claude Code CLI output to the turns of one thread: the CLI, the provider session and
    its pump in src/main/agents/claude/index.ts, and AgentRunner's turn (src/main/services/AgentRunner.ts). *)
 EXTENDS Naturals, Sequences, FiniteSets
 
@@ -16,7 +16,7 @@ Prompts == 1..(MaxSends + MaxSteers)
 
 VARIABLES
   \* CLI
-  stdin,             \* prompts and query.interrupt() control requests, in the order kkcode sent them
+  stdin,             \* prompts and query.interrupt() control requests, in the order hinacode sent them
   backlog,           \* prompts the CLI has read and not started
   cliPhase, answering, contentSent, stdout,
   \* provider session (index.ts:73-102)

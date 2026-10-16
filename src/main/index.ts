@@ -1,3 +1,4 @@
+import { existsSync, renameSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -52,23 +53,25 @@ import * as Updates from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import icon from "../../assets/icon.png?asset"
 
-// Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves.
+// Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves. The name
+// stays "kkcode", the product's name before HinaCode, so installs keep their profile directory and the
+// Keychain item their secrets are sealed with.
 app.setName("kkcode")
 // Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
-if (process.platform === "win32") app.setAppUserModelId("dev.kkcode.app")
-// `kkcode serve` (or KKCODE_SERVE=1) runs this same binary as a headless cloud: no window, the remote
-// listener on, and pairing printed to stdout. It needs its own KKCODE_USER_DATA, which the lock below enforces.
+if (process.platform === "win32") app.setAppUserModelId("app.hinacode")
+// `hinacode serve` (or HINACODE_SERVE=1) runs this same binary as a headless cloud: no window, the remote
+// listener on, and pairing printed to stdout. It needs its own HINACODE_USER_DATA, which the lock below enforces.
 const serve = (() => {
   try {
     return serveConfig(process.argv, process.env)
   } catch (error) {
     // Electron keeps the process alive after a throw at load, so a service manager would never see the failure.
-    console.error(`kkcode serve: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`hinacode serve: ${error instanceof Error ? error.message : String(error)}`)
     return process.exit(1)
   }
 })()
 // Lets several instances run side by side during development and testing.
-const userDataOverride = process.env["KKCODE_USER_DATA"]
+const userDataOverride = process.env["HINACODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
 // Only the signed release app is on the access list of the login Keychain item `kkcode Safe Storage`. Any other
 // binary (each worktree's dev build, e2e, a cloud under launchd) would ask for the login password on every boot,
@@ -79,13 +82,13 @@ if (!app.isPackaged && !userDataOverride) app.setPath("userData", join(app.getPa
 // Electron keys the lock on userData. A second process on the same database would run its own pollers and
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
-  console.error(`KKCode is already running on ${app.getPath("userData")}. Set KKCODE_USER_DATA to run another.`)
+  console.error(`HinaCode is already running on ${app.getPath("userData")}. Set HINACODE_USER_DATA to run another.`)
   // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
   app.exit(serve ? 1 : 0)
 }
 // The login shell takes most of a second to start, so it runs while Electron gets ready.
 const pathHydrated = hydratePath(process.env)
-const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
+const mockClaude = process.env["HINACODE_MOCK_CLAUDE"]
 if (
   mockClaude !== undefined &&
   mockClaude !== "usage-limit" &&
@@ -93,11 +96,11 @@ if (
   mockClaude !== "todos" &&
   mockClaude !== "markdown"
 )
-  throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
-if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires KKCODE_USER_DATA")
-const mockResetMs = Number(process.env["KKCODE_MOCK_RESET_MS"] ?? 60000)
+  throw new Error("HINACODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
+if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires HINACODE_USER_DATA")
+const mockResetMs = Number(process.env["HINACODE_MOCK_RESET_MS"] ?? 60000)
 if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
-  throw new Error("KKCODE_MOCK_RESET_MS must be between 0 and 3600000")
+  throw new Error("HINACODE_MOCK_RESET_MS must be between 0 and 3600000")
 
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
@@ -106,7 +109,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
 ])
 
-/** Serves `kkcode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
+/** Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
 const serveAttachments = () =>
   protocol.handle(ATTACHMENT_PROTOCOL, (request) => {
     const path = decodeURIComponent(new URL(request.url).pathname.slice(1))
@@ -122,7 +125,7 @@ const rangeOf = (request: Request): RequestInit => {
 }
 
 /**
- * Serves `kkcode-github-asset://asset/<id>` from `github.com/user-attachments/assets/<id>`, which private
+ * Serves `hinacode-github-asset://asset/<id>` from `github.com/user-attachments/assets/<id>`, which private
  * repositories only answer for a signed-in account. GitHub redirects to a short-lived signed URL, fetched
  * without the token.
  */
@@ -143,7 +146,7 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
   })
 
 /**
- * Serves `kkcode-file://root/<encoded root>/<path>` for files inside a project root or worktree. The CSP
+ * Serves `hinacode-file://root/<encoded root>/<path>` for files inside a project root or worktree. The CSP
  * sandbox runs every served document in an opaque origin without popups or top navigation, however it is
  * embedded, so an HTML file can run its scripts but never reach the app.
  */
@@ -250,7 +253,7 @@ const createWindow = () => {
     minHeight: 480,
     show: false,
     backgroundColor: "#0a0a0a",
-    title: "KKCode",
+    title: "HinaCode",
     icon,
     // The renderer draws its own title bar around the traffic lights (see TitleBar.tsx).
     ...(process.platform === "darwin" && { titleBarStyle: "hidden", trafficLightPosition: { x: 14, y: 13 } }),
@@ -282,7 +285,7 @@ const createWindow = () => {
 const LISTEN_TIMEOUT_MS = 5000
 
 /**
- * Waits until the `kkcode serve` listener is bound, then prints the pairing URL per reachable host.
+ * Waits until the `hinacode serve` listener is bound, then prints the pairing URL per reachable host.
  * Stdout is the daemon's interface: a terminal, launchd or systemd reads it.
  */
 const startCloud = async (
@@ -299,7 +302,7 @@ const startCloud = async (
   }
   const pairing = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.pairing))
   const lines = [
-    "KKCode cloud",
+    "HinaCode cloud",
     `data: ${userData}`,
     "pair a phone with:",
     `  ${pairingUrl(pairing)}`,
@@ -309,22 +312,22 @@ const startCloud = async (
   process.stdout.write(`${lines.join("\n")}\n`)
 }
 
-// The default menu labels its app items with `app.name`, which stays "kkcode" to keep userData and the Keychain item.
+// The default menu labels its app items with `app.name`, which stays "hinacode" to keep userData and the Keychain item.
 const setMacMenu = () =>
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
-        label: "KKCode",
+        label: "HinaCode",
         submenu: [
-          { role: "about", label: "About KKCode" },
+          { role: "about", label: "About HinaCode" },
           { type: "separator" },
           { role: "services" },
           { type: "separator" },
-          { role: "hide", label: "Hide KKCode" },
+          { role: "hide", label: "Hide HinaCode" },
           { role: "hideOthers" },
           { role: "unhide" },
           { type: "separator" },
-          { role: "quit", label: "Quit KKCode" },
+          { role: "quit", label: "Quit HinaCode" },
         ],
       },
       { role: "fileMenu" },
@@ -339,7 +342,15 @@ app.whenReady().then(async () => {
   const userData = app.getPath("userData")
   // Where `sbx login` keeps its login on macOS and Linux.
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
-  const runtime = ManagedRuntime.make(makeAppLayer(join(userData, "kkcode.sqlite"), sbxConfigPath))
+  const dbPath = join(userData, "hinacode.sqlite")
+  // The database was kkcode.sqlite until the rename to HinaCode, so an existing profile keeps its threads.
+  if (!existsSync(dbPath)) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const previous = join(userData, `kkcode.sqlite${suffix}`)
+      if (existsSync(previous)) renameSync(previous, `${dbPath}${suffix}`)
+    }
+  }
+  const runtime = ManagedRuntime.make(makeAppLayer(dbPath, sbxConfigPath))
   // Build the layer (open the database, run migrations) before anything can call in.
   await runtime.runPromise(Effect.void)
   let disposed = false
@@ -359,7 +370,7 @@ app.whenReady().then(async () => {
     try {
       await startCloud(runtime, userData)
     } catch (cause) {
-      console.error("kkcode serve failed", cause)
+      console.error("hinacode serve failed", cause)
       app.exit(1)
     }
     return

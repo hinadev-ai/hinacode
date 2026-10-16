@@ -6,9 +6,9 @@ export interface McpConnection {
   readonly headers: { readonly authorization: string }
 }
 
-/** Talks to kkcode's built-in MCP server the way an agent does: the credential decides the thread. */
+/** Talks to hinacode's built-in MCP server the way an agent does: the credential decides the thread. */
 const asAgent = async <T>(connection: McpConnection, run: (client: Client) => Promise<T>) => {
-  const client = new Client({ name: "kkcode-e2e", version: "0" })
+  const client = new Client({ name: "hinacode-e2e", version: "0" })
   await client.connect(
     new StreamableHTTPClientTransport(new URL(connection.url), { requestInit: { headers: connection.headers } }),
   )

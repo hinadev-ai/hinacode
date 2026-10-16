@@ -24,6 +24,6 @@ export const useUnseen = create<UnseenState>()(
           return { byThreadId: rest }
         }),
     }),
-    { name: "kkcode.unseen", partialize: (state) => ({ byThreadId: state.byThreadId }) },
+    { name: "hinacode.unseen", partialize: (state) => ({ byThreadId: state.byThreadId }) },
   ),
 )

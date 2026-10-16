@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Usage: seed.mjs <user-data-dir> <repo-path>
-// Inserts one project and several threads with synthetic transcripts straight into kkcode.sqlite.
+// Inserts one project and several threads with synthetic transcripts straight into hinacode.sqlite.
 // Deterministic (seeded PRNG) so before/after runs render the same bytes. Reload the renderer afterwards.
 import { DatabaseSync } from "node:sqlite"
 import { randomUUID } from "node:crypto"
@@ -16,7 +16,7 @@ const heavy = heavyProjectId !== undefined && !footprint
 let nextId = 0
 const id = () => (footprint ? `perf-${nextId++}` : randomUUID())
 const scale = heavy ? 10 : 1
-const db = new DatabaseSync(`${data}/kkcode.sqlite`)
+const db = new DatabaseSync(`${data}/hinacode.sqlite`)
 
 let seed = 42
 const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff

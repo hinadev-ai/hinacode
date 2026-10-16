@@ -73,7 +73,7 @@ export const makeMuseHost = (options: {
       Effect.tryPromise({
         try: () =>
           handshake.initialize({
-            clientInfo: { name: "kkcode", version: options.clientVersion },
+            clientInfo: { name: "hinacode", version: options.clientVersion },
             // `account/read` is experimental; `sessionMcp` lets each session carry its thread's MCP credential.
             capabilities: { experimentalApi: true, requestedCapabilities: ["sessionMcp"] },
           }),

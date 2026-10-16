@@ -20,7 +20,7 @@ export class Secrets extends Context.Service<
     readonly set: (name: string, value: string) => Effect.Effect<void, PersistenceError>
     readonly clear: (name: string) => Effect.Effect<void, PersistenceError>
   }
->()("kkcode/Secrets") {}
+>()("hinacode/Secrets") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient

@@ -15,7 +15,7 @@ const LISTENER =
 
 /**
  * Starts a TCP listener whose cwd is `cwd` and resolves with its port and pid. The shell backgrounds it
- * and exits, so the listener is not a descendant of this process, which Ports treats as kkcode's own.
+ * and exits, so the listener is not a descendant of this process, which Ports treats as hinacode's own.
  */
 const listenIn = (cwd: string) =>
   Effect.promise(

@@ -47,4 +47,4 @@ Renderer only. No new rpc method, table or service.
 
 - `palette/rank.test.ts` covers ranking: recent first, then fuzzy score, empty query order, the per-group cap and highlight indexes.
 - `e2e/features/command-palette.feature` opens the palette with the shortcut, filters, and runs a command.
-- With `verify-kkcode`: seed a project with threads, press `mod+p`, type part of a thread title and press Enter; open a thread, press `mod+p`, type part of a file name and check the file viewer shows it; press `mod+shift+p` and check that the shortcuts match Settings. Screenshots in light and dark.
+- With `verify-hinacode`: seed a project with threads, press `mod+p`, type part of a thread title and press Enter; open a thread, press `mod+p`, type part of a file name and check the file viewer shows it; press `mod+shift+p` and check that the shortcuts match Settings. Screenshots in light and dark.

@@ -33,7 +33,7 @@ const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
  * A method that returns nothing answers with `envelope: {}`, since JSON drops an undefined `result`.
  */
 export const ServerFrame = Schema.Union([
-  /** `environment` names the kkcode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it. */
+  /** `environment` names the hinacode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it. */
   Schema.Struct({
     type: Schema.Literal("ready"),
     version: Schema.Int,
@@ -60,9 +60,9 @@ export interface PairingTarget {
   readonly token: string
 }
 
-/** The text the pairing QR code carries, as `kkcode://connect?host=a&host=b&port=&token=`. */
+/** The text the pairing QR code carries, as `hinacode://connect?host=a&host=b&port=&token=`. */
 export const pairingUrl = ({ hosts, port, token }: PairingTarget) => {
-  const url = new URL("kkcode://connect")
+  const url = new URL("hinacode://connect")
   for (const host of hosts) url.searchParams.append("host", host)
   url.searchParams.set("port", String(port))
   url.searchParams.set("token", token)
@@ -77,11 +77,11 @@ const isAuthorityOnlyHost = (host: string) =>
 
 /**
  * Reads a pairing URL back, keeping the order of repeated `host`s. Null for anything that is not a
- * complete `kkcode://connect` URL.
+ * complete `hinacode://connect` URL.
  */
 export const parsePairingUrl = (text: string): PairingTarget | null => {
   const url = URL.parse(text.trim())
-  if (!url || url.protocol !== "kkcode:" || url.host !== "connect") return null
+  if (!url || url.protocol !== "hinacode:" || url.host !== "connect") return null
   const hosts = url.searchParams.getAll("host")
   const port = Number(url.searchParams.get("port"))
   const token = url.searchParams.get("token")

@@ -2,7 +2,7 @@
 # Usage: seed-repo.sh <dir>
 # Creates a throwaway git repo on `main` with one commit and an untracked, gitignored .env,
 # so worktree setup scripts have something to copy. Put it inside the user data dir so cleanup.sh removes it
-# (worktrees land next to it in <parent>/.kkcode-worktrees/<repo-name>/).
+# (worktrees land next to it in <parent>/.hinacode-worktrees/<repo-name>/).
 set -euo pipefail
 dir=${1:?target dir, e.g. /tmp/kk-verify-userdata/repo}
 [[ -e "$dir" ]] && { echo "$dir already exists" >&2; exit 1; }

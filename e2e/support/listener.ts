@@ -12,7 +12,7 @@ const PAGE_SERVER = `const s = require('http').createServer((_, res) => res.writ
 
 /**
  * Starts a TCP listener whose working directory is `cwd` and resolves with its pid and port once it
- * reports them. kkcode attributes it to the workspace by that directory; the test runner is not kkcode,
+ * reports them. hinacode attributes it to the workspace by that directory; the test runner is not hinacode,
  * so being its child does not matter.
  */
 export const listenFrom = (cwd: string, script = SERVER) =>

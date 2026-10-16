@@ -26,7 +26,7 @@ const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the
 const PROMPT_LIMIT = 4000
 
 /**
- * What naming may change. `titleAndBranch` is only for a branch kkcode created for this task: renaming any
+ * What naming may change. `titleAndBranch` is only for a branch hinacode created for this task: renaming any
  * other branch, such as a pull request's head, detaches it from its upstream and its pull request.
  */
 export type NamingScope = "title" | "titleAndBranch"
@@ -40,7 +40,7 @@ export class ThreadNaming extends Context.Service<
      */
     readonly nameFromPrompt: (thread: Thread, prompt: string, scope: NamingScope) => Effect.Effect<void>
   }
->()("kkcode/ThreadNaming") {}
+>()("hinacode/ThreadNaming") {}
 
 const suggest = (model: string, prompt: string) =>
   Effect.gen(function* () {

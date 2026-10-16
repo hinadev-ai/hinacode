@@ -33,7 +33,7 @@ export function IntegrationSettings() {
   )
 }
 
-/** Whether `gh` is installed and signed in. kkcode borrows its login rather than storing a token. */
+/** Whether `gh` is installed and signed in. hinacode borrows its login rather than storing a token. */
 function GitHubStatus() {
   const environment = useSettingsEnvironment()
   const auth = useAtomValue(gitHubAuthAtom(environment))

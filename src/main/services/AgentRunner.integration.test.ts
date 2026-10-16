@@ -112,7 +112,7 @@ const withPreparingThread = async (
         }),
       ),
     ),
-    Layer.provideMerge(Db.layer(join(dir, "kkcode.sqlite"))),
+    Layer.provideMerge(Db.layer(join(dir, "hinacode.sqlite"))),
     Layer.provide(NodeServices.layer),
   )
   const domainRuntime = ManagedRuntime.make(domain)
@@ -143,7 +143,7 @@ const withPreparingThread = async (
           rootPath: root,
           setupScript: [
             'printf "setup started\\n"',
-            'while [ ! -f "$KKCODE_ROOT_PATH/release" ]; do sleep 0.02; done',
+            'while [ ! -f "$HINACODE_ROOT_PATH/release" ]; do sleep 0.02; done',
           ].join("\n"),
         }),
       ),

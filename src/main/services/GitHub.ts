@@ -258,7 +258,7 @@ export class GitHub extends Context.Service<
     /** The GitHub repository `origin` points at in the checkout at `cwd`, or null when it has none. Never fails. */
     readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
->()("kkcode/GitHub") {}
+>()("hinacode/GitHub") {}
 
 // gh exits with 4 when a command needs authentication.
 const SIGNED_OUT_EXIT_CODE = 4

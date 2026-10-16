@@ -76,7 +76,7 @@ vi.mock("electron", () => ({
   safeStorage: { isEncryptionAvailable: () => false },
 }))
 
-const appUrl = "file:///opt/kkcode/out/renderer/index.html"
+const appUrl = "file:///opt/hinacode/out/renderer/index.html"
 
 const provider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
@@ -208,12 +208,12 @@ beforeAll(async () => {
   mkdirSync(join(dir, "cloud"))
   mkdirSync(join(dir, "desktop"))
   cloudPort = 40000 + Math.floor(Math.random() * 20000)
-  cloud = ManagedRuntime.make(makeCloud(join(dir, "cloud", "kkcode.sqlite")))
+  cloud = ManagedRuntime.make(makeCloud(join(dir, "cloud", "hinacode.sqlite")))
   await setCloudRemote(true)
   await vi.waitFor(async () =>
     expect((await cloud.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
   )
-  desktop = ManagedRuntime.make(makeDesktop(join(dir, "desktop", "kkcode.sqlite")))
+  desktop = ManagedRuntime.make(makeDesktop(join(dir, "desktop", "hinacode.sqlite")))
   desktop.runFork(
     Effect.gen(function* () {
       const broadcast = yield* PushBroadcast
@@ -449,7 +449,7 @@ describe("desktop environments over a flaky link", () => {
   beforeAll(() => {
     mkdirSync(join(dir, "clocked"))
     clocked = ManagedRuntime.make(
-      makeDesktop(join(dir, "clocked", "kkcode.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
+      makeDesktop(join(dir, "clocked", "hinacode.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
     )
   })
 

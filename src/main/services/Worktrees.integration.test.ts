@@ -113,7 +113,7 @@ const withRepo = <A, E>(
     const root = join(dir, "repo")
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
-    const dbPath = join(dir, "kkcode.sqlite")
+    const dbPath = join(dir, "hinacode.sqlite")
     const pushes = yield* PubSub.unbounded<PushEvent>()
     // A separate runtime, as the app has after a relaunch; `Effect.provide` would reuse the open layers.
     const restart = Effect.acquireUseRelease(
@@ -166,7 +166,7 @@ describe("background setup", () => {
       const finished = Promise.withResolvers<Worktree>()
       const runtime = ManagedRuntime.make(
         makeLayer(
-          join(dir, "kkcode.sqlite"),
+          join(dir, "hinacode.sqlite"),
           Effect.runSync(PubSub.unbounded<PushEvent>()),
           Events.of({
             publish: (event) =>
@@ -190,7 +190,7 @@ describe("background setup", () => {
               setupScript: [
                 'printf "setup started\\n"',
                 "attempt=0",
-                'while [ ! -f "$KKCODE_ROOT_PATH/setup-release" ]; do',
+                'while [ ! -f "$HINACODE_ROOT_PATH/setup-release" ]; do',
                 "  attempt=$((attempt + 1))",
                 '  if [ "$attempt" -ge 1000 ]; then exit 70; fi',
                 "  sleep 0.02",
@@ -247,7 +247,7 @@ describe("background setup", () => {
     const started = Promise.withResolvers<void>()
     const runtime = ManagedRuntime.make(
       makeLayer(
-        join(dir, "kkcode.sqlite"),
+        join(dir, "hinacode.sqlite"),
         Effect.runSync(PubSub.unbounded<PushEvent>()),
         Events.of({
           publish: (event) =>
@@ -266,7 +266,7 @@ describe("background setup", () => {
             setupScript: [
               'printf "setup started\\n"',
               "attempt=0",
-              'while [ ! -f "$KKCODE_ROOT_PATH/setup-release" ]; do',
+              'while [ ! -f "$HINACODE_ROOT_PATH/setup-release" ]; do',
               "  attempt=$((attempt + 1))",
               '  if [ "$attempt" -ge 1000 ]; then exit 70; fi',
               "  sleep 0.02",
@@ -517,7 +517,7 @@ describe("worktree ownership", () => {
   it.live("adopts a checkout a crash left between `git worktree add` and the insert", () =>
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
-        const orphan = join(dirname(root), ".kkcode-worktrees", basename(root), "kk-orphan")
+        const orphan = join(dirname(root), ".hinacode-worktrees", basename(root), "kk-orphan")
         git(root, "worktree", "add", "-q", "-b", "kk/orphan", orphan, "main")
         writeFileSync(join(orphan, "sentinel"), "recovered")
 
