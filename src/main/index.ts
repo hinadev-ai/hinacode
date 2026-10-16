@@ -39,6 +39,7 @@ import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as RemoteServer from "./remote/server.ts"
 import { applyServeConfig, serveConfig } from "./serve.ts"
+import { hydratePath } from "./shellPath.ts"
 import { pairingUrl } from "../shared/remote.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Search from "./services/Search.ts"
@@ -76,6 +77,8 @@ if (!app.requestSingleInstanceLock()) {
   // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
   app.exit(serve ? 1 : 0)
 }
+// The login shell takes most of a second to start, so it runs while Electron gets ready.
+const pathHydrated = hydratePath(process.env)
 const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
 if (
   mockClaude !== undefined &&
@@ -324,6 +327,7 @@ const setMacMenu = () =>
   )
 
 app.whenReady().then(async () => {
+  await pathHydrated
   const userData = app.getPath("userData")
   // Where `sbx login` keeps its login on macOS and Linux.
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")

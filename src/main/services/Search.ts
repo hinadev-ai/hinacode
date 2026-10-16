@@ -38,19 +38,12 @@ const likePattern = (query: string) =>
     ? { pattern: `%${query.replace(/[\\%_]/g, "\\$&")}%`, escaped: true }
     : { pattern: `%${query}%`, escaped: false }
 
-/** A GUI-launched app gets a minimal PATH, so fall back to a login shell, as the agent binaries do. */
 function resolveRipgrep(): string | undefined {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", ["rg"]],
-    [process.env.SHELL ?? "/bin/sh", ["-lc", "command -v rg"]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const path = execFileSync(command, args, { encoding: "utf8", timeout: 5000 }).trim()
-      if (path.startsWith("/")) return path
-    } catch {}
+  try {
+    return execFileSync("which", ["rg"], { encoding: "utf8", timeout: 5000 }).trim() || undefined
+  } catch {
+    return undefined
   }
-  return undefined
 }
 
 const RipgrepMatch = Schema.Struct({

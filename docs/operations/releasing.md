@@ -32,6 +32,6 @@ For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVER
 ## If it goes wrong
 
 - **The app quits at startup with `ERR_MODULE_NOT_FOUND`.** A main-process import pulls in a package that is not packaged. Only packages that `out/main` imports belong in `dependencies`; the renderer is bundled by Vite, so its packages are `devDependencies`. Import a subpath instead of a barrel (for example `@effect/platform-node/NodeHttpServer`), or move the package to `dependencies`.
-- **A thread says its agent is not installed.** The app ships no agent CLI. It runs the user's own `claude`, `codex` or `muse`, found with `which <name>`, then `$SHELL -ilc 'command -v <name>'`. Run both in a terminal to see which one misses.
+- **A thread says its agent is not installed.** The app ships no agent CLI. It runs the user's own `claude`, `codex` or `muse`, found with `which <name>` on the PATH that main reads from `$SHELL -ilc` at startup, since an app opened from the Dock gets launchd's minimal PATH. Run `$SHELL -ilc 'command -v <name>'` in a terminal; if it misses, add the CLI's directory to PATH in the shell's rc file.
 - **Installed apps do not update.** Check that the release is published, not a draft, and that it has the `latest*.yml` for that platform. Squirrel.Mac also refuses a build signed with a different identity than the running app.
 - **The Windows build fails in `wine`.** It needs real x64. Wine crashes under Docker's x64 emulation on Apple Silicon, so build Windows in CI.
