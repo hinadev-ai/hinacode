@@ -182,7 +182,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-relaxed"
+      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-normal"
     >
       {presentation.kind === "completed" && (
         <WorkedFor

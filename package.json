@@ -7,6 +7,7 @@
   "scripts": {
     "postinstall": "node scripts/node-pty-spawn-helper.mjs",
     "dev": "node scripts/dev-app-identity.mjs && electron-vite dev",
+    "dev:markdown": "KKCODE_MOCK_CLAUDE=markdown KKCODE_USER_DATA=/tmp/kk-markdown pnpm dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --publish never",

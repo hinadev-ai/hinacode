@@ -16,7 +16,7 @@ import type {
   OpenPullRequest,
 } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
-import { CommandError, makeExec } from "./Git.ts"
+import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
   override get message(): string {
@@ -307,8 +307,7 @@ const make = Effect.gen(function* () {
     // A full https URL keeps gh from switching to its configured git_protocol, which may be ssh on a
     // machine that has no ssh key for GitHub.
     const url = `https://github.com/${owner}/${name}.git`
-    // Without a terminal git would wait forever on a credential prompt; fail fast instead.
-    const gitClone = () => exec("git", ["clone", url, dest], dirname(dest), { env: { GIT_TERMINAL_PROMPT: "0" } })
+    const gitClone = () => exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), { env: REMOTE_GIT_ENV })
     return gh(dirname(dest), ["repo", "clone", url, dest]).pipe(
       Effect.catchTags({ GitHubCliMissingError: gitClone, GitHubSignedOutError: gitClone }),
       Effect.asVoid,

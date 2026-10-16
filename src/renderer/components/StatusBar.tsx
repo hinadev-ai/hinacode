@@ -5,7 +5,7 @@ import { useEffect } from "react"
 import { RiDownloadLine } from "react-icons/ri"
 import type { ModelUsage, ThreadUsage } from "../../shared/agent.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
-import { callPromise, threadUsageAtom, updateReadyAtom } from "../lib/rpc.ts"
+import { callPromise, threadUsageAtom, updateStatusAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
@@ -77,8 +77,9 @@ function ThreadTokens({ threadId }: { threadId: string }) {
 }
 
 function RestartToUpdate() {
-  const version = AsyncResult.getOrElse(useAtomValue(updateReadyAtom), () => null)
-  if (version === null) return null
+  const status = AsyncResult.getOrElse(useAtomValue(updateStatusAtom), () => null)
+  if (status?.state.type !== "ready") return null
+  const { version } = status.state
   return (
     <Tooltip>
       <TooltipTrigger

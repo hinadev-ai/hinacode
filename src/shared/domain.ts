@@ -106,6 +106,21 @@ export const GitHubAuth = Schema.Union([
 ])
 export type GitHubAuth = typeof GitHubAuth.Type
 
+/** Where the updater is. A development build never checks, so it stays `unsupported`. */
+export const UpdateState = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("unsupported") }),
+  Schema.Struct({ type: Schema.Literal("idle") }),
+  Schema.Struct({ type: Schema.Literal("checking") }),
+  Schema.Struct({ type: Schema.Literal("upToDate") }),
+  Schema.Struct({ type: Schema.Literal("downloading"), version: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("ready"), version: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("failed"), message: Schema.String }),
+])
+export type UpdateState = typeof UpdateState.Type
+
+export const UpdateStatus = Schema.Struct({ current: Schema.String, state: UpdateState })
+export type UpdateStatus = typeof UpdateStatus.Type
+
 export const PullRequestStatus = Schema.Literals(["draft", "open", "merged", "closed"])
 export type PullRequestStatus = typeof PullRequestStatus.Type
 

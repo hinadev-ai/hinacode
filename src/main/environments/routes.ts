@@ -37,7 +37,8 @@ export const routes: Record<RpcMethod, Route> = {
   "environments.list": client,
   "environments.add": client,
   "environments.remove": client,
-  "updates.ready": client,
+  "updates.status": client,
+  "updates.check": client,
   "updates.install": client,
   "links.favicon": client,
 

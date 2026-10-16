@@ -14,15 +14,17 @@ kkcode ships as a downloaded app, and main moves fast. Today a developer has to 
 3. Once the zip downloads, the status bar shows a quiet `Restart to update` button with the new version in its tooltip. An updater error clears readiness and hides the button.
 4. Clicking it quits kkcode, swaps in the new version and relaunches. Running turns get the same five-second quit window as a normal quit.
 5. If the developer ignores the button, the update installs the next time they quit kkcode.
+6. Settings, General shows the running version and what the updater is doing. `Check for updates` checks right away, and becomes `Restart to update` once a release has downloaded.
 
 ## Design
 
 `electron-builder` packages a signed, notarized macOS arm64 DMG and zip, and publishes them with `latest-mac.yml` to the public `kjj6198/kkcode-releases` repository (see `docs/adr/0015-updates-from-a-public-releases-repo.md`). The source repository stays private. The DMG is for the first install. The zip is what Squirrel.Mac installs.
 
-`services/Updates.ts` wraps `electron-updater`. It only runs when `app.isPackaged`, so `pnpm dev` never checks. It holds one value, the version that has finished downloading, or `null`. That is the only state the renderer acts on, so checking and downloading are not modelled.
+`services/Updates.ts` wraps `electron-updater`. It only runs when `app.isPackaged`, so `pnpm dev` never checks and reports `unsupported`. It follows the updater's events into one `UpdateState`: idle, checking, up to date, downloading, ready or failed.
 
-- rpc `updates.ready` returns the downloaded version or `null`, for a renderer that mounts after the download finished.
-- push `update.changed` tells the renderer to ask for readiness again, after a download or updater error.
+- rpc `updates.status` returns the running version and that state, for a renderer that mounts after it changed.
+- rpc `updates.check` checks now. It does nothing while a check or download runs, or while a downloaded release waits, so a click cannot restart a download.
+- push `update.changed` tells the renderer to ask for the status again.
 - rpc `updates.install` calls `quitAndInstall`.
 
 `electron-updater` checks the `sha512` in `latest-mac.yml`, and Squirrel.Mac refuses a bundle whose code signature does not satisfy the running app's designated requirement. Both checks happen before anything is installed, so the feed needs no extra trust handling.
@@ -30,7 +32,7 @@ kkcode ships as a downloaded app, and main moves fast. Today a developer has to 
 ## Out of scope
 
 - Linux and Intel Macs. node-pty is native and has to be built on the target platform, and there is one release machine today.
-- Release channels, staged rollouts and a manual "Check for updates" action. Add them when someone needs them.
+- Release channels and staged rollouts. Add them when someone needs them.
 - Release notes in the app. The tooltip links nothing, and the releases page has the notes.
 
 ## Verification

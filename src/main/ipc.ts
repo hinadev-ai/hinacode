@@ -231,7 +231,8 @@ const handlers: Handlers = {
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
 
-  "updates.ready": () => Updates.use((updates) => updates.ready),
+  "updates.status": () => Updates.use((updates) => updates.status),
+  "updates.check": () => Updates.use((updates) => updates.check),
   "updates.install": () => Updates.use((updates) => updates.install),
 
   "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),

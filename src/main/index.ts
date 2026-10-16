@@ -39,6 +39,7 @@ import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as RemoteServer from "./remote/server.ts"
 import { applyServeConfig, serveConfig } from "./serve.ts"
+import { hydratePath } from "./shellPath.ts"
 import { pairingUrl } from "../shared/remote.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Search from "./services/Search.ts"
@@ -76,14 +77,17 @@ if (!app.requestSingleInstanceLock()) {
   // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
   app.exit(serve ? 1 : 0)
 }
+// The login shell takes most of a second to start, so it runs while Electron gets ready.
+const pathHydrated = hydratePath(process.env)
 const mockClaude = process.env["KKCODE_MOCK_CLAUDE"]
 if (
   mockClaude !== undefined &&
   mockClaude !== "usage-limit" &&
   mockClaude !== "org-spend-limit" &&
-  mockClaude !== "todos"
+  mockClaude !== "todos" &&
+  mockClaude !== "markdown"
 )
-  throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit, org-spend-limit or todos")
+  throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
 if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires KKCODE_USER_DATA")
 const mockResetMs = Number(process.env["KKCODE_MOCK_RESET_MS"] ?? 60000)
 if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
@@ -177,9 +181,7 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
     Layer.provide(domain),
   )
   // A cloud has no app to update in place; it is replaced as a binary, so the updater never starts there.
-  const updates = serve
-    ? Layer.succeed(Updates.Updates, Updates.Updates.of({ ready: Effect.succeed(null), install: Effect.void }))
-    : Updates.layer
+  const updates = serve ? Layer.succeed(Updates.Updates, Updates.unsupported(app.getVersion())) : Updates.layer
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(
@@ -325,6 +327,7 @@ const setMacMenu = () =>
   )
 
 app.whenReady().then(async () => {
+  await pathHydrated
   const userData = app.getPath("userData")
   // Where `sbx login` keeps its login on macOS and Linux.
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")

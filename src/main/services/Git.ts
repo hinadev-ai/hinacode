@@ -21,6 +21,14 @@ export interface RunOptions {
   readonly env?: Record<string, string>
 }
 
+/**
+ * Prefix for a git command that reaches a remote. It authenticates through `gh` in place of the system
+ * credential helper, which on macOS is osxkeychain and opens a Keychain password dialog over the app.
+ */
+export const REMOTE_GIT_ARGS = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
+/** Without a terminal git would wait forever on a credential prompt; fail fast instead. */
+export const REMOTE_GIT_ENV = { GIT_TERMINAL_PROMPT: "0" }
+
 /** Runs `command` in `cwd` and returns stdout. A command that cannot start fails with exit code -1. */
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
@@ -102,6 +110,8 @@ export class Git extends Context.Service<
       args: ReadonlyArray<string>,
       options?: RunOptions,
     ) => Effect.Effect<string, CommandError>
+    /** Like `run`, for commands that reach a remote, such as `fetch`. Never prompts for credentials. */
+    readonly remote: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, CommandError>
     /** Up to `limit` commits reachable from branches, remote branches, tags and HEAD, children before parents. */
     readonly log: (cwd: string, limit: number) => Effect.Effect<Array<GitCommit>, CommandError>
     /** The commit's changes against its first parent. `hash` must already be validated as hex. */
@@ -113,6 +123,8 @@ const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
   const run = (cwd: string, args: ReadonlyArray<string>, options?: RunOptions) =>
     exec("git", ["-C", cwd, ...args], cwd, options)
+  const remote = (cwd: string, args: ReadonlyArray<string>) =>
+    run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV })
 
   // Not `--all`: that also walks the stash and tool-private refs such as editor checkpoints,
   // which show up as disconnected lanes that are not history.
@@ -163,7 +175,7 @@ const make = Effect.gen(function* () {
     })
   }
 
-  return Git.of({ run, log, show })
+  return Git.of({ run, remote, log, show })
 })
 
 export const layer = Layer.effect(Git, make)

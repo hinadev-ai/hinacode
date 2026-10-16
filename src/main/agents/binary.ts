@@ -6,20 +6,14 @@ import { AgentError } from "./provider.ts"
 
 const execFileAsync = promisify(execFile)
 
-/** A packaged Electron app may not inherit the shell PATH (mise, Homebrew), so fall back to a login shell. */
+/** The CLI on PATH, which `hydratePath` fills from the login shell at startup. */
 export const findBinary = async (name: string): Promise<string | undefined> => {
-  const attempts: Array<[string, Array<string>]> = [
-    ["which", [name]],
-    [process.env.SHELL ?? "/bin/sh", ["-ilc", `command -v ${name}`]],
-  ]
-  for (const [command, args] of attempts) {
-    try {
-      const { stdout } = await execFileAsync(command, args, { encoding: "utf8", timeout: 5000 })
-      const path = stdout.trim().split("\n").at(-1)
-      if (path) return path
-    } catch {}
+  try {
+    const { stdout } = await execFileAsync("which", [name], { encoding: "utf8", timeout: 5000 })
+    return stdout.trim() || undefined
+  } catch {
+    return undefined
   }
-  return undefined
 }
 
 const install: Record<ProviderId, string> = {

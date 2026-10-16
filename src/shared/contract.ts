@@ -52,6 +52,7 @@ import {
   TerminalSession,
   Thread,
   ThreadSearchHit,
+  UpdateStatus,
   ThreadStatus,
   ThreadVm,
   VmControl,
@@ -268,8 +269,10 @@ export const RpcMethods = {
   /** Opens the native folder picker. Null when the user cancels. */
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
-  /** The downloaded release version waiting to install, or null. */
-  "updates.ready": rpc(Schema.Void, Schema.NullOr(Schema.String)),
+  /** The running version and what the updater is doing. */
+  "updates.status": rpc(Schema.Void, UpdateStatus),
+  /** Checks for a release now and downloads it. Does nothing while a check or download runs or one is ready. */
+  "updates.check": rpc(Schema.Void, Schema.Void),
   /** Quits, installs the downloaded release and relaunches. */
   "updates.install": rpc(Schema.Void, Schema.Void),
 
@@ -644,7 +647,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
   /** Sent after the session's last `terminal.data`. */
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
-  /** Readiness changed; ask updates.ready for the current downloaded version. */
+  /** The updater changed state; ask updates.status for it. */
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   /** The desktop's link to a cloud changed state. */
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
