@@ -5,7 +5,7 @@
 HinaCode is an Electron app built for coding agents. It currently supports Claude Code, Codex and Muse Code.
 
 > [!WARNING]
-> KKCode is still in development. Expect bugs.
+> HinaCode is still in development. Expect bugs.
 
 ## Development
 
