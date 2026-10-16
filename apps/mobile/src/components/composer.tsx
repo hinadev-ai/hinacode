@@ -1,12 +1,13 @@
-import { type ModelInfo, ProviderId, unlistedModel } from "@shared/agent.ts"
+import { type AgentCommand, type ModelInfo, ProviderId, unlistedModel } from "@shared/agent.ts"
+import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerSyntax.ts"
 import type { RpcRequest } from "@shared/contract.ts"
-import { AccessMode, isThreadBusy, type Thread } from "@shared/domain.ts"
-import { type ReactNode, useEffect, useState } from "react"
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
+import { useEffect, useRef, useState } from "react"
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
-import { IconButton } from "@/components/ui"
-import { Colors, HIT, radius } from "@/constants/theme"
+import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
+import { WorkspaceChip } from "@/components/workspace-picker"
+import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -31,7 +32,60 @@ const INPUT_PADDING = 6
 const MAX_LINES = 5
 const CHIP_HEIGHT = 32
 const SEND_SIZE = 36
-const SHEET_PADDING = 8
+const SUGGESTION_HEIGHT = 48
+const VISIBLE_SUGGESTIONS = 4.5
+
+/**
+ * Where the caret is after an edit: right after the span that changed. react-native-web fires no selection
+ * event while typing, so the edit itself is the only signal there.
+ */
+const caretAfterEdit = (before: string, after: string) => {
+  let prefix = 0
+  while (prefix < before.length && before[prefix] === after[prefix]) prefix++
+  let suffix = 0
+  const maxSuffix = Math.min(before.length, after.length) - prefix
+  while (suffix < maxSuffix && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix++
+  return after.length - suffix
+}
+
+/** Agent and workspace stay open to change until the first message, as on the desktop. */
+function useUnstarted(thread: Thread) {
+  return useMessages((state) => {
+    const history = state.byThread[thread.id]
+    return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
+  })
+}
+
+/**
+ * What the composer completes: the agent's `/commands` and `$skills`, the workspace's files and the project's
+ * other threads. Commands and files are listed again when the agent, account or worktree changes, and after a
+ * turn, which may have added files.
+ */
+function useCompletions(thread: Thread, busy: boolean, onError: OnError) {
+  const connected = useConnection((state) => state.status === "connected")
+  const [commands, setCommands] = useState<readonly AgentCommand[]>([])
+  const [files, setFiles] = useState<readonly string[]>([])
+  const byId = useThreads((state) => state.byId)
+  useEffect(() => {
+    if (!connected) return
+    let current = true
+    call("commands.list", { threadId: thread.id }).then(
+      (next) => current && setCommands(next),
+      (cause: unknown) => current && onError(`Could not list commands: ${errorText(cause)}`),
+    )
+    call("files.list", { threadId: thread.id }).then(
+      (next) => current && setFiles(next),
+      (cause: unknown) => current && onError(`Could not list files: ${errorText(cause)}`),
+    )
+    return () => {
+      current = false
+    }
+  }, [connected, thread.id, thread.provider, thread.accountId, thread.worktreeId, busy, onError])
+  const threads = Object.values(byId)
+    .filter((other) => other.projectId === thread.projectId && other.id !== thread.id && other.status !== "archived")
+    .sort((a, b) => a.sortIndex - b.sortIndex)
+  return { commands, files, threads }
+}
 
 export function Composer({ thread }: { thread: Thread }) {
   const theme = useTheme()
@@ -39,8 +93,14 @@ export function Composer({ thread }: { thread: Thread }) {
   const sending = useDrafts((state) => state.sending[thread.id])
   const connected = useConnection((state) => state.status === "connected")
   const [focused, setFocused] = useState(false)
+  const [caret, setCaret] = useState(0)
+  /** Set only right after a pick, to put the caret after the inserted command; any edit or move hands it back. */
+  const [placedCaret, setPlacedCaret] = useState<{ start: number } | undefined>()
+  const inputRef = useRef<TextInput>(null)
   const [error, setError] = useState<string | null>(null)
+  const unstarted = useUnstarted(thread)
   const busy = isThreadBusy(thread.status)
+  const completions = useCompletions(thread, busy, setError)
   const hasDraft = text.trim() !== ""
 
   useEffect(() => {
@@ -52,12 +112,17 @@ export function Composer({ thread }: { thread: Thread }) {
     const sent = useDrafts.getState().take(thread.id)
     const prompt = sent.trim()
     if (prompt === "") return useDrafts.getState().restore(thread.id, sent)
+    const workspace = unstarted ? useDrafts.getState().workspaces[thread.id] : undefined
     setError(null)
     try {
       await useDrafts.getState().trackSending(thread.id, prompt, () =>
         busy
           ? call("threads.steer", { threadId: thread.id, text: prompt })
-          : call("threads.send", { threadId: thread.id, prompt }),
+          : call("threads.send", {
+              threadId: thread.id,
+              prompt,
+              workspace: workspace && { mode: workspace.mode, target: toCheckoutTarget(workspace.ref) },
+            }),
       )
     } catch (cause) {
       useDrafts.getState().restore(thread.id, sent)
@@ -82,14 +147,35 @@ export function Composer({ thread }: { thread: Thread }) {
           </Text>
         </View>
       ))}
+      <Suggestions
+        text={text}
+        caret={caret}
+        completions={completions}
+        onPick={(next, position) => {
+          useDrafts.getState().setText(thread.id, next)
+          setCaret(position)
+          setPlacedCaret({ start: position })
+          inputRef.current?.focus()
+        }}
+      />
       <View
         style={[styles.bar, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : theme.border }]}
       >
         <TextInput
+          ref={inputRef}
           testID="composer-input"
           accessibilityLabel="Message"
           value={text}
-          onChangeText={(next) => useDrafts.getState().setText(thread.id, next)}
+          selection={placedCaret && { start: placedCaret.start, end: placedCaret.start }}
+          onChangeText={(next) => {
+            setPlacedCaret(undefined)
+            setCaret(caretAfterEdit(text, next))
+            useDrafts.getState().setText(thread.id, next)
+          }}
+          onSelectionChange={(event) => {
+            setCaret(event.nativeEvent.selection.end)
+            if (event.nativeEvent.selection.end !== placedCaret?.start) setPlacedCaret(undefined)
+          }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={busy ? "Steer the running turn" : "Ask the agent"}
@@ -98,7 +184,10 @@ export function Composer({ thread }: { thread: Thread }) {
           style={[styles.input, { color: theme.text }]}
         />
         <View style={styles.toolbar}>
-          <SettingsChip thread={thread} onError={setError} />
+          <View style={styles.chips}>
+            <SettingsChip thread={thread} onError={setError} />
+            {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
+          </View>
           <SendButton busy={busy} hasDraft={hasDraft} onSend={() => void send()} onStop={stop} />
         </View>
       </View>
@@ -109,6 +198,112 @@ export function Composer({ thread }: { thread: Thread }) {
       )}
     </View>
   )
+}
+
+/**
+ * Completions for the `/command`, `$skill` or `@mention` token at the caret. Picking one replaces the token.
+ */
+function Suggestions({
+  text,
+  caret,
+  completions,
+  onPick,
+}: {
+  text: string
+  caret: number
+  completions: ReturnType<typeof useCompletions>
+  onPick: (text: string, caret: number) => void
+}) {
+  const theme = useTheme()
+  // The selection can arrive before the text it belongs to.
+  const completion = completionAt(text, Math.min(caret, text.length))
+  if (completion === null) return null
+  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads)
+  if (suggestions.length === 0) return null
+
+  const pick = (suggestion: Suggestion) => {
+    const insert = `${suggestion.insert} `
+    const rest = text.slice(completion.end).replace(/^ /, "")
+    onPick(text.slice(0, completion.start) + insert + rest, completion.start + insert.length)
+  }
+
+  return (
+    <ScrollView
+      testID="composer-suggestions"
+      accessibilityLabel={completion.trigger === "@" ? "Mentions" : "Commands"}
+      keyboardShouldPersistTaps="always"
+      style={[
+        styles.suggestions,
+        {
+          maxHeight: SUGGESTION_HEIGHT * VISIBLE_SUGGESTIONS,
+          backgroundColor: theme.surface,
+          borderColor: theme.border,
+        },
+      ]}
+    >
+      {suggestions.map((suggestion) => (
+        <Pressable
+          key={suggestion.insert}
+          accessibilityRole="button"
+          accessibilityLabel={suggestion.type === "thread" ? suggestion.thread.title : suggestion.insert}
+          accessibilityHint={suggestion.type === "command" ? suggestion.command.description || undefined : undefined}
+          onPress={() => pick(suggestion)}
+          style={({ pressed }) => [styles.suggestion, pressed && { backgroundColor: theme.surfaceStrong }]}
+        >
+          <SuggestionRow suggestion={suggestion} />
+        </Pressable>
+      ))}
+    </ScrollView>
+  )
+}
+
+function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
+  const theme = useTheme()
+  switch (suggestion.type) {
+    case "command": {
+      const { command } = suggestion
+      return (
+        <>
+          <Text numberOfLines={1} style={[styles.suggestionName, { color: theme.text }]}>
+            {suggestion.insert}
+            {command.argumentHint !== "" && <Text style={{ color: theme.textMuted }}> {command.argumentHint}</Text>}
+          </Text>
+          {command.description !== "" && (
+            <Text numberOfLines={1} style={[styles.suggestionDescription, { color: theme.textMuted }]}>
+              {command.description}
+            </Text>
+          )}
+        </>
+      )
+    }
+    case "thread": {
+      const { thread } = suggestion
+      return (
+        <View style={styles.suggestionLine}>
+          <Icon name={providers[thread.provider].icon} size={14} color={theme.textMuted} />
+          <Text numberOfLines={1} style={[styles.suggestionTitle, { color: theme.text }]}>
+            {thread.title}
+          </Text>
+          <Text numberOfLines={1} style={[styles.suggestionDescription, { color: theme.textMuted }]}>
+            {thread.model}
+          </Text>
+        </View>
+      )
+    }
+    case "file":
+      return (
+        <View style={styles.suggestionLine}>
+          <Icon name="RiFileLine" size={14} color={theme.textMuted} />
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="head"
+            style={[styles.suggestionTitle, styles.suggestionName, { color: theme.text }]}
+          >
+            {suggestion.path}
+          </Text>
+        </View>
+      )
+  }
 }
 
 /** While the agent runs, an empty composer offers Stop and a draft offers Steer. */
@@ -256,13 +451,8 @@ function SettingsSheet({
   onError: OnError
 }) {
   const theme = useTheme()
-  const insets = useSafeAreaInsets()
   const { models, current } = useThreadModels(thread)
-  // Agent stays open to change until the first message, as on the desktop.
-  const unstarted = useMessages((state) => {
-    const history = state.byThread[thread.id]
-    return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
-  })
+  const unstarted = useUnstarted(thread)
 
   // Effort and fast mode the next model cannot honor go back to its defaults.
   const changeModel = (id: string) => {
@@ -282,31 +472,7 @@ function SettingsSheet({
   const defaultEffort = current?.defaultEffort ? `Default (${effortLabel(current.defaultEffort)})` : "Default effort"
 
   return (
-    <Modal transparent animationType="slide" visible={open} onRequestClose={onClose}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        onPress={onClose}
-        style={[styles.backdrop, { height: insets.top + 12 }]}
-      />
-      <View
-        accessibilityViewIsModal
-        style={[
-          styles.sheet,
-          {
-            paddingBottom: SHEET_PADDING + insets.bottom,
-            backgroundColor: theme.background,
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        <View style={styles.sheetHeader}>
-          <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
-            Thread settings
-          </Text>
-          <IconButton icon="RiCloseLine" accessibilityLabel="Close" onPress={onClose} />
-        </View>
-        <ScrollView contentContainerStyle={styles.sections}>
+    <Sheet title="Thread settings" open={open} onClose={onClose}>
           {unstarted && (
             <Section title="Agent">
               {ProviderId.literals.map((provider) => (
@@ -356,11 +522,11 @@ function SettingsSheet({
           )}
           {current?.fastMode && (
             <Section title="Speed">
-              <View style={styles.option}>
+              <View style={sheetStyles.option}>
                 <Icon name="RiFlashlightLine" size={18} color={theme.text} />
-                <View style={styles.optionText}>
-                  <Text style={[styles.optionLabel, { color: theme.text }]}>Fast mode</Text>
-                  <Text style={[styles.optionHint, { color: theme.textMuted }]}>
+                <View style={sheetStyles.optionText}>
+                  <Text style={[sheetStyles.optionLabel, { color: theme.text }]}>Fast mode</Text>
+                  <Text style={[sheetStyles.optionHint, { color: theme.textMuted }]}>
                     Faster responses that use more of your plan
                   </Text>
                 </View>
@@ -386,55 +552,7 @@ function SettingsSheet({
               />
             ))}
           </Section>
-        </ScrollView>
-      </View>
-    </Modal>
-  )
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  const theme = useTheme()
-  return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={title} style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
-      {children}
-    </View>
-  )
-}
-
-function OptionRow({
-  label,
-  hint,
-  icon,
-  color,
-  selected,
-  onPress,
-}: {
-  label: string
-  hint?: string
-  icon?: IconName
-  color?: string
-  selected: boolean
-  onPress: () => void
-}) {
-  const theme = useTheme()
-  const foreground = color ?? theme.text
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityLabel={label}
-      accessibilityHint={hint}
-      accessibilityState={{ checked: selected }}
-      onPress={onPress}
-      style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
-    >
-      {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
-      <View style={styles.optionText}>
-        <Text style={[styles.optionLabel, { color: foreground }]}>{label}</Text>
-        {hint !== undefined && <Text style={[styles.optionHint, { color: theme.textMuted }]}>{hint}</Text>}
-      </View>
-      {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
-    </Pressable>
+    </Sheet>
   )
 }
 
@@ -453,6 +571,13 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { fieldSizing: "content", outlineStyle: "none" } as object }),
   },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  chips: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 2 },
+  suggestions: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
+  suggestion: { minHeight: SUGGESTION_HEIGHT, justifyContent: "center", gap: 2, paddingHorizontal: 12, paddingVertical: 6 },
+  suggestionName: { fontFamily: mono, fontSize: 14 },
+  suggestionDescription: { fontSize: 13 },
+  suggestionLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+  suggestionTitle: { flexShrink: 1, fontSize: 15 },
   chip: {
     height: CHIP_HEIGHT,
     flexShrink: 1,
@@ -476,30 +601,4 @@ const styles = StyleSheet.create({
   sending: { gap: 2, paddingHorizontal: 4 },
   sendingLabel: { fontSize: 12, fontWeight: "500" },
   sendingText: { fontSize: 15, lineHeight: LINE_HEIGHT },
-  // The scrim is dark in both themes, so it borrows the dark palette's background.
-  backdrop: { backgroundColor: Colors.dark.background, opacity: 0.5 },
-  sheet: {
-    flex: 1,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    padding: SHEET_PADDING,
-  },
-  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: 12 },
-  sheetTitle: { fontSize: 16, fontWeight: "600" },
-  sections: { gap: 16, paddingTop: 4 },
-  section: { gap: 2 },
-  sectionTitle: { fontSize: 13, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 6 },
-  option: {
-    minHeight: HIT + 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.lg - SHEET_PADDING,
-  },
-  optionText: { flex: 1, gap: 2 },
-  optionLabel: { fontSize: 15, fontWeight: "500" },
-  optionHint: { fontSize: 13 },
 })

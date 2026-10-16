@@ -4,6 +4,9 @@
 
 HinaCode is an Electron app built for coding agents. It currently supports Claude Code, Codex and Muse Code.
 
+> [!WARNING]
+> KKCode is still in development. Expect bugs.
+
 ## Development
 
 Requires Node 24 or later, pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Muse Code threads need the `muse` CLI, signed in with `muse login`. Global file search and its integration tests require ripgrep (`rg`) on your PATH.

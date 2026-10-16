@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { ProviderId, Question, TokenUsage } from "./agent.ts"
-import { PullRequestSelector } from "./github.ts"
+import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
@@ -187,6 +187,12 @@ export const CheckoutTarget = Schema.Union([
   Schema.TaggedStruct("pullRequest", { selector: PullRequestSelector }),
 ])
 export type CheckoutTarget = typeof CheckoutTarget.Type
+
+/** What the user typed as a workspace ref: a pull request number or URL, else a branch. */
+export const toCheckoutTarget = (ref: string): CheckoutTarget => {
+  const selector = parsePullRequestSelector(ref)
+  return selector === undefined ? { _tag: "branch", ref: ref.trim() } : { _tag: "pullRequest", selector }
+}
 
 /**
  * Where a thread's first turn runs. `local` switches the project root to the target. `worktree` makes a new

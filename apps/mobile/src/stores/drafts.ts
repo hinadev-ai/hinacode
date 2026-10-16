@@ -5,11 +5,23 @@ export interface SendingPrompt {
   readonly text: string
 }
 
+/**
+ * Where the first turn runs. `ref` is what the user typed: a branch, or a pull request number or URL.
+ * `local` switches the project root to it, `worktree` makes a new worktree from it.
+ */
+export interface Workspace {
+  readonly mode: "local" | "worktree"
+  readonly ref: string
+}
+
 interface DraftsState {
   readonly byThreadId: Readonly<Record<string, string>>
+  /** Picked before the first message. A thread without one runs in the project root as it is. */
+  readonly workspaces: Readonly<Record<string, Workspace>>
   /** Prompts sent but not answered yet, shown until the desktop accepts or finally refuses them. */
   readonly sending: Readonly<Record<string, readonly SendingPrompt[]>>
   readonly setText: (threadId: string, text: string) => void
+  readonly setWorkspace: (threadId: string, workspace: Workspace | null) => void
   /** Empties the draft for sending and returns what it held, so anything typed while the send is pending is kept. */
   readonly take: (threadId: string) => string
   /** Puts a draft whose send failed back in front of whatever was typed since. */
@@ -28,8 +40,14 @@ const withText = (byThreadId: Readonly<Record<string, string>>, threadId: string
 /** Unsent composer text per thread, so it survives tab and thread switches. Kept in memory only. */
 export const useDrafts = create<DraftsState>()((set, get) => ({
   byThreadId: {},
+  workspaces: {},
   sending: {},
   setText: (threadId, text) => set((state) => ({ byThreadId: withText(state.byThreadId, threadId, text) })),
+  setWorkspace: (threadId, workspace) =>
+    set((state) => {
+      const { [threadId]: _previous, ...rest } = state.workspaces
+      return { workspaces: workspace === null ? rest : { ...rest, [threadId]: workspace } }
+    }),
   take: (threadId) => {
     const text = get().byThreadId[threadId] ?? ""
     get().setText(threadId, "")
