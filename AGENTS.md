@@ -53,7 +53,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
 - Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
-- The product's display name is KKCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `kkcode`: `app.setName` (it picks the userData folder and the `kkcode Safe Storage` Keychain item), the MCP server, `kkcode://`, `kkcode serve`, storage keys and service tags.
+- The product's display name is KKCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `kkcode`: `app.setName`, the MCP server, `kkcode://`, `kkcode serve`
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
 
 ## Verifying in the real app
