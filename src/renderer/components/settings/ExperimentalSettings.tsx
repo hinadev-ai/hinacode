@@ -111,7 +111,7 @@ function HostStatus({ status }: { status: VmHostStatus }) {
   }
 }
 
-/** "http://192.168.1.33:7070/" reads as "192.168.1.33:7070". */
+/** "http://192.168.1.10:7070/" reads as "192.168.1.10:7070". */
 const hostOf = (url: string) => {
   try {
     return new URL(url).host

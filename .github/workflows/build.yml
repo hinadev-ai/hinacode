@@ -31,7 +31,8 @@ jobs:
   mac:
     needs: draft
     # Pull requests skip the draft job, and a skipped need would skip this job too.
-    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
+    # The home runner must never run code from a fork's pull request.
+    if: ${{ !cancelled() && needs.draft.result != 'failure' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, macOS, ARM64, home]
     timeout-minutes: 45
     steps:
