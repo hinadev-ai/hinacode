@@ -70,6 +70,12 @@ const serve = (() => {
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["KKCODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
+// Only the signed release app is on the access list of the login Keychain item `kkcode Safe Storage`. Any other
+// binary (each worktree's dev build, e2e, a cloud under launchd) would ask for the login password on every boot,
+// so it seals secrets with Chromium's public test key. That key cannot open the release app's secrets, so an
+// unpackaged run also defaults to a profile of its own.
+if (!app.isPackaged || serve) app.commandLine.appendSwitch("use-mock-keychain")
+if (!app.isPackaged && !userDataOverride) app.setPath("userData", join(app.getPath("appData"), "kkcode-dev"))
 // Electron keys the lock on userData. A second process on the same database would run its own pollers and
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {

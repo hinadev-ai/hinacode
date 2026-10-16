@@ -24,16 +24,15 @@ pnpm test         # node --test for the pure logic (pollers, templates, signatur
 Run a built app with its own data directory, for example to keep a test profile apart from your real one:
 
 ```sh
-KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron --use-mock-keychain out/main/index.js
+KKCODE_USER_DATA=/tmp/kkcode-test pnpm exec electron out/main/index.js
 ```
 
-On macOS, `--use-mock-keychain` keeps verification out of the login Keychain. Save only dummy secrets in these profiles. A separate data directory does not isolate the login Keychain. The e2e suite supplies this flag automatically.
+Unpackaged runs (`pnpm dev`, `pnpm serve`, e2e and the command above) never touch the login Keychain. They seal secrets with Chromium's public mock key, so save only dummy secrets in them. Without `KKCODE_USER_DATA` they use the `kkcode-dev` profile, not the release app's.
 
 Simulate an exhausted Claude account without using the account:
 
 ```sh
-KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit \
-  ELECTRON_CLI_ARGS='["--use-mock-keychain"]' pnpm dev
+KKCODE_USER_DATA=/tmp/kk-limit-demo KKCODE_MOCK_CLAUDE=usage-limit pnpm dev
 ```
 
 The first message in each thread reaches the limit. The next attempt succeeds. The callout offers **Resume at reset**, which retries once at the provider's reset time and survives restart. Set `KKCODE_MOCK_RESET_MS=5000` for a five-second reset. Use `KKCODE_MOCK_CLAUDE=org-spend-limit` to simulate the organization monthly spend cap and its `/usage-credits` guidance. That case has no automatic reset action.
@@ -42,7 +41,7 @@ Headless verification on a machine without a display uses Xvfb and Chrome DevToo
 
 ```sh
 Xvfb :99 -screen 0 1600x1000x24 &
-KKCODE_USER_DATA=/tmp/kkcode-test DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --use-mock-keychain --remote-debugging-port=9222 out/main/index.js
+KKCODE_USER_DATA=/tmp/kkcode-test DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=9222 out/main/index.js
 ```
 
 ## Layout

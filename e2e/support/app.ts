@@ -67,7 +67,6 @@ interface SpawnAppOptions {
 }
 
 const appArgs = [
-  ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
   "--no-sandbox",
   "--disable-gpu",
   "--mute-audio",

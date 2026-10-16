@@ -72,7 +72,7 @@ KKCode runs agents that execute code on the user's machine. Hold a few boundarie
   - The MCP server listens on loopback only, and its credential scopes each call to one thread.
   - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
   - The attachment protocol refuses paths outside its root.
-- **Secrets** go through `services/Secrets.ts` (Electron `safeStorage`). Never log them, put them in a URL, or send them to the renderer.
+- **Secrets** go through `services/Secrets.ts` (Electron `safeStorage`). Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs and `kkcode serve` switch themselves to Chromium's mock keychain (`src/main/index.ts`), so never add a launch path that asks the user for their password.
 - **Anything that crosses a process or network boundary** gets decoded with a schema, and the change gets a test like `security.test.ts` or `mcp/server.test.ts`.
 - **Importing a project trusts it.** Its `.claude` settings, hooks and `CLAUDE.md` load the same way they do in the CLI. There is no per-project trust setting, so don't add one (see `docs/adr/0008-import-trusts-the-project.md`).
 - **Don't over-engineer.** This is a single-user local app. Skip RBAC, audit logs, rate limiters, and encryption layers on top of the OS keyring. If a threat needs an attacker who already has the user's shell, it is out of scope.

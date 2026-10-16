@@ -52,7 +52,6 @@ const app = packagedApp
       args: [
         ...(packagedApp ? [`--remote-debugging-port=${port}`] : ["--no-sandbox", "--disable-gpu"]),
         "--mute-audio",
-        ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
         ...(packagedApp ? [] : [join(root, "out/main/index.js")]),
       ],
       cwd: root,
