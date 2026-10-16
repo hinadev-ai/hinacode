@@ -177,7 +177,7 @@ const setCloudRemote = (enabled: boolean) =>
 
 const cloudPairing = async (token?: string) => {
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  return pairingUrl("127.0.0.1", pairing.port, token ?? pairing.token)
+  return pairingUrl({ hosts: ["127.0.0.1", "192.0.2.1"], port: pairing.port, token: token ?? pairing.token })
 }
 
 const gitRepo = (path: string) => {
@@ -354,7 +354,10 @@ describe("desktop environments", () => {
     try {
       const { port } = server.address() as AddressInfo
       const added = result(
-        await invoke("environments.add", { name: "", pairingUrl: pairingUrl("127.0.0.1", port, "token") }),
+        await invoke("environments.add", {
+          name: "",
+          pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
+        }),
       )
       expect(added).toMatchObject({ id: "future", name: "future" })
       await pushedEventually(statusOf("future", "incompatible"))
@@ -396,7 +399,7 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<str
   await new Promise((resolve) => server.once("listening", resolve))
   const { port } = server.address() as AddressInfo
   return {
-    pairingUrl: pairingUrl("127.0.0.1", port, "token"),
+    pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
     calls,
     holdReady: () => {
       holdReady = true

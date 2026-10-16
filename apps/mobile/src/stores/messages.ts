@@ -24,7 +24,12 @@ interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
   /** Loads a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
-  /** Forgets every history, since pushes sent while the socket was down are lost. */
+  /**
+   * Reads every loaded history again after a reconnect, since pushes sent while the socket was down are lost.
+   * The last known history stays on screen until its new snapshot replaces it in one step.
+   */
+  readonly reload: () => void
+  /** Forgets every history, when the phone disconnects or unpairs. */
   readonly reset: () => void
   readonly receive: (push: TranscriptPush) => void
 }
@@ -45,6 +50,8 @@ export const useMessages = create<MessagesState>()((set, get) => {
     pendingDeltas.delete(threadId)
     return pending.pushes
   }
+  const currentLoadToken = new Map<string, object>()
+  const pushesDuringReload = new Map<string, { pushes: TranscriptPush[] }>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
     set((state) => {
       const history = state.byThread[threadId]
@@ -59,28 +66,64 @@ export const useMessages = create<MessagesState>()((set, get) => {
       const current = get().byThread[threadId]
       if (current !== undefined && current.status !== "error") return
       setHistory(threadId, () => ({ status: "loading", pending: [] }))
-      // A `reset` while the request was in flight wins: the snapshot may predate pushes we never got.
-      const settle = (update: (pending: readonly TranscriptPush[]) => ThreadHistory) =>
+      const load = {}
+      currentLoadToken.set(threadId, load)
+      const settleIfStillCurrent = (update: (pending: readonly TranscriptPush[]) => ThreadHistory) => {
+        if (currentLoadToken.get(threadId) !== load) return
+        currentLoadToken.delete(threadId)
         setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
+      }
       try {
         const { seq, messages, approvals, questions } = await call("threads.transcript", { threadId })
-        settle((pending) =>
+        settleIfStillCurrent((pending) =>
           pending
             .filter((push) => push.seq > seq)
             .reduce<ReadyHistory>(applyPush, { status: "ready", messages, approvals, questions }),
         )
       } catch (cause) {
-        settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+        settleIfStillCurrent(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+      }
+    },
+
+    reload: () => {
+      for (const [threadId, history] of Object.entries(get().byThread)) {
+        if (history.status === "loading") continue
+        if (history.status === "error") {
+          void get().load(threadId)
+          continue
+        }
+        const reload = { pushes: [] as TranscriptPush[] }
+        pushesDuringReload.set(threadId, reload)
+        call("threads.transcript", { threadId }).then(
+          ({ seq, messages, approvals, questions }) => {
+            if (pushesDuringReload.get(threadId) !== reload) return
+            pushesDuringReload.delete(threadId)
+            takePending(threadId)
+            setHistory(threadId, (current) =>
+              current?.status === "ready"
+                ? reload.pushes
+                    .filter((push) => push.seq > seq)
+                    .reduce<ReadyHistory>(applyPush, { status: "ready", messages, approvals, questions })
+                : current,
+            )
+          },
+          () => {
+            if (pushesDuringReload.get(threadId) === reload) pushesDuringReload.delete(threadId)
+          },
+        )
       }
     },
 
     reset: () => {
       for (const threadId of [...pendingDeltas.keys()]) takePending(threadId)
+      currentLoadToken.clear()
+      pushesDuringReload.clear()
       set({ byThread: {} })
     },
 
     receive: (push) => {
       const threadId = pushThreadId(push)
+      pushesDuringReload.get(threadId)?.pushes.push(push)
       const type = deltaType(push)
       const pending = pendingDeltas.get(threadId)
       if (get().byThread[threadId]?.status === "ready" && type !== undefined) {

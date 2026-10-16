@@ -55,7 +55,7 @@ ServerFrame =
 
 The first client frame must be `auth`. Anything else, or no auth within 5 seconds, closes the socket. After `ready`, every `call` is dispatched through the same `dispatch` the Electron `rpc` channel uses, and every `Events.publish` is sent as an `event` frame to each authenticated socket.
 
-Pairing URL: `kkcode://connect?host=<host>&port=<port>&token=<token>`. The token is in the URL of the QR code only. It is not in any HTTP URL: the WebSocket upgrade carries no credential, and the token travels in the first frame.
+Pairing URL: `kkcode://connect?host=<host>&port=<port>&token=<token>`, with `host` repeated for every reachable address (see `2026-10-16-resilient-remote.md`). The token is in the URL of the QR code only. It is not in any HTTP URL: the WebSocket upgrade carries no credential, and the token travels in the first frame.
 
 ### Which methods the phone may call
 

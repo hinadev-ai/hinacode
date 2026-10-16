@@ -10,6 +10,7 @@ import { IconButton, Notice, ProviderLabel, ThreadStatusPill } from "@/component
 import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { useThreads } from "@/stores/threads"
 
 const tabs = [
@@ -25,7 +26,7 @@ export default function ThreadScreen() {
   const thread = useThreads((state) => state.byId[id])
   const loaded = useThreads((state) => state.status === "ready")
   const status = useConnection((state) => state.status)
-  const generation = useConnection((state) => state.generation)
+  const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
   // The shell outlives tab switches and ends with this screen.
   const [terminalOpened, setTerminalOpened] = useState(false)
@@ -79,7 +80,7 @@ export default function ThreadScreen() {
       </View>
       {status !== "connected" && (
         <View style={styles.banner}>
-          <Notice text="Reconnecting to the desktop. Actions are paused." tone="attention" />
+          <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
         </View>
       )}
       {thread === undefined ? (
@@ -97,7 +98,7 @@ export default function ThreadScreen() {
           {tab === "prs" && <PullRequests thread={thread} />}
           {terminalOpened && (
             <View style={[styles.flex, tab !== "terminal" && styles.hidden]}>
-              <TerminalPanel key={generation} threadId={thread.id} />
+              <TerminalPanel key={terminalRemountKey} threadId={thread.id} />
             </View>
           )}
         </KeyboardAvoidingView>

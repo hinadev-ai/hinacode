@@ -1,8 +1,9 @@
+import NetInfo, { type NetInfoState } from "@react-native-community/netinfo"
 import { useURL } from "expo-linking"
 import { type ReactNode, useEffect, useState } from "react"
 import { AppState } from "react-native"
 import { parsePairingUrl, type PairingTarget } from "@shared/remote.ts"
-import { connect, onEvent, reconnectNow, useConnection } from "@/lib/connection"
+import { connect, networkChanged, onEvent, setForeground, useConnection } from "@/lib/connection"
 import { loadTarget, saveTarget } from "@/lib/storage"
 import { isTranscriptPush, useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
@@ -18,7 +19,9 @@ export async function pair(target: PairingTarget) {
  */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
-  const status = useConnection((state) => state.status)
+  const generation = useConnection((state) => state.generation)
+  const target = useConnection((state) => state.target)
+  const paired = useConnection((state) => state.target !== null && state.status !== "unauthorized")
   const url = useURL()
 
   useEffect(() => {
@@ -34,8 +37,20 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [url])
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => state === "active" && reconnectNow())
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active" || state === "background") setForeground(state === "active")
+    })
     return () => subscription.remove()
+  }, [])
+
+  useEffect(() => {
+    // The first callback reports the network the app started on.
+    let network: string | null = null
+    return NetInfo.addEventListener((state) => {
+      const next = networkIdentity(state)
+      if (network !== null && next !== network && state.isConnected !== false) networkChanged()
+      network = next
+    })
   }, [])
 
   useEffect(
@@ -49,9 +64,17 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    if (status === "connected") void useThreads.getState().load()
-    else useMessages.getState().reset()
-  }, [status])
+    if (generation === 0) return
+    void useThreads.getState().load()
+    useMessages.getState().reload()
+  }, [generation])
+
+  useEffect(() => () => useMessages.getState().reset(), [paired, target])
 
   return restored ? children : null
 }
+
+const networkIdentity = (state: NetInfoState) =>
+  [state.type, state.isConnected, state.details !== null && "ipAddress" in state.details ? state.details.ipAddress : ""].join(
+    "|",
+  )

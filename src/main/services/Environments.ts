@@ -6,7 +6,6 @@ import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contr
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import {
   type ClientFrame,
-  type PairingTarget,
   parsePairingUrl,
   REMOTE_PROTOCOL_VERSION,
   remoteWebSocketUrl,
@@ -123,8 +122,13 @@ interface Dial {
   readonly onClose: (code: number) => void
 }
 
+interface Address {
+  readonly host: string
+  readonly port: number
+}
+
 /** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
-const dial = (target: Pick<PairingTarget, "host" | "port">, token: string, handlers: Dial) => {
+const dial = (target: Address, token: string, handlers: Dial) => {
   const socket = new WebSocket(remoteWebSocketUrl(target))
   socket.on("open", () => socket.send(JSON.stringify({ type: "auth", token } satisfies ClientFrame)))
   socket.on("message", (raw, isBinary) => {
@@ -139,7 +143,7 @@ const dial = (target: Pick<PairingTarget, "host" | "port">, token: string, handl
 }
 
 /** Succeeds with the cloud's `ready` frame once it accepts `token`. */
-const probe = (target: PairingTarget) => {
+const probe = (target: Address & { readonly token: string }) => {
   const where = `${target.host}:${target.port}`
   return Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
     let reason = "the connection closed"
@@ -465,10 +469,11 @@ const make = Effect.gen(function* () {
 
   const add = (input: { readonly name: string; readonly pairingUrl: string }) =>
     Effect.gen(function* () {
-      const target = parsePairingUrl(input.pairingUrl)
-      if (target === null) {
+      const pairing = parsePairingUrl(input.pairingUrl)
+      if (pairing === null) {
         return yield* new InvalidPairingUrl({ message: "Paste the kkcode://connect URL that kkcode serve printed." })
       }
+      const target = { host: pairing.hosts[0], port: pairing.port, token: pairing.token }
       const ready = yield* probe(target)
       if (ready.environment?.id === self.id) {
         return yield* new InvalidPairingUrl({ message: "That pairing URL is for this desktop." })

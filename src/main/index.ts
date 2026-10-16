@@ -295,8 +295,10 @@ const startCloud = async (
   const lines = [
     "KKCode cloud",
     `data: ${userData}`,
-    "pair a client with one of:",
-    ...pairing.hosts.map((host) => `  ${pairingUrl(host, pairing.port, pairing.token)}`),
+    "pair a phone with:",
+    `  ${pairingUrl(pairing)}`,
+    "pair a desktop with one of:",
+    ...pairing.hosts.map((host) => `  ${pairingUrl({ ...pairing, hosts: [host] })}`),
   ]
   process.stdout.write(`${lines.join("\n")}\n`)
 }
