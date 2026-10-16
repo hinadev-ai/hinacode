@@ -28,12 +28,24 @@ export function QueueBar({
   /** Null when the runner already sent it, so nothing is sent or restored twice. */
   const take = (id: string) => callPromise("threads.unqueue", { threadId: thread.id, id })
 
+  const restore = (message: QueuedMessage) => {
+    useDrafts.getState().restore(thread.id, {
+      text: message.text,
+      attachments: message.attachments,
+      workspace: null,
+      comments: [],
+    })
+    onEdit()
+  }
+
   const steerNow = async (id: string) => {
+    let message: QueuedMessage | null = null
     try {
-      const message = await take(id)
+      message = await take(id)
       if (message === null) return
       await callPromise("threads.steer", { threadId: thread.id, text: message.text, attachments: message.attachments })
     } catch (cause) {
+      if (message !== null) restore(message)
       onError(errorMessage(cause))
     }
   }
@@ -42,13 +54,7 @@ export function QueueBar({
     try {
       const message = await take(id)
       if (message === null) return
-      useDrafts.getState().restore(thread.id, {
-        text: message.text,
-        attachments: message.attachments,
-        workspace: null,
-        comments: [],
-      })
-      onEdit()
+      restore(message)
     } catch (cause) {
       onError(errorMessage(cause))
     }
