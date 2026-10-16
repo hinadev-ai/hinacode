@@ -97,3 +97,5 @@ jobs:
       - run: gh release edit "$GITHUB_REF_NAME" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job has no checkout for gh to read the repository from.
+          GH_REPO: ${{ github.repository }}
