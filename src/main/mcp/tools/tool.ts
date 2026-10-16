@@ -4,7 +4,7 @@ import { HttpServerRequest } from "effect/http"
 import { McpCredentials } from "../credentials.ts"
 
 /** The thread whose credential made the current call. Every tool acts as this thread. */
-export class CallingThread extends Context.Service<CallingThread, string>()("kkcode/mcp/CallingThread") {}
+export class CallingThread extends Context.Service<CallingThread, string>()("hinacode/mcp/CallingThread") {}
 
 /** Plain text, or content blocks such as a screenshot. */
 const Output = Schema.Union([Schema.String, Schema.Array(McpSchema.ContentBlock)])
@@ -12,7 +12,7 @@ const Output = Schema.Union([Schema.String, Schema.Array(McpSchema.ContentBlock)
 /** Any error with a message: the agent reads it as the tool's error result. */
 const Failure = Schema.Struct({ message: Schema.String })
 
-/** A kkcode tool: its handler may read `CallingThread` and returns `Output`. */
+/** A hinacode tool: its handler may read `CallingThread` and returns `Output`. */
 export const make = <const Name extends string, Parameters extends Schema.Constraint = Tool.EmptyParams>(
   name: Name,
   options: { readonly description: string; readonly parameters?: Parameters },
@@ -25,7 +25,7 @@ export const make = <const Name extends string, Parameters extends Schema.Constr
     dependencies: [CallingThread],
   })
 
-type KkcodeTool = ReturnType<typeof make<string, Schema.Top>>
+type HinacodeTool = ReturnType<typeof make<string, Schema.Top>>
 
 const text = (value: string, isError = false) =>
   new McpSchema.CallToolResult({ content: [{ type: "text", text: value }], isError })
@@ -54,7 +54,7 @@ const callingThreadId = (credentials: typeof McpCredentials.Service) =>
  * `annotations` apply to every tool of the toolkit, for example `McpSchema.EnabledWhen`, which hides
  * them from both `tools/list` and `tools/call`.
  */
-export const register = Effect.fnUntraced(function* <Tools extends Record<string, KkcodeTool>>(
+export const register = Effect.fnUntraced(function* <Tools extends Record<string, HinacodeTool>>(
   toolkit: Toolkit.Toolkit<Tools>,
   annotations: Context.Context<never> = Context.empty(),
 ) {
@@ -95,7 +95,7 @@ export const register = Effect.fnUntraced(function* <Tools extends Record<string
         }).pipe(
           Effect.catchDefect((defect) =>
             Effect.logError("mcp tool defect", tool.name, defect).pipe(
-              Effect.as(text(`${tool.name} failed unexpectedly. See the KKCode logs.`, true)),
+              Effect.as(text(`${tool.name} failed unexpectedly. See the HinaCode logs.`, true)),
             ),
           ),
         ),

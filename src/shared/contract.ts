@@ -695,8 +695,8 @@ export const PushEvent = Schema.Union([
 ])
 export type PushEvent = typeof PushEvent.Type
 
-/** The bridge preload exposes as `window.kkcode`. */
-export interface KkcodeBridge {
+/** The bridge preload exposes as `window.hinacode`. */
+export interface HinacodeBridge {
   /**
    * `environment` is a cloud's id for the few methods that name where they run (settings, accounts, models, new
    * projects). Every other method finds its environment from the ids in its payload.

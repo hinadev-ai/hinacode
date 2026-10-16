@@ -1,6 +1,6 @@
-# kkcode verification map
+# hinacode verification map
 
-This directory is the maintained source for verifying what a kkcode user can do. Read this index, then use the matching feature file as the recipe. Launch, doctor, evidence and cleanup rules are in `../SKILL.md`.
+This directory is the maintained source for verifying what a hinacode user can do. Read this index, then use the matching feature file as the recipe. Launch, doctor, evidence and cleanup rules are in `../SKILL.md`.
 
 ## Automated first
 
@@ -9,9 +9,9 @@ This directory is the maintained source for verifying what a kkcode user can do.
 ## Baseline preconditions
 
 - Variables from SKILL.md are set: `S`, `PORT`, `DATA`, `SHOTS`, `AB`.
-- `$S/launch.sh $PORT $DATA` printed `kkcode ready` and `$S/doctor.sh $PORT $DATA` exits 0.
+- `$S/launch.sh $PORT $DATA` printed `hinacode ready` and `$S/doctor.sh $PORT $DATA` exits 0.
 - `$S/seed-repo.sh $DATA/repo` created the scratch repo. Feature files call the project on it `demo` unless they say otherwise.
-- `$AB connect $PORT` succeeded and the window shows the kkcode sidebar.
+- `$AB connect $PORT` succeeded and the window shows the hinacode sidebar.
 - Never drive an instance that this run did not launch.
 
 ## Driving conventions
@@ -37,7 +37,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 
 - [Projects and threads](./projects-and-threads.md): fully automated except pointer-drag reorder and the native folder picker.
 - [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, restore and resume after relaunch. Real turns only.
-- [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for kkcode tools. Real turns only.
+- [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for hinacode tools. Real turns only.
 - [Chat with Muse Code](./chat-muse.md): the same on Muse Code, with staged command approvals, token usage and plan limits. Real turns only.
 - [Worktrees](./worktrees.md): setup services and panels automated; composer creation and branch naming need a real first turn, and the `PR <state>` badge needs a GitHub remote.
 - [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments. Real turns only.

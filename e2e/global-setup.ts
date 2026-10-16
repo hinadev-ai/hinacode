@@ -20,7 +20,7 @@ const ensureFreshBuild = () => {
   const sources = ["src", "messages"].map((dir) => newestMtime(join(projectRoot, dir)))
   const stale = !existsSync(entry) || Math.max(...sources) > statSync(entry).mtimeMs
   if (!stale) return
-  console.log("e2e: building kkcode")
+  console.log("e2e: building hinacode")
   execSync("pnpm build", { cwd: projectRoot, stdio: "inherit" })
 }
 

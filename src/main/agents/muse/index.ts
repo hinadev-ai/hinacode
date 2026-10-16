@@ -87,7 +87,7 @@ interface HostEntry {
   readonly sessions: Map<string, LoadedSession>
 }
 
-/** A turn on one kkcode thread, from the moment it is asked for until its stream ends. */
+/** A turn on one hinacode thread, from the moment it is asked for until its stream ends. */
 type Run = {
   /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
@@ -145,7 +145,7 @@ const listSkills = (host: MuseHost, sessionId: string) =>
   })
 
 /**
- * The parts one prompt goes in as, kkcode's instructions first. A prompt typed as `/skill arguments`
+ * The parts one prompt goes in as, hinacode's instructions first. A prompt typed as `/skill arguments`
  * becomes the `skill` part the host expands, the wire twin of the TUI's typed dispatch. A skill part
  * combines only with image parts, so a skill turn folds its file notes into the skill arguments and
  * leaves the instructions to the next text turn, which sends them again anyway. Text the session has
@@ -230,9 +230,9 @@ const make = Effect.gen(function* () {
 
   const getHost = (home: AccountHome | null) => getEntry(home).pipe(Effect.map((entry) => entry.host))
 
-  /** Pending approvals keyed by the kkcode approval id handed to the UI. */
+  /** Pending approvals keyed by the hinacode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
-  /** Pending questions keyed by the kkcode question id handed to the UI. */
+  /** Pending questions keyed by the hinacode question id handed to the UI. */
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
   /** Each thread's Muse session, so `skill/list` can ask the session a turn would run in. */
   const threadSessions = new Map<string, string>()
@@ -242,9 +242,9 @@ const make = Effect.gen(function* () {
    */
   const probeSessions = new Map<string, string>()
   const probeLock = yield* Semaphore.make(1)
-  /** In-flight runs keyed by kkcode threadId, for steer, interrupt and access mode changes. */
+  /** In-flight runs keyed by hinacode threadId, for steer, interrupt and access mode changes. */
   const runs = new Map<string, Run>()
-  /** "Allow for session" grants keyed by kkcode threadId. They last until kkcode quits. */
+  /** "Allow for session" grants keyed by hinacode threadId. They last until hinacode quits. */
   const grants = new Map<string, Set<string>>()
 
   const listModels = Effect.gen(function* () {
@@ -338,10 +338,10 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { host, sessions } = entry
       const approvalMode = approvalModes[input.accessMode]
-      // Each session carries its own thread's credential for the kkcode MCP server.
+      // Each session carries its own thread's credential for the hinacode MCP server.
       const config = {
         mcpServers: {
-          kkcode: { transport: "streamableHttp", url: input.mcpServer.url, headers: { ...input.mcpServer.headers } },
+          hinacode: { transport: "streamableHttp", url: input.mcpServer.url, headers: { ...input.mcpServer.headers } },
         },
       }
       if (input.resumeSessionId === null) {
@@ -401,7 +401,7 @@ const make = Effect.gen(function* () {
           run.sessionId = sessionId
           yield* emit({ type: "session_bound", providerSessionId: sessionId })
 
-          // MSP has no developer instructions, so kkcode's ride in front of the prompt.
+          // MSP has no developer instructions, so hinacode's ride in front of the prompt.
           const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
           run.turnStart = yield* host
             .command<TurnStartResult>("turn/start", {
@@ -800,6 +800,6 @@ const make = Effect.gen(function* () {
   } satisfies AgentProvider
 })
 
-export class MuseProvider extends Context.Service<MuseProvider, AgentProvider>()("kkcode/MuseProvider") {
+export class MuseProvider extends Context.Service<MuseProvider, AgentProvider>()("hinacode/MuseProvider") {
   static readonly layer = Layer.effect(MuseProvider, make)
 }

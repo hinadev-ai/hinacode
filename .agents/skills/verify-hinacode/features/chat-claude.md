@@ -6,7 +6,7 @@ A user sends a prompt in a Claude Code thread and watches the reply stream in, w
 
 `e2e/features/limited-threads.feature` covers the Limited sidebar and header state, callouts in both themes and locales, persistence, one automatic retry after reset, cancellation, and manual retry. It runs through the production mapper and runner without using a Claude account.
 
-For a manual simulation, launch with `KKCODE_MOCK_CLAUDE=usage-limit` and an isolated `KKCODE_USER_DATA`. The first send reaches the limit, and the next attempt succeeds. Set `KKCODE_MOCK_RESET_MS=5000` for a five-second reset. `KKCODE_MOCK_CLAUDE=org-spend-limit` reproduces the organization cap, including its misleading session-reset text. That callout has no automatic resume action. `KKCODE_MOCK_CLAUDE=markdown` (or `pnpm dev:markdown`) answers every send with `src/main/agents/claude/fixtures/markdown.md`, which covers each Markdown construct the transcript renders. The mock also disables model-based thread naming.
+For a manual simulation, launch with `HINACODE_MOCK_CLAUDE=usage-limit` and an isolated `HINACODE_USER_DATA`. The first send reaches the limit, and the next attempt succeeds. Set `HINACODE_MOCK_RESET_MS=5000` for a five-second reset. `HINACODE_MOCK_CLAUDE=org-spend-limit` reproduces the organization cap, including its misleading session-reset text. That callout has no automatic resume action. `HINACODE_MOCK_CLAUDE=markdown` (or `pnpm dev:markdown`) answers every send with `src/main/agents/claude/fixtures/markdown.md`, which covers each Markdown construct the transcript renders. The mock also disables model-based thread naming.
 
 ## Sub-features
 

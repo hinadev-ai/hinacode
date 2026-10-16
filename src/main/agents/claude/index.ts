@@ -31,12 +31,14 @@ import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
-import { kkcodeMcpServer } from "./mcp.ts"
+import { hinacodeMcpServer } from "./mcp.ts"
 import { elementContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, makeTranscriptUsage } from "./transcripts.ts"
 
-export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()("kkcode/agents/ClaudeProvider") {}
+export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()(
+  "hinacode/agents/ClaudeProvider",
+) {}
 
 const fallbackModel = (id: string, label: string): ModelInfo => ({
   id,
@@ -508,7 +510,7 @@ export const layer = Layer.effect(
                   toolName === QUESTION_TOOL
                     ? questions.ask(session, toolInput, options)
                     : approvals.ask(session, toolName, toolInput, options),
-                mcpServers: { kkcode: kkcodeMcpServer(input.mcpServer) },
+                mcpServers: { hinacode: hinacodeMcpServer(input.mcpServer) },
                 abortController: abort,
                 // Same as the SDK's default spawn, plus the pid so the thread's open ports can be found.
                 // The SDK does not read stderr from a custom spawn, so it is not piped (an unread pipe

@@ -152,7 +152,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   resumeSessionId: null,
   home: null,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
-  instructions: "Work in kkcode",
+  instructions: "Work in hinacode",
   ...overrides,
 })
 

@@ -43,4 +43,4 @@ The slider keeps a draft while it moves and writes `--contrast` straight to the 
 
 ## Verification
 
-`e2e/features/appearance.feature` sets the slider to each end in Light and Dark, checks every text tier against 4.5:1 and focus against 3:1, and checks that the value survives a restart. With `verify-kkcode`, drag the slider with the transcript and sidebar open and compare screenshots at both ends in both themes.
+`e2e/features/appearance.feature` sets the slider to each end in Light and Dark, checks every text tier against 4.5:1 and focus against 3:1, and checks that the value survives a restart. With `verify-hinacode`, drag the slider with the transcript and sidebar open and compare screenshots at both ends in both themes.

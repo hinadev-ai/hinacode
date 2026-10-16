@@ -25,7 +25,7 @@ Other routes, transcript rendering, and panel content redesign belong to separat
 
 ## Verification
 
-Use an isolated production Electron instance through `verify-kkcode`. Measure the textarea, form, and Send/Stop bounds at 720×480, 200% app zoom, 200% root text sizing, and 320 CSS pixels. Type short and long drafts. Open both panels with the keyboard and close them with Escape. Check both light and dark themes. Playwright BDD scenarios retain the original failing reproduction.
+Use an isolated production Electron instance through `verify-hinacode`. Measure the textarea, form, and Send/Stop bounds at 720×480, 200% app zoom, 200% root text sizing, and 320 CSS pixels. Type short and long drafts. Open both panels with the keyboard and close them with Escape. Check both light and dark themes. Playwright BDD scenarios retain the original failing reproduction.
 
 The original eight cases fail before the fix. The full Electron suite passes after it, including the native minimum window at 200% zoom, image attachments, and dialog focus restoration. Live textarea widths are 634px at 720×480, 234px at 320 CSS pixels, and 550px with doubled text at 720×480. Send stays inside the viewport in both themes. Busy-state checks seed a running thread without starting a paid agent turn.
 

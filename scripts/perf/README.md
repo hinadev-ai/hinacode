@@ -1,7 +1,7 @@
 # Perf harness
 
-Measures the renderer and main process of a running kkcode instance over CDP. Start an isolated
-instance first (see `.agents/skills/verify-kkcode`), then:
+Measures the renderer and main process of a running hinacode instance over CDP. Start an isolated
+instance first (see `.agents/skills/verify-hinacode`), then:
 
 ```sh
 node scripts/perf/seed.mjs <user-data-dir> <repo>            # project + threads of 5 to 200 turns
@@ -18,14 +18,14 @@ Results land in `.context/perf/`. Reload the renderer after seeding: the sidebar
 
 ## Measure streaming Markdown
 
-Use an instance you launched through `verify-kkcode`, with a main inspector as well as renderer CDP.
+Use an instance you launched through `verify-hinacode`, with a main inspector as well as renderer CDP.
 `launch.sh` does not expose a main-inspector option. Start once with the skill to prepare Xvfb and the
 profile, then stop that instance and restart with the equivalent command below. Pick unused ports and
 a fresh `/tmp/kk-` profile. Run from this checkout's root.
 
 ```sh
 set -euo pipefail
-S=.agents/skills/verify-kkcode/scripts
+S=.agents/skills/verify-hinacode/scripts
 PORT=9362
 MAIN_PORT=19362
 DATA=/tmp/kk-perf-stream
@@ -37,7 +37,7 @@ python3 scripts/perf/instrument-bundle.py
 
 ! curl -fs "http://127.0.0.1:$PORT/json/version" >/dev/null
 ! curl -fs "http://127.0.0.1:$MAIN_PORT/json/list" >/dev/null
-setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env KKCODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
+setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env HINACODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
   --no-sandbox --disable-gpu --remote-debugging-port="$3" --inspect="127.0.0.1:$4" out/main/index.js' \
   _ "$DATA" "$REPO" "$PORT" "$MAIN_PORT" >"$DATA/electron.log" 2>&1 </dev/null &
 
@@ -56,8 +56,8 @@ Create an empty thread in the isolated app if needed, then copy its ID from the 
 `node "$S/rpc.mjs" "$PORT" threads.list`. Do not send a prompt to an agent.
 
 ```sh
-KKCODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" baseline "$THREAD_ID"
-KKCODE_USER_DATA="$DATA" PARSE=1 PROFILE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" baseline-profile "$THREAD_ID"
+HINACODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" baseline "$THREAD_ID"
+HINACODE_USER_DATA="$DATA" PARSE=1 PROFILE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" baseline-profile "$THREAD_ID"
 ```
 
 Omit `PARSE=1` and the instrumentation step for frame measurements alone. `PROFILE=1` saves a
@@ -65,7 +65,7 @@ renderer CPU profile beside the result. Compare runs with the same `PARSE` and `
 instrumentation and profiling add overhead.
 
 Each run verifies the renderer's file URL, main `process.cwd()`, matching BrowserWindow, and the
-expected `KKCODE_USER_DATA`. It reloads the renderer, opens the sidebar link, and checks the selected
+expected `HINACODE_USER_DATA`. It reloads the renderer, opens the sidebar link, and checks the selected
 thread and persisted transcript before measuring. Reloading discards synthetic messages from the
 previous run. The workload reaches the real preload event listener through main-process
 `BrowserWindow.webContents.send('event', ...)`; it does not write synthetic messages to SQLite.
@@ -91,7 +91,7 @@ For a candidate build, stop the owned instance, run `pnpm build`, instrument aga
 restart using the same command and profile. Run the doctor and use a new label:
 
 ```sh
-KKCODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" candidate "$THREAD_ID"
+HINACODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" candidate "$THREAD_ID"
 node scripts/perf/compare.mjs baseline candidate
 node scripts/perf/analyze-profile.mjs .context/perf/baseline-profile-stream.cpuprofile
 $S/stop.sh "$DATA"
@@ -174,11 +174,11 @@ leaves GPU behavior enabled, and closes only its own app through CDP.
 
 ```sh
 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist --mac -c.mac.notarize=false
-ditto dist/mac-arm64/kkcode.app .context/perf/baseline.app
-KKCODE_PERF_APP="$PWD/.context/perf/baseline.app/Contents/MacOS/kkcode" \
+ditto dist/mac-arm64/hinacode.app .context/perf/baseline.app
+HINACODE_PERF_APP="$PWD/.context/perf/baseline.app/Contents/MacOS/hinacode" \
   PERF_SNAPSHOT=1 node scripts/perf/memory.mjs baseline footprint
 # Build the candidate package before repeating with another preserved app and label.
-KKCODE_PERF_APP="$PWD/.context/perf/candidate.app/Contents/MacOS/kkcode" \
+HINACODE_PERF_APP="$PWD/.context/perf/candidate.app/Contents/MacOS/hinacode" \
   PERF_SNAPSHOT=1 node scripts/perf/memory.mjs candidate footprint
 node scripts/perf/compare-memory.mjs baseline candidate footprint
 ```
@@ -198,7 +198,7 @@ profiles for diagnosis, not uninstrumented frame-rate claims.
 
 `PERF_SNAPSHOT=1` saves both heap snapshots after the final memory sample. Set
 `PERF_IDLE_SECONDS=15` for a short exploratory capture; only compare captures with
-the same setting. `KKCODE_PERF_PORT=9601` selects another isolated debugger port.
+the same setting. `HINACODE_PERF_PORT=9601` selects another isolated debugger port.
 The comparator rejects different workloads and failed captures. Captures include
 the package's `app.asar` SHA-256, checkout revision, and working-tree diff digest.
 RSS can count shared pages twice and falls when macOS reclaims pages. Report

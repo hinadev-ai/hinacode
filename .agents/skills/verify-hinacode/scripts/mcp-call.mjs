@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Usage: mcp-call.mjs '<connection json>' [tool] ['<json args>']
-// Talks to kkcode's built-in MCP server as an agent would (streamable HTTP, JSON-RPC).
+// Talks to hinacode's built-in MCP server as an agent would (streamable HTTP, JSON-RPC).
 // Without a tool it lists tools. The connection is `{"url","headers"}` from
 // `rpc.mjs <port> mcp.connection '{"threadId":"..."}'`; its bearer credential decides the thread.
 const [connection, tool, args = "{}"] = process.argv.slice(2)
@@ -41,7 +41,7 @@ const post = async (method, params, notification = false) => {
 await post("initialize", {
   protocolVersion: "2025-06-18",
   capabilities: {},
-  clientInfo: { name: "verify-kkcode", version: "0" },
+  clientInfo: { name: "verify-hinacode", version: "0" },
 })
 await post("notifications/initialized", {}, true)
 if (!tool) {

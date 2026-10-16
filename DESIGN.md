@@ -2,7 +2,7 @@
 
 ### Users
 
-Developers who run several Claude Code and Codex agents at once across repositories and worktrees. They glance at KKCode between other work. The job is to see which agent needs them (an approval, a question, a failed setup), steer it, review what it changed, and ship the PR. Their attention is the scarce resource, and the UI should spend it only when an agent actually needs a human.
+Developers who run several Claude Code and Codex agents at once across repositories and worktrees. They glance at HinaCode between other work. The job is to see which agent needs them (an approval, a question, a failed setup), steer it, review what it changed, and ship the PR. Their attention is the scarce resource, and the UI should spend it only when an agent actually needs a human.
 
 ### Brand Personality
 
@@ -24,4 +24,4 @@ Developers who run several Claude Code and Codex agents at once across repositor
 3. **Glanceable state.** Whether a thread is running, waiting, failed or done should be readable from the sidebar alone, without opening the thread.
 4. **Keyboard first, pointer friendly.** Every frequent action has a rebindable shortcut, shown as `Kbd`. Hit areas stay generous.
 5. **Show the work.** Diffs, worktree paths, commands and PR state are first class and inspectable. Never hide what an agent did behind a summary.
-6. **Accessible by default.** Meet WCAG 2.2 AA contrast in both themes and keep focus rings at 3:1. Use roles and accessible names, which also make the UI drivable by `verify-kkcode`. Respect `prefers-reduced-motion`. Never use color as the only signal.
+6. **Accessible by default.** Meet WCAG 2.2 AA contrast in both themes and keep focus rings at 3:1. Use roles and accessible names, which also make the UI drivable by `verify-hinacode`. Respect `prefers-reduced-motion`. Never use color as the only signal.

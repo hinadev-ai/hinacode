@@ -118,7 +118,7 @@ export class Search extends Context.Service<
       limit?: number,
     ) => Effect.Effect<ReadonlyArray<FileSearchHit>, PersistenceError | NotFoundError | RipgrepMissingError>
   }
->()("kkcode/Search") {}
+>()("hinacode/Search") {}
 
 const ThreadRow = Schema.Struct({
   threadId: Schema.String,

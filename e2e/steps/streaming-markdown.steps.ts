@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import type { AgentEvent } from "../../src/shared/agent.ts"
 import type { TranscriptPush } from "../../src/shared/contract.ts"
 import type { Message, Thread } from "../../src/shared/domain.ts"
-import type { KkcodeApp } from "../support/app.ts"
+import type { HinacodeApp } from "../support/app.ts"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 
@@ -17,8 +17,8 @@ interface Stream {
   readingPosition?: number
 }
 
-const streams = new WeakMap<KkcodeApp, Stream>()
-const streamOf = (app: KkcodeApp) => {
+const streams = new WeakMap<HinacodeApp, Stream>()
+const streamOf = (app: HinacodeApp) => {
   const stream = streams.get(app)
   if (!stream) throw new Error("no active acceptance stream")
   return stream

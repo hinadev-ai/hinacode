@@ -44,7 +44,7 @@ export const AgentAccount = Schema.Union([
 ])
 export type AgentAccount = typeof AgentAccount.Type
 
-/** An account added in kkcode: a separate agent home with its own login and transcripts. */
+/** An account added in hinacode: a separate agent home with its own login and transcripts. */
 export const AgentProfile = Schema.Struct({
   id: Schema.String,
   provider: AccountProviderId,
@@ -276,9 +276,9 @@ export interface RunTurnInput {
   readonly resumeSessionId: string | null
   /** The added account to run as. Null uses the CLI's own login and home, the only one Muse Code has. */
   readonly home: AccountHome | null
-  /** The built-in kkcode MCP server, authenticated as this thread. */
+  /** The built-in hinacode MCP server, authenticated as this thread. */
   readonly mcpServer: McpConnection
-  /** kkcode's own instructions for the agent, appended to its system prompt. */
+  /** hinacode's own instructions for the agent, appended to its system prompt. */
   readonly instructions: string
 }
 

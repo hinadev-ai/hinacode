@@ -4,7 +4,7 @@ import type { DataTable } from "playwright-bdd"
 import type { AgentEvent } from "../../src/shared/agent.ts"
 import type { PushEvent } from "../../src/shared/contract.ts"
 import type { Message } from "../../src/shared/domain.ts"
-import type { KkcodeApp } from "../support/app.ts"
+import type { HinacodeApp } from "../support/app.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 
@@ -26,7 +26,7 @@ interface TurnRow {
 }
 
 const finishTurn = async (
-  app: KkcodeApp,
+  app: HinacodeApp,
   threadIds: Map<string, string>,
   title: string,
   rows: ReadonlyArray<TurnRow>,

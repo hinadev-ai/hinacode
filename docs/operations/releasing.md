@@ -1,13 +1,12 @@
 # Releasing
 
-Use this to publish kkcode for macOS (arm64), Windows (x64) and Linux (x64) to `kjj6198/kkcode-releases`, where installed apps pick it up as an update.
+Use this to publish HinaCode for macOS (arm64), Windows (x64) and Linux (x64) as a GitHub release of this repository, where installed apps pick it up as an update.
 
 The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows on `ubuntu-latest` in the `electronuserland/builder:24-wine` image. A pull request that changes packaging gets unsigned builds as workflow artifacts. A `v*` tag gets a signed, notarized macOS build and a release.
 
 ## Steps
 
-1. Once, create the public feed repository with a first commit: `gh repo create kjj6198/kkcode-releases --public --add-readme`. GitHub refuses to create a release in an empty repository.
-2. Once, add these repository secrets to `kjj6198/kkcode`:
+1. Once, add these repository secrets:
 
    | Secret                     | Value                                                                       |
    | -------------------------- | --------------------------------------------------------------------------- |
@@ -16,10 +15,11 @@ The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows 
    | `APPLE_API_KEY_P8`         | The contents of `AuthKey_XXXX.p8`                                           |
    | `APPLE_API_KEY_ID`         | The key id                                                                  |
    | `APPLE_API_ISSUER`         | The issuer uuid                                                             |
-   | `RELEASES_TOKEN`           | A token that can write releases to `kjj6198/kkcode-releases`                |
 
-3. Bump `version` in `package.json` and merge it to `main`.
-4. Tag that commit and push the tag:
+   The workflow's own `GITHUB_TOKEN` creates and publishes the release, since it lives in this repository.
+
+2. Bump `version` in `package.json` and merge it to `main`.
+3. Tag that commit and push the tag:
 
    ```sh
    git tag v0.2.0 && git push origin v0.2.0

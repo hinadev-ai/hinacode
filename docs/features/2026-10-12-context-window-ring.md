@@ -30,4 +30,4 @@ A long thread fills the model's context window until the agent compacts or degra
 ## Verification
 
 - `mapMessage.test.ts` covers main versus subagent usage and a missing `modelUsage` entry. `codex/index.integration.test.ts` covers the Codex path through the fake app-server.
-- With `verify-kkcode`: run one turn in a Claude thread and one in a Codex thread, check that the ring appears, then hover and focus it and compare the tooltip with the numbers. Check both themes.
+- With `verify-hinacode`: run one turn in a Claude thread and one in a Codex thread, check that the ring appears, then hover and focus it and compare the tooltip with the numbers. Check both themes.

@@ -180,12 +180,12 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
 }
 
 /**
- * A Streamable HTTP MCP server with no tools. Muse requires the kkcode MCP server to start, and fails the turn
+ * A Streamable HTTP MCP server with no tools. Muse requires the hinacode MCP server to start, and fails the turn
  * before any model call when it cannot reach it.
  */
 export const startFakeMcpServer = async () => {
   const server = createServer((request, response) => {
-    const mcp = new McpServer({ name: "kkcode", version: "0.0.0" })
+    const mcp = new McpServer({ name: "hinacode", version: "0.0.0" })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     response.on("close", () => {
       void transport.close()

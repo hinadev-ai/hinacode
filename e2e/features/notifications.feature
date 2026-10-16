@@ -1,6 +1,6 @@
 Feature: Notifications
   A thread the developer is not looking at pulls them back when it finishes, fails or waits on them:
-  with a desktop notification while they are in another app, and a toast while they are in kkcode.
+  with a desktop notification while they are in another app, and a toast while they are in hinacode.
 
   Background:
     Given a project "demo" for my repository

@@ -363,7 +363,7 @@ function TriggerFields({ draft, patch }: TriggerFieldsProps) {
             label={m.automations_repo_label()}
             value={draft.repo}
             onChange={(repo) => patch({ repo })}
-            placeholder="kjj6198/kkcode"
+            placeholder="hinadev-ai/hinacode"
             required
             hint={m.automations_repo_hint()}
           />

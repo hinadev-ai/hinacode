@@ -16,7 +16,7 @@ A session grant is a `SessionScope`, `{ tool, kind, value }`:
 - `domain`: the domain for WebFetch.
 - `tool`: every call of the tool. This applies only to tools with no narrower key, such as WebSearch and MCP tools. The card warns before the user grants it.
 
-Codex asks before each MCP tool call through `mcpServer/elicitation/request`, which kkcode shows as an approval.
+Codex asks before each MCP tool call through `mcpServer/elicitation/request`, which hinacode shows as an approval.
 
 ## Consequences
 

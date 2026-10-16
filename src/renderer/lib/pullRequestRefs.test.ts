@@ -2,7 +2,7 @@ import { describe, expect, test } from "@effect/vitest"
 import { linkify } from "./linkify.ts"
 import { linkPullRequestNumbers, parsePullRequestUrl, pullRequestLabel } from "./pullRequestRefs.ts"
 
-const repository = { owner: "kjj6198", name: "kkcode" }
+const repository = { owner: "hinadev-ai", name: "hinacode" }
 const numbers = (text: string) =>
   linkPullRequestNumbers(text, repository).flatMap((segment) => (segment.type === "link" ? [segment.text] : []))
 
@@ -25,7 +25,7 @@ describe("linkPullRequestNumbers", () => {
     expect(segments.map((segment) => segment.text).join("")).toBe(text)
     expect(segments).toStrictEqual([
       { type: "text", text: "see " },
-      { type: "link", text: "#7", href: "https://github.com/kjj6198/kkcode/pull/7" },
+      { type: "link", text: "#7", href: "https://github.com/hinadev-ai/hinacode/pull/7" },
       { type: "text", text: "." },
     ])
   })
@@ -34,7 +34,7 @@ describe("linkPullRequestNumbers", () => {
 describe("linkify with a repository", () => {
   test("links #n outside urls, and never a url's fragment", () => {
     expect(linkify("#1 and https://example.com/page#2", repository)).toStrictEqual([
-      { type: "link", text: "#1", href: "https://github.com/kjj6198/kkcode/pull/1" },
+      { type: "link", text: "#1", href: "https://github.com/hinadev-ai/hinacode/pull/1" },
       { type: "text", text: " and " },
       { type: "link", text: "https://example.com/page#2", href: "https://example.com/page#2" },
     ])
@@ -63,8 +63,8 @@ describe("parsePullRequestUrl", () => {
 
 describe("pullRequestLabel", () => {
   test("is #n in the thread's own repository and owner/repo#n elsewhere", () => {
-    expect(pullRequestLabel({ owner: "KJJ6198", name: "kkcode", number: 4 }, repository)).toBe("#4")
-    expect(pullRequestLabel({ owner: "other", name: "kkcode", number: 4 }, repository)).toBe("other/kkcode#4")
-    expect(pullRequestLabel({ owner: "other", name: "kkcode", number: 4 }, null)).toBe("other/kkcode#4")
+    expect(pullRequestLabel({ owner: "HINADEV-AI", name: "hinacode", number: 4 }, repository)).toBe("#4")
+    expect(pullRequestLabel({ owner: "other", name: "hinacode", number: 4 }, repository)).toBe("other/hinacode#4")
+    expect(pullRequestLabel({ owner: "other", name: "hinacode", number: 4 }, null)).toBe("other/hinacode#4")
   })
 })

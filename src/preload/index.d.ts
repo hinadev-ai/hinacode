@@ -1,7 +1,7 @@
-import type { KkcodeBridge } from "../shared/contract.ts"
+import type { HinacodeBridge } from "../shared/contract.ts"
 
 declare global {
   interface Window {
-    readonly kkcode: KkcodeBridge
+    readonly hinacode: HinacodeBridge
   }
 }

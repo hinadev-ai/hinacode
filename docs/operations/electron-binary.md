@@ -25,4 +25,4 @@ cat node_modules/electron/path.txt   # Electron.app/Contents/MacOS/Electron
 
 - **`Electron uninstall` on a branch from before this fix.** Run `pnpm exec install-electron` in that worktree, or rebase onto `main`.
 - **`Electron failed to install correctly`.** The download or extraction failed. Check the network, then delete `node_modules/electron/dist` and `node_modules/electron/path.txt` and run `pnpm exec install-electron`. Set `force_no_cache=true` to skip a corrupt zip in `~/Library/Caches/electron`.
-- **`SyntaxError: The requested module 'electron' does not provide an export named 'BrowserWindow'`.** `ELECTRON_RUN_AS_NODE=1` is set, so Electron starts as plain Node. Agent terminals inside kkcode and other Electron hosts inherit it. Run `env -u ELECTRON_RUN_AS_NODE pnpm dev`.
+- **`SyntaxError: The requested module 'electron' does not provide an export named 'BrowserWindow'`.** `ELECTRON_RUN_AS_NODE=1` is set, so Electron starts as plain Node. Agent terminals inside hinacode and other Electron hosts inherit it. Run `env -u ELECTRON_RUN_AS_NODE pnpm dev`.

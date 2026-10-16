@@ -1,6 +1,6 @@
-# KKCode mobile
+# HinaCode mobile
 
-The phone app for KKCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, merge pull requests, and run a shell in a thread's worktree. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, merge pull requests, and run a shell in a thread's worktree. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
 
 This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
 
@@ -26,7 +26,7 @@ npx expo start
 adb shell am start -a android.intent.action.VIEW -d exp://127.0.0.1:8081
 ```
 
-Pair with a URL whose host is `127.0.0.1`. Expo Go does not register the `kkcode` scheme, so paste the URL rather than opening it.
+Pair with a URL whose host is `127.0.0.1`. Expo Go does not register the `hinacode` scheme, so paste the URL rather than opening it.
 
 The bundle runs on Hermes, which has none of the ES2023 array methods such as `toSorted`. `tsconfig.json` pins `lib` to ES2022 so `npx tsc --noEmit` catches them; `src/hermes.d.ts` adds back the two Hermes does have.
 
@@ -35,7 +35,7 @@ The QR scanner (`expo-camera`) and the native terminal (`react-native-webview`) 
 ## Pair
 
 1. On the desktop, open Settings, Remote, and turn on Allow remote control.
-2. In the app, tap Scan QR code and point it at the QR code, or paste the `kkcode://connect?host=...&port=...&token=...` URL (it repeats `host` for each address the app may try) into Pairing URL and tap Connect. Opening that URL on the phone also pairs in a development or store build, which registers the `kkcode` scheme; Expo Go does not.
+2. In the app, tap Scan QR code and point it at the QR code, or paste the `hinacode://connect?host=...&port=...&token=...` URL (it repeats `host` for each address the app may try) into Pairing URL and tap Connect. Opening that URL on the phone also pairs in a development or store build, which registers the `hinacode` scheme; Expo Go does not.
 
 The phone retains the thread while reconnecting and queues actions for up to a minute offline. Supported desktops deduplicate retried mutations and let the terminal attach to its existing shell and retained output.
 

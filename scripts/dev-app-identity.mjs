@@ -8,7 +8,7 @@ import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 
-const NAME = "KKCode"
+const NAME = "HinaCode"
 
 const require = createRequire(import.meta.url)
 const bundle = process.platform === "darwin" ? join(require("electron"), "..", "..", "..") : undefined
@@ -20,7 +20,7 @@ if (plist && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
   plistBuddy(`Set :CFBundleName ${NAME}`)
   plistBuddy(`Set :CFBundleDisplayName ${NAME}`)
 
-  const iconset = join(mkdtempSync(join(tmpdir(), "kkcode-icon-")), "icon.iconset")
+  const iconset = join(mkdtempSync(join(tmpdir(), "hinacode-icon-")), "icon.iconset")
   mkdirSync(iconset)
   for (const size of [16, 32, 128, 256, 512]) {
     for (const scale of [1, 2]) {
@@ -36,7 +36,7 @@ if (plist && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
 }
 
 // `electron` and electron-vite find the binary through path.txt. A re-download extracts a new Electron.app
-// next to the old KKCode.app and points path.txt back at it, so the old one goes.
+// next to the old HinaCode.app and points path.txt back at it, so the old one goes.
 if (bundle && basename(bundle) !== `${NAME}.app`) {
   const renamed = join(dirname(bundle), `${NAME}.app`)
   rmSync(renamed, { recursive: true, force: true })

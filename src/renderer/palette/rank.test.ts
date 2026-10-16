@@ -17,7 +17,7 @@ describe("rankPalette", () => {
   const items = [
     item("t1", "threads", "Fix login redirect"),
     item("t2", "threads", "Add palette"),
-    item("p1", "projects", "New thread in kkcode"),
+    item("p1", "projects", "New thread in hinacode"),
     item("f1", "files", "CommandPalette.tsx", { subtitle: "src/renderer/components" }),
   ]
 

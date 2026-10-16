@@ -18,7 +18,7 @@ Starting a thread in a worktree meant picking "New worktree" from a menu and typ
 
 - The draft keeps the raw text, `workspace: { mode, ref } | null`. On send, `parsePullRequestSelector` (shared) turns it into `CheckoutTarget`, either `branch { ref }` or `pullRequest { selector }`, and `threads.send` validates it again.
 - `Threads.prepareWorkspace` resolves a pull request with `gh pr view` and refuses one whose URL is not in the repository `origin` points at, since its head is fetched from `origin`.
-- `Worktrees.createFromPullRequest` fetches `refs/heads/<head>` into `refs/remotes/origin/<head>`, or a fork's `refs/pull/<n>/head` into `refs/kkcode/pull/<n>`, and creates the worktree from it with the pull request's base as `baseRef`.
+- `Worktrees.createFromPullRequest` fetches `refs/heads/<head>` into `refs/remotes/origin/<head>`, or a fork's `refs/pull/<n>/head` into `refs/hinacode/pull/<n>`, and creates the worktree from it with the pull request's base as `baseRef`.
 - First-message naming renames only the title of a thread already linked to a pull request when naming starts, which a pull request checkout is from its first send. Renaming its branch would leave it tracking the old upstream, so a plain `git push` fails and a new pull request would be opened instead.
 - Suggestions come from two RPCs, `projects.branches` (git, instant) and `projects.pullRequests` (`gh pr list`, empty without `gh`), so branches never wait on the network.
 

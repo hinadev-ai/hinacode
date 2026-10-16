@@ -1,6 +1,6 @@
-# KKCode
+# HinaCode
 
-KKCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
+HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
 We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and automations triggered by webhooks or by GitHub, Linear and Slack pollers. Read `README.md` for the full feature list.
 
@@ -8,7 +8,7 @@ We are building a harness, not a chat app. Our features help a developer manage 
 
 - **Ambitious ideas, simple systems.** Propose the bold version of a feature, then build it with as few moving parts as possible. A single SQLite file, a single `rpc` channel, and one `AgentProvider` interface are deliberate choices. Don't add a queue, a cache, a daemon or a framework until something actually breaks without it.
 - **Delete before you add.** If a feature can be built by removing a special case, do that.
-- **Dogfood.** KKCode is built with KKCode. If the agent workflow is painful while you work here, that pain is a product bug.
+- **Dogfood.** HinaCode is built with HinaCode. If the agent workflow is painful while you work here, that pain is a product bug.
 - **End to end in small slices.** Ship one vertical path that works in the real app before you generalize it.
 
 ## Commands
@@ -23,7 +23,7 @@ pnpm test         # node --test, *.test.ts next to source
 pnpm check:specs  # TLC over specs/*.cfg, needs Java 11+ (see specs/README.md)
 ```
 
-Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on the self-hosted home runner, and React Doctor comments on the ones that touch React code.
+Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on the self-hosted home runners for branches in this repo (never for forks), and React Doctor comments on the ones that touch React code.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ src/main      Electron main. One Effect ManagedRuntime built in index.ts.
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
   db/         SQLite client, migrations/NNNN_name, testing.ts seed helpers
   ipc.ts      rpc handlers; security.ts for navigation, external links and sender checks
-src/preload   contextBridge exposing window.kkcode { rpc, onEvent, pathForFile }
+src/preload   contextBridge exposing window.hinacode { rpc, onEvent, pathForFile }
 src/renderer  React 19, TanStack Router, zustand stores, Tailwind 4, shadcn on Base UI
 src/shared    Effect Schema contracts only: contract.ts (rpc method map), domain.ts, agent.ts
 messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
@@ -53,18 +53,18 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
 - Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
-- The product's display name is KKCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `kkcode`: `app.setName`, the MCP server, `kkcode://`, `kkcode serve`
+- The product's display name is HinaCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `hinacode`: the MCP server, `hinacode://`, `hinacode serve`. Only `app.setName` and the profile directory keep the old `kkcode`, so installs keep their data and Keychain item (see `src/main/index.ts`)
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
 
 ## Verifying in the real app
 
-Use the `verify-kkcode` skill (`.agents/skills/verify-kkcode/`) to launch an isolated instance over Xvfb and CDP, drive it, and take screenshots. Each instance gets its own `KKCODE_USER_DATA` and CDP port. Never drive an instance you didn't launch. Put screenshots and scratch files in `.context/`, which is gitignored.
+Use the `verify-hinacode` skill (`.agents/skills/verify-hinacode/`) to launch an isolated instance over Xvfb and CDP, drive it, and take screenshots. Each instance gets its own `HINACODE_USER_DATA` and CDP port. Never drive an instance you didn't launch. Put screenshots and scratch files in `.context/`, which is gitignored.
 
 Add skills under `.agents/skills/`. `.claude/skills` is a symlink to it.
 
 ## Security
 
-KKCode runs agents that execute code on the user's machine. Hold a few boundaries firmly and keep everything else simple.
+HinaCode runs agents that execute code on the user's machine. Hold a few boundaries firmly and keep everything else simple.
 
 - **Boundaries we hold:**
   - The renderer is sandboxed and only the top-level app frame may call `rpc`.
@@ -72,7 +72,7 @@ KKCode runs agents that execute code on the user's machine. Hold a few boundarie
   - The MCP server listens on loopback only, and its credential scopes each call to one thread.
   - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
   - The attachment protocol refuses paths outside its root.
-- **Secrets** go through `services/Secrets.ts` (Electron `safeStorage`). Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs and `kkcode serve` switch themselves to Chromium's mock keychain (`src/main/index.ts`), so never add a launch path that asks the user for their password.
+- **Secrets** go through `services/Secrets.ts` (Electron `safeStorage`). Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs and `hinacode serve` switch themselves to Chromium's mock keychain (`src/main/index.ts`), so never add a launch path that asks the user for their password.
 - **Anything that crosses a process or network boundary** gets decoded with a schema, and the change gets a test like `security.test.ts` or `mcp/server.test.ts`.
 - **Importing a project trusts it.** Its `.claude` settings, hooks and `CLAUDE.md` load the same way they do in the CLI. There is no per-project trust setting, so don't add one (see `docs/adr/0008-import-trusts-the-project.md`).
 - **Don't over-engineer.** This is a single-user local app. Skip RBAC, audit logs, rate limiters, and encryption layers on top of the OS keyring. If a threat needs an attacker who already has the user's shell, it is out of scope.

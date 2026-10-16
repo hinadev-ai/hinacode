@@ -7,7 +7,7 @@ Date: 2026-10-14
 
 A developer running several agents opens a pull request from a thread, then waits. Checks run for minutes. A reviewer answers an hour later. The base branch moves and the pull request starts to conflict. None of that reaches the thread on its own. The developer has to keep glancing at the pull request tab, notice the change, and type "CI failed, fix it" into the thread themselves. The alternative people reach for today is asking the agent to poll `gh` in a loop inside its own turn. That burns tokens on every poll, holds the turn open, and dies with the turn.
 
-kkcode already reads every linked pull request through `gh`. It is the right place to notice a change once and hand it to the thread's agent, so babysitting a pull request becomes something the app does while the developer works on other threads.
+hinacode already reads every linked pull request through `gh`. It is the right place to notice a change once and hand it to the thread's agent, so babysitting a pull request becomes something the app does while the developer works on other threads.
 
 ## User flow
 
@@ -108,5 +108,5 @@ Nothing new crosses the network. Reads reuse the user's `gh` login from the home
 - `PullRequestWatcher.delivery.integration.test.ts` runs the real runner and SQLite with a scripted provider. It proves that Stop completes while provider steering or a transcript read holds the thread semaphore, and news from the stopped watch is rejected once that semaphore becomes available. It also proves that queued news cannot revive a thread archived at either the thread or worktree lock, or bypass an approval or usage limit reached while delivery waited.
 - `AgentRunner.integration.test.ts` blocks a real setup script and turn snapshot. It proves that stopping and replacing a watch at either wait drops the old news without changing the replacement watch, and that an archive completed during preparation stays archived. It also proves that an unwatched wake or pending Stop during capture preserves an existing accepted turn's baseline, diff and messages.
 - The MCP integration tests gain a watch round trip through the real HTTP server.
-- In the real app with `verify-kkcode`, link a pull request, start a watch from the panel, and confirm the eye appears in the panel and the sidebar. Then stop it and confirm both clear. Screenshot light and dark.
+- In the real app with `verify-hinacode`, link a pull request, start a watch from the panel, and confirm the eye appears in the panel and the sidebar. Then stop it and confirm both clear. Screenshot light and dark.
 - Full gates: `pnpm typecheck`, `pnpm lint`, `pnpm test`.

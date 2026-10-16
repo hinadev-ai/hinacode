@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Problem
 
-Claude Code and Codex both fan work out to sub-agents. kkcode showed only the parent's `Agent` tool call with a spinner, so while a turn waited on its sub-agents the developer could not tell what each one was doing, how far along it was, or whether one had failed.
+Claude Code and Codex both fan work out to sub-agents. hinacode showed only the parent's `Agent` tool call with a spinner, so while a turn waited on its sub-agents the developer could not tell what each one was doing, how far along it was, or whether one had failed.
 
 ## User flow
 

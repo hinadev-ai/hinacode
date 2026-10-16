@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { createBdd, test as base } from "playwright-bdd"
 import { defaultClientSettings } from "../../src/shared/domain.ts"
-import { type KkcodeApp, spawnApp } from "./app.ts"
+import { type HinacodeApp, spawnApp } from "./app.ts"
 import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
 import { Seed } from "./seed.ts"
@@ -34,10 +34,10 @@ export interface ChosenModel {
 }
 
 interface TestFixtures {
-  readonly usageLimitApp: KkcodeApp
-  readonly automaticResumeApp: KkcodeApp
-  readonly orgSpendLimitApp: KkcodeApp
-  readonly todoApp: KkcodeApp
+  readonly usageLimitApp: HinacodeApp
+  readonly automaticResumeApp: HinacodeApp
+  readonly orgSpendLimitApp: HinacodeApp
+  readonly todoApp: HinacodeApp
   readonly names: Names
   /** A throwaway git repository on `main` with a README and a gitignored `.env`, inside the app's user-data directory. */
   readonly repo: string
@@ -53,7 +53,7 @@ interface TestFixtures {
 }
 
 interface WorkerFixtures {
-  readonly app: KkcodeApp
+  readonly app: HinacodeApp
   readonly seed: Seed
 }
 
@@ -138,7 +138,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       "-C",
       path,
       "-c",
-      "user.email=e2e@kkcode",
+      "user.email=e2e@hinacode",
       "-c",
       "user.name=e2e",
       "commit",
@@ -185,8 +185,8 @@ AfterScenario(async ({ app, $testInfo }) => {
   })
   await app.page.emulateMedia({ colorScheme: null })
   await app.page.evaluate(() => {
-    localStorage.removeItem("kkcode.sidebarProjects")
-    localStorage.removeItem("kkcode.sidebarTab")
+    localStorage.removeItem("hinacode.sidebarProjects")
+    localStorage.removeItem("hinacode.sidebarTab")
   })
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })

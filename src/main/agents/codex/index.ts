@@ -142,7 +142,7 @@ const toolResult = (item: ThreadItem, bufferedOutput: string | undefined): { out
 
 type RemoteTurn = { readonly threadId: string; readonly turnId: string }
 
-/** A turn on one kkcode thread, from the moment it is asked for until its stream ends. */
+/** A turn on one hinacode thread, from the moment it is asked for until its stream ends. */
 type Run = {
   /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
@@ -197,13 +197,13 @@ const make = Effect.gen(function* () {
     Effect.forEach(clients.values(), ({ scope }) => Scope.close(scope, Exit.void), { discard: true }),
   )
 
-  /** Pending approvals keyed by the kkcode approval id handed to the UI. */
+  /** Pending approvals keyed by the hinacode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
-  /** Pending `request_user_input` calls keyed by the kkcode question id handed to the UI. */
+  /** Pending `request_user_input` calls keyed by the hinacode question id handed to the UI. */
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
-  /** In-flight runs keyed by kkcode threadId, for steer and interrupt. */
+  /** In-flight runs keyed by hinacode threadId, for steer and interrupt. */
   const runs = new Map<string, Run>()
-  /** Keyed by kkcode threadId; a sub-agent can outlive the turn that spawned it. */
+  /** Keyed by hinacode threadId; a sub-agent can outlive the turn that spawned it. */
   const subagentsByThread = new Map<string, Subagents>()
 
   const listModels = Effect.gen(function* () {
@@ -312,7 +312,7 @@ const make = Effect.gen(function* () {
               tools: { update_plan: { enabled: true } },
               mcp_servers: {
                 // `request_secret` waits for the user, so the default 60 s tool timeout is too short.
-                kkcode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
+                hinacode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
               },
             },
             developerInstructions: input.instructions,
@@ -554,7 +554,7 @@ const make = Effect.gen(function* () {
                     yield* client.respond(message.id, { action: "decline", content: null, _meta: null })
                   }
                 } else {
-                  yield* client.respondError(message.id, -32601, `KKCode does not support ${message.method}`)
+                  yield* client.respondError(message.id, -32601, `HinaCode does not support ${message.method}`)
                 }
                 return false
               }
@@ -797,6 +797,6 @@ const toPlanLimits = (response: GetAccountRateLimitsResponse, readAt: string): P
   return { windows: [...toLimitWindow(snapshot.primary), ...toLimitWindow(snapshot.secondary)], readAt }
 }
 
-export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("kkcode/CodexProvider") {
+export class CodexProvider extends Context.Service<CodexProvider, AgentProvider>()("hinacode/CodexProvider") {
   static readonly layer = Layer.effect(CodexProvider, make)
 }

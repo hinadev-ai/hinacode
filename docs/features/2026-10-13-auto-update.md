@@ -5,20 +5,20 @@ Date: 2026-10-13
 
 ## Problem
 
-kkcode ships as a downloaded app, and main moves fast. Today a developer has to notice a new release, download the zip, clear the quarantine flag and replace the app by hand, so most installs stay on whatever build they first downloaded and keep the bugs fixed since.
+hinacode ships as a downloaded app, and main moves fast. Today a developer has to notice a new release, download the zip, clear the quarantine flag and replace the app by hand, so most installs stay on whatever build they first downloaded and keep the bugs fixed since.
 
 ## User flow
 
-1. The developer installs kkcode once from the DMG on the `kkcode-releases` GitHub releases page.
-2. While kkcode runs, it checks for a newer release at launch and every four hours, and downloads it in the background. Nothing on screen changes while that happens.
+1. The developer installs HinaCode once from the DMG on this repository's GitHub releases page.
+2. While hinacode runs, it checks for a newer release at launch and every four hours, and downloads it in the background. Nothing on screen changes while that happens.
 3. Once the zip downloads, the status bar shows a quiet `Restart to update` button with the new version in its tooltip. An updater error clears readiness and hides the button.
-4. Clicking it quits kkcode, swaps in the new version and relaunches. Running turns get the same five-second quit window as a normal quit.
-5. If the developer ignores the button, the update installs the next time they quit kkcode.
+4. Clicking it quits hinacode, swaps in the new version and relaunches. Running turns get the same five-second quit window as a normal quit.
+5. If the developer ignores the button, the update installs the next time they quit hinacode.
 6. Settings, General shows the running version and what the updater is doing. `Check for updates` checks right away, and becomes `Restart to update` once a release has downloaded.
 
 ## Design
 
-`electron-builder` packages a signed, notarized macOS arm64 DMG and zip, and publishes them with `latest-mac.yml` to the public `kjj6198/kkcode-releases` repository (see `docs/adr/0015-updates-from-a-public-releases-repo.md`). The source repository stays private. The DMG is for the first install. The zip is what Squirrel.Mac installs.
+`electron-builder` packages a signed, notarized macOS arm64 DMG and zip, and publishes them with `latest-mac.yml` as a release of this repository (see `docs/adr/0018-releases-next-to-the-source.md`). The DMG is for the first install. The zip is what Squirrel.Mac installs.
 
 `services/Updates.ts` wraps `electron-updater`. It only runs when `app.isPackaged`, so `pnpm dev` never checks and reports `unsupported`. It follows the updater's events into one `UpdateState`: idle, checking, up to date, downloading, ready or failed.
 

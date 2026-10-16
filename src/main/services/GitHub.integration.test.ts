@@ -30,13 +30,13 @@ const repository = (cwd: string) =>
 
 describe("GitHub.repository", () => {
   test("reads the GitHub repository from origin, over ssh or https", async () => {
-    expect(await repository(repoWithOrigin("git@github.com:kjj6198/kkcode.git"))).toStrictEqual({
-      owner: "kjj6198",
-      name: "kkcode",
+    expect(await repository(repoWithOrigin("git@github.com:hinadev-ai/hinacode.git"))).toStrictEqual({
+      owner: "hinadev-ai",
+      name: "hinacode",
     })
-    expect(await repository(repoWithOrigin("https://github.com/kjj6198/kkcode"))).toStrictEqual({
-      owner: "kjj6198",
-      name: "kkcode",
+    expect(await repository(repoWithOrigin("https://github.com/hinadev-ai/hinacode"))).toStrictEqual({
+      owner: "hinadev-ai",
+      name: "hinacode",
     })
   })
 

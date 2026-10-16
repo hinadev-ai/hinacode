@@ -34,7 +34,7 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 
 - `ipc.integration.test.ts`: a thread is created with the default agent and model, and switches agent only before its first message.
 - `Worktrees.integration.test.ts`: a new worktree branches from the title and `renameBranch` moves the checkout's branch.
-- `verify-kkcode`: create a thread, switch to `New worktree`, send a message, and see the title and branch change in the sidebar and side panel.
+- `verify-hinacode`: create a thread, switch to `New worktree`, send a message, and see the title and branch change in the sidebar and side panel.
 
 ## Effort and fast mode
 

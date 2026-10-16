@@ -1,6 +1,6 @@
 const { app } = require("electron")
 
-globalThis.kkcodeStartupAppearance = new Promise((done, fail) => {
+globalThis.hinacodeStartupAppearance = new Promise((done, fail) => {
   app.once("browser-window-created", (_, nativeWindow) => {
     if (nativeWindow.isVisible()) {
       fail(new Error("The window was visible when it was created"))

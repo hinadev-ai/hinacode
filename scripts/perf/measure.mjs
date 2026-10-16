@@ -18,7 +18,7 @@ if (!port || !label || !scenario) {
 
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
 const page = targets.find((t) => t.type === "page" && t.url.includes("/renderer/index.html"))
-if (!page) throw new Error("no kkcode renderer page")
+if (!page) throw new Error("no hinacode renderer page")
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((resolve, reject) => {
   ws.addEventListener("open", resolve, { once: true })
@@ -161,13 +161,13 @@ if (scenario === "switch") {
   const r = await evaluate(`(async () => {
     const probes = []
     const t0 = performance.now()
-    await window.kkcode.rpc("settings.set", { archive: { whenMerged: false, removeWorktree: true } })
-    const archive = window.kkcode.rpc("threads.archive", { threadId: ${JSON.stringify(args[0])} })
+    await window.hinacode.rpc("settings.set", { archive: { whenMerged: false, removeWorktree: true } })
+    const archive = window.hinacode.rpc("threads.archive", { threadId: ${JSON.stringify(args[0])} })
     let done = false
     archive.finally(() => { done = true })
     while (!done) {
       const p0 = performance.now()
-      await window.kkcode.rpc("settings.get", undefined)
+      await window.hinacode.rpc("settings.get", undefined)
       probes.push(performance.now() - p0)
       await new Promise((r) => setTimeout(r, 100))
     }

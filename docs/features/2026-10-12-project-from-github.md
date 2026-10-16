@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Problem
 
-Adding a project needed a folder that already existed. To work on a repository you hadn't cloned, you left kkcode, cloned it in a terminal, and came back to browse to it.
+Adding a project needed a folder that already existed. To work on a repository you hadn't cloned, you left hinacode, cloned it in a terminal, and came back to browse to it.
 
 ## User flow
 

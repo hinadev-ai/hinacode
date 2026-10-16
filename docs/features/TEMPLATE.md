@@ -21,4 +21,4 @@ What this deliberately does not do, and why.
 
 ## Verification
 
-How to prove it works in the real app with `verify-kkcode`, and which tests cover it.
+How to prove it works in the real app with `verify-hinacode`, and which tests cover it.

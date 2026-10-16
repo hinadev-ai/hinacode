@@ -2,22 +2,22 @@ import { expect } from "@playwright/test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
-import { type KkcodeApp, projectRoot } from "../support/app.ts"
+import { type HinacodeApp, projectRoot } from "../support/app.ts"
 import { rpc } from "../support/rpc.ts"
 
 const limitMessage = "You've hit your limit"
 const originalPrompt = "Check my usage limit"
 const orgSpendMessage =
   "You've hit your org's monthly spend limit · run /usage-credits to ask your admin for a higher limit · your session limit resets 2:10pm (Asia/Tokyo)"
-const callout = (app: KkcodeApp, message = limitMessage) => app.page.getByRole("status").filter({ hasText: message })
+const callout = (app: HinacodeApp, message = limitMessage) => app.page.getByRole("status").filter({ hasText: message })
 
-const screenshot = async (app: KkcodeApp, name: string) => {
+const screenshot = async (app: HinacodeApp, name: string) => {
   const shots = join(projectRoot, ".context", "shots")
   mkdirSync(shots, { recursive: true })
   return app.page.screenshot({ path: join(shots, `${name}.png`) })
 }
 
-const labels = async (app: KkcodeApp) => {
+const labels = async (app: HinacodeApp) => {
   const { locale } = await rpc(app.page, "clientSettings.get", undefined)
   return locale === "zh-TW"
     ? {
@@ -42,7 +42,7 @@ const labels = async (app: KkcodeApp) => {
       }
 }
 
-const onlyThread = async (app: KkcodeApp) => {
+const onlyThread = async (app: HinacodeApp) => {
   const threads = await rpc(app.page, "threads.list", undefined)
   expect(threads).toHaveLength(1)
   const thread = threads[0]
@@ -50,7 +50,7 @@ const onlyThread = async (app: KkcodeApp) => {
   return thread
 }
 
-const openThread = async (app: KkcodeApp) => {
+const openThread = async (app: HinacodeApp) => {
   const thread = await onlyThread(app)
   const copy = await labels(app)
   await app.page
@@ -60,7 +60,7 @@ const openThread = async (app: KkcodeApp) => {
     .click()
 }
 
-const createThread = async (app: KkcodeApp, repo: string, locale = "en", theme = "default") => {
+const createThread = async (app: HinacodeApp, repo: string, locale = "en", theme = "default") => {
   if (locale !== "en" && locale !== "zh-TW") throw new Error(`Unsupported locale ${locale}`)
   if (theme !== "default" && theme !== "light") throw new Error(`Unsupported theme ${theme}`)
   await rpc(app.page, "clientSettings.set", {
@@ -86,7 +86,7 @@ Given(
   },
 )
 
-const sendMessage = async (app: KkcodeApp, message: string) => {
+const sendMessage = async (app: HinacodeApp, message: string) => {
   const copy = await labels(app)
   await app.page.getByLabel(copy.message, { exact: true }).fill(message)
   await app.page.getByRole("button", { name: copy.send, exact: true }).click()
@@ -149,7 +149,7 @@ When("I retry the usage-limit thread", async ({ usageLimitApp: app }) => {
   await sendMessage(app, "Retry the task")
 })
 
-const expectCompleted = async (app: KkcodeApp) => {
+const expectCompleted = async (app: HinacodeApp) => {
   const copy = await labels(app)
   await expect(app.page.getByText("The retry completed successfully.", { exact: true })).toBeVisible()
   await expect.poll(async () => (await onlyThread(app)).status).toBe("idle")
@@ -169,7 +169,7 @@ Then("the usage-limit thread completes successfully and becomes idle", async ({ 
   await expectCompleted(app)
 })
 
-const scheduleResume = async (app: KkcodeApp) => {
+const scheduleResume = async (app: HinacodeApp) => {
   const copy = await labels(app)
   await callout(app).getByRole("button", { name: copy.resume, exact: true }).click()
   await expect(callout(app).getByRole("button", { name: copy.cancelResume, exact: true })).toBeVisible()

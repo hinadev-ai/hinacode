@@ -22,7 +22,7 @@ export const isAppDocument = (url: string, appUrl: string): boolean => {
 
 /**
  * Whether a frame of the app window may navigate to `url`. The top frame stays on the app document, and a
- * subframe may only load project files, which `kkcode-file` serves under a CSP sandbox.
+ * subframe may only load project files, which `hinacode-file` serves under a CSP sandbox.
  */
 export const isAllowedNavigation = (url: string, isMainFrame: boolean, appUrl: string): boolean =>
   isMainFrame ? isAppDocument(url, appUrl) : URL.parse(url)?.protocol === `${PROJECT_FILE_PROTOCOL}:`
@@ -61,7 +61,7 @@ export const lockDownWebview = (preferences: Record<string, unknown>, params: Re
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
 
-/** The attachment id a `kkcode-github-asset://asset/<id>` request names, or null for anything else. */
+/** The attachment id a `hinacode-github-asset://asset/<id>` request names, or null for anything else. */
 export const githubAssetId = (url: string): string | null => {
   const parsed = URL.parse(url)
   if (parsed?.protocol !== `${GITHUB_ASSET_PROTOCOL}:` || parsed.host !== "asset") return null
@@ -70,7 +70,7 @@ export const githubAssetId = (url: string): string | null => {
 }
 
 /**
- * The root and relative path a `kkcode-file://root/<encoded root>/<path>` request names, or null when it is
+ * The root and relative path a `hinacode-file://root/<encoded root>/<path>` request names, or null when it is
  * malformed. Says nothing about whether the path stays inside the root; `Files.resolve` checks that.
  */
 export const projectFileRequest = (url: string): { root: string; path: string } | null => {

@@ -37,7 +37,7 @@ const openShop = async (page: Page, port: number, query: string) => {
 
 const startPicking = async (page: Page) => {
   await (await threadView(page, "Browser")).getByRole("button", { name: "Select element", exact: true }).click()
-  await expect.poll(() => inPage(page, "Boolean(window.__kkcodePicker)")).toBe(true)
+  await expect.poll(() => inPage(page, "Boolean(window.__hinacodePicker)")).toBe(true)
 }
 
 When("I open the shop page in the browser", async ({ app, listeners }) => {

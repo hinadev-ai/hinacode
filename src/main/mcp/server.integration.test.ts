@@ -40,7 +40,7 @@ vi.mock("electron", async () => {
   const { mkdtempSync } = await import("node:fs")
   const { tmpdir } = await import("node:os")
   const { join } = await import("node:path")
-  const userData = mkdtempSync(join(tmpdir(), "kkcode-mcp-"))
+  const userData = mkdtempSync(join(tmpdir(), "hinacode-mcp-"))
   return {
     app: { getPath: () => userData },
     BrowserWindow: {},
@@ -777,11 +777,11 @@ layer(testLayer)("agent instructions", (it) => {
     Effect.gen(function* () {
       const { b } = yield* Seeded
       const off = yield* instructionsOfNextTurn(b)
-      expect(off).toContain("<kkcode>")
+      expect(off).toContain("<hinacode>")
       expect(off).not.toContain("<tiny-vm>")
       yield* setTinyVm(true)
       const on = yield* instructionsOfNextTurn(b)
-      expect(on).toContain("<kkcode>")
+      expect(on).toContain("<hinacode>")
       expect(on).toContain("<tiny-vm>")
     }),
   )

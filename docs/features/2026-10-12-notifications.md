@@ -10,10 +10,10 @@ A developer starts a few agents and goes back to other work. The sidebar shows w
 ## User flow
 
 1. A thread's turn finishes, fails, hits a usage limit, or asks for an approval, an answer or a secret.
-2. If the developer is in another app, kkcode shows a desktop notification titled with the thread name. If they are in kkcode looking at another thread or page, it shows a toast at the top right instead, with an Open button. Either way a short chime plays. It rises for a finished turn, repeats for a request, and falls for a failure, so the kind is clear without reading.
+2. If the developer is in another app, hinacode shows a desktop notification titled with the thread name. If they are in hinacode looking at another thread or page, it shows a toast at the top right instead, with an Open button. Either way a short chime plays. It rises for a finished turn, repeats for a request, and falls for a failure, so the kind is clear without reading.
 3. Clicking the notification, or Open on the toast, opens the thread.
 4. In Settings, Notifications, the developer turns each kind on or off and turns the chime off.
-5. On macOS, the same page says when macOS blocks kkcode's notifications, or has not asked yet. "Allow notifications" makes macOS ask now instead of at the first alert. A development build also has a "Send test notification" button.
+5. On macOS, the same page says when macOS blocks hinacode's notifications, or has not asked yet. "Allow notifications" makes macOS ask now instead of at the first alert. A development build also has a "Send test notification" button.
 
 One event raises one notice, picked by where the developer's attention is. The thread they have open in a focused window raises none, so stopping a turn from its own composer never notifies.
 
@@ -36,4 +36,4 @@ The renderer already receives every turn event as a `thread.event` push, knows t
 
 ## Verification
 
-`e2e/features/notifications.feature` pushes turn events for a thread that is not open and asserts on a stubbed `Notification`: the title, the body, that a disabled kind stays quiet, and that clicking opens the thread. Banners themselves need a signed kkcode build on macOS. Check them there, including the first-run prompt from "Allow notifications".
+`e2e/features/notifications.feature` pushes turn events for a thread that is not open and asserts on a stubbed `Notification`: the title, the body, that a disabled kind stays quiet, and that clicking opens the thread. Banners themselves need a signed hinacode build on macOS. Check them there, including the first-run prompt from "Allow notifications".

@@ -22,7 +22,7 @@ describe("toolName", () => {
 
   test("keeps any other tool's name", () => {
     expect(toolName("request_user_input")).toBe("request_user_input")
-    expect(toolName("mcp__kkcode__review_changes")).toBe("mcp__kkcode__review_changes")
+    expect(toolName("mcp__hinacode__review_changes")).toBe("mcp__hinacode__review_changes")
   })
 })
 

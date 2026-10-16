@@ -176,10 +176,10 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
             {m.project_setup_hint()}
             <span className="mt-1 flex flex-col gap-0.5">
               <span>
-                <code className="font-mono text-foreground">$KKCODE_ROOT_PATH</code> {m.project_setup_root_var()}
+                <code className="font-mono text-foreground">$HINACODE_ROOT_PATH</code> {m.project_setup_root_var()}
               </span>
               <span>
-                <code className="font-mono text-foreground">$KKCODE_WORKTREE_PATH</code>{" "}
+                <code className="font-mono text-foreground">$HINACODE_WORKTREE_PATH</code>{" "}
                 {m.project_setup_worktree_var()}
               </span>
             </span>

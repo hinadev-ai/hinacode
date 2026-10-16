@@ -24,11 +24,11 @@ The sidebar groups threads by project, in an order the user drags by hand. With 
 ## Out of scope
 
 - Reordering pinned threads by drag. Pin order is enough until it is not.
-- A "No project" thread. Every kkcode thread runs in a project.
+- A "No project" thread. Every hinacode thread runs in a project.
 
 ## Verification
 
 - `ipc.integration.test.ts` covers pinning through rpc and that it keeps `updatedAt`.
 - `threads.test.ts` covers the Inbox and Pinned selectors.
 - `threads.feature` covers the Inbox order, pinning and both across a restart. `command-palette.feature` covers the picker's order, Enter and `Mod+1`.
-- With `verify-kkcode`, create threads in two projects, pin one, and screenshot the sidebar. Press ⌘N and screenshot the picker.
+- With `verify-hinacode`, create threads in two projects, pin one, and screenshot the sidebar. Press ⌘N and screenshot the picker.

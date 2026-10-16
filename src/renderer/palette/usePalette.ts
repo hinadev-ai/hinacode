@@ -42,6 +42,6 @@ export const usePalette = create<PaletteState>()(
       remember: (id) =>
         set((state) => ({ recent: [id, ...state.recent.filter((other) => other !== id)].slice(0, MAX_RECENT) })),
     }),
-    { name: "kkcode.palette", partialize: (state) => ({ recent: state.recent }) },
+    { name: "hinacode.palette", partialize: (state) => ({ recent: state.recent }) },
   ),
 )

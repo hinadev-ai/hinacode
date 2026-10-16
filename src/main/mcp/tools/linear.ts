@@ -129,7 +129,7 @@ export const linearToolsLayer = LinearTools.toLayer(
           onNone: () =>
             Effect.fail({
               message:
-                "No Linear API key is configured. Ask the user to add one in KKCode Settings > Integrations, then retry.",
+                "No Linear API key is configured. Ask the user to add one in HinaCode Settings > Integrations, then retry.",
             }),
           onSome: (apiKey) => Effect.flatMap(makeLinear(apiKey), use),
         }),

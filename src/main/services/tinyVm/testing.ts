@@ -142,7 +142,7 @@ const json = (response: ServerResponse, status: number, body: unknown) => {
   response.end(JSON.stringify(body))
 }
 
-/** A real HTTP server that implements the sbxd endpoints kkcode uses. Close it by closing the scope. */
+/** A real HTTP server that implements the sbxd endpoints hinacode uses. Close it by closing the scope. */
 export const startFakeSbx = Effect.acquireRelease(
   Effect.callback<{ readonly fake: FakeSbx; readonly close: () => void }>((resume) => {
     const token = `token-${randomUUID()}`

@@ -3,8 +3,8 @@ import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
 
-const START = "__KKCODE_PATH_START__"
-const END = "__KKCODE_PATH_END__"
+const START = "__HINACODE_PATH_START__"
+const END = "__HINACODE_PATH_END__"
 
 /** PATH as the user's login shell sets it. The markers fence it off from whatever the rc files print. */
 const loginShellPath = async (shell: string): Promise<string | undefined> => {

@@ -25,11 +25,11 @@ export type PullRequestSection = (typeof pullRequestSections)[number]
 
 let findRevealRequests = 0
 
-const SIDEBAR_WIDTH_KEY = "kkcode.sidebarWidth"
-const SIDEBAR_PROJECTS_KEY = "kkcode.sidebarProjects"
-const SIDEBAR_TAB_KEY = "kkcode.sidebarTab"
-const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "kkcode.collapsedPullRequestSections"
-const VM_FLOATING_WIDTH_KEY = "kkcode.vmFloatingWidth"
+const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
+const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
+const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
+const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "hinacode.collapsedPullRequestSections"
+const VM_FLOATING_WIDTH_KEY = "hinacode.vmFloatingWidth"
 export const VM_FLOATING_BOUNDS: WidthBounds = { min: 240, max: 960 }
 export const VM_FLOATING_DEFAULT_WIDTH = 320
 
@@ -49,8 +49,8 @@ const isPullRequestSection = (value: string): value is PullRequestSection =>
   pullRequestSections.some((section) => section === value)
 
 const sidePanelWidthKeys: Record<SidePanelSize, string> = {
-  normal: "kkcode.sidePanelWidth",
-  wide: "kkcode.sidePanelWideWidth",
+  normal: "hinacode.sidePanelWidth",
+  wide: "hinacode.sidePanelWideWidth",
 }
 
 interface UiState {

@@ -24,7 +24,7 @@ const message = (...parts: Array<MessagePart>): Message => ({
 
 describe("latestTodos", () => {
   it("reads a Muse write_todos call, whose result is only an acknowledgement", () => {
-    // Real part stored by kkcode for a Muse thread: the list is in the input, the output just acks it.
+    // Real part stored by hinacode for a Muse thread: the list is in the input, the output just acks it.
     const messages = [
       message(
         tool(

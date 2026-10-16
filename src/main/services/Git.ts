@@ -117,7 +117,7 @@ export class Git extends Context.Service<
     /** The commit's changes against its first parent. `hash` must already be validated as hex. */
     readonly show: (cwd: string, hash: string) => Effect.Effect<CommitDiff, CommandError>
   }
->()("kkcode/Git") {}
+>()("hinacode/Git") {}
 
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)

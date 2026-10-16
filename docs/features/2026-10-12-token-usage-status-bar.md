@@ -35,4 +35,4 @@ The agents' own transcripts on disk are the source of truth. They are durable, a
 ## Verification
 
 - `transcripts.integration.test.ts` and `rollouts.integration.test.ts` run against fixture files that cover duplicate lines, a workflow agent two levels down, a forked Codex sub-agent and a repeated `token_count`.
-- With `verify-kkcode`: run a Claude turn that spawns a sub-agent, then compare the hover breakdown with a script that sums the transcripts. Check both themes.
+- With `verify-hinacode`: run a Claude turn that spawns a sub-agent, then compare the hover breakdown with a script that sums the transcripts. Check both themes.

@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Problem
 
-A developer who finishes reviewing a thread still has to leave kkcode for two things: reading what the agent changed, and getting the pull request merged. The Details tab listed changed files in a 24rem column next to the workspace, setup log and ports, and showed only the whole worktree diff. You could not see what the last turn alone touched. For a pull request it showed a one-line status. Failing CI, merge conflicts and merging all meant opening GitHub, and then coming back to type a prompt.
+A developer who finishes reviewing a thread still has to leave hinacode for two things: reading what the agent changed, and getting the pull request merged. The Details tab listed changed files in a 24rem column next to the workspace, setup log and ports, and showed only the whole worktree diff. You could not see what the last turn alone touched. For a pull request it showed a one-line status. Failing CI, merge conflicts and merging all meant opening GitHub, and then coming back to type a prompt.
 
 ## User flow
 
@@ -39,4 +39,4 @@ A developer who finishes reviewing a thread still has to leave kkcode for two th
 - `workingTree.integration.test.ts` and `Worktrees.integration.test.ts` run real temp repos. They cover a modified, deleted, untracked and ignored file after a snapshot, and check that snapshotting leaves the real index alone.
 - e2e `worktrees.feature` and `mcp.feature` drive the Diff and PR tabs.
 - `GitHub.test.ts` covers `toPullRequestDetail` on a realistic `gh` payload, and checks that detail, merge and close reject a non-PR URL without spawning `gh`.
-- In the real app (`verify-kkcode`), open a worktree thread, edit files, and switch the Diff scopes. Open the PR tab on a thread with a linked PR.
+- In the real app (`verify-hinacode`), open a worktree thread, edit files, and switch the Diff scopes. Open the PR tab on a thread with a linked PR.

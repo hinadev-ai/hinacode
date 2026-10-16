@@ -1,6 +1,6 @@
 # Architecture
 
-kkcode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex and Muse Code over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-kkcode-foundation.md`](features/2026-10-11-kkcode-foundation.md).
+hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex and Muse Code over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
 
 ## System overview
 
@@ -10,7 +10,7 @@ flowchart LR
     ui["React 19 + TanStack Router"]
     stores["zustand stores"]
   end
-  preload["Preload<br/>window.kkcode"]
+  preload["Preload<br/>window.hinacode"]
   subgraph main["Main process: one Effect ManagedRuntime"]
     ipc["ipc.ts<br/>rpc handlers"]
     services["Services<br/>Threads, Worktrees, Projects,<br/>Messages, Settings, Secrets"]
@@ -20,7 +20,7 @@ flowchart LR
     remote["Remote listener<br/>ws://bindHost:port/remote"]
   end
   phone["Phone app<br/>apps/mobile (Expo)"]
-  db[("kkcode.sqlite")]
+  db[("hinacode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
   codex["codex app-server<br/>JSON-RPC over stdio"]
   muse["muse serve<br/>MSP over stdio"]
@@ -43,7 +43,7 @@ flowchart LR
 
 - **The renderer is a view.** It never touches the file system, git, or the agents. Everything goes through `rpc`.
 - **Agents call back over MCP.** Both agents get the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
-- **Git and GitHub go through the CLIs** (`git`, `gh`), so kkcode uses the user's existing auth and config.
+- **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
 
 ## IPC contract
 
@@ -67,7 +67,7 @@ Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`)
 
 Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, sends `{ type: "auth", token }` first, and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` as the Electron channel with a null window, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments retain the first host. See `features/2026-10-16-resilient-remote.md`.
 
-`kkcode serve` runs the same runtime as a headless cloud (`src/main/serve.ts`): no window, no ipc registration, a stub `Updates`, the remote listener forced on at boot, and the pairing URLs printed to stdout. It takes its own `KKCODE_USER_DATA` and therefore its own database, projects and threads. This is slice 1 of `features/2026-10-14-remote-clouds.md`; the relay server and multi-cloud clients follow there, under [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
+`hinacode serve` runs the same runtime as a headless cloud (`src/main/serve.ts`): no window, no ipc registration, a stub `Updates`, the remote listener forced on at boot, and the pairing URLs printed to stdout. It takes its own `HINACODE_USER_DATA` and therefore its own database, projects and threads. This is slice 1 of `features/2026-10-14-remote-clouds.md`; the relay server and multi-cloud clients follow there, under [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
 ### Environments: routing a window call
 
@@ -79,7 +79,7 @@ flowchart LR
   route -- "client, or an id no cloud owns,<br/>or named without environment" --> dispatch["dispatch: local layers"]
   route -- "owner: owners.owner(entity, payload[key])<br/>named: environment" --> forward["Environments.forward"]
   route -- "all" --> both["dispatch + Environments.gather, concatenated"]
-  forward --> cloud["kkcode serve /remote"]
+  forward --> cloud["hinacode serve /remote"]
   cloud -- "result: teaches owners, stamps Project.environmentId" --> forward
   cloud -- "event: teaches owners" --> windows["WindowPush: windows only, never phone sinks"]
 ```
@@ -119,13 +119,13 @@ flowchart BT
   autos & mcp --> remote
 ```
 
-`Updates` only runs in a packaged app. It checks the public `kjj6198/kkcode-releases` feed at launch and every 4 hours, downloads in the background, and pushes `update.changed` when readiness changes. An updater error clears readiness. Squirrel.Mac validates the bundle before installation. See [ADR 0015](adr/0015-updates-from-a-public-releases-repo.md).
+`Updates` only runs in a packaged app. It checks this repository's GitHub releases at launch and every 4 hours, downloads in the background, and pushes `update.changed` when readiness changes. An updater error clears readiness. Squirrel.Mac validates the bundle before installation. See [ADR 0018](adr/0018-releases-next-to-the-source.md).
 
 The remote listener sits above everything because it dispatches every rpc method, including the automation ones.
 
 The MCP server sits above the runner because its tools start turns (`create_thread`) and ask the user for secrets (`request_secret`). The runner only needs a thread's credential, which `McpCredentials` issues; the server tells it the URL once it listens.
 
-Every service is a `Context.Service` with an id like `"kkcode/Threads"` and an exported `layer`. On quit, `runtime.dispose()` gets up to 5 s, so running turns can persist their messages and status.
+Every service is a `Context.Service` with an id like `"hinacode/Threads"` and an exported `layer`. On quit, `runtime.dispose()` gets up to 5 s, so running turns can persist their messages and status.
 
 ## Agent providers
 
@@ -165,7 +165,7 @@ classDiagram
   AgentProvider <|.. MuseProvider
 ```
 
-An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. kkcode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
+An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. hinacode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
@@ -430,7 +430,7 @@ erDiagram
   }
 ```
 
-- `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`: the real login Keychain in the packaged desktop app, Chromium's mock keychain in unpackaged runs and `kkcode serve`. A secret that won't decrypt under the current key reads as unset.
+- `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`: the real login Keychain in the packaged desktop app, Chromium's mock keychain in unpackaged runs and `hinacode serve`. A secret that won't decrypt under the current key reads as unset.
 - `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
@@ -471,7 +471,7 @@ stateDiagram-v2
   }
 ```
 
-- **Setup scripts** run with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
+- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
 - **Terminals** live in main memory until closed, with their thread, or with the app, and outlive a renderer reload. Each keeps its last 256 KiB of UTF-8 output, and every `terminal.data` carries `offset`, where its text starts in the session's output, in UTF-16 characters. A screen calls `terminal.attach` with the offset it has reached when its session opens, when the drawer first lists the sessions, when a cloud reconnects, and when a push skips ahead. The answer appends, or clears the screen when the scrollback no longer reaches that offset, and pushes that overlap it are trimmed (`lib/terminalStream.ts`). An exited session can be attached until it is closed.
 - **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
 - **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads whose links are all merged, and pushes `thread.updated`.
@@ -509,14 +509,14 @@ Each tool's parameters are an Effect Schema. The same schema produces the JSON S
 How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentials.md)):
 
 - **Claude** connects through an in-process forwarder (`agents/claude/mcp.ts`), so the CLI never sees the credential.
-- **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which kkcode shows as an approval.
+- **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which hinacode shows as an approval.
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
 
 ## Automations
 
 ```mermaid
 flowchart LR
-  wh["Webhook server<br/>default :48080"] -- "HMAC x-kkcode-signature<br/>or x-hub-signature-256" --> dedup
+  wh["Webhook server<br/>default :48080"] -- "HMAC x-hinacode-signature<br/>or x-hub-signature-256" --> dedup
   gh["GitHub issues poller (gh)"] --> dedup
   lin["Linear issues poller"] --> dedup
   sl["Slack mentions poller"] --> dedup
@@ -544,8 +544,8 @@ flowchart TB
   main -- "openExternal: http(s) only" --> browser["System browser"]
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
-  main -- "kkcode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
-  main -- "kkcode-github-asset: gh token stays in main" --> renderer
+  main -- "hinacode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
+  main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 
 Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md) for MCP credentials, [0008](adr/0008-import-trusts-the-project.md) for why importing a project trusts it, [0009](adr/0009-scoped-session-approvals.md) for session approvals, and [0014](adr/0014-webview-for-the-in-app-browser.md) for the in-app browser. The threat model is a single user on their own machine. We defend against untrusted web content and unauthenticated network callers. A project the user imports is trusted, the same as opening it in the CLI. An attacker who already has the user's shell is out of scope.

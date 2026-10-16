@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Usage: rpc.mjs <cdp-port> <method> ['<json payload>']
-// Calls window.kkcode.rpc(method, payload) in the kkcode renderer over CDP and prints the result as JSON.
+// Calls window.hinacode.rpc(method, payload) in the hinacode renderer over CDP and prints the result as JSON.
 // Methods and payload shapes: src/shared/contract.ts (RpcMethods). Exits 1 on an rpc error envelope.
 const [port, method, payload = "undefined"] = process.argv.slice(2)
 if (!port || !method) {
@@ -9,7 +9,7 @@ if (!port || !method) {
 }
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
 const page = targets.find((t) => t.type === "page" && t.url.includes("/renderer/index.html"))
-if (!page) throw new Error(`no kkcode renderer page on CDP port ${port}`)
+if (!page) throw new Error(`no hinacode renderer page on CDP port ${port}`)
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((resolve, reject) => {
   ws.addEventListener("open", resolve, { once: true })
@@ -20,7 +20,7 @@ ws.send(
     id: 1,
     method: "Runtime.evaluate",
     params: {
-      expression: `window.kkcode.rpc(${JSON.stringify(method)}, ${payload})`,
+      expression: `window.hinacode.rpc(${JSON.stringify(method)}, ${payload})`,
       awaitPromise: true,
       returnByValue: true,
     },

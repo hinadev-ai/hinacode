@@ -24,10 +24,10 @@ const StartupAppearance = Schema.Struct({ firstVisible: AppearanceSnapshot, firs
 type StartupAppearance = typeof StartupAppearance.Type
 
 declare global {
-  var kkcodeStartupAppearance: Promise<unknown>
+  var hinacodeStartupAppearance: Promise<unknown>
 }
 
-export interface KkcodeApp {
+export interface HinacodeApp {
   readonly userData: string
   readonly dbPath: string
   /** The current window. Replaced by `restart`, so read it when needed rather than caching it. */
@@ -81,9 +81,9 @@ const appEnv = (userData: string, options: SpawnAppOptions) => {
   delete env.ELECTRON_RUN_AS_NODE
   return {
     ...env,
-    KKCODE_USER_DATA: userData,
-    ...(options.mockClaude === undefined ? {} : { KKCODE_MOCK_CLAUDE: options.mockClaude }),
-    ...(options.mockResetMs === undefined ? {} : { KKCODE_MOCK_RESET_MS: String(options.mockResetMs) }),
+    HINACODE_USER_DATA: userData,
+    ...(options.mockClaude === undefined ? {} : { HINACODE_MOCK_CLAUDE: options.mockClaude }),
+    ...(options.mockResetMs === undefined ? {} : { HINACODE_MOCK_RESET_MS: String(options.mockResetMs) }),
   }
 }
 
@@ -105,21 +105,21 @@ const launch = async (
       }),
   )
   const startup = Schema.decodeUnknownSync(StartupAppearance)(
-    await app.evaluate(() => globalThis.kkcodeStartupAppearance),
+    await app.evaluate(() => globalThis.hinacodeStartupAppearance),
   )
   const page = await app.firstWindow()
   await waitForRenderer(page)
   return { app, page, ...startup }
 }
 
-export const spawnApp = async (options: SpawnAppOptions = {}): Promise<KkcodeApp> => {
+export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeApp> => {
   const userData = mkdtempSync(join(tmpdir(), "kk-e2e-"))
   let current = await launch(userData, options)
   // A fresh profile listens for automation webhooks on a fixed port that other instances may hold.
   await rpc(current.page, "settings.set", { automations: { bindHost: "127.0.0.1", port: await freePort() } })
   return {
     userData,
-    dbPath: join(userData, "kkcode.sqlite"),
+    dbPath: join(userData, "hinacode.sqlite"),
     get page() {
       return current.page
     },
@@ -143,13 +143,13 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<KkcodeApp
     windowState: async () =>
       current.app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0]
-        if (!window) throw new Error("kkcode window is missing")
+        if (!window) throw new Error("hinacode window is missing")
         return { minimized: window.isMinimized(), focused: window.isFocused() }
       }),
     setWindow: async (size) => {
       await current.app.evaluate(({ BrowserWindow }, { width, height, zoom }) => {
         const window = BrowserWindow.getAllWindows()[0]
-        if (!window) throw new Error("kkcode window is missing")
+        if (!window) throw new Error("hinacode window is missing")
         window.setSize(width, height)
         window.webContents.setZoomFactor(zoom)
       }, size)

@@ -14,7 +14,7 @@ export async function pair(target: PairingTarget) {
 }
 
 /**
- * Restores the stored pairing, accepts `kkcode://connect` links, and keeps the thread and message
+ * Restores the stored pairing, accepts `hinacode://connect` links, and keeps the thread and message
  * stores in step with the one socket. Renders nothing until storage has been read.
  */
 export function ConnectionProvider({ children }: { children: ReactNode }) {

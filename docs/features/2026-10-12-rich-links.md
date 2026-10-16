@@ -5,7 +5,7 @@ Date: 2026-10-12
 
 ## Problem
 
-Agents and users paste links all the time: Linear issues, docs, preview deploys. In a message they show as raw URLs, and in user messages they are not even clickable. Telling a Linear link from a Vercel preview means reading the whole URL. Pull requests are worse: `#42` is plain text, and checking whether a referenced PR is merged or green means leaving kkcode.
+Agents and users paste links all the time: Linear issues, docs, preview deploys. In a message they show as raw URLs, and in user messages they are not even clickable. Telling a Linear link from a Vercel preview means reading the whole URL. Pull requests are worse: `#42` is plain text, and checking whether a referenced PR is merged or green means leaving hinacode.
 
 ## User flow
 
@@ -29,7 +29,7 @@ Agents and users paste links all the time: Linear issues, docs, preview deploys.
 - **rpc**: `links.favicon({ url }) -> string | null`.
 - **Renderer**: `faviconAtom(origin)` in `lib/rpc.ts`, kept alive. `WebLink` renders the 14 px icon before the link text and drops the trailing `/` of a bare URL. Markdown's `a` uses it for every http(s) href. User messages go through `lib/linkify.ts`, which splits text into text and URL segments and trims trailing punctuation the way GFM autolinks do.
 - **Pull requests** (branch 2): `lib/pullRequestRefs.ts` holds the pure matcher. `parsePullRequestUrl` reads `https://github.com/<owner>/<repo>/pull/<n>` with any trailing path or fragment, and `linkPullRequestNumbers` finds a bare `#n` after the start, whitespace or `(` and not followed by a word character. `rpc github.repository({ projectId })` runs `git remote get-url origin` in the project root through `GitHub.repository` and parses it with `parseGitHubRepository`, null when there is no GitHub origin. `ThreadView` loads it with `repositoryAtom(projectId)` and provides it through the `ThreadRepository` context. Markdown adds `remarkPullRequests`, which rewrites mdast `text` nodes only, so inline code, code blocks and existing links stay as they are; user text uses `linkify(text, repository)`. Without a GitHub origin, `#n` stays text. `WebLink` hands pull request URLs to `PullRequestLink`, which shows `RiGithubFill` instead of fetching github.com's favicon and opens a Base UI preview card (`ui/hover-card.tsx`) on hover or focus. The card loads `github.pullRequest` only when it opens, through the existing `pullRequestStatusAtom`, and `PullRequest` now carries `author`, `headRefName`, `baseRefName`, `additions` and `deletions` from `gh pr view`.
-- **Trust boundary**: favicons arrive as data URLs, so the renderer CSP (`img-src 'self' data: kkcode-attachment:`) stays as it is and the renderer never contacts a site. Main only ever GETs an origin root and an icon, never the linked path or query, so a secret in a URL never leaves the app. A site does learn that the user's machine looked at it, the same as any browser preview. For a single-user local app showing links the user or their own agent wrote, that is acceptable, and it is less than clicking the link would reveal.
+- **Trust boundary**: favicons arrive as data URLs, so the renderer CSP (`img-src 'self' data: hinacode-attachment:`) stays as it is and the renderer never contacts a site. Main only ever GETs an origin root and an icon, never the linked path or query, so a secret in a URL never leaves the app. A site does learn that the user's machine looked at it, the same as any browser preview. For a single-user local app showing links the user or their own agent wrote, that is acceptable, and it is less than clicking the link would reveal.
 
 ## Out of scope
 
@@ -43,5 +43,5 @@ Agents and users paste links all the time: Linear issues, docs, preview deploys.
 - `services/Favicons.integration.test.ts` runs a real HTTP server on 127.0.0.1: link-tag icon, relative href, `/favicon.ico` fallback, sniffed types and SVG roots, oversized and endless icons, redirect limits and schemes, the 8 s deadline, non-http URLs, and one lookup per host.
 - `lib/linkify.test.ts` covers URL boundaries, trailing punctuation and the 20-site budget per message.
 - `services/GitHub.integration.test.ts` reads origins from real temp repos; `lib/pullRequestRefs.test.ts` and `lib/remarkPullRequests.test.ts` cover the reference boundaries and that code and links are left alone.
-- With `verify-kkcode`, in a project cloned from GitHub, send `#1 and https://github.com/kjj6198/kkcode/pull/1`, hover each link and tab to it, and screenshot the card while loading, loaded, and with `gh` signed out.
-- With `verify-kkcode`, send `https://linear.app/ and https://github.com` in a thread and screenshot the message, with the network on and off.
+- With `verify-hinacode`, in a project cloned from GitHub, send `#1 and https://github.com/hinadev-ai/hinacode/pull/1`, hover each link and tab to it, and screenshot the card while loading, loaded, and with `gh` signed out.
+- With `verify-hinacode`, send `https://linear.app/ and https://github.com` in a thread and screenshot the message, with the network on and off.

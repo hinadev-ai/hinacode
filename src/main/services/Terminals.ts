@@ -51,7 +51,7 @@ export class Terminals extends Context.Service<
     /** Ends every session of the thread, before its worktree goes away. */
     readonly closeThread: (threadId: string) => Effect.Effect<void>
   }
->()("kkcode/Terminals") {}
+>()("hinacode/Terminals") {}
 
 const make = Effect.gen(function* () {
   const events = yield* Events
@@ -101,7 +101,7 @@ const make = Effect.gen(function* () {
             cols,
             rows,
             cwd,
-            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "kkcode" },
+            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "hinacode" },
           }),
         catch: (cause) => new TerminalError({ message: `Could not start ${shell} in ${cwd}: ${String(cause)}` }),
       })

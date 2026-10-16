@@ -90,7 +90,7 @@ const deliver = (
 
 /** Files from disk are copied by path; pasted images and other path-less files are sent as data URLs. */
 const sourceOf = async (file: File): Promise<StageSource> => {
-  const path = window.kkcode.pathForFile(file)
+  const path = window.hinacode.pathForFile(file)
   if (path !== "") return { path }
   return { dataUrl: await readAsDataUrl(file), name: file.name || "pasted.png" }
 }

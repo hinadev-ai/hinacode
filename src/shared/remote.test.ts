@@ -35,13 +35,13 @@ describe("pairing URLs", () => {
     } as const
     const url = pairingUrl(target)
     expect(url).toBe(
-      "kkcode://connect?host=100.64.0.2&host=192.168.1.5&host=mac.local&host=fd7a%3A115c%3A%3A2&port=47821&token=t%2Fk%2Bn",
+      "hinacode://connect?host=100.64.0.2&host=192.168.1.5&host=mac.local&host=fd7a%3A115c%3A%3A2&port=47821&token=t%2Fk%2Bn",
     )
     expect(parsePairingUrl(url)).toEqual(target)
   })
 
   it("reads the single-host form that older desktops print", () => {
-    expect(parsePairingUrl(" kkcode://connect?host=192.168.1.5&port=47821&token=abc\n")).toEqual({
+    expect(parsePairingUrl(" hinacode://connect?host=192.168.1.5&port=47821&token=abc\n")).toEqual({
       hosts: ["192.168.1.5"],
       port: 47821,
       token: "abc",
@@ -50,15 +50,15 @@ describe("pairing URLs", () => {
 
   it.each([
     ["another scheme", "https://connect?host=a&port=1&token=t"],
-    ["another action", "kkcode://pair?host=a&port=1&token=t"],
-    ["no host", "kkcode://connect?port=1&token=t"],
-    ["an empty host", "kkcode://connect?host=a&host=&port=1&token=t"],
-    ["a host with a path", "kkcode://connect?host=a%2Fb&port=1&token=t"],
-    ["a host with credentials", "kkcode://connect?host=evil%40a&port=1&token=t"],
-    ["a bracketed host", "kkcode://connect?host=%5B%3A%3A1%5D&port=1&token=t"],
-    ["an invalid IPv6 address", "kkcode://connect?host=1%3A%3A2%3A%3A3&port=1&token=t"],
-    ["a port out of range", "kkcode://connect?host=a&port=65536&token=t"],
-    ["no token", "kkcode://connect?host=a&port=1"],
+    ["another action", "hinacode://pair?host=a&port=1&token=t"],
+    ["no host", "hinacode://connect?port=1&token=t"],
+    ["an empty host", "hinacode://connect?host=a&host=&port=1&token=t"],
+    ["a host with a path", "hinacode://connect?host=a%2Fb&port=1&token=t"],
+    ["a host with credentials", "hinacode://connect?host=evil%40a&port=1&token=t"],
+    ["a bracketed host", "hinacode://connect?host=%5B%3A%3A1%5D&port=1&token=t"],
+    ["an invalid IPv6 address", "hinacode://connect?host=1%3A%3A2%3A%3A3&port=1&token=t"],
+    ["a port out of range", "hinacode://connect?host=a&port=65536&token=t"],
+    ["no token", "hinacode://connect?host=a&port=1"],
   ])("refuses %s", (_, text) => {
     expect(parsePairingUrl(text)).toBeNull()
   })

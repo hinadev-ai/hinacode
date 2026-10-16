@@ -1,7 +1,7 @@
 import { Option, Schema } from "effect"
 import { type PairingTarget, pairingUrl, parsePairingUrl } from "@shared/remote.ts"
 
-export const STORAGE_KEY = "kkcode.connection"
+export const STORAGE_KEY = "hinacode.connection"
 
 const Stored = Schema.Union([
   Schema.Struct({ hosts: Schema.NonEmptyArray(Schema.String), port: Schema.Int, token: Schema.String }),

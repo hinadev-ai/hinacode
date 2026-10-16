@@ -11,7 +11,7 @@ export const rpc = async <M extends RpcMethod>(
   method: M,
   payload: RpcRequestEncoded<M>,
 ): Promise<RpcResponseEncoded<M>> => {
-  const envelope = (await page.evaluate(([name, input]) => window.kkcode.rpc(name, input), [
+  const envelope = (await page.evaluate(([name, input]) => window.hinacode.rpc(name, input), [
     method,
     payload,
   ] as const)) as RpcEnvelope<RpcResponseEncoded<M>>

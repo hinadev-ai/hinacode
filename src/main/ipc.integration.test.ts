@@ -91,7 +91,7 @@ vi.mock("electron", () => ({
   safeStorage: { isEncryptionAvailable: () => false },
 }))
 
-const appUrl = "file:///opt/kkcode/out/renderer/index.html"
+const appUrl = "file:///opt/hinacode/out/renderer/index.html"
 const mainFrame: Frame = { url: appUrl, parent: null }
 
 const subagent: Subagent = {
@@ -254,7 +254,7 @@ beforeAll(async () => {
     "-m",
     "init",
   ])
-  runtime = ManagedRuntime.make(makeLayer(join(dir, "kkcode.sqlite")))
+  runtime = ManagedRuntime.make(makeLayer(join(dir, "hinacode.sqlite")))
   registerIpc(runtime, appUrl)
 })
 
@@ -322,7 +322,7 @@ describe("rpc trust boundary", () => {
 describe("rpc contract", () => {
   test("notification permission requests validate payloads and reject foreign frames before showing anything", async () => {
     electron.notifications.length = 0
-    const payload = { title: "kkcode", body: "Permission check" }
+    const payload = { title: "hinacode", body: "Permission check" }
     expect(
       failure(await invoke("notifications.askPermission", payload, { url: "file:///tmp/probe.html", parent: null }))
         .tag,
@@ -338,7 +338,7 @@ describe("rpc contract", () => {
 
   test("notification permission requests report the native result and always remain silent", async () => {
     electron.notifications.length = 0
-    const payload = { title: "kkcode", body: "Permission check" }
+    const payload = { title: "hinacode", body: "Permission check" }
     electron.notificationOutcome = "show"
     expect(result(await invoke("notifications.askPermission", payload))).toBe("shown")
     electron.notificationOutcome = "failed"
@@ -412,17 +412,17 @@ describe("projects, threads and settings over rpc", () => {
     await runtime.runPromise(
       PullRequests.PullRequests.use((pullRequests) =>
         Effect.all([
-          pullRequests.link(first.id, "https://github.com/kjj6198/kkcode/pull/48"),
-          pullRequests.link(first.id, "https://github.com/kjj6198/kkcode/pull/49"),
-          pullRequests.link(second.id, "https://github.com/kjj6198/kkcode/pull/55"),
+          pullRequests.link(first.id, "https://github.com/hinadev-ai/hinacode/pull/48"),
+          pullRequests.link(first.id, "https://github.com/hinadev-ai/hinacode/pull/49"),
+          pullRequests.link(second.id, "https://github.com/hinadev-ai/hinacode/pull/55"),
         ]),
       ),
     )
     const links = result(await invoke("pullRequests.all", undefined))
     expect(links.map((link) => [link.threadId, link.url])).toStrictEqual([
-      [first.id, "https://github.com/kjj6198/kkcode/pull/48"],
-      [first.id, "https://github.com/kjj6198/kkcode/pull/49"],
-      [second.id, "https://github.com/kjj6198/kkcode/pull/55"],
+      [first.id, "https://github.com/hinadev-ai/hinacode/pull/48"],
+      [first.id, "https://github.com/hinadev-ai/hinacode/pull/49"],
+      [second.id, "https://github.com/hinadev-ai/hinacode/pull/55"],
     ])
   })
 
@@ -528,8 +528,8 @@ describe("projects, threads and settings over rpc", () => {
     expect(failure(await invoke("fs.list", { root: dir, path: "" })).tag).toBe("FsAccessError")
     expect(failure(await invoke("fs.list", { root: rootPath, path: ".." })).tag).toBe("FsAccessError")
     expect(failure(await invoke("fs.watch", { root: dir, paths: [""] })).tag).toBe("FsAccessError")
-    expect(failure(await invoke("fs.read", { root: rootPath, path: "../kkcode.sqlite" })).tag).toBe("FsAccessError")
-    const outsideWrite = await invoke("fs.write", { root: dir, path: "kkcode.sqlite", content: "", expected: null })
+    expect(failure(await invoke("fs.read", { root: rootPath, path: "../hinacode.sqlite" })).tag).toBe("FsAccessError")
+    const outsideWrite = await invoke("fs.write", { root: dir, path: "hinacode.sqlite", content: "", expected: null })
     expect(failure(outsideWrite).tag).toBe("FsAccessError")
   })
 

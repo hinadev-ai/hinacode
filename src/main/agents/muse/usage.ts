@@ -5,7 +5,7 @@ import type { AgentError } from "../provider.ts"
 import type { MuseCallError } from "./host.ts"
 import { CompletionUsage, type ViewPage } from "./protocol.ts"
 
-/** One completion in kkcode's four parts. `promptTokens` includes cached input, so the cache comes off the full rate. */
+/** One completion in hinacode's four parts. `promptTokens` includes cached input, so the cache comes off the full rate. */
 export const completionTokens = ({ promptTokens, usage }: CompletionUsage): Tokens => {
   const cacheReadTokens = usage.cacheReadTokens ?? usage.cachedTokens
   const cacheWriteTokens = usage.cacheWriteTokens ?? 0

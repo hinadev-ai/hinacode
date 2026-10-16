@@ -32,7 +32,7 @@ The side panel also outgrew its tabs. Details carried the workspace, setup log, 
 | Pull requests | `mod+shift+m` |
 | Agents        | `mod+shift+a` |
 
-Details and Pull requests do not use `mod+shift+i` and `mod+shift+r`. kkcode keeps Electron's default menu, where `mod+shift+r` is Force Reload and `ctrl+shift+i` opens the developer tools outside macOS; the menu takes those keys before the page sees them. `mod+shift+p` and `mod+shift+f` stay free for the command palette and search.
+Details and Pull requests do not use `mod+shift+i` and `mod+shift+r`. hinacode keeps Electron's default menu, where `mod+shift+r` is Force Reload and `ctrl+shift+i` opens the developer tools outside macOS; the menu takes those keys before the page sees them. `mod+shift+p` and `mod+shift+f` stay free for the command palette and search.
 
 ## Design
 

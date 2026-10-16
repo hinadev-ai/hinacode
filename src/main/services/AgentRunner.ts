@@ -68,7 +68,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
-const interruptedSend = () => new AgentError({ provider: "kkcode", message: "Message send interrupted" })
+const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 export interface SendOptions {
   /** Only with the first message: sets up where the thread runs first. */
@@ -164,7 +164,7 @@ export class AgentRunner extends Context.Service<
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
   }
->()("kkcode/AgentRunner") {}
+>()("hinacode/AgentRunner") {}
 
 /** Thread status a turn moves to on this event, if any. */
 const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
@@ -408,7 +408,7 @@ const make = Effect.gen(function* () {
         secretRequests.delete(id)
         yield* Deferred.fail(
           answer,
-          new AgentError({ provider: "kkcode", message: "The turn ended before the user answered." }),
+          new AgentError({ provider: "hinacode", message: "The turn ended before the user answered." }),
         )
       }
       const last = turnMessages.at(-1)!
@@ -520,14 +520,14 @@ const make = Effect.gen(function* () {
             if (!(yield* when)) return null
             const thread = yield* threads.get(threadId)
             if (thread.status === "archived") {
-              return yield* new AgentError({ provider: "kkcode", message: "Cannot send to an archived thread" })
+              return yield* new AgentError({ provider: "hinacode", message: "Cannot send to an archived thread" })
             }
             const provider = yield* providerFor(thread.provider)
             const home = yield* accounts.home(thread.accountId)
             const { cwd, worktreeId } = yield* activeWorkspace(threadId)
             if (sentToWorktreeId !== null && worktreeId !== sentToWorktreeId) {
               return yield* new AgentError({
-                provider: "kkcode",
+                provider: "hinacode",
                 message: "This thread's worktree was removed before the turn started",
               })
             }
@@ -583,7 +583,7 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<boolean, SendError> =>
     Effect.gen(function* () {
       if (busyThreads.has(threadId)) {
-        return yield* new AgentError({ provider: "kkcode", message: "A turn is already running on this thread" })
+        return yield* new AgentError({ provider: "hinacode", message: "A turn is already running on this thread" })
       }
       busyThreads.add(threadId)
       return yield* startClaimed(threadId, prompt, attachments, options, when)
@@ -690,7 +690,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
       if (turn === undefined) {
-        return yield* new AgentError({ provider: "kkcode", message: "No turn is running on this thread." })
+        return yield* new AgentError({ provider: "hinacode", message: "No turn is running on this thread." })
       }
       const request: SecretRequest = { id: randomUUID(), threadId, name, description }
       const answer = yield* Deferred.make<"stored" | "declined", AgentError>()

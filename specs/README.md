@@ -1,6 +1,6 @@
 # specs
 
-TLA+ models of the protocols in kkcode where several actors share state: the main process, the renderer, the agent CLIs, and git. TLC, the TLA+ model checker, runs every interleaving of their steps within small bounds. A test runs one.
+TLA+ models of the protocols in hinacode where several actors share state: the main process, the renderer, the agent CLIs, and git. TLC, the TLA+ model checker, runs every interleaving of their steps within small bounds. A test runs one.
 
 | Spec                    | Models                                                                   | Checks                                                                                                                                       |
 | ----------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |

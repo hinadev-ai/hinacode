@@ -25,7 +25,7 @@ const approval: ApprovalRequest = {
 const secretRequest: SecretRequest = { id: "s1", threadId, name: "demo.token", description: "Demo token" }
 
 let transcriptResponse = Promise.withResolvers<unknown>()
-Object.assign(globalThis, { window: { kkcode: { rpc: () => transcriptResponse.promise } } })
+Object.assign(globalThis, { window: { hinacode: { rpc: () => transcriptResponse.promise } } })
 const { useMessages } = await import("./messages.ts")
 const store = () => useMessages.getState()
 

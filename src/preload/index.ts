@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from "electron"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
-import type { KkcodeBridge } from "../shared/contract.ts"
+import type { HinacodeBridge } from "../shared/contract.ts"
 
-const bridge: KkcodeBridge = {
+const bridge: HinacodeBridge = {
   rpc: (method, payload, environment) => ipcRenderer.invoke(RPC_CHANNEL, { method, payload, environment }),
   onEvent: (listener) => {
     const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]) => listener(event)
@@ -12,4 +12,4 @@ const bridge: KkcodeBridge = {
   pathForFile: (file) => webUtils.getPathForFile(file),
 }
 
-contextBridge.exposeInMainWorld("kkcode", bridge)
+contextBridge.exposeInMainWorld("hinacode", bridge)

@@ -7,7 +7,7 @@ import type { AgentError, AgentProvider } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 
-/** Who each account is signed in as. kkcode never signs in or out; the user does that in a terminal. */
+/** Who each account is signed in as. hinacode never signs in or out; the user does that in a terminal. */
 export class AgentLogins extends Context.Service<
   AgentLogins,
   {
@@ -17,7 +17,7 @@ export class AgentLogins extends Context.Service<
       accountId: string | null,
     ) => Effect.Effect<AgentAccount, AgentError | PersistenceError | NotFoundError>
   }
->()("kkcode/AgentLogins") {}
+>()("hinacode/AgentLogins") {}
 
 const make = Effect.gen(function* () {
   const accounts = yield* AgentAccounts

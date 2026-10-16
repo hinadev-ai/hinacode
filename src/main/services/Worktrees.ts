@@ -127,10 +127,10 @@ export class Worktrees extends Context.Service<
      */
     readonly whenPrepared: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
   }
->()("kkcode/Worktrees") {}
+>()("hinacode/Worktrees") {}
 
 const checkoutsDir = (rootPath: string, worktreeRoot: string | null) =>
-  join(worktreeRoot ?? join(dirname(rootPath), ".kkcode-worktrees"), basename(rootPath))
+  join(worktreeRoot ?? join(dirname(rootPath), ".hinacode-worktrees"), basename(rootPath))
 
 // The id suffix keeps branches like `kk/fix` and `kk-fix` apart, and gives every row its own path.
 const checkoutPath = (checkouts: string, branch: string, id: string) =>
@@ -196,7 +196,7 @@ const make = Effect.gen(function* () {
   // Setup scripts run in this process, so a row still preparing at boot lost its script to a quit or
   // crash. Rerunning an arbitrary script unasked is not safe, so it ends as failed like any other.
   yield* sql`
-    UPDATE worktree SET status = 'failed', setup_log = setup_log || ${"\nSetup was interrupted when KKCode quit.\n"}
+    UPDATE worktree SET status = 'failed', setup_log = setup_log || ${"\nSetup was interrupted when HinaCode quit.\n"}
     WHERE status = 'preparing'
   `.pipe(Effect.mapError(persistence("worktrees.failInterrupted")))
 
@@ -250,9 +250,9 @@ const make = Effect.gen(function* () {
         ChildProcess.make(process.env["SHELL"] || "/bin/sh", ["-lc", script], {
           cwd: worktree.path,
           env: {
-            KKCODE_ROOT_PATH: project.rootPath,
-            KKCODE_WORKTREE_PATH: worktree.path,
-            KKCODE_BRANCH: worktree.branch,
+            HINACODE_ROOT_PATH: project.rootPath,
+            HINACODE_WORKTREE_PATH: worktree.path,
+            HINACODE_BRANCH: worktree.branch,
           },
           extendEnv: true,
           stdin: "ignore",
@@ -369,7 +369,7 @@ const make = Effect.gen(function* () {
   const fetchPullRequest = (rootPath: string, head: PullRequestHead) =>
     Effect.gen(function* () {
       const [branch, source, fetched] = head.isCrossRepository
-        ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/kkcode/pull/${head.number}`]
+        ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
         : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
       yield* git.remote(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
       return { branch, startPoint: fetched }

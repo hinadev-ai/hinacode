@@ -5,7 +5,7 @@ Date: 2026-10-14
 
 ## Problem
 
-kkcode is built for private repositories, and their pull request descriptions show nothing but links. GitHub serves `user-attachments` only to a signed-in account, and the renderer has no GitHub session, so every screenshot and before and after video in a PR body was a bare URL. The file explorer had the same gap. Opening an image, a video or an HTML report an agent produced said "This is a binary file" or showed raw markup.
+hinacode is built for private repositories, and their pull request descriptions show nothing but links. GitHub serves `user-attachments` only to a signed-in account, and the renderer has no GitHub session, so every screenshot and before and after video in a PR body was a bare URL. The file explorer had the same gap. Opening an image, a video or an HTML report an agent produced said "This is a binary file" or showed raw markup.
 
 ## User flow
 
@@ -17,9 +17,9 @@ kkcode is built for private repositories, and their pull request descriptions sh
 
 Main serves both kinds of content over two privileged schemes, so no rpc method carries bytes or the token.
 
-- `kkcode-github-asset://asset/<uuid>` takes only an attachment id. Main runs `gh auth token`, asks `github.com/user-attachments/assets/<uuid>` for its redirect, and fetches the short-lived signed URL without the token, passing the Range header so video seeks. `Markdown.tsx` rewrites attachment image URLs to it, and embeds a paragraph that is only a bare attachment link.
-- `kkcode-file://root/<encoded root>/<path>` resolves through `Files.resolve`, the same known-root and inside-root check as `fs.read`. The root is one path segment, so an HTML file's relative links resolve to siblings, and a link that climbs out names an unknown root.
-- Every `kkcode-file` response carries `Content-Security-Policy: sandbox allow-scripts`. HTML runs its scripts in an opaque origin, without popups, top navigation, storage, cookies, `window.kkcode` or the parent DOM, however it is embedded. `will-frame-navigate` lets a subframe load `kkcode-file` and nothing else, and keeps the top frame on the app.
+- `hinacode-github-asset://asset/<uuid>` takes only an attachment id. Main runs `gh auth token`, asks `github.com/user-attachments/assets/<uuid>` for its redirect, and fetches the short-lived signed URL without the token, passing the Range header so video seeks. `Markdown.tsx` rewrites attachment image URLs to it, and embeds a paragraph that is only a bare attachment link.
+- `hinacode-file://root/<encoded root>/<path>` resolves through `Files.resolve`, the same known-root and inside-root check as `fs.read`. The root is one path segment, so an HTML file's relative links resolve to siblings, and a link that climbs out names an unknown root.
+- Every `hinacode-file` response carries `Content-Security-Policy: sandbox allow-scripts`. HTML runs its scripts in an opaque origin, without popups, top navigation, storage, cookies, `window.hinacode` or the parent DOM, however it is embedded. `will-frame-navigate` lets a subframe load `hinacode-file` and nothing else, and keeps the top frame on the app.
 - Both schemes are registered on the default session only, so in-app browser pages, which run in `persist:browser`, cannot reach them.
 
 ## Out of scope

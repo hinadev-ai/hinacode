@@ -1,15 +1,15 @@
 import { expect, type Locator, type Page } from "@playwright/test"
-import type { KkcodeApp } from "../support/app.ts"
+import type { HinacodeApp } from "../support/app.ts"
 import { AfterScenario, Then, When } from "../support/fixtures.ts"
 import { sidebar } from "../support/ui.ts"
 
-const startWidths = new WeakMap<KkcodeApp, number>()
+const startWidths = new WeakMap<HinacodeApp, number>()
 
 const detailsView = (page: Page) => page.getByRole("complementary", { name: "Thread details" }).getByRole("tabpanel")
 const handle = (page: Page, name: string) => page.getByRole("separator", { name, exact: true })
 const widthOf = async (locator: Locator) => Math.round((await locator.boundingBox())?.width ?? 0)
 
-const rememberStart = async (app: KkcodeApp) => {
+const rememberStart = async (app: HinacodeApp) => {
   if (!startWidths.has(app)) startWidths.set(app, await widthOf(detailsView(app.page)))
 }
 

@@ -50,7 +50,7 @@ export class TinyVm extends Context.Service<
     readonly sendScreen: (streamId: string, data: Uint8Array) => Effect.Effect<void>
     readonly closeScreen: (streamId: string) => Effect.Effect<void>
   }
->()("kkcode/TinyVm") {}
+>()("hinacode/TinyVm") {}
 
 const VNC_PORT = 5900
 const SCREENSHOT_SCRIPT = "import -window root png:-"

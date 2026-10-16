@@ -1,7 +1,7 @@
 import type { Subagent, SubagentStatus } from "../../../shared/agent.ts"
 import type { CollabAgentStatus, ServerNotificationParams, ThreadItem } from "./protocol.ts"
 
-/** Sub-agents of one kkcode thread, keyed by their Codex thread id. */
+/** Sub-agents of one hinacode thread, keyed by their Codex thread id. */
 export type Subagents = Map<string, Subagent>
 
 const statusOf: Record<CollabAgentStatus, SubagentStatus> = {

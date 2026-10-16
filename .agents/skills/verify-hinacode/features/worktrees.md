@@ -1,6 +1,6 @@
 # Worktrees
 
-A thread can run in its own git worktree. kkcode creates the branch and checkout, runs the project's setup script in it with `$KKCODE_ROOT_PATH`, `$KKCODE_WORKTREE_PATH` and `$KKCODE_BRANCH` set, streams the script's output into the side panel, lists the worktree's changes with diffs, and removes the worktree when the thread is archived with `Remove the worktree when archiving` on. The automated cases create the worktree through rpc without an agent turn. The composer creates it on the first send.
+A thread can run in its own git worktree. hinacode creates the branch and checkout, runs the project's setup script in it with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH` set, streams the script's output into the side panel, lists the worktree's changes with diffs, and removes the worktree when the thread is archived with `Remove the worktree when archiving` on. The automated cases create the worktree through rpc without an agent turn. The composer creates it on the first send.
 
 ## Automated coverage
 
@@ -32,7 +32,7 @@ Preconditions:
 ## Gotchas
 
 - Nothing is created until the first send. Ticking `Worktree` and leaving the thread unsent leaves no branch or folder.
-- **From a pull request.** Use a project cloned from a GitHub repo with open PRs and start the app with `KKCODE_MOCK_CLAUDE=usage-limit`, so the send creates the worktree without a real turn. `#<n>` or the PR URL checks out the PR's head branch tracking `origin` and links the PR; a PR URL of another repository is refused with an error under the composer. Type into the field after selecting its text through the DOM (`el.select()`), because `fill` may append to the prefilled `main`.
+- **From a pull request.** Use a project cloned from a GitHub repo with open PRs and start the app with `HINACODE_MOCK_CLAUDE=usage-limit`, so the send creates the worktree without a real turn. `#<n>` or the PR URL checks out the PR's head branch tracking `origin` and links the PR; a PR URL of another repository is refused with an error under the composer. Type into the field after selecting its text through the DOM (`el.select()`), because `fill` may append to the prefilled `main`.
 - `Workspace` exists, and `Model` lists every agent, only before the first message. To test them again, start a new thread.
 - The setup script runs through `$SHELL -lc`, so the user's login profile runs first. A noisy profile shows up in the setup log.
 - The worktree lives next to the project root, not inside it. Keep scratch repos inside `$DATA` so cleanup removes their worktrees too.
