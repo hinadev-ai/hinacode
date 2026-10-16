@@ -1,8 +1,12 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "kkcode-site",
+  "name": "hinacode-site",
   "compatibility_date": "2026-10-12",
   "assets": {
     "directory": "./dist",
   },
+  "routes": [
+    { "pattern": "hinacode.app", "custom_domain": true },
+    { "pattern": "www.hinacode.app", "custom_domain": true },
+  ],
 }
