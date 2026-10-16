@@ -177,49 +177,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
           {unlinkError}
         </p>
       )}
-      {live && worktree.status === "ready" && <CreatePullRequestButton threadId={threadId} worktreeId={worktree.id} />}
       <GitHubAuthHint />
-    </div>
-  )
-}
-
-/** Offered only when `gh` is signed in and the branch has no pull request yet. */
-function CreatePullRequestButton({ threadId, worktreeId }: { threadId: string; worktreeId: string }) {
-  const environment = useOpenThreadEnvironment()
-  const branchAtom = branchPullRequestAtom(worktreeId)
-  const branchPullRequest = useAtomValue(branchAtom)
-  const refreshBranchPullRequest = useAtomRefresh(branchAtom)
-  const auth = useAtomValue(gitHubAuthAtom(environment))
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  const hasNoPullRequest = AsyncResult.isSuccess(branchPullRequest) && branchPullRequest.value === null
-  const signedIn = AsyncResult.isSuccess(auth) && auth.value.type === "signedIn"
-  if (!hasNoPullRequest || !signedIn) return null
-
-  // The new link arrives through the thread's pull request push; only the branch lookup needs asking again.
-  const create = () =>
-    startTransition(async () => {
-      setError(null)
-      try {
-        await callPromise("pullRequests.create", { threadId })
-        refreshBranchPullRequest()
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Button variant="outline" size="xs" className="self-start" disabled={pending} onClick={create}>
-        <RiGitPullRequestLine aria-hidden />
-        {pending ? m.pr_creating() : m.pr_create()}
-      </Button>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
     </div>
   )
 }
