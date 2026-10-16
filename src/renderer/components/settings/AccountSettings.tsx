@@ -213,10 +213,12 @@ function describeAccount(provider: ProviderId, account: AgentAccount, cliLogin: 
   }
 }
 
-// Splits the translated sentence around the email, whose position differs by locale.
-const EMAIL_SLOT = "\u0000"
+function signedInTextAroundEmail(): [before: string, after: string] {
+  const slot = "\u0000"
+  const [before = "", after = ""] = m.settings_account_signed_in({ email: slot }).split(slot)
+  return [before, after]
+}
 
-/** Blurs the email and organization, which often contains the email, until the user clicks one. */
 function SubscriptionStatus({
   email,
   plan,
@@ -228,7 +230,7 @@ function SubscriptionStatus({
 }) {
   const [revealed, setRevealed] = useState(false)
   const reveal = () => setRevealed(true)
-  const [beforeEmail, afterEmail] = m.settings_account_signed_in({ email: EMAIL_SLOT }).split(EMAIL_SLOT)
+  const [beforeEmail, afterEmail] = signedInTextAroundEmail()
   return (
     <>
       <span className="text-foreground">
