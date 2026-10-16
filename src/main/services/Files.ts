@@ -1,9 +1,11 @@
 import { type Dirent, watch as watchFs } from "node:fs"
-import { open, readdir, readFile, realpath, writeFile } from "node:fs/promises"
+import { open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import type { ChangedFileStatus, FsEntry, FsEntryKind, FsFileContent } from "../../shared/domain.ts"
+import { mimeOf } from "../../shared/media.ts"
+import { SLOW_CONSUMER_BYTES } from "../../shared/remote.ts"
 import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
@@ -14,13 +16,16 @@ const reasons = {
   outsideRoot: "is not inside",
   unreadable: "cannot be read in",
   unwritable: "cannot be written in",
+  tooLarge: "is too large to preview from",
 } as const
+
+const MAX_PREVIEW_BYTES = (SLOW_CONSUMER_BYTES / 4) * 3
 
 /** The renderer asked for something outside the folders hinacode manages, or for something that is gone. */
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
-  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable"]),
+  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable", "tooLarge"]),
 }) {
   override get message(): string {
     return this.reason === "unknownRoot"
@@ -54,6 +59,11 @@ export class Files extends Context.Service<
     readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
     /** Up to the first `MAX_READ_BYTES` of the file `path` under `root`, checked like `list`. */
     readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
+    /** The file `path` under `root` as a base64 data URL, checked like `read`. Fails with `tooLarge` over `MAX_PREVIEW_BYTES`. */
+    readonly preview: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | PersistenceError>
     /**
      * Replaces the text of the existing file `path` under `root`, checked like `read`. Fails with
      * `FsWriteConflict` when `expected` is not null and the file no longer holds it.
@@ -304,6 +314,16 @@ const make = Effect.gen(function* () {
       })
     })
 
+  const preview = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const file = yield* resolve(root, path)
+      const unreadable = () => new FsAccessError({ root, path, reason: "unreadable" })
+      const { size } = yield* Effect.tryPromise({ try: () => stat(file), catch: unreadable })
+      if (size > MAX_PREVIEW_BYTES) return yield* new FsAccessError({ root, path, reason: "tooLarge" })
+      const data = yield* Effect.tryPromise({ try: () => readFile(file), catch: unreadable })
+      return { dataUrl: `data:${mimeOf(path)};base64,${data.toString("base64")}` }
+    })
+
   const write = (root: string, path: string, content: string, expected: string | null) =>
     Effect.gen(function* () {
       const file = yield* resolve(root, path)
@@ -374,7 +394,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, resolve, read, write, watch })
+  return Files.of({ list, resolve, read, preview, write, watch })
 })
 
 export const layer = Layer.effect(Files, make)

@@ -3,6 +3,7 @@ import { RiCloseLine, RiFileLine } from "react-icons/ri"
 import { attachmentUrl } from "../../shared/channels.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
 import { elementLabel } from "../lib/elementPicker.ts"
+import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -33,8 +34,11 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
   )
 }
 
+const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.path, useOpenThreadEnvironment())
+
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const { element } = attachment
+  const src = useAttachmentSrc(attachment)
   const title = element ? elementLabel(element) : attachment.name
   return (
     <Dialog>
@@ -47,7 +51,7 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
       <DialogContent className="max-h-[90vh] sm:max-w-4xl">
         <DialogTitle className={cn("truncate pr-8", element && "font-mono text-sm")}>{title}</DialogTitle>
         <img
-          src={attachmentUrl(attachment.path)}
+          src={src}
           alt={attachment.name}
           className={cn("max-h-[70vh] rounded-md object-contain", element ? "mx-auto max-w-full" : "w-full")}
         />
@@ -93,13 +97,8 @@ export function PendingAttachment({ attachment, onRemove }: { attachment: Attach
 }
 
 function Thumbnail({ attachment }: { attachment: Attachment }) {
-  return (
-    <img
-      src={attachmentUrl(attachment.path)}
-      alt={attachment.name}
-      className="size-16 rounded-lg border border-border object-cover"
-    />
-  )
+  const src = useAttachmentSrc(attachment)
+  return <img src={src} alt={attachment.name} className="size-16 rounded-lg border border-border object-cover" />
 }
 
 function FileChip({ attachment }: { attachment: Attachment }) {
@@ -120,10 +119,11 @@ function FileChip({ attachment }: { attachment: Attachment }) {
 function ElementChip({ attachment, element }: { attachment: Attachment; element: PickedElement }) {
   const url = URL.parse(element.url)
   const tag = elementLabel(element)
+  const src = useAttachmentSrc(attachment)
   return (
     <span className="flex h-16 w-64 items-center gap-2 overflow-hidden rounded-lg border border-border bg-background/50 pr-3 text-left text-xs">
       <img
-        src={attachmentUrl(attachment.path)}
+        src={src}
         alt={m.attachment_element({ element: tag })}
         className="h-full w-20 shrink-0 border-r border-border bg-muted object-contain p-1"
       />

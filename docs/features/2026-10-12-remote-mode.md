@@ -59,7 +59,7 @@ Pairing URL: `hinacode://connect?host=<host>&port=<port>&token=<token>`, with `h
 
 ### Which methods the phone may call
 
-`desktopOnlyMethods` in the contract lists the entries that need the desktop window: `app.ready`, `app.focus`, `dialog.*`, `shell.reveal`, `attachments.stage`, `notifications.*` and `fs.watch`. The remote server refuses them with the `DesktopOnly` error tag. Everything else is allowed, including the `terminal.*` family and `github.merge`, because the person holding the paired phone is the same person who sits at the desktop.
+`desktopOnlyMethods` in the contract lists the entries that need the desktop window: `app.ready`, `app.focus`, `dialog.*`, `shell.reveal`, `notifications.*` and `fs.watch`. The remote server refuses them with the `DesktopOnly` error tag. `attachments.stage` is allowed: a desktop staging on a cloud thread reads a picked or dropped file itself and sends its bytes as a `dataUrl`, and it shows the cloud's attachments through `attachments.read`, which only reads files inside the cloud's attachments dir. The file viewer previews a cloud's media and HTML the same way: the `hinacode-file` protocol asks the cloud that owns the root for `fs.preview`, checked like `fs.read` and capped so its base64 answer fits under the 8 MiB slow-consumer limit. A previewed video cannot seek, since the bytes arrive whole instead of by range. Everything else is allowed, including the `terminal.*` family and `github.merge`, because the person holding the paired phone is the same person who sits at the desktop.
 
 ### Main process
 

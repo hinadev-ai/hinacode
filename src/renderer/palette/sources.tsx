@@ -10,9 +10,15 @@ import { useExplorer } from "../stores/explorer.ts"
 import { selectProjectThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import type { Project } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
+
+const cloudOf = (project: Project, ctx: PaletteContext): Pick<PaletteItem, "cloud" | "keywords"> => {
+  const cloud = ctx.clouds.find((candidate) => candidate.id === project.environmentId)
+  return cloud ? { cloud, keywords: [cloud.name] } : {}
+}
 
 /** Threads in sidebar order. */
 export const threadsSource: PaletteSource = {
@@ -25,6 +31,7 @@ export const threadsSource: PaletteSource = {
         title: thread.title,
         subtitle: project.name,
         icon: <ProviderIcon provider={thread.provider} />,
+        ...cloudOf(project, ctx),
         run: () => void ctx.navigate({ to: "/thread/$threadId", params: { threadId: thread.id } }),
       })),
     ),
@@ -33,12 +40,13 @@ export const threadsSource: PaletteSource = {
 export const projectsSource: PaletteSource = {
   group: "projects",
   items: (_query, ctx) =>
-    ctx.projects.map((project) => ({
+    ctx.projects.map((project): PaletteItem => ({
       id: `project:${project.id}`,
       group: "projects",
       title: m.sidebar_new_thread_in({ project: project.name }),
       subtitle: project.rootPath,
       icon: <RiAddLine aria-hidden className={iconClass} />,
+      ...cloudOf(project, ctx),
       run: () => void startThread(project.id, ctx.navigate),
     })),
 }
@@ -56,6 +64,7 @@ export const newThreadSource: PaletteSource = {
       title: project.name,
       subtitle: project.rootPath,
       icon: <ProjectIcon projectId={project.id} />,
+      ...cloudOf(project, ctx),
       ...(index < 9 ? { chord: `Mod+${index + 1}` } : {}),
       run: () => void startThread(project.id, ctx.navigate),
     }))

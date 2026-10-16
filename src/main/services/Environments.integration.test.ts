@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import type { AddressInfo } from "node:net"
 import { join } from "node:path"
@@ -295,6 +295,24 @@ describe("desktop environments", () => {
     expect(onCloud?.title).toBe("renamed on the cloud")
     const here = await desktop.runPromise(Threads.use((threads) => threads.list))
     expect(here.map((thread) => thread.title)).toStrictEqual(["renamed here"])
+  })
+
+  test("a file staged on a cloud thread travels as bytes, and the cloud reads back only staged files", async () => {
+    const picked = join(dir, "picked.png")
+    writeFileSync(picked, "png bytes")
+    const staged = result(await invoke("attachments.stage", { threadId: cloudThread, source: { path: picked } }))
+    expect(staged).toMatchObject({ name: "picked.png", mime: "image/png", kind: "image", bytes: 9 })
+
+    const { dataUrl } = result(await invoke("attachments.read", { path: staged.path }, cloudId))
+    expect(dataUrl).toBe(`data:image/png;base64,${Buffer.from("png bytes").toString("base64")}`)
+    expect(failure(await invoke("attachments.read", { path: picked }, cloudId)).tag).toBe("AttachmentError")
+  })
+
+  test("the file viewer previews a cloud's files from the cloud, inside the root only", async () => {
+    writeFileSync(join(cloudRepo, "page.html"), "<h1>cloud</h1>")
+    const { dataUrl } = result(await invoke("fs.preview", { root: cloudRepo, path: "page.html" }))
+    expect(dataUrl).toBe(`data:text/html;base64,${Buffer.from("<h1>cloud</h1>").toString("base64")}`)
+    expect(failure(await invoke("fs.preview", { root: cloudRepo, path: "../picked.png" })).tag).toBe("FsAccessError")
   })
 
   test("the cloud's pushes reach the window and not the phones paired with this desktop", async () => {

@@ -6,6 +6,8 @@ import remarkGfm from "remark-gfm"
 import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
 import { resolveColor, useTheme } from "../lib/appearance.ts"
+import type { EnvironmentId } from "../lib/rpc.ts"
+import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { useClientSettings } from "../lib/settings.ts"
@@ -28,7 +30,20 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
  * Agents embed files they saved on this machine, like `vm_screenshot` captures, by absolute path. Markdown
  * percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
  */
-const imageSrc = (src: string) => githubAssetUrl(src) ?? (src.startsWith("/") ? attachmentUrl(decodeURI(src)) : src)
+const imageSrc = (src: string, environment: EnvironmentId) =>
+  githubAssetUrl(src) ?? (src.startsWith("/") ? attachmentUrl(decodeURI(src), environment) : src)
+
+function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
+  const environment = useOpenThreadEnvironment()
+  return (
+    <img
+      src={src === undefined ? undefined : imageSrc(src, environment)}
+      alt={alt}
+      loading="lazy"
+      className="inline-block max-w-full rounded-md"
+    />
+  )
+}
 
 // Spacing, heading scale and block shapes follow the Lettera editor, in em so they scale with the surrounding text.
 const block = "my-[0.8em] wrap-break-word first:mt-0 last:mb-0"
@@ -40,14 +55,7 @@ const components: Components = {
     const asset = bareGitHubAsset(node)
     return asset ? <GitHubAttachment src={asset} /> : <p className={block}>{children}</p>
   },
-  img: ({ src, alt }) => (
-    <img
-      src={typeof src === "string" ? imageSrc(src) : undefined}
-      alt={alt ?? ""}
-      loading="lazy"
-      className="inline-block max-w-full rounded-md"
-    />
-  ),
+  img: ({ src, alt }) => <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt ?? ""} />,
   a: ({ children, href }) =>
     isWebUrl(href) ? (
       <WebLink href={href}>{children}</WebLink>

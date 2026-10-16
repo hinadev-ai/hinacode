@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto"
-import { copyFile, mkdir, stat, writeFile } from "node:fs/promises"
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { basename, extname, join } from "node:path"
 import { app } from "electron"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { Attachment } from "../../shared/domain.ts"
+import { isInside } from "../security.ts"
 
 const MAX_BYTES = 20 * 1024 * 1024
 
@@ -61,6 +62,7 @@ export class Attachments extends Context.Service<
       threadId: string,
       source: AttachmentSource,
     ) => Effect.Effect<Attachment, AttachmentError | AttachmentTooLargeError>
+    readonly read: (path: string) => Effect.Effect<{ readonly dataUrl: string }, AttachmentError>
   }
 >()("hinacode/Attachments") {}
 
@@ -95,6 +97,22 @@ const stage = (threadId: string, source: AttachmentSource) =>
     return attachment(id, source.name, path, decoded.mime, decoded.data.byteLength)
   })
 
+export const inlineSource = (path: string) =>
+  Effect.gen(function* () {
+    const name = basename(path)
+    const { size } = yield* Effect.tryPromise({ try: () => stat(path), catch: failure(`Cannot read ${name}`) })
+    if (size > MAX_BYTES) return yield* new AttachmentTooLargeError({ name, bytes: size })
+    const data = yield* Effect.tryPromise({ try: () => readFile(path), catch: failure(`Cannot read ${name}`) })
+    return { dataUrl: `data:${mimeOf(name)};base64,${data.toString("base64")}`, name }
+  })
+
+const read = (path: string) =>
+  isInside(attachmentsRoot(), path)
+    ? Effect.tryPromise({ try: () => readFile(path), catch: failure(`Cannot read ${basename(path)}`) }).pipe(
+        Effect.map((data) => ({ dataUrl: `data:${mimeOf(path)};base64,${data.toString("base64")}` })),
+      )
+    : Effect.fail(new AttachmentError({ message: `${path} is not a staged attachment` }))
+
 const attachment = (id: string, name: string, path: string, mime: string, bytes: number): Attachment => ({
   id,
   name,
@@ -104,4 +122,4 @@ const attachment = (id: string, name: string, path: string, mime: string, bytes:
   bytes,
 })
 
-export const layer = Layer.succeed(Attachments, Attachments.of({ stage }))
+export const layer = Layer.succeed(Attachments, Attachments.of({ stage, read }))

@@ -14,7 +14,7 @@ import { isTrustedSender } from "./security.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
-import { Attachments } from "./services/Attachments.ts"
+import { Attachments, inlineSource } from "./services/Attachments.ts"
 import { UnknownRootError } from "./services/errors.ts"
 import { ClientSettings } from "./services/ClientSettings.ts"
 import { routes } from "./environments/routes.ts"
@@ -222,6 +222,7 @@ const handlers: Handlers = {
   "search.files": ({ threadId, query, limit }) => Search.use((search) => search.files(threadId, query, limit)),
   "fs.list": ({ root, path }) => Files.use((files) => files.list(root, path)),
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
+  "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
   "dialog.pickFolder": (_, window) =>
@@ -295,6 +296,7 @@ const handlers: Handlers = {
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
+  "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
   "dialog.pickFiles": (_, window) =>
     Effect.promise(async () => {
       const options = { properties: ["openFile", "multiSelections"] } satisfies Electron.OpenDialogOptions
@@ -361,6 +363,17 @@ const payloadId = (payload: unknown, key: string) => {
   return typeof id === "string" ? id : undefined
 }
 
+const inlineLocalAttachment = (method: RpcMethod, payload: unknown): Effect.Effect<unknown, HandlerError> =>
+  method !== "attachments.stage"
+    ? Effect.succeed(payload)
+    : Schema.decodeUnknownEffect(RpcMethods[method].request)(payload).pipe(
+        Effect.flatMap((request) =>
+          "path" in request.source
+            ? Effect.map(inlineSource(request.source.path), (source) => ({ ...request, source }))
+            : Effect.succeed(request),
+        ),
+      )
+
 /** Finds where a window call runs (see `environments/routes.ts`): this desktop, one cloud, or all of them. */
 const route = (raw: unknown, window: BrowserWindow | null) =>
   Effect.gen(function* () {
@@ -376,7 +389,12 @@ const route = (raw: unknown, window: BrowserWindow | null) =>
         : where.to === "owner" && owned !== undefined
           ? environments.owner(where.entity, owned)
           : undefined
-    if (target !== undefined) return yield* environments.forward(target, { method, payload })
+    if (target !== undefined) {
+      return yield* inlineLocalAttachment(method, payload).pipe(
+        Effect.flatMap((forwarded) => environments.forward(target, { method, payload: forwarded })),
+        Effect.catch((error) => Effect.succeed({ error: { tag: error._tag, message: error.message } })),
+      )
+    }
     if (where.to !== "all") return yield* dispatch(raw, window)
     const [local, clouds] = yield* Effect.all([dispatch(raw, window), environments.gather({ method, payload })], {
       concurrency: "unbounded",
