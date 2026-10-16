@@ -20,7 +20,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { emptyDraft, toCheckoutTarget, useDrafts } from "../stores/drafts.ts"
+import { type Draft, emptyDraft, toCheckoutTarget, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -63,6 +63,30 @@ type StageSource = RpcRequest<"attachments.stage">["source"]
 type Delivery = "queue" | "steer"
 
 const STEER_CHORD = "Mod+Enter"
+
+/** Mod+Enter steers; plain Enter and the send button queue. */
+const deliveryOf = (event: KeyboardEvent) => (event.metaKey || event.ctrlKey ? "steer" : "queue")
+
+/** A busy thread takes the message by `delivery`; an idle one starts a turn. Only the first message picks a workspace. */
+const deliver = (
+  threadId: string,
+  prompt: string,
+  sent: Draft,
+  { busy, unstarted, delivery }: { busy: boolean; unstarted: boolean; delivery: Delivery },
+) => {
+  if (busy) {
+    return callPromise(delivery === "queue" ? "threads.queue" : "threads.steer", {
+      threadId,
+      text: prompt,
+      attachments: sent.attachments,
+    })
+  }
+  const workspace =
+    unstarted && sent.workspace
+      ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
+      : undefined
+  return callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace })
+}
 
 /** Files from disk are copied by path; pasted images and other path-less files are sent as data URLs. */
 const sourceOf = async (file: File): Promise<StageSource> => {
@@ -108,21 +132,7 @@ export function Composer({ thread }: { thread: Thread }) {
     setError(null)
     startSending(async () => {
       try {
-        await (busy
-          ? callPromise(delivery === "queue" ? "threads.queue" : "threads.steer", {
-              threadId: thread.id,
-              text: prompt,
-              attachments: sent.attachments,
-            })
-          : callPromise("threads.send", {
-              threadId: thread.id,
-              prompt,
-              attachments: sent.attachments,
-              workspace:
-                unstarted && sent.workspace
-                  ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
-                  : undefined,
-            }))
+        await deliver(thread.id, prompt, sent, { busy, unstarted, delivery })
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
@@ -204,7 +214,7 @@ export function Composer({ thread }: { thread: Thread }) {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
     event.preventDefault()
-    send(event.metaKey || event.ctrlKey ? "steer" : "queue")
+    send(deliveryOf(event))
   }
 
   return (
@@ -271,7 +281,7 @@ export function Composer({ thread }: { thread: Thread }) {
               <ThreadOptions thread={thread} onError={setError} />
             </ComposerActions>
             <ContextRing threadId={thread.id} />
-            {busy && hasDraft && <SteerButton disabled={!canSend} onClick={() => send("steer")} />}
+            <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
             <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
           </ComposerToolbar>
         </ComposerBar>
@@ -300,10 +310,22 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
-function SteerButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+/** Shown only while the agent runs and there is a draft to steer with. */
+function SteerButton({
+  busy,
+  hasDraft,
+  canSend,
+  onSteer,
+}: {
+  busy: boolean
+  hasDraft: boolean
+  canSend: boolean
+  onSteer: () => void
+}) {
+  if (!busy || !hasDraft) return null
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={onClick} />}>
+      <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" disabled={!canSend} onClick={onSteer} />}>
         {m.thread_composer_steer()}
       </TooltipTrigger>
       <TooltipContent>
