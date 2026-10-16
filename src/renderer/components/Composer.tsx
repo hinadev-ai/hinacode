@@ -1,4 +1,5 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
@@ -19,7 +20,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { emptyDraft, toCheckoutTarget, useDrafts } from "../stores/drafts.ts"
+import { type Draft, emptyDraft, toCheckoutTarget, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { selectProjectThreads, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -32,12 +33,15 @@ import {
   ComposerToolbar,
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
+import { ChordKeys } from "./ChordKeys.tsx"
 import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
+import { QueueBar } from "./QueueBar.tsx"
 import { SubagentBar } from "./SubagentBar.tsx"
 import { TodoBar } from "./TodoBar.tsx"
+import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -54,6 +58,35 @@ const onDragOver = (event: DragEvent<HTMLTextAreaElement>) => {
 }
 
 type StageSource = RpcRequest<"attachments.stage">["source"]
+
+/** While the agent works, a message either waits for the turn to complete or steers it now. */
+type Delivery = "queue" | "steer"
+
+const STEER_CHORD = "Mod+Enter"
+
+/** Mod+Enter steers; plain Enter and the send button queue. */
+const deliveryOf = (event: KeyboardEvent) => (event.metaKey || event.ctrlKey ? "steer" : "queue")
+
+/** A busy thread takes the message by `delivery`; an idle one starts a turn. Only the first message picks a workspace. */
+const deliver = (
+  threadId: string,
+  prompt: string,
+  sent: Draft,
+  { busy, unstarted, delivery }: { busy: boolean; unstarted: boolean; delivery: Delivery },
+) => {
+  if (busy) {
+    return callPromise(delivery === "queue" ? "threads.queue" : "threads.steer", {
+      threadId,
+      text: prompt,
+      attachments: sent.attachments,
+    })
+  }
+  const workspace =
+    unstarted && sent.workspace
+      ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
+      : undefined
+  return callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace })
+}
 
 /** Files from disk are copied by path; pasted images and other path-less files are sent as data URLs. */
 const sourceOf = async (file: File): Promise<StageSource> => {
@@ -92,24 +125,14 @@ export function Composer({ thread }: { thread: Thread }) {
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
 
-  const send = () => {
+  const send = (delivery: Delivery) => {
     if (!canSend) return
     const sent = useDrafts.getState().take(thread.id)
     const prompt = promptWithComments(sent.text, sent.comments)
     setError(null)
     startSending(async () => {
       try {
-        await (busy
-          ? callPromise("threads.steer", { threadId: thread.id, text: prompt, attachments: sent.attachments })
-          : callPromise("threads.send", {
-              threadId: thread.id,
-              prompt,
-              attachments: sent.attachments,
-              workspace:
-                unstarted && sent.workspace
-                  ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
-                  : undefined,
-            }))
+        await deliver(thread.id, prompt, sent, { busy, unstarted, delivery })
       } catch (cause) {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
@@ -174,7 +197,7 @@ export function Composer({ thread }: { thread: Thread }) {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    send()
+    send("queue")
   }
 
   // A finished turn may have added files worth mentioning, and gives a failed command load another chance.
@@ -191,7 +214,7 @@ export function Composer({ thread }: { thread: Thread }) {
     // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
     event.preventDefault()
-    send()
+    send(deliveryOf(event))
   }
 
   return (
@@ -199,6 +222,7 @@ export function Composer({ thread }: { thread: Thread }) {
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
         <TodoBar thread={thread} />
         <SubagentBar thread={thread} />
+        <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
         <ComposerBar className="min-h-0 focus-within:border-ring">
           {comments.length > 0 && (
             <ul
@@ -233,7 +257,11 @@ export function Composer({ thread }: { thread: Thread }) {
           <ComposerInput
             ref={textareaRef}
             aria-label={m.thread_composer_label()}
-            placeholder={busy ? m.thread_composer_steer_placeholder() : m.thread_composer_placeholder()}
+            placeholder={
+              busy
+                ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                : m.thread_composer_placeholder()
+            }
             value={text}
             onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
             commands={commands}
@@ -253,6 +281,7 @@ export function Composer({ thread }: { thread: Thread }) {
               <ThreadOptions thread={thread} onError={setError} />
             </ComposerActions>
             <ContextRing threadId={thread.id} />
+            <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
             <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
           </ComposerToolbar>
         </ComposerBar>
@@ -281,7 +310,33 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
-/** While the agent runs, an empty composer offers Stop and a draft offers Steer. */
+/** Shown only while the agent runs and there is a draft to steer with. */
+function SteerButton({
+  busy,
+  hasDraft,
+  canSend,
+  onSteer,
+}: {
+  busy: boolean
+  hasDraft: boolean
+  canSend: boolean
+  onSteer: () => void
+}) {
+  if (!busy || !hasDraft) return null
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" disabled={!canSend} onClick={onSteer} />}>
+        {m.thread_composer_steer()}
+      </TooltipTrigger>
+      <TooltipContent>
+        {m.thread_composer_steer_hint()}
+        <ChordKeys chord={STEER_CHORD} />
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** While the agent runs, an empty composer offers Stop and a draft offers Queue. */
 function SendButton({
   busy,
   hasDraft,
@@ -294,7 +349,7 @@ function SendButton({
   onStop: () => void
 }) {
   const stopping = busy && !hasDraft
-  const label = stopping ? m.thread_composer_stop() : busy ? m.thread_composer_steer() : m.thread_composer_send()
+  const label = stopping ? m.thread_composer_stop() : busy ? m.thread_composer_queue() : m.thread_composer_send()
   return (
     <Tooltip>
       <TooltipTrigger

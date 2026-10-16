@@ -8,6 +8,7 @@ import {
   type Changes,
   type ChangesScope,
   isThreadBusy,
+  QueuedMessage,
   Thread,
   type ThreadStatus,
   type CheckoutTarget,
@@ -48,6 +49,7 @@ const ThreadRow = Schema.Struct({
   ...Thread.fields,
   fastMode: Schema.BooleanFromBit,
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
+  queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
 })
 
 export interface CreateThread {
@@ -78,6 +80,7 @@ export interface UpdateThread {
   readonly sortIndex?: number | undefined
   readonly pinned?: boolean | undefined
   readonly providerSessionId?: string | undefined
+  readonly queue?: ReadonlyArray<QueuedMessage> | undefined
 }
 
 // Arranging the sidebar is not activity, so it must not make a thread look fresh.
@@ -239,6 +242,7 @@ const make = Effect.gen(function* () {
         usageLimit: null,
         sortIndex: next,
         pinnedAt: null,
+        queue: [],
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -294,6 +298,7 @@ const make = Effect.gen(function* () {
         sortIndex: input.sortIndex ?? current.sortIndex,
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
+        queue: input.queue ?? current.queue,
         updatedAt: onlyArranges(input) ? current.updatedAt : now,
       }
       yield* sql`
@@ -302,7 +307,8 @@ const make = Effect.gen(function* () {
             effort = ${next.effort},
             fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, provider_session_id = ${next.providerSessionId},
-            updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)}
+            updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
+            queue = ${JSON.stringify(next.queue)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
       return next

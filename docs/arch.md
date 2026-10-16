@@ -234,7 +234,12 @@ sequenceDiagram
     R->>AR: rpc secrets.respond
     AR->>AR: Secrets.set, then secret_resolved to the waiting tool
   end
-  opt steer while running
+  opt queue while running (Enter)
+    Dev->>R: send another message
+    R->>AR: rpc threads.queue
+    AR->>DB: append to thread.queue, push thread.updated
+  end
+  opt steer while running (Mod+Enter)
     Dev->>R: send another message
     R->>AR: rpc threads.steer
     AR->>P: steer (same turn)
@@ -243,6 +248,10 @@ sequenceDiagram
   P-->>AR: turn_completed or turn_failed
   AR->>DB: final persist
   AR-->>R: thread.updated(idle)
+  opt turn completed, not stopped, queue not empty
+    AR->>DB: take the oldest queued message, keep the busyThreads claim
+    AR->>AR: start the next turn with it
+  end
 ```
 
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
@@ -374,6 +383,7 @@ erDiagram
     text status
     int sort_index
     text pinned_at "null = not pinned"
+    text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
   }
   message {

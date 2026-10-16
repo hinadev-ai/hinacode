@@ -129,6 +129,9 @@ const claudeLimits: PlanLimits = {
   readAt: "2026-10-12T10:00:00.000Z",
 }
 
+/** A turn prompted with "simulate a held turn" waits for this before it completes. */
+let heldTurn = Promise.withResolvers<void>()
+
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 
@@ -151,6 +154,11 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      if (input.prompt === "simulate a held turn") {
+        return Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(
+          Stream.flatMap(() => Stream.fromIterable(scriptedTurn)),
+        )
+      }
       return Stream.fromIterable(
         input.prompt === "simulate a session"
           ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
@@ -768,6 +776,63 @@ describe("limited threads over rpc", () => {
       },
     )
     expect(response).toMatchObject({ error: { tag: "SchemaError" } })
+  })
+})
+
+const threadOf = async (id: string) => result(await invoke("threads.list", undefined)).find((item) => item.id === id)!
+
+const userTexts = async (threadId: string) =>
+  result(await invoke("threads.transcript", { threadId }))
+    .messages.filter((message) => message.role === "user")
+    .flatMap((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
+
+describe("queued messages over rpc", () => {
+  test("runs queued messages in order once the turn completes", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+    result(await invoke("threads.queue", { threadId: thread.id, text: "then the tests" }))
+    result(await invoke("threads.queue", { threadId: thread.id, text: "then the docs" }))
+    expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual([
+      "then the tests",
+      "then the docs",
+    ])
+    expect(await userTexts(thread.id)).toStrictEqual(["simulate a held turn"])
+
+    heldTurn.resolve()
+    await expect
+      .poll(() => userTexts(thread.id))
+      .toStrictEqual(["simulate a held turn", "then the tests", "then the docs"])
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    expect((await threadOf(thread.id)).queue).toStrictEqual([])
+  })
+
+  test("keeps the queue when the user stops the turn, and hands a message back once", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+    result(await invoke("threads.queue", { threadId: thread.id, text: "after the stop" }))
+    result(await invoke("threads.interrupt", { threadId: thread.id }))
+    heldTurn.resolve()
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    expect(await userTexts(thread.id)).toStrictEqual(["simulate a held turn"])
+
+    const [queued] = (await threadOf(thread.id)).queue
+    expect(result(await invoke("threads.unqueue", { threadId: thread.id, id: queued!.id }))).toMatchObject({
+      text: "after the stop",
+    })
+    expect(result(await invoke("threads.unqueue", { threadId: thread.id, id: queued!.id }))).toBeNull()
+    expect((await threadOf(thread.id)).queue).toStrictEqual([])
+  })
+
+  test("sends right away when nothing is running", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.queue", { threadId: thread.id, text: "simulate a session" }))
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["simulate a session"])
+    expect((await threadOf(thread.id)).queue).toStrictEqual([])
   })
 })
 

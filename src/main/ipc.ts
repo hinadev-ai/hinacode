@@ -240,6 +240,9 @@ const handlers: Handlers = {
     AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace })),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
+  "threads.queue": ({ threadId, text, attachments = [] }) =>
+    AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
+  "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "approvals.respond": ({ requestId, decision }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),

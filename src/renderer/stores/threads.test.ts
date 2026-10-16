@@ -18,6 +18,7 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  queue: [],
   createdBy: "user",
   createdAt: "2026-10-14T00:00:00.000Z",
   updatedAt: "2026-10-14T00:00:00.000Z",

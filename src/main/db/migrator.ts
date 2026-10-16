@@ -14,6 +14,7 @@ import accountHome from "./migrations/0012_account_home.ts"
 import pullRequestWatch from "./migrations/0013_pull_request_watch.ts"
 import threadPin from "./migrations/0014_thread_pin.ts"
 import environments from "./migrations/0015_environments.ts"
+import threadQueue from "./migrations/0016_thread_queue.ts"
 
 const run = Migrator.make({})
 
@@ -37,5 +38,6 @@ export const runMigrations = run({
     "13_pull_request_watch": pullRequestWatch,
     "14_thread_pin": threadPin,
     "15_environments": environments,
+    "16_thread_queue": threadQueue,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

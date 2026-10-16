@@ -39,10 +39,14 @@ const outcomeOf = (event: AgentEvent): Outcome | undefined => {
   return undefined
 }
 
+/** A completed turn with messages queued behind it is not the end of the thread's work. */
+const continuesFromQueue = (threadId: string, event: AgentEvent) =>
+  event.type === "turn_completed" && (useThreads.getState().byId[threadId]?.queue.length ?? 0) > 0
+
 /** Marks a thread whose turn ended while the user was not looking at it. Opening the thread clears the mark. */
 export const recordUnseenOutcome = (threadId: string, event: AgentEvent) => {
   const outcome = outcomeOf(event)
-  if (outcome === undefined || (document.hasFocus() && isOpen(threadId))) return
+  if (outcome === undefined || continuesFromQueue(threadId, event) || (document.hasFocus() && isOpen(threadId))) return
   useUnseen.getState().record(threadId, outcome)
 }
 
@@ -52,7 +56,8 @@ const openThread = (threadId: string) => void router.navigate({ to: "/thread/$th
 export const notifyThreadEvent = (threadId: string, event: AgentEvent, settings: NotificationSettings) => {
   const raised = alertFor(event)
   const thread = useThreads.getState().byId[threadId]
-  if (raised === undefined || thread === undefined || !settings[raised.alert]) return
+  if (raised === undefined || thread === undefined || !settings[raised.alert] || continuesFromQueue(threadId, event))
+    return
   const surface = surfaceFor(threadId)
   if (surface === null) return
   notify(surface, {
