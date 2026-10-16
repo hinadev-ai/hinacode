@@ -9,14 +9,21 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
+import markdownFixture from "./fixtures/markdown.md?raw"
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
-export type MockScenario = "usage-limit" | "org-spend-limit" | "todos"
+export type MockScenario = "usage-limit" | "org-spend-limit" | "todos" | "markdown"
 
 const toolCall = (callId: string, name: string, input: unknown, output: string): Array<AgentEvent> => [
   { type: "tool_call_started", callId, name, input },
   { type: "tool_call_finished", callId, output, isError: false },
+]
+
+/** Every turn replies with a fixture of each Markdown construct, in chunks like a streamed reply. */
+const markdownTurn = (): Array<AgentEvent> => [
+  ...(markdownFixture.match(/[\s\S]{1,400}/g) ?? []).map((text): AgentEvent => ({ type: "text_delta", text })),
+  { type: "turn_completed" },
 ]
 
 /**
@@ -86,6 +93,7 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
         listCommands: () => Effect.succeed([]),
         runTurn: (input) =>
           Stream.suspend(() => {
+            if (scenario === "markdown") return Stream.fromIterable(markdownTurn())
             if (scenario === "todos") {
               const first = !attempted.has(input.threadId)
               attempted.add(input.threadId)

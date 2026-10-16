@@ -81,9 +81,10 @@ if (
   mockClaude !== undefined &&
   mockClaude !== "usage-limit" &&
   mockClaude !== "org-spend-limit" &&
-  mockClaude !== "todos"
+  mockClaude !== "todos" &&
+  mockClaude !== "markdown"
 )
-  throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit, org-spend-limit or todos")
+  throw new Error("KKCODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
 if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires KKCODE_USER_DATA")
 const mockResetMs = Number(process.env["KKCODE_MOCK_RESET_MS"] ?? 60000)
 if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
