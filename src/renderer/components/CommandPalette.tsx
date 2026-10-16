@@ -9,8 +9,10 @@ import { groupLabels, modeOf } from "../palette/modes.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "../palette/types.ts"
 import { usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
+import { useClouds } from "../lib/environments.ts"
 import { useThreads } from "../stores/threads.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
+import { CloudMark } from "./CloudMark.tsx"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
 
 type SourceResult = ReturnType<PaletteSource["items"]>
@@ -81,6 +83,12 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
         <span className="shrink-0 truncate">
           <Highlighted text={item.title} matches={entry.titleMatches} />
         </span>
+        {item.cloud && (
+          <span className="flex shrink-0 items-center gap-1 self-center text-xs text-muted-foreground">
+            <CloudMark cloud={item.cloud} className="size-3.5" />
+            <span aria-hidden>{item.cloud.name}</span>
+          </span>
+        )}
         {item.subtitle && (
           <span className="min-w-0 truncate text-xs text-muted-foreground">
             <Highlighted text={item.subtitle} matches={entry.subtitleMatches} />
@@ -98,7 +106,8 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
   const commandContext = useCommandContext()
   const keymap = useKeymap()
   const threads = useThreads((state) => state.byId)
-  const ctx = useMemo(() => ({ ...commandContext, keymap, threads }), [commandContext, keymap, threads])
+  const clouds = useClouds()
+  const ctx = useMemo(() => ({ ...commandContext, keymap, threads, clouds }), [commandContext, keymap, threads, clouds])
 
   const { mode, query: modeQuery } = modeOf(query)
   const search = useDeferredValue(modeQuery)

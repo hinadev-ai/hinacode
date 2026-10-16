@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import type { Thread } from "../../shared/domain.ts"
 import type { CommandContext, Keymap } from "../keybindings/commands.ts"
+import type { Cloud } from "../lib/environments.ts"
 import type { RankedGroup } from "./rank.ts"
 
 export type PaletteGroup = "commands" | "threads" | "projects" | "files"
@@ -15,6 +16,8 @@ export interface PaletteItem {
   readonly keywords?: ReadonlyArray<string>
   readonly chord?: string
   readonly icon?: ReactNode
+  /** The cloud the item lives on, shown after the title so projects with the same name stay apart. */
+  readonly cloud?: Cloud
   readonly run: () => void
 }
 
@@ -25,6 +28,7 @@ export interface PaletteItem {
 export interface PaletteContext extends CommandContext {
   readonly keymap: Keymap
   readonly threads: Readonly<Record<string, Thread>>
+  readonly clouds: ReadonlyArray<Cloud>
 }
 
 export interface PaletteSource {
