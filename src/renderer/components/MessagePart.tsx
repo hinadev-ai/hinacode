@@ -71,7 +71,8 @@ function ReasoningPart({ text }: { text: string }) {
         {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
-        {text}
+        {/* Thinking ends in newlines, which pre-wrap would show as a blank line under the last sentence. */}
+        {text.trim()}
       </CollapsibleContent>
     </Collapsible>
   )
