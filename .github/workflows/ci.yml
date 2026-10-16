@@ -40,8 +40,8 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # Without a window manager, minimizing a window does nothing.
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox
+      # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
       - if: failure()
