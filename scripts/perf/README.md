@@ -164,3 +164,65 @@ session. The 60-second grace preserves immediate follow-ups; later turns pay CLI
 
 Raw captures use the `baseline-verified` and `final` labels. Mechanical comparisons are saved as
 `.context/perf/baseline-verified-final-{history,claude}-memory-comparison.json`.
+
+## Packaged alpha footprint
+
+Build the release package, preserve that app, then compare packaged builds. Use an
+unused renderer CDP port from 9600 to 9699; the main inspector uses that port plus 10000. The harness refuses occupied ports and verifies the launched PID, profile,
+and renderer path. It clears `ELECTRON_RUN_AS_NODE`, uses `--use-mock-keychain`,
+leaves GPU behavior enabled, and closes only its own app through CDP.
+
+```sh
+CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist --mac -c.mac.notarize=false
+ditto dist/mac-arm64/kkcode.app .context/perf/baseline.app
+KKCODE_PERF_APP="$PWD/.context/perf/baseline.app/Contents/MacOS/kkcode" \
+  PERF_SNAPSHOT=1 node scripts/perf/memory.mjs baseline footprint
+# Build the candidate package before repeating with another preserved app and label.
+KKCODE_PERF_APP="$PWD/.context/perf/candidate.app/Contents/MacOS/kkcode" \
+  PERF_SNAPSHOT=1 node scripts/perf/memory.mjs candidate footprint
+node scripts/perf/compare-memory.mjs baseline candidate footprint
+```
+
+`footprint` seeds three projects and thirty threads. Five transcripts each have
+2,000 messages containing deterministic Markdown, tool calls, and file changes;
+the remaining threads have ten messages each. No agent turns run. Model, command,
+and account discovery can still launch real CLI probes without sending a prompt.
+Results report app RSS and auxiliary CLI RSS separately, plus each owned process.
+
+Samples collect both JS heaps, record main CPU usage and active resource types,
+and sample every five seconds: fifteen seconds empty, fifteen seconds seeded,
+then five minutes after opening and leaving ten long threads. A switch waits for
+the destination's final message and two animation frames. Main and renderer CPU
+profiles cover the switches, including the collections between them. Use those
+profiles for diagnosis, not uninstrumented frame-rate claims.
+
+`PERF_SNAPSHOT=1` saves both heap snapshots after the final memory sample. Set
+`PERF_IDLE_SECONDS=15` for a short exploratory capture; only compare captures with
+the same setting. `KKCODE_PERF_PORT=9601` selects another isolated debugger port.
+The comparator rejects different workloads and failed captures. Captures include
+the package's `app.asar` SHA-256, checkout revision, and working-tree diff digest.
+RSS can count shared pages twice and falls when macOS reclaims pages. Report
+retained JS heap separately and repeat before making an RSS or startup claim.
+
+The packaged `70b67f4` alpha baseline captured on macOS arm64 used label
+`baseline-3`. Main heap was 36.07 MiB empty, 36.80 MiB seeded, and 39.52 MiB after
+ten long-thread visits and five minutes idle. Renderer heap was 10.38, 17.15, and
+24.35 MiB. The final app process-tree RSS was 478.80 MiB, with 62.53 MiB of CLI RSS
+reported separately. Raw capture: `.context/perf/baseline-3-footprint-memory.json`;
+CPU profiles and both heap snapshots use the same label. The transcript SHA-256
+was `9ebcaf6cc0b04d8410400d71e2ba6c823bdffa292737b5156b3d35bf4d2e011d`.
+
+For repeated empty-profile startup measurements, use the same packaged invocation
+with scenario `startup`. It records time from process launch to the first settings
+RPC answer, renderer paint entries relative to navigation, and fifteen seconds of
+empty-profile samples. Alternate package order to reduce warm-cache bias. Memory
+and switch samples from `footprint` or `startup` print one JSON line per metric.
+
+Deferring the unused Linear SDK reduced median empty-profile main heap from
+36.073 to 32.623 MiB and app RSS from 608.23 to 596.45 MiB across four alternating
+runs per package. After ten long-thread visits and five minutes idle, main heap
+fell from 39.52 to 35.61 MiB. Explicitly importing Linear into the candidate added
+3.52 MiB retained heap and 12.64 MiB RSS. Startup and thread-switch differences
+were within run-to-run variation. Raw comparisons use `baseline-3` / `candidate-2`
+and `baseline-repeat` / `candidate-repeat`; repeated startup labels are
+`baseline-startup-1` through `4` and `candidate-startup-1` through `4`.

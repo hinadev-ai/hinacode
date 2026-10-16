@@ -4,8 +4,12 @@ import { join } from "node:path"
 
 const [beforeLabel, afterLabel, scenario = "history"] = process.argv.slice(2)
 if (!beforeLabel || !afterLabel)
-  throw new Error("usage: compare-memory.mjs <before-label> <after-label> [history|claude]")
+  throw new Error("usage: compare-memory.mjs <before-label> <after-label> [history|claude|footprint]")
 const directory = join(process.cwd(), ".context/perf")
+const median = (values) => {
+  const sorted = values.toSorted((a, b) => a - b)
+  return (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2
+}
 const read = (label) => JSON.parse(readFileSync(join(directory, `${label}-${scenario}-memory.json`), "utf8"))
 const before = read(beforeLabel)
 const after = read(afterLabel)
@@ -14,7 +18,11 @@ assert.equal(after.error, undefined, "candidate capture failed")
 assert.equal(before.scenario, after.scenario)
 assert.deepEqual(before.workload, after.workload, "workloads differ")
 const stages =
-  scenario === "history" ? ["seeded", "left-running", "completed-background", "reopened-first"] : ["idle-70s"]
+  scenario === "footprint"
+    ? ["empty-idle-15s", "seeded-idle-15s", `closed-idle-${before.workload.idleSeconds}s`]
+    : scenario === "history"
+      ? ["seeded", "left-running", "completed-background", "reopened-first"]
+      : ["idle-70s"]
 const comparison = stages.map((name) => {
   const a = before.samples.find((sample) => sample.name === name)
   const b = after.samples.find((sample) => sample.name === name)
@@ -25,9 +33,31 @@ const comparison = stages.map((name) => {
     deltaMiB: (b[key] - a[key]) / 1048576,
     changePercent: ((b[key] - a[key]) / a[key]) * 100,
   })
-  return { name, rendererHeap: delta("rendererHeapBytes"), processTreeRss: delta("rssBytes") }
+  return {
+    name,
+    rendererHeap: delta("rendererHeapBytes"),
+    processTreeRss: delta("rssBytes"),
+    ...(scenario === "footprint"
+      ? {
+          appRss: delta("appRssBytes"),
+          cliRss: delta("cliRssBytes"),
+          mainHeap: {
+            beforeMiB: a.main.heapUsed / 1048576,
+            afterMiB: b.main.heapUsed / 1048576,
+            deltaMiB: (b.main.heapUsed - a.main.heapUsed) / 1048576,
+            changePercent: (b.main.heapUsed / a.main.heapUsed - 1) * 100,
+          },
+        }
+      : {}),
+  }
 })
 const result = { before: beforeLabel, after: afterLabel, scenario, workload: before.workload, comparison }
+if (scenario === "footprint") {
+  const a = median(before.switches.map((s) => s.ms))
+  const b = median(after.switches.map((s) => s.ms))
+  result.switchMedianMs = { before: a, after: b, delta: b - a, changePercent: (b / a - 1) * 100 }
+  result.firstRpcMs = { before: before.startup.firstRpcMs, after: after.startup.firstRpcMs }
+}
 writeFileSync(
   join(directory, `${beforeLabel}-${afterLabel}-${scenario}-memory-comparison.json`),
   JSON.stringify(result, null, 2),

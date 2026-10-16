@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto"
 import { hostname } from "node:os"
-import { LinearClient, PaginationOrderBy } from "@linear/sdk"
 import { Cause, Context, Effect, FiberHandle, FiberMap, Layer, Option, Random, Schema, Stream } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { ProviderId } from "../../../shared/agent.ts"
@@ -297,12 +296,17 @@ const make = Effect.gen(function* () {
           pollGithubIssues((args) => github.run(project.rootPath, args), trigger, cursor),
         )
       case "linear.issue":
-        return Effect.flatMap(secrets.get(LINEAR_API_KEY_SECRET), (apiKey) => {
+        return Effect.gen(function* () {
+          const apiKey = yield* secrets.get(LINEAR_API_KEY_SECRET)
           if (Option.isNone(apiKey)) {
-            return Effect.fail(new PollError({ reason: "No Linear API key. Add one in Settings > Integrations." }))
+            return yield* new PollError({ reason: "No Linear API key. Add one in Settings > Integrations." })
           }
+          const { LinearClient, PaginationOrderBy } = yield* Effect.tryPromise({
+            try: () => import("@linear/sdk"),
+            catch: (cause) => new PollError({ reason: `Could not load Linear SDK: ${String(cause)}` }),
+          })
           const client = new LinearClient({ apiKey: apiKey.value })
-          return pollLinearIssues(
+          return yield* pollLinearIssues(
             async (filter) => (await client.issues({ filter, first: 50, orderBy: PaginationOrderBy.CreatedAt })).nodes,
             trigger,
             cursor,

@@ -11,7 +11,10 @@ if (!data || !repo) {
   process.exit(2)
 }
 // Heavy mode: one thread with transcripts ten times larger (long Read/Bash outputs), under an existing project.
-const heavy = heavyProjectId !== undefined
+const footprint = heavyProjectId === "--footprint"
+const heavy = heavyProjectId !== undefined && !footprint
+let nextId = 0
+const id = () => (footprint ? `perf-${nextId++}` : randomUUID())
 const scale = heavy ? 10 : 1
 const db = new DatabaseSync(`${data}/kkcode.sqlite`)
 
@@ -67,7 +70,7 @@ ${lines(3, 6)
 const toolCall = () => {
   const kind = pick(["Bash", "Read", "Grep", "Edit"])
   const path = `src/renderer/${pick(words)}/${pick(words)}.tsx`
-  const base = { type: "tool_call", callId: `toolu_${randomUUID().slice(0, 12)}`, status: "done" }
+  const base = { type: "tool_call", callId: `toolu_${id()}`, status: "done" }
   switch (kind) {
     case "Bash":
       return {
@@ -102,7 +105,7 @@ const assistantParts = () => {
   return parts
 }
 
-const now = Date.now()
+const now = footprint ? Date.parse("2026-10-16T00:00:00Z") : Date.now()
 const iso = (offsetMs) => new Date(now - offsetMs).toISOString()
 
 const insertThread = db.prepare(
@@ -112,33 +115,41 @@ const insertMessage = db.prepare(
   "INSERT INTO message (id, thread_id, role, parts, created_at, completed_at, usage) VALUES (?, ?, ?, ?, ?, ?, ?)",
 )
 
-const projectId = heavyProjectId ?? randomUUID()
-if (!heavy) {
+const projectId = heavy ? heavyProjectId : id()
+if (!heavy && !footprint) {
   db.prepare(
     "INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, 'perf', ?, NULL, ?, ?)",
   ).run(projectId, repo, iso(0), iso(0))
 }
 
-const plan = heavy
-  ? [["heavy 150 turns", 150]]
-  : [
-      ["long 200 turns", 200],
-      ["medium 40 turns", 40],
-      ["small a", 5],
-      ["small b", 5],
-      ["small c", 5],
-    ]
+const plan = footprint
+  ? Array.from({ length: 30 }, (_, i) => [i < 5 ? `long ${i}` : `small ${i}`, i < 5 ? 1000 : 5])
+  : heavy
+    ? [["heavy 150 turns", 150]]
+    : [
+        ["long 200 turns", 200],
+        ["medium 40 turns", 40],
+        ["small a", 5],
+        ["small b", 5],
+        ["small c", 5],
+      ]
 const threads = {}
 db.exec("BEGIN")
 plan.forEach(([title, turns], index) => {
+  const currentProject = footprint ? `perf-project-${Math.floor(index / 10)}` : projectId
+  if (footprint && index % 10 === 0) {
+    db.prepare(
+      "INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, ?)",
+    ).run(currentProject, `Perf ${index / 10}`, `${repo}-${index / 10}`, iso(0), iso(0))
+  }
   const sortIndex = heavy ? 10 + index : index
-  const threadId = randomUUID()
+  const threadId = id()
   threads[title] = threadId
-  insertThread.run(threadId, projectId, title, sortIndex, iso(0), iso(0))
+  insertThread.run(threadId, currentProject, title, sortIndex, iso(0), iso(0))
   for (let turn = 0; turn < turns; turn++) {
     const t = (turns - turn) * 60_000
     insertMessage.run(
-      randomUUID(),
+      id(),
       threadId,
       "user",
       JSON.stringify([{ type: "text", text: `${sentence(14)}?` }]),
@@ -147,7 +158,7 @@ plan.forEach(([title, turns], index) => {
       null,
     )
     insertMessage.run(
-      randomUUID(),
+      id(),
       threadId,
       "assistant",
       JSON.stringify(assistantParts()),
@@ -163,3 +174,4 @@ const bytes = db
   .prepare("SELECT thread_id, count(*) AS n, sum(length(parts)) AS bytes FROM message GROUP BY thread_id")
   .all()
 console.log(JSON.stringify({ projectId, threads, bytes }, null, 2))
+db.close()

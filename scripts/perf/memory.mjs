@@ -1,16 +1,21 @@
 import { _electron as electron, expect } from "@playwright/test"
 import executablePath from "electron"
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, createWriteStream, readFileSync } from "node:fs"
 import { DatabaseSync } from "node:sqlite"
-import { join } from "node:path"
+import { join, dirname, resolve as resolvePath } from "node:path"
 import { createServer } from "node:net"
 import { createHash } from "node:crypto"
+import { launchPackaged } from "./packaged.mjs"
 
 const [label, scenario = "history", check] = process.argv.slice(2)
-if (!label || !["history", "claude"].includes(scenario))
-  throw new Error("usage: memory.mjs <label> [history|claude] [--check]")
+if (!/^[\w-]+$/.test(label ?? "") || !["history", "claude", "footprint", "startup"].includes(scenario))
+  throw new Error("usage: memory.mjs <label> [history|claude|footprint|startup] [--check]")
 const root = process.cwd()
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const packagedApp = process.env.KKCODE_PERF_APP
+const port = Number(process.env.KKCODE_PERF_PORT ?? 9600)
+if (packagedApp && (port < 9600 || port > 9699)) throw new Error("use a CDP port from 9600 to 9699")
 mkdirSync(join(root, ".context/perf"), { recursive: true })
 mkdirSync(join(root, ".context/shots"), { recursive: true })
 const data = mkdtempSync("/tmp/kk-memory-")
@@ -38,21 +43,34 @@ execFileSync(
 const env = { ...process.env, KKCODE_USER_DATA: data }
 delete env.ELECTRON_RUN_AS_NODE
 delete env.ELECTRON_RENDERER_URL
-const app = await electron.launch({
-  executablePath,
-  args: [
-    "--no-sandbox",
-    "--disable-gpu",
-    "--mute-audio",
-    ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
-    join(root, "out/main/index.js"),
-  ],
-  cwd: root,
-  env,
-})
+const startedAt = performance.now()
+const appLog = createWriteStream(join(root, ".context/perf", `${label}-${scenario}-app.log`))
+const app = packagedApp
+  ? await launchPackaged({ executablePath: packagedApp, port, cwd: root, env, log: appLog })
+  : await electron.launch({
+      executablePath,
+      args: [
+        ...(packagedApp ? [`--remote-debugging-port=${port}`] : ["--no-sandbox", "--disable-gpu"]),
+        "--mute-audio",
+        ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
+        ...(packagedApp ? [] : [join(root, "out/main/index.js")]),
+      ],
+      cwd: root,
+      env,
+    })
+if (!packagedApp) {
+  app.process().stdout?.pipe(appLog)
+  app.process().stderr?.pipe(appLog)
+}
 const results = {
   label,
   scenario,
+  packagedApp,
+  packagedAsarSha256: packagedApp
+    ? createHash("sha256")
+        .update(readFileSync(join(dirname(packagedApp), "../Resources/app.asar")))
+        .digest("hex")
+    : null,
   revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   diffSha256: createHash("sha256")
     .update(execFileSync("git", ["diff", "HEAD"]))
@@ -64,7 +82,16 @@ const save = () =>
 try {
   const page = await app.firstWindow()
   await page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)
-  if (!page.url().startsWith(`file://${root}/out/renderer/`)) throw new Error("wrong renderer")
+  if (
+    !page
+      .url()
+      .startsWith(
+        packagedApp
+          ? `file://${resolvePath(dirname(packagedApp), "../Resources/app.asar/out/renderer")}/`
+          : `file://${root}/out/renderer/`,
+      )
+  )
+    throw new Error("wrong renderer")
   const ownership = await app.evaluate(() => ({
     cwd: process.cwd(),
     data: process.env.KKCODE_USER_DATA,
@@ -79,6 +106,13 @@ try {
     })
     if (reply.error) throw new Error(JSON.stringify(reply.error))
     return reply.result
+  }
+  await rpc("settings.get")
+  results.startup = {
+    firstRpcMs: performance.now() - startedAt,
+    paints: await page.evaluate(() =>
+      performance.getEntriesByType("paint").map(({ name, startTime }) => ({ name, startTime })),
+    ),
   }
   const webhookPort = await new Promise((resolve, reject) => {
     const server = createServer()
@@ -95,6 +129,21 @@ try {
   const observedProcesses = new Map()
   const sample = async (name) => {
     await cdp.send("HeapProfiler.collectGarbage")
+    const main = await app.evaluate(async () => {
+      const { Session } = process.getBuiltinModule("node:inspector")
+      const session = new Session()
+      session.connect()
+      await new Promise((resolve, reject) =>
+        session.post("HeapProfiler.collectGarbage", (e) => (e ? reject(e) : resolve())),
+      )
+      session.disconnect()
+      return {
+        ...process.memoryUsage(),
+        cpu: process.cpuUsage(),
+        resources: process.getActiveResourcesInfo(),
+        code: process.getBuiltinModule("node:v8").getHeapCodeStatistics(),
+      }
+    })
     const { metrics } = await cdp.send("Performance.getMetrics")
     const metric = (n) => metrics.find((m) => m.name === n)?.value
     const processes = execFileSync("ps", ["-axo", "pid=,ppid=,rss=,comm="], { encoding: "utf8" })
@@ -122,27 +171,142 @@ try {
     )
     const value = {
       name,
+      elapsedMs: performance.now() - startedAt,
       rendererHeapBytes: metric("JSHeapUsedSize"),
       domNodes: metric("Nodes"),
       listeners: metric("JSEventListeners"),
       rssBytes: owned.reduce((n, p) => n + p.rssBytes, 0),
+      appRssBytes: owned
+        .filter((p) => p.executable.startsWith(packagedApp ? "kkcode" : "Electron"))
+        .reduce((n, p) => n + p.rssBytes, 0),
+      cliRssBytes: owned
+        .filter((p) => !p.executable.startsWith(packagedApp ? "kkcode" : "Electron"))
+        .reduce((n, p) => n + p.rssBytes, 0),
       processes: owned,
       detachedDescendants,
-      main: await app.evaluate(() => process.memoryUsage()),
+      main,
+      rendererHeap: await cdp.send("Runtime.getHeapUsage"),
     }
     results.samples.push(value)
     save()
-    console.log(
-      JSON.stringify({
-        name,
-        rendererHeapMiB: value.rendererHeapBytes / 1048576,
-        rssMiB: value.rssBytes / 1048576,
-        processes: owned.length,
-      }),
-    )
+    const summary = {
+      name,
+      rendererHeapMiB: value.rendererHeapBytes / 1048576,
+      rssMiB: value.rssBytes / 1048576,
+      appRssMiB: value.appRssBytes / 1048576,
+      cliRssMiB: value.cliRssBytes / 1048576,
+      mainHeapMiB: main.heapUsed / 1048576,
+      processes: owned.length,
+    }
+    if (scenario === "footprint" || scenario === "startup") {
+      for (const [metricName, metricValue] of Object.entries(summary)) {
+        if (metricName !== "name")
+          console.log(JSON.stringify({ label, scenario, phase: name, metric: metricName, value: metricValue }))
+      }
+    } else console.log(JSON.stringify(summary))
+  }
+  const series = async (name, seconds) => {
+    for (let i = 0; i < seconds; i += 5) {
+      await pause(5000)
+      await sample(`${name}-${i + 5}s`)
+    }
   }
   await sample("empty")
-  if (scenario === "history") {
+  if (scenario === "startup") {
+    results.workload = { idleSeconds: 15, gpu: packagedApp ? "default" : "disabled" }
+    await series("empty-idle", 15)
+  } else if (scenario === "footprint") {
+    await series("empty-idle", 15)
+    for (let i = 0; i < 3; i++) {
+      mkdirSync(`${repo}-${i}`)
+      execFileSync("git", ["clone", "--quiet", repo, `${repo}-${i}`])
+    }
+    const seed = JSON.parse(
+      execFileSync(process.execPath, [join(root, "scripts/perf/seed.mjs"), data, repo, "--footprint"], {
+        encoding: "utf8",
+      }),
+    )
+    const db = new DatabaseSync(join(data, "kkcode.sqlite"))
+    const digest = createHash("sha256")
+    for (const row of db.prepare("SELECT * FROM message ORDER BY rowid").iterate()) digest.update(JSON.stringify(row))
+    results.workload = {
+      projects: 3,
+      threads: 30,
+      longTranscripts: 5,
+      messagesPerLongTranscript: 2000,
+      sha256: digest.digest("hex"),
+      bytes: seed.bytes,
+      idleSeconds: Number(process.env.PERF_IDLE_SECONDS ?? 300),
+      gpu: packagedApp ? "default" : "disabled",
+    }
+    const lastMessages = Object.fromEntries(
+      Object.values(seed.threads).map((id) => [
+        id,
+        db.prepare("SELECT id FROM message WHERE thread_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(id)
+          .id,
+      ]),
+    )
+    db.close()
+    await page.reload()
+    const ids = Object.entries(seed.threads)
+      .filter(([name]) => name.startsWith("long"))
+      .map(([, id]) => id)
+    const emptyId = seed.threads["small 29"]
+    await expect(page.locator(`a[href="/thread/${ids[0]}"]`)).toBeVisible()
+    await series("seeded-idle", 15)
+    await cdp.send("Profiler.enable")
+    await cdp.send("Profiler.start")
+    await app.evaluate(async () => {
+      const { Session } = process.getBuiltinModule("node:inspector")
+      const session = new Session()
+      session.connect()
+      globalThis.__kkPerfSession = session
+      await new Promise((resolve, reject) => session.post("Profiler.enable", (e) => (e ? reject(e) : resolve())))
+      await new Promise((resolve, reject) => session.post("Profiler.start", (e) => (e ? reject(e) : resolve())))
+    })
+    results.switches = []
+    for (let i = 0; i < 10; i++) {
+      const id = ids[i % ids.length]
+      const before = performance.now()
+      await page.locator(`a[href="/thread/${id}"]`).click()
+      await expect(page.locator(`main article[data-message-id="${lastMessages[id]}"]`)).toBeVisible({ timeout: 30000 })
+      await expect(page.getByRole("heading", { name: `long ${i % 5}`, exact: true })).toBeVisible()
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      const value = { id, ms: performance.now() - before }
+      results.switches.push(value)
+      console.log(JSON.stringify({ name: "switch", ...value }))
+      await sample(`opened-${i + 1}`)
+      await page.locator(`a[href="/thread/${emptyId}"]`).click()
+      await expect(page.getByRole("heading", { name: "small 29", exact: true })).toBeVisible()
+    }
+    const { profile } = await cdp.send("Profiler.stop")
+    writeFileSync(join(root, ".context/perf", `${label}-renderer.cpuprofile`), JSON.stringify(profile))
+    const mainProfile = await app.evaluate(async () => {
+      const session = globalThis.__kkPerfSession
+      const result = await new Promise((resolve, reject) =>
+        session.post("Profiler.stop", (e, r) => (e ? reject(e) : resolve(r))),
+      )
+      session.disconnect()
+      delete globalThis.__kkPerfSession
+      return result.profile
+    })
+    writeFileSync(join(root, ".context/perf", `${label}-main.cpuprofile`), JSON.stringify(mainProfile))
+    await page.screenshot({ path: join(root, ".context/perf", `${label}-left-threads.png`) })
+    await series("closed-idle", results.workload.idleSeconds)
+    if (process.env.PERF_SNAPSHOT === "1") {
+      results.mainSnapshot = await app.evaluate(
+        (_, path) => process.getBuiltinModule("node:v8").writeHeapSnapshot(path),
+        join(root, ".context/perf", `${label}-main.heapsnapshot`),
+      )
+      const snapshotPath = join(root, ".context/perf", `${label}-renderer.heapsnapshot`)
+      const snapshot = createWriteStream(snapshotPath)
+      const onChunk = ({ chunk }) => snapshot.write(chunk)
+      cdp.on("HeapProfiler.addHeapSnapshotChunk", onChunk)
+      await cdp.send("HeapProfiler.takeHeapSnapshot")
+      cdp.off("HeapProfiler.addHeapSnapshotChunk", onChunk)
+      await new Promise((resolve) => snapshot.end(resolve))
+    }
+  } else if (scenario === "history") {
     const count = 12
     const partCount = 128
     const outputBytes = 65536
