@@ -33,12 +33,25 @@ const make = Effect.gen(function* () {
   })
   const encode = Schema.encodeEffect(StoredSecret)
 
+  // A profile sealed under another key, such as the real Keychain's before a run switched to the mock one,
+  // would otherwise fail every boot, because `RemoteAccess` reads its token while the layer is built.
+  const open = (name: string, stored: typeof StoredSecret.Type) =>
+    stored.encrypted
+      ? Effect.try(() => safeStorage.decryptString(Buffer.from(stored.value, "base64"))).pipe(
+          Effect.map(Option.some),
+          Effect.catch(() =>
+            Effect.as(
+              Effect.logWarning(`secret ${name} was sealed under another key; treating it as unset`),
+              Option.none(),
+            ),
+          ),
+        )
+      : Effect.succeed(Option.some(stored.value))
+
   const get = (name: string) =>
     findOne(rowKey(name)).pipe(
-      Effect.map(
-        Option.map(({ value: stored }) =>
-          stored.encrypted ? safeStorage.decryptString(Buffer.from(stored.value, "base64")) : stored.value,
-        ),
+      Effect.flatMap(
+        Option.match({ onNone: () => Effect.succeed(Option.none()), onSome: ({ value }) => open(name, value) }),
       ),
       Effect.mapError(persistence("secrets.get")),
     )
