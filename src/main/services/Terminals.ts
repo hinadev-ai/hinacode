@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto"
 import * as pty from "node-pty"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
-import type { TerminalSession } from "../../shared/domain.ts"
+import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts"
 import { NotFoundError, type PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { registerAgentPid } from "./Ports.ts"
+import { TerminalScrollback } from "./terminalScrollback.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 export class TerminalError extends Schema.TaggedError<TerminalError>()("TerminalError", {
@@ -15,11 +16,13 @@ export class TerminalError extends Schema.TaggedError<TerminalError>()("Terminal
 /** About one frame. A `cat` of a large file becomes a few pushes per frame instead of one per pty read. */
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
+const SCROLLBACK_BYTES = 256 * 1024
 
 interface Live {
   session: TerminalSession
   readonly pty: pty.IPty
   readonly unregisterPid: () => void
+  readonly scrollback: TerminalScrollback
   pending: Array<string>
   pendingSize: number
   timer: ReturnType<typeof setTimeout> | undefined
@@ -37,6 +40,11 @@ export class Terminals extends Context.Service<
     }) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | TerminalError>
     readonly write: (id: string, data: string) => Effect.Effect<void, NotFoundError>
     readonly resize: (id: string, cols: number, rows: number) => Effect.Effect<void, NotFoundError>
+    /**
+     * Output from offset `since`, or from the oldest kept output when `since` is null or older. Works on an exited
+     * session until it is closed. A push whose `offset` is below `offset + data.length` repeats some of `data`.
+     */
+    readonly attach: (id: string, since: number | null) => Effect.Effect<TerminalAttachment, NotFoundError>
     /** Ends the shell if it still runs and forgets the session. */
     readonly close: (id: string) => Effect.Effect<void>
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<TerminalSession>>
@@ -60,10 +68,11 @@ const make = Effect.gen(function* () {
     const data = live.pending.join("")
     live.pending = []
     live.pendingSize = 0
-    publish({ type: "terminal.data", id: live.session.id, data })
+    publish({ type: "terminal.data", id: live.session.id, offset: live.scrollback.end - data.length, data })
   }
 
   const buffer = (live: Live, data: string) => {
+    live.scrollback.append(data)
     live.pending.push(data)
     live.pendingSize += data.length
     if (live.pendingSize >= FLUSH_SIZE) flush(live)
@@ -101,6 +110,7 @@ const make = Effect.gen(function* () {
         pty: proc,
         // Lets the ports panel count a dev server started here as the thread's.
         unregisterPid: registerAgentPid(threadId, proc.pid),
+        scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
         pending: [],
         pendingSize: 0,
         timer: undefined,
@@ -130,6 +140,9 @@ const make = Effect.gen(function* () {
       live.session = { ...live.session, cols, rows }
     })
 
+  const attach = (id: string, since: number | null) =>
+    Effect.map(find(id), (live) => ({ session: live.session, ...live.scrollback.from(since ?? 0) }))
+
   const close = (id: string) =>
     Effect.sync(() => {
       const live = sessions.get(id)
@@ -145,7 +158,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => sessions.forEach(end)))
 
-  return Terminals.of({ open, write, resize, close, list, closeThread })
+  return Terminals.of({ open, write, resize, attach, close, list, closeThread })
 })
 
 export const layer = Layer.effect(Terminals, make)

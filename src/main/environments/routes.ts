@@ -127,6 +127,7 @@ export const routes: Record<RpcMethod, Route> = {
   "terminal.write": owner("terminal", "id"),
   "terminal.resize": owner("terminal", "id"),
   "terminal.close": owner("terminal", "id"),
+  "terminal.attach": owner("terminal", "id"),
 
   "automations.update": owner("automation", "id"),
   "automations.delete": owner("automation", "id"),

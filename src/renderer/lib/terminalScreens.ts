@@ -4,6 +4,7 @@ import wasmUrl from "@wterm/ghostty/ghostty-vt.wasm?url"
 import { m } from "../paraglide/messages.js"
 import { callPromise } from "./rpc.ts"
 import { TerminalBacklog } from "./terminalBacklog.ts"
+import { TerminalStream } from "./terminalStream.ts"
 
 /**
  * One libghostty screen per terminal session, kept outside React so a session keeps its screen and
@@ -15,6 +16,7 @@ interface Screen {
   term: WTerm | null
   /** Output that arrived before the screen was first shown and measured. */
   readonly backlog: TerminalBacklog
+  readonly stream: TerminalStream
   /** Focus asked for before the screen was ready. */
   wantsFocus: boolean
   /** Hidden tabs and drawers keep parsing output but skip painting. */
@@ -30,14 +32,36 @@ const screens = new Map<string, Screen>()
 /** Closed sessions, so output still in flight when a tab closes does not create a new screen. */
 const disposed = new Set<string>()
 
+const write = (screen: Screen, data: string) => {
+  if (screen.term) screen.term.write(data)
+  else screen.backlog.append(data)
+}
+
 const screenFor = (id: string) => {
-  let screen = screens.get(id)
-  if (!screen) {
-    const element = document.createElement("div")
-    element.className = SCREEN_CLASS
-    screen = { element, term: null, backlog: new TerminalBacklog(), wantsFocus: false, paused: false }
-    screens.set(id, screen)
+  const existing = screens.get(id)
+  if (existing) return existing
+  const element = document.createElement("div")
+  element.className = SCREEN_CLASS
+  const screen: Screen = {
+    element,
+    term: null,
+    backlog: new TerminalBacklog(),
+    stream: new TerminalStream(
+      {
+        write: (data) => write(screen, data),
+        // RIS also clears libghostty's scrollback.
+        reset: () => (screen.term ? screen.term.write("\x1bc") : void screen.backlog.drain()),
+        exited: (exitCode) => {
+          const message = exitCode === null ? m.terminal_ended() : m.terminal_exited({ code: exitCode })
+          write(screen, `\r\n\x1b[2m${message}\x1b[22m\r\n`)
+        },
+      },
+      (since) => callPromise("terminal.attach", { id, since }),
+    ),
+    wantsFocus: false,
+    paused: false,
   }
+  screens.set(id, screen)
   return screen
 }
 
@@ -113,20 +137,24 @@ export function focusTerminal(id: string) {
   else if (screen) screen.wantsFocus = true
 }
 
-export function writeTerminal(id: string, data: string) {
-  if (disposed.has(id)) return
-  const screen = screenFor(id)
-  if (screen.term) screen.term.write(data)
-  else screen.backlog.append(data)
+export function writeTerminal(id: string, data: string, offset?: number) {
+  if (!disposed.has(id)) screenFor(id).stream.data(data, offset)
 }
 
 export function terminalExited(id: string, exitCode: number | null) {
-  if (!screens.has(id)) return
-  const message = exitCode === null ? m.terminal_ended() : m.terminal_exited({ code: exitCode })
-  writeTerminal(id, `\r\n\x1b[2m${message}\x1b[22m\r\n`)
+  screens.get(id)?.stream.exited(exitCode)
+}
+
+/**
+ * Catches the session's screen up with the output main keeps, after a reload or a cloud reconnect. Resolves with the
+ * session, or null when it is gone or the cloud predates `terminal.attach`.
+ */
+export function attachTerminalOutput(id: string) {
+  return disposed.has(id) ? Promise.resolve(null) : screenFor(id).stream.attach()
 }
 
 export function disposeTerminal(id: string) {
+  screens.get(id)?.stream.dispose()
   screens.get(id)?.term?.destroy()
   screens.get(id)?.element.remove()
   screens.delete(id)

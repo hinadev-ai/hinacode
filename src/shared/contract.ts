@@ -50,6 +50,8 @@ import {
   RemotePairing,
   RemoteStatus,
   Settings,
+  TerminalAttachment,
+  TerminalOffset,
   TerminalSession,
   Thread,
   ThreadSearchHit,
@@ -359,6 +361,15 @@ export const RpcMethods = {
   /** Ends the shell if it still runs and forgets the session. */
   "terminal.close": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "terminal.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(TerminalSession)),
+  /**
+   * Output kept since offset `since`, or the oldest kept output when it is null or older. When the answer's `offset`
+   * is past `since`, output was dropped, so clear the screen before writing `data`. Pushes that overlap `data` are
+   * trimmed by their own `offset`.
+   */
+  "terminal.attach": rpc(
+    Schema.Struct({ id: Schema.String, since: Schema.NullOr(TerminalOffset) }),
+    TerminalAttachment,
+  ),
 
   "vm.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
   /** Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. */
@@ -548,6 +559,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "terminal.resize": "mutation",
   "terminal.close": "mutation",
   "terminal.list": "read",
+  "terminal.attach": "read",
   "vm.get": "read",
   "vm.start": "mutation",
   "vm.stop": "mutation",
@@ -659,8 +671,16 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   /** An automation run was recorded or changed status. */
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
-  /** Shell output, batched to about one push per frame. */
-  Schema.Struct({ type: Schema.Literal("terminal.data"), id: Schema.String, data: Schema.String }),
+  /**
+   * Shell output, batched to about one push per frame. `offset` is where `data` starts in the session's output, and
+   * is missing from clouds older than `terminal.attach`.
+   */
+  Schema.Struct({
+    type: Schema.Literal("terminal.data"),
+    id: Schema.String,
+    offset: Schema.optionalKey(TerminalOffset),
+    data: Schema.String,
+  }),
   /** Sent after the session's last `terminal.data`. */
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
   /** The updater changed state; ask updates.status for it. */
