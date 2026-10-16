@@ -371,7 +371,7 @@ const make = Effect.gen(function* () {
       const [branch, source, fetched] = head.isCrossRepository
         ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/kkcode/pull/${head.number}`]
         : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
-      yield* git.run(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
+      yield* git.remote(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
       return { branch, startPoint: fetched }
     })
 
@@ -532,10 +532,7 @@ const make = Effect.gen(function* () {
 
   const fetch = (projectId: string) =>
     projects.get(projectId).pipe(
-      // Nobody is there to answer a credential prompt for a fetch the user did not ask for.
-      Effect.flatMap(({ rootPath }) =>
-        git.run(rootPath, ["fetch", "--quiet", "origin"], { env: { GIT_TERMINAL_PROMPT: "0" } }),
-      ),
+      Effect.flatMap(({ rootPath }) => git.remote(rootPath, ["fetch", "--quiet", "origin"])),
       Effect.asVoid,
     )
 
