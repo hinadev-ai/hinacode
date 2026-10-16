@@ -119,6 +119,7 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.control": thread,
   "vm.screen.open": thread,
   "attachments.stage": thread,
+  "attachments.read": named,
 
   "worktrees.remove": owner("worktree", "id"),
   "worktrees.setupLog": owner("worktree", "id"),
@@ -143,6 +144,7 @@ export const routes: Record<RpcMethod, Route> = {
   "git.show": root,
   "fs.list": root,
   "fs.read": root,
+  "fs.preview": root,
   "fs.write": root,
   "fs.watch": root,
 

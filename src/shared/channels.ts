@@ -4,7 +4,9 @@ export const EVENT_CHANNEL = "event"
 /** Custom scheme main serves staged attachments from, so the sandboxed renderer can show thumbnails. */
 export const ATTACHMENT_PROTOCOL = "hinacode-attachment"
 
-export const attachmentUrl = (path: string) => `${ATTACHMENT_PROTOCOL}://file/${encodeURIComponent(path)}`
+/** `environment` names the cloud the file was staged on; main fetches it from there. */
+export const attachmentUrl = (path: string, environment: string | null = null) =>
+  `${ATTACHMENT_PROTOCOL}://file/${encodeURIComponent(path)}${environment === null ? "" : `?environment=${encodeURIComponent(environment)}`}`
 
 /** Custom scheme main proxies private GitHub attachments through, signed in with the user's `gh` token. */
 export const GITHUB_ASSET_PROTOCOL = "hinacode-github-asset"

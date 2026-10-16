@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { app, BrowserWindow, Menu, net, protocol, session, shell } from "electron"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
 import { usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
@@ -20,6 +20,7 @@ import {
   projectFileRequest,
 } from "./security.ts"
 import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
+import { RpcMethods } from "../shared/contract.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
@@ -109,15 +110,39 @@ protocol.registerSchemesAsPrivileged([
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
 ])
 
-/** Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
-const serveAttachments = () =>
-  protocol.handle(ATTACHMENT_PROTOCOL, (request) => {
-    const path = decodeURIComponent(new URL(request.url).pathname.slice(1))
+type AppRuntime = ManagedRuntime.ManagedRuntime<GitHub.GitHub | Files.Files | Environments.Environments, unknown>
+
+const decodeCloudFile = Schema.decodeUnknownOption(RpcMethods["fs.preview"].response)
+
+/** Asks a cloud for a file it answers as a data URL, since the path only exists on that machine. */
+const fetchFromCloud = async (runtime: AppRuntime, environment: string, call: Environments.ForwardedCall) => {
+  const envelope = await runtime.runPromise(
+    Effect.flatMap(Environments.Environments, (environments) => environments.forward(environment, call)),
+  )
+  const file = "error" in envelope ? undefined : Option.getOrUndefined(decodeCloudFile(envelope.result))
+  return file === undefined ? new Response(null, { status: 404 }) : fetch(file.dataUrl)
+}
+
+const sandboxed = (response: Response) => {
+  const headers = new Headers(response.headers)
+  headers.set("content-security-policy", "sandbox allow-scripts")
+  return new Response(response.body, { status: response.status, headers })
+}
+
+/**
+ * Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. With
+ * `?environment=<id>` the file was staged on that cloud, which answers with its bytes and checks the dir itself.
+ */
+const serveAttachments = (runtime: AppRuntime) =>
+  protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {
+    const url = new URL(request.url)
+    const path = decodeURIComponent(url.pathname.slice(1))
+    const environment = url.searchParams.get("environment")
+    if (environment !== null)
+      return fetchFromCloud(runtime, environment, { method: "attachments.read", payload: { path } })
     if (!isInside(Attachments.attachmentsRoot(), path)) return new Response(null, { status: 403 })
     return net.fetch(pathToFileURL(path).toString())
   })
-
-type AppRuntime = ManagedRuntime.ManagedRuntime<GitHub.GitHub | Files.Files, unknown>
 
 const rangeOf = (request: Request): RequestInit => {
   const range = request.headers.get("range")
@@ -146,22 +171,24 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
   })
 
 /**
- * Serves `hinacode-file://root/<encoded root>/<path>` for files inside a project root or worktree. The CSP
- * sandbox runs every served document in an opaque origin without popups or top navigation, however it is
- * embedded, so an HTML file can run its scripts but never reach the app.
+ * Serves `hinacode-file://root/<encoded root>/<path>` for files inside a project root or worktree, read from the cloud
+ * that owns the root when one does. The CSP sandbox runs every served document in an opaque origin without popups or
+ * top navigation, however it is embedded, so an HTML file can run its scripts but never reach the app.
  */
 const serveProjectFiles = (runtime: AppRuntime) =>
   protocol.handle(PROJECT_FILE_PROTOCOL, async (request) => {
     const target = projectFileRequest(request.url)
     if (target === null) return new Response(null, { status: 404 })
+    const cloud = await runtime.runPromise(
+      Effect.map(Environments.Environments, (environments) => environments.owner("root", target.root)),
+    )
+    if (cloud !== undefined)
+      return sandboxed(await fetchFromCloud(runtime, cloud, { method: "fs.preview", payload: target }))
     const file = await runtime
       .runPromise(Effect.flatMap(Files.Files, (files) => files.resolve(target.root, target.path)))
       .catch(() => null)
     if (file === null) return new Response(null, { status: 403 })
-    const response = await net.fetch(pathToFileURL(file).toString(), rangeOf(request))
-    const headers = new Headers(response.headers)
-    headers.set("content-security-policy", "sandbox allow-scripts")
-    return new Response(response.body, { status: response.status, headers })
+    return sandboxed(await net.fetch(pathToFileURL(file).toString(), rangeOf(request)))
   })
 
 const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
@@ -378,7 +405,7 @@ app.whenReady().then(async () => {
   registerIpc(runtime, appUrl)
   app.dock?.setIcon(icon)
   if (process.platform === "darwin") setMacMenu()
-  serveAttachments()
+  serveAttachments(runtime)
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
   limitBrowserPermissions()

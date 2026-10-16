@@ -252,6 +252,11 @@ export const RpcMethods = {
   "fs.list": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Array(FsEntry)),
   /** Up to the first 1 MB of a file under `root`, with the same checks as `fs.list`. */
   "fs.read": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), FsFileContent),
+  /** A file as a data URL, so a desktop can preview a cloud's media and HTML. Checked like `fs.read`, up to 6 MiB. */
+  "fs.preview": rpc(
+    Schema.Struct({ root: Schema.String, path: Schema.String }),
+    Schema.Struct({ dataUrl: Schema.String }),
+  ),
   /**
    * Replaces the text of the existing file `path` under `root`, with the same checks as `fs.read`. `expected` is the
    * text the edit started from; the write fails with `FsWriteConflict` when the file no longer holds it. `null`
@@ -421,6 +426,8 @@ export const RpcMethods = {
     }),
     Attachment,
   ),
+  /** A staged attachment's bytes, for a desktop showing a cloud thread. Refuses paths outside the attachments dir. */
+  "attachments.read": rpc(Schema.Struct({ path: Schema.String }), Schema.Struct({ dataUrl: Schema.String })),
   /** Opens the native multi-file picker. Empty when the user cancels. */
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 
@@ -519,6 +526,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "search.files": "read",
   "fs.list": "read",
   "fs.read": "read",
+  "fs.preview": "read",
   "fs.write": "mutation",
   "fs.watch": "mutation",
   "dialog.pickFolder": "mutation",
@@ -570,6 +578,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.screen.close": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
+  "attachments.read": "read",
   "dialog.pickFiles": "mutation",
   "automations.list": "read",
   "automations.create": "mutation",
@@ -599,7 +608,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",
-  "attachments.stage",
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",
