@@ -12,7 +12,12 @@ process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
 export default defineConfig({
   main: {
     // Optional dependencies are bundled by default, which breaks this native module's binding lookup.
-    build: { externalizeDeps: { include: ["node-mac-permissions"] } },
+    build: {
+      externalizeDeps: {
+        include: ["node-mac-permissions"],
+        exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node"],
+      },
+    },
   },
   preload: {
     build: {
