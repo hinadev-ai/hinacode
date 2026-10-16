@@ -9,4 +9,3 @@ Feature: Queued messages
     And I paste 1 images into the message
     And I steer the queued message now
     Then the queued message is restored beside "Keep this draft" with both attachments
-
