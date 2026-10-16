@@ -2,7 +2,7 @@
 
 # KKCode
 
-KKCode is a Elecron app built for coding agents, currently supports Claude Code, Codex and Muse Code.
+KKCode is an Electron app built for coding agents. It currently supports Claude Code, Codex and Muse Code.
 
 ## Development
 
