@@ -78,6 +78,8 @@
   "message_thinking": "思考中…",
   "markdown_attachment": "GitHub 添付ファイル",
   "markdown_copy_code": "コードをコピー",
+  "markdown_task_done": "完了",
+  "markdown_task_open": "未完了",
   "markdown_diagram_rendering": "図を描画中…",
   "markdown_diagram_failed": "この図を描画できませんでした。代わりにソースコードを表示しています。",
   "tool_status_running": "実行中",

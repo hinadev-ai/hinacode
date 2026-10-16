@@ -68,7 +68,13 @@ const components: Components = {
   ),
   li: ({ children }) => <li className="mb-[0.3em]">{children}</li>,
   input: ({ type, checked }) => (
-    <input type={type} checked={checked} disabled className="mr-[0.5em] -ml-[1.5em] translate-y-px accent-primary" />
+    <input
+      type={type}
+      checked={checked}
+      disabled
+      aria-label={checked ? m.markdown_task_done() : m.markdown_task_open()}
+      className="mr-[0.5em] -ml-[1.5em] translate-y-px accent-primary"
+    />
   ),
   // `className` carries `sr-only` on the heading GFM puts above footnotes.
   h1: ({ children, className }) => (

@@ -78,6 +78,8 @@
   "message_thinking": "Thinking…",
   "markdown_attachment": "GitHub attachment",
   "markdown_copy_code": "Copy code",
+  "markdown_task_done": "Done",
+  "markdown_task_open": "Not done",
   "markdown_diagram_rendering": "Drawing diagram…",
   "markdown_diagram_failed": "Could not draw this diagram. Showing its source instead.",
   "tool_status_running": "Running",
