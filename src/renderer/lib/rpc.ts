@@ -380,9 +380,9 @@ export const remotePairingAtom = Atom.make((get) => {
   return call("remote.pairing", undefined)
 })
 
-export const updateReadyAtom = Atom.make((get) => {
+export const updateStatusAtom = Atom.make((get) => {
   get.addFinalizer(onPushEvent((event) => event.type === "update.changed" && get.refreshSelf()))
-  return call("updates.ready", undefined)
+  return call("updates.status", undefined)
 })
 
 const onAutomationRun = (listener: (automationId: string) => void) =>

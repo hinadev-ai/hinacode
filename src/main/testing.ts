@@ -31,11 +31,11 @@ import * as Terminals from "./services/Terminals.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
-import { Updates } from "./services/Updates.ts"
+import { unsupported, Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
 const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Service)
-const updatesStub = Layer.succeed(Updates, Updates.of({ ready: Effect.succeed(null), install: Effect.void }))
+const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 export interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider>

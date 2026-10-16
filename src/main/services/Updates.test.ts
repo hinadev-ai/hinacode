@@ -7,7 +7,7 @@ import type { PushEvent } from "../../shared/contract.ts"
 import { Events } from "./Events.ts"
 import { layer, Updates } from "./Updates.ts"
 
-vi.mock("electron", () => ({ app: { isPackaged: true } }))
+vi.mock("electron", () => ({ app: { isPackaged: true, getVersion: () => "0.1.0" } }))
 vi.mock("electron-updater", () => ({
   default: {
     autoUpdater: Object.assign(new EventEmitter(), {
@@ -18,7 +18,7 @@ vi.mock("electron-updater", () => ({
   },
 }))
 
-it.effect("clears a rejected update and tells the renderer to refresh readiness", () =>
+it.effect("clears a rejected update and tells the renderer to refresh the status", () =>
   Effect.gen(function* () {
     const pushes = yield* Queue.unbounded<PushEvent>()
     const events = Layer.succeed(Events, {
@@ -36,10 +36,13 @@ it.effect("clears a rejected update and tells the renderer to refresh readiness"
           downloadedFile: "/tmp/update.zip",
         }),
       )
-      expect(yield* updates.ready).toBe("0.1.1")
+      expect(yield* updates.status).toEqual({ current: "0.1.0", state: { type: "ready", version: "0.1.1" } })
       const downloaded = yield* Queue.take(pushes)
       yield* Effect.sync(() => updater.autoUpdater.emit("error", new Error("Code signature did not pass validation")))
-      expect(yield* updates.ready).toBeNull()
+      expect((yield* updates.status).state).toEqual({
+        type: "failed",
+        message: "Code signature did not pass validation",
+      })
       const rejected = yield* Queue.take(pushes)
       expect([downloaded, rejected]).toEqual([{ type: "update.changed" }, { type: "update.changed" }])
     }).pipe(Effect.provide(layer.pipe(Layer.provide(events))))

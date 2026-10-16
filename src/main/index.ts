@@ -177,9 +177,7 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
     Layer.provide(domain),
   )
   // A cloud has no app to update in place; it is replaced as a binary, so the updater never starts there.
-  const updates = serve
-    ? Layer.succeed(Updates.Updates, Updates.Updates.of({ ready: Effect.succeed(null), install: Effect.void }))
-    : Updates.layer
+  const updates = serve ? Layer.succeed(Updates.Updates, Updates.unsupported(app.getVersion())) : Updates.layer
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(
