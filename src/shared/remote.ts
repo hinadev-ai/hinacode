@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { PushEvent, type RpcMethod, RpcMethods } from "./contract.ts"
+import { PushEvent } from "./contract.ts"
 
 /** Path the phone upgrades to a WebSocket on. */
 export const REMOTE_PATH = "/remote"
@@ -7,7 +7,8 @@ export const REMOTE_PATH = "/remote"
 /** Bumped when a frame changes shape, so an old phone app says "update" instead of failing oddly. */
 export const REMOTE_PROTOCOL_VERSION = 1
 
-const Method = Schema.Literals(Object.keys(RpcMethods) as [RpcMethod, ...Array<RpcMethod>])
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach"] as const
+export type RemoteFeature = (typeof RemoteFeature)[number]
 
 /** Phone -> desktop. The first frame on a socket must be `auth`. */
 export const ClientFrame = Schema.Union([
@@ -16,9 +17,11 @@ export const ClientFrame = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("call"),
     id: Schema.Int,
-    method: Method,
+    method: Schema.String,
     payload: Schema.optionalKey(Schema.Unknown),
+    key: Schema.optionalKey(Schema.String),
   }),
+  Schema.Struct({ type: Schema.Literal("ping"), at: Schema.Number }),
 ])
 export type ClientFrame = typeof ClientFrame.Type
 
@@ -34,6 +37,7 @@ export const ServerFrame = Schema.Union([
     type: Schema.Literal("ready"),
     version: Schema.Int,
     environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
+    features: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),
@@ -44,6 +48,7 @@ export const ServerFrame = Schema.Union([
     ]),
   }),
   Schema.Struct({ type: Schema.Literal("event"), event: PushEvent }),
+  Schema.Struct({ type: Schema.Literal("pong"), at: Schema.Number }),
 ])
 export type ServerFrame = typeof ServerFrame.Type
 

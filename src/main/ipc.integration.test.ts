@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { type Duration, Effect, Layer, ManagedRuntime, Stream } from "effect"
 import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, Subagent, ThreadUsage } from "../shared/agent.ts"
@@ -25,7 +25,9 @@ import { makeTestAppLayer } from "./testing.ts"
 import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import { MAX_CALL_KEYS } from "./remote/server.ts"
 import * as PullRequests from "./services/PullRequests.ts"
+import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
@@ -865,8 +867,8 @@ describe("agent accounts over rpc", () => {
 })
 
 /** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
-const phone = (port: number) => {
-  const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }))
+const phone = (port: number, options?: { autoPong: boolean }) => {
+  const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }), options)
   const frames: Array<ServerFrame> = []
   const watchers = new Set<() => void>()
   let closed: { code: number; reason: string } | null = null
@@ -892,19 +894,23 @@ const phone = (port: number) => {
   const opened = new Promise<void>((resolve) => socket.once("open", resolve))
   let nextId = 1
   return {
-    send: async (frame: ClientFrame) => {
+    send: async (frame: ClientFrame | string) => {
       await opened
-      socket.send(JSON.stringify(frame))
+      socket.send(typeof frame === "string" ? frame : JSON.stringify(frame))
     },
-    call: async <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>) => {
+    call: async <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>, key?: string) => {
       const id = nextId++
       await opened
-      socket.send(JSON.stringify({ type: "call", id, method, payload } satisfies ClientFrame))
+      socket.send(JSON.stringify({ type: "call", id, method, payload, ...(key && { key }) } satisfies ClientFrame))
       const frame = await until(() => frames.find((f) => f.type === "result" && f.id === id) ?? closed ?? undefined)
       if (!("type" in frame)) throw new Error(`socket closed before the answer: ${frame.code} ${frame.reason}`)
       return (frame as Extract<ServerFrame, { type: "result" }>).envelope as RpcEnvelope<RpcResponseEncoded<M>>
     },
     ready: () => until(() => frames.find((f) => f.type === "ready")),
+    answered: (count: number) =>
+      until(() => (frames.filter((f) => f.type === "result").length >= count ? true : undefined)),
+    pong: (at: number) => until(() => frames.find((f) => f.type === "pong" && f.at === at)),
+    pinged: new Promise<void>((resolve) => socket.once("ping", () => resolve())),
     event: (predicate: (event: PushEvent) => boolean) =>
       until(() => frames.find((f) => f.type === "event" && predicate(f.event as PushEvent))),
     closed: () => until(() => closed ?? undefined),
@@ -925,7 +931,7 @@ describe("remote mode", () => {
   test("refuses a call before auth and a wrong token", async () => {
     const early = phone(port)
     await early.send({ type: "call", id: 1, method: "projects.list", payload: undefined })
-    expect((await early.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+    expect((await early.closed()).code).toBe(RemoteAccess.CLOSE_MALFORMED_FRAME)
 
     const wrong = phone(port)
     await wrong.send({ type: "auth", token: "not-the-token" })
@@ -951,6 +957,60 @@ describe("remote mode", () => {
     expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
     expect(await paired.call("threads.interrupt", { threadId: thread.id })).toStrictEqual({})
     paired.socket.close()
+  })
+
+  test("closes a socket that sends a frame outside the protocol, before or after auth, without calling it unauthorized", async () => {
+    const early = phone(port)
+    await early.send("not json")
+    expect((await early.closed()).code).toBe(RemoteAccess.CLOSE_MALFORMED_FRAME)
+
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await paired.ready()
+    await paired.send(JSON.stringify({ type: "call", id: "one", method: "projects.list" }))
+    expect((await paired.closed()).code).toBe(RemoteAccess.CLOSE_MALFORMED_FRAME)
+  })
+
+  test("answers an unknown method and a ping on the same socket without closing it", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await paired.ready()).features).toEqual(expect.arrayContaining(["heartbeat", "call-keys"]))
+
+    expect(failure(await paired.call("no.such.method" as RpcMethod, undefined as never)).tag).toBe("SchemaError")
+    await paired.send({ type: "ping", at: 42 })
+    await paired.pong(42)
+    expect(result(await paired.call("projects.list", undefined))).toBeInstanceOf(Array)
+    paired.socket.close()
+  })
+
+  test("a keyed mutation retried from a second socket runs once and answers the same result", async () => {
+    const token = result(await invoke("remote.pairing", undefined)).token
+    const project = result(await invoke("projects.list", undefined))[0] ?? (await createProject("remote-keyed"))
+    const before = result(await invoke("threads.list", undefined)).length
+
+    const first = phone(port)
+    await first.send({ type: "auth", token })
+    await first.ready()
+    const created = await first.call("threads.create", { projectId: project.id }, "action-1")
+    first.socket.terminate()
+
+    const second = phone(port)
+    await second.send({ type: "auth", token })
+    await second.ready()
+    const retried = await Promise.all([
+      second.call("threads.create", { projectId: project.id }, "action-1"),
+      second.call("threads.create", { projectId: project.id }, "action-1"),
+    ])
+    expect(retried).toStrictEqual([created, created])
+    const concurrent = await Promise.all([
+      second.call("threads.create", { projectId: project.id }, "action-2"),
+      second.call("threads.create", { projectId: project.id }, "action-2"),
+    ])
+    expect(concurrent[1]).toStrictEqual(concurrent[0])
+    expect(result(concurrent[0]).id).not.toBe(result(created).id)
+
+    expect(result(await invoke("threads.list", undefined)).length).toBe(before + 2)
+    second.socket.close()
   })
 
   test("a phone does not receive the VNC bytes and folder changes only the desktop window asked for", async () => {
@@ -1039,5 +1099,95 @@ describe("remote mode", () => {
     await back.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
     await back.ready()
     back.socket.close()
+  })
+})
+
+describe("remote mode under a test clock", () => {
+  const port = 40000 + Math.floor(Math.random() * 20000)
+  let clocked: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeLayer>> | TestClock.TestClock, unknown>
+  const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
+  const pairedPhone = async (options?: { autoPong: boolean }) => {
+    const paired = phone(port, options)
+    await paired.send({
+      type: "auth",
+      token: (await clocked.runPromise(RemoteAccess.RemoteAccess.use((access) => access.pairing))).token,
+    })
+    await paired.ready()
+    return paired
+  }
+
+  beforeAll(async () => {
+    clocked = ManagedRuntime.make(
+      makeLayer(join(dir, "clocked.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
+    ) as typeof clocked
+    await clocked.runPromise(
+      Settings.Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port } })),
+    )
+    await vi.waitFor(async () =>
+      expect((await clocked.runPromise(RemoteAccess.RemoteAccess.use((access) => access.status))).listening).toBe(true),
+    )
+  })
+
+  afterAll(() => clocked.dispose())
+
+  test("a socket that does not authenticate in time is closed as an auth timeout", async () => {
+    const pending = phone(port)
+    await pending.opened
+    await adjust("5 seconds")
+    expect((await pending.closed()).code).toBe(RemoteAccess.CLOSE_AUTH_TIMEOUT)
+  })
+
+  const createThread = async (key: string) => {
+    const paired = await pairedPhone()
+    const projects = result(await paired.call("projects.list", undefined))
+    const project =
+      projects[0] ??
+      result(await paired.call("projects.create", { name: "clocked", rootPath: repo, setupScript: null }))
+    const created = result(await paired.call("threads.create", { projectId: project.id }, key))
+    paired.socket.close()
+    return created.id
+  }
+
+  test("a call key answers its stored result for five minutes after it settles, then runs again", async () => {
+    const first = await createThread("ttl")
+    await adjust("299 seconds")
+    expect(await createThread("ttl")).toBe(first)
+    await adjust("1 second")
+    expect(await createThread("ttl")).not.toBe(first)
+  })
+
+  test("a full cache still answers a stored key and evicts the oldest settled key only for a new one", async () => {
+    await adjust("5 minutes")
+    const oldest = await createThread("oldest")
+
+    const invalidPayload = {}
+    const filler = await pairedPhone()
+    for (let id = 1; id < MAX_CALL_KEYS; id++) {
+      await filler.send({ type: "call", id, method: "threads.create", payload: invalidPayload, key: `filler-${id}` })
+    }
+    await filler.answered(MAX_CALL_KEYS - 1)
+    filler.socket.close()
+
+    expect(await createThread("oldest")).toBe(oldest)
+    await createThread("newest")
+    expect(await createThread("oldest")).not.toBe(oldest)
+  })
+
+  test("the heartbeat terminates a socket that stops answering pings and keeps one that answers", async () => {
+    const live = await pairedPhone()
+    const dead = await pairedPhone({ autoPong: false })
+
+    await adjust("20 seconds")
+    await Promise.all([live.pinged, dead.pinged])
+    // The pong to the protocol ping is queued before this frame, so the server has it once this answers.
+    await live.send({ type: "ping", at: 1 })
+    await live.pong(1)
+
+    await adjust("20 seconds")
+    expect((await dead.closed()).code).toBe(1006)
+    await live.send({ type: "ping", at: 2 })
+    await live.pong(2)
+    expect(live.socket.readyState).toBe(WebSocket.OPEN)
+    live.socket.close()
   })
 })

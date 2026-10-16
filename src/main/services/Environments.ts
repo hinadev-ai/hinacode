@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, FiberMap, Layer, Option, Schema } from "effect"
+import { Clock, Context, Deferred, Effect, type Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
-import type { RpcEnvelope, RpcMethod } from "../../shared/contract.ts"
+import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import {
   type ClientFrame,
@@ -14,7 +14,7 @@ import {
 } from "../../shared/remote.ts"
 import { learnFromAnswer, learnFromPush, makeOwners } from "../environments/owners.ts"
 import type { Entity } from "../environments/routes.ts"
-import { CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events, WindowPush } from "./Events.ts"
 import { Secrets } from "./Secrets.ts"
@@ -48,7 +48,10 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
-    /** Runs one call on a cloud. Answers `EnvironmentOffline` when it is not connected. */
+    /**
+     * Runs one call on a cloud. A call made or cut off while the cloud is unreachable waits for it to reconnect, and
+     * answers `Timeout` once the cloud has been unreachable for a minute in total.
+     */
     readonly forward: (environmentId: string, call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>
     /**
      * Runs a call that answers an array on every cloud and concatenates the answers. A cloud that cannot answer
@@ -63,16 +66,22 @@ export class Environments extends Context.Service<
 const tokenSecret = (id: string) => `environment.${id}.token`
 
 const GATHER_TIMEOUT = "3 seconds"
-const PROBE_TIMEOUT_MS = 5000
-const PING_INTERVAL_MS = 10_000
-const PONG_TIMEOUT_MS = 25_000
-const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000, 60_000]
+const READY_TIMEOUT_MS = 10_000
+const PING_INTERVAL = "10 seconds"
+const SILENCE_LIMIT_MS = 25_000
+const OFFLINE_LIMIT_MS = 60_000
 const STABLE_MS = 60_000
 
-const jittered = (ms: number) => ms * (0.8 + Math.random() * 0.4)
+const reconnectDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 60_000) * (0.7 + Math.random() * 0.6)
 
 const offline = (name: string): RpcEnvelope<never> => ({
   error: { tag: "EnvironmentOffline", message: `${name} is offline` },
+})
+const unauthorized = (name: string): RpcEnvelope<never> => ({
+  error: { tag: "EnvironmentUnauthorized", message: `${name} refused this desktop's token. Pair it again.` },
+})
+const incompatible = (name: string): RpcEnvelope<never> => ({
+  error: { tag: "EnvironmentIncompatible", message: `${name} runs a kkcode this desktop cannot talk to` },
 })
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
@@ -130,19 +139,13 @@ const dial = (target: Pick<PairingTarget, "host" | "port">, token: string, handl
 }
 
 /** Succeeds with the cloud's `ready` frame once it accepts `token`. */
-const probe = (target: PairingTarget) =>
-  Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
-    const where = `${target.host}:${target.port}`
+const probe = (target: PairingTarget) => {
+  const where = `${target.host}:${target.port}`
+  return Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
     let reason = "the connection closed"
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      socket.terminate()
-    }, PROBE_TIMEOUT_MS)
     const socket = dial(target, target.token, {
       onFrame: (frame) => {
         if (frame.type !== "ready") return
-        clearTimeout(timer)
         resume(Effect.succeed(frame))
         socket.close()
       },
@@ -150,8 +153,7 @@ const probe = (target: PairingTarget) =>
         reason = error.message
       },
       onClose: (code) => {
-        clearTimeout(timer)
-        if (code === CLOSE_UNAUTHORIZED) {
+        if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
           return resume(
             Effect.fail(
               new EnvironmentUnauthorized({
@@ -160,19 +162,39 @@ const probe = (target: PairingTarget) =>
             ),
           )
         }
-        const why = timedOut ? `no answer within ${PROBE_TIMEOUT_MS / 1000} seconds` : reason
-        resume(Effect.fail(new EnvironmentUnreachable({ message: `Could not reach ${where}: ${why}` })))
+        resume(Effect.fail(new EnvironmentUnreachable({ message: `Could not reach ${where}: ${reason}` })))
       },
     })
-    return Effect.sync(() => {
-      clearTimeout(timer)
-      socket.terminate()
-    })
-  })
+    return Effect.sync(() => socket.terminate())
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: READY_TIMEOUT_MS,
+      orElse: () =>
+        Effect.fail(
+          new EnvironmentUnreachable({
+            message: `Could not reach ${where}: no answer within ${READY_TIMEOUT_MS / 1000} seconds`,
+          }),
+        ),
+    }),
+  )
+}
 
 interface Live {
   readonly socket: WebSocket
-  readonly pending: Map<number, (envelope: RpcEnvelope<unknown>) => void>
+  readonly dedupesCalls: boolean
+}
+
+interface Pending {
+  readonly id: number
+  readonly method: RpcMethod
+  readonly payload: unknown
+  readonly key: string | undefined
+  readonly answer: (envelope: RpcEnvelope<unknown>) => void
+  sent: boolean
+  sentWithoutDedupe: boolean
+  priorOfflineMs: number
+  offlineSince: number | null
+  timer: Fiber.Fiber<void> | null
 }
 
 interface Cloud {
@@ -181,6 +203,7 @@ interface Cloud {
   lastSeenAt: string | null
   /** Set only while the socket is authenticated, so a call never goes to a socket that is still dialing. */
   live: Live | null
+  readonly outbox: Map<number, Pending>
   /** The last successful answer per method, for `gather` while the cloud cannot answer. */
   readonly remembered: Map<RpcMethod, { readonly payload: string; readonly result: unknown }>
 }
@@ -191,16 +214,26 @@ interface SessionEnd {
   readonly connectedMs: number
 }
 
+const send = (live: Live, call: Pending) => {
+  const key = live.dedupesCalls ? call.key : undefined
+  call.sent = true
+  call.sentWithoutDedupe = call.key !== undefined && key === undefined
+  const frame: ClientFrame = { type: "call", id: call.id, method: call.method, payload: call.payload }
+  live.socket.send(JSON.stringify(key === undefined ? frame : { ...frame, key }))
+}
+
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const secrets = yield* Secrets
   const events = yield* Events
   const windows = yield* WindowPush
   const self = (yield* RemoteAccess).identity
+  const clock = yield* Clock.Clock
   const runFork = Effect.runForkWith(yield* Effect.context<never>())
   const owners = makeOwners()
   const clouds = new Map<string, Cloud>()
   let nextCallId = 1
+  const now = () => clock.currentTimeMillisUnsafe()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -220,82 +253,189 @@ const make = Effect.gen(function* () {
       return events.publish({ type: "environment.status", id: cloud.environment.id, status })
     })
 
+  const pauseOfflineTimer = (call: Pending) => {
+    if (call.offlineSince === null) return
+    call.priorOfflineMs += now() - call.offlineSince
+    call.offlineSince = null
+    call.timer?.interruptUnsafe()
+    call.timer = null
+  }
+
+  const settle = (cloud: Cloud, call: Pending, envelope: RpcEnvelope<unknown>) => {
+    pauseOfflineTimer(call)
+    cloud.outbox.delete(call.id)
+    call.answer(envelope)
+  }
+
+  const expire = (cloud: Cloud, call: Pending) => {
+    const { name } = cloud.environment
+    const message =
+      call.sent && call.key !== undefined
+        ? `${name} was unreachable for a minute. The call may still have run there.`
+        : `Not sent. ${name} was unreachable for a minute.`
+    settle(cloud, call, { error: { tag: "Timeout", message } })
+  }
+
+  const startOfflineTimer = (cloud: Cloud, call: Pending) => {
+    call.offlineSince = now()
+    call.timer = runFork(
+      Effect.sleep(OFFLINE_LIMIT_MS - call.priorOfflineMs).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            call.timer = null
+            expire(cloud, call)
+          }),
+        ),
+      ),
+    )
+  }
+
+  const failAll = (cloud: Cloud, envelope: RpcEnvelope<unknown>) => {
+    for (const call of cloud.outbox.values()) settle(cloud, call, envelope)
+  }
+
+  const disconnect = (cloud: Cloud, socket: WebSocket) => {
+    if (cloud.live?.socket !== socket) return
+    cloud.live = null
+    const { name } = cloud.environment
+    for (const call of cloud.outbox.values()) {
+      if (call.sentWithoutDedupe) {
+        settle(cloud, call, {
+          error: { tag: "EnvironmentOffline", message: `${name} went offline. The call may still have run there.` },
+        })
+      } else if (call.offlineSince === null) startOfflineTimer(cloud, call)
+    }
+  }
+
   /** Resolves once the socket closes. Interrupting it drops the socket. */
   const session = (cloud: Cloud, token: string) =>
-    Effect.callback<SessionEnd>((resume) => {
+    Effect.gen(function* () {
       const { id, name } = cloud.environment
-      const pending: Live["pending"] = new Map()
+      const closed = yield* Deferred.make<number>()
       let connectedAt: number | null = null
-      let incompatible = false
-      let heardAt = Date.now()
+      let otherVersion = false
+      let heardAt = now()
       const heard = () => {
-        heardAt = Date.now()
+        heardAt = now()
         cloud.lastSeenAt = new Date(heardAt).toISOString()
       }
-      // Covers the handshake as well: a socket that never says ready is dropped like a half-open one.
-      const heartbeat = setInterval(() => {
-        if (Date.now() - heardAt > PONG_TIMEOUT_MS) socket.terminate()
-        else if (socket.readyState === WebSocket.OPEN) socket.ping()
-      }, PING_INTERVAL_MS)
-      const teardown = () => {
-        clearInterval(heartbeat)
-        if (cloud.live?.socket === socket) cloud.live = null
-        for (const answer of pending.values()) answer(offline(name))
-        pending.clear()
-      }
-      const socket = dial(cloud.environment, token, {
-        onFrame: (frame) => {
-          heard()
-          if (frame.type === "ready") {
-            if (frame.version !== REMOTE_PROTOCOL_VERSION) {
-              incompatible = true
-              return socket.close()
-            }
-            connectedAt = Date.now()
-            cloud.live = { socket, pending }
-            runFork(setStatus(cloud, "connected"))
-          } else if (frame.type === "result") {
-            pending.get(frame.id)?.("error" in frame.envelope ? frame.envelope : { result: frame.envelope.result })
-            pending.delete(frame.id)
-          } else {
-            learnFromPush(owners, id, frame.event)
-            runFork(windows.send(frame.event))
-          }
-        },
-        onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
-        onPong: heard,
-        onClose: (code) => {
-          teardown()
-          resume(
-            Effect.succeed({ code, incompatible, connectedMs: connectedAt === null ? 0 : Date.now() - connectedAt }),
-          )
-        },
+      const socket = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          dial(cloud.environment, token, {
+            onFrame: (frame) => {
+              heard()
+              switch (frame.type) {
+                case "ready": {
+                  if (frame.version !== REMOTE_PROTOCOL_VERSION) {
+                    otherVersion = true
+                    return socket.close()
+                  }
+                  connectedAt = now()
+                  const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
+                  cloud.live = live
+                  for (const call of cloud.outbox.values()) {
+                    pauseOfflineTimer(call)
+                    if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
+                    else send(live, call)
+                  }
+                  return runFork(setStatus(cloud, "connected"))
+                }
+                case "result": {
+                  const call = cloud.outbox.get(frame.id)
+                  if (call === undefined) return
+                  return settle(
+                    cloud,
+                    call,
+                    "error" in frame.envelope ? frame.envelope : { result: frame.envelope.result },
+                  )
+                }
+                case "event":
+                  learnFromPush(owners, id, frame.event)
+                  return runFork(windows.send(frame.event))
+                case "pong":
+                  return
+              }
+            },
+            onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
+            onPong: heard,
+            onClose: (code) => {
+              disconnect(cloud, socket)
+              Deferred.doneUnsafe(closed, Effect.succeed(code))
+            },
+          }),
+        ),
+        (opened) =>
+          Effect.sync(() => {
+            disconnect(cloud, opened)
+            opened.terminate()
+          }),
+      )
+      yield* Effect.forkScoped(
+        Effect.sleep(READY_TIMEOUT_MS).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (connectedAt === null) socket.terminate()
+            }),
+          ),
+        ),
+      )
+      yield* Effect.forkScoped(
+        Effect.sync(() => {
+          if (connectedAt !== null && socket.readyState === WebSocket.OPEN) socket.ping()
+        }).pipe(Effect.repeat(Schedule.spaced(PING_INTERVAL))),
+      )
+      const dropWhenSilent: Effect.Effect<void> = Effect.suspend(() => {
+        const left = heardAt + SILENCE_LIMIT_MS - now()
+        if (left <= 0) return Effect.sync(() => socket.terminate())
+        return Effect.sleep(left).pipe(Effect.andThen(dropWhenSilent))
       })
-      return Effect.sync(() => {
-        teardown()
-        socket.terminate()
-      })
-    })
+      yield* Effect.forkScoped(dropWhenSilent)
+      const code = yield* Deferred.await(closed)
+      return {
+        code,
+        incompatible: otherVersion,
+        connectedMs: connectedAt === null ? 0 : now() - connectedAt,
+      } satisfies SessionEnd
+    }).pipe(Effect.scoped)
 
   /** Keeps `cloud` connected until interrupted, refused, or speaking another protocol version. */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
+      const { name } = cloud.environment
       const token = Option.getOrNull(yield* secrets.get(tokenSecret(cloud.environment.id)))
-      if (token === null) return yield* setStatus(cloud, "unauthorized")
+      if (token === null) {
+        failAll(cloud, unauthorized(name))
+        return yield* setStatus(cloud, "unauthorized")
+      }
       yield* setStatus(cloud, "connecting")
       let attempt = 0
       for (;;) {
         const end = yield* session(cloud, token)
-        if (end.incompatible) return yield* setStatus(cloud, "incompatible")
-        if (end.code === CLOSE_UNAUTHORIZED) return yield* setStatus(cloud, "unauthorized")
+        if (end.incompatible) {
+          failAll(cloud, incompatible(name))
+          return yield* setStatus(cloud, "incompatible")
+        }
+        if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
+          failAll(cloud, unauthorized(name))
+          return yield* setStatus(cloud, "unauthorized")
+        }
         yield* setStatus(cloud, "offline")
         if (end.connectedMs >= STABLE_MS) attempt = 0
-        yield* Effect.sleep(jittered(RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)]!))
+        yield* Effect.sleep(reconnectDelay(attempt))
         attempt++
       }
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("environment connection stopped", cause)))
 
   const connections = yield* FiberMap.make<string>()
+  yield* Effect.addFinalizer(() =>
+    FiberMap.clear(connections).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          for (const cloud of clouds.values()) failAll(cloud, offline(cloud.environment.name))
+        }),
+      ),
+    ),
+  )
 
   const start = (environment: Environment) =>
     Effect.suspend(() => {
@@ -305,6 +445,7 @@ const make = Effect.gen(function* () {
         status: "connecting",
         lastSeenAt: null,
         live: null,
+        outbox: new Map(),
         remembered: new Map(),
       }
       cloud.environment = environment
@@ -359,6 +500,8 @@ const make = Effect.gen(function* () {
   const remove = (id: string) =>
     Effect.gen(function* () {
       yield* FiberMap.remove(connections, id)
+      const cloud = clouds.get(id)
+      if (cloud !== undefined) failAll(cloud, unknownEnvironment(id))
       yield* sql`DELETE FROM environment WHERE id = ${id}`.pipe(Effect.mapError(persistence("environments.remove")))
       yield* secrets.clear(tokenSecret(id))
       clouds.delete(id)
@@ -369,13 +512,29 @@ const make = Effect.gen(function* () {
     Effect.suspend(() => {
       const cloud = clouds.get(environmentId)
       if (cloud === undefined) return Effect.succeed(unknownEnvironment(environmentId))
-      const live = cloud.live
-      if (live === null) return Effect.succeed(offline(cloud.environment.name))
+      const { name } = cloud.environment
+      if (cloud.status === "unauthorized") return Effect.succeed(unauthorized(name))
+      if (cloud.status === "incompatible") return Effect.succeed(incompatible(name))
       return Effect.callback<RpcEnvelope<unknown>>((resume) => {
-        const id = nextCallId++
-        live.pending.set(id, (envelope) => resume(Effect.succeed(envelope)))
-        live.socket.send(JSON.stringify({ type: "call", id, method, payload } satisfies ClientFrame))
-        return Effect.sync(() => void live.pending.delete(id))
+        const call: Pending = {
+          id: nextCallId++,
+          method,
+          payload,
+          key: methodKind[method] === "mutation" ? randomUUID() : undefined,
+          answer: (envelope) => resume(Effect.succeed(envelope)),
+          sent: false,
+          sentWithoutDedupe: false,
+          priorOfflineMs: 0,
+          offlineSince: null,
+          timer: null,
+        }
+        cloud.outbox.set(call.id, call)
+        if (cloud.live === null) startOfflineTimer(cloud, call)
+        else send(cloud.live, call)
+        return Effect.sync(() => {
+          pauseOfflineTimer(call)
+          cloud.outbox.delete(call.id)
+        })
       }).pipe(
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
@@ -392,12 +551,19 @@ const make = Effect.gen(function* () {
     Effect.forEach(
       [...clouds.values()],
       (cloud) =>
-        Effect.map(Effect.timeoutOption(forward(cloud.environment.id, call), GATHER_TIMEOUT), (answer) => {
-          const envelope = Option.getOrUndefined(answer)
-          if (envelope !== undefined && "result" in envelope && Array.isArray(envelope.result)) return envelope.result
-          const last = cloud.remembered.get(call.method)
-          return last?.payload === JSON.stringify(call.payload ?? null) && Array.isArray(last.result) ? last.result : []
-        }),
+        Effect.map(
+          cloud.live === null
+            ? Effect.succeedNone
+            : Effect.timeoutOption(forward(cloud.environment.id, call), GATHER_TIMEOUT),
+          (answer) => {
+            const envelope = Option.getOrUndefined(answer)
+            if (envelope !== undefined && "result" in envelope && Array.isArray(envelope.result)) return envelope.result
+            const last = cloud.remembered.get(call.method)
+            return last?.payload === JSON.stringify(call.payload ?? null) && Array.isArray(last.result)
+              ? last.result
+              : []
+          },
+        ),
       { concurrency: "unbounded" },
     ).pipe(Effect.map((answers) => answers.flat()))
 

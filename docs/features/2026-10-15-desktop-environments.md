@@ -64,15 +64,15 @@ type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "r
 - **`all`** (`projects.list`, `threads.list`, `worktrees.list`, `pullRequests.all`, `search.threads`) asks every environment in parallel. A cloud that is not connected contributes its last answer to the same call from memory, so its projects and threads stay listed.
 - **`owner`** looks the id up in an in-memory owner index. Main fills it from every answer and push it relays: lists and creates teach thread, project, worktree, terminal and automation ids; `worktree.path` and `project.rootPath` teach roots for `git.*` and `fs.*`; approval, question and secret requests in thread events teach request ids. An id nobody has claimed belongs to This Mac, which is also what every id is with no cloud paired. Roots are paths, not UUIDs, so a cloud project at the same path as one on this desktop takes its `git.*` and `fs.*` calls; Mac and Linux home directories keep that rare.
 - **`named`** reads an `environment` field on the ipc envelope, next to `method` and `payload`. Only `settings.*`, `accounts.*`, `agents.account`, `models.list`, `secrets.*`, `github.*`, `vm.host`, `remote.*`, `projects.create`, `projects.clone`, `ports.kill`, `automations.list` and `limits.list` are named, and the renderer passes it from the settings picker, the project dialog, or the thread in view. GitHub calls go where the thread's `gh` is signed in. Plan limits are named so the status bar shows This Mac's accounts once instead of every machine's copy of the same subscription.
-- Forwarding to an environment that is not connected answers `EnvironmentOffline` at once. In-flight calls fail the same way when the socket closes; nothing is replayed.
+- Pending calls survive a dropped link and calls made while reconnecting queue in order. Reads rerun on reconnect; mutations reuse a call key when the cloud advertises support. A call times out after a total minute offline. See `2026-10-16-resilient-remote.md`.
 
 ### Connections
 
 `services/Environments.ts` keeps one `CloudConnection` per paired cloud, all live at once, and publishes `environment.status`.
 
 - The protocol is the phone's: `auth` first, `ready`, then `call` frames matched by `id`, and `event` frames decoded with `ServerFrame` before they reach the window.
-- A `ready` whose `version` is not `REMOTE_PROTOCOL_VERSION` closes the socket as `incompatible`, and the cloud icon's label names the side to update. Close code 4001 is `unauthorized`. Both stop retrying until the user pairs again.
-- Anything else reconnects with jittered backoff from 1 s to 60 s, reset after a minute connected. A ping every 10 s and no pong for 25 s closes a half-open socket, which a tunnel or a sleeping laptop leaves behind.
+- A `ready` whose `version` is not `REMOTE_PROTOCOL_VERSION` closes the socket as `incompatible`, and the cloud icon's label names the side to update. Close codes 4001 and 4002 are `unauthorized`. These and an incompatible version stop retrying until the user pairs again.
+- Anything else reconnects with jittered backoff from 0.5 s to 60 s, reset after a minute connected. A ping every 10 s and no pong for 25 s closes a half-open socket, which a tunnel or a sleeping laptop leaves behind.
 - Cloud events go to the window only. Phones paired with this desktop keep seeing this desktop's events only.
 
 ### Renderer
@@ -96,7 +96,7 @@ The pairing URL crosses from the renderer to main once, in `environments.add`, d
 
 ## Verification
 
-- `src/main/services/Environments.integration.test.ts` runs against a real SQLite file and a real remote listener on a loopback port. It covers pairing, re-pairing converging on one row, a wrong token as `unauthorized`, forwarding by owner and by name, the merged `threads.list`, a cloud's push reaching the window and not the phone sinks, and `EnvironmentOffline` once the cloud stops.
+- `src/main/services/Environments.integration.test.ts` runs against a real SQLite file and a real remote listener on a loopback port. It covers pairing, re-pairing converging on one row, a wrong token as `unauthorized`, forwarding by owner and by name, the merged `threads.list`, a cloud's push reaching the window and not the phone sinks, and pending calls surviving a cloud reconnect.
 - `src/main/environments/routes.test.ts` checks that every route's `key` is a field of that method's request.
 - `src/renderer/lib/projectGroups.test.ts` covers grouping: one group across machines, one project per machine per group, and no grouping without a repository. `Projects.integration.test.ts` reads `repository` from real temp repositories with an SSH and an HTTPS `origin`, a subfolder project and no `origin`.
 - By hand, the desktop on macOS (`--use-mock-keychain`, its own `KKCODE_USER_DATA`) pairs with the VM's cloud. It lists the cloud's project and threads with a cloud icon among This Mac's, adds a project on the cloud, sends a message there, and the turn runs on the VM. It also edits that cloud's default model, and crosses out the cloud icon after the daemon stops. Screenshots in light and dark.
