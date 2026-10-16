@@ -28,7 +28,6 @@ Given(
         JSON.stringify([queued]),
         threadId,
       )
-      // A persisted transcript prevents the empty-thread cleanup from discarding this fixture on navigation.
       db.prepare(
         "INSERT INTO message(id, thread_id, role, parts, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
       ).run(randomUUID(), threadId, "user", JSON.stringify([{ type: "text", text: "Earlier prompt" }]), now, now)
