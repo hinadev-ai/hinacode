@@ -25,7 +25,7 @@ The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows 
    git tag v0.2.0 && git push origin v0.2.0
    ```
 
-   The `release` job checks that the tag matches `package.json`, then uploads the DMG, the macOS zip, the Windows installer, the AppImage, their blockmaps, and `latest-mac.yml`, `latest.yml` and `latest-linux.yml`.
+   The `draft` job checks that the tag matches `package.json` and creates a draft release. The build jobs upload the DMG, the macOS zip, the Windows installer, the AppImage, their blockmaps, and `latest-mac.yml`, `latest.yml` and `latest-linux.yml` into it, and the `release` job publishes it. Installers skip Actions artifact storage, so its quota cannot block a release. If a build job fails, rerun the failed jobs; the upload replaces assets already in the draft.
 
 For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 
