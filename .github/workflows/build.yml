@@ -16,7 +16,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The build jobs upload into this draft, so a release never goes through Actions artifact storage.
+  draft:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches package.json
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p 'require("./package.json").version')"
+      - run: gh release view "$GITHUB_REF_NAME" --repo kjj6198/kkcode-releases || gh release create "$GITHUB_REF_NAME" --draft --repo kjj6198/kkcode-releases --title "$GITHUB_REF_NAME" --notes ""
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+
   mac:
+    needs: draft
+    # Pull requests skip the draft job, and a skipped need would skip this job too.
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
     runs-on: [self-hosted, macOS, ARM64, home]
     timeout-minutes: 45
     steps:
@@ -32,8 +47,9 @@ jobs:
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
       - if: github.ref_type == 'tag'
-        run: pnpm dist --mac
+        run: pnpm build && pnpm exec electron-builder --mac --publish always
         env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY: ${{ runner.temp }}/AuthKey.p8
@@ -43,18 +59,10 @@ jobs:
         run: pnpm dist --mac -c.mac.notarize=false
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-      # Only the release job reads these, so PR builds check packaging without storing installers.
-      - if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac
-          path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.blockmap
-            dist/latest-mac.yml
 
   linux-and-windows:
+    needs: draft
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
     runs-on: ubuntu-latest
     # NSIS needs Wine to build the Windows installer on Linux.
     container: electronuserland/builder:24-wine
@@ -63,34 +71,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
-      - run: pnpm dist --linux --win
+      - run: pnpm build && pnpm exec electron-builder --linux --win --publish ${{ github.ref_type == 'tag' && 'always' || 'never' }}
         env:
+          GH_TOKEN: ${{ github.ref_type == 'tag' && secrets.RELEASES_TOKEN || '' }}
           # Actions mounts HOME at /github/home, which Wine refuses because root does not own it.
           WINEPREFIX: /root/.wine
-      # Only the release job reads these, so PR builds check packaging without storing installers.
-      - if: github.ref_type == 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-and-windows
-          path: |
-            dist/*.AppImage
-            dist/*.exe
-            dist/*.blockmap
-            dist/latest.yml
-            dist/latest-linux.yml
 
   release:
     if: github.ref_type == 'tag'
     needs: [mac, linux-and-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Check the tag matches package.json
-        run: test "${GITHUB_REF_NAME#v}" = "$(node -p 'require("./package.json").version')"
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo kjj6198/kkcode-releases --title "$GITHUB_REF_NAME" --notes ""
+      - run: gh release edit "$GITHUB_REF_NAME" --repo kjj6198/kkcode-releases --draft=false
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
