@@ -97,12 +97,15 @@ When("the agent in {string} emits {string}", async ({ app, threadIds }, title: s
   await app.pushEvents([{ type: "thread.event", threadId, seq: seq + 1, event }])
 })
 
+const clickCaptured = (page: Page, title?: string) =>
+  page.evaluate((name) => {
+    const notification = name ? window.captured?.find((candidate) => candidate.title === name) : window.captured?.at(-1)
+    notification?.dispatchEvent(new Event("click"))
+  }, title)
+
 When("I click the notification for {string}", async ({ app, names }, title: string) => {
   await expect.poll(() => captured(app.page)).toContainEqual(expect.objectContaining({ title: names.of(title) }))
-  await app.page.evaluate((name) => {
-    const notification = window.captured?.find((candidate) => candidate.title === name)
-    notification?.dispatchEvent(new Event("click"))
-  }, names.of(title))
+  await clickCaptured(app.page, names.of(title))
 })
 
 When("I turn off the setting {string}", async ({ app }, label: string) => {
@@ -143,5 +146,14 @@ When("I minimize the notification window", async ({ app }) => {
 })
 
 Then("the notification window is restored and focused", async ({ app }) => {
-  await expect.poll(() => app.windowState()).toStrictEqual({ minimized: false, focused: true })
+  // The click is a synthetic DOM event, so macOS grants no user activation with it: the app must steal
+  // focus itself, and a busy shared desktop can deny or take back that one attempt. Re-click while unfocused
+  // so the assertion measures the click handler, not the state of the runner's desktop.
+  await expect
+    .poll(async () => {
+      const state = await app.windowState()
+      if (!state.focused) await clickCaptured(app.page)
+      return app.windowState()
+    })
+    .toStrictEqual({ minimized: false, focused: true })
 })
