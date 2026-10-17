@@ -28,8 +28,11 @@ export class TinyVm extends Context.Service<
     /** Whether `Settings.experimental.tinyVm` is on, kept current without a database read. */
     readonly enabled: () => boolean
     readonly get: (threadId: string) => Effect.Effect<ThreadVm>
-    /** Creates the thread's VM unless it has one; concurrent calls share one creation. A failure is the `failed` state. */
-    readonly start: (threadId: string) => Effect.Effect<ThreadVm>
+    /**
+     * Creates the thread's VM unless it has one; concurrent calls share one creation. A failure is the `failed`
+     * state. `template` overrides the configured template for this one VM and is ignored when no creation happens.
+     */
+    readonly start: (threadId: string, template?: string) => Effect.Effect<ThreadVm>
     readonly stop: (threadId: string) => Effect.Effect<void>
     /** Has no effect unless the VM is running. */
     readonly setControl: (threadId: string, control: VmControl) => Effect.Effect<ThreadVm>
@@ -111,10 +114,12 @@ const make = (source: LoginSource) =>
     const screens = new Map<string, Screen>()
     const openingScreens = new Set<string>()
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
-    let enabled = yield* settings.get.pipe(
-      Effect.map((value) => value.experimental.tinyVm),
-      Effect.orElseSucceed(() => false),
+    const experimental = yield* settings.get.pipe(
+      Effect.map((value) => value.experimental),
+      Effect.orElseSucceed(() => ({ tinyVm: false, tinyVmTemplate: "default" })),
     )
+    let enabled = experimental.tinyVm
+    let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
@@ -160,31 +165,32 @@ const make = (source: LoginSource) =>
         return live
       })
 
-    const create = (threadId: string, done: Deferred.Deferred<ThreadVm>) =>
+    const create = (threadId: string, done: Deferred.Deferred<ThreadVm>, template: string) =>
       Effect.gen(function* () {
         if (!enabled) return yield* new VmError({ message: "Tiny VM is off. Turn it on in Settings > Experimental." })
         const sbx = yield* client
-        return { sbx, sandbox: yield* sbx.create.pipe(Effect.mapError(toVmError)) }
+        return { sbx, sandbox: yield* sbx.create(template).pipe(Effect.mapError(toVmError)) }
       }).pipe(
         Effect.matchEffect({
           onFailure: (error) => settle(threadId, done, { status: "failed", message: error.message }),
           onSuccess: ({ sbx, sandbox }) =>
-            settle(threadId, done, { status: "running", sandboxId: sandbox.id, control: "agent" }).pipe(
+            settle(threadId, done, { status: "running", sandboxId: sandbox.id, template, control: "agent" }).pipe(
               Effect.tap((live) => (live ? Effect.void : Effect.ignore(sbx.remove(sandbox.id)))),
             ),
         }),
       )
 
-    const start = (threadId: string) =>
+    const start = (threadId: string, templateOverride?: string) =>
       Effect.suspend((): Effect.Effect<ThreadVm> => {
         const vm = current(threadId)
         if (vm.status === "running") return Effect.succeed(vm)
         const pending = creations.get(threadId)
         if (pending) return Deferred.await(pending)
+        const template = templateOverride?.trim() || configuredTemplate
         const done = Deferred.makeUnsafe<ThreadVm>()
         creations.set(threadId, done)
         return setVm(threadId, { status: "starting" }).pipe(
-          Effect.andThen(Effect.forkIn(create(threadId, done), scope)),
+          Effect.andThen(Effect.forkIn(create(threadId, done, template), scope)),
           Effect.andThen(Deferred.await(done)),
         )
       })
@@ -270,10 +276,11 @@ const make = (source: LoginSource) =>
             ? {
                 status: "running",
                 sandboxId: vm.sandboxId,
+                template: vm.template,
                 control: "user",
                 agentWaiting: (waiting.get(threadId) ?? 0) > 0,
               }
-            : { status: "running", sandboxId: vm.sandboxId, control: "agent" }
+            : { status: "running", sandboxId: vm.sandboxId, template: vm.template, control: "agent" }
         return Effect.as(setVm(threadId, next), next)
       })
 
@@ -370,7 +377,12 @@ const make = (source: LoginSource) =>
       Effect.map(sbxClient),
       Effect.flatMap((sbx) =>
         sbx.status.pipe(
-          Effect.map((status): VmHostStatus => ({ status: "connected", url: sbx.url, ...status })),
+          Effect.flatMap((status) =>
+            sbx.templates.pipe(
+              Effect.orElseSucceed(() => []),
+              Effect.map((templates): VmHostStatus => ({ status: "connected", url: sbx.url, ...status, templates })),
+            ),
+          ),
           Effect.catch((error) =>
             Effect.succeed<VmHostStatus>({ status: "unreachable", url: sbx.url, message: error.message }),
           ),
@@ -473,6 +485,7 @@ const make = (source: LoginSource) =>
         Effect.suspend(() => {
           const was = enabled
           enabled = value.experimental.tinyVm
+          configuredTemplate = value.experimental.tinyVmTemplate.trim() || "default"
           return was && !enabled ? stopAll : Effect.void
         }),
       ),

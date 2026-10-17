@@ -525,11 +525,11 @@ layer(testLayer)("thread controls", (it) => {
   )
 })
 
-const setTinyVm = (on: boolean) =>
+const setTinyVm = (on: boolean, tinyVmTemplate = "default") =>
   Effect.gen(function* () {
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
-    yield* settings.set({ experimental: { tinyVm: on } })
+    yield* settings.set({ experimental: { tinyVm: on, tinyVmTemplate } })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
 
@@ -655,6 +655,35 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.text).toContain("echo hi")
       const background = yield* callAs(connection, "vm_exec", { command: "chromium", background: true })
       expect(background.text).toBe("Started in the background as pid 4242. Output goes to /tmp/sbx-4242.log.")
+    }),
+  )
+
+  it.effect("a VM starts from the configured template, and the host names its templates", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a, b } = yield* Seeded
+      yield* setTinyVm(true, "browser")
+      yield* vm.stop(a)
+      const before = fake.createdTemplates.length
+      const started = yield* vm.start(a)
+      expect(started).toMatchObject({ status: "running", template: "browser" })
+      expect(fake.createdTemplates.slice(before)).toStrictEqual(["browser"])
+
+      const overridden = yield* vm.start(b, "default")
+      expect(overridden).toMatchObject({ status: "running", template: "default" })
+      expect(fake.createdTemplates.at(-1)).toBe("default")
+
+      const host = yield* vm.host
+      expect(host).toMatchObject({ status: "connected" })
+      if (host.status === "connected") {
+        expect(host.templates).toStrictEqual([
+          { name: "default", cpus: 2, memoryMiB: 8192 },
+          { name: "browser", cpus: 2, memoryMiB: 2048 },
+        ])
+      }
+      yield* vm.stop(b)
+      yield* setTinyVm(true)
     }),
   )
 

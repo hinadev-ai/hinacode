@@ -399,6 +399,8 @@ export const ExperimentalSettings = Schema.Struct({
    * the `vm_*` MCP tools, and the agent instructions that describe them.
    */
   tinyVm: Schema.Boolean,
+  /** The sbx template new tiny VMs restore from. The start view can override it for one VM. */
+  tinyVmTemplate: Schema.String,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -473,7 +475,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false },
+  experimental: { tinyVm: false, tinyVmTemplate: "default" },
   worktreeRoot: null,
 }
 
@@ -510,10 +512,17 @@ export type VmControl = typeof VmControl.Type
 export const ThreadVm = Schema.Union([
   Schema.Struct({ status: Schema.Literal("none") }),
   Schema.Struct({ status: Schema.Literal("starting") }),
-  Schema.Struct({ status: Schema.Literal("running"), sandboxId: Schema.String, control: Schema.Literal("agent") }),
   Schema.Struct({
     status: Schema.Literal("running"),
     sandboxId: Schema.String,
+    /** The sbx template this sandbox was restored from. */
+    template: Schema.String,
+    control: Schema.Literal("agent"),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("running"),
+    sandboxId: Schema.String,
+    template: Schema.String,
     control: Schema.Literal("user"),
     /** An agent pointer or keyboard tool is waiting for the user to hand control back. */
     agentWaiting: Schema.Boolean,
@@ -522,6 +531,14 @@ export const ThreadVm = Schema.Union([
 ])
 export type ThreadVm = typeof ThreadVm.Type
 
+/** One sbx template a tiny VM can restore from, as the host lists it. */
+export const VmTemplate = Schema.Struct({
+  name: Schema.String,
+  cpus: Schema.Number,
+  memoryMiB: Schema.Number,
+})
+export type VmTemplate = typeof VmTemplate.Type
+
 /** Whether hinacode reaches the sbx host that tiny VMs run on, as Settings shows it. */
 export const VmHostStatus = Schema.Union([
   Schema.Struct({
@@ -529,6 +546,8 @@ export const VmHostStatus = Schema.Union([
     url: Schema.String,
     sandboxes: Schema.Number,
     maxSandboxes: Schema.Number,
+    /** Empty when the host did not answer the template list, in which case only the configured name is offered. */
+    templates: Schema.Array(VmTemplate),
   }),
   /** Neither `SBX_URL` and `SBX_TOKEN` nor the config file `sbx login` writes. */
   Schema.Struct({ status: Schema.Literal("notConfigured") }),

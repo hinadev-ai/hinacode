@@ -60,6 +60,9 @@ export const readLogin = (source: LoginSource): Effect.Effect<SbxLogin, SbxNotCo
 
 const Sandbox = Schema.Struct({ id: Schema.String })
 const Status = Schema.Struct({ sandboxes: Schema.Number, max_sandboxes: Schema.Number })
+const TemplateList = Schema.Array(
+  Schema.Struct({ name: Schema.String, cpus: Schema.Number, memory_mib: Schema.Number }),
+)
 const ErrorBody = Schema.fromJsonString(Schema.Struct({ error: Schema.String }))
 const ExecExit = Schema.fromJsonString(
   Schema.Struct({
@@ -212,9 +215,17 @@ export const sbxClient = (login: SbxLogin) => {
     Effect.map((body) => ({ sandboxes: body.sandboxes, maxSandboxes: body.max_sandboxes })),
   )
 
-  const create = request("POST", "/v1/sandboxes", { body: { template: "default" } }).pipe(
-    Effect.flatMap(json(Sandbox)),
+  const create = (template: string) =>
+    request("POST", "/v1/sandboxes", { body: { template } }).pipe(
+      Effect.flatMap(json(Sandbox)),
+      within(REQUEST_TIMEOUT_SECONDS),
+    )
+
+  /** The templates this host can restore sandboxes from, in the host's order. */
+  const templates = request("GET", "/v1/templates").pipe(
+    Effect.flatMap(json(TemplateList)),
     within(REQUEST_TIMEOUT_SECONDS),
+    Effect.map((list) => list.map((item) => ({ name: item.name, cpus: item.cpus, memoryMiB: item.memory_mib }))),
   )
 
   const get = (id: string) =>
@@ -321,7 +332,7 @@ export const sbxClient = (login: SbxLogin) => {
       })
     })
 
-  return { url: base, status, create, get, remove, exec, tunnel, putFiles, getFiles }
+  return { url: base, status, create, templates, get, remove, exec, tunnel, putFiles, getFiles }
 }
 
 export type SbxClient = ReturnType<typeof sbxClient>
