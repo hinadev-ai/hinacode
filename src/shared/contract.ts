@@ -377,8 +377,11 @@ export const RpcMethods = {
   ),
 
   "vm.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
-  /** Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. */
-  "vm.start": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
+  /**
+   * Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. `template` overrides the
+   * configured template for this one VM.
+   */
+  "vm.start": rpc(Schema.Struct({ threadId: Schema.String, template: Schema.optional(Schema.String) }), ThreadVm),
   /** Destroys the thread's tiny VM. */
   "vm.stop": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   /** Hands the pointer and keyboard to the user, or back to the agent. */
