@@ -5,7 +5,8 @@ import { flush, type PendingCall, thread } from "./testing"
 const calls = vi.hoisted((): PendingCall[] => [])
 vi.mock("@/lib/connection", async () => ({ call: (await import("./testing")).fakeCall(calls) }))
 
-const { archivedThreads, inboxThreads, matchThreads, pinnedThreads, threadRoot, useThreads } = await import("./threads")
+const { archivedThreads, inboxThreads, matchThreads, pinnedThreads, threadBranch, threadRoot, useThreads } =
+  await import("./threads")
 
 const EARLY = "2026-10-16T00:00:00.000Z"
 const LATE = "2026-10-16T00:01:00.000Z"
@@ -22,7 +23,7 @@ const titles = () =>
 
 beforeEach(() => {
   calls.length = 0
-  useThreads.setState({ projects: [], worktrees: {}, byId: {}, status: "loading", error: null })
+  useThreads.setState({ projects: [], worktrees: {}, branches: {}, byId: {}, status: "loading", error: null })
 })
 
 it("keeps a thread pushed during the load when it is newer than the listed copy", async () => {
@@ -120,7 +121,7 @@ describe("lists", () => {
     ({ id, projectId: "p", title: id, status: "idle", pinnedAt: null, updatedAt: at(0), ...fields }) as Thread
   const ids = (threads: readonly Thread[]) => threads.map((existing) => existing.id)
 
-  it("puts threads that need a human first in the inbox, then the latest activity", () => {
+  it("lists the inbox by latest activity, without pinned or archived threads", () => {
     const threads = [
       row("old", { updatedAt: at(1) }),
       row("new", { updatedAt: at(5) }),
@@ -128,7 +129,7 @@ describe("lists", () => {
       row("pinned", { updatedAt: at(9), pinnedAt: at(2) }),
       row("archived", { updatedAt: at(9), status: "archived" }),
     ]
-    expect(ids(inboxThreads(threads))).toEqual(["waiting", "new", "old"])
+    expect(ids(inboxThreads(threads))).toEqual(["new", "old", "waiting"])
     expect(ids(pinnedThreads(threads))).toEqual(["pinned"])
     expect(ids(archivedThreads(threads))).toEqual(["archived"])
   })
@@ -168,4 +169,40 @@ describe("threadRoot", () => {
   it("is unknown until the worktree has loaded", () => {
     expect(threadRoot(inProject("w"), projects, {})).toBeNull()
   })
+})
+
+describe("threadBranch", () => {
+  const worktree = (status: Worktree["status"]) => ({ id: "w", branch: "kk/fix", status }) as Worktree
+
+  it("names the worktree's branch, marked once the worktree is removed", () => {
+    expect(threadBranch(worktree("ready"), "main")).toEqual({ name: "kk/fix", removed: false })
+    expect(threadBranch(worktree("removed"), "main")).toEqual({ name: "kk/fix", removed: true })
+  })
+
+  it("names the project root's branch for a thread without a worktree", () => {
+    expect(threadBranch(undefined, "main")).toEqual({ name: "main", removed: false })
+  })
+
+  it("names nothing before the branch is read, or for a folder without git", () => {
+    expect(threadBranch(undefined, undefined)).toBeNull()
+    expect(threadBranch(undefined, "")).toBeNull()
+  })
+})
+
+it("reads a project root's branch again when one of its threads finishes a turn", async () => {
+  const first = useThreads.getState().load()
+  calls.find((pending) => pending.method === "projects.list")!.resolve([{ id: "p", name: "p" }])
+  calls.find((pending) => pending.method === "worktrees.list")!.resolve([])
+  calls.find((pending) => pending.method === "threads.list")!.resolve([
+    { ...thread("a", EARLY), projectId: "p", worktreeId: null, status: "running" },
+  ])
+  await first
+  calls.find((pending) => pending.method === "projects.currentBranch")!.resolve("main")
+  calls.length = 0
+  await flush()
+
+  useThreads.getState().upsert({ ...thread("a", LATE), projectId: "p", worktreeId: null, status: "idle" } as Thread)
+  calls.find((pending) => pending.method === "projects.currentBranch")!.resolve("kk/switched")
+  await flush()
+  expect(useThreads.getState().branches["p"]).toBe("kk/switched")
 })

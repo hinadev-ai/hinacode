@@ -10,7 +10,7 @@ describe("parsePreferences", () => {
     const stored = {
       appearance: "dark",
       notifications: { completed: false, needsInput: true, failed: true },
-      homeTab: "projects",
+      homeTab: "threads",
     }
     expect(parsePreferences(JSON.stringify(stored))).toEqual(stored)
   })

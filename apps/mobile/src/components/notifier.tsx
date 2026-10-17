@@ -1,4 +1,5 @@
 import { router, usePathname } from "expo-router"
+import type { AgentEvent } from "@shared/agent.ts"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AppState, Platform } from "react-native"
 import { Banner, type BannerNotice } from "@/components/banner"
@@ -10,9 +11,11 @@ import {
   presentNotification,
   requestNotificationPermission,
 } from "@/lib/notifications"
+import { outcomeOf } from "@/lib/row-state"
 import { threadAlert } from "@/lib/thread-alerts"
 import { usePreferences } from "@/stores/preferences"
 import { useThreads } from "@/stores/threads"
+import { useUnseen } from "@/stores/unseen"
 
 const isViewing = (pathname: string, threadId: string) =>
   pathname === `/thread/${threadId}` || pathname.startsWith(`/thread/${threadId}/`)
@@ -41,6 +44,15 @@ export function Notifier() {
     }
   })
 
+  // Marks a thread whose turn ended out of sight, for the row's dot; opening the thread clears it.
+  const recordOutcome = useEffectEvent((threadId: string, event: AgentEvent) => {
+    const outcome = outcomeOf(event)
+    if (outcome === undefined) return
+    const continues = event.type === "turn_completed" && (useThreads.getState().byId[threadId]?.queue.length ?? 0) > 0
+    if (continues || (AppState.currentState === "active" && isViewing(pathname, threadId))) return
+    useUnseen.getState().record(threadId, outcome)
+  })
+
   const opened = useEffectEvent((threadId: string) => {
     if (paired) openThread(threadId)
   })
@@ -49,6 +61,7 @@ export function Notifier() {
     () =>
       onEvent((event) => {
         if (event.type !== "thread.event") return
+        recordOutcome(event.threadId, event.event)
         const alert = threadAlert(event.event)
         if (alert !== null) receive(event.threadId, alert)
       }),

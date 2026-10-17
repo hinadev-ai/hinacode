@@ -1,6 +1,6 @@
-import { router, Stack, useLocalSearchParams } from "expo-router"
-import { useState } from "react"
-import { KeyboardAvoidingView, StyleSheet, Text, View } from "react-native"
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
+import { useCallback, useState } from "react"
+import { AppState, KeyboardAvoidingView, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Chat } from "@/components/chat"
 import { FilesPanel } from "@/components/files"
@@ -12,6 +12,7 @@ import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { useThreads } from "@/stores/threads"
+import { useUnseen } from "@/stores/unseen"
 
 type Tab = "chat" | "files" | "prs" | "terminal"
 
@@ -32,6 +33,17 @@ export default function ThreadScreen() {
   const [tab, setTab] = useState<Tab>("chat")
   // Files and the shell keep their state across tab switches once opened, and end with this screen.
   const [opened, setOpened] = useState<ReadonlySet<Tab>>(() => new Set(["chat"]))
+
+  // Seeing the thread clears its unopened result, also when the app comes back to it from the background.
+  useFocusEffect(
+    useCallback(() => {
+      useUnseen.getState().clear(id)
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") useUnseen.getState().clear(id)
+      })
+      return () => subscription.remove()
+    }, [id]),
+  )
 
   const select = (next: Tab) => {
     setTab(next)

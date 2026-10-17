@@ -9,7 +9,7 @@ The phone app shipped in `2026-10-12-remote-mode.md` steers a thread, but little
 
 ## User flow
 
-1. The home screen opens on **Inbox**: every active thread, threads that need the developer first, then the latest activity, with the project named on each row. **Projects** groups threads by project. **Archived** lists archived threads. Pinned threads sit above the tabs. A running thread's dot pulses and a thread that needs the developer rings, as on the desktop. A row shows its newest pull request as `#123` in the color of its state.
+1. The home screen opens on **Inbox**: every active thread, newest activity first. **Threads** groups them by project in folding groups. **Archived** lists archived threads. Pinned threads sit above the tabs. Rows follow the desktop sidebar: the agent's mark in its brand color, the title, and a status on the right (a pulsing dot while running, a ringing dot when it needs the developer, a Limited pill, or a dot for a result not yet opened), then the project, the branch, the newest pull request number and the last activity. A thread that needs the developer reads at full contrast and a running one recedes.
 2. The search field at the top filters thread titles as they type and lists matching messages from every thread. Tapping either opens the thread.
 3. **+** opens a sheet. Pick a project to start a thread, or **Add project**. Add project takes one field, a folder on the desktop or a GitHub repository. A repository is cloned to the folder next to the newest project, which the developer can change. The new project opens on a new thread.
 4. Long-pressing a thread offers Pin and Archive, or Unpin and Unarchive.

@@ -14,7 +14,7 @@ import {
   statusGlyph,
   statusLabel,
   statusTone,
-} from "@/components/pull-request-badge"
+} from "@/lib/pull-request-labels"
 import { Button, EmptyState, Notice, Pill } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"

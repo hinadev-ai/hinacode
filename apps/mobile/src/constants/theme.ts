@@ -3,6 +3,8 @@ import { Platform } from "react-native"
 export const Colors = {
   light: {
     text: "#0a0a0a",
+    /** A thread row at rest, a step below a row that needs the developer. */
+    textResting: "#3f3f46",
     textMuted: "#5c5c66",
     background: "#ffffff",
     surface: "#f4f4f5",
@@ -21,6 +23,7 @@ export const Colors = {
   },
   dark: {
     text: "#fafafa",
+    textResting: "#d4d4d8",
     textMuted: "#a1a1aa",
     background: "#0a0a0a",
     surface: "#18181b",
@@ -40,6 +43,12 @@ export const Colors = {
 } as const
 
 export type Palette = { readonly [K in keyof typeof Colors.light]: string }
+
+/** Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex takes the text color. */
+export const ProviderColors = {
+  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0" },
+  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb" },
+} as const
 
 /**
  * Code colors per syntax class, from GitHub's light and dark themes. Each reads at 4.5:1 or more on `surface`,

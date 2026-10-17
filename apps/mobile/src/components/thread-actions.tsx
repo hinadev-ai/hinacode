@@ -3,41 +3,16 @@ import { useState } from "react"
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { Icon, type IconName } from "@/components/icon"
+import { Icon } from "@/components/icon"
 import { Spinner } from "@/components/motion"
 import { Notice } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
 import { Colors, HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { requestThreadAction, type ThreadActionName, threadActions } from "@/lib/thread-actions"
 import { useThreads } from "@/stores/threads"
-
-export type ThreadActionName = "pin" | "unpin" | "archive" | "unarchive"
-
-export interface ThreadAction {
-  readonly name: ThreadActionName
-  readonly label: string
-  readonly icon: IconName
-}
-
-/** What a thread offers on long press: an archived thread can only come back, an active one can be pinned. */
-export function threadActions(thread: Thread): readonly ThreadAction[] {
-  if (thread.status === "archived")
-    return [{ name: "unarchive", label: copy("mobile_thread_actions_unarchive"), icon: "RiInboxUnarchiveLine" }]
-  return [
-    thread.pinnedAt === null
-      ? { name: "pin", label: copy("mobile_thread_actions_pin"), icon: "RiPushpinLine" }
-      : { name: "unpin", label: copy("mobile_thread_actions_unpin"), icon: "RiUnpinLine" },
-    { name: "archive", label: copy("mobile_thread_actions_archive"), icon: "RiArchiveLine" },
-  ]
-}
-
-const request = (thread: Thread, name: ThreadActionName) => {
-  if (name === "pin" || name === "unpin") return call("threads.update", { id: thread.id, pinned: name === "pin" })
-  return call(name === "archive" ? "threads.archive" : "threads.unarchive", { threadId: thread.id })
-}
 
 /** Runs a thread action and keeps its progress and error, for the row's sheet and its accessibility actions. */
 export function useThreadActions(thread: Thread) {
@@ -47,7 +22,7 @@ export function useThreadActions(thread: Thread) {
     setRunning(name)
     setError(null)
     try {
-      useThreads.getState().upsert(await request(thread, name))
+      useThreads.getState().upsert(await requestThreadAction(thread, name))
       return true
     } catch (cause) {
       setError(errorText(cause))
