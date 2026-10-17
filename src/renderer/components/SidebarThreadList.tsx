@@ -330,7 +330,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
           <ProviderIcon provider={thread.provider} />
-          <span className="min-w-0 flex-1 truncate text-[0.9375rem]" title={thread.title}>
+          <span dir="auto" className="min-w-0 flex-1 truncate text-left text-[0.9375rem]" title={thread.title}>
             {thread.title}
           </span>
           <StatusIndicator state={state} />
@@ -659,7 +659,7 @@ function ThreadMeta({
     <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {project !== null && (
-        <span className="max-w-1/2 shrink-0 truncate" title={project}>
+        <span className="max-w-1/2 min-w-0 truncate" title={project}>
           {project}
         </span>
       )}
