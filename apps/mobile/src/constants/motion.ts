@@ -1,4 +1,4 @@
-import { cubicBezier, Easing } from "react-native-reanimated"
+import { cubicBezier, Easing, FadeIn, FadeOut } from "react-native-reanimated"
 
 /** The desktop's curves from `src/renderer/index.css`, for worklet animations. */
 export const ease = {
@@ -30,3 +30,7 @@ export const duration = {
 } as const
 
 export const PRESSED_SCALE = 0.97
+
+/** Rows fade as they join or leave a list, and the rest slide into place with a layout transition. */
+export const listEntering = FadeIn.duration(duration.fast)
+export const listExiting = FadeOut.duration(duration.fast)

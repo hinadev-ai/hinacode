@@ -6,7 +6,7 @@ import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } f
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { PressableScale, Reveal, Spinner } from "@/components/motion"
-import { reviewLabel, reviewTone, statusLabel, statusTone } from "@/components/pull-request-badge"
+import { reviewLabel, reviewTone, statusLabel, statusTone } from "@/lib/pull-request-labels"
 import { OptionRow, Section, Sheet } from "@/components/sheet"
 import { Button, Notice, Pill } from "@/components/ui"
 import { HIT, mono } from "@/constants/theme"

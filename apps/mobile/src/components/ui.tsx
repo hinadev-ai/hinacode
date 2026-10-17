@@ -17,9 +17,9 @@ import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon, type IconName } from "@/components/icon"
 import { PressableScale, Spinner } from "@/components/motion"
 import { cssEase, duration } from "@/constants/motion"
-import { HIT, type Palette, radius } from "@/constants/theme"
+import { HIT, type Palette, ProviderColors, radius } from "@/constants/theme"
 import { threadStatus } from "@/constants/thread-status"
-import { useTheme } from "@/hooks/use-theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 
@@ -233,8 +233,6 @@ export interface Segment<T extends string> {
   readonly value: T
   readonly label: string
   readonly icon?: IconName
-  /** A count shown after the label, such as threads that need the developer. */
-  readonly count?: number
 }
 
 const SEGMENT_GAP = 3
@@ -292,7 +290,7 @@ export function SegmentedControl<T extends string>({
             key={segment.value}
             testID={`tab-${segment.value}`}
             accessibilityRole="tab"
-            accessibilityLabel={segment.count ? `${segment.label}, ${segment.count}` : segment.label}
+            accessibilityLabel={segment.label}
             accessibilityState={{ selected }}
             onPress={() => onChange(segment.value)}
             style={styles.segment}
@@ -301,9 +299,6 @@ export function SegmentedControl<T extends string>({
             <Text numberOfLines={1} style={[styles.segmentLabel, { color }]}>
               {segment.label}
             </Text>
-            {segment.count !== undefined && segment.count > 0 && (
-              <Text style={[styles.segmentCount, { color: theme.attention }]}>{segment.count}</Text>
-            )}
           </Pressable>
         )
       })}
@@ -311,7 +306,93 @@ export function SegmentedControl<T extends string>({
   )
 }
 
+export interface Tab<T extends string> {
+  readonly value: T
+  readonly label: string
+}
+
+type TabLayout = { readonly x: number; readonly width: number }
+
+/** Text tabs with an underline that slides to the selected one, like the desktop sidebar's. */
+export function UnderlineTabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+  accessibilityLabel,
+  style,
+}: {
+  tabs: readonly Tab<T>[]
+  value: T
+  onChange: (value: T) => void
+  accessibilityLabel: string
+  style?: StyleProp<ViewStyle>
+}) {
+  const theme = useTheme()
+  const reduced = useReducedMotion()
+  const [layouts, setLayouts] = useState<Readonly<Record<string, TabLayout>>>({})
+  const active = layouts[value]
+  const transition = {
+    transitionDuration: reduced ? 0 : duration.base,
+    transitionTimingFunction: cssEase.out,
+  }
+  return (
+    <View accessibilityRole="tablist" accessibilityLabel={accessibilityLabel} style={[styles.lineTabs, style]}>
+      {tabs.map((tab) => {
+        const selected = tab.value === value
+        return (
+          <Pressable
+            key={tab.value}
+            testID={`tab-${tab.value}`}
+            accessibilityRole="tab"
+            accessibilityLabel={tab.label}
+            accessibilityState={{ selected }}
+            onLayout={(event) => {
+              const { x, width } = event.nativeEvent.layout
+              setLayouts((current) => ({ ...current, [tab.value]: { x, width } }))
+            }}
+            onPress={() => onChange(tab.value)}
+            style={styles.lineTab}
+          >
+            <Animated.Text
+              numberOfLines={1}
+              style={[
+                styles.lineTabLabel,
+                { color: selected ? theme.text : theme.textMuted, transitionProperty: "color", ...transition },
+              ]}
+            >
+              {tab.label}
+            </Animated.Text>
+          </Pressable>
+        )
+      })}
+      {active !== undefined && (
+        <Animated.View
+          style={[
+            styles.underline,
+            {
+              backgroundColor: theme.text,
+              width: active.width,
+              transform: [{ translateX: active.x }],
+              transitionProperty: ["transform", "width"] as ["transform", "width"],
+              ...transition,
+            },
+          ]}
+        />
+      )}
+    </View>
+  )
+}
+
+/** An agent's mark in its brand color, as at the start of a desktop sidebar row. */
+export function ProviderMark({ provider, size = 16 }: { provider: ProviderId; size?: number }) {
+  return <Icon name={providerMark[provider]} size={size} color={ProviderColors[useScheme()][provider]} />
+}
+
 const styles = StyleSheet.create({
+  lineTabs: { flexDirection: "row" },
+  lineTab: { minHeight: HIT, justifyContent: "center", paddingHorizontal: 10 },
+  lineTabLabel: { fontSize: 15, fontWeight: "500" },
+  underline: { position: "absolute", left: 0, bottom: 0, height: 2, borderRadius: 1 },
   segments: { flexDirection: "row", padding: SEGMENT_GAP, gap: SEGMENT_GAP, borderRadius: radius.md + SEGMENT_GAP },
   thumb: {
     position: "absolute",
@@ -331,7 +412,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   segmentLabel: { flexShrink: 1, fontSize: 14, fontWeight: "600" },
-  segmentCount: { fontSize: 13, fontWeight: "700", fontVariant: ["tabular-nums"] },
   button: {
     minHeight: HIT,
     minWidth: HIT,

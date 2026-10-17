@@ -6,7 +6,7 @@ const AppearanceSchema = Schema.Literals(["system", "light", "dark"])
 export type Appearance = typeof AppearanceSchema.Type
 export const appearances = AppearanceSchema.literals
 
-const HomeTabSchema = Schema.Literals(["inbox", "projects", "archived"])
+const HomeTabSchema = Schema.Literals(["inbox", "threads", "archived"])
 export type HomeTab = typeof HomeTabSchema.Type
 
 const NotificationPreferences = Schema.Struct({
