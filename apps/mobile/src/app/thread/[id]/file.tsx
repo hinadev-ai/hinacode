@@ -17,7 +17,7 @@ import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, fileKind, svgAspectRatio } from "@/lib/file-kinds"
-import { useSyntaxSpans } from "@/lib/highlight"
+import { useHighlight } from "@/lib/highlight"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type Params = { id: string; path: string; line?: string }
@@ -199,7 +199,7 @@ function highlightable(content: string) {
 function CodeView({ content, line, truncated }: { content: string; line: number | null; truncated: boolean }) {
   const theme = useTheme()
   const colors = SyntaxColors[useScheme()]
-  const spans = useSyntaxSpans(highlightable(content))
+  const { spans } = useHighlight(highlightable(content))
   const lines = codeLines(content, spans)
   const target = line === null ? null : Math.min(line, lines.length) - 1
   const list = useRef<FlatList<CodeLine>>(null)

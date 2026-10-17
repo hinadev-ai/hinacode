@@ -69,8 +69,3 @@ export function useHighlight(code: string): Highlight {
 
   return gpu?.code === code ? gpu.highlight : cpu
 }
-
-/** Spans for `code`, or null until they are ready. */
-export function useSyntaxSpans(code: string): readonly SyntaxSpan[] | null {
-  return useHighlight(code).spans
-}

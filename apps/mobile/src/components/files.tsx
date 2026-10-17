@@ -460,7 +460,6 @@ export function Loading({ label }: { label: string }) {
   )
 }
 
-/** An error and a way to try again. */
 export function Failure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <View style={[styles.padded, styles.failure]}>
