@@ -392,6 +392,14 @@ export const RpcMethods = {
   /** Bytes for the VNC server, written in call order. Ignored once the stream has closed. */
   "vm.screen.send": rpc(Schema.Struct({ streamId: Schema.String, data: Schema.Uint8Array }), Schema.Void),
   "vm.screen.close": rpc(Schema.Struct({ streamId: Schema.String }), Schema.Void),
+  /**
+   * Copies the files and folders at these host paths into the thread VM's `~/Downloads`. Paths stay paths, so no
+   * file bytes cross rpc. Resolves with the guest path each item landed at.
+   */
+  "vm.files.drop": rpc(
+    Schema.Struct({ threadId: Schema.String, paths: Schema.Array(Schema.String) }),
+    Schema.Array(Schema.String),
+  ),
 
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
@@ -576,6 +584,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.screen.open": "mutation",
   "vm.screen.send": "mutation",
   "vm.screen.close": "mutation",
+  "vm.files.drop": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",
@@ -612,6 +621,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "notifications.askPermission",
   "fs.watch",
   "vm.screen.open",
+  "vm.files.drop",
   "remote.pairing",
   "remote.rotateToken",
   "clientSettings.get",

@@ -6,6 +6,7 @@ import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
 import { type ExecResult, type LoginSource, readLogin, type SbxClient, sbxClient } from "./sbx.ts"
+import { encodeTar, readTree } from "./tar.ts"
 
 export class VmError extends Schema.TaggedError<VmError>()("VmError", { message: Schema.String }) {}
 
@@ -42,6 +43,17 @@ export class TinyVm extends Context.Service<
     readonly act: (threadId: string, actions: ReadonlyArray<VmAction>) => Effect.Effect<"done" | "handedBack", VmError>
     readonly exec: (threadId: string, input: VmExec) => Effect.Effect<ExecResult, VmError>
     /**
+     * Copies host files and folders into the running VM's `~/Downloads`, starting the VM if needed. Resolves
+     * with the guest path each dropped item landed at. A drop is the user's own action, so it never waits for
+     * control to change hands.
+     */
+    readonly dropFiles: (
+      threadId: string,
+      hostPaths: ReadonlyArray<string>,
+    ) => Effect.Effect<ReadonlyArray<string>, VmError>
+    /** Guest paths the user dropped since the last call, drained so the agent hears about each drop once. */
+    readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
+    /**
      * Connects a side panel view to the running VM's VNC server. Its bytes arrive as `vm.screen.data` pushes,
      * then `vm.screen.closed`.
      */
@@ -53,6 +65,9 @@ export class TinyVm extends Context.Service<
 >()("hinacode/TinyVm") {}
 
 const VNC_PORT = 5900
+const DROP_DIR = "Downloads"
+/** One drop is held in memory as tar archives, so it has a size the user's machine can always spare. */
+const MAX_DROP_BYTES = 200 * 1024 * 1024
 const SCREENSHOT_SCRIPT = "import -window root png:-"
 const SCREENSHOT_TIMEOUT_SECONDS = 30
 /** About one frame, like terminal output. */
@@ -90,6 +105,8 @@ const make = (source: LoginSource) =>
     const creations = new Map<string, Deferred.Deferred<ThreadVm>>()
     /** Agent tools waiting for the user to hand control back, per thread. */
     const waiting = new Map<string, number>()
+    /** Guest paths of dropped files the agent has not been told about yet, per thread. */
+    const dropped = new Map<string, Array<string>>()
     const handBacks = new Map<string, Deferred.Deferred<void>>()
     const screens = new Map<string, Screen>()
     const openingScreens = new Set<string>()
@@ -199,6 +216,7 @@ const make = (source: LoginSource) =>
       Effect.gen(function* () {
         const vm = current(threadId)
         creations.delete(threadId)
+        dropped.delete(threadId)
         closeScreensOf(threadId)
         if (vm.status === "none") return
         yield* setVm(threadId, NONE)
@@ -310,6 +328,43 @@ const make = (source: LoginSource) =>
       withSandbox(threadId, (sbx, sandboxId) =>
         sbx.exec(sandboxId, { script: input.command, timeoutSeconds: input.timeoutSeconds, detach: input.background }),
       )
+
+    const dropFiles = (threadId: string, hostPaths: ReadonlyArray<string>) =>
+      withSandbox(threadId, (sbx, sandboxId) =>
+        Effect.gen(function* () {
+          if (hostPaths.length === 0) return [] as ReadonlyArray<string>
+          const archives: Array<{ readonly base: string; readonly tar: Uint8Array }> = []
+          let remaining = MAX_DROP_BYTES
+          for (const hostPath of hostPaths) {
+            const entries = yield* readTree(hostPath, remaining).pipe(Effect.mapError(toVmError))
+            remaining -= entries.reduce((sum, entry) => sum + (entry.type === "file" ? entry.data.length : 0), 0)
+            const tar = yield* Effect.try({
+              try: () => encodeTar(entries),
+              catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
+            })
+            archives.push({ base: entries[0]?.path ?? hostPath, tar })
+          }
+          const made = yield* sbx.exec(sandboxId, { script: `mkdir -p ~/${DROP_DIR}`, timeoutSeconds: 30 })
+          if (made.exitCode !== 0)
+            return yield* new VmError({
+              message: `Could not create ~/${DROP_DIR} in the VM: ${Buffer.from(made.stderr).toString().trim()}`,
+            })
+          const guestPaths: Array<string> = []
+          for (const archive of archives) {
+            yield* sbx.putFiles(sandboxId, DROP_DIR, archive.tar)
+            guestPaths.push(`~/${DROP_DIR}/${archive.base}`)
+          }
+          dropped.set(threadId, [...(dropped.get(threadId) ?? []), ...guestPaths])
+          return guestPaths as ReadonlyArray<string>
+        }),
+      )
+
+    const takeDropped = (threadId: string) =>
+      Effect.sync(() => {
+        const paths = dropped.get(threadId) ?? []
+        dropped.delete(threadId)
+        return paths as ReadonlyArray<string>
+      })
 
     const host: Effect.Effect<VmHostStatus> = readLogin(source).pipe(
       Effect.map(sbxClient),
@@ -445,6 +500,8 @@ const make = (source: LoginSource) =>
       screenshot,
       act,
       exec,
+      dropFiles,
+      takeDropped,
       openScreen,
       sendScreen,
       closeScreen,

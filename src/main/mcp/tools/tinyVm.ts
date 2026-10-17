@@ -136,8 +136,17 @@ export const vmToolsLayer = VmTools.toLayer(
     const tinyVm = yield* TinyVm
     const attachments = yield* Attachments
 
+    const droppedNotice = (threadId: string) =>
+      Effect.map(tinyVm.takeDropped(threadId), (paths) =>
+        paths.length === 0 ? undefined : `The user dropped files into the VM: ${paths.join(", ")}`,
+      )
+
     const screen = (threadId: string, caption: string) =>
-      Effect.map(tinyVm.screenshot(threadId), (data) => shown(data, caption))
+      Effect.gen(function* () {
+        const data = yield* tinyVm.screenshot(threadId)
+        const notice = yield* droppedNotice(threadId)
+        return [...shown(data, caption), ...(notice === undefined ? [] : [{ type: "text", text: notice } as const])]
+      })
 
     /** The angle brackets keep a path with spaces, like `Application Support`, one Markdown link. */
     const saveScreen = (threadId: string) =>
@@ -179,9 +188,12 @@ export const vmToolsLayer = VmTools.toLayer(
       vm_key: ({ keys }) => actAndLook({ type: "key", keys }, `Pressed ${keys}.`),
       vm_exec: ({ command, timeoutSeconds = 120, background = false }) =>
         McpTool.CallingThread.use((threadId) =>
-          Effect.map(tinyVm.exec(threadId, { command, timeoutSeconds, background }), (output) =>
-            execReport(output, timeoutSeconds, background),
-          ),
+          Effect.gen(function* () {
+            const output = yield* tinyVm.exec(threadId, { command, timeoutSeconds, background })
+            const notice = yield* droppedNotice(threadId)
+            const report = execReport(output, timeoutSeconds, background)
+            return notice === undefined ? report : `${report}\n\n${notice}`
+          }),
         ),
     })
   }),

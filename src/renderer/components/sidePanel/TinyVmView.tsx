@@ -56,6 +56,23 @@ export function TinyVmView({ thread }: { thread: Thread }) {
   )
 }
 
+/** Copies dropped host paths into the VM through the caller's action runner, so errors land in its strip. */
+export function useVmDrop(threadId: string, run: (action: () => Promise<unknown>) => void) {
+  const [dropping, setDropping] = useState(false)
+  const onDropFiles = (paths: ReadonlyArray<string>) => {
+    setDropping(true)
+    run(async () => {
+      try {
+        if (paths.length === 0) throw new Error(m.vm_drop_unsupported())
+        await callPromise("vm.files.drop", { threadId, paths: [...paths] })
+      } finally {
+        setDropping(false)
+      }
+    })
+  }
+  return { dropping, onDropFiles }
+}
+
 /** Runs one rpc at a time and keeps its error for display. */
 export function useVmAction() {
   const [pending, startTransition] = useTransition()
@@ -110,6 +127,7 @@ function VmState({ threadId, vm }: { threadId: string; vm: ThreadVm }) {
 
 function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
+  const { dropping, onDropFiles } = useVmDrop(threadId, run)
   const floating = useUi((state) => state.vmPlacements[threadId] === "floating")
   const setPlacement = useUi((state) => state.setVmPlacement)
   const [attempt, setAttempt] = useState(0)
@@ -158,6 +176,8 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
               fullscreenControls={control}
               onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}
               onReconnect={() => setAttempt((count) => count + 1)}
+              onDropFiles={onDropFiles}
+              dropping={dropping}
             />
           </Suspense>
         </div>

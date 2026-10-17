@@ -88,6 +88,8 @@ export interface ExecResult {
 }
 
 const REQUEST_TIMEOUT_SECONDS = 15
+/** File copies move whole archives over the LAN, so they get minutes where API calls get seconds. */
+const FILES_TIMEOUT_SECONDS = 300
 
 const STDOUT = 1
 const STDERR = 2
@@ -151,6 +153,9 @@ const readBody = (response: Response) =>
     catch: (cause) => new SbxError({ message: `The connection to sbx broke: ${describeCause(cause)}` }),
   })
 
+const filesPath = (id: string, guestPath: string) =>
+  `/v1/sandboxes/${encodeURIComponent(id)}/files?path=${encodeURIComponent(guestPath)}`
+
 /** The sbxd HTTP API, as far as hinacode uses it. */
 export const sbxClient = (login: SbxLogin) => {
   const base = login.url.replace(/\/+$/, "")
@@ -165,14 +170,23 @@ export const sbxClient = (login: SbxLogin) => {
     return new SbxError({ message: `sbx: ${detail}` })
   }
 
-  const request = (method: string, path: string, options: { body?: unknown; sandboxId?: string } = {}) =>
+  const request = (
+    method: string,
+    path: string,
+    options: { body?: unknown; sandboxId?: string; contentType?: string } = {},
+  ) =>
     Effect.tryPromise({
       try: (signal) =>
         fetch(`${base}${path}`, {
           method,
           signal,
-          headers: { authorization: authorization(), "content-type": "application/json" },
-          ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+          headers: {
+            authorization: authorization(),
+            "content-type": options.contentType ?? "application/json",
+          },
+          ...(options.body === undefined
+            ? {}
+            : { body: options.body instanceof Uint8Array ? Buffer.from(options.body) : JSON.stringify(options.body) }),
         }),
       catch: (cause) => new SbxError({ message: `Could not reach sbx at ${base}: ${describeCause(cause)}` }),
     }).pipe(
@@ -213,6 +227,25 @@ export const sbxClient = (login: SbxLogin) => {
     request("DELETE", `/v1/sandboxes/${encodeURIComponent(id)}`, { sandboxId: id }).pipe(
       Effect.asVoid,
       within(REQUEST_TIMEOUT_SECONDS),
+    )
+
+  /**
+   * Extracts a tar archive holding one top-level entry into the guest at `guestPath`, which the guest resolves
+   * against the desktop user's home when relative. An existing directory keeps the entry's name inside it; a
+   * missing path becomes the entry.
+   */
+  const putFiles = (id: string, guestPath: string, tar: Uint8Array) =>
+    request("PUT", filesPath(id, guestPath), { sandboxId: id, body: tar, contentType: "application/x-tar" }).pipe(
+      Effect.flatMap(readBody),
+      Effect.asVoid,
+      within(FILES_TIMEOUT_SECONDS),
+    )
+
+  /** Tars the file or directory at `guestPath` in the guest and returns the archive bytes. */
+  const getFiles = (id: string, guestPath: string) =>
+    request("GET", filesPath(id, guestPath), { sandboxId: id }).pipe(
+      Effect.flatMap(readBody),
+      within(FILES_TIMEOUT_SECONDS),
     )
 
   const exec = (id: string, input: ExecInput) =>
@@ -288,7 +321,7 @@ export const sbxClient = (login: SbxLogin) => {
       })
     })
 
-  return { url: base, status, create, get, remove, exec, tunnel }
+  return { url: base, status, create, get, remove, exec, tunnel, putFiles, getFiles }
 }
 
 export type SbxClient = ReturnType<typeof sbxClient>
