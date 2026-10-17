@@ -1,4 +1,3 @@
-import { openURL } from "expo-linking"
 import { router } from "expo-router"
 import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
 import { type ReactNode, useMemo } from "react"
@@ -9,6 +8,7 @@ import { MarkdownImage } from "@/components/markdown-image"
 import { mono, type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { resolveFileLink } from "@/lib/markdown-paths"
+import { openWebUrl } from "@/lib/open-url"
 
 interface Context {
   readonly theme: Palette
@@ -173,8 +173,8 @@ function Link({ token, context }: { token: Tokens.Link; context: Context }) {
   )
   const href = token.href
   const filePath = threadId !== undefined ? resolveFileLink(href, root, folder) : null
-  const onPress = /^(https?|mailto):/i.test(href)
-    ? () => void openURL(href).catch(() => {})
+  const onPress = /^https?:/i.test(href)
+    ? () => openWebUrl(href)
     : filePath !== null && threadId !== undefined
       ? () => router.push({ pathname: "/thread/[id]/file", params: { id: threadId, path: filePath } })
       : undefined
