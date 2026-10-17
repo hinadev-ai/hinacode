@@ -17,6 +17,7 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
+import { ansiSegments } from "../lib/ansi.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
 import { useTheme } from "../lib/appearance.ts"
@@ -362,13 +363,21 @@ function CommandView({ call, command, scroll }: { call: ToolCall; command: strin
       {(output !== "" || call.status !== "running") && (
         <section className="mt-2">
           <h4 className="sr-only">{m.tool_output()}</h4>
-          <pre className="whitespace-pre-wrap wrap-anywhere text-muted-foreground">
-            {output === "" ? m.tool_no_output() : output}
+          <pre className="ansi-output whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+            {output === "" ? m.tool_no_output() : <AnsiText text={output} />}
           </pre>
         </section>
       )}
     </div>
   )
+}
+
+function AnsiText({ text }: { text: string }) {
+  return ansiSegments(text).map((segment, index) => (
+    <span key={index} style={segment.style}>
+      {segment.text}
+    </span>
+  ))
 }
 
 const shellHighlighters = new Map<string, Promise<DiffsHighlighter>>()

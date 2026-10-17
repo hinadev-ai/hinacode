@@ -373,6 +373,15 @@
   --term-font-size: 12px;
   --term-line-height: 1.35;
   --term-selection-bg: color-mix(in oklch, var(--foreground) 20%, transparent);
+  height: 100%;
+  padding: 4px 12px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Command output in the transcript (`AnsiText`) shares the terminal's colors. */
+.terminal-screen.wterm,
+.ansi-output {
   --term-color-0: oklch(0.2 0 0);
   --term-color-1: oklch(0.53 0.2 27);
   --term-color-2: oklch(0.5 0.13 150);
@@ -389,13 +398,9 @@
   --term-color-13: oklch(0.55 0.2 320);
   --term-color-14: oklch(0.55 0.1 210);
   --term-color-15: oklch(0.56 0 0);
-  height: 100%;
-  padding: 4px 12px;
-  border-radius: 0;
-  box-shadow: none;
 }
 
-.dark .terminal-screen.wterm {
+.dark :is(.terminal-screen.wterm, .ansi-output) {
   --term-color-0: oklch(0.35 0 0);
   --term-color-1: oklch(0.7 0.17 25);
   --term-color-2: oklch(0.76 0.15 150);
