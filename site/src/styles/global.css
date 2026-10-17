@@ -149,6 +149,16 @@ kbd {
   right: -5px;
 }
 
+.experimental {
+  margin: 0;
+  padding: 8px 24px;
+  font-size: 13px;
+  text-align: center;
+  text-wrap: balance;
+  color: rgb(251 191 36 / 0.7);
+  background: rgb(251 191 36 / 0.04);
+  border-bottom: 1px solid rgb(251 191 36 / 0.1);
+}
 .nav {
   @apply sticky top-0 z-50;
   background: rgb(9 9 11 / 0.72);

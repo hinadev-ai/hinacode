@@ -916,6 +916,7 @@
   "site_home_description": "Claude Code と Codex を、それぞれ独立したワークツリーで並行実行。エージェントがあなたを必要とするまで、HinaCode は静かに控えます。",
   "site_pricing_title": "料金 · HinaCode",
   "site_pricing_description": "HinaCode は完全無料。シート課金も、プラン分けも、試用期間もなしですべての機能を使えます。",
+  "site_experimental": "HinaCode はまだ開発中で、非常に実験的な段階です。不具合や互換性のない変更が起こる可能性があります。",
   "site_skip": "本文へスキップ",
   "site_language": "言語",
   "site_home_name": "HinaCode ホーム",

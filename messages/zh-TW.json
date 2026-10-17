@@ -943,6 +943,7 @@
   "site_home_description": "同時執行 Claude Code 與 Codex，各自在獨立的 worktree 中運作。HinaCode 平時保持安靜，直到 agent 需要你。",
   "site_pricing_title": "定價 · HinaCode",
   "site_pricing_description": "HinaCode 完全免費。包含所有功能，不按席次收費、不分方案等級，也沒有試用期限制。",
+  "site_experimental": "HinaCode 仍在開發中，屬於高度實驗性的版本。可能會有不穩定之處或破壞性變更。",
   "site_skip": "跳至主要內容",
   "site_language": "語言",
   "site_home_name": "HinaCode 首頁",
