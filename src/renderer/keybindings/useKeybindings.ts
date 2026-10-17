@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { type Hotkey, matchesKeyboardEvent, useHotkeys } from "@tanstack/react-hotkeys"
-import { useNavigate, useParams } from "@tanstack/react-router"
+import { useNavigate, useParams, useRouter } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useEffectEvent, useMemo } from "react"
 import { projectsAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
@@ -40,13 +40,14 @@ const bindings = (keymap: Keymap, experimental: ExperimentalSettings) =>
 /** What a command needs from the current route and app state to run. */
 export const useCommandContext = (): CommandContext => {
   const navigate = useNavigate()
+  const { history } = useRouter()
   const { threadId = null } = useParams({ strict: false })
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const updateClientSettings = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
   const { experimental } = useSettings(useThreadEnvironment(threadId))
   return useMemo(
-    () => ({ navigate, threadId, projects, updateClientSettings, experimental }),
-    [navigate, threadId, projects, updateClientSettings, experimental],
+    () => ({ navigate, history, threadId, projects, updateClientSettings, experimental }),
+    [navigate, history, threadId, projects, updateClientSettings, experimental],
   )
 }
 
