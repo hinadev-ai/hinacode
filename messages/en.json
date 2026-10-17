@@ -961,6 +961,7 @@
   "site_home_description": "Run Claude Code and Codex side by side, each in its own worktree. HinaCode stays quiet until an agent needs you.",
   "site_pricing_title": "Pricing · HinaCode",
   "site_pricing_description": "HinaCode is free. Every feature, with no seats, tiers or trial.",
+  "site_experimental": "HinaCode is still in development and highly experimental. Expect rough edges and breaking changes.",
   "site_skip": "Skip to content",
   "site_language": "Language",
   "site_home_name": "HinaCode home",
