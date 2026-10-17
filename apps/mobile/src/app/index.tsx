@@ -18,7 +18,6 @@ import {
   SegmentedControl,
 } from "@/components/ui"
 import { duration } from "@/constants/motion"
-import { HIT } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -275,18 +274,13 @@ function ProjectHeader({ project }: { project: Project }) {
         <Text accessibilityRole="header" numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
           {project.name}
         </Text>
-        {creating ? (
-          <View accessibilityRole="progressbar" accessibilityLabel={label} style={styles.creating}>
-            <Spinner size={18} color={theme.textMuted} />
-          </View>
-        ) : (
-          <IconButton
-            testID={`new-thread-in-${project.id}`}
-            icon="RiAddLine"
-            accessibilityLabel={label}
-            onPress={() => void create()}
-          />
-        )}
+        <IconButton
+          testID={`new-thread-in-${project.id}`}
+          icon="RiAddLine"
+          accessibilityLabel={label}
+          busy={creating}
+          onPress={() => void create()}
+        />
       </View>
       {error !== null && <Notice text={error} tone="danger" />}
     </View>
@@ -306,6 +300,5 @@ const styles = StyleSheet.create({
   project: { gap: 6, paddingTop: 12, paddingBottom: 4 },
   projectRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 4 },
   projectName: { flex: 1, fontSize: 15, fontWeight: "600" },
-  creating: { width: HIT, height: HIT, alignItems: "center", justifyContent: "center" },
   note: { fontSize: 13, paddingLeft: 26, paddingBottom: 8 },
 })

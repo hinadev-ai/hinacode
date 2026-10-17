@@ -3,9 +3,10 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { useEffect, useRef, useState } from "react"
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native"
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
+import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -530,11 +531,10 @@ function SettingsSheet({
                     Faster responses that use more of your plan
                   </Text>
                 </View>
-                <Switch
+                <Toggle
                   accessibilityLabel="Fast mode"
                   value={thread.fastMode}
                   onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
-                  trackColor={{ true: theme.primary, false: theme.surfaceStrong }}
                 />
               </View>
             </Section>

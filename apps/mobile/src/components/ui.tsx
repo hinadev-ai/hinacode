@@ -7,6 +7,8 @@ import {
   type PressableProps,
   type StyleProp,
   StyleSheet,
+  Switch,
+  type SwitchProps,
   Text,
   View,
   type ViewStyle,
@@ -19,6 +21,7 @@ import { HIT, type Palette, radius } from "@/constants/theme"
 import { threadStatus } from "@/constants/thread-status"
 import { useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 
 type Variant = "primary" | "secondary" | "danger" | "ghost"
 
@@ -64,6 +67,7 @@ export function Button({
 export function IconButton({
   icon,
   variant = "ghost",
+  busy = false,
   disabled,
   style,
   ...props
@@ -71,14 +75,16 @@ export function IconButton({
   icon: IconName
   accessibilityLabel: string
   variant?: Variant
+  busy?: boolean
 }) {
   const theme = useTheme()
   const colors = buttonColors(theme)[variant]
+  const inactive = disabled === true || busy
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityState={{ disabled: disabled === true }}
-      disabled={disabled}
+      accessibilityState={{ disabled: inactive, busy }}
+      disabled={inactive}
       style={[
         styles.iconButton,
         { backgroundColor: colors.bg, borderColor: colors.border, opacity: disabled === true ? 0.5 : 1 },
@@ -86,8 +92,22 @@ export function IconButton({
       ]}
       {...props}
     >
-      <Icon name={icon} size={20} color={colors.fg} />
+      {busy ? <Spinner size={18} color={colors.fg} /> : <Icon name={icon} size={20} color={colors.fg} />}
     </PressableScale>
+  )
+}
+
+/** A switch in the app's colors. react-native-web paints the thumb teal unless told otherwise. */
+export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
+  const theme = useTheme()
+  const webThumb = { activeThumbColor: "#ffffff" } as object
+  return (
+    <Switch
+      {...props}
+      {...webThumb}
+      trackColor={{ true: theme.primary, false: theme.surfaceStrong }}
+      thumbColor="#ffffff"
+    />
   )
 }
 
@@ -127,25 +147,35 @@ type Status = { label: string; tone: Tone; icon?: IconName }
 export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) => <Pill {...threadStatus[status]} />
 
 const connectionLabel: Record<ConnectionStatus, Status> = {
-  connected: { label: "Connected", tone: "running", icon: "RiWifiLine" },
-  connecting: { label: "Connecting", tone: "neutral", icon: "RiLoader4Line" },
-  offline: { label: "Reconnecting", tone: "attention", icon: "RiWifiOffLine" },
-  unauthorized: { label: "Not paired", tone: "danger", icon: "RiLinkUnlinkM" },
+  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "RiWifiLine" },
+  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "RiLoader4Line" },
+  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "RiWifiOffLine" },
+  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "RiLinkUnlinkM" },
 }
 
 export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const badge = connectionLabel[status]
   return (
-    <View accessibilityRole="text" accessibilityLabel={`Connection: ${badge.label}`} testID="connection-status">
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={copy("mobile_connection_label", { status: badge.label })}
+      testID="connection-status"
+    >
       <Pill {...badge} />
     </View>
   )
 }
 
-const providerMark: Record<ProviderId, IconName> = {
+export const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
+}
+
+export const providerName: Record<ProviderId, string> = {
+  claude: copy("mobile_provider_claude"),
+  codex: copy("mobile_provider_codex"),
+  muse: copy("mobile_provider_muse"),
 }
 
 /** The provider's logo and name, muted, for meta rows. */
@@ -154,7 +184,7 @@ export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; s
   return (
     <View style={styles.provider}>
       <Icon name={providerMark[provider]} size={14} color={theme.textMuted} />
-      <Text style={{ color: theme.textMuted, fontSize: size }}>{provider}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: size }}>{providerName[provider]}</Text>
     </View>
   )
 }
