@@ -286,9 +286,9 @@ export const RpcMethods = {
 
   /**
    * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
-   * reflects every transcript push up to and including `seq`, and none after.
+   * reflects every transcript push up to and including `seq`, and none after. `compact` leaves out tool outputs
+   * and file diffs, for clients that never show them.
    */
-  /** `compact` leaves out tool outputs and file diffs, for clients that never show them. */
   "threads.transcript": rpc(
     Schema.Struct({ threadId: Schema.String, compact: Schema.optional(Schema.Boolean) }),
     Schema.Struct({
