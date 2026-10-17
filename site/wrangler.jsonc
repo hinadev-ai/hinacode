@@ -9,4 +9,5 @@
     { "pattern": "hinacode.app", "custom_domain": true },
     { "pattern": "www.hinacode.app", "custom_domain": true },
   ],
+  "previews": {},
 }
