@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar"
 import { useEffect } from "react"
 import { Appearance, Platform } from "react-native"
 import { ConnectionProvider } from "@/components/connection-provider"
+import { Notifier } from "@/components/notifier"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { usePreferences } from "@/stores/preferences"
@@ -35,6 +36,7 @@ export default function RootLayout() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <ConnectionProvider>
         <Routes />
+        <Notifier />
       </ConnectionProvider>
     </ThemeProvider>
   )
@@ -46,7 +48,11 @@ function Routes() {
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Protected guard={paired}>
         <Stack.Screen name="index" options={{ title: "Threads" }} />
-        <Stack.Screen name="thread/[id]" options={{ title: "" }} />
+        <Stack.Screen name="thread/[id]/index" options={{ title: "" }} />
+        <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
+        <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
+        <Stack.Screen name="settings" options={{ title: "Settings" }} />
+        <Stack.Screen name="project/new" options={{ title: "Add project", presentation: "modal" }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
         <Stack.Screen name="connect" options={{ title: "Pair with desktop" }} />
