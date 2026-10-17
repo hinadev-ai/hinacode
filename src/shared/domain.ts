@@ -348,6 +348,11 @@ export const ThemeId = Schema.Literals([
   "tokyo-night",
   "rose-pine",
   "gruvbox-dark",
+  "github-dark",
+  "github-light",
+  "one-dark-pro",
+  "dracula",
+  "material-theme",
 ])
 export type ThemeId = typeof ThemeId.Type
 

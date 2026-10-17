@@ -239,7 +239,7 @@
 }
 
 /*
- * Themes from Ghostty's bundled color schemes. Each sets a small palette and the shadcn tokens derive from it.
+ * Themes from Ghostty's bundled color schemes and the most installed VS Code themes. Each sets a small palette and the shadcn tokens derive from it.
  * Selectors are not tied to :root, so a settings preview can put data-theme on any element.
  * The default theme has no data-theme and keeps the :root and .dark tokens above.
  */
@@ -323,6 +323,76 @@
   --primary-foreground: #282828;
   --ring: #fabd2f;
   --destructive: #fb4934;
+}
+
+[data-theme="github-dark"] {
+  --background: #24292e;
+  --palette-foreground: #e1e4e8;
+  --surface: #1f2428;
+  --muted: #2f363d;
+  --palette-muted-foreground: #959da5;
+  --border: #2f363d;
+  --input: #444d56;
+  --primary: #79b8ff;
+  --primary-foreground: #24292e;
+  --ring: #79b8ff;
+  --destructive: #f97583;
+}
+
+[data-theme="github-light"] {
+  --background: #ffffff;
+  --palette-foreground: #24292e;
+  --surface: #f6f8fa;
+  --muted: #eaeef2;
+  --palette-muted-foreground: #586069;
+  --border: #e1e4e8;
+  --input: #d1d5da;
+  --primary: #0366d6;
+  --primary-foreground: #ffffff;
+  --ring: #2188ff;
+  --destructive: #cb2431;
+}
+
+[data-theme="one-dark-pro"] {
+  --background: #282c34;
+  --palette-foreground: #abb2bf;
+  --surface: #21252b;
+  --muted: #323842;
+  --palette-muted-foreground: #9da5b4;
+  --border: #3e4452;
+  --input: #495162;
+  --primary: #61afef;
+  --primary-foreground: #282c34;
+  --ring: #61afef;
+  --destructive: #e06c75;
+}
+
+[data-theme="dracula"] {
+  --background: #282a36;
+  --palette-foreground: #f8f8f2;
+  --surface: #21222c;
+  --muted: #44475a;
+  --palette-muted-foreground: #a4abcc;
+  --border: #44475a;
+  --input: #4f5266;
+  --primary: #bd93f9;
+  --primary-foreground: #282a36;
+  --ring: #bd93f9;
+  --destructive: #ff5555;
+}
+
+[data-theme="material-theme"] {
+  --background: #263238;
+  --palette-foreground: #eeffff;
+  --surface: #222d32;
+  --muted: #314549;
+  --palette-muted-foreground: #b0bec5;
+  --border: #314549;
+  --input: #37474f;
+  --primary: #80cbc4;
+  --primary-foreground: #263238;
+  --ring: #80cbc4;
+  --destructive: #f07178;
 }
 
 @layer base {

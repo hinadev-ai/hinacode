@@ -21,6 +21,11 @@ export const themes: Record<ThemeId, Theme> = {
   "tokyo-night": { label: () => "Tokyo Night", scheme: "dark", codeTheme: "tokyo-night" },
   "rose-pine": { label: () => "Rosé Pine", scheme: "dark", codeTheme: "rose-pine" },
   "gruvbox-dark": { label: () => "Gruvbox Dark", scheme: "dark", codeTheme: "gruvbox-dark-medium" },
+  "github-dark": { label: () => "GitHub Dark", scheme: "dark", codeTheme: "github-dark" },
+  "github-light": { label: () => "GitHub Light", scheme: "light", codeTheme: "github-light" },
+  "one-dark-pro": { label: () => "One Dark Pro", scheme: "dark", codeTheme: "one-dark-pro" },
+  dracula: { label: () => "Dracula", scheme: "dark", codeTheme: "dracula" },
+  "material-theme": { label: () => "Material Theme", scheme: "dark", codeTheme: "material-theme" },
 }
 
 const systemAppearance = window.matchMedia("(prefers-color-scheme: dark)")
