@@ -22,7 +22,7 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
 
   const failed = (message: string) => (
     <div role="alert" className="flex items-center gap-2">
-      <p className="text-xs text-destructive">{m.ports_failed({ message })}</p>
+      <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">{m.ports_failed({ message })}</p>
       <Button variant="outline" size="xs" onClick={refresh}>
         {m.sidebar_retry()}
       </Button>

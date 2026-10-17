@@ -131,7 +131,9 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
     return AsyncResult.builder(load)
       .onError((error) => (
         <div role="alert" className="flex items-center gap-2">
-          <p className="text-xs text-destructive">{m.pr_links_failed({ message: errorMessage(error) })}</p>
+          <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
+            {m.pr_links_failed({ message: errorMessage(error) })}
+          </p>
           <Button variant="outline" size="xs" onClick={reload}>
             {m.common_retry()}
           </Button>
@@ -228,7 +230,9 @@ function PullRequestRow({
           aria-hidden
           className={cn("size-3.5 shrink-0", pullRequest ? statusColor[pullRequest.status] : "text-muted-foreground")}
         />
-        <span className="shrink-0 font-mono text-muted-foreground">#{pullRequest?.number ?? shortName(url)}</span>
+        <span className="min-w-0 truncate font-mono text-muted-foreground" title={pullRequest ? undefined : url}>
+          #{pullRequest?.number ?? shortName(url)}
+        </span>
         <span className="min-w-0 flex-1 truncate" title={pullRequest?.title}>
           {pullRequest ? pullRequestSummary(pullRequest) : null}
         </span>
@@ -307,7 +311,9 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
         {/* Without a gh login every lookup fails the same way; the auth hint below explains it once. */}
         {signedIn && (
           <div role="alert" className="flex items-center gap-2">
-            <p className="text-xs text-destructive">{m.pr_detail_failed({ message: errorMessage(error) })}</p>
+            <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
+              {m.pr_detail_failed({ message: errorMessage(error) })}
+            </p>
             <Button variant="outline" size="xs" onClick={refresh}>
               {m.common_retry()}
             </Button>
