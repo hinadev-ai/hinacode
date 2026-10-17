@@ -10,7 +10,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.app.outputs.app }}
+      desktop: ${{ steps.app.outputs.desktop }}
+      site: ${{ steps.site.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: app
+        with:
+          predicate-quantifier: every
+          filters: |
+            app: &app
+              - '**'
+              - '!*.md'
+              - '!**/README.md'
+              - '!**/AGENTS.md'
+              - '!LICENSE'
+              - '!docs/**'
+              - '!specs/**'
+              - '!.agents/**'
+              - '!.claude/**'
+              - '!site/**'
+            desktop:
+              - *app
+              - '!apps/mobile/**'
+      - uses: dorny/paths-filter@v3
+        id: site
+        with:
+          filters: |
+            site:
+              - 'site/**'
+              - 'messages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+
   check:
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,12 +62,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format --check
-      - run: pnpm typecheck
-      - run: pnpm --dir site check
-      - run: pnpm --dir site deploy:dry-run
-      - name: Install search test dependency
+      - if: needs.changes.outputs.app == 'true'
+        run: pnpm typecheck
+      - if: needs.changes.outputs.site == 'true'
+        run: pnpm --dir site check
+      - if: needs.changes.outputs.site == 'true'
+        run: pnpm --dir site deploy:dry-run
+      - if: needs.changes.outputs.app == 'true'
+        name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
-      - run: pnpm test
+      - if: needs.changes.outputs.app == 'true'
+        run: pnpm test
 
   e2e:
     name: e2e (${{ matrix.os }})
@@ -42,8 +87,9 @@ jobs:
           - os: macos
             runner: [self-hosted, macOS, ARM64, home]
             command: pnpm test:e2e
+    needs: changes
     # The home runners must never run code from a fork's pull request.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
