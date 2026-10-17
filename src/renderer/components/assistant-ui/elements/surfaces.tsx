@@ -5,7 +5,7 @@ import { useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useIsomorphicLayoutEffect } from "../utils/useIsomorphicLayoutEffect"
 
-export const paper = "bg-background border border-border/60 dark:bg-popover"
+export const paper = "bg-background/60 backdrop-blur-md border border-border/60 dark:bg-popover/60"
 
 export const floating = "bg-background border border-border/60 dark:bg-popover"
 

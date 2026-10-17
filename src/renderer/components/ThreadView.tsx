@@ -1,7 +1,7 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useEffect, useMemo, useRef } from "react"
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react"
 import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
@@ -45,6 +45,9 @@ interface ThreadViewProps {
 
 export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps) {
   const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)
+  useDockHeight(regionRef, dockRef)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
@@ -63,18 +66,23 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </span>
         {actions}
       </header>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <ThreadRepository value={repository}>
             <Transcript thread={thread} agent={agent} />
           </ThreadRepository>
         </div>
         {overlay}
+        <div ref={dockRef} className="absolute inset-x-0 bottom-0 flex max-h-full flex-col">
+          <div className="flex min-h-0 flex-col bg-background">
+            <PendingRequests thread={thread} />
+            {thread.status === "limited" && thread.usageLimit !== null && (
+              <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />
+            )}
+          </div>
+          <Composer thread={thread} />
+        </div>
       </div>
-      {thread.status === "limited" && thread.usageLimit !== null && (
-        <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />
-      )}
-      <Composer thread={thread} />
     </div>
   )
 }
@@ -129,25 +137,51 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           providerLabel={label}
         />
       ) : history.messages.length === 0 ? (
-        worktree?.status === "preparing" ? (
-          <WorktreePreparation worktree={worktree} />
-        ) : (
-          <EmptyThread providerLabel={label} />
-        )
+        <>
+          {worktree?.status === "preparing" ? (
+            <WorktreePreparation worktree={worktree} />
+          ) : (
+            <EmptyThread providerLabel={label} />
+          )}
+          <div className="h-(--dock-height) shrink-0" />
+        </>
       ) : (
         <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />
       )}
-      <div className="px-4">
-        {history.approvals.map((request) => (
-          <ApprovalCard key={request.id} request={request} providerLabel={label} />
-        ))}
-        {history.questions.map((request) => (
-          <QuestionRequestCard key={request.id} request={request} providerLabel={label} />
-        ))}
-        {history.secretRequests.map((request) => (
-          <SecretRequestCard key={request.id} request={request} providerLabel={label} />
-        ))}
-      </div>
     </FindPatternContext>
+  )
+}
+
+/**
+ * The composer dock floats over the transcript so messages scroll behind its blur. Its height goes
+ * into `--dock-height`, which the transcript pads its end with so the last message can clear it.
+ */
+function useDockHeight(regionRef: RefObject<HTMLDivElement | null>, dockRef: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const region = regionRef.current
+    const dock = dockRef.current
+    if (!region || !dock) return
+    const observer = new ResizeObserver(() => region.style.setProperty("--dock-height", `${dock.offsetHeight}px`))
+    observer.observe(dock)
+    return () => observer.disconnect()
+  }, [regionRef, dockRef])
+}
+
+function PendingRequests({ thread }: { thread: Thread }) {
+  const history = useMessages((state) => state.byThread[thread.id])
+  const label = providerLabel[thread.provider]()
+  if (history?.status !== "ready") return null
+  return (
+    <div className="min-h-0 shrink overflow-auto px-4 empty:hidden">
+      {history.approvals.map((request) => (
+        <ApprovalCard key={request.id} request={request} providerLabel={label} />
+      ))}
+      {history.questions.map((request) => (
+        <QuestionRequestCard key={request.id} request={request} providerLabel={label} />
+      ))}
+      {history.secretRequests.map((request) => (
+        <SecretRequestCard key={request.id} request={request} providerLabel={label} />
+      ))}
+    </div>
   )
 }

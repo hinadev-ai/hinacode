@@ -26,6 +26,8 @@ const keyExtractor = (message: Message) => message.id
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
 // Spacers instead of container padding: the list measures header and footer, but not padding.
 const edgeSpacer = <div className="h-4" />
+// The thread's composer floats over the list's end, see `useDockHeight`.
+const endSpacer = <div className="h-[calc(var(--dock-height,0px)+1rem)]" />
 
 /** Posted questions stay answerable only while nothing has been said after them. */
 const AnswerableContext = createContext<{
@@ -77,7 +79,7 @@ export function MessageList({
         maintainScrollAtEnd
         maintainVisibleContentPosition
         ListHeaderComponent={header ?? edgeSpacer}
-        ListFooterComponent={edgeSpacer}
+        ListFooterComponent={endSpacer}
         className="min-h-0 flex-1"
       />
     </AnswerableContext>
