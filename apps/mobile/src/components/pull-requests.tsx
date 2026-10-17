@@ -1,36 +1,87 @@
 import type { PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
-import { openURL } from "expo-linking"
+import { router } from "expo-router"
 import { useEffect, useState } from "react"
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
-import { Icon, type IconName } from "@/components/icon"
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import { Icon } from "@/components/icon"
+import { PressableScale, Reveal, Spinner } from "@/components/motion"
+import {
+  checksIcon,
+  checksLabel,
+  checksTone,
+  pullRequestLabel,
+  reviewLabel,
+  reviewTone,
+  statusGlyph,
+  statusLabel,
+  statusTone,
+} from "@/components/pull-request-badge"
 import { Button, EmptyState, Notice, Pill } from "@/components/ui"
-import { type Palette, radius } from "@/constants/theme"
+import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call, onEvent, useConnection } from "@/lib/connection"
+import { call, useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { usePullRequests } from "@/stores/pull-requests"
+import { useThreads } from "@/stores/threads"
 
+/** Reads the thread's links into the store, and the pull request GitHub has for its worktree branch. */
+async function readPullRequests(threadId: string, worktreeId: string | null) {
+  const [error, branch] = await Promise.all([
+    usePullRequests
+      .getState()
+      .loadThread(threadId)
+      .then(
+        () => null,
+        (cause: unknown) => errorText(cause),
+      ),
+    // Without gh, or without a pull request for the branch, there is simply no branch card.
+    worktreeId === null ? null : call("worktrees.pullRequest", { id: worktreeId }).catch(() => null),
+  ])
+  return { error, branch }
+}
+
+/** Every pull request the thread has: the ones linked to it, plus the one GitHub has for its worktree branch. */
 export function PullRequests({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
-  const [links, setLinks] = useState<readonly PullRequestLink[] | null>(null)
+  const links = usePullRequests((state) => state.linksByThread[thread.id])
+  const worktreeId = useThreads((state) => {
+    const worktree = thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId]
+    return worktree !== undefined && worktree.status !== "removed" ? worktree.id : null
+  })
   const [error, setError] = useState<string | null>(null)
+  const [branchPullRequest, setBranchPullRequest] = useState<PullRequest | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (!connected) return
     let current = true
-    call("pullRequests.list", { threadId: thread.id }).then(
-      (result) => current && setLinks(result),
-      (cause) => current && setError(errorText(cause)),
-    )
-    const unsubscribe = onEvent((event) => {
-      if (event.type === "thread.pullRequests" && event.threadId === thread.id) setLinks(event.links)
+    void readPullRequests(thread.id, worktreeId).then((result) => {
+      if (!current) return
+      setError(result.error)
+      setBranchPullRequest(result.branch)
     })
     return () => {
       current = false
-      unsubscribe()
     }
-  }, [connected, thread.id])
+  }, [connected, thread.id, worktreeId])
+
+  const linked = new Set((links ?? []).map((link) => link.url))
+  const branchUrl = branchPullRequest !== null && !linked.has(branchPullRequest.url) ? branchPullRequest.url : null
+
+  const refresh = async () => {
+    setRefreshing(true)
+    const { loadPullRequest } = usePullRequests.getState()
+    const urls = [...linked, ...(branchUrl === null ? [] : [branchUrl])]
+    const [result] = await Promise.all([
+      readPullRequests(thread.id, worktreeId),
+      ...urls.map((url) => loadPullRequest(url, { force: true })),
+    ])
+    setError(result.error)
+    setBranchPullRequest(result.branch)
+    setRefreshing(false)
+  }
 
   const create = async () => {
     setCreating(true)
@@ -43,20 +94,33 @@ export function PullRequests({ thread }: { thread: Thread }) {
     setCreating(false)
   }
 
+  const open = (url: string) => router.push({ pathname: "/thread/[id]/pull-request", params: { id: thread.id, url } })
+
   return (
-    <ScrollView contentContainerStyle={styles.list}>
-      {error !== null && <Notice text={error} tone="danger" />}
-      {links === null ? (
-        error === null && <ActivityIndicator color={theme.textMuted} accessibilityLabel="Loading pull requests" />
-      ) : links.length === 0 ? (
+    <ScrollView
+      contentContainerStyle={styles.list}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.textMuted} />
+      }
+    >
+      {error !== null && <Notice text={copy("mobile_pr_links_failed", { message: error })} tone="danger" />}
+      {links === undefined ? (
+        error === null && (
+          <Reveal style={styles.loading}>
+            <Spinner color={theme.textMuted} />
+            <Text style={{ color: theme.textMuted }}>{copy("mobile_pr_loading")}</Text>
+          </Reveal>
+        )
+      ) : links.length === 0 && branchUrl === null ? (
         <EmptyState
           icon="RiGitPullRequestLine"
-          title="No pull request is linked to this thread."
+          title={copy("mobile_pr_empty")}
+          hint={copy("mobile_pr_empty_hint")}
           action={
             thread.worktreeId !== null && (
               <Button
                 testID="create-pull-request"
-                label="Create pull request"
+                label={copy("mobile_pr_create")}
                 icon="RiGitPullRequestLine"
                 variant="primary"
                 busy={creating}
@@ -66,125 +130,128 @@ export function PullRequests({ thread }: { thread: Thread }) {
           }
         />
       ) : (
-        links.map((link) => <PullRequestCard key={link.id} url={link.url} />)
+        <>
+          {[...links]
+            .reverse()
+            .map((link) => (
+              <PullRequestCard key={link.id} url={link.url} link={link} onPress={() => open(link.url)} />
+            ))}
+          {branchUrl !== null && <PullRequestCard url={branchUrl} link={null} onPress={() => open(branchUrl)} />}
+        </>
       )}
     </ScrollView>
   )
 }
 
-const statusTone = { open: "running", draft: "neutral", merged: "neutral", closed: "danger" } as const
-const statusLabel = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" } as const
-const checksLabel = { passing: "Checks passing", failing: "Checks failing", pending: "Checks running" } as const
-const checksTone = { passing: "running", failing: "danger", pending: "attention" } as const
-const checksIcon = { passing: "RiCheckLine", failing: "RiErrorWarningLine", pending: "RiLoader4Line" } as const
-const statusIcon = (theme: Palette): Record<PullRequest["status"], { name: IconName; color: string }> => ({
-  open: { name: "RiGitPullRequestLine", color: theme.running },
-  draft: { name: "RiGitPullRequestLine", color: theme.textMuted },
-  merged: { name: "RiGitMergeLine", color: theme.textMuted },
-  closed: { name: "RiCloseLine", color: theme.danger },
-})
-const reviewLabel = { approved: "Approved", changesRequested: "Changes requested", reviewRequired: "Review required" }
-
-function PullRequestCard({ url }: { url: string }) {
+function PullRequestCard({
+  url,
+  link,
+  onPress,
+}: {
+  url: string
+  /** Null for the branch's pull request that nobody linked. */
+  link: PullRequestLink | null
+  onPress: () => void
+}) {
   const theme = useTheme()
-  const [pr, setPr] = useState<PullRequest | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [merging, setMerging] = useState(false)
-  const [revision, setRevision] = useState(0)
+  const remote = usePullRequests((state) => state.pullRequests[url])
+  const pr = remote?.status === "ready" ? remote.value : null
 
   useEffect(() => {
-    let current = true
-    call("github.pullRequest", { url }).then(
-      (result) => current && setPr(result),
-      (cause) => current && setError(errorText(cause)),
-    )
-    return () => {
-      current = false
-    }
-  }, [url, revision])
+    void usePullRequests.getState().loadPullRequest(url)
+  }, [url])
 
-  const merge = async () => {
-    setMerging(true)
-    setError(null)
-    try {
-      await call("github.merge", { url, method: "squash" })
-      setRevision((value) => value + 1)
-    } catch (cause) {
-      setError(errorText(cause))
-    }
-    setMerging(false)
-  }
-
-  const confirmMerge = () => {
-    const title = `Squash and merge #${pr?.number ?? ""}?`
-    // Alert.alert has no buttons on react-native-web.
-    if (Platform.OS === "web") {
-      if (window.confirm(title)) void merge()
-      return
-    }
-    Alert.alert(title, pr?.title, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Merge", style: "destructive", onPress: () => void merge() },
-    ])
-  }
+  const watching = (link?.watch ?? null) !== null
+  const label =
+    pr === null
+      ? url
+      : [
+          pr.title,
+          pullRequestLabel(String(pr.number), pr),
+          pr.review !== null && reviewLabel(pr.review),
+          watching && copy("mobile_pr_watching"),
+        ]
+          .filter((part) => typeof part === "string")
+          .join(", ")
 
   return (
-    <View
+    <PressableScale
       testID="pull-request-card"
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
       style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}
     >
       {pr === null ? (
-        <Text numberOfLines={1} style={{ color: theme.textMuted }}>
-          {url}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text numberOfLines={1} style={[styles.url, { color: theme.textMuted }]}>
+            {url}
+          </Text>
+          {remote?.status !== "error" && (
+            <Reveal>
+              <Spinner size={14} color={theme.textMuted} />
+            </Reveal>
+          )}
+        </View>
       ) : (
         <>
           <View style={styles.titleRow}>
             <View style={styles.titleIcon}>
-              <Icon {...statusIcon(theme)[pr.status]} size={18} />
+              <Icon {...statusGlyph(theme)[pr.status]} size={18} />
             </View>
-            <Text style={[styles.title, { color: theme.text }]}>
-              {pr.title} <Text style={{ color: theme.textMuted }}>#{pr.number}</Text>
+            <Text numberOfLines={3} style={[styles.title, { color: theme.text }]}>
+              {pr.title} <Text style={{ color: theme.textMuted, fontWeight: "400" }}>#{pr.number}</Text>
+            </Text>
+            <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
+          </View>
+          <View style={styles.meta}>
+            <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
+              {pr.headRefName} → {pr.baseRefName}
+            </Text>
+            <Text
+              accessibilityLabel={copy("mobile_pr_size", {
+                additions: String(pr.additions),
+                deletions: String(pr.deletions),
+              })}
+              style={styles.size}
+            >
+              <Text style={{ color: theme.running }}>+{pr.additions}</Text>{" "}
+              <Text style={{ color: theme.danger }}>−{pr.deletions}</Text>
             </Text>
           </View>
-          <Text numberOfLines={1} style={{ color: theme.textMuted, fontSize: 13 }}>
-            {pr.headRefName} into {pr.baseRefName}, +{pr.additions} -{pr.deletions}
-          </Text>
           <View style={styles.pills}>
-            <Pill label={statusLabel[pr.status]} tone={statusTone[pr.status]} />
+            <Pill label={statusLabel(pr.status)} tone={statusTone[pr.status]} />
             {pr.checks !== null && (
-              <Pill label={checksLabel[pr.checks]} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
+              <Pill label={checksLabel(pr.checks)} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
             )}
-            {pr.review !== null && (
-              <Pill label={reviewLabel[pr.review]} tone={pr.review === "changesRequested" ? "attention" : "neutral"} />
-            )}
+            {pr.review !== null && <Pill label={reviewLabel(pr.review)} tone={reviewTone[pr.review]} />}
+            {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="RiEyeLine" />}
           </View>
         </>
       )}
-      {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
-      <View style={styles.actions}>
-        <Button label="Open on GitHub" icon="RiExternalLinkLine" onPress={() => void openURL(url)} />
-        {pr?.status === "open" && (
-          <Button
-            testID="pull-request-merge"
-            label="Merge"
-            icon="RiGitMergeLine"
-            variant="primary"
-            busy={merging}
-            onPress={confirmMerge}
-          />
-        )}
-      </View>
-    </View>
+      {link === null && (
+        <Text style={[styles.note, { color: theme.textMuted }]}>{copy("mobile_pr_from_branch")}</Text>
+      )}
+      {remote?.status === "error" && (
+        <Text style={[styles.note, { color: theme.danger }]}>
+          {copy("mobile_pr_card_failed", { message: remote.message })}
+        </Text>
+      )}
+    </PressableScale>
   )
 }
 
 const styles = StyleSheet.create({
-  list: { padding: 16, gap: 12 },
+  list: { padding: 16, gap: 12, flexGrow: 1 },
+  loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
   card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: 14, gap: 8 },
-  titleRow: { flexDirection: "row", gap: 8 },
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   titleIcon: { paddingTop: 2 },
   title: { flex: 1, fontSize: 16, fontWeight: "600", lineHeight: 22 },
+  url: { flex: 1, fontSize: 14 },
+  meta: { flexDirection: "row", alignItems: "center", gap: 12 },
+  branches: { flexShrink: 1, fontFamily: mono, fontSize: 12 },
+  size: { fontFamily: mono, fontSize: 12 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
+  note: { fontSize: 13, lineHeight: 18 },
 })
