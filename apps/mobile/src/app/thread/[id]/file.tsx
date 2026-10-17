@@ -72,7 +72,7 @@ function FileBody({ thread, path, line }: { thread: Thread; path: string; line: 
     case "svg":
       return <SvgFile root={root} path={path} />
     case "markdown":
-      return <MarkdownFile root={root} path={path} line={line} />
+      return <MarkdownFile root={root} path={path} line={line} threadId={thread.id} />
     case "text":
       return <TextFile root={root} path={path} line={line} />
   }
@@ -148,7 +148,17 @@ const markdownViews: readonly Segment<MarkdownView>[] = [
   { value: "source", label: copy("mobile_files_source") },
 ]
 
-function MarkdownFile({ root, path, line }: { root: string; path: string; line: number | null }) {
+function MarkdownFile({
+  root,
+  path,
+  line,
+  threadId,
+}: {
+  root: string
+  path: string
+  line: number | null
+  threadId: string
+}) {
   const [view, setView] = useState<MarkdownView>(line === null ? "preview" : "source")
   return (
     <WithText root={root} path={path}>
@@ -164,7 +174,7 @@ function MarkdownFile({ root, path, line }: { root: string; path: string; line: 
           {view === "preview" ? (
             <ScrollView contentContainerStyle={styles.markdown}>
               <TruncatedNotice truncated={file.truncated} />
-              <Markdown text={file.content} root={root} />
+              <Markdown text={file.content} root={root} folder={dirname(path)} threadId={threadId} />
             </ScrollView>
           ) : (
             <CodeView content={file.content} line={line} truncated={file.truncated} />

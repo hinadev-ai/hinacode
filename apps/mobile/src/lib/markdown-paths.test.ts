@@ -62,6 +62,18 @@ describe("resolveImageSource", () => {
   })
 })
 
+describe("paths in a Markdown file", () => {
+  it("start from the file's folder", () => {
+    expect(resolveImageSource("./shot.png", root, "docs/guide")).toEqual({ kind: "file", root, path: "docs/guide/shot.png" })
+    expect(resolveFileLink("../README.md", root, "docs")).toBe("README.md")
+    expect(resolveFileLink("/abs/root/src/a.ts", root, "docs")).toBe("src/a.ts")
+  })
+
+  it("still cannot climb out of the root", () => {
+    expect(resolveFileLink("../../x.md", root, "docs")).toBeNull()
+  })
+})
+
 describe("resolveFileLink", () => {
   it("resolves a relative link to a path in the root", () => {
     expect(resolveFileLink("./README.md", root)).toBe("README.md")

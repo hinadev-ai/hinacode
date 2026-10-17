@@ -13,6 +13,7 @@ import { resolveFileLink } from "@/lib/markdown-paths"
 interface Context {
   readonly theme: Palette
   readonly root: string | null
+  readonly folder: string | undefined
   readonly threadId: string | undefined
 }
 
@@ -23,10 +24,21 @@ const HEADING_SIZES = [22, 20, 18, 16, 15, 15]
  * resolve against; null when it is not known, such as for a pull request body. File links open the file viewer
  * only when `threadId` is given.
  */
-export function Markdown({ text, root, threadId }: { text: string; root: string | null; threadId?: string }) {
+export function Markdown({
+  text,
+  root,
+  folder,
+  threadId,
+}: {
+  text: string
+  root: string | null
+  /** The folder a previewed file sits in, relative to `root`. Relative paths in a reply start at the root. */
+  folder?: string
+  threadId?: string
+}) {
   const theme = useTheme()
   const tokens = useMemo(() => Lexer.lex(text, { gfm: true }), [text])
-  return <View style={styles.blocks}>{blocks(tokens, { theme, root, threadId })}</View>
+  return <View style={styles.blocks}>{blocks(tokens, { theme, root, folder, threadId })}</View>
 }
 
 function blocks(tokens: readonly Token[], context: Context): ReactNode[] {
@@ -109,7 +121,7 @@ function Paragraph({
         </Text>
       )}
       {images.map((image, index) => (
-        <MarkdownImage key={index} src={image.href} alt={image.text} root={context.root} />
+        <MarkdownImage key={index} src={image.href} alt={image.text} root={context.root} folder={context.folder} />
       ))}
     </>
   )
@@ -154,13 +166,13 @@ function Inline({ token, context }: { token: MarkedToken; context: Context }) {
 }
 
 function Link({ token, context }: { token: Tokens.Link; context: Context }) {
-  const { theme, root, threadId } = context
+  const { theme, root, folder, threadId } = context
   const label = inline(
     token.tokens.filter((child) => child.type !== "image"),
     context,
   )
   const href = token.href
-  const filePath = threadId !== undefined ? resolveFileLink(href, root) : null
+  const filePath = threadId !== undefined ? resolveFileLink(href, root, folder) : null
   const onPress = /^(https?|mailto):/i.test(href)
     ? () => void openURL(href).catch(() => {})
     : filePath !== null && threadId !== undefined

@@ -29,8 +29,18 @@ type Loaded = { key: string; uri: string | null }
  * An image from a reply. A path loads from the thread's working folder through `fs.preview`, a URL loads directly,
  * and anything that cannot load shows its path instead of a broken frame.
  */
-export function MarkdownImage({ src, alt, root }: { src: string; alt: string; root: string | null }) {
-  const source = useMemo(() => resolveImageSource(src, root), [src, root])
+export function MarkdownImage({
+  src,
+  alt,
+  root,
+  folder,
+}: {
+  src: string
+  alt: string
+  root: string | null
+  folder?: string
+}) {
+  const source = useMemo(() => resolveImageSource(src, root, folder), [src, root, folder])
   const key = source.kind === "file" ? `${source.root}\0${source.path}` : ""
   const label = source.kind === "file" ? source.path : src
   const [loaded, setLoaded] = useState<Loaded | null>(null)
