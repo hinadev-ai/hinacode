@@ -32,8 +32,11 @@ export default function PullRequestScreen() {
   const reload = () => usePullRequests.getState().loadDetail(url, { force: true })
   const refresh = async () => {
     setRefreshing(true)
-    await reload()
-    setRefreshing(false)
+    try {
+      await reload()
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const number = remote?.status === "ready" ? String(remote.value.number) : pullRequestNumber(url)
