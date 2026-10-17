@@ -403,6 +403,8 @@ export const RpcMethods = {
     Schema.Struct({ threadId: Schema.String, paths: Schema.Array(Schema.String) }),
     Schema.Array(Schema.String),
   ),
+  /** Saves the VM's Chromium profile to this machine now. Fails unless this VM owns the shared profile. */
+  "vm.profile.save": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
 
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
@@ -588,6 +590,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.screen.send": "mutation",
   "vm.screen.close": "mutation",
   "vm.files.drop": "mutation",
+  "vm.profile.save": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",

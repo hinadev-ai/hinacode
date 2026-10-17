@@ -10,6 +10,7 @@ import {
   RiLoader4Line,
   RiPictureInPicture2Line,
   RiPictureInPictureExitLine,
+  RiSave3Line,
 } from "react-icons/ri"
 import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
@@ -197,6 +198,13 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
     <>
       <div className="flex min-h-10 shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
         <ControlStatus vm={vm} />
+        {vm.profile === "owner" && (
+          <IconAction
+            icon={RiSave3Line}
+            label={m.vm_profile_save()}
+            onClick={() => run(() => callPromise("vm.profile.save", { threadId }))}
+          />
+        )}
         {control}
         {!floating && (
           <>
@@ -216,6 +224,9 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
         <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
           {error}
         </p>
+      )}
+      {vm.profile === "copy" && (
+        <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_profile_copy_note()}</p>
       )}
       {floating ? (
         <Centered>

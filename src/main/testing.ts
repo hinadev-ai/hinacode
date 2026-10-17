@@ -63,7 +63,10 @@ export const makeTestAppLayer = (dbPath: string, { providers, events = makeEvent
     Files.layer,
   )
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const tinyVm = TinyVm.layer({ configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} })
+  const tinyVm = TinyVm.layer(
+    { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
+    join(dirname(dbPath), "tiny-vm"),
+  )
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
