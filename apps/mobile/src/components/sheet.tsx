@@ -1,14 +1,21 @@
 import type { ReactNode } from "react"
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
+import { duration, ease } from "@/constants/motion"
 import { Colors, HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
 const SHEET_PADDING = 8
 
-/** A full-height sheet that slides up over the thread, with a title and a close button. */
+const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
+
+/**
+ * A full-height sheet with a title and a close button. The scrim fades while the sheet rises; both fade out
+ * together, which is quicker than the way in.
+ */
 export function Sheet({
   title,
   open,
@@ -26,14 +33,15 @@ export function Sheet({
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   return (
-    <Modal transparent animationType="slide" visible={open} onRequestClose={onClose}>
+    <Modal transparent animationType="fade" visible={open} onRequestClose={onClose}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Close"
         onPress={onClose}
         style={[styles.backdrop, { height: insets.top + 12 }]}
       />
-      <View
+      <Animated.View
+        entering={rise}
         accessibilityViewIsModal
         style={[
           styles.sheet,
@@ -54,7 +62,7 @@ export function Sheet({
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sections}>
           {children}
         </ScrollView>
-      </View>
+      </Animated.View>
     </Modal>
   )
 }
