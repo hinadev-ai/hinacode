@@ -1,5 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { useHotkey } from "@tanstack/react-hotkeys"
+import { useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ComponentType } from "react"
 import type { IconType } from "react-icons"
@@ -114,6 +115,7 @@ const pages: ReadonlyArray<SettingsPage> = [
 export function SettingsRoute() {
   const { page: pageId } = useSearch({ from: "/settings" })
   const navigate = useNavigate({ from: "/settings" })
+  const { history } = useRouter()
   const environment = useSettingsEnvironment()
   const clouds = useClouds()
   const shown = pages.filter((candidate) => !(environment !== null && candidate.localOnly))
@@ -123,6 +125,18 @@ export function SettingsRoute() {
     shown.find((candidate) => candidate.id === pageId) ??
     shown.find((candidate) => candidate.scope === requested?.scope) ??
     shown[0]
+
+  useHotkey(
+    "Escape",
+    (event) => {
+      if (event.defaultPrevented) return
+      if (history.canGoBack()) history.back()
+      else void navigate({ to: "/" })
+    },
+    // A field keeps Escape, so a draft is never thrown away by leaving the page. Popups close on a document
+    // listener, and window hears the key after it, so an Escape that closed a popup arrives defaultPrevented.
+    { target: window, ignoreInputs: true, preventDefault: false, stopPropagation: false },
+  )
 
   const navItem = (item: SettingsPage) => (
     <li key={item.id}>
