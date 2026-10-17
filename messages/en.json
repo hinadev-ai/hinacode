@@ -1250,5 +1250,6 @@
   "mobile_notify_limited": "Stopped at the usage limit",
   "mobile_notify_open": "Open",
   "mobile_notify_dismiss": "Dismiss notification",
-  "mobile_notify_untitled": "Thread"
+  "mobile_notify_untitled": "Thread",
+  "mobile_notify_channel": "Threads"
 }

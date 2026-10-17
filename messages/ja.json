@@ -1205,5 +1205,6 @@
   "mobile_notify_limited": "利用上限に達したため停止しました",
   "mobile_notify_open": "開く",
   "mobile_notify_dismiss": "通知を閉じる",
-  "mobile_notify_untitled": "スレッド"
+  "mobile_notify_untitled": "スレッド",
+  "mobile_notify_channel": "スレッド"
 }

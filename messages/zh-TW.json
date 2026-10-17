@@ -1232,5 +1232,6 @@
   "mobile_notify_limited": "已達用量上限而停止",
   "mobile_notify_open": "開啟",
   "mobile_notify_dismiss": "關閉通知",
-  "mobile_notify_untitled": "對話串"
+  "mobile_notify_untitled": "對話串",
+  "mobile_notify_channel": "對話串"
 }
