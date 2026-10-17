@@ -56,10 +56,14 @@ const CLIENT_VERSION = "0.1.0"
  */
 const HOST_ARGS = ["serve", "--trust-workspace", "--sandbox-network", "enabled"]
 
+/**
+ * Full access is `onRequest` with every request allowed here. Under `allowAll` Muse refuses a command that asks to
+ * leave the sandbox, because only a human may allow that and `allowAll` turns asking off.
+ */
 const approvalModes: Record<AccessMode, ApprovalMode> = {
   supervised: "promptUnmatched",
   auto: "onRequest",
-  full: "allowAll",
+  full: "onRequest",
 }
 
 /** The size Claude Code accepts inline. A larger image goes in as a path, and Muse re-encodes it when it reads it. */
@@ -91,6 +95,7 @@ interface HostEntry {
 type Run = {
   /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
+  accessMode: AccessMode
   entry?: HostEntry
   sessionId?: string
   /** Outlives a stopped run, so a turn Muse starts after Stop can still be interrupted. */
@@ -108,7 +113,7 @@ interface Approval {
   /** The latest choices and current stage. */
   params: ApprovalRequestParams
   decision: ApprovalDecision | undefined
-  /** False when a session grant answered it without asking. */
+  /** False when full access or a session grant answered it without asking. */
   presented: boolean
   /** The stage answered last, so no stage is answered twice. */
   answered: number | undefined
@@ -382,7 +387,7 @@ const make = Effect.gen(function* () {
     Stream.callback<AgentEvent, AgentError>((out) =>
       Effect.gen(function* () {
         const emit = (event: AgentEvent) => Queue.offer(out, event)
-        const run: Run = { stop: yield* Deferred.make<void>() }
+        const run: Run = { stop: yield* Deferred.make<void>(), accessMode: input.accessMode }
         runs.set(input.threadId, run)
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => runs.get(input.threadId) === run && runs.delete(input.threadId)),
@@ -484,7 +489,7 @@ const make = Effect.gen(function* () {
                 answered: undefined,
               }
               pendingApprovals.set(params.approvalId, approval)
-              if (threadGrants.has(grantKey(sessionScope(params)))) {
+              if (run.accessMode === "full" || threadGrants.has(grantKey(sessionScope(params)))) {
                 approval.decision = "allow"
                 return yield* decide(approval, "allow")
               }
@@ -763,6 +768,7 @@ const make = Effect.gen(function* () {
   const setAccessMode = (threadId: string, accessMode: AccessMode) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
+      if (run !== undefined) run.accessMode = accessMode
       const loaded = run?.sessionId === undefined ? undefined : run.entry?.sessions.get(run.sessionId)
       if (!run?.entry || !run.sessionId || !loaded) return
       const mode = approvalModes[accessMode]

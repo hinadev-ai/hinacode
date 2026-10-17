@@ -91,7 +91,9 @@ Muse 1.4.7 rejects `skill` parts on `turn/steer` with `invalidParams`: `turn/ste
 | ----------- | ----------------- | --------------------------------------------------------------------------------------- |
 | Supervised  | `promptUnmatched` | Asks before every shell command, even `ls`, one stage per `&&` segment                  |
 | Auto        | `onRequest`       | Runs freely in the sandbox, network included; asks before writing outside the workspace |
-| Full access | `allowAll`        | Never asks                                                                              |
+| Full access | `onRequest`       | Like Auto, and hinacode allows every request without showing it                         |
+
+Full access cannot use `allowAll`. The `bash` tool tells the model to retry a command the sandbox blocked with `sandbox_permissions: "require_escalated"`, and only a human may allow that. `allowAll` turns asking off, so Muse 1.4.10 refuses the call with `tool denied: unsandboxed execution requires human approval, but approval prompts are disabled`. Under `onRequest` the same call arrives as an `approval/request` whose only allow choice is `allow_once`, and allowing it runs the command outside the sandbox.
 
 Host flags fix the sandbox posture for the host's lifetime. The approval mode belongs to each session, and `session/setApprovalMode` changes it live. hinacode starts the host with `--sandbox-network enabled`. Under the default `proxy-only`, `allowAll` never asks about a new host and blocks the connection instead, so `curl` gets `HTTP 000` and Full access could not reach the network. A second host with `--disable-sandbox` for Full access does not work either. A session stays loaded in the host that opened it, and any other host gets `sessionInUse` until the first one exits.
 
