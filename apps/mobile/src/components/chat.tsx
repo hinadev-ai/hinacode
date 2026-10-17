@@ -54,6 +54,11 @@ export function Chat({ thread }: { thread: Thread }) {
           data={newestFirst}
           keyExtractor={(message) => message.id}
           renderItem={({ item }) => <MessageView message={item} root={root} />}
+          // A rendered reply can hold hundreds of views, so the list mounts a screenful first and the rest in small
+          // batches instead of ten whole messages in one frame.
+          initialNumToRender={4}
+          maxToRenderPerBatch={2}
+          windowSize={9}
           contentContainerStyle={styles.transcript}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
