@@ -29,6 +29,15 @@ export function ExperimentalSettings() {
     }
   }
 
+  const setProfile = async (tinyVmProfile: boolean) => {
+    setError(null)
+    try {
+      await updateSettings({ experimental: { ...experimental, tinyVmProfile } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
   const setTemplate = async (tinyVmTemplate: string) => {
     setError(null)
     try {
@@ -55,6 +64,19 @@ export function ExperimentalSettings() {
         {experimental.tinyVm && <VmHost />}
         {experimental.tinyVm && (
           <VmTemplateField value={experimental.tinyVmTemplate} onChange={(name) => void setTemplate(name)} />
+        )}
+        {experimental.tinyVm && (
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="settings-experimental-tiny-vm-profile">{m.settings_tiny_vm_profile()}</FieldLabel>
+              <FieldDescription>{m.settings_tiny_vm_profile_hint()}</FieldDescription>
+            </FieldContent>
+            <Switch
+              id="settings-experimental-tiny-vm-profile"
+              checked={experimental.tinyVmProfile}
+              onCheckedChange={(checked) => void setProfile(checked)}
+            />
+          </Field>
         )}
         {error && <FieldError>{error}</FieldError>}
       </FieldGroup>

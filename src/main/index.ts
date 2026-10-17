@@ -1,5 +1,5 @@
 import { existsSync, renameSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { pathToFileURL } from "node:url"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { app, BrowserWindow, Menu, net, protocol, session, shell } from "electron"
@@ -208,7 +208,7 @@ const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env })
+  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(dirname(dbPath), "tiny-vm"))
   const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess, tinyVm).pipe(
     Layer.provide(domain),
   )

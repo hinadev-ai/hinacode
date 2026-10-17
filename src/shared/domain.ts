@@ -401,6 +401,11 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVm: Schema.Boolean,
   /** The sbx template new tiny VMs restore from. The start view can override it for one VM. */
   tinyVmTemplate: Schema.String,
+  /**
+   * Keeps one Chromium profile on this machine and syncs it into every new tiny VM, so browser logins survive
+   * VM restarts and carry across threads. Only one running VM saves it back; the others get a copy.
+   */
+  tinyVmProfile: Schema.Boolean,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -475,7 +480,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default" },
+  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false },
   worktreeRoot: null,
 }
 
@@ -508,6 +513,13 @@ export type Environments = typeof Environments.Type
 export const VmControl = Schema.Literals(["agent", "user"])
 export type VmControl = typeof VmControl.Type
 
+/**
+ * How a running VM relates to the shared Chromium profile. `owner` saves it back, `copy` restored it while
+ * another thread's VM owns saving, and `off` means the profile is disabled or could not be restored.
+ */
+export const VmProfile = Schema.Literals(["off", "owner", "copy"])
+export type VmProfile = typeof VmProfile.Type
+
 /** A thread's tiny VM: an sbx sandbox hinacode created for it. */
 export const ThreadVm = Schema.Union([
   Schema.Struct({ status: Schema.Literal("none") }),
@@ -517,12 +529,14 @@ export const ThreadVm = Schema.Union([
     sandboxId: Schema.String,
     /** The sbx template this sandbox was restored from. */
     template: Schema.String,
+    profile: VmProfile,
     control: Schema.Literal("agent"),
   }),
   Schema.Struct({
     status: Schema.Literal("running"),
     sandboxId: Schema.String,
     template: Schema.String,
+    profile: VmProfile,
     control: Schema.Literal("user"),
     /** An agent pointer or keyboard tool is waiting for the user to hand control back. */
     agentWaiting: Schema.Boolean,
