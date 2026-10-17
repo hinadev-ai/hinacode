@@ -10,7 +10,10 @@ import { useHighlight } from "@/lib/highlight"
 
 const COPIED_MS = 1500
 
-/** A fenced code block: its language, a copy button, and the highlighted code scrolling sideways. */
+/**
+ * A fenced code block: its language, a copy button, and the highlighted code scrolling sideways. Tabs draw as two
+ * spaces, since a phone has no width to spare; Copy still takes the original text.
+ */
 export function CodeBlock({ code, language }: { code: string; language: string }) {
   const theme = useTheme()
   const colors = SyntaxColors[useScheme()]
@@ -57,7 +60,7 @@ export function CodeBlock({ code, language }: { code: string; language: string }
               key={span.start}
               style={{ color: colors[span.type], fontStyle: span.type === "comment" ? "italic" : "normal" }}
             >
-              {code.slice(span.start, span.end)}
+              {code.slice(span.start, span.end).replace(/\t/g, "  ")}
             </Text>
           ))}
         </Text>
