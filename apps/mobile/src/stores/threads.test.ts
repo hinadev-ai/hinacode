@@ -97,6 +97,23 @@ it("keeps the threads on screen when a reload fails", async () => {
   expect(useThreads.getState()).toMatchObject({ status: "error", error: "Timeout" })
 })
 
+it("reads everything again when a thread arrives from a project the phone does not know", async () => {
+  const first = useThreads.getState().load()
+  answer([thread("a", EARLY)])
+  await first
+
+  useThreads.getState().upsert({ ...thread("b", LATE), projectId: "added-on-desktop" })
+  expect(calls.map((pending) => pending.method)).toEqual(["projects.list", "worktrees.list", "threads.list"])
+})
+
+it("keeps a worktree pushed while the worktrees are read", async () => {
+  const loading = useThreads.getState().load()
+  useThreads.getState().upsertWorktree({ id: "w", path: "/repo-w", status: "ready" } as Worktree)
+  answer([thread("a", EARLY)])
+  await loading
+  expect(useThreads.getState().worktrees["w"]?.path).toBe("/repo-w")
+})
+
 describe("lists", () => {
   const at = (minute: number) => `2026-10-16T00:${String(minute).padStart(2, "0")}:00.000Z`
   const row = (id: string, fields: Partial<Thread> = {}) =>
