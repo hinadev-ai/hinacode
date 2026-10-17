@@ -11,6 +11,12 @@ import { HAND_BACK_CHORD, Spinner, vmScreenId } from "./TinyVmView.tsx"
 
 type Connection = "connecting" | "connected" | "lost"
 
+const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
+
+const onFileDragOver = (event: DragEvent<HTMLElement>) => {
+  if (carriesFiles(event)) event.preventDefault()
+}
+
 interface TinyVmScreenProps {
   readonly threadId: string
   readonly control: VmControl
@@ -49,7 +55,6 @@ export default function TinyVmScreen({
   const [fullscreen, setFullscreen] = useState(false)
   const [fileDrag, setFileDrag] = useState(false)
 
-  const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
   const onDragEnter = (event: DragEvent<HTMLElement>) => {
     if (!carriesFiles(event)) return
     dragDepth.current += 1
@@ -62,9 +67,6 @@ export default function TinyVmScreen({
       dragDepth.current = 0
       setFileDrag(false)
     }
-  }
-  const onDragOver = (event: DragEvent<HTMLElement>) => {
-    if (carriesFiles(event)) event.preventDefault()
   }
   const onDrop = (event: DragEvent<HTMLElement>) => {
     if (!carriesFiles(event)) return
@@ -124,13 +126,14 @@ export default function TinyVmScreen({
   }
 
   return (
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- the section holds the noVNC canvas the user drives with mouse and keyboard; dropping files on it copies them into the VM.
     <section
       id={id}
       aria-label={m.vm_screen()}
       onKeyDownCapture={onKeyDownCapture}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
-      onDragOver={onDragOver}
+      onDragOver={onFileDragOver}
       onDrop={onDrop}
       className={cn(
         "relative aspect-[16/10] w-full overflow-hidden bg-muted [&:fullscreen]:rounded-none",

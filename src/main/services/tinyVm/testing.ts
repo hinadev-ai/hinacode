@@ -135,6 +135,8 @@ export interface FakeSbx {
   readonly expire: (id: string) => void
 }
 
+const fileKey = (sandboxId: string, path: string) => `${sandboxId}:${path}`
+
 const readBody = (request: IncomingMessage) =>
   new Promise<Buffer>((resolve, reject) => {
     const chunks: Array<Buffer> = []
@@ -157,7 +159,6 @@ export const startFakeSbx = Effect.acquireRelease(
     const inputs: Array<FakeSbx["inputs"][number]> = []
     const uploads: Array<FakeSbx["uploads"][number]> = []
     const files = new Map<string, Buffer>()
-    const fileKey = (sandboxId: string, path: string) => `${sandboxId}:${path}`
     const sockets = new Set<Socket>()
     let created = 0
 

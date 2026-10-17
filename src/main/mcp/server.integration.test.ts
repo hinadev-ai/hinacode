@@ -41,10 +41,10 @@ import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 
 vi.mock("electron", async () => {
-  const { mkdtempSync } = await import("node:fs")
-  const { tmpdir } = await import("node:os")
-  const { join } = await import("node:path")
-  const userData = mkdtempSync(join(tmpdir(), "hinacode-mcp-"))
+  const fs = await import("node:fs")
+  const os = await import("node:os")
+  const path = await import("node:path")
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "hinacode-mcp-"))
   return {
     app: { getPath: () => userData },
     BrowserWindow: {},

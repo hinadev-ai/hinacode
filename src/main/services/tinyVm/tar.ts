@@ -115,7 +115,7 @@ export const readTree = (topPath: string, maxBytes: number): Effect.Effect<Reado
         } else if (stats.isDirectory()) {
           entries.push({ type: "dir", path: archivePath, mode: stats.mode, mtime })
           const names = yield* Effect.tryPromise({ try: () => readdir(path), catch: toTarError(path) })
-          for (const name of names.sort()) yield* walk(join(path, name), `${archivePath}/${name}`)
+          for (const name of names.toSorted()) yield* walk(join(path, name), `${archivePath}/${name}`)
         } else if (stats.isFile()) {
           total += stats.size
           if (total > maxBytes)

@@ -153,6 +153,9 @@ const readBody = (response: Response) =>
     catch: (cause) => new SbxError({ message: `The connection to sbx broke: ${describeCause(cause)}` }),
   })
 
+const filesPath = (id: string, guestPath: string) =>
+  `/v1/sandboxes/${encodeURIComponent(id)}/files?path=${encodeURIComponent(guestPath)}`
+
 /** The sbxd HTTP API, as far as hinacode uses it. */
 export const sbxClient = (login: SbxLogin) => {
   const base = login.url.replace(/\/+$/, "")
@@ -225,9 +228,6 @@ export const sbxClient = (login: SbxLogin) => {
       Effect.asVoid,
       within(REQUEST_TIMEOUT_SECONDS),
     )
-
-  const filesPath = (id: string, guestPath: string) =>
-    `/v1/sandboxes/${encodeURIComponent(id)}/files?path=${encodeURIComponent(guestPath)}`
 
   /**
    * Extracts a tar archive holding one top-level entry into the guest at `guestPath`, which the guest resolves
