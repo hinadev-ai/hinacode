@@ -59,6 +59,14 @@ it("replaces a thread's links with a push, and keeps a push that lands during a 
   expect(usePullRequests.getState().linksByThread.t2).toEqual([])
 })
 
+it("keeps a push that lands while one thread's links are read", async () => {
+  const loading = usePullRequests.getState().loadThread("t1")
+  usePullRequests.getState().replace("t1", [link("a", "t1", URL_A), link("b", "t1", URL_B)])
+  await answer("pullRequests.list", [link("a", "t1", URL_A)])
+  await loading
+  expect(usePullRequests.getState().linksByThread["t1"]?.map((existing) => existing.url)).toEqual([URL_A, URL_B])
+})
+
 it("takes a watched link's summary from its snapshot without asking GitHub", () => {
   usePullRequests.getState().replace("t1", [link("1", "t1", URL_A, true)])
   vi.setSystemTime(SUMMARY_MAX_AGE * 2)

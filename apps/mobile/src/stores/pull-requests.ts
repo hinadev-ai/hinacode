@@ -60,6 +60,8 @@ const snapshotSummaries = (links: readonly PullRequestLink[]) => {
 
 export const usePullRequests = create<PullRequestsState>()((set, get) => {
   let pushedDuringLoad: Set<string> | null = null
+  /** Bumped by every list a thread receives, so a slower read cannot replace a newer push. */
+  const versions = new Map<string, number>()
   const inflight = { pullRequests: new Map<string, Promise<void>>(), details: new Map<string, Promise<void>>() }
 
   const writeSummary = (url: string, summary: Remote<PullRequestSummary>) =>
@@ -128,10 +130,12 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
       }
     },
     loadThread: async (threadId) => {
+      const version = versions.get(threadId)
       const links = await call("pullRequests.list", { threadId })
-      get().replace(threadId, links)
+      if (versions.get(threadId) === version) get().replace(threadId, links)
     },
     replace: (threadId, links) => {
+      versions.set(threadId, (versions.get(threadId) ?? 0) + 1)
       pushedDuringLoad?.add(threadId)
       set((state) => ({
         linksByThread: { ...state.linksByThread, [threadId]: links },
