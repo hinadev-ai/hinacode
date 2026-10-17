@@ -7,6 +7,7 @@ import { IconButton } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
 import { Colors, HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
+import { copy } from "@/lib/copy"
 
 const SHEET_PADDING = 8
 
@@ -36,7 +37,7 @@ export function Sheet({
     <Modal transparent animationType="fade" visible={open} onRequestClose={onClose}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Close"
+        accessibilityLabel={copy("mobile_sheet_close")}
         onPress={onClose}
         style={[styles.backdrop, { height: insets.top + 12 }]}
       />
@@ -56,7 +57,7 @@ export function Sheet({
           <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
             {title}
           </Text>
-          <IconButton icon="RiCloseLine" accessibilityLabel="Close" onPress={onClose} />
+          <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
         </View>
         {header}
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sections}>
@@ -84,6 +85,7 @@ export function OptionRow({
   color,
   monospace = false,
   selected,
+  disabled = false,
   onPress,
 }: {
   label: string
@@ -92,16 +94,18 @@ export function OptionRow({
   color?: string
   monospace?: boolean
   selected: boolean
+  disabled?: boolean
   onPress: () => void
 }) {
   const theme = useTheme()
-  const foreground = color ?? theme.text
+  const foreground = disabled ? theme.textMuted : (color ?? theme.text)
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
     >

@@ -16,10 +16,10 @@ import { useThreads } from "@/stores/threads"
 type Tab = "chat" | "files" | "prs" | "terminal"
 
 const tabs: readonly Segment<Tab>[] = [
-  { value: "chat", label: "Chat" },
-  { value: "files", label: "Files" },
-  { value: "prs", label: "PRs" },
-  { value: "terminal", label: "Terminal" },
+  { value: "chat", label: copy("mobile_thread_tab_chat") },
+  { value: "files", label: copy("mobile_thread_tab_files") },
+  { value: "prs", label: copy("mobile_thread_tab_prs") },
+  { value: "terminal", label: copy("mobile_thread_tab_terminal") },
 ]
 
 export default function ThreadScreen() {
@@ -45,12 +45,12 @@ export default function ThreadScreen() {
         <IconButton
           testID="back-button"
           icon="RiArrowLeftSLine"
-          accessibilityLabel="Back"
+          accessibilityLabel={copy("mobile_thread_back")}
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
         />
         <View style={styles.titleColumn}>
           <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-            {thread?.title || "Thread"}
+            {thread?.title || copy("mobile_notify_untitled")}
           </Text>
           {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
         </View>
@@ -62,7 +62,7 @@ export default function ThreadScreen() {
         )}
       </View>
       <SegmentedControl
-        accessibilityLabel="Thread views"
+        accessibilityLabel={copy("mobile_thread_tabs")}
         segments={tabs}
         value={tab}
         onChange={select}
@@ -76,7 +76,7 @@ export default function ThreadScreen() {
       {thread === undefined ? (
         <View style={styles.missing}>
           <Text style={{ color: theme.textMuted, fontSize: 15 }}>
-            {loaded ? "This thread no longer exists." : "Loading thread"}
+            {loaded ? copy("mobile_thread_missing") : copy("mobile_thread_loading")}
           </Text>
         </View>
       ) : (

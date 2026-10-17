@@ -1,13 +1,13 @@
-import type { ProviderId } from "@shared/agent.ts"
 import type { Thread } from "@shared/domain.ts"
 import { router } from "expo-router"
 import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated"
-import { Icon, type IconName } from "@/components/icon"
+import { Icon } from "@/components/icon"
 import { StatusDot } from "@/components/motion"
 import { PullRequestBadge } from "@/components/pull-request-badge"
 import { type ThreadActionName, ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
+import { providerMark } from "@/components/ui"
 import { duration } from "@/constants/motion"
 import { HIT, radius } from "@/constants/theme"
 import { threadStatus } from "@/constants/thread-status"
@@ -15,12 +15,6 @@ import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { relativeTime } from "@/lib/relative-time"
 import { useThreads } from "@/stores/threads"
-
-const providerMarks: Record<ProviderId, IconName> = {
-  claude: "RiClaudeFill",
-  codex: "RiOpenaiFill",
-  muse: "RiMetaFill",
-}
 
 export const rowEntering = FadeIn.duration(duration.fast)
 export const rowExiting = FadeOut.duration(duration.fast)
@@ -93,7 +87,7 @@ export function ThreadRow({
             {title}
           </Text>
           <View style={styles.meta}>
-            <Icon name={providerMarks[thread.provider]} size={13} color={theme.textMuted} />
+            <Icon name={providerMark[thread.provider]} size={13} color={theme.textMuted} />
             {showProject && projectName !== undefined && (
               <Text numberOfLines={1} style={[styles.metaText, styles.project, { color: theme.textMuted }]}>
                 {projectName}

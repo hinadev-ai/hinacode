@@ -6,6 +6,7 @@ import { ConnectionProvider } from "@/components/connection-provider"
 import { Notifier } from "@/components/notifier"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { usePreferences } from "@/stores/preferences"
 
 export default function RootLayout() {
@@ -47,15 +48,15 @@ function Routes() {
   return (
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Protected guard={paired}>
-        <Stack.Screen name="index" options={{ title: "Threads" }} />
+        <Stack.Screen name="index" options={{ title: copy("mobile_home_title") }} />
         <Stack.Screen name="thread/[id]/index" options={{ title: "" }} />
         <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
         <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
-        <Stack.Screen name="settings" options={{ title: "Settings" }} />
-        <Stack.Screen name="project/new" options={{ title: "Add project", presentation: "modal" }} />
+        <Stack.Screen name="settings" options={{ title: copy("mobile_settings_title") }} />
+        <Stack.Screen name="project/new" options={{ title: copy("mobile_project_new_title"), presentation: "modal" }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
-        <Stack.Screen name="connect" options={{ title: "Pair with desktop" }} />
+        <Stack.Screen name="connect" options={{ title: copy("mobile_connect_title") }} />
       </Stack.Protected>
     </Stack>
   )

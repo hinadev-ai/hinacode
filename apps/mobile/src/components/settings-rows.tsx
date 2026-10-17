@@ -1,6 +1,7 @@
 import { Children, Fragment, type ReactNode } from "react"
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native"
+import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
+import { Toggle } from "@/components/ui"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
@@ -102,17 +103,15 @@ export function SwitchRow({
   disabled?: boolean
   onChange: (value: boolean) => void
 }) {
-  const theme = useTheme()
   return (
     <SettingsRow icon={icon} label={label} disabled={disabled}>
-      <Switch
+      <Toggle
         accessibilityRole="switch"
         accessibilityLabel={label}
         accessibilityState={{ checked: value, disabled }}
         value={value}
         disabled={disabled}
         onValueChange={onChange}
-        trackColor={{ true: theme.primary, false: theme.border }}
       />
     </SettingsRow>
   )
