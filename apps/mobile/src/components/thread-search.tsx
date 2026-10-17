@@ -1,8 +1,7 @@
 import type { ThreadSearchHit } from "@shared/domain.ts"
 import { useEffect, useState } from "react"
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
-import { Icon } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
 import {
   type GroupPosition,
@@ -13,8 +12,8 @@ import {
   ThreadRow,
 } from "@/components/thread-row"
 import { EmptyState, Notice } from "@/components/ui"
-import { cssEase, duration } from "@/constants/motion"
-import { HIT, radius } from "@/constants/theme"
+import { duration } from "@/constants/motion"
+import { radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -26,50 +25,6 @@ const THREAD_LIMIT = 20
 const MESSAGE_LIMIT = 30
 const MIN_MESSAGE_QUERY = 2
 const DEBOUNCE_MS = 150
-
-export function SearchField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const theme = useTheme()
-  const filled = value !== ""
-  return (
-    <View style={[styles.field, { backgroundColor: theme.surface }]}>
-      <Icon name="RiSearchLine" size={18} color={theme.textMuted} />
-      <TextInput
-        testID="thread-search"
-        accessibilityLabel={copy("mobile_search_placeholder")}
-        value={value}
-        onChangeText={onChange}
-        placeholder={copy("mobile_search_placeholder")}
-        placeholderTextColor={theme.textMuted}
-        returnKeyType="search"
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={[styles.input, { color: theme.text }]}
-      />
-      <Animated.View
-        style={{
-          pointerEvents: filled ? "auto" : "none",
-          opacity: filled ? 1 : 0,
-          transitionProperty: "opacity",
-          transitionDuration: duration.fast,
-          transitionTimingFunction: cssEase.out,
-        }}
-      >
-        <Pressable
-          testID="thread-search-clear"
-          accessibilityRole="button"
-          accessibilityLabel={copy("mobile_search_clear")}
-          accessibilityElementsHidden={!filled}
-          importantForAccessibility={filled ? "auto" : "no-hide-descendants"}
-          hitSlop={8}
-          onPress={() => onChange("")}
-          style={styles.clear}
-        >
-          <Icon name="RiCloseCircleFill" size={18} color={theme.textMuted} />
-        </Pressable>
-      </Animated.View>
-    </View>
-  )
-}
 
 type MessageSearch =
   | { readonly state: "idle" }
@@ -245,17 +200,6 @@ function MessageHitRow({ hit, query, position }: { hit: ThreadSearchHit; query: 
 }
 
 const styles = StyleSheet.create({
-  field: {
-    minHeight: HIT,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingLeft: 12,
-    paddingRight: 8,
-    borderRadius: radius.md,
-  },
-  input: { flex: 1, fontSize: 16, paddingVertical: 10 },
-  clear: { padding: 4 },
   list: { paddingHorizontal: 16, paddingBottom: 32 },
   status: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 20 },
   statusText: { fontSize: 13 },
