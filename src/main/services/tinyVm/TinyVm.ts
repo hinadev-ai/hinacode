@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import type { Socket } from "node:net"
 import { join } from "node:path"
-import { Context, Deferred, Effect, Exit, Layer, Schema, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Layer, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
 import type { ThreadVm, VmControl, VmHostStatus, VmProfile } from "../../../shared/domain.ts"
 import { Events } from "../Events.ts"
@@ -171,6 +171,7 @@ const make = (source: LoginSource, profileDir?: string) =>
     let profileEnabled = experimental.tinyVmProfile && profileDir !== undefined
     /** The thread whose running VM saves the shared Chromium profile back; everyone else holds a copy. */
     let profileOwner: string | undefined
+    const profileSaves = yield* Semaphore.make(1)
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
@@ -290,25 +291,29 @@ const make = (source: LoginSource, profileDir?: string) =>
       })
 
     const saveFromSandbox = (sbx: SbxClient, sandboxId: string, template: string, quiesce: boolean) =>
-      Effect.gen(function* () {
-        const built = yield* sbx
-          .exec(sandboxId, { script: profileSaveScript(quiesce), timeoutSeconds: PROFILE_SCRIPT_TIMEOUT_SECONDS })
-          .pipe(Effect.mapError(toVmError))
-        if (built.exitCode === PROFILE_ABSENT_EXIT) return
-        if (built.exitCode !== 0)
-          return yield* new VmError({
-            message: `Saving the browser profile failed in the VM: ${Buffer.from(built.stderr).toString().trim()}`,
+      profileSaves.withPermit(
+        Effect.gen(function* () {
+          const built = yield* sbx
+            .exec(sandboxId, { script: profileSaveScript(quiesce), timeoutSeconds: PROFILE_SCRIPT_TIMEOUT_SECONDS })
+            .pipe(Effect.mapError(toVmError))
+          if (built.exitCode === PROFILE_ABSENT_EXIT) return
+          if (built.exitCode !== 0)
+            return yield* new VmError({
+              message: `Saving the browser profile failed in the VM: ${Buffer.from(built.stderr).toString().trim()}`,
+            })
+          const wrapped = yield* sbx
+            .getFiles(sandboxId, `/tmp/${PROFILE_GUEST_ARCHIVE}`)
+            .pipe(Effect.mapError(toVmError))
+          const entries = yield* Effect.try({
+            try: () => decodeTar(wrapped),
+            catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
           })
-        const wrapped = yield* sbx.getFiles(sandboxId, `/tmp/${PROFILE_GUEST_ARCHIVE}`).pipe(Effect.mapError(toVmError))
-        const entries = yield* Effect.try({
-          try: () => decodeTar(wrapped),
-          catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
-        })
-        const entry = entries.find((candidate) => candidate.type === "file")
-        if (entry === undefined || entry.type !== "file")
-          return yield* new VmError({ message: "The VM did not return a browser profile archive" })
-        yield* writeStoredProfile(entry.data, template)
-      })
+          const entry = entries.find((candidate) => candidate.type === "file")
+          if (entry === undefined || entry.type !== "file")
+            return yield* new VmError({ message: "The VM did not return a browser profile archive" })
+          yield* writeStoredProfile(entry.data, template)
+        }),
+      )
 
     const saveProfile = (threadId: string) =>
       Effect.gen(function* () {
@@ -724,10 +729,7 @@ const make = (source: LoginSource, profileDir?: string) =>
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         screens.forEach((screen) => screen.socket.destroy())
-        const running = [...vms.values()].flatMap((vm) => (vm.status === "running" ? [vm.sandboxId] : []))
-        if (running.length === 0) return
-        const sbx = yield* client
-        yield* Effect.forEach(running, (id) => Effect.ignore(sbx.remove(id)), { concurrency: "unbounded" })
+        yield* stopAll
       }).pipe(Effect.ignore, Effect.timeoutOrElse({ duration: "3 seconds", orElse: () => Effect.void })),
     )
 
