@@ -14,14 +14,15 @@ const SHEET_PADDING = 8
 const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
 
 /**
- * A full-height sheet with a title and a close button. The scrim fades while the sheet rises; both fade out
- * together, which is quicker than the way in.
+ * A sheet with a title and a close button, full height by default or as tall as its content with `fit`. The scrim
+ * fades while the sheet rises; both fade out together, which is quicker than the way in.
  */
 export function Sheet({
   title,
   open,
   onClose,
   header,
+  fit = false,
   children,
 }: {
   title: string
@@ -29,6 +30,8 @@ export function Sheet({
   onClose: () => void
   /** Shown under the title and above the scrolling content, such as a search field. */
   header?: ReactNode
+  /** Sizes the sheet to a short list instead of filling the screen. */
+  fit?: boolean
   children: ReactNode
 }) {
   const theme = useTheme()
@@ -39,13 +42,14 @@ export function Sheet({
         accessibilityRole="button"
         accessibilityLabel={copy("mobile_sheet_close")}
         onPress={onClose}
-        style={[styles.backdrop, { height: insets.top + 12 }]}
+        style={[styles.backdrop, fit ? styles.fill : { height: insets.top + 12 }]}
       />
       <Animated.View
         entering={rise}
         accessibilityViewIsModal
         style={[
           styles.sheet,
+          fit ? styles.fitSheet : styles.fill,
           {
             paddingBottom: SHEET_PADDING + insets.bottom,
             backgroundColor: theme.background,
@@ -60,7 +64,11 @@ export function Sheet({
           <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
         </View>
         {header}
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sections}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={fit && styles.fitScroll}
+          contentContainerStyle={styles.sections}
+        >
           {children}
         </ScrollView>
       </Animated.View>
@@ -148,8 +156,10 @@ const styles = StyleSheet.create({
   ...sheetStyles,
   // The scrim is dark in both themes, so it borrows the dark palette's background.
   backdrop: { backgroundColor: Colors.dark.background, opacity: 0.5 },
+  fill: { flex: 1 },
+  fitSheet: { maxHeight: "85%" },
+  fitScroll: { flexGrow: 0 },
   sheet: {
-    flex: 1,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
