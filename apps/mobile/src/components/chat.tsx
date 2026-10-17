@@ -89,6 +89,9 @@ function MessageView({ message, root }: { message: Message; root: string | null 
   )
 }
 
+/** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
+const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
+
 /** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
 const isActivity = (part: MessagePart) =>
   part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
@@ -109,7 +112,8 @@ function formatWorkDuration(ms: number) {
 function AssistantMessage({ message, root }: { message: Message; root: string | null }) {
   const theme = useTheme()
   const [activityShown, setActivityShown] = useState(false)
-  const { parts, completedAt } = message
+  const parts = message.parts.filter(isOwnPart)
+  const { completedAt } = message
   const streaming = completedAt === null
   const durationMs = completedAt === null ? NaN : Date.parse(completedAt) - Date.parse(message.createdAt)
   const folded = durationMs >= 0
