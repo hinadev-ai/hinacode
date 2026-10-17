@@ -51,7 +51,7 @@ Each thread has an `accessMode` (migration `0005`), picked in the composer's `Ac
 | Full       | `bypassPermissions`                                    | `never`, `danger-full-access`   |
 
 - `models.list` reports `autoMode` per model (Claude's `supportsAutoMode`), so the Auto item says what it will actually do.
-- Claude sessions always start with `allowDangerouslySkipPermissions`, which only makes `bypassPermissions` reachable. The permission mode decides what runs unasked. That lets a live session move to full access with `setPermissionMode` instead of restarting. A change reaches a running Claude turn at once, and is applied before each turn otherwise.
+- Claude sessions always start with `allowDangerouslySkipPermissions`, which only makes `bypassPermissions` reachable. The permission mode decides what runs unasked. That lets a live session move to full access with `setPermissionMode` instead of restarting. A change reaches a running Claude turn at once, and is applied before each turn otherwise. No agent answers an approval that was already waiting when its mode changes, so switching to full access allows it.
 - Codex gets the mode on `thread/start` and `thread/resume`, and again on `turn/start`, since resuming a loaded thread ignores overrides. `turn/start` replaces the sandbox only when its kind changes: the replacement is a whole policy and would drop the user's `sandbox_workspace_write` config.
 - Full access uses the destructive color in the trigger. Amber means a thread is waiting on you, and a full-access thread never waits; the risk is that destructive commands run without a check.
 
