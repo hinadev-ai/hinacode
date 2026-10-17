@@ -48,7 +48,7 @@ export function NewThreadSheet({ open, onClose }: { open: boolean; onClose: () =
   }
 
   return (
-    <Sheet title={copy("mobile_home_new_thread_title")} open={open} onClose={close}>
+    <Sheet title={copy("mobile_home_new_thread_title")} open={open} onClose={close} fit>
       {error !== null && <Notice text={error} tone="danger" />}
       <View>
         {ordered.map((project) => (
