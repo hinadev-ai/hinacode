@@ -31,7 +31,7 @@ import * as PullRequests from "../services/PullRequests.ts"
 import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
-import { decodeTar } from "../services/tinyVm/tar.ts"
+import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
 import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
@@ -117,10 +117,11 @@ const core = Layer.mergeAll(
   secretsLayer,
   credentialsLayer,
 )
+const vmProfileDir = mkdtempSync(join(tmpdir(), "kk-vm-profile-"))
 const tinyVm = Layer.unwrap(
   Effect.gen(function* () {
     const fake = yield* FakeSbxServer
-    return tinyVmLayer({ configPath: fake.configPath, env: {} })
+    return tinyVmLayer({ configPath: fake.configPath, env: {} }, vmProfileDir)
   }),
 ).pipe(Layer.provideMerge(fakeSbxLayer))
 const domain = Layer.mergeAll(core, PullRequests.layer.pipe(Layer.provide(core)), tinyVm.pipe(Layer.provide(core)))
@@ -525,11 +526,11 @@ layer(testLayer)("thread controls", (it) => {
   )
 })
 
-const setTinyVm = (on: boolean) =>
+const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = false) =>
   Effect.gen(function* () {
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
-    yield* settings.set({ experimental: { tinyVm: on } })
+    yield* settings.set({ experimental: { tinyVm: on, tinyVmTemplate, tinyVmProfile } })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
 
@@ -655,6 +656,85 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.text).toContain("echo hi")
       const background = yield* callAs(connection, "vm_exec", { command: "chromium", background: true })
       expect(background.text).toBe("Started in the background as pid 4242. Output goes to /tmp/sbx-4242.log.")
+    }),
+  )
+
+  it.effect("a VM starts from the configured template, and the host names its templates", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a, b } = yield* Seeded
+      yield* setTinyVm(true, "browser")
+      yield* vm.stop(a)
+      const before = fake.createdTemplates.length
+      const started = yield* vm.start(a)
+      expect(started).toMatchObject({ status: "running", template: "browser" })
+      expect(fake.createdTemplates.slice(before)).toStrictEqual(["browser"])
+
+      const overridden = yield* vm.start(b, "default")
+      expect(overridden).toMatchObject({ status: "running", template: "default" })
+      expect(fake.createdTemplates.at(-1)).toBe("default")
+
+      const host = yield* vm.host
+      expect(host).toMatchObject({ status: "connected" })
+      if (host.status === "connected") {
+        expect(host.templates).toStrictEqual([
+          { name: "default", cpus: 2, memoryMiB: 8192 },
+          { name: "browser", cpus: 2, memoryMiB: 2048 },
+        ])
+      }
+      yield* vm.stop(b)
+      yield* setTinyVm(true)
+    }),
+  )
+
+  it.effect("the stored browser profile restores into a fresh VM and only its owner saves it back", () =>
+    Effect.gen(function* () {
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a, b } = yield* Seeded
+      const storedPath = join(vmProfileDir, "chromium-profile.tgz")
+      writeFileSync(storedPath, "profile-bytes-1")
+      yield* setTinyVm(true, "default", true)
+      yield* vm.stop(a)
+      yield* vm.stop(b)
+      const uploadsBefore = fake.uploads.length
+
+      const started = yield* vm.start(a)
+      expect(started).toMatchObject({ status: "running", profile: "owner" })
+      const restore = fake.uploads.at(-1)!
+      expect(fake.uploads.length).toBe(uploadsBefore + 1)
+      expect(restore.path).toBe("/tmp")
+      const wrapped = decodeTar(restore.bytes)[0]
+      expect(wrapped?.type).toBe("file")
+      if (wrapped?.type === "file") expect(new TextDecoder().decode(wrapped.data)).toBe("profile-bytes-1")
+      expect(fake.execs.some((exec) => exec.script.includes("tar -xzf /tmp/hinacode-chromium-profile.tgz"))).toBe(true)
+
+      const second = yield* vm.start(b)
+      expect(second).toMatchObject({ status: "running", profile: "copy" })
+      const refused = yield* Effect.flip(vm.saveProfile(b))
+      expect(refused.message).toContain("Another thread")
+
+      if (started.status !== "running") throw new Error(`VM is ${started.status}`)
+      fake.seedFile(
+        started.sandboxId,
+        "/tmp/hinacode-chromium-profile.tgz",
+        encodeTar([
+          {
+            type: "file",
+            path: "hinacode-chromium-profile.tgz",
+            data: new TextEncoder().encode("profile-bytes-2"),
+            mode: 0o600,
+            mtime: 1700000000,
+          },
+        ]),
+      )
+      yield* vm.saveProfile(a)
+      expect(yield* Effect.promise(() => readFile(storedPath, "utf8"))).toBe("profile-bytes-2")
+
+      yield* vm.stop(b)
+      yield* vm.stop(a)
+      yield* setTinyVm(true)
     }),
   )
 

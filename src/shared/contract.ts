@@ -377,8 +377,11 @@ export const RpcMethods = {
   ),
 
   "vm.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
-  /** Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. */
-  "vm.start": rpc(Schema.Struct({ threadId: Schema.String }), ThreadVm),
+  /**
+   * Creates the thread's tiny VM unless it has one. Resolves once it runs or fails. `template` overrides the
+   * configured template for this one VM.
+   */
+  "vm.start": rpc(Schema.Struct({ threadId: Schema.String, template: Schema.optional(Schema.String) }), ThreadVm),
   /** Destroys the thread's tiny VM. */
   "vm.stop": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   /** Hands the pointer and keyboard to the user, or back to the agent. */
@@ -400,6 +403,8 @@ export const RpcMethods = {
     Schema.Struct({ threadId: Schema.String, paths: Schema.Array(Schema.String) }),
     Schema.Array(Schema.String),
   ),
+  /** Saves the VM's Chromium profile to this machine now. Fails unless this VM owns the shared profile. */
+  "vm.profile.save": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
 
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
@@ -585,6 +590,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.screen.send": "mutation",
   "vm.screen.close": "mutation",
   "vm.files.drop": "mutation",
+  "vm.profile.save": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",

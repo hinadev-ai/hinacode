@@ -1,12 +1,14 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import type { Socket } from "node:net"
-import { Context, Deferred, Effect, Exit, Layer, Schema, Stream } from "effect"
+import { join } from "node:path"
+import { Context, Deferred, Effect, Exit, Layer, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
-import type { ThreadVm, VmControl, VmHostStatus } from "../../../shared/domain.ts"
+import type { ThreadVm, VmControl, VmHostStatus, VmProfile } from "../../../shared/domain.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
 import { type ExecResult, type LoginSource, readLogin, type SbxClient, sbxClient } from "./sbx.ts"
-import { encodeTar, readTree } from "./tar.ts"
+import { decodeTar, encodeTar, readTree } from "./tar.ts"
 
 export class VmError extends Schema.TaggedError<VmError>()("VmError", { message: Schema.String }) {}
 
@@ -28,8 +30,11 @@ export class TinyVm extends Context.Service<
     /** Whether `Settings.experimental.tinyVm` is on, kept current without a database read. */
     readonly enabled: () => boolean
     readonly get: (threadId: string) => Effect.Effect<ThreadVm>
-    /** Creates the thread's VM unless it has one; concurrent calls share one creation. A failure is the `failed` state. */
-    readonly start: (threadId: string) => Effect.Effect<ThreadVm>
+    /**
+     * Creates the thread's VM unless it has one; concurrent calls share one creation. A failure is the `failed`
+     * state. `template` overrides the configured template for this one VM and is ignored when no creation happens.
+     */
+    readonly start: (threadId: string, template?: string) => Effect.Effect<ThreadVm>
     readonly stop: (threadId: string) => Effect.Effect<void>
     /** Has no effect unless the VM is running. */
     readonly setControl: (threadId: string, control: VmControl) => Effect.Effect<ThreadVm>
@@ -54,6 +59,11 @@ export class TinyVm extends Context.Service<
     /** Guest paths the user dropped since the last call, drained so the agent hears about each drop once. */
     readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
     /**
+     * Saves the VM's Chromium profile to this machine now. Only the VM that owns the shared profile can save;
+     * a copy's save fails rather than clobbering the owner's newer state.
+     */
+    readonly saveProfile: (threadId: string) => Effect.Effect<void, VmError>
+    /**
      * Connects a side panel view to the running VM's VNC server. Its bytes arrive as `vm.screen.data` pushes,
      * then `vm.screen.closed`.
      */
@@ -65,6 +75,53 @@ export class TinyVm extends Context.Service<
 >()("hinacode/TinyVm") {}
 
 const VNC_PORT = 5900
+const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
+const PROFILE_STORE = "chromium-profile.tgz"
+const PROFILE_META = "chromium-profile.json"
+const PROFILE_SCRIPT_TIMEOUT_SECONDS = 120
+const PROFILE_EXCLUDES = [
+  "chromium/*/Cache",
+  "chromium/*/Code Cache",
+  "chromium/*/GPUCache",
+  "chromium/ShaderCache",
+  "chromium/GrShaderCache",
+  "chromium/component_crx_cache",
+  "chromium/Singleton*",
+  "chromium/Crash Reports",
+  "chromium/BrowserMetrics*",
+]
+  .map((pattern) => `--exclude='${pattern}'`)
+  .join(" ")
+
+/** Exit code the save script uses when Chromium never ran and there is nothing to save. */
+const PROFILE_ABSENT_EXIT = 42
+
+/** Archives the guest's Chromium profile to /tmp; `quiesce` stops Chromium first, for a VM that is going away. */
+const profileSaveScript = (quiesce: boolean) =>
+  [
+    `[ -d ~/.config/chromium ] || exit ${PROFILE_ABSENT_EXIT}`,
+    ...(quiesce ? ["pkill -TERM chromium 2>/dev/null; sleep 1"] : []),
+    "sync",
+    `tar -czf /tmp/${PROFILE_GUEST_ARCHIVE} -C ~/.config ${PROFILE_EXCLUDES} chromium`,
+  ].join("\n")
+
+/**
+ * Puts back the profile archive `profileSaveScript` built, replacing whatever profile the guest has. A guest
+ * whose Chromium served DevTools before the swap (the browser template) gets it relaunched the same way.
+ */
+const PROFILE_RESTORE_SCRIPT = [
+  "set -e",
+  "was_cdp=0; curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1 && was_cdp=1",
+  "pkill -TERM chromium 2>/dev/null || true",
+  "for _ in $(seq 20); do pgrep chromium >/dev/null || break; sleep 0.25; done",
+  "pkill -KILL chromium 2>/dev/null || true",
+  "rm -rf ~/.config/chromium",
+  "mkdir -p ~/.config",
+  `tar -xzf /tmp/${PROFILE_GUEST_ARCHIVE} -C ~/.config`,
+  `rm -f ~/.config/chromium/Singleton* /tmp/${PROFILE_GUEST_ARCHIVE}`,
+  'if [ "$was_cdp" = 1 ] && command -v sbx-browser >/dev/null; then sbx-browser >/dev/null 2>&1 || true; fi',
+].join("\n")
+
 const DROP_DIR = "Downloads"
 /** One drop is held in memory as tar archives, so it has a size the user's machine can always spare. */
 const MAX_DROP_BYTES = 200 * 1024 * 1024
@@ -95,7 +152,7 @@ const endGracefully = (socket: Socket) =>
     socket.end()
   }).pipe(Effect.timeoutOrElse({ duration: "2 seconds", orElse: () => Effect.void }))
 
-const make = (source: LoginSource) =>
+const make = (source: LoginSource, profileDir?: string) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const events = yield* Events
@@ -111,10 +168,16 @@ const make = (source: LoginSource) =>
     const screens = new Map<string, Screen>()
     const openingScreens = new Set<string>()
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
-    let enabled = yield* settings.get.pipe(
-      Effect.map((value) => value.experimental.tinyVm),
-      Effect.orElseSucceed(() => false),
+    const experimental = yield* settings.get.pipe(
+      Effect.map((value) => value.experimental),
+      Effect.orElseSucceed(() => ({ tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false })),
     )
+    let enabled = experimental.tinyVm
+    let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"
+    let profileEnabled = experimental.tinyVmProfile && profileDir !== undefined
+    /** The thread whose running VM saves the shared Chromium profile back; everyone else holds a copy. */
+    let profileOwner: string | undefined
+    const profileSaves = yield* Semaphore.make(1)
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
@@ -136,6 +199,140 @@ const make = (source: LoginSource) =>
 
     const client = readLogin(source).pipe(Effect.map(sbxClient), Effect.mapError(toVmError))
 
+    const releaseProfileOwner = (threadId: string) => {
+      if (profileOwner === threadId) profileOwner = undefined
+    }
+
+    const readStoredProfile: Effect.Effect<Uint8Array | undefined> =
+      profileDir === undefined
+        ? Effect.succeed(undefined)
+        : Effect.tryPromise({ try: () => readFile(join(profileDir, PROFILE_STORE)), catch: (cause) => cause }).pipe(
+            Effect.map((bytes) => bytes as Uint8Array),
+            Effect.catch((cause) =>
+              (cause as NodeJS.ErrnoException).code === "ENOENT"
+                ? Effect.succeed(undefined)
+                : Effect.as(
+                    Effect.logWarning("tiny vm: cannot read the stored browser profile", String(cause)),
+                    undefined,
+                  ),
+            ),
+          )
+
+    const writeStoredProfile = (bytes: Uint8Array, template: string): Effect.Effect<void, VmError> =>
+      profileDir === undefined
+        ? Effect.void
+        : Effect.tryPromise({
+            try: async () => {
+              await mkdir(profileDir, { recursive: true })
+              const temp = join(profileDir, `${PROFILE_STORE}.${process.pid}.tmp`)
+              await writeFile(temp, bytes, { mode: 0o600 })
+              await rename(temp, join(profileDir, PROFILE_STORE))
+              await writeFile(
+                join(profileDir, PROFILE_META),
+                JSON.stringify({ savedAt: new Date().toISOString(), template }),
+                { mode: 0o600 },
+              )
+            },
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new VmError({
+                  message: `Could not store the browser profile on this machine: ${cause instanceof Error ? cause.message : String(cause)}`,
+                }),
+            ),
+          )
+
+    /** Restores the stored profile into a fresh sandbox. Nothing stored yet is also a success. */
+    const restoreProfile = (sbx: SbxClient, sandboxId: string): Effect.Effect<boolean> =>
+      Effect.gen(function* () {
+        const stored = yield* readStoredProfile
+        if (stored === undefined) return true
+        const wrapped = encodeTar([
+          {
+            type: "file",
+            path: PROFILE_GUEST_ARCHIVE,
+            data: stored,
+            mode: 0o600,
+            mtime: Math.floor(Date.now() / 1000),
+          },
+        ])
+        yield* sbx.putFiles(sandboxId, "/tmp", wrapped)
+        const result = yield* sbx.exec(sandboxId, {
+          script: PROFILE_RESTORE_SCRIPT,
+          timeoutSeconds: PROFILE_SCRIPT_TIMEOUT_SECONDS,
+        })
+        if (result.exitCode !== 0)
+          return yield* new VmError({
+            message: `restoring the browser profile failed: ${Buffer.from(result.stderr).toString().trim()}`,
+          })
+        return true
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.as(
+            Effect.logWarning("tiny vm: browser profile restore failed, starting with a fresh profile", error.message),
+            false,
+          ),
+        ),
+      )
+
+    /**
+     * Claims the profile owner synchronously, restores the profile, and reports how this VM stands to it. A
+     * failed restore starts the VM fresh rather than failing the start.
+     */
+    const prepareProfile = (threadId: string, sbx: SbxClient, sandboxId: string): Effect.Effect<VmProfile> =>
+      Effect.suspend(() => {
+        if (!profileEnabled) return Effect.succeed<VmProfile>("off")
+        const role: VmProfile =
+          profileOwner === undefined
+            ? ((profileOwner = threadId), "owner")
+            : profileOwner === threadId
+              ? "owner"
+              : "copy"
+        return Effect.map(restoreProfile(sbx, sandboxId), (restored) => {
+          if (restored) return role
+          if (role === "owner") releaseProfileOwner(threadId)
+          return "off" as VmProfile
+        })
+      })
+
+    const saveFromSandbox = (sbx: SbxClient, sandboxId: string, template: string, quiesce: boolean) =>
+      profileSaves.withPermit(
+        Effect.gen(function* () {
+          const built = yield* sbx
+            .exec(sandboxId, { script: profileSaveScript(quiesce), timeoutSeconds: PROFILE_SCRIPT_TIMEOUT_SECONDS })
+            .pipe(Effect.mapError(toVmError))
+          if (built.exitCode === PROFILE_ABSENT_EXIT) return
+          if (built.exitCode !== 0)
+            return yield* new VmError({
+              message: `Saving the browser profile failed in the VM: ${Buffer.from(built.stderr).toString().trim()}`,
+            })
+          const wrapped = yield* sbx
+            .getFiles(sandboxId, `/tmp/${PROFILE_GUEST_ARCHIVE}`)
+            .pipe(Effect.mapError(toVmError))
+          const entries = yield* Effect.try({
+            try: () => decodeTar(wrapped),
+            catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
+          })
+          const entry = entries.find((candidate) => candidate.type === "file")
+          if (entry === undefined || entry.type !== "file")
+            return yield* new VmError({ message: "The VM did not return a browser profile archive" })
+          yield* writeStoredProfile(entry.data, template)
+        }),
+      )
+
+    const saveProfile = (threadId: string) =>
+      Effect.gen(function* () {
+        const vm = current(threadId)
+        if (vm.status !== "running") return yield* new VmError({ message: "The VM is not running" })
+        if (vm.profile === "copy")
+          return yield* new VmError({ message: "Another thread's VM saves the browser profile. This VM holds a copy." })
+        if (vm.profile === "off")
+          return yield* new VmError({ message: "The persistent browser profile is off for this VM" })
+        const sbx = yield* client
+        yield* saveFromSandbox(sbx, vm.sandboxId, vm.template, false)
+      })
+
     const closeScreensOf = (threadId: string) =>
       screens.forEach((screen) => screen.threadId === threadId && screen.socket.destroy())
 
@@ -145,6 +342,8 @@ const make = (source: LoginSource) =>
         const vm = current(threadId)
         if (vm.status !== "running" || vm.sandboxId !== sandboxId) return Effect.void
         closeScreensOf(threadId)
+        dropped.delete(threadId)
+        releaseProfileOwner(threadId)
         return setVm(threadId, NONE)
       })
 
@@ -160,31 +359,43 @@ const make = (source: LoginSource) =>
         return live
       })
 
-    const create = (threadId: string, done: Deferred.Deferred<ThreadVm>) =>
+    const create = (threadId: string, done: Deferred.Deferred<ThreadVm>, template: string) =>
       Effect.gen(function* () {
         if (!enabled) return yield* new VmError({ message: "Tiny VM is off. Turn it on in Settings > Experimental." })
         const sbx = yield* client
-        return { sbx, sandbox: yield* sbx.create.pipe(Effect.mapError(toVmError)) }
+        return { sbx, sandbox: yield* sbx.create(template).pipe(Effect.mapError(toVmError)) }
       }).pipe(
         Effect.matchEffect({
           onFailure: (error) => settle(threadId, done, { status: "failed", message: error.message }),
           onSuccess: ({ sbx, sandbox }) =>
-            settle(threadId, done, { status: "running", sandboxId: sandbox.id, control: "agent" }).pipe(
-              Effect.tap((live) => (live ? Effect.void : Effect.ignore(sbx.remove(sandbox.id)))),
-            ),
+            Effect.gen(function* () {
+              const profile = yield* prepareProfile(threadId, sbx, sandbox.id)
+              const live = yield* settle(threadId, done, {
+                status: "running",
+                sandboxId: sandbox.id,
+                template,
+                profile,
+                control: "agent",
+              })
+              if (!live) {
+                releaseProfileOwner(threadId)
+                yield* Effect.ignore(sbx.remove(sandbox.id))
+              }
+            }),
         }),
       )
 
-    const start = (threadId: string) =>
+    const start = (threadId: string, templateOverride?: string) =>
       Effect.suspend((): Effect.Effect<ThreadVm> => {
         const vm = current(threadId)
         if (vm.status === "running") return Effect.succeed(vm)
         const pending = creations.get(threadId)
         if (pending) return Deferred.await(pending)
+        const template = templateOverride?.trim() || configuredTemplate
         const done = Deferred.makeUnsafe<ThreadVm>()
         creations.set(threadId, done)
         return setVm(threadId, { status: "starting" }).pipe(
-          Effect.andThen(Effect.forkIn(create(threadId, done), scope)),
+          Effect.andThen(Effect.forkIn(create(threadId, done, template), scope)),
           Effect.andThen(Deferred.await(done)),
         )
       })
@@ -219,6 +430,15 @@ const make = (source: LoginSource) =>
         dropped.delete(threadId)
         closeScreensOf(threadId)
         if (vm.status === "none") return
+        if (vm.status === "running" && vm.profile === "owner" && profileEnabled) {
+          // Best effort: a profile that cannot be saved must not keep the VM, or the app quit, alive.
+          yield* client.pipe(
+            Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, true)),
+            Effect.timeoutOrElse({ duration: "60 seconds", orElse: () => Effect.void }),
+            Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
+          )
+        }
+        releaseProfileOwner(threadId)
         yield* setVm(threadId, NONE)
         if (vm.status !== "running") return
         yield* client.pipe(
@@ -270,10 +490,18 @@ const make = (source: LoginSource) =>
             ? {
                 status: "running",
                 sandboxId: vm.sandboxId,
+                template: vm.template,
+                profile: vm.profile,
                 control: "user",
                 agentWaiting: (waiting.get(threadId) ?? 0) > 0,
               }
-            : { status: "running", sandboxId: vm.sandboxId, control: "agent" }
+            : {
+                status: "running",
+                sandboxId: vm.sandboxId,
+                template: vm.template,
+                profile: vm.profile,
+                control: "agent",
+              }
         return Effect.as(setVm(threadId, next), next)
       })
 
@@ -370,7 +598,12 @@ const make = (source: LoginSource) =>
       Effect.map(sbxClient),
       Effect.flatMap((sbx) =>
         sbx.status.pipe(
-          Effect.map((status): VmHostStatus => ({ status: "connected", url: sbx.url, ...status })),
+          Effect.flatMap((status) =>
+            sbx.templates.pipe(
+              Effect.orElseSucceed(() => []),
+              Effect.map((templates): VmHostStatus => ({ status: "connected", url: sbx.url, ...status, templates })),
+            ),
+          ),
           Effect.catch((error) =>
             Effect.succeed<VmHostStatus>({ status: "unreachable", url: sbx.url, message: error.message }),
           ),
@@ -473,20 +706,36 @@ const make = (source: LoginSource) =>
         Effect.suspend(() => {
           const was = enabled
           enabled = value.experimental.tinyVm
+          configuredTemplate = value.experimental.tinyVmTemplate.trim() || "default"
+          profileEnabled = value.experimental.tinyVmProfile && profileDir !== undefined
           return was && !enabled ? stopAll : Effect.void
         }),
       ),
       Effect.forkIn(scope),
     )
 
+    // The host's idle timeout can destroy a VM without asking, so the owner's profile is saved on a timer too.
+    yield* Effect.forever(
+      Effect.sleep("10 minutes").pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            if (profileOwner === undefined || !profileEnabled) return Effect.void
+            const vm = current(profileOwner)
+            if (vm.status !== "running" || vm.profile !== "owner") return Effect.void
+            return client.pipe(
+              Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, false)),
+              Effect.catch((error) => Effect.logWarning("tiny vm: profile autosave failed", error.message)),
+            )
+          }),
+        ),
+      ),
+    ).pipe(Effect.forkIn(scope))
+
     // Sandboxes do not outlive the app; sbx's idle timeout catches whatever this misses.
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         screens.forEach((screen) => screen.socket.destroy())
-        const running = [...vms.values()].flatMap((vm) => (vm.status === "running" ? [vm.sandboxId] : []))
-        if (running.length === 0) return
-        const sbx = yield* client
-        yield* Effect.forEach(running, (id) => Effect.ignore(sbx.remove(id)), { concurrency: "unbounded" })
+        yield* stopAll
       }).pipe(Effect.ignore, Effect.timeoutOrElse({ duration: "3 seconds", orElse: () => Effect.void })),
     )
 
@@ -502,10 +751,11 @@ const make = (source: LoginSource) =>
       exec,
       dropFiles,
       takeDropped,
+      saveProfile,
       openScreen,
       sendScreen,
       closeScreen,
     })
   })
 
-export const layer = (source: LoginSource) => Layer.effect(TinyVm, make(source))
+export const layer = (source: LoginSource, profileDir?: string) => Layer.effect(TinyVm, make(source, profileDir))

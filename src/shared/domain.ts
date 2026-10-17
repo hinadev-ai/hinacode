@@ -399,6 +399,13 @@ export const ExperimentalSettings = Schema.Struct({
    * the `vm_*` MCP tools, and the agent instructions that describe them.
    */
   tinyVm: Schema.Boolean,
+  /** The sbx template new tiny VMs restore from. The start view can override it for one VM. */
+  tinyVmTemplate: Schema.String,
+  /**
+   * Keeps one Chromium profile on this machine and syncs it into every new tiny VM, so browser logins survive
+   * VM restarts and carry across threads. Only one running VM saves it back; the others get a copy.
+   */
+  tinyVmProfile: Schema.Boolean,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -473,7 +480,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false },
+  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false },
   worktreeRoot: null,
 }
 
@@ -506,14 +513,30 @@ export type Environments = typeof Environments.Type
 export const VmControl = Schema.Literals(["agent", "user"])
 export type VmControl = typeof VmControl.Type
 
+/**
+ * How a running VM relates to the shared Chromium profile. `owner` saves it back, `copy` restored it while
+ * another thread's VM owns saving, and `off` means the profile is disabled or could not be restored.
+ */
+export const VmProfile = Schema.Literals(["off", "owner", "copy"])
+export type VmProfile = typeof VmProfile.Type
+
 /** A thread's tiny VM: an sbx sandbox hinacode created for it. */
 export const ThreadVm = Schema.Union([
   Schema.Struct({ status: Schema.Literal("none") }),
   Schema.Struct({ status: Schema.Literal("starting") }),
-  Schema.Struct({ status: Schema.Literal("running"), sandboxId: Schema.String, control: Schema.Literal("agent") }),
   Schema.Struct({
     status: Schema.Literal("running"),
     sandboxId: Schema.String,
+    /** The sbx template this sandbox was restored from. */
+    template: Schema.String,
+    profile: VmProfile,
+    control: Schema.Literal("agent"),
+  }),
+  Schema.Struct({
+    status: Schema.Literal("running"),
+    sandboxId: Schema.String,
+    template: Schema.String,
+    profile: VmProfile,
     control: Schema.Literal("user"),
     /** An agent pointer or keyboard tool is waiting for the user to hand control back. */
     agentWaiting: Schema.Boolean,
@@ -522,6 +545,14 @@ export const ThreadVm = Schema.Union([
 ])
 export type ThreadVm = typeof ThreadVm.Type
 
+/** One sbx template a tiny VM can restore from, as the host lists it. */
+export const VmTemplate = Schema.Struct({
+  name: Schema.String,
+  cpus: Schema.Number,
+  memoryMiB: Schema.Number,
+})
+export type VmTemplate = typeof VmTemplate.Type
+
 /** Whether hinacode reaches the sbx host that tiny VMs run on, as Settings shows it. */
 export const VmHostStatus = Schema.Union([
   Schema.Struct({
@@ -529,6 +560,8 @@ export const VmHostStatus = Schema.Union([
     url: Schema.String,
     sandboxes: Schema.Number,
     maxSandboxes: Schema.Number,
+    /** Empty when the host did not answer the template list, in which case only the configured name is offered. */
+    templates: Schema.Array(VmTemplate),
   }),
   /** Neither `SBX_URL` and `SBX_TOKEN` nor the config file `sbx login` writes. */
   Schema.Struct({ status: Schema.Literal("notConfigured") }),

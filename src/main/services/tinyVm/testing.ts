@@ -122,6 +122,8 @@ export interface FakeSbx {
   readonly sandboxes: Set<string>
   /** How many sandboxes were ever created. */
   readonly created: () => number
+  /** The template each sandbox creation asked for, in order. */
+  readonly createdTemplates: Array<string>
   readonly execs: Array<{ readonly sandboxId: string; readonly script: string; readonly detach: boolean }>
   /** Every file archive uploaded through the `/files` endpoints, in arrival order. */
   readonly uploads: Array<{ readonly sandboxId: string; readonly path: string; readonly bytes: Buffer }>
@@ -158,6 +160,7 @@ export const startFakeSbx = Effect.acquireRelease(
     const execs: Array<FakeSbx["execs"][number]> = []
     const inputs: Array<FakeSbx["inputs"][number]> = []
     const uploads: Array<FakeSbx["uploads"][number]> = []
+    const createdTemplates: Array<string> = []
     const files = new Map<string, Buffer>()
     const sockets = new Set<Socket>()
     let created = 0
@@ -169,11 +172,22 @@ export const startFakeSbx = Effect.acquireRelease(
       if (request.method === "GET" && path === "/v1/status") {
         return json(response, 200, { version: "fake", sandboxes: sandboxes.size, max_sandboxes: 64 })
       }
+      if (request.method === "GET" && path === "/v1/templates") {
+        return json(response, 200, [
+          { name: "default", cpus: 2, memory_mib: 8192, disk_gib: 16 },
+          { name: "browser", cpus: 2, memory_mib: 2048, disk_gib: 16 },
+        ])
+      }
       if (request.method === "POST" && path === "/v1/sandboxes") {
+        const requested = (JSON.parse(body.toString() || "{}") as { template?: string }).template ?? "default"
+        if (requested !== "default" && requested !== "browser") {
+          return json(response, 404, { error: `template ${requested} not found` })
+        }
+        createdTemplates.push(requested)
         const id = `sb-${randomUUID().slice(0, 8)}`
         sandboxes.add(id)
         created++
-        return json(response, 201, { id, template: "default", cpus: 2, memory_mib: 2048, ttl: "1h0m0s" })
+        return json(response, 201, { id, template: requested, cpus: 2, memory_mib: 2048, ttl: "1h0m0s" })
       }
       const match = /^\/v1\/sandboxes\/([^/]+)(\/exec|\/files)?$/.exec(path)
       const id = match?.[1]
@@ -248,6 +262,7 @@ export const startFakeSbx = Effect.acquireRelease(
             configPath,
             sandboxes,
             created: () => created,
+            createdTemplates,
             execs,
             uploads,
             seedFile: (sandboxId, path, bytes) => void files.set(fileKey(sandboxId, path), Buffer.from(bytes)),

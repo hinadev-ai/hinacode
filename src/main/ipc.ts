@@ -284,7 +284,7 @@ const handlers: Handlers = {
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
-  "vm.start": ({ threadId }) => TinyVm.use((vm) => vm.start(threadId)),
+  "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),
@@ -295,6 +295,7 @@ const handlers: Handlers = {
   "vm.screen.send": ({ streamId, data }) => TinyVm.use((vm) => vm.sendScreen(streamId, data)),
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
   "vm.files.drop": ({ threadId, paths }) => TinyVm.use((vm) => vm.dropFiles(threadId, paths)),
+  "vm.profile.save": ({ threadId }) => TinyVm.use((vm) => vm.saveProfile(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),

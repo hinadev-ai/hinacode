@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import { RiCheckboxCircleFill } from "react-icons/ri"
-import type { VmHostStatus } from "../../../shared/domain.ts"
+import type { VmHostStatus, VmTemplate } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -11,6 +11,7 @@ import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
+import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 
 export function ExperimentalSettings() {
@@ -23,6 +24,24 @@ export function ExperimentalSettings() {
     setError(null)
     try {
       await updateSettings({ experimental: { ...experimental, tinyVm } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  const setProfile = async (tinyVmProfile: boolean) => {
+    setError(null)
+    try {
+      await updateSettings({ experimental: { ...experimental, tinyVmProfile } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  const setTemplate = async (tinyVmTemplate: string) => {
+    setError(null)
+    try {
+      await updateSettings({ experimental: { ...experimental, tinyVmTemplate } })
     } catch (cause) {
       setError(errorMessage(cause))
     }
@@ -43,9 +62,46 @@ export function ExperimentalSettings() {
           />
         </Field>
         {experimental.tinyVm && <VmHost />}
+        {experimental.tinyVm && (
+          <VmTemplateField value={experimental.tinyVmTemplate} onChange={(name) => void setTemplate(name)} />
+        )}
+        {experimental.tinyVm && (
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="settings-experimental-tiny-vm-profile">{m.settings_tiny_vm_profile()}</FieldLabel>
+              <FieldDescription>{m.settings_tiny_vm_profile_hint()}</FieldDescription>
+            </FieldContent>
+            <Switch
+              id="settings-experimental-tiny-vm-profile"
+              checked={experimental.tinyVmProfile}
+              onCheckedChange={(checked) => void setProfile(checked)}
+            />
+          </Field>
+        )}
         {error && <FieldError>{error}</FieldError>}
       </FieldGroup>
     </SettingsSection>
+  )
+}
+
+/** The template new tiny VMs restore from, offered once the host lists its templates. */
+function VmTemplateField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+  const environment = useSettingsEnvironment()
+  const host = useAtomValue(vmHostAtom(environment))
+  const templates: ReadonlyArray<VmTemplate> =
+    AsyncResult.isSuccess(host) && host.value.status === "connected" ? host.value.templates : []
+  if (templates.length === 0) return null
+  return (
+    <Field>
+      <FieldLabel htmlFor="settings-experimental-tiny-vm-template">{m.settings_tiny_vm_template()}</FieldLabel>
+      <VmTemplateSelect
+        id="settings-experimental-tiny-vm-template"
+        templates={templates}
+        value={value}
+        onChange={onChange}
+      />
+      <FieldDescription>{m.settings_tiny_vm_template_hint()}</FieldDescription>
+    </Field>
   )
 }
 
