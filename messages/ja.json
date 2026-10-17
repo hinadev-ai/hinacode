@@ -1196,5 +1196,14 @@
   "mobile_settings_cancel": "キャンセル",
   "mobile_settings_connection_footnote": "もう一度ペアリングするには、デスクトップの「設定」から「リモート接続」を開いてください。",
   "mobile_settings_about": "情報",
-  "mobile_settings_version": "HinaCode {version}"
+  "mobile_settings_version": "HinaCode {version}",
+  "mobile_notify_completed": "完了しました",
+  "mobile_notify_approval": "承認を待っています",
+  "mobile_notify_question": "回答を待っています",
+  "mobile_notify_secret": "シークレットの入力を待っています",
+  "mobile_notify_failed": "失敗しました：{message}",
+  "mobile_notify_limited": "利用上限に達したため停止しました",
+  "mobile_notify_open": "開く",
+  "mobile_notify_dismiss": "通知を閉じる",
+  "mobile_notify_untitled": "スレッド"
 }

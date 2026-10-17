@@ -1241,5 +1241,14 @@
   "mobile_settings_cancel": "Cancel",
   "mobile_settings_connection_footnote": "To pair again, open Settings, Remote on the desktop.",
   "mobile_settings_about": "About",
-  "mobile_settings_version": "HinaCode {version}"
+  "mobile_settings_version": "HinaCode {version}",
+  "mobile_notify_completed": "Finished",
+  "mobile_notify_approval": "Waiting for your approval",
+  "mobile_notify_question": "Waiting for your answer",
+  "mobile_notify_secret": "Waiting for a secret",
+  "mobile_notify_failed": "Failed: {message}",
+  "mobile_notify_limited": "Stopped at the usage limit",
+  "mobile_notify_open": "Open",
+  "mobile_notify_dismiss": "Dismiss notification",
+  "mobile_notify_untitled": "Thread"
 }
