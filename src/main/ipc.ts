@@ -284,7 +284,7 @@ const handlers: Handlers = {
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
-  "vm.start": ({ threadId }) => TinyVm.use((vm) => vm.start(threadId)),
+  "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),

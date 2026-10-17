@@ -11,14 +11,17 @@ import {
   RiPictureInPicture2Line,
   RiPictureInPictureExitLine,
 } from "react-icons/ri"
-import type { Thread, ThreadVm, VmControl } from "../../../shared/domain.ts"
+import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/domain.ts"
+import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, threadVmAtom } from "../../lib/rpc.ts"
+import { callPromise, threadVmAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
 import { ChordKeys } from "../ChordKeys.tsx"
 import { HoldToConfirmButton } from "../HoldToConfirmButton.tsx"
 import { Button } from "../ui/button.tsx"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
@@ -89,25 +92,43 @@ export function useVmAction() {
   return { pending, error, run }
 }
 
+const templateLabel = (template: VmTemplate) =>
+  `${template.name} · ${String(Math.round((template.memoryMiB / 1024) * 10) / 10)} GiB`
+
+interface VmTemplateSelectProps {
+  readonly id: string
+  readonly templates: ReadonlyArray<VmTemplate>
+  readonly value: string
+  readonly onChange: (name: string) => void
+}
+
+/** Picks among the templates the sbx host lists, keeping a configured name the host no longer has selectable. */
+export function VmTemplateSelect({ id, templates, value, onChange }: VmTemplateSelectProps) {
+  const listed = templates.map((template) => ({ value: template.name, label: templateLabel(template) }))
+  const items = listed.some((item) => item.value === value) ? listed : [{ value, label: value }, ...listed]
+  return (
+    <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function VmState({ threadId, vm }: { threadId: string; vm: ThreadVm }) {
   const { pending, error, run } = useVmAction()
   const start = () => run(() => callPromise("vm.start", { threadId }))
 
   switch (vm.status) {
     case "none":
-      return (
-        <Centered>
-          <RiComputerLine aria-hidden className="size-6 text-muted-foreground" />
-          <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium">{m.vm_empty_title()}</h3>
-            <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
-          </div>
-          <Button variant="outline" size="sm" disabled={pending} onClick={start}>
-            {m.vm_start()}
-          </Button>
-          <ActionError error={error} />
-        </Centered>
-      )
+      return <NoVm threadId={threadId} />
     case "starting":
       return <Spinner label={m.vm_starting()} />
     case "failed":
@@ -123,6 +144,45 @@ function VmState({ threadId, vm }: { threadId: string; vm: ThreadVm }) {
     case "running":
       return <Running threadId={threadId} vm={vm} />
   }
+}
+
+/** The empty state: what the VM is, which template to restore, and the button that starts it. */
+function NoVm({ threadId }: { threadId: string }) {
+  const { pending, error, run } = useVmAction()
+  const environment = useThreadEnvironment(threadId)
+  const { experimental } = useSettings(environment)
+  const host = useAtomValue(vmHostAtom(environment))
+  const [picked, setPicked] = useState<string | null>(null)
+  const templates = AsyncResult.isSuccess(host) && host.value.status === "connected" ? host.value.templates : []
+  const template = picked ?? experimental.tinyVmTemplate
+  const start = () => run(() => callPromise("vm.start", { threadId, template }))
+
+  return (
+    <Centered>
+      <RiComputerLine aria-hidden className="size-6 text-muted-foreground" />
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">{m.vm_empty_title()}</h3>
+        <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
+      </div>
+      {templates.length > 1 && (
+        <div className="flex w-56 flex-col gap-1.5 text-left">
+          <label htmlFor={`vm-template-${threadId}`} className="text-xs text-muted-foreground">
+            {m.vm_template_label()}
+          </label>
+          <VmTemplateSelect
+            id={`vm-template-${threadId}`}
+            templates={templates}
+            value={template}
+            onChange={setPicked}
+          />
+        </div>
+      )}
+      <Button variant="outline" size="sm" disabled={pending} onClick={start}>
+        {m.vm_start()}
+      </Button>
+      <ActionError error={error} />
+    </Centered>
+  )
 }
 
 function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
