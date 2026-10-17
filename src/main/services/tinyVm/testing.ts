@@ -123,17 +123,25 @@ export interface FakeSbx {
   /** How many sandboxes were ever created. */
   readonly created: () => number
   readonly execs: Array<{ readonly sandboxId: string; readonly script: string; readonly detach: boolean }>
+  /** Every file archive uploaded through the `/files` endpoints, in arrival order. */
+  readonly uploads: Array<{ readonly sandboxId: string; readonly path: string; readonly bytes: Buffer }>
+  /** Stands in for a file already inside a sandbox, so a later `/files` GET returns it. */
+  readonly seedFile: (sandboxId: string, path: string, bytes: Uint8Array) => void
+  /** The latest archive a `/files` GET would return for the path: an upload or a seeded file. */
+  readonly fileAt: (sandboxId: string, path: string) => Buffer | undefined
   /** Every input event any VNC connection sent, in arrival order. */
   readonly inputs: Array<{ readonly sandboxId: string; readonly event: RfbEvent }>
   /** Drops a sandbox the way sbx's idle timeout does, so later calls get 404. */
   readonly expire: (id: string) => void
 }
 
+const fileKey = (sandboxId: string, path: string) => `${sandboxId}:${path}`
+
 const readBody = (request: IncomingMessage) =>
-  new Promise<string>((resolve, reject) => {
+  new Promise<Buffer>((resolve, reject) => {
     const chunks: Array<Buffer> = []
     request.on("data", (chunk: Buffer) => chunks.push(chunk))
-    request.on("end", () => resolve(Buffer.concat(chunks).toString()))
+    request.on("end", () => resolve(Buffer.concat(chunks)))
     request.on("error", reject)
   })
 
@@ -149,6 +157,8 @@ export const startFakeSbx = Effect.acquireRelease(
     const sandboxes = new Set<string>()
     const execs: Array<FakeSbx["execs"][number]> = []
     const inputs: Array<FakeSbx["inputs"][number]> = []
+    const uploads: Array<FakeSbx["uploads"][number]> = []
+    const files = new Map<string, Buffer>()
     const sockets = new Set<Socket>()
     let created = 0
 
@@ -165,17 +175,32 @@ export const startFakeSbx = Effect.acquireRelease(
         created++
         return json(response, 201, { id, template: "default", cpus: 2, memory_mib: 2048, ttl: "1h0m0s" })
       }
-      const match = /^\/v1\/sandboxes\/([^/]+)(\/exec)?$/.exec(path)
+      const match = /^\/v1\/sandboxes\/([^/]+)(\/exec|\/files)?$/.exec(path)
       const id = match?.[1]
       if (id === undefined) return json(response, 404, { error: "not found" })
       if (!sandboxes.has(id)) return json(response, 404, { error: `sandbox ${id} not found` })
+      if (match?.[2] === "/files") {
+        const guestPath = new URL(request.url ?? "/", "http://fake").searchParams.get("path") ?? ""
+        if (request.method === "PUT") {
+          uploads.push({ sandboxId: id, path: guestPath, bytes: body })
+          files.set(fileKey(id, guestPath), body)
+          response.writeHead(204).end()
+          return
+        }
+        if (request.method === "GET") {
+          const bytes = files.get(fileKey(id, guestPath))
+          if (bytes === undefined) return json(response, 404, { error: `no such file: ${guestPath}` })
+          response.writeHead(200, { "content-type": "application/x-tar" }).end(bytes)
+          return
+        }
+      }
       if (match?.[2] === undefined && request.method === "GET") return json(response, 200, { id, template: "default" })
       if (match?.[2] === undefined && request.method === "DELETE") {
         sandboxes.delete(id)
         response.writeHead(204).end()
         return
       }
-      const exec = decodeExecRequest(body)
+      const exec = decodeExecRequest(body.toString())
       if (Option.isNone(exec)) return json(response, 400, { error: "invalid exec request" })
       const { script, detach = false } = exec.value
       execs.push({ sandboxId: id, script, detach })
@@ -224,6 +249,9 @@ export const startFakeSbx = Effect.acquireRelease(
             sandboxes,
             created: () => created,
             execs,
+            uploads,
+            seedFile: (sandboxId, path, bytes) => void files.set(fileKey(sandboxId, path), Buffer.from(bytes)),
+            fileAt: (sandboxId, path) => files.get(fileKey(sandboxId, path)),
             inputs,
             expire: (id) => void sandboxes.delete(id),
           },
