@@ -74,7 +74,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
         setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
       }
       try {
-        const { seq, messages, approvals, questions } = await call("threads.transcript", { threadId })
+        const { seq, messages, approvals, questions } = await call("threads.transcript", { threadId, compact: true })
         settleIfStillCurrent((pending) =>
           pending
             .filter((push) => push.seq > seq)
@@ -94,7 +94,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
         }
         const reload = { pushes: [] as TranscriptPush[] }
         pushesDuringReload.set(threadId, reload)
-        call("threads.transcript", { threadId }).then(
+        call("threads.transcript", { threadId, compact: true }).then(
           ({ seq, messages, approvals, questions }) => {
             if (pushesDuringReload.get(threadId) !== reload) return
             pushesDuringReload.delete(threadId)
