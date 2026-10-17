@@ -1,6 +1,5 @@
 import type { CheckRun, CheckRunStatus, MergeMethod, PullRequestDetail, PullRequestLink } from "@shared/domain.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
-import { openURL } from "expo-linking"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useState } from "react"
 import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
@@ -14,6 +13,7 @@ import { HIT, mono } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { openWebUrl } from "@/lib/open-url"
 import { errorText } from "@/lib/error-text"
 import { pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
 
@@ -60,7 +60,7 @@ export default function PullRequestScreen() {
             <Button
               label={copy("mobile_pr_open_github")}
               icon="RiExternalLinkLine"
-              onPress={() => void openURL(url)}
+              onPress={() => openWebUrl(url)}
             />
           </View>
         </View>
@@ -253,7 +253,7 @@ function CheckRow({ run }: { run: CheckRun }) {
       accessibilityRole="link"
       accessibilityLabel={label}
       accessibilityHint={copy("mobile_pr_check_open")}
-      onPress={() => void openURL(url)}
+      onPress={() => openWebUrl(url)}
       style={styles.run}
     >
       {content}
@@ -368,7 +368,7 @@ function Actions({
         <Button
           label={copy("mobile_pr_open_github")}
           icon="RiExternalLinkLine"
-          onPress={() => void openURL(detail.url)}
+          onPress={() => openWebUrl(detail.url)}
         />
       </View>
       {detail.status === "draft" && (
