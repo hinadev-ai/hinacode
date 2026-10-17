@@ -105,15 +105,21 @@ const profileSaveScript = (quiesce: boolean) =>
     `tar -czf /tmp/${PROFILE_GUEST_ARCHIVE} -C ~/.config ${PROFILE_EXCLUDES} chromium`,
   ].join("\n")
 
-/** Puts back the profile archive `profileSaveScript` built, replacing whatever profile the guest has. */
+/**
+ * Puts back the profile archive `profileSaveScript` built, replacing whatever profile the guest has. A guest
+ * whose Chromium served DevTools before the swap (the browser template) gets it relaunched the same way.
+ */
 const PROFILE_RESTORE_SCRIPT = [
-  "pkill -TERM chromium 2>/dev/null",
+  "set -e",
+  "was_cdp=0; curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1 && was_cdp=1",
+  "pkill -TERM chromium 2>/dev/null || true",
   "for _ in $(seq 20); do pgrep chromium >/dev/null || break; sleep 0.25; done",
-  "pkill -KILL chromium 2>/dev/null",
+  "pkill -KILL chromium 2>/dev/null || true",
   "rm -rf ~/.config/chromium",
   "mkdir -p ~/.config",
   `tar -xzf /tmp/${PROFILE_GUEST_ARCHIVE} -C ~/.config`,
   `rm -f ~/.config/chromium/Singleton* /tmp/${PROFILE_GUEST_ARCHIVE}`,
+  'if [ "$was_cdp" = 1 ] && command -v sbx-browser >/dev/null; then sbx-browser >/dev/null 2>&1 || true; fi',
 ].join("\n")
 
 const DROP_DIR = "Downloads"
