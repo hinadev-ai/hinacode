@@ -18,7 +18,7 @@ jobs:
       site: ${{ steps.site.outputs.site }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: app
         with:
           predicate-quantifier: every
@@ -37,7 +37,7 @@ jobs:
             desktop:
               - *app
               - '!apps/mobile/**'
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: site
         with:
           filters: |
