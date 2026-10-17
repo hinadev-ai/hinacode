@@ -1,11 +1,13 @@
 import type { ChecksStatus, PullRequestStatus, ReviewStatus, Thread } from "@shared/domain.ts"
-import { useEffect } from "react"
+import { useFocusEffect } from "expo-router"
+import { useCallback } from "react"
 import { StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { PressableScale } from "@/components/motion"
 import type { Tone } from "@/components/ui"
 import { HIT, type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
+import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { type PullRequestSummary, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
 
@@ -66,9 +68,14 @@ function useNewestPullRequest(threadId: string) {
   const latest = links?.at(-1)
   const url = latest?.url ?? null
   const remote = usePullRequests((state) => (url === null ? undefined : state.summaries[url]))
-  useEffect(() => {
-    if (url !== null) usePullRequests.getState().ensureSummary(url)
-  }, [url])
+  const generation = useConnection((state) => state.generation)
+  // Checks and reviews change while a row sits on screen, so the summary is read again whenever the screen comes
+  // back into view or the phone reconnects. `ensureSummary` skips reads younger than a minute.
+  useFocusEffect(
+    useCallback(() => {
+      if (url !== null && generation > 0) usePullRequests.getState().ensureSummary(url)
+    }, [url, generation]),
+  )
   if (url === null || links === undefined) return null
   return {
     number: pullRequestNumber(url) ?? "?",
