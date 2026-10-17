@@ -111,7 +111,6 @@ export function ThreadRow({
   )
 }
 
-/** A small muted heading above a group of rows, such as Pinned. */
 export function SectionLabel({ label }: { label: string }) {
   const theme = useTheme()
   return (
