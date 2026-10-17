@@ -60,6 +60,8 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 
 Use the `verify-hinacode` skill (`.agents/skills/verify-hinacode/`) to launch an isolated instance over Xvfb and CDP, drive it, and take screenshots. Each instance gets its own `HINACODE_USER_DATA` and CDP port. Never drive an instance you didn't launch. Put screenshots and scratch files in `.context/`, which is gitignored.
 
+To stress-test the UI with worst-case data (long names, RTL text, missing files, huge lists), start the instance with `scripts/break-ui/launch.sh` instead. See `scripts/break-ui/README.md`.
+
 Add skills under `.agents/skills/`. `.claude/skills` is a symlink to it.
 
 ## Security
