@@ -1,5 +1,5 @@
 import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
-import type { useNavigate } from "@tanstack/react-router"
+import type { RouterHistory, useNavigate } from "@tanstack/react-router"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { type ClientSettings, type ExperimentalSettings, Locale, type Project } from "../../shared/domain.ts"
 import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
@@ -12,6 +12,7 @@ import { type SidePanelViewId, useUi } from "../stores/ui.ts"
 
 export interface CommandContext {
   readonly navigate: ReturnType<typeof useNavigate>
+  readonly history: RouterHistory
   /** The open thread, or null outside a thread route. */
   readonly threadId: string | null
   readonly projects: ReadonlyArray<Project>
@@ -215,6 +216,21 @@ export const commands = [
     defaultKeys: "mod+shift+[",
     title: m.command_thread_previous,
     run: (ctx) => goToSiblingThread(ctx, -1),
+  },
+  // Ctrl+[ is Escape to a terminal, so these keep out of it.
+  {
+    id: "navigation.back",
+    defaultKeys: "mod+[",
+    title: m.command_navigation_back,
+    run: (ctx) => ctx.history.back(),
+    when: "!terminalFocus",
+  },
+  {
+    id: "navigation.forward",
+    defaultKeys: "mod+]",
+    title: m.command_navigation_forward,
+    run: (ctx) => ctx.history.forward(),
+    when: "!terminalFocus",
   },
   {
     id: "search.find",

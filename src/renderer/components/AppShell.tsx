@@ -1,5 +1,5 @@
-import { Outlet } from "@tanstack/react-router"
-import { useRef } from "react"
+import { Outlet, useRouter } from "@tanstack/react-router"
+import { useEffect, useRef } from "react"
 import { useKeybindings } from "../keybindings/useKeybindings.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { CommandPalette } from "./CommandPalette.tsx"
@@ -7,8 +7,22 @@ import { Sidebar } from "./Sidebar.tsx"
 import { StatusBar } from "./StatusBar.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
+/** The mouse's back and forward side buttons walk the router history, as they do in a browser. */
+function useMouseHistoryButtons() {
+  const { history } = useRouter()
+  useEffect(() => {
+    const listener = (event: MouseEvent) => {
+      if (event.button === 3) history.back()
+      else if (event.button === 4) history.forward()
+    }
+    window.addEventListener("mouseup", listener)
+    return () => window.removeEventListener("mouseup", listener)
+  }, [history])
+}
+
 export function AppShell() {
   useKeybindings()
+  useMouseHistoryButtons()
   const compact = usePanelLayout() === "compact"
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
 

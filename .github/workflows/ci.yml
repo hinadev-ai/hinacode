@@ -74,23 +74,11 @@ jobs:
       - if: needs.changes.outputs.app == 'true'
         run: pnpm test
 
-  e2e:
-    name: e2e (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: [self-hosted, Linux, X64, home, proxmox]
-            # The runner has xvfb-run and openbox installed. Without a window manager, minimizing a window does nothing.
-            command: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
-          - os: macos
-            runner: [self-hosted, macOS, ARM64, home]
-            command: pnpm test:e2e
+  e2e-linux:
+    name: e2e (linux)
     needs: changes
-    # The home runners must never run code from a fork's pull request.
-    if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ matrix.runner }}
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -98,19 +86,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - if: runner.os == 'macOS'
-        name: Check the screen is unlocked
+          cache: pnpm
+      # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
+      - run: pnpm install --frozen-lockfile
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-linux
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+
+  e2e-macos:
+    name: e2e (macos)
+    needs: changes
+    # The home runner must never run code from a fork's pull request.
+    if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, macOS, ARM64, home]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check the screen is unlocked
         run: |
           if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
             echo "::error::Unlock the runner's screen. Electron never reports a window as shown while it is locked."
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
-      - run: ${{ matrix.command }}
+      - run: pnpm test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report-${{ matrix.os }}
+          name: e2e-report-macos
           path: |
             e2e/playwright-report
             e2e/test-results

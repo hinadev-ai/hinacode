@@ -18,14 +18,13 @@ The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows 
 
    The workflow's own `GITHUB_TOKEN` creates and publishes the release, since it lives in this repository.
 
-2. Bump `version` in `package.json` and merge it to `main`.
-3. Tag that commit and push the tag:
+2. Tag a commit on `main` and push the tag. The tag is the version; `package.json` is not bumped.
 
    ```sh
-   git tag v0.2.0 && git push origin v0.2.0
+   git tag v0.2.0 origin/main && git push origin v0.2.0
    ```
 
-   The `draft` job checks that the tag matches `package.json` and creates a draft release. The build jobs upload the DMG, the macOS zip, the Windows installer, the AppImage, their blockmaps, and `latest-mac.yml`, `latest.yml` and `latest-linux.yml` into it, and the `release` job publishes it. Installers skip Actions artifact storage, so its quota cannot block a release. If a build job fails, rerun the failed jobs; the upload replaces assets already in the draft.
+   The `draft` job creates a draft release with notes generated from the pull requests merged since the previous `v*` tag. Each build job writes the tag's version into `package.json` before packaging. The build jobs upload the DMG, the macOS zip, the Windows installer, the AppImage, their blockmaps, and `latest-mac.yml`, `latest.yml` and `latest-linux.yml` into it, and the `release` job publishes it. Installers skip Actions artifact storage, so its quota cannot block a release. If a build job fails, rerun the failed jobs; the upload replaces assets already in the draft.
 
 For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 

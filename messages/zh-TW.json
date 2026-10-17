@@ -171,6 +171,8 @@
   "command_turn_interrupt": "中斷執行中的回合",
   "command_thread_next": "下一個對話串",
   "command_thread_previous": "上一個對話串",
+  "command_navigation_back": "返回",
+  "command_navigation_forward": "前進",
   "command_language_switch": "切換語言",
   "command_terminal_toggle": "顯示或隱藏終端機",
   "command_terminal_new": "新增終端機",

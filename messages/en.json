@@ -171,6 +171,8 @@
   "command_turn_interrupt": "Interrupt the running turn",
   "command_thread_next": "Next thread",
   "command_thread_previous": "Previous thread",
+  "command_navigation_back": "Go back",
+  "command_navigation_forward": "Go forward",
   "command_language_switch": "Switch language",
   "command_terminal_toggle": "Show or hide terminal",
   "command_terminal_new": "New terminal",
