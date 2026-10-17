@@ -1,11 +1,12 @@
 import type { FileSearchHit, FsEntry, Thread } from "@shared/domain.ts"
 import { router } from "expo-router"
 import { useEffect, useRef, useState } from "react"
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { FadeIn, Reveal, Spinner } from "@/components/motion"
-import { Button, EmptyState, IconButton, Notice } from "@/components/ui"
-import { HIT, type Palette, mono, radius } from "@/constants/theme"
+import { SearchField } from "@/components/search-field"
+import { Button, EmptyState, Notice } from "@/components/ui"
+import { HIT, type Palette, mono } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -81,7 +82,16 @@ export function FilesPanel({ thread }: { thread: Thread }) {
   if (root === null) return <Loading label={copy("mobile_files_finding_workspace")} />
   return (
     <View style={styles.flex}>
-      <SearchField value={query} onChange={changeQuery} onSubmit={() => filtering && setSearchContents(true)} />
+      <View style={styles.search}>
+        <SearchField
+          testID="files-search"
+          value={query}
+          onChange={changeQuery}
+          onSubmit={() => filtering && setSearchContents(true)}
+          placeholder={copy("mobile_files_search_placeholder")}
+          clearLabel={copy("mobile_files_clear_search")}
+        />
+      </View>
       <View style={[styles.flex, filtering && styles.hidden]}>
         <FolderBrowser key={root} root={root} threadId={thread.id} />
       </View>
@@ -93,45 +103,6 @@ export function FilesPanel({ thread }: { thread: Thread }) {
           onRetryFiles={() => setFiles(null)}
           searchContents={searchContents}
           onSearchContents={() => setSearchContents(true)}
-        />
-      )}
-    </View>
-  )
-}
-
-function SearchField({
-  value,
-  onChange,
-  onSubmit,
-}: {
-  value: string
-  onChange: (value: string) => void
-  onSubmit: () => void
-}) {
-  const theme = useTheme()
-  const label = copy("mobile_files_search_placeholder")
-  return (
-    <View style={[styles.search, { backgroundColor: theme.surface }]}>
-      <Icon name="RiSearchLine" size={18} color={theme.textMuted} />
-      <TextInput
-        testID="files-search"
-        value={value}
-        onChangeText={onChange}
-        onSubmitEditing={onSubmit}
-        placeholder={label}
-        placeholderTextColor={theme.textMuted}
-        accessibilityLabel={label}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        returnKeyType="search"
-        style={[styles.searchInput, { color: theme.text }]}
-      />
-      {value !== "" && (
-        <IconButton
-          icon="RiCloseCircleFill"
-          accessibilityLabel={copy("mobile_files_clear_search")}
-          onPress={() => onChange("")}
         />
       )}
     </View>
@@ -503,17 +474,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   hidden: { display: "none" },
   strong: { fontWeight: "700" },
-  search: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 12,
-    marginBottom: 4,
-    paddingLeft: 12,
-    minHeight: HIT,
-    borderRadius: radius.md,
-  },
-  searchInput: { flex: 1, fontSize: 15, paddingVertical: 10 },
+  search: { marginHorizontal: 12, marginBottom: 4 },
   crumbs: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth },
   crumbsContent: { alignItems: "center", paddingHorizontal: 8 },
   crumbItem: { flexDirection: "row", alignItems: "center" },

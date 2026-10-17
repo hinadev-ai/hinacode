@@ -7,7 +7,8 @@ import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
 import { NewThreadSheet } from "@/components/new-thread-sheet"
 import { type GroupPosition, openThread, SectionLabel, ThreadRow } from "@/components/thread-row"
-import { SearchField, SearchResults } from "@/components/thread-search"
+import { SearchField } from "@/components/search-field"
+import { SearchResults } from "@/components/thread-search"
 import {
   Button,
   ConnectionBadge,
@@ -105,7 +106,13 @@ export default function HomeScreen() {
           hasProjects && (
             <>
               <View style={styles.search}>
-                <SearchField value={query} onChange={setQuery} />
+                <SearchField
+                  testID="thread-search"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={copy("mobile_search_placeholder")}
+                  clearLabel={copy("mobile_search_clear")}
+                />
               </View>
               {query.trim() === "" ? <HomeList /> : <SearchResults query={query} />}
             </>
