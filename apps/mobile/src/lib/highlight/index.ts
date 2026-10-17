@@ -30,9 +30,12 @@ export interface Highlight {
 }
 
 const CACHE_SIZE = 200
+/** Whole files can reach 300 KB; caching them would hold megabytes of source and spans. */
+const MAX_CACHED_LENGTH = 20_000
 const cache = new Map<string, Highlight>()
 
 function remember(code: string, highlight: Highlight) {
+  if (code.length > MAX_CACHED_LENGTH) return highlight
   cache.delete(code)
   cache.set(code, highlight)
   const oldest = cache.keys().next().value
