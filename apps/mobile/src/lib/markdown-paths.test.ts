@@ -69,6 +69,11 @@ describe("paths in a Markdown file", () => {
     expect(resolveFileLink("/abs/root/src/a.ts", root, "docs")).toBe("src/a.ts")
   })
 
+  it("treat a link to an anchor as no file", () => {
+    expect(resolveFileLink("#setup", root, "docs")).toBeNull()
+    expect(resolveFileLink("?tab=1", root, "docs")).toBeNull()
+  })
+
   it("still cannot climb out of the root", () => {
     expect(resolveFileLink("../../x.md", root, "docs")).toBeNull()
   })

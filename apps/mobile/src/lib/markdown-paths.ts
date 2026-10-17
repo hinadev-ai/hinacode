@@ -25,6 +25,7 @@ function relativeToRoot(href: string, root: string, folder: string): string | "o
   if (/^file:\/\//i.test(path)) path = path.slice("file://".length).replace(/^localhost(?=\/)/i, "")
   else if (SCHEME.test(path)) return "invalid"
   path = path.split(/[?#]/)[0]
+  if (path === "") return "invalid"
   try {
     path = decodeURIComponent(path)
   } catch {
