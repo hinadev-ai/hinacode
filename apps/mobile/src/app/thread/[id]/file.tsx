@@ -286,9 +286,7 @@ function LineFlash() {
 }
 
 function ImageFile({ root, path }: { root: string; path: string }) {
-  const theme = useTheme()
   const { result, retry } = useFile("fs.preview", root, path)
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
   if (result === null) return <Loading label={copy("mobile_files_loading_file")} />
   if ("error" in result) return <Failure message={result.error} onRetry={retry} />
   return (
@@ -299,22 +297,39 @@ function ImageFile({ root, path }: { root: string; path: string }) {
       contentContainerStyle={styles.media}
       style={styles.flex}
     >
-      <Image
-        source={{ uri: result.value.dataUrl }}
-        accessibilityRole="image"
-        accessibilityLabel={copy("mobile_files_image_label", { name: basename(path) })}
-        resizeMode="contain"
-        onLoad={(event) => {
-          const { width, height } = event.nativeEvent.source
-          if (width > 0 && height > 0) setSize({ width, height })
-        }}
-        style={[
-          styles.image,
-          { backgroundColor: theme.surface },
-          size !== null && { aspectRatio: size.width / size.height, maxWidth: Math.max(size.width, 96) },
-        ]}
-      />
+      <FittedImage uri={result.value.dataUrl} label={copy("mobile_files_image_label", { name: basename(path) })} />
     </ScrollView>
+  )
+}
+
+/** As wide as the screen, or its natural width when narrower, keeping its aspect ratio. */
+function FittedImage({ uri, label }: { uri: string; label: string }) {
+  const theme = useTheme()
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+  // `onLoad` reports no size on react-native-web, so the image is measured on its own.
+  useEffect(() => {
+    let current = true
+    Image.getSize(
+      uri,
+      (width, height) => current && width > 0 && height > 0 && setSize({ width, height }),
+      () => {},
+    )
+    return () => {
+      current = false
+    }
+  }, [uri])
+  return (
+    <Image
+      source={{ uri }}
+      accessibilityRole="image"
+      accessibilityLabel={label}
+      resizeMode="contain"
+      style={[
+        styles.image,
+        { backgroundColor: theme.surface },
+        size !== null && { aspectRatio: size.width / size.height, maxWidth: Math.max(size.width, 96) },
+      ]}
+    />
   )
 }
 
@@ -354,7 +369,7 @@ const styles = StyleSheet.create({
   segments: { margin: 12 },
   markdown: { padding: 16, gap: 12 },
   code: { paddingVertical: 8 },
-  codeRow: { flexDirection: "row", alignItems: "flex-start", paddingRight: 12 },
+  codeRow: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 12 },
   flash: { ...StyleSheet.absoluteFill, pointerEvents: "none" },
   gutter: {
     fontFamily: mono,
