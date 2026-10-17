@@ -5,6 +5,7 @@ What the code can't show: why a feature looks the way it does, which decisions a
 | Path                        | What goes in it                                            | File name                    |
 | --------------------------- | ---------------------------------------------------------- | ---------------------------- |
 | `arch.md`                   | How the codebase fits together, with mermaid diagrams      |                              |
+| `roadmap.md`                | What we focus on next, and the principles behind it        |                              |
 | `muse-integration-guide.md` | How hinacode drives Muse Code over MSP, and how to test it |                              |
 | `features/`                 | The design of one feature, written before building it      | `YYYY-MM-DD-feature-name.md` |
 | `adr/`                      | One architecture decision that is costly to reverse        | `NNNN-title.md`              |
