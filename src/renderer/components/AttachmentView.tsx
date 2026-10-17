@@ -1,4 +1,5 @@
 import { cn } from "cn"
+import { useState } from "react"
 import { RiCloseLine, RiFileLine } from "react-icons/ri"
 import { attachmentUrl } from "../../shared/channels.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
@@ -39,14 +40,17 @@ const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.pa
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const { element } = attachment
   const src = useAttachmentSrc(attachment)
+  // The staged copy can be gone, for example when the thread came from another machine.
+  const [missing, setMissing] = useState(false)
   const title = element ? elementLabel(element) : attachment.name
+  if (missing) return <FileChip attachment={attachment} />
   return (
     <Dialog>
       <DialogTrigger
         title={m.attachment_open_image({ name: title })}
         className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Preview attachment={attachment} />
+        <Preview attachment={attachment} onError={() => setMissing(true)} />
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] sm:max-w-4xl">
         <DialogTitle className={cn("truncate pr-8", element && "font-mono text-sm")}>{title}</DialogTitle>
@@ -68,9 +72,13 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
   )
 }
 
-function Preview({ attachment }: { attachment: Attachment }) {
-  if (attachment.element) return <ElementChip attachment={attachment} element={attachment.element} />
-  return attachment.kind === "image" ? <Thumbnail attachment={attachment} /> : <FileChip attachment={attachment} />
+function Preview({ attachment, onError }: { attachment: Attachment; onError?: () => void }) {
+  if (attachment.element) return <ElementChip attachment={attachment} element={attachment.element} onError={onError} />
+  return attachment.kind === "image" ? (
+    <Thumbnail attachment={attachment} onError={onError} />
+  ) : (
+    <FileChip attachment={attachment} />
+  )
 }
 
 /** An attachment waiting in the composer, with a remove button. */
@@ -96,9 +104,16 @@ export function PendingAttachment({ attachment, onRemove }: { attachment: Attach
   )
 }
 
-function Thumbnail({ attachment }: { attachment: Attachment }) {
+function Thumbnail({ attachment, onError }: { attachment: Attachment; onError?: () => void }) {
   const src = useAttachmentSrc(attachment)
-  return <img src={src} alt={attachment.name} className="size-16 rounded-lg border border-border object-cover" />
+  return (
+    <img
+      src={src}
+      alt={attachment.name}
+      onError={onError}
+      className="size-16 rounded-lg border border-border object-cover"
+    />
+  )
 }
 
 function FileChip({ attachment }: { attachment: Attachment }) {
@@ -116,7 +131,15 @@ function FileChip({ attachment }: { attachment: Attachment }) {
 }
 
 /** A screenshot of an element picked in the browser, named by its tag and where it lives. */
-function ElementChip({ attachment, element }: { attachment: Attachment; element: PickedElement }) {
+function ElementChip({
+  attachment,
+  element,
+  onError,
+}: {
+  attachment: Attachment
+  element: PickedElement
+  onError?: () => void
+}) {
   const url = URL.parse(element.url)
   const tag = elementLabel(element)
   const src = useAttachmentSrc(attachment)
@@ -125,6 +148,7 @@ function ElementChip({ attachment, element }: { attachment: Attachment; element:
       <img
         src={src}
         alt={m.attachment_element({ element: tag })}
+        onError={onError}
         className="h-full w-20 shrink-0 border-r border-border bg-muted object-contain p-1"
       />
       <span className="flex min-w-0 flex-col gap-0.5">
