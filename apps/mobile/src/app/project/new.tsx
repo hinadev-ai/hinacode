@@ -2,7 +2,7 @@ import type { Project } from "@shared/domain.ts"
 import { parseGitHubRepository } from "@shared/github.ts"
 import { router } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { Button, Notice } from "@/components/ui"
@@ -25,7 +25,7 @@ export default function AddProjectScreen() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // A project the desktop added before its first thread failed, so trying again only retries the thread.
-  const [added, setAdded] = useState<Project | null>(null)
+  const added = useRef<Project | null>(null)
 
   const repository = parseGitHubRepository(source)
   const cloneFolder = repository === null ? "" : (cloneTo ?? defaultCloneFolder(projects, repository.name))
@@ -38,7 +38,7 @@ export default function AddProjectScreen() {
     setError(null)
     try {
       const project =
-        added ??
+        added.current ??
         (repository === null
           ? await call("projects.create", {
               name: name.trim() || baseName(source),
@@ -51,7 +51,7 @@ export default function AddProjectScreen() {
               name: name.trim() || repository.name,
               setupScript: null,
             }))
-      setAdded(project)
+      added.current = project
       useThreads.getState().addProject(project)
       const thread = await call("threads.create", { projectId: project.id })
       useThreads.getState().upsert(thread)
@@ -76,7 +76,7 @@ export default function AddProjectScreen() {
           onChangeText={(text) => {
             setSource(text)
             setCloneTo(null)
-            setAdded(null)
+            added.current = null
           }}
           placeholder={copy("mobile_project_source_placeholder")}
           monospace

@@ -74,13 +74,16 @@ export function PullRequests({ thread }: { thread: Thread }) {
     setRefreshing(true)
     const { loadPullRequest } = usePullRequests.getState()
     const urls = [...linked, ...(branchUrl === null ? [] : [branchUrl])]
-    const [result] = await Promise.all([
-      readPullRequests(thread.id, worktreeId),
-      ...urls.map((url) => loadPullRequest(url, { force: true })),
-    ])
-    setError(result.error)
-    setBranchPullRequest(result.branch)
-    setRefreshing(false)
+    try {
+      const [result] = await Promise.all([
+        readPullRequests(thread.id, worktreeId),
+        ...urls.map((url) => loadPullRequest(url, { force: true })),
+      ])
+      setError(result.error)
+      setBranchPullRequest(result.branch)
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const create = async () => {
