@@ -55,7 +55,10 @@ describe("codeLines", () => {
 
   it("leaves text after the last span plain, for a highlighted prefix", () => {
     const spans: SyntaxSpan[] = [{ type: "string", start: 0, end: 3 }]
-    expect(codeLines('"a"\nrest', spans)).toEqual([[{ type: "string", text: '"a"' }], [{ type: "plain", text: "rest" }]])
+    expect(codeLines('"a"\nrest', spans)).toEqual([
+      [{ type: "string", text: '"a"' }],
+      [{ type: "plain", text: "rest" }],
+    ])
   })
 
   it("fills gaps between spans with plain text and ignores spans past the end", () => {
