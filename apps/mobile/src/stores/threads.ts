@@ -20,8 +20,9 @@ interface ThreadsState {
   readonly addProject: (project: Project) => void
 }
 
-export const useThreads = create<ThreadsState>()((set) => {
+export const useThreads = create<ThreadsState>()((set, get) => {
   let pushedDuringLoad: Map<string, Thread | null> | null = null
+  let worktreesPushedDuringLoad: Map<string, Worktree> | null = null
 
   return {
     projects: [],
@@ -31,7 +32,9 @@ export const useThreads = create<ThreadsState>()((set) => {
     error: null,
     load: async () => {
       const ownPushed = new Map<string, Thread | null>()
+      const ownWorktrees = new Map<string, Worktree>()
       pushedDuringLoad = ownPushed
+      worktreesPushedDuringLoad = ownWorktrees
       try {
         const [projects, worktrees, threads] = await Promise.all([
           call("projects.list", undefined),
@@ -46,7 +49,10 @@ export const useThreads = create<ThreadsState>()((set) => {
         }
         set({
           projects,
-          worktrees: Object.fromEntries(worktrees.map((worktree) => [worktree.id, worktree])),
+          worktrees: {
+            ...Object.fromEntries(worktrees.map((worktree) => [worktree.id, worktree])),
+            ...Object.fromEntries(ownWorktrees),
+          },
           byId,
           status: "ready",
           error: null,
@@ -55,11 +61,16 @@ export const useThreads = create<ThreadsState>()((set) => {
         if (pushedDuringLoad === ownPushed) set({ status: "error", error: cause instanceof Error ? cause.message : String(cause) })
       } finally {
         if (pushedDuringLoad === ownPushed) pushedDuringLoad = null
+        if (worktreesPushedDuringLoad === ownWorktrees) worktreesPushedDuringLoad = null
       }
     },
     upsert: (thread) => {
       pushedDuringLoad?.set(thread.id, thread)
       set((state) => ({ byId: { ...state.byId, [thread.id]: thread } }))
+      // The desktop pushes no project changes, so a thread from an unknown project means one was added there.
+      const { status, projects } = get()
+      if (pushedDuringLoad === null && status === "ready" && !projects.some((project) => project.id === thread.projectId))
+        void get().load()
     },
     remove: (id) => {
       pushedDuringLoad?.set(id, null)
@@ -68,7 +79,10 @@ export const useThreads = create<ThreadsState>()((set) => {
         return { byId }
       })
     },
-    upsertWorktree: (worktree) => set((state) => ({ worktrees: { ...state.worktrees, [worktree.id]: worktree } })),
+    upsertWorktree: (worktree) => {
+      worktreesPushedDuringLoad?.set(worktree.id, worktree)
+      set((state) => ({ worktrees: { ...state.worktrees, [worktree.id]: worktree } }))
+    },
     addProject: (project) =>
       set((state) => ({ projects: [...state.projects.filter((existing) => existing.id !== project.id), project] })),
   }
