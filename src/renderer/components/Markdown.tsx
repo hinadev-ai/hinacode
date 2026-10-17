@@ -47,7 +47,7 @@ function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
 
 // Spacing, heading scale and block shapes follow the Lettera editor, in em so they scale with the surrounding text.
 const block = "my-[0.8em] wrap-break-word first:mt-0 last:mb-0"
-const heading = "leading-[1.4] font-medium text-balance first:mt-0"
+const heading = "leading-[1.4] font-medium text-balance wrap-break-word first:mt-0"
 const list = cn(block, "pl-[2.13em] marker:text-primary [li>&]:my-0")
 
 const components: Components = {

@@ -96,7 +96,9 @@ export function ThreadAgents({ thread }: { thread: Thread }) {
     return AsyncResult.builder(load)
       .onError((error) => (
         <div role="alert" className="flex items-center gap-2">
-          <p className="text-xs text-destructive">{m.agents_failed({ message: errorMessage(error) })}</p>
+          <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
+            {m.agents_failed({ message: errorMessage(error) })}
+          </p>
           <Button variant="outline" size="xs" onClick={reload}>
             {m.common_retry()}
           </Button>

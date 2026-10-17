@@ -125,7 +125,9 @@ function AccountRow({ account }: { account: AgentProfile }) {
   return (
     <li className="flex flex-col pb-1">
       <div className="flex min-h-8 items-center gap-x-3">
-        <span className="w-28 shrink-0 truncate text-sm font-medium">{account.name}</span>
+        <span className="w-28 shrink-0 truncate text-sm font-medium" title={account.name}>
+          {account.name}
+        </span>
         <AccountStatus provider={account.provider} account={account} />
         <DropdownMenu
           onOpenChangeComplete={(open) => {
@@ -157,9 +159,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
         </DropdownMenu>
       </div>
       <div className="flex min-w-0 flex-col gap-1 pl-31">
-        <p className="truncate font-mono text-xs text-muted-foreground" title={account.configDir}>
-          {account.configDir}
-        </p>
+        <p className="font-mono text-xs break-all text-muted-foreground">{account.configDir}</p>
         {signedOut && (
           <div className="flex min-w-0 flex-col items-start gap-1 text-xs">
             <span className="text-muted-foreground">{m.settings_account_sign_in_terminal()}</span>
