@@ -16,9 +16,7 @@ const link = (id: string, threadId: string, url: string, watched = false) =>
     threadId,
     url,
     createdAt: "2026-10-16T00:00:00.000Z",
-    watch: watched
-      ? { snapshot: { status: "open", checks: "failing", review: null, mergeable: "mergeable", head: "abc", failingChecks: [] } }
-      : null,
+    watch: watched ? { snapshot: { status: "open", checks: "failing", review: null, mergeable: "mergeable" } } : null,
   }) as unknown as PullRequestLink
 
 const pullRequest = (url: string, checks: PullRequest["checks"] = "passing") =>

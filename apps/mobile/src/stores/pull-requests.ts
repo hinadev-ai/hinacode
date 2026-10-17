@@ -84,8 +84,9 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
         (value) => {
           if (pending.get(url) !== request) return
           const at = Date.now()
+          const { status, checks, review } = value
           write({ status: "ready", value, at })
-          writeSummary(url, { status: "ready", value: { status: value.status, checks: value.checks, review: value.review }, at })
+          writeSummary(url, { status: "ready", value: { status, checks, review }, at })
         },
         (cause: unknown) => {
           if (pending.get(url) !== request) return
