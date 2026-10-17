@@ -1,8 +1,8 @@
 import RFB from "@novnc/novnc"
 import { matchesKeyboardEvent } from "@tanstack/react-hotkeys"
 import { cn } from "cn"
-import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
-import { RiFullscreenExitLine } from "react-icons/ri"
+import { type DragEvent, type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
+import { RiFullscreenExitLine, RiUpload2Line } from "react-icons/ri"
 import type { VmControl } from "../../../shared/domain.ts"
 import { VncChannel } from "../../lib/vncChannel.ts"
 import { m } from "../../paraglide/messages.js"
@@ -20,6 +20,10 @@ interface TinyVmScreenProps {
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
+  /** Host paths of files or folders dropped on the screen; empty when the drop had files without host paths. */
+  readonly onDropFiles: (paths: ReadonlyArray<string>) => void
+  /** A drop is being copied into the VM. */
+  readonly dropping: boolean
 }
 
 /**
@@ -33,13 +37,43 @@ export default function TinyVmScreen({
   fullscreenControls,
   onHandBack,
   onReconnect,
+  onDropFiles,
+  dropping,
 }: TinyVmScreenProps) {
   const id = vmScreenId(threadId)
   const targetRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const controlRef = useRef(control)
+  const dragDepth = useRef(0)
   const [connection, setConnection] = useState<Connection>("connecting")
   const [fullscreen, setFullscreen] = useState(false)
+  const [fileDrag, setFileDrag] = useState(false)
+
+  const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
+  const onDragEnter = (event: DragEvent<HTMLElement>) => {
+    if (!carriesFiles(event)) return
+    dragDepth.current += 1
+    setFileDrag(true)
+  }
+  const onDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (!carriesFiles(event)) return
+    dragDepth.current -= 1
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0
+      setFileDrag(false)
+    }
+  }
+  const onDragOver = (event: DragEvent<HTMLElement>) => {
+    if (carriesFiles(event)) event.preventDefault()
+  }
+  const onDrop = (event: DragEvent<HTMLElement>) => {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    dragDepth.current = 0
+    setFileDrag(false)
+    const paths = [...event.dataTransfer.files].map((file) => window.hinacode.pathForFile(file))
+    onDropFiles(paths.filter((path) => path !== ""))
+  }
 
   const applyControl = useEffectEvent((rfb: RFB) => {
     rfb.viewOnly = control !== "user"
@@ -94,6 +128,10 @@ export default function TinyVmScreen({
       id={id}
       aria-label={m.vm_screen()}
       onKeyDownCapture={onKeyDownCapture}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       className={cn(
         "relative aspect-[16/10] w-full overflow-hidden bg-muted [&:fullscreen]:rounded-none",
         !bare && "rounded-md",
@@ -108,6 +146,17 @@ export default function TinyVmScreen({
             <RiFullscreenExitLine aria-hidden />
             {m.vm_exit_fullscreen()}
           </Button>
+        </div>
+      )}
+      {fileDrag && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-dashed outline-working">
+          <RiUpload2Line aria-hidden className="size-6" />
+          <p className="text-sm">{m.vm_drop_hint()}</p>
+        </div>
+      )}
+      {!fileDrag && dropping && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+          <Spinner label={m.vm_drop_copying()} />
         </div>
       )}
       {connection === "connecting" && (

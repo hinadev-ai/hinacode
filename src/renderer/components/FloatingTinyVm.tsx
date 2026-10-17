@@ -18,6 +18,7 @@ import {
   showVmFullscreen,
   TinyVmScreen,
   useVmAction,
+  useVmDrop,
 } from "./sidePanel/TinyVmView.tsx"
 
 /** The thread's tiny VM screen floating over the top right of the conversation, when the user floated it. */
@@ -36,6 +37,7 @@ function WhenRunning({ threadId }: { threadId: string }) {
 
 function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
+  const { dropping, onDropFiles } = useVmDrop(threadId, run)
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
@@ -92,6 +94,8 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             fullscreenControls={control}
             onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}
             onReconnect={() => setAttempt((count) => count + 1)}
+            onDropFiles={onDropFiles}
+            dropping={dropping}
           />
         </Suspense>
       </section>

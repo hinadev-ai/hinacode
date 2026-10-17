@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events"
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { expect, layer } from "@effect/vitest"
 import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -28,6 +31,7 @@ import * as PullRequests from "../services/PullRequests.ts"
 import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
+import { decodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
 import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
@@ -651,6 +655,40 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.text).toContain("echo hi")
       const background = yield* callAs(connection, "vm_exec", { command: "chromium", background: true })
       expect(background.text).toBe("Started in the background as pid 4242. Output goes to /tmp/sbx-4242.log.")
+    }),
+  )
+
+  it.effect("dropped files land in ~/Downloads and the next tool result tells the agent once", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.start(a)
+      const dir = mkdtempSync(join(tmpdir(), "kk-drop-"))
+      const folder = join(dir, "notes")
+      mkdirSync(folder)
+      writeFileSync(join(folder, "hello.txt"), "hello vm\n")
+      const uploadsBefore = fake.uploads.length
+
+      const landed = yield* vm.dropFiles(a, [folder])
+      expect(landed).toStrictEqual(["~/Downloads/notes"])
+      expect(fake.execs.some((exec) => exec.script.includes("mkdir -p ~/Downloads"))).toBe(true)
+      expect(fake.uploads).toHaveLength(uploadsBefore + 1)
+      const upload = fake.uploads.at(-1)!
+      expect(upload.path).toBe("Downloads")
+      const entries = decodeTar(upload.bytes)
+      expect(entries.map((entry) => entry.path)).toStrictEqual(["notes", "notes/hello.txt"])
+      const hello = entries[1]
+      expect(hello?.type).toBe("file")
+      if (hello?.type === "file") expect(new TextDecoder().decode(hello.data)).toBe("hello vm\n")
+
+      const connection = yield* mcp.connectionFor(a)
+      const first = yield* callAs(connection, "vm_exec", { command: "ls ~/Downloads" })
+      expect(first.text).toContain("The user dropped files into the VM: ~/Downloads/notes")
+      const second = yield* callAs(connection, "vm_exec", { command: "ls ~/Downloads" })
+      expect(second.text).not.toContain("dropped files")
     }),
   )
 

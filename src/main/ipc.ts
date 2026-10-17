@@ -294,6 +294,7 @@ const handlers: Handlers = {
       : new VmError({ message: "The VM screen is only available in the desktop window." }),
   "vm.screen.send": ({ streamId, data }) => TinyVm.use((vm) => vm.sendScreen(streamId, data)),
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
+  "vm.files.drop": ({ threadId, paths }) => TinyVm.use((vm) => vm.dropFiles(threadId, paths)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
