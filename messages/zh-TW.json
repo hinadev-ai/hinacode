@@ -1223,5 +1223,14 @@
   "mobile_settings_cancel": "取消",
   "mobile_settings_connection_footnote": "要重新配對，請在桌面開啟「設定」中的「遠端」。",
   "mobile_settings_about": "關於",
-  "mobile_settings_version": "HinaCode {version}"
+  "mobile_settings_version": "HinaCode {version}",
+  "mobile_notify_completed": "已完成",
+  "mobile_notify_approval": "等待你的核准",
+  "mobile_notify_question": "等待你的回答",
+  "mobile_notify_secret": "等待輸入密鑰",
+  "mobile_notify_failed": "失敗：{message}",
+  "mobile_notify_limited": "已達用量上限而停止",
+  "mobile_notify_open": "開啟",
+  "mobile_notify_dismiss": "關閉通知",
+  "mobile_notify_untitled": "對話串"
 }
