@@ -3,8 +3,20 @@ name: React Doctor
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "**/*.ts"
+      - "**/*.tsx"
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/react-doctor.yml
   push:
     branches: [main]
+    paths:
+      - "**/*.ts"
+      - "**/*.tsx"
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/react-doctor.yml
 
 permissions:
   contents: read
@@ -20,7 +32,6 @@ jobs:
   react-doctor:
     runs-on: ubuntu-latest
     steps:
-      # A shallow checkout has no merge base, so the PR scan could not tell new issues from old ones.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
