@@ -17,6 +17,7 @@ export const Colors = {
     danger: "#b91c1c",
     dangerBg: "#fee2e2",
     neutralBg: "#f4f4f5",
+    link: "#6d28d9",
   },
   dark: {
     text: "#fafafa",
@@ -34,10 +35,40 @@ export const Colors = {
     danger: "#f87171",
     dangerBg: "#3b1111",
     neutralBg: "#27272a",
+    link: "#a78bfa",
   },
 } as const
 
 export type Palette = { readonly [K in keyof typeof Colors.light]: string }
+
+/**
+ * Code colors per syntax class, from GitHub's light and dark themes. Each reads at 4.5:1 or more on `surface`,
+ * the code block background. Operators share the keyword color, as on GitHub.
+ */
+export const SyntaxColors = {
+  light: {
+    plain: Colors.light.text,
+    comment: "#57606a",
+    string: "#0a3069",
+    number: "#0550ae",
+    constant: "#0550ae",
+    keyword: "#cf222e",
+    operator: "#cf222e",
+    type: "#953800",
+    function: "#6639ba",
+  },
+  dark: {
+    plain: Colors.dark.text,
+    comment: "#8b949e",
+    string: "#a5d6ff",
+    number: "#79c0ff",
+    constant: "#79c0ff",
+    keyword: "#ff7b72",
+    operator: "#ff7b72",
+    type: "#ffa657",
+    function: "#d2a8ff",
+  },
+} as const
 
 export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
 

@@ -1,14 +1,23 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router"
 import { StatusBar } from "expo-status-bar"
-import { useColorScheme } from "react-native"
+import { useEffect } from "react"
+import { Appearance, Platform } from "react-native"
 import { ConnectionProvider } from "@/components/connection-provider"
-import { useTheme } from "@/hooks/use-theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
+import { usePreferences } from "@/stores/preferences"
 
 export default function RootLayout() {
-  const scheme = useColorScheme()
+  const scheme = useScheme()
   const theme = useTheme()
+  const appearance = usePreferences((state) => state.appearance)
   const base = scheme === "dark" ? DarkTheme : DefaultTheme
+
+  // Native alerts, switches and the keyboard follow the app's appearance only through this override.
+  useEffect(() => {
+    if (Platform.OS !== "web") Appearance.setColorScheme(appearance === "system" ? "unspecified" : appearance)
+  }, [appearance])
+
   return (
     <ThemeProvider
       value={{
