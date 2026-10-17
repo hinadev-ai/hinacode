@@ -208,6 +208,31 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "runs a command outside the sandbox under full access without asking",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("full", (marker) =>
+            endpoint.script({
+              when: marker,
+              name: "bash",
+              arguments: {
+                command: "echo escalated",
+                description: "Print outside the sandbox",
+                sandbox_permissions: "require_escalated",
+              },
+            }),
+          )
+          yield* Fiber.join(turn.fiber)
+
+          expect(eventsOf(turn, "approval_requested")).toStrictEqual([])
+          expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ output: "escalated\n", isError: false }])
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "fails the command and still completes the turn when denied",
     () =>
       withProvider(

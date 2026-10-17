@@ -287,6 +287,13 @@ const make = Effect.gen(function* () {
 
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 
+  const respondApproval = (requestId: string, decision: ApprovalDecision) =>
+    Effect.suspend(() => {
+      const request = approvals.get(requestId)
+      if (request === undefined) return Effect.void
+      return providers[request.provider]?.respondApproval(requestId, decision) ?? Effect.void
+    })
+
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
 
@@ -736,14 +743,18 @@ const make = Effect.gen(function* () {
         const pending = pendingSends.get(threadId)
         return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
       }),
+    // Switching the mode does not answer a tool call already waiting for approval, so full access allows it here.
     setAccessMode: (threadId, accessMode) =>
-      Effect.suspend(() => activeTurns.get(threadId)?.provider.setAccessMode(threadId, accessMode) ?? Effect.void),
-    respondApproval: (requestId, decision) =>
-      Effect.suspend(() => {
-        const request = approvals.get(requestId)
-        if (request === undefined) return Effect.void
-        return providers[request.provider]?.respondApproval(requestId, decision) ?? Effect.void
+      Effect.gen(function* () {
+        const turn = activeTurns.get(threadId)
+        if (turn === undefined) return
+        yield* turn.provider.setAccessMode(threadId, accessMode)
+        if (accessMode !== "full") return
+        for (const request of approvals.values()) {
+          if (request.threadId === threadId) yield* respondApproval(request.id, "allow")
+        }
       }),
+    respondApproval,
     respondQuestion: (requestId, answers) =>
       Effect.suspend(() => {
         const request = questions.get(requestId)

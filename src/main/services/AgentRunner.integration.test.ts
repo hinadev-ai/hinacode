@@ -7,7 +7,7 @@ import { expect, it } from "@effect/vitest"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
-import type { AgentEvent, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -48,6 +48,7 @@ interface Probe {
   readonly snapshotting: Promise<void>
   readonly idle: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
+  readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
   readonly release: () => void
   readonly deliver: () => void
   readonly snapshot: () => void
@@ -89,6 +90,7 @@ const withPreparingThread = async (
   let holdInsertion = options.pauseInsertion ?? false
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
+  const decisions: Probe["decisions"] = []
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provide(Terminals.layer),
@@ -124,15 +126,30 @@ const withPreparingThread = async (
     usage: () => Effect.succeed(null),
     listCommands: () => Effect.succeed([]),
     runTurn: (input) =>
-      Stream.suspend(() => {
+      Stream.suspend((): Stream.Stream<AgentEvent> => {
         turns.push({ provider: id, input })
         const completed: AgentEvent = { type: "turn_completed" }
-        return input.prompt === "accepted input" ? Stream.make(completed) : Stream.never
+        if (input.prompt === "accepted input") return Stream.make(completed)
+        if (input.prompt !== "needs approval") return Stream.never
+        const requested: AgentEvent = {
+          type: "approval_requested",
+          request: {
+            id: "approval-1",
+            threadId: input.threadId,
+            provider: id,
+            kind: "command",
+            title: "Run command",
+            detail: "echo hi",
+            input: { command: "echo hi" },
+            sessionScope: { tool: "Bash", kind: "command", value: "echo hi" },
+          },
+        }
+        return Stream.concat(Stream.make(requested), Stream.never)
       }),
     steer: () => Effect.void,
     interrupt: () => Effect.void,
     setAccessMode: () => Effect.void,
-    respondApproval: () => Effect.void,
+    respondApproval: (requestId, decision) => Effect.sync(() => decisions.push({ requestId, decision })),
     respondQuestion: () => Effect.void,
   })
   try {
@@ -263,6 +280,7 @@ const withPreparingThread = async (
         snapshotting: snapshotting.promise,
         idle: idle.promise,
         turns,
+        decisions,
         release,
         deliver,
         snapshot,
@@ -548,5 +566,17 @@ it("preserves the accepted turn baseline when pending Stop interrupts snapshot c
     expect((await Effect.runPromise(probe.runner.transcript(probe.thread.id))).messages).toStrictEqual(before.messages)
     expect(await Effect.runPromise(probe.threads.changes(probe.thread.id, "turn"))).toStrictEqual(before.changes)
     expect(await probe.turnBase()).toBe(before.baseline)
+  })
+})
+
+it("allows the approval a turn is waiting on when the thread switches to full access", async () => {
+  await withPreparingThread(async ({ runner, thread, release, decisions }) => {
+    release()
+    expect(Exit.isSuccess(await Effect.runPromiseExit(runner.send(thread.id, "needs approval", [])))).toBe(true)
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
   })
 })
