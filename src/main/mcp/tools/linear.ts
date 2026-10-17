@@ -1,4 +1,4 @@
-import type { Issue } from "@linear/sdk"
+import type { Issue, LinearDocument } from "@linear/sdk"
 import { Effect, Option, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { Secrets } from "../../services/Secrets.ts"
@@ -35,6 +35,31 @@ const issueSummary = async (issue: Issue) => {
   ].join("\n")
 }
 
+const parseIssueKeys = (input: string) => [...new Set(input.split(/[\s,]+/).filter(Boolean))]
+
+interface IssueSearch {
+  readonly query?: string
+  readonly assignee?: string
+  readonly state?: string
+  readonly limit: number
+}
+
+const assigneeFilter = (assignee: string): LinearDocument.IssueFilter["assignee"] =>
+  assignee.toLowerCase() === "me"
+    ? { isMe: { eq: true } }
+    : {
+        or: [
+          { displayName: { eqIgnoreCase: assignee } },
+          { name: { eqIgnoreCase: assignee } },
+          { email: { eqIgnoreCase: assignee } },
+        ],
+      }
+
+const issueFilter = ({ assignee, state }: IssueSearch): LinearDocument.IssueFilter => ({
+  ...(assignee && { assignee: assigneeFilter(assignee) }),
+  ...(state && { state: { name: { eqIgnoreCase: state } } }),
+})
+
 type Linear = Effect.Success<ReturnType<typeof makeLinear>>
 
 /**
@@ -51,16 +76,33 @@ const makeTools = (client: InstanceType<typeof import("@linear/sdk").LinearClien
   const getIssue = (key: string) => request(() => client.issue(key))
 
   return {
-    getIssue: (key: string) => Effect.flatMap(getIssue(key), (issue) => request(() => issueSummary(issue))),
+    getIssues: (input: string) => {
+      const keys = parseIssueKeys(input)
+      if (keys.length === 0) return fail("no issue key given")
+      return Effect.forEach(
+        keys,
+        (key) =>
+          getIssue(key).pipe(
+            Effect.flatMap((issue) => request(() => issueSummary(issue))),
+            Effect.catch((error) => Effect.succeed(`# ${key}\n\n${error.message}`)),
+          ),
+        { concurrency: 5 },
+      ).pipe(Effect.map((summaries) => summaries.join("\n\n---\n\n")))
+    },
 
-    searchIssues: (query: string, limit: number) =>
-      request(() => client.searchIssues(query, { first: limit })).pipe(
-        Effect.map(({ nodes }) =>
+    searchIssues: (search: IssueSearch) => {
+      const variables = { filter: issueFilter(search), first: search.limit }
+      return request(
+        async () =>
+          (search.query ? await client.searchIssues(search.query, variables) : await client.issues(variables)).nodes,
+      ).pipe(
+        Effect.map((nodes) =>
           nodes.length === 0
-            ? `No issues match "${query}".`
+            ? "No issues match."
             : nodes.map((issue) => `- ${issue.identifier}: ${issue.title} (${issue.url})`).join("\n"),
         ),
-      ),
+      )
+    },
 
     createComment: (key: string, body: string) =>
       Effect.gen(function* () {
@@ -92,13 +134,27 @@ const IssueKey = Schema.String.annotate({ description: "Linear issue identifier,
 
 export const LinearTools = Toolkit.make(
   McpTool.make("linear_get_issue", {
-    description: "Read a Linear issue: title, state, assignee, priority, URL and description.",
-    parameters: Schema.Struct({ key: IssueKey }),
+    description:
+      "Read one or more Linear issues: title, state, assignee, priority, URL and description. An issue that cannot be read reports its error in place.",
+    parameters: Schema.Struct({
+      key: Schema.String.annotate({
+        description: "One or more Linear issue identifiers separated by commas, for example ENG-123 or ENG-123,ENG-456",
+      }),
+    }),
   }),
   McpTool.make("linear_search_issues", {
-    description: "Full-text search Linear issues. Returns identifier, title and URL per match.",
+    description:
+      "Search Linear issues by text, assignee and workflow state, in any combination. Returns identifier, title and URL per match.",
     parameters: Schema.Struct({
-      query: Schema.String,
+      query: Schema.optionalKey(Schema.String.annotate({ description: "Full-text search term" })),
+      assignee: Schema.optionalKey(
+        Schema.String.annotate({
+          description: 'Assignee display name, full name or email, or "me" for the API key owner',
+        }),
+      ),
+      state: Schema.optionalKey(
+        Schema.String.annotate({ description: "Workflow state name, case-insensitive, for example In Progress" }),
+      ),
       limit: Schema.optionalKey(
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 })).annotate({
           description: "Maximum results, 1-50. Defaults to 10.",
@@ -135,8 +191,9 @@ export const linearToolsLayer = LinearTools.toLayer(
         }),
       )
     return LinearTools.of({
-      linear_get_issue: ({ key }) => withLinear((linear) => linear.getIssue(key)),
-      linear_search_issues: ({ query, limit }) => withLinear((linear) => linear.searchIssues(query, limit ?? 10)),
+      linear_get_issue: ({ key }) => withLinear((linear) => linear.getIssues(key)),
+      linear_search_issues: ({ limit, ...search }) =>
+        withLinear((linear) => linear.searchIssues({ ...search, limit: limit ?? 10 })),
       linear_create_comment: ({ key, body }) => withLinear((linear) => linear.createComment(key, body)),
       linear_update_issue_state: ({ key, stateName }) =>
         withLinear((linear) => linear.updateIssueState(key, stateName)),
