@@ -883,6 +883,27 @@ describe("turns the agent starts over rpc", () => {
     expect(await userTexts(thread.id)).toStrictEqual(["simulate a session"])
   })
 
+  test("queues a message sent while it runs", async () => {
+    const held = Promise.withResolvers<void>()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    Effect.runSync(
+      Queue.offer(claudeWakes, {
+        threadId: thread.id,
+        events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
+          Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
+        ),
+      }),
+    )
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
+    result(await invoke("threads.queue", { threadId: thread.id, text: "then the docs" }))
+    expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual(["then the docs"])
+
+    held.resolve()
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["then the docs"])
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+  })
+
   test("waits for the running turn before it starts", async () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
