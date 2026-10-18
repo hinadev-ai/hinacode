@@ -107,6 +107,15 @@ export function completionAt(text: string, caret: number): CompletionQuery | nul
   return { trigger, query: text.slice(start + 1, caret), start, end }
 }
 
+/** The skill `text` starts with, and its `/name ` or `$name ` token including the space that ends it. */
+export function leadingSkill(text: string, commands: ReadonlyArray<AgentCommand>) {
+  for (const command of commands) {
+    const token = `${command.trigger}${command.name} `
+    if (command.builtin !== true && text.startsWith(token)) return { command, token }
+  }
+  return null
+}
+
 /** Commands for `completion`, names starting with the query first, then names containing it. */
 export function matchCommands(
   commands: ReadonlyArray<AgentCommand>,

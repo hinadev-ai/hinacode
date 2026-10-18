@@ -67,6 +67,8 @@ export interface AgentProvider {
     attachments: ReadonlyArray<Attachment>,
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
+  /** Stops one sub-agent of the thread by its `Subagent.id`. A provider that cannot leaves it out. */
+  readonly stopSubagent?: (threadId: string, subagentId: string) => Effect.Effect<void, AgentError>
   readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
   readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
   /** Applies a new access mode to a live session. Providers without one pick it up on the next turn. */

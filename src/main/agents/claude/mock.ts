@@ -1,6 +1,6 @@
 import { Effect, Layer, Stream } from "effect"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { type AgentEvent, unlistedModel } from "../../../shared/agent.ts"
+import { type AgentCommand, type AgentEvent, unlistedModel } from "../../../shared/agent.ts"
 import { AgentError } from "../provider.ts"
 import {
   usageLimitAssistant,
@@ -14,6 +14,24 @@ import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
 export type MockScenario = "usage-limit" | "org-spend-limit" | "todos" | "markdown"
+
+/** A skill and one of Claude Code's own commands, which the composer shows differently. */
+const commands: ReadonlyArray<AgentCommand> = [
+  {
+    trigger: "/",
+    name: "triage-issue",
+    description: "Reproduce a reported bug and find its cause.",
+    argumentHint: "",
+    scope: "project",
+  },
+  {
+    trigger: "/",
+    name: "compact",
+    description: "Free up context by summarizing the conversation so far",
+    argumentHint: "<optional custom summarization instructions>",
+    builtin: true,
+  },
+]
 
 const toolCall = (callId: string, name: string, input: unknown, output: string): Array<AgentEvent> => [
   { type: "tool_call_started", callId, name, input },
@@ -90,7 +108,7 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
           }),
         planLimits: () => Effect.succeed(null),
         usage: () => Effect.succeed(null),
-        listCommands: () => Effect.succeed([]),
+        listCommands: () => Effect.succeed(commands),
         runTurn: (input) =>
           Stream.suspend(() => {
             if (scenario === "markdown") return Stream.fromIterable(markdownTurn())

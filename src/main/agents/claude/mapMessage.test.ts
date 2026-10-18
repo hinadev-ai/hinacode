@@ -272,6 +272,18 @@ describe("mapMessage sub-agent tasks", () => {
     expect(subagentOf(stopped)).toMatchObject({ status: "stopped", summary: "Counting tracked files" })
   })
 
+  test("keeps the progress summary when a stopped sub-agent's report only repeats its task", () => {
+    const state = newState()
+    mapMessage(started, state, "2026-10-12T10:00:00.000Z")
+    mapMessage({ ...progress, summary: "Counting tracked files" }, state, "2026-10-12T10:00:01.000Z")
+    const stopped = mapMessage(
+      { ...notification, status: "stopped" as const, summary: started.description },
+      state,
+      "2026-10-12T10:00:02.000Z",
+    )
+    expect(subagentOf(stopped)).toMatchObject({ status: "stopped", summary: "Counting tracked files" })
+  })
+
   test("tags the sub-agent's tool calls with the call that spawned it", () => {
     const state = newState()
     const spawner = subagentOf(mapMessage(started, state, "2026-10-12T10:00:00.000Z"))

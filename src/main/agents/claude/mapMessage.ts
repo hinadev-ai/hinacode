@@ -182,7 +182,8 @@ function subagentEnded(message: SDKTaskNotificationMessage, state: MapState, now
   return updateSubagent(state, {
     ...current,
     status: message.status,
-    summary: message.summary === "" ? current.summary : message.summary,
+    // A stopped task reports its own description as the summary, which says nothing new.
+    summary: message.summary === "" || message.summary === current.label ? current.summary : message.summary,
     toolUses: message.usage?.tool_uses ?? current.toolUses,
     tokens: message.usage?.total_tokens ?? current.tokens,
     endedAt: now,

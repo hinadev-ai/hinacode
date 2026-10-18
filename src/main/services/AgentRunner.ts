@@ -68,6 +68,8 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
+/** Streaming persists wait this many times as long as the last one took, capping them near a tenth of the main thread. */
+const PERSIST_BACKOFF = 10
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 export interface SendOptions {
@@ -160,6 +162,11 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<ThreadUsage | null, AgentError | PersistenceError | NotFoundError>
     /** Sub-agents the thread's agent spawned since the app started, newest first. */
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
+    /** Stops one running sub-agent; the turn that spawned it keeps going. */
+    readonly stopSubagent: (
+      threadId: string,
+      subagentId: string,
+    ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
@@ -350,13 +357,16 @@ const make = Effect.gen(function* () {
     let status: ThreadStatus = "running"
     let completed = false
     let persistedAt = Date.now()
+    let persistMs = 0
     const dirty = new Set<string>()
 
     const persist = Effect.suspend(() => {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, messages.update, { discard: true })
+      return Effect.forEach(changed, messages.update, { discard: true }).pipe(
+        Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))),
+      )
     })
 
     const setTurnMessages = (next: ReadonlyArray<Message>) => {
@@ -389,7 +399,8 @@ const make = Effect.gen(function* () {
             ...(event.type === "turn_limited" ? { usageLimit: event.limit } : {}),
           })
         }
-        if (dirty.size > 0 && Date.now() - persistedAt >= PERSIST_INTERVAL_MS) yield* persist
+        const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
+        if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       }).pipe(exclusive(thread.id))
 
     const steer = (
@@ -829,7 +840,7 @@ const make = Effect.gen(function* () {
       }),
     requestSecret,
     respondSecret,
-    // The database lags a running turn by up to PERSIST_INTERVAL_MS, so its messages come from memory.
+    // The database lags a running turn by a persist interval or more, so its messages come from memory.
     transcript: (threadId) =>
       Effect.gen(function* () {
         const persisted = yield* messages.list(threadId)
@@ -870,6 +881,20 @@ const make = Effect.gen(function* () {
         return yield* providers[thread.provider].usage(thread.providerSessionId, home)
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
+    stopSubagent: (threadId, subagentId) =>
+      Effect.gen(function* () {
+        if (subagents.get(threadId)?.get(subagentId)?.status !== "running") return
+        const { provider: id } = yield* threads.get(threadId)
+        const stop = providers[id].stopSubagent
+        if (stop === undefined) {
+          return yield* new AgentError({ provider: id, message: "This agent cannot stop a single sub-agent" })
+        }
+        yield* stop(threadId, subagentId)
+        // The provider's own report of the stop can arrive with no turn left to carry it.
+        const endedAt = yield* nowIso
+        const latest = subagents.get(threadId)?.get(subagentId)
+        if (latest?.status === "running") yield* updateSubagent(threadId, { ...latest, status: "stopped", endedAt })
+      }),
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
