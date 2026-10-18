@@ -131,8 +131,6 @@ export const RpcMethods = {
       fastMode: Schema.optional(Schema.Boolean),
       userSkills: Schema.optional(Schema.Boolean),
       accessMode: Schema.optional(AccessMode),
-      /** Only before the thread has a provider session. Null is the CLI's own login. */
-      accountId: Schema.optional(Schema.NullOr(Schema.String)),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
       pinned: Schema.optional(Schema.Boolean),
@@ -144,6 +142,18 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.resumeAtReset": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Thread),
+  /**
+   * Moves the thread to another account of its agent, copying its session there first. Refused while a turn
+   * runs. A limited thread goes back to idle. `resend` sends the last prompt again on the new account.
+   */
+  "threads.switchAccount": rpc(
+    Schema.Struct({
+      id: Schema.String,
+      accountId: Schema.NullOr(Schema.String),
+      resend: Schema.optional(Schema.Boolean),
+    }),
+    Thread,
+  ),
 
   "worktrees.list": rpc(Schema.Void, Schema.Array(Worktree)),
   "worktrees.create": rpc(
@@ -504,6 +514,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.update": "mutation",
   "threads.delete": "mutation",
   "threads.resumeAtReset": "mutation",
+  "threads.switchAccount": "mutation",
   "worktrees.list": "read",
   "worktrees.create": "mutation",
   "worktrees.remove": "mutation",

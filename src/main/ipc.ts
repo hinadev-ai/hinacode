@@ -172,6 +172,8 @@ const handlers: Handlers = {
     ),
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
+  "threads.switchAccount": ({ id, accountId, resend }) =>
+    AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),

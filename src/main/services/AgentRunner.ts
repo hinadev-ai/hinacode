@@ -47,13 +47,13 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
-import type {
+import {
   NotFoundError,
-  PersistenceError,
-  PullRequestElsewhereError,
-  RootBusyError,
+  type PersistenceError,
+  type PullRequestElsewhereError,
+  type RootBusyError,
   ThreadStartedError,
-  WorktreeTakenError,
+  type WorktreeTakenError,
 } from "./errors.ts"
 import type { CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
@@ -131,6 +131,16 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       enabled: boolean,
     ) => Effect.Effect<Thread, AgentError | PersistenceError | NotFoundError | ThreadStartedError>
+    /**
+     * Moves the thread to another account of its agent. A started session is copied into the new account's home
+     * first, so the next turn keeps its history. A limited thread goes back to idle, because the limit was the
+     * old account's. `resend` sends the last prompt again. Refused while a turn runs.
+     */
+    readonly switchAccount: (
+      threadId: string,
+      accountId: string | null,
+      options: { readonly resend: boolean },
+    ) => Effect.Effect<Thread, SendError>
     /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
@@ -694,21 +704,59 @@ const make = Effect.gen(function* () {
       )
         return
       yield* updateThread({ id: thread.id, usageLimit: { ...limit, reset: { ...limit.reset, autoResume: false } } })
-      return (yield* messages.list(thread.id)).findLast((message) => message.role === "user")
+      return yield* lastPrompt(thread.id)
     }).pipe(exclusive(threadId))
+
+  const lastPrompt = (threadId: string) =>
+    messages.list(threadId).pipe(Effect.map((list) => list.findLast((message) => message.role === "user")))
+
+  const resend = (threadId: string, prompt: Message) =>
+    send(
+      threadId,
+      prompt.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+      prompt.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : [])),
+    )
 
   const resumeDue = Effect.gen(function* () {
     const now = yield* nowIso
     for (const candidate of yield* threads.list) {
       yield* Effect.gen(function* () {
         const prompt = yield* consumeDueResume(candidate.id, now)
-        if (prompt === undefined) return
-        const text = prompt.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
-        const attachments = prompt.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
-        yield* send(candidate.id, text, attachments)
+        if (prompt !== undefined) yield* resend(candidate.id, prompt)
       }).pipe(Effect.catch((error) => Effect.logWarning("automatic resume failed", error)))
     }
   })
+
+  const switchAccount: typeof AgentRunner.Service.switchAccount = (threadId, accountId, options) =>
+    Effect.gen(function* () {
+      const switched = yield* Effect.gen(function* () {
+        if (busyThreads.has(threadId)) {
+          return yield* new AgentError({ provider: "hinacode", message: "Wait for the turn to end to switch accounts" })
+        }
+        const current = yield* threads.get(threadId)
+        if (accountId === current.accountId) return { thread: current, prompt: undefined }
+        if (accountId !== null && (yield* accounts.get(accountId)).provider !== current.provider) {
+          return yield* new NotFoundError({ entity: "account", id: accountId })
+        }
+        if (current.providerSessionId !== null) {
+          const provider = providers[current.provider]
+          if (provider.copySession === undefined) return yield* new ThreadStartedError({ id: threadId })
+          yield* provider.copySession(
+            current.providerSessionId,
+            yield* accounts.home(current.accountId),
+            yield* accounts.home(accountId),
+          )
+        }
+        const thread = yield* updateThread({
+          id: threadId,
+          accountId,
+          ...(current.status === "limited" && { status: "idle" }),
+        })
+        return { thread, prompt: options.resend ? yield* lastPrompt(threadId) : undefined }
+      }).pipe(exclusive(threadId))
+      if (switched.prompt !== undefined) yield* resend(threadId, switched.prompt)
+      return switched.thread
+    })
 
   yield* Effect.forkIn(
     Effect.forever(
@@ -811,6 +859,7 @@ const make = Effect.gen(function* () {
     queue,
     unqueue,
     resumeAtReset,
+    switchAccount,
     steer: (threadId, text, attachments) =>
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
