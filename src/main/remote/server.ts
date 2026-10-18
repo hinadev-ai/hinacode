@@ -53,7 +53,7 @@ const desktopOnly = (method: string): RpcEnvelope<never> => ({
   error: { tag: "DesktopOnly", message: `${method} is only available in the desktop window` },
 })
 
-const send = (socket: WebSocket, frame: ServerFrame) => {
+const send = (socket: WebSocket, frame: typeof ServerFrame.Encoded) => {
   if (socket.readyState !== WebSocket.OPEN) return
   if (socket.bufferedAmount > SLOW_CONSUMER_BYTES) return socket.close(CLOSE_SLOW_CONSUMER, "slow consumer")
   socket.send(JSON.stringify(frame))
