@@ -32,7 +32,7 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
     <section
       role="status"
       aria-labelledby={titleId}
-      className="mx-3 mb-2 flex shrink-0 flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
+      className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
     >
       <h2 id={titleId} className="flex items-center gap-2 text-sm font-semibold text-attention">
         <RiErrorWarningLine aria-hidden className="size-4 shrink-0" />
