@@ -336,6 +336,8 @@
       }
     }
   ],
+  "agents_batch_running": "{total} 件中 {running} 件実行中",
+  "agents_batch_failed": "{count} 件失敗",
   "agents_list_label": "サブエージェント",
   "agents_loading": "サブエージェントを読み込み中…",
   "agents_failed": "サブエージェントを読み込めませんでした：{message}",

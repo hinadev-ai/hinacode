@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef } from "react"
 import { RiArrowLeftLine, RiArrowRightSLine } from "react-icons/ri"
-import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
-import type { Message, Thread, ToolCallStatus } from "../../shared/domain.ts"
-import { findSubagentWork, inputField, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
+import type { Message, Thread } from "../../shared/domain.ts"
+import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
-import { useSubagents } from "../stores/subagents.ts"
+import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useUi } from "../stores/ui.ts"
 import { Markdown } from "./Markdown.tsx"
 import { MessageList } from "./MessageList.tsx"
@@ -13,14 +12,6 @@ import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
-
-const NO_SUBAGENTS: ReadonlyArray<Subagent> = []
-
-const statusOfCall = {
-  running: "running",
-  done: "completed",
-  error: "failed",
-} satisfies Record<ToolCallStatus, SubagentStatus>
 
 /**
  * One sub-agent's prompt, tool calls and result, opened in place of the thread's transcript.
@@ -37,9 +28,7 @@ export function SubagentTranscript({
   callId: string
   providerLabel: string
 }) {
-  const subagent = useSubagents((state) =>
-    (state.byThreadId[thread.id] ?? NO_SUBAGENTS).find((candidate) => candidate.callId === callId),
-  )
+  const subagent = useSubagentByCallId(thread.id, callId)
   const { spawn, calls, startedAt } = useMemo(() => findSubagentWork(messages, callId), [messages, callId])
   const open = useOpenSubagent(thread.id)
   const now = useNow(subagent?.status === "running")

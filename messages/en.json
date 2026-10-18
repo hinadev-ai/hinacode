@@ -336,6 +336,8 @@
       }
     }
   ],
+  "agents_batch_running": "{running} of {total} running",
+  "agents_batch_failed": "{count} failed",
   "agents_list_label": "Sub-agents",
   "agents_loading": "Loading sub-agents…",
   "agents_failed": "Could not load sub-agents: {message}",

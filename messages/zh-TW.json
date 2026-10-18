@@ -336,6 +336,8 @@
       }
     }
   ],
+  "agents_batch_running": "執行中 {running}/{total}",
+  "agents_batch_failed": "{count} 個失敗",
   "agents_list_label": "子代理",
   "agents_loading": "正在載入子代理…",
   "agents_failed": "無法載入子代理：{message}",
