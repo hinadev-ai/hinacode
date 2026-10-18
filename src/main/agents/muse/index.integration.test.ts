@@ -369,6 +369,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             name: "probe-echo",
             description: "Echo the probe marker word back to the user.",
             argumentHint: "[word]",
+            scope: "project",
           })
 
           const events: Array<AgentEvent> = []

@@ -87,6 +87,10 @@ export const AgentCommand = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   argumentHint: Schema.String,
+  /** The agent's own command, such as Claude's `/compact`. Absent on skills and on commands a user, project or plugin defines. */
+  builtin: Schema.optionalKey(Schema.Boolean),
+  /** Whether a skill is the user's own or the project's. Absent when it comes from elsewhere, such as a plugin. */
+  scope: Schema.optionalKey(Schema.Literals(["user", "project"])),
 })
 export type AgentCommand = typeof AgentCommand.Type
 

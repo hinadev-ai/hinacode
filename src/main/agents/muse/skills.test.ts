@@ -13,6 +13,12 @@ describe("toCommand", () => {
     })
     expect(toCommand({ selector: "plan", description: "Plan first." }).argumentHint).toBe("")
   })
+
+  test("keeps a user or project source as the scope", () => {
+    expect(toCommand({ selector: "plan", description: "Plan first.", source: "project" }).scope).toBe("project")
+    expect(toCommand({ selector: "plan", description: "Plan first.", source: "user" }).scope).toBe("user")
+    expect(toCommand({ selector: "acme:deploy", description: "Deploy.", source: "plugin" })).not.toHaveProperty("scope")
+  })
 })
 
 describe("parseSkillInvocation", () => {
