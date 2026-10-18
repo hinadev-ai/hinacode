@@ -722,6 +722,87 @@ describe("Claude idle sessions", () => {
   )
 })
 
+const sessionState = (state: "idle" | "running") => ({ type: "system", subtype: "session_state_changed", state })
+
+/** What a turn showed, in order: sub-agent statuses, text and its end. */
+const reported = (events: ReadonlyArray<AgentEvent>) =>
+  events.flatMap((event) =>
+    event.type === "subagent_updated"
+      ? [`subagent ${event.subagent.status}`]
+      : event.type === "text_delta"
+        ? [event.text]
+        : event.type === "session_bound"
+          ? []
+          : [event.type],
+  )
+
+describe("Claude background sub-agents", () => {
+  const subagentStarted = taskStarted("agent-1", {
+    task_type: "local_agent",
+    description: "Audit the sidebar",
+    tool_use_id: "toolu-1",
+  })
+  const parentEnds = (cli: InstanceType<typeof sdk.FakeQuery>) =>
+    cli.push(sessionState("running"), init("session-1"), subagentStarted, {
+      ...succeeded,
+      user_message_uuids: [cli.prompts[0]?.uuid],
+    })
+
+  it.effect("keeps the turn until the CLI is idle, so a sub-agent that outlives Claude's reply reports to it", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = parentEnds
+        const turn = yield* startTurn()
+        yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
+        yield* settle
+        expect(reported(turn.events)).toEqual(["subagent running"])
+
+        latestCli().push(
+          taskNotification("agent-1", { summary: "Memoized the rows" }),
+          init("session-1"),
+          textDelta("The audit finished"),
+          succeeded,
+          sessionState("idle"),
+        )
+        yield* Fiber.join(turn.fiber)
+        expect(reported(turn.events)).toEqual([
+          "subagent running",
+          "subagent completed",
+          "The audit finished",
+          "turn_completed",
+        ])
+      }),
+    ),
+  )
+
+  it.effect("answers a steer the CLI reads only after it reported idle", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) parentEnds(cli)
+        }
+        const turn = yield* startTurn()
+        yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
+        yield* provider.steer("thread-1", "How is it going?", [])
+        yield* until(() => latestCli().prompts.length === 2)
+        const steer = latestCli().prompts[1]?.uuid
+        latestCli().push(taskNotification("agent-1"), sessionState("idle"))
+        yield* settle
+
+        latestCli().push(
+          sessionState("running"),
+          textDelta("All done", steer),
+          { ...succeeded, user_message_uuids: [steer] },
+          sessionState("idle"),
+        )
+        yield* Fiber.join(turn.fiber)
+        expect(reported(turn.events)).toEqual(["subagent running", "subagent completed", "All done", "turn_completed"])
+      }),
+    ),
+  )
+})
+
 describe("Claude models", () => {
   it.effect("asks the CLI again after a failed listing, so a fresh install shows its models", () =>
     lifecycle(
