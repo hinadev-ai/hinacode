@@ -722,8 +722,21 @@ describe("Claude idle sessions", () => {
   )
 })
 
+const sessionState = (state: "idle" | "running") => ({ type: "system", subtype: "session_state_changed", state })
+
+/** What a turn showed, in order: sub-agent statuses, text and its end. */
+const reported = (events: ReadonlyArray<AgentEvent>) =>
+  events.flatMap((event) =>
+    event.type === "subagent_updated"
+      ? [`subagent ${event.subagent.status}`]
+      : event.type === "text_delta"
+        ? [event.text]
+        : event.type === "session_bound"
+          ? []
+          : [event.type],
+  )
+
 describe("Claude background sub-agents", () => {
-  const sessionState = (state: "idle" | "running") => ({ type: "system", subtype: "session_state_changed", state })
   const subagentStarted = taskStarted("agent-1", {
     task_type: "local_agent",
     description: "Audit the sidebar",
@@ -734,16 +747,6 @@ describe("Claude background sub-agents", () => {
       ...succeeded,
       user_message_uuids: [cli.prompts[0]?.uuid],
     })
-  const reported = (events: ReadonlyArray<AgentEvent>) =>
-    events.flatMap((event) =>
-      event.type === "subagent_updated"
-        ? [`subagent ${event.subagent.status}`]
-        : event.type === "text_delta"
-          ? [event.text]
-          : event.type === "session_bound"
-            ? []
-            : [event.type],
-    )
 
   it.effect("keeps the turn until the CLI is idle, so a sub-agent that outlives Claude's reply reports to it", () =>
     lifecycle(
