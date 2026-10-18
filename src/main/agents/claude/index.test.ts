@@ -18,6 +18,7 @@ const sdk = vi.hoisted(() => {
     readonly applyFlagSettings = vi.fn(() => Promise.resolve())
     readonly setPermissionMode = vi.fn((_mode: string) => sdk.setPermissionMode())
     readonly interrupt = vi.fn(() => Promise.resolve())
+    readonly stopTask = vi.fn((_taskId: string) => Promise.resolve())
     readonly supportedCommands = vi.fn(() => sdk.supportedCommands())
     readonly supportedModels = vi.fn(() => sdk.supportedModels())
     private readonly buffer: Array<Message> = []
@@ -717,6 +718,23 @@ describe("Claude idle sessions", () => {
         yield* TestClock.adjust(TTL)
         yield* settle
         expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+})
+
+describe("Claude sub-agents", () => {
+  it.effect("stops one sub-agent through the CLI by its task id", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(init("session-1"), taskStarted("agent-1", { task_type: "local_agent", tool_use_id: "toolu-1" }))
+        const turn = yield* startTurn()
+        yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
+
+        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))("thread-1", "agent-1")
+        expect(latestCli().stopTask).toHaveBeenCalledWith("agent-1")
       }),
     ),
   )

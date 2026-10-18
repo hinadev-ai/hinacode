@@ -294,6 +294,30 @@ describe("Codex sub-agents", () => {
       }),
     ),
   )
+
+  it.live("stops one sub-agent by interrupting its own turn, and keeps the parent's", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, holdTurn: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* untilEvent(turn, (event) => event.type === "tool_call_finished")
+
+        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
+          "subagent-thread",
+          "codex-child-thread",
+        )
+        const interrupts = received().flatMap((message) =>
+          message.method === "turn/interrupt" ? [message.params] : [],
+        )
+        expect(interrupts).toStrictEqual([{ threadId: "codex-child-thread", turnId: "child-turn" }])
+        expect(turn.fiber.pollUnsafe()).toBe(undefined)
+
+        yield* provider.interrupt("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+      }),
+    ),
+  )
 })
 
 const question = {

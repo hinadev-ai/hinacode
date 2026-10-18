@@ -132,6 +132,9 @@ const claudeLimits: PlanLimits = {
 /** A turn prompted with "simulate a held turn" waits for this before it completes. */
 let heldTurn = Promise.withResolvers<void>()
 
+/** Each sub-agent the scripted providers were asked to stop. */
+const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
+
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 
@@ -154,6 +157,12 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      if (input.prompt === "simulate a held sub-agent") {
+        return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
+          Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
+          Stream.concat(Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
+        )
+      }
       if (input.prompt === "simulate a held turn") {
         return Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(
           Stream.flatMap(() => Stream.fromIterable(scriptedTurn)),
@@ -186,6 +195,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
     }),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
+  stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
   respondApproval: () => Effect.void,
   respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
@@ -660,6 +670,28 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+})
+
+describe("stopping a sub-agent over rpc", () => {
+  test("stops one sub-agent while its turn keeps running", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held sub-agent" }))
+    await expect
+      .poll(async () => result(await invoke("subagents.list", { threadId: thread.id }))[0]?.status)
+      .toBe("running")
+
+    result(await invoke("subagents.stop", { threadId: thread.id, subagentId: subagent.id }))
+    expect(stoppedSubagents).toContainEqual({ threadId: thread.id, subagentId: subagent.id })
+    const [stopped] = result(await invoke("subagents.list", { threadId: thread.id }))
+    expect(stopped?.status).toBe("stopped")
+    expect(stopped?.endedAt).not.toBeNull()
+    expect((await threadOf(thread.id)).status).toBe("running")
+
+    heldTurn.resolve()
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 })
 

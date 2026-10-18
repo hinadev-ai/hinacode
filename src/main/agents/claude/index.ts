@@ -734,6 +734,18 @@ export const layer = Layer.effect(
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
+      // A sub-agent's id is its CLI task id.
+      stopSubagent: (threadId, subagentId) =>
+        Effect.suspend(() => {
+          const session = sessions.get(threadId)
+          if (session === undefined) return Effect.void
+          return lease(session, (leased) =>
+            Effect.tryPromise({
+              try: () => leased.query.stopTask(subagentId),
+              catch: agentError("Failed to stop the sub-agent"),
+            }),
+          )
+        }),
       respondApproval: approvals.respond,
       respondQuestion: questions.respond,
       setAccessMode: (threadId, accessMode) =>
