@@ -19,19 +19,21 @@ import {
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
-import { spawnsSubagent, useOpenSubagent } from "../lib/subagents.ts"
+import { spawnsSubagent, statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
+import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
@@ -170,10 +172,14 @@ function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; s
   )
 }
 
-/** A sub-agent's work lives in its own view, so its row opens that view instead of expanding. */
+/**
+ * A sub-agent's work lives in its own view, so its row opens that view instead of expanding. A
+ * background sub-agent's call returns as soon as it launches, so the row shows the sub-agent's status.
+ */
 function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const { threadId } = useParams({ from: "/thread/$threadId" })
   const provider = useThreads((state) => state.byId[threadId]?.provider)
+  const subagent = useSubagentByCallId(threadId, part.callId)
   const open = useOpenSubagent(threadId)
   const { name, summary } = describeToolCall(part)
 
@@ -191,10 +197,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
       <span className="min-w-0 flex-1 truncate" title={summary}>
         <Highlighted text={summary} />
       </span>
-      <span className="shrink-0" title={statusLabel[part.status]()}>
-        {statusIcon[part.status]}
-        <span className="sr-only">{statusLabel[part.status]()}</span>
-      </span>
+      <SubagentStatusIcon status={subagent?.status ?? statusOfCall[part.status]} className="size-3.5" />
       <RiArrowRightSLine aria-hidden className="size-3.5 shrink-0" />
     </button>
   )

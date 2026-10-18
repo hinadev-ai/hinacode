@@ -1,7 +1,15 @@
 import { useNavigate } from "@tanstack/react-router"
-import type { Message, MessagePart } from "../../shared/domain.ts"
+import type { SubagentStatus } from "../../shared/agent.ts"
+import type { Message, MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
+
+/** A sub-agent's status read off its spawning tool call, for when the provider has not reported it. */
+export const statusOfCall = {
+  running: "running",
+  done: "completed",
+  error: "failed",
+} satisfies Record<ToolCallStatus, SubagentStatus>
 
 /** Claude's tool for spawning a sub-agent, named Task before it became Agent. */
 export const spawnsSubagent = (part: ToolCall) => part.name === "Agent" || part.name === "Task"

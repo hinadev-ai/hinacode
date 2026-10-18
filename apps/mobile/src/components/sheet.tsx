@@ -1,19 +1,28 @@
 import type { ReactNode } from "react"
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
+import { duration, ease } from "@/constants/motion"
 import { Colors, HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
+import { copy } from "@/lib/copy"
 
 const SHEET_PADDING = 8
 
-/** A full-height sheet that slides up over the thread, with a title and a close button. */
+const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
+
+/**
+ * A sheet with a title and a close button, full height by default or as tall as its content with `fit`. The scrim
+ * fades while the sheet rises; both fade out together, which is quicker than the way in.
+ */
 export function Sheet({
   title,
   open,
   onClose,
   header,
+  fit = false,
   children,
 }: {
   title: string
@@ -21,22 +30,26 @@ export function Sheet({
   onClose: () => void
   /** Shown under the title and above the scrolling content, such as a search field. */
   header?: ReactNode
+  /** Sizes the sheet to a short list instead of filling the screen. */
+  fit?: boolean
   children: ReactNode
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   return (
-    <Modal transparent animationType="slide" visible={open} onRequestClose={onClose}>
+    <Modal transparent animationType="fade" visible={open} onRequestClose={onClose}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Close"
+        accessibilityLabel={copy("mobile_sheet_close")}
         onPress={onClose}
-        style={[styles.backdrop, { height: insets.top + 12 }]}
+        style={[styles.backdrop, fit ? styles.fill : { height: insets.top + 12 }]}
       />
-      <View
+      <Animated.View
+        entering={rise}
         accessibilityViewIsModal
         style={[
           styles.sheet,
+          fit ? styles.fitSheet : styles.fill,
           {
             paddingBottom: SHEET_PADDING + insets.bottom,
             backgroundColor: theme.background,
@@ -48,13 +61,17 @@ export function Sheet({
           <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
             {title}
           </Text>
-          <IconButton icon="RiCloseLine" accessibilityLabel="Close" onPress={onClose} />
+          <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
         </View>
         {header}
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sections}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={fit && styles.fitScroll}
+          contentContainerStyle={styles.sections}
+        >
           {children}
         </ScrollView>
-      </View>
+      </Animated.View>
     </Modal>
   )
 }
@@ -76,6 +93,7 @@ export function OptionRow({
   color,
   monospace = false,
   selected,
+  disabled = false,
   onPress,
 }: {
   label: string
@@ -84,16 +102,18 @@ export function OptionRow({
   color?: string
   monospace?: boolean
   selected: boolean
+  disabled?: boolean
   onPress: () => void
 }) {
   const theme = useTheme()
-  const foreground = color ?? theme.text
+  const foreground = disabled ? theme.textMuted : (color ?? theme.text)
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
     >
@@ -136,8 +156,10 @@ const styles = StyleSheet.create({
   ...sheetStyles,
   // The scrim is dark in both themes, so it borrows the dark palette's background.
   backdrop: { backgroundColor: Colors.dark.background, opacity: 0.5 },
+  fill: { flex: 1 },
+  fitSheet: { maxHeight: "85%" },
+  fitScroll: { flexGrow: 0 },
   sheet: {
-    flex: 1,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderTopWidth: StyleSheet.hairlineWidth,

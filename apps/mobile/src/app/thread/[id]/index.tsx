@@ -1,24 +1,27 @@
-import { router, Stack, useLocalSearchParams } from "expo-router"
-import { useState } from "react"
-import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native"
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
+import { useCallback, useState } from "react"
+import { AppState, KeyboardAvoidingView, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Chat } from "@/components/chat"
+import { FilesPanel } from "@/components/files"
+import { ThreadPullRequestChip } from "@/components/pull-request-badge"
 import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
-import { Icon } from "@/components/icon"
-import { IconButton, Notice, ProviderLabel, ThreadStatusPill } from "@/components/ui"
-import { HIT, radius } from "@/constants/theme"
+import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { useThreads } from "@/stores/threads"
+import { useUnseen } from "@/stores/unseen"
 
-const tabs = [
-  { id: "chat", label: "Chat", icon: "RiChat1Line" },
-  { id: "prs", label: "PRs", icon: "RiGitPullRequestLine" },
-  { id: "terminal", label: "Terminal", icon: "RiTerminalBoxLine" },
-] as const
-type Tab = (typeof tabs)[number]["id"]
+type Tab = "chat" | "files" | "prs" | "terminal"
+
+const tabs: readonly Segment<Tab>[] = [
+  { value: "chat", label: copy("mobile_thread_tab_chat") },
+  { value: "files", label: copy("mobile_thread_tab_files") },
+  { value: "prs", label: copy("mobile_thread_tab_prs") },
+  { value: "terminal", label: copy("mobile_thread_tab_terminal") },
+]
 
 export default function ThreadScreen() {
   const theme = useTheme()
@@ -28,12 +31,23 @@ export default function ThreadScreen() {
   const status = useConnection((state) => state.status)
   const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
-  // The shell outlives tab switches and ends with this screen.
-  const [terminalOpened, setTerminalOpened] = useState(false)
+  // Files and the shell keep their state across tab switches once opened, and end with this screen.
+  const [opened, setOpened] = useState<ReadonlySet<Tab>>(() => new Set(["chat"]))
+
+  // Seeing the thread clears its unopened result, also when the app comes back to it from the background.
+  useFocusEffect(
+    useCallback(() => {
+      useUnseen.getState().clear(id)
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") useUnseen.getState().clear(id)
+      })
+      return () => subscription.remove()
+    }, [id]),
+  )
 
   const select = (next: Tab) => {
     setTab(next)
-    if (next === "terminal") setTerminalOpened(true)
+    if (!opened.has(next)) setOpened(new Set([...opened, next]))
   }
 
   return (
@@ -43,41 +57,29 @@ export default function ThreadScreen() {
         <IconButton
           testID="back-button"
           icon="RiArrowLeftSLine"
-          accessibilityLabel="Back"
+          accessibilityLabel={copy("mobile_thread_back")}
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
         />
         <View style={styles.titleColumn}>
           <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-            {thread?.title || "Thread"}
+            {thread?.title || copy("mobile_notify_untitled")}
           </Text>
           {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
         </View>
         {thread !== undefined && (
           <View style={styles.status}>
+            <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
             <ThreadStatusPill status={thread.status} />
           </View>
         )}
       </View>
-      <View accessibilityRole="tablist" style={[styles.tabs, { backgroundColor: theme.surface }]}>
-        {tabs.map((item) => {
-          const selected = item.id === tab
-          const color = selected ? theme.text : theme.textMuted
-          return (
-            <Pressable
-              key={item.id}
-              testID={`tab-${item.id}`}
-              accessibilityRole="tab"
-              accessibilityLabel={item.label}
-              accessibilityState={{ selected }}
-              onPress={() => select(item.id)}
-              style={[styles.tab, selected && { backgroundColor: theme.background, borderColor: theme.border }]}
-            >
-              <Icon name={item.icon} size={16} color={color} />
-              <Text style={{ color, fontWeight: "600" }}>{item.label}</Text>
-            </Pressable>
-          )
-        })}
-      </View>
+      <SegmentedControl
+        accessibilityLabel={copy("mobile_thread_tabs")}
+        segments={tabs}
+        value={tab}
+        onChange={select}
+        style={styles.tabs}
+      />
       {status !== "connected" && (
         <View style={styles.banner}>
           <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
@@ -86,7 +88,7 @@ export default function ThreadScreen() {
       {thread === undefined ? (
         <View style={styles.missing}>
           <Text style={{ color: theme.textMuted, fontSize: 15 }}>
-            {loaded ? "This thread no longer exists." : "Loading thread"}
+            {loaded ? copy("mobile_thread_missing") : copy("mobile_thread_loading")}
           </Text>
         </View>
       ) : (
@@ -95,8 +97,13 @@ export default function ThreadScreen() {
           <View style={[styles.flex, tab !== "chat" && styles.hidden]}>
             <Chat thread={thread} />
           </View>
+          {opened.has("files") && (
+            <View style={[styles.flex, tab !== "files" && styles.hidden]}>
+              <FilesPanel thread={thread} />
+            </View>
+          )}
           {tab === "prs" && <PullRequests thread={thread} />}
-          {terminalOpened && (
+          {opened.has("terminal") && (
             <View style={[styles.flex, tab !== "terminal" && styles.hidden]}>
               <TerminalPanel key={terminalRemountKey} threadId={thread.id} />
             </View>
@@ -121,19 +128,8 @@ const styles = StyleSheet.create({
   },
   titleColumn: { flex: 1, gap: 2 },
   title: { fontSize: 16, fontWeight: "600" },
-  status: { paddingRight: 8 },
-  tabs: { flexDirection: "row", margin: 12, padding: 3, borderRadius: radius.md + 3, gap: 3 },
-  tab: {
-    flex: 1,
-    minHeight: HIT,
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "transparent",
-  },
+  status: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 },
+  tabs: { margin: 12 },
   banner: { paddingHorizontal: 12, paddingBottom: 8 },
   missing: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
 })

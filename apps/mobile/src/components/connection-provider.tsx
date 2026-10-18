@@ -6,6 +6,8 @@ import { parsePairingUrl, type PairingTarget } from "@shared/remote.ts"
 import { connect, networkChanged, onEvent, setForeground, useConnection } from "@/lib/connection"
 import { loadTarget, saveTarget } from "@/lib/storage"
 import { isTranscriptPush, useMessages } from "@/stores/messages"
+import { usePreferences } from "@/stores/preferences"
+import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 export async function pair(target: PairingTarget) {
@@ -14,8 +16,8 @@ export async function pair(target: PairingTarget) {
 }
 
 /**
- * Restores the stored pairing, accepts `hinacode://connect` links, and keeps the thread and message
- * stores in step with the one socket. Renders nothing until storage has been read.
+ * Restores the stored pairing and preferences, accepts `hinacode://connect` links, and keeps the thread,
+ * message and pull request stores in step with the one socket. Renders nothing until storage has been read.
  */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
@@ -25,7 +27,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const url = useURL()
 
   useEffect(() => {
-    void loadTarget().then((target) => {
+    void Promise.all([loadTarget(), usePreferences.getState().restore()]).then(([target]) => {
       if (target !== null && useConnection.getState().target === null) connect(target)
       setRestored(true)
     })
@@ -59,6 +61,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         if (isTranscriptPush(event)) useMessages.getState().receive(event)
         else if (event.type === "thread.updated") useThreads.getState().upsert(event.thread)
         else if (event.type === "thread.removed") useThreads.getState().remove(event.id)
+        else if (event.type === "worktree.updated") useThreads.getState().upsertWorktree(event.worktree)
+        else if (event.type === "thread.pullRequests") usePullRequests.getState().replace(event.threadId, event.links)
       }),
     [],
   )
@@ -66,6 +70,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (generation === 0) return
     void useThreads.getState().load()
+    void usePullRequests.getState().load()
     useMessages.getState().reload()
   }, [generation])
 

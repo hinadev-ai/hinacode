@@ -2,22 +2,31 @@ import type { ApprovalDecision, ApprovalRequest, Question, QuestionAnswers, Ques
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
 import { Icon, type IconName } from "@/components/icon"
+import { Markdown } from "@/components/markdown"
+import { FadeIn, RiseIn, Rotate, Spinner } from "@/components/motion"
 import { Button, Notice, Pill } from "@/components/ui"
+import { cssEase } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { useMessages } from "@/stores/messages"
+import { useThreadRoot } from "@/stores/threads"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
 const CARD_PADDING = 12
+
+type CopyKey = Parameters<typeof copy>[0]
 
 export function Chat({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
   const history = useMessages((state) => state.byThread[thread.id])
+  const root = useThreadRoot(thread)
 
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
@@ -31,24 +40,29 @@ export function Chat({ thread }: { thread: Thread }) {
       {history?.status === "error" ? (
         <View style={styles.centered}>
           <Notice text={history.message} tone="danger" />
-          <Button label="Retry" onPress={() => void useMessages.getState().load(thread.id)} />
+          <Button label={copy("mobile_chat_retry")} onPress={() => void useMessages.getState().load(thread.id)} />
         </View>
       ) : history?.status !== "ready" ? (
         <View style={styles.centered}>
-          <ActivityIndicator color={theme.textMuted} accessibilityLabel="Loading transcript" />
+          <ActivityIndicator color={theme.textMuted} accessibilityLabel={copy("mobile_chat_loading")} />
         </View>
       ) : (
         <FlatList
           testID="transcript"
-          accessibilityLabel="Transcript"
+          accessibilityLabel={copy("mobile_chat_transcript")}
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
-          renderItem={({ item }) => <MessageView message={item} />}
+          renderItem={({ item }) => <MessageView message={item} root={root} />}
+          // A rendered reply can hold hundreds of views, so the list mounts a screenful first and the rest in small
+          // batches instead of ten whole messages in one frame.
+          initialNumToRender={4}
+          maxToRenderPerBatch={2}
+          windowSize={9}
           contentContainerStyle={styles.transcript}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <Text style={[styles.empty, { color: theme.textMuted }]}>Send a prompt to start this thread.</Text>
+            <Text style={[styles.empty, { color: theme.textMuted }]}>{copy("mobile_chat_empty")}</Text>
           }
         />
       )}
@@ -67,21 +81,165 @@ export function Chat({ thread }: { thread: Thread }) {
   )
 }
 
-function MessageView({ message }: { message: Message }) {
+function MessageView({ message, root }: { message: Message; root: string | null }) {
   const theme = useTheme()
-  const user = message.role === "user"
+  if (message.role !== "user") return <AssistantMessage message={message} root={root} />
   return (
-    <View
-      style={[
-        styles.message,
-        user && { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth },
-      ]}
-    >
-      <Text style={[styles.role, { color: theme.textMuted }]}>{user ? "You" : "Agent"}</Text>
+    <View style={[styles.message, styles.user, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_you")}</Text>
       {message.parts.map((part, index) => (
         <PartView key={index} part={part} />
       ))}
     </View>
+  )
+}
+
+/** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
+const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
+
+/** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
+const isActivity = (part: MessagePart) =>
+  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
+
+const twoDigits = (value: number) => String(value).padStart(2, "0")
+
+/** `mm:ss`, or `h:mm:ss` past an hour, like the desktop. */
+function formatWorkDuration(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return hours > 0
+    ? `${hours}:${twoDigits(minutes)}:${twoDigits(seconds)}`
+    : `${twoDigits(minutes)}:${twoDigits(seconds)}`
+}
+
+function AssistantMessage({ message, root }: { message: Message; root: string | null }) {
+  const theme = useTheme()
+  const [activityShown, setActivityShown] = useState(false)
+  const parts = message.parts.filter(isOwnPart)
+  const { completedAt } = message
+  const streaming = completedAt === null
+  const durationMs = completedAt === null ? NaN : Date.parse(completedAt) - Date.parse(message.createdAt)
+  const folded = durationMs >= 0
+  // A steer sent before the agent said anything closes an empty assistant message.
+  if (!streaming && parts.length === 0) return null
+  const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
+  return (
+    <View accessibilityState={{ busy: streaming }} style={styles.message}>
+      <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_agent")}</Text>
+      {folded && (
+        <WorkedFor
+          durationMs={durationMs}
+          expanded={activityShown}
+          onToggle={parts.some(isActivity) ? () => setActivityShown(!activityShown) : undefined}
+        />
+      )}
+      {parts.map((part, index) => {
+        if (folded && isActivity(part)) {
+          return activityShown ? (
+            <FadeIn key={index}>
+              <PartView part={part} />
+            </FadeIn>
+          ) : null
+        }
+        if (part.type === "text") {
+          return (
+            <ReplyText
+              key={index}
+              text={part.text}
+              done={index !== writingIndex}
+              root={root}
+              threadId={message.threadId}
+            />
+          )
+        }
+        return <PartView key={index} part={part} />
+      })}
+      {streaming && (parts.length === 0 || writingIndex !== undefined) && (
+        <Pulse text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")} />
+      )}
+    </View>
+  )
+}
+
+/**
+ * Reply text appears whole once the agent has finished it, instead of word by word. Only text that finishes while
+ * on screen fades in, so opening a thread or scrolling back does not replay it.
+ */
+function ReplyText({
+  text,
+  done,
+  root,
+  threadId,
+}: {
+  text: string
+  done: boolean
+  root: string | null
+  threadId: string
+}) {
+  const [finishedOnScreen] = useState(!done)
+  if (!done) return null
+  return (
+    <FadeIn enabled={finishedOnScreen}>
+      <Markdown text={text} root={root} threadId={threadId} />
+    </FadeIn>
+  )
+}
+
+const pulse = { "50%": { opacity: 0.5 } }
+
+/** The desktop's `animate-pulse` line under a streaming reply. Reduce motion holds it still. */
+function Pulse({ text }: { text: string }) {
+  const theme = useTheme()
+  const reduced = useReducedMotion()
+  return (
+    <Animated.View
+      style={
+        reduced
+          ? undefined
+          : {
+              animationName: pulse,
+              animationDuration: 2000,
+              animationIterationCount: "infinite",
+              animationTimingFunction: cssEase.pulse,
+            }
+      }
+    >
+      <Text style={[styles.pulse, { color: theme.textMuted }]}>{text}</Text>
+    </Animated.View>
+  )
+}
+
+/** Elapsed time of a finished response. With `onToggle`, it also shows and hides the response's activity. */
+function WorkedFor({
+  durationMs,
+  expanded,
+  onToggle,
+}: {
+  durationMs: number
+  expanded: boolean
+  onToggle: (() => void) | undefined
+}) {
+  const theme = useTheme()
+  const label = copy("mobile_chat_worked_for", { duration: formatWorkDuration(durationMs) })
+  const row = [styles.workedFor, { borderColor: theme.border }]
+  const text = <Text style={[styles.workedForText, { color: theme.textMuted }]}>{label}</Text>
+  if (onToggle === undefined) return <View style={row}>{text}</View>
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={copy(expanded ? "mobile_chat_hide_activity" : "mobile_chat_show_activity")}
+      accessibilityState={{ expanded }}
+      onPress={onToggle}
+      style={row}
+    >
+      {text}
+      <Rotate turned={expanded}>
+        <Icon name="RiArrowRightSLine" size={14} color={theme.textMuted} />
+      </Rotate>
+    </Pressable>
   )
 }
 
@@ -112,22 +270,24 @@ function PartView({ part }: { part: MessagePart }) {
         <View style={styles.fileChange}>
           <Icon name="RiPencilLine" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.toolName, { color: theme.textMuted }]}>
-            Edited <Text style={{ color: theme.text }}>{part.path}</Text>
+            {copy("mobile_chat_edited", { path: part.path })}
           </Text>
         </View>
       )
     case "attachment":
-      return <Text style={{ color: theme.textMuted }}>Attached {part.attachment.name}</Text>
+      return (
+        <Text style={{ color: theme.textMuted }}>{copy("mobile_chat_attached", { name: part.attachment.name })}</Text>
+      )
     case "questions":
       return <Text style={[styles.text, { color: theme.text }]}>{part.text}</Text>
   }
 }
 
 const toolStatus = {
-  running: { label: "Running", tone: "running", icon: "RiLoader4Line" },
-  error: { label: "Failed", tone: "danger", icon: "RiErrorWarningLine" },
-  done: { label: "Done", tone: "neutral", icon: "RiCheckLine" },
-} as const satisfies Record<ToolCallStatus, { label: string; tone: "running" | "danger" | "neutral"; icon: IconName }>
+  running: { label: "mobile_chat_tool_running", tone: "running", icon: "RiLoader4Line" },
+  error: { label: "mobile_chat_tool_failed", tone: "danger", icon: "RiErrorWarningLine" },
+  done: { label: "mobile_chat_tool_done", tone: "neutral", icon: "RiCheckLine" },
+} as const satisfies Record<ToolCallStatus, { label: CopyKey; tone: "running" | "danger" | "neutral"; icon: IconName }>
 
 function ToolStatus({ status }: { status: ToolCallStatus }) {
   const theme = useTheme()
@@ -135,8 +295,8 @@ function ToolStatus({ status }: { status: ToolCallStatus }) {
   const color = tone === "running" ? theme.running : tone === "danger" ? theme.danger : theme.textMuted
   return (
     <View style={styles.status}>
-      <Icon name={icon} size={14} color={color} />
-      <Pill label={label} tone={tone} />
+      {status === "running" ? <Spinner size={14} color={color} /> : <Icon name={icon} size={14} color={color} />}
+      <Pill label={copy(label)} tone={tone} />
     </View>
   )
 }
@@ -160,14 +320,24 @@ function Reasoning({ text }: { text: string }) {
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel="Reasoning"
+        accessibilityLabel={copy("mobile_chat_reasoning")}
         onPress={() => setOpen(!open)}
         style={styles.disclosure}
       >
-        <Icon name={open ? "RiArrowDownSLine" : "RiArrowRightSLine"} size={16} color={theme.textMuted} />
-        <Text style={{ color: theme.textMuted, fontSize: 13 }}>{open ? "Hide reasoning" : "Reasoning"}</Text>
+        <Rotate turned={open}>
+          <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+        </Rotate>
+        <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+          {copy(open ? "mobile_chat_hide_reasoning" : "mobile_chat_reasoning")}
+        </Text>
       </Pressable>
-      {open && <Text style={[styles.text, { color: theme.textMuted }]}>{text}</Text>}
+      {open && (
+        <FadeIn>
+          <Text selectable style={[styles.text, { color: theme.textMuted }]}>
+            {text}
+          </Text>
+        </FadeIn>
+      )}
     </View>
   )
 }
@@ -197,29 +367,47 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
   const respond = (decision: ApprovalDecision) => () =>
     void run(() => call("approvals.respond", { requestId: request.id, decision }))
   return (
-    <View
-      testID="approval-card"
-      accessibilityLabel={`Approval: ${request.title}`}
-      style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
-    >
-      <Text style={[styles.cardTitle, { color: theme.text }]}>{request.title}</Text>
-      {request.detail !== "" && (
-        <Text numberOfLines={8} selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
-          {request.detail}
-        </Text>
-      )}
-      <View style={styles.actions}>
-        <Button testID="approval-allow" label="Allow" variant="primary" busy={busy} onPress={respond("allow")} />
-        <Button
-          testID="approval-allow-session"
-          label="Allow for session"
-          disabled={busy}
-          onPress={respond("allow_for_session")}
-        />
-        <Button testID="approval-deny" label="Deny" variant="danger" disabled={busy} onPress={respond("deny")} />
+    <RiseIn>
+      <View
+        testID="approval-card"
+        accessibilityLabel={copy("mobile_chat_approval", { title: request.title })}
+        style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
+      >
+        <Text style={[styles.cardTitle, { color: theme.text }]}>{request.title}</Text>
+        {request.detail !== "" && (
+          <Text
+            numberOfLines={8}
+            selectable
+            style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}
+          >
+            {request.detail}
+          </Text>
+        )}
+        <View style={styles.actions}>
+          <Button
+            testID="approval-allow"
+            label={copy("mobile_chat_allow")}
+            variant="primary"
+            busy={busy}
+            onPress={respond("allow")}
+          />
+          <Button
+            testID="approval-allow-session"
+            label={copy("mobile_chat_allow_session")}
+            disabled={busy}
+            onPress={respond("allow_for_session")}
+          />
+          <Button
+            testID="approval-deny"
+            label={copy("mobile_chat_deny")}
+            variant="danger"
+            disabled={busy}
+            onPress={respond("deny")}
+          />
+        </View>
+        {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
       </View>
-      {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
-    </View>
+    </RiseIn>
   )
 }
 
@@ -253,69 +441,71 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
     })
 
   return (
-    <View
-      testID="question-card"
-      style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
-    >
-      {request.questions.map((question) => (
-        <View key={question.id} style={styles.question}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>
-            {question.header !== "" ? `${question.header}: ` : ""}
-            {question.question}
-          </Text>
-          <View style={styles.options}>
-            {question.options.map((option) => {
-              const selected = picked[question.id]?.includes(option.label) ?? false
-              return (
-                <Pressable
-                  key={option.label}
-                  accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
-                  accessibilityState={{ checked: selected }}
-                  accessibilityLabel={option.label}
-                  accessibilityHint={option.description}
-                  onPress={() => toggle(question, option.label)}
-                  style={[
-                    styles.option,
-                    {
-                      borderColor: selected ? theme.primary : theme.border,
-                      backgroundColor: theme.surface,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: theme.text, fontWeight: "600" }}>{option.label}</Text>
-                  {option.description !== "" && (
-                    <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
-                  )}
-                </Pressable>
-              )
-            })}
+    <RiseIn>
+      <View
+        testID="question-card"
+        style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
+      >
+        {request.questions.map((question) => (
+          <View key={question.id} style={styles.question}>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>
+              {question.header !== "" ? `${question.header}: ` : ""}
+              {question.question}
+            </Text>
+            <View style={styles.options}>
+              {question.options.map((option) => {
+                const selected = picked[question.id]?.includes(option.label) ?? false
+                return (
+                  <Pressable
+                    key={option.label}
+                    accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={option.label}
+                    accessibilityHint={option.description}
+                    onPress={() => toggle(question, option.label)}
+                    style={[
+                      styles.option,
+                      {
+                        borderColor: selected ? theme.primary : theme.border,
+                        backgroundColor: theme.surface,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: theme.text, fontWeight: "600" }}>{option.label}</Text>
+                    {option.description !== "" && (
+                      <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
+                    )}
+                  </Pressable>
+                )
+              })}
+            </View>
+            {question.allowsText && (
+              <TextInput
+                accessibilityLabel={copy("mobile_chat_answer_label", { question: question.question })}
+                value={typed[question.id] ?? ""}
+                onChangeText={(text) => setTyped((current) => ({ ...current, [question.id]: text }))}
+                secureTextEntry={question.secret}
+                placeholder={copy("mobile_chat_answer_placeholder")}
+                placeholderTextColor={theme.textMuted}
+                style={[styles.answer, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+              />
+            )}
           </View>
-          {question.allowsText && (
-            <TextInput
-              accessibilityLabel={`Answer: ${question.question}`}
-              value={typed[question.id] ?? ""}
-              onChangeText={(text) => setTyped((current) => ({ ...current, [question.id]: text }))}
-              secureTextEntry={question.secret}
-              placeholder="Type an answer"
-              placeholderTextColor={theme.textMuted}
-              style={[styles.answer, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-            />
-          )}
+        ))}
+        <View style={styles.actions}>
+          <Button
+            testID="question-submit"
+            label={copy("mobile_chat_submit")}
+            variant="primary"
+            busy={busy}
+            disabled={Object.keys(answers).length === 0}
+            onPress={() => respond(answers)}
+          />
+          <Button testID="question-skip" label={copy("mobile_chat_skip")} disabled={busy} onPress={() => respond({})} />
         </View>
-      ))}
-      <View style={styles.actions}>
-        <Button
-          testID="question-submit"
-          label="Submit"
-          variant="primary"
-          busy={busy}
-          disabled={Object.keys(answers).length === 0}
-          onPress={() => respond(answers)}
-        />
-        <Button testID="question-skip" label="Skip" disabled={busy} onPress={() => respond({})} />
+        {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
       </View>
-      {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
-    </View>
+    </RiseIn>
   )
 }
 
@@ -325,8 +515,18 @@ const styles = StyleSheet.create({
   transcript: { padding: 16, gap: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   message: { gap: 6, borderRadius: radius.lg, padding: 12 },
+  user: { borderWidth: StyleSheet.hairlineWidth },
   role: { fontSize: 12, fontWeight: "600" },
   text: { fontSize: 15, lineHeight: 22 },
+  pulse: { fontSize: 12 },
+  workedFor: {
+    minHeight: HIT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  workedForText: { fontSize: 12, fontVariant: ["tabular-nums"] },
   tool: {
     flexDirection: "row",
     alignItems: "center",
