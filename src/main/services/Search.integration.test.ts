@@ -112,7 +112,14 @@ describe("Search.threads", () => {
       const id = yield* insertMessage(threadId, [text("streaming the first")])
       const search = yield* Search.Search
 
-      yield* sql`UPDATE message SET parts = ${JSON.stringify([text("rewritten answer")])} WHERE id = ${id}`
+      yield* sql`
+        UPDATE message SET parts = ${JSON.stringify([text("still streaming")])}, completed_at = NULL WHERE id = ${id}
+      `
+      expect(yield* search.threads("still")).toStrictEqual([])
+
+      yield* sql`
+        UPDATE message SET parts = ${JSON.stringify([text("rewritten answer")])}, completed_at = ${new Date().toISOString()} WHERE id = ${id}
+      `
       expect(yield* search.threads("streaming")).toStrictEqual([])
       expect((yield* search.threads("rewritten")).map((hit) => hit.messageId)).toStrictEqual([id])
 
