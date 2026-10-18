@@ -883,6 +883,23 @@ describe("turns the agent starts over rpc", () => {
     expect(await userTexts(thread.id)).toStrictEqual(["simulate a session"])
   })
 
+  test("discards a wake for an archived thread before reading its events", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.archive", { threadId: thread.id }))
+    const discard = vi.fn()
+    Effect.runSync(
+      Queue.offer(claudeWakes, {
+        threadId: thread.id,
+        events: Stream.never,
+        discard: Effect.sync(discard),
+      }),
+    )
+    await expect.poll(() => discard.mock.calls.length).toBe(1)
+    expect((await threadOf(thread.id)).status).toBe("archived")
+    expect(await assistantTexts(thread.id)).toStrictEqual([])
+  })
+
   test("queues a message sent while it runs", async () => {
     const held = Promise.withResolvers<void>()
     const project = result(await invoke("projects.list", undefined))[0]!

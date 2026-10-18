@@ -801,6 +801,38 @@ describe("Claude background sub-agents", () => {
       }),
     ),
   )
+  it.effect("keeps a wake that arrives during an asynchronous model switch", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            sessionState("running"),
+            init("session-1"),
+            { ...succeeded, user_message_uuids: [cli.prompts.at(-1)?.uuid] },
+            sessionState("idle"),
+          )
+        yield* runTurn()
+        const modelSwitch = Promise.withResolvers<void>()
+        sdk.setModel = () => modelSwitch.promise
+        const send = yield* provider
+          .runTurn(turnInput({ model: "claude-opus-5-5" }))
+          .pipe(Stream.runCollect, Effect.result, Effect.forkChild)
+        yield* until(() => latestCli().setModel.mock.calls.length === 1)
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        const woken = Option.getOrThrow(yield* Fiber.join(wake))
+
+        modelSwitch.resolve()
+        const result = yield* Fiber.join(send)
+        expect(result._tag).toBe("Failure")
+        expect(latestCli().prompts).toHaveLength(1)
+        latestCli().push(textDelta("The shell finished"), succeeded, sessionState("idle"))
+        expect(reported(yield* Stream.runCollect(woken.events))).toEqual(["The shell finished", "turn_completed"])
+      }),
+    ),
+  )
+
   it.effect("hands the runner a turn the CLI starts by itself after going idle", () =>
     lifecycle(
       Effect.gen(function* () {
