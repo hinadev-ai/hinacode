@@ -16,7 +16,8 @@ export function SettingsGroup({
   children: ReactNode
 }) {
   const theme = useTheme()
-  const rows = Children.toArray(children)
+  // Children.toArray keys each row by its place among the children, which a hidden row does not shift.
+  const rows = Children.toArray(children).filter(isValidElement)
   return (
     <View style={styles.group}>
       <Text accessibilityRole="header" style={[styles.groupTitle, { color: theme.textMuted }]}>
@@ -24,8 +25,7 @@ export function SettingsGroup({
       </Text>
       <View style={[styles.rows, { backgroundColor: theme.surface }]}>
         {rows.map((row, index) => (
-          // Children.toArray keys each row by its place among the children, which a hidden row does not shift.
-          <Fragment key={isValidElement(row) && row.key !== null ? row.key : index}>
+          <Fragment key={row.key}>
             {index > 0 && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
             {row}
           </Fragment>
