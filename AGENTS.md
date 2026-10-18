@@ -52,6 +52,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
 - Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.
+- An icon Remix lacks is drawn as a component in `src/renderer/components/icons/`, on Remix's 24-unit grid in `currentColor`, like `SkillIcon`.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
 - The product's display name is HinaCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `hinacode`: the MCP server, `hinacode://`, `hinacode serve`. Only `app.setName` and the profile directory keep the old `kkcode`, so installs keep their data and Keychain item (see `src/main/index.ts`)
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.
