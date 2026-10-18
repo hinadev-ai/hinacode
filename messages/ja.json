@@ -561,6 +561,8 @@
   "effort_ultra": "ウルトラ",
   "thread_fast_mode": "高速モード",
   "thread_fast_mode_hint": "レスポンスが高速化されますが、トークン消費量が多くなる場合があります。",
+  "thread_conversation_mode": "会話モード",
+  "thread_conversation_mode_hint": "このスレッドではユーザースキルとコマンドを読み込みません",
   "thread_options_more": "詳細オプション",
   "thread_option_value": "{name}：{value}",
   "composer_commands_label": "コマンド",

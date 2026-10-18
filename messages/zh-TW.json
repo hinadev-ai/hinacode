@@ -543,6 +543,8 @@
   "effort_ultra": "極致",
   "thread_fast_mode": "快速",
   "thread_fast_mode_hint": "回應更快，但會消耗更多用量",
+  "thread_conversation_mode": "對話模式",
+  "thread_conversation_mode_hint": "此對話串不載入你的使用者技能與指令",
   "thread_options_more": "更多選項",
   "thread_option_value": "{name}：{value}",
   "composer_commands_label": "指令",
