@@ -712,30 +712,38 @@ const make = Effect.gen(function* () {
    * A turn the agent started by itself, with no user message before its reply. It waits for a turn that
    * was already starting, which the provider turns away since this one holds the session.
    */
-  const startWake = ({ threadId, events }: Wake) =>
-    Effect.gen(function* () {
-      while (busyThreads.has(threadId)) yield* Effect.sleep("50 millis")
-      busyThreads.add(threadId)
-      const turn = yield* Effect.gen(function* () {
-        const thread = yield* threads.get(threadId)
-        if (thread.status === "archived") return null
-        const provider = yield* providerFor(thread.provider)
-        const home = yield* accounts.home(thread.accountId)
-        const { cwd } = yield* activeWorkspace(threadId)
-        const assistant = openAssistantMessage(threadId, yield* nowIso)
-        yield* insertMessage(assistant)
-        yield* updateThread({ id: threadId, status: "running" })
-        return makeTurn(thread, provider, cwd, home, assistant, Deferred.makeUnsafe<void>())
+  const startWake = ({ threadId, events, discard }: Wake) =>
+    Effect.suspend(() => {
+      let claimed = false
+      let adopted = false
+      return Effect.gen(function* () {
+        while (busyThreads.has(threadId)) yield* Effect.sleep("50 millis")
+        busyThreads.add(threadId)
+        claimed = true
+        const turn = yield* Effect.gen(function* () {
+          const thread = yield* threads.get(threadId)
+          if (thread.status === "archived") return null
+          const provider = yield* providerFor(thread.provider)
+          const home = yield* accounts.home(thread.accountId)
+          const { cwd } = yield* activeWorkspace(threadId)
+          const assistant = openAssistantMessage(threadId, yield* nowIso)
+          yield* insertMessage(assistant)
+          yield* updateThread({ id: threadId, status: "running" })
+          return makeTurn(thread, provider, cwd, home, assistant, Deferred.makeUnsafe<void>())
+        }).pipe(exclusive(threadId))
+        if (turn === null) return
+        activeTurns.set(threadId, turn)
+        yield* FiberMap.run(turns, threadId, turn.follow(events))
+        adopted = true
       }).pipe(
-        exclusive(threadId),
-        Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
+        Effect.ensuring(
+          Effect.suspend(() => {
+            if (adopted) return Effect.void
+            if (claimed) busyThreads.delete(threadId)
+            return discard
+          }),
+        ),
       )
-      if (turn === null) {
-        busyThreads.delete(threadId)
-        return
-      }
-      activeTurns.set(threadId, turn)
-      yield* FiberMap.run(turns, threadId, turn.follow(events))
     })
 
   for (const provider of Object.values(providers)) {

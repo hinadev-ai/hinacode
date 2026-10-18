@@ -862,6 +862,7 @@ const wake = (threadId: string, text: string) =>
     Queue.offer(claudeWakes, {
       threadId,
       events: Stream.make({ type: "text_delta", text }, { type: "turn_completed" }),
+      discard: Effect.void,
     }),
   )
 
@@ -907,6 +908,7 @@ describe("turns the agent starts over rpc", () => {
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        discard: Effect.void,
         events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
           Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
         ),

@@ -833,6 +833,29 @@ describe("Claude background sub-agents", () => {
     ),
   )
 
+  it.effect("discards an unclaimed wake once without interrupting a replacement turn", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        yield* runTurn()
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        const woken = Option.getOrThrow(yield* Fiber.join(wake))
+        yield* woken.discard
+        yield* woken.discard
+        expect(latestCli().interrupt).toHaveBeenCalledOnce()
+
+        sdk.respond = () => undefined
+        const replacement = yield* startTurn()
+        yield* until(() => latestCli().prompts.length === 2)
+        yield* woken.discard
+        expect(latestCli().interrupt).toHaveBeenCalledOnce()
+        latestCli().push({ ...succeeded, user_message_uuids: [latestCli().prompts[1]?.uuid] }, sessionState("idle"))
+        yield* Fiber.join(replacement.fiber)
+      }),
+    ),
+  )
+
   it.effect("hands the runner a turn the CLI starts by itself after going idle", () =>
     lifecycle(
       Effect.gen(function* () {

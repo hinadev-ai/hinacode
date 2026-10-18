@@ -24,6 +24,8 @@ export interface Wake {
   readonly threadId: string
   /** Ends after turn_completed, turn_failed or turn_limited, like runTurn's stream. */
   readonly events: Stream.Stream<AgentEvent, AgentError>
+  /** Stops this turn if the runner cannot adopt its stream. Safe after it has ended or been replaced. */
+  readonly discard: Effect.Effect<void>
 }
 
 /**

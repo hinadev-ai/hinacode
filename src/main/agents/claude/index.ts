@@ -643,7 +643,11 @@ export const layer = Layer.effect(
         session.reportsState = true
         openTurn(session, turn)
         const events = Stream.fromQueue(turn).pipe(Stream.ensuring(Effect.suspend(() => abandon(session, turn))))
-        yield* Queue.offer(wakes, { threadId: session.threadId, events })
+        yield* Queue.offer(wakes, {
+          threadId: session.threadId,
+          events,
+          discard: Effect.suspend(() => abandon(session, turn)),
+        })
       })
 
     const startTurn = (session: Session, input: RunTurnInput, mode: PermissionMode, turn: TurnQueue) =>
@@ -675,6 +679,12 @@ export const layer = Layer.effect(
         }
         yield* switchPermissionMode(session, mode)
         const message = yield* userMessage(input.prompt, input.attachments)
+        if (session.turn !== null) {
+          return yield* new AgentError({
+            provider: "claude",
+            message: "A turn is already running on this thread",
+          })
+        }
         openTurn(session, turn)
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
