@@ -13,8 +13,8 @@ Claude Code and Codex both fan work out to sub-agents. hinacode showed only the 
 2. When the agent spawns sub-agents, the Agents tab shows a count of the running ones.
 3. Agents lists them newest first: a status icon, the provider icon and its task, a line with the latest progress summary (or its last tool), and `tools · tokens · elapsed`, with elapsed counting up while it runs.
 4. When a sub-agent ends, the row keeps its final summary and stats.
-5. While sub-agents run, a bar above the composer shows how many are running and a chip per sub-agent in the batch.
-6. A row, a chip, or the `Agent` tool call in the transcript opens the sub-agent's own view: its prompt, the tool calls it made, and its result. The back button returns to the thread, or to the parent sub-agent for a nested one. The thread's transcript no longer shows a sub-agent's tool calls.
+5. While sub-agents run, one line above the composer sums up the batch, however large: a meter with a segment per sub-agent colored by status, `3 of 10 running` (and how many failed), and what the newest running one is doing. Clicking it opens the Agents tab.
+6. A row, or the `Agent` tool call in the transcript opens the sub-agent's own view: its prompt, the tool calls it made, and its result. The back button returns to the thread, or to the parent sub-agent for a nested one. The thread's transcript no longer shows a sub-agent's tool calls.
 
 The tabs follow the Base UI tabs keyboard model: arrow keys move between them.
 
@@ -26,7 +26,7 @@ The tabs follow the Base UI tabs keyboard model: arrow keys move between them.
 - `AgentRunner` keeps the latest sub-agent per id per thread in memory, pushes `thread.subagents` with the whole list on every change, and answers `subagents.list`. `subagent_updated` never reaches the transcript.
 - A sub-agent's tool calls do reach the transcript, tagged with `parentCallId`. `Subagent.callId` is the value they carry: the spawning `Agent` call on Claude, the child thread id on Codex. The thread route's `agent` search param holds it, and `lib/subagents.ts` collects the sub-agent's calls from the transcript, so a Claude sub-agent's view survives a restart.
 - The renderer's `stores/subagents.ts` loads through the rpc and replaces on each push, like pull request links.
-- Running uses the `--working` token (brand violet). Completed and stopped stay muted, failed is red. The spinner stops under reduced motion.
+- Running is a still dot in the `--working` token (brand violet), never a spinner: a batch of ten would be ten spinners. Completed and stopped stay muted, failed is red. The transcript's `Agent` call shows the sub-agent's status, since a background sub-agent's call returns as soon as it launches.
 
 ## Out of scope
 

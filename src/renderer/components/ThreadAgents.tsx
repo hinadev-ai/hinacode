@@ -141,6 +141,14 @@ export const subagentStats = (subagent: Subagent, now: number) =>
     .filter((stat) => stat !== null)
     .join(" · ")
 
+/** What a sub-agent is doing now, or what it reported when it ended. */
+export const subagentDetail = (subagent: Subagent) =>
+  subagent.summary
+    ? firstLine(subagent.summary)
+    : subagent.lastTool
+      ? m.agents_last_tool({ tool: subagent.lastTool })
+      : null
+
 function SubagentRow({
   subagent,
   provider,
@@ -152,11 +160,7 @@ function SubagentRow({
   now: number
   onOpen: (() => void) | undefined
 }) {
-  const detail = subagent.summary
-    ? firstLine(subagent.summary)
-    : subagent.lastTool
-      ? m.agents_last_tool({ tool: subagent.lastTool })
-      : null
+  const detail = subagentDetail(subagent)
   const body = (
     <>
       <span className="mt-0.5">
