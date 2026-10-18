@@ -920,6 +920,7 @@ describe("turns the agent starts over rpc", () => {
     await entered.promise
     const admission = vi.spyOn(worktrees, "exclusive")
     const discard = vi.fn()
+    const storedMessages = () => runtime.runPromise(Messages.Messages.use((messages) => messages.list(thread.id)))
     try {
       Effect.runSync(
         Queue.offer(claudeWakes, {
@@ -928,10 +929,8 @@ describe("turns the agent starts over rpc", () => {
           discard: Effect.sync(discard),
         }),
       )
-      await expect
-        .poll(async () => admission.mock.calls.length > 0 || (await assistantTexts(thread.id)).length > 0)
-        .toBe(true)
-      expect(await assistantTexts(thread.id)).toStrictEqual([])
+      await expect.poll(async () => admission.mock.calls.length > 0 || (await storedMessages()).length > 0).toBe(true)
+      expect(await storedMessages()).toStrictEqual([])
       release.resolve()
       await archiving
       await expect.poll(() => discard.mock.calls.length).toBe(1)

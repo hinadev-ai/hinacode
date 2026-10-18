@@ -730,7 +730,7 @@ const make = Effect.gen(function* () {
           yield* insertMessage(assistant)
           yield* updateThread({ id: threadId, status: "running" })
           return makeTurn(thread, provider, cwd, home, assistant, Deferred.makeUnsafe<void>())
-        }).pipe(exclusive(threadId))
+        }).pipe(worktrees.exclusive, exclusive(threadId))
         if (turn === null) return
         activeTurns.set(threadId, turn)
         yield* FiberMap.run(turns, threadId, turn.follow(events))
