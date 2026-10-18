@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "@effect/vitest"
-import { makeTranscriptUsage } from "./transcripts.ts"
+import { copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
 
 const sessionId = "31ee17f8-6200-4a50-80ff-96241b83319e"
 
@@ -34,8 +34,8 @@ const assistant = (
 const user = JSON.stringify({ type: "user", message: { role: "user", content: "Count the files" } })
 
 let home: string
-const write = (path: string, lines: ReadonlyArray<string>) => {
-  const file = join(home, "projects", "-repo", path)
+const write = (path: string, lines: ReadonlyArray<string>, into = home) => {
+  const file = join(into, "projects", "-repo", path)
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, lines.map((line) => `${line}\n`).join(""))
   return file
@@ -92,5 +92,37 @@ describe("makeTranscriptUsage", () => {
 
   test("is null for a session without a transcript", async () => {
     expect(await makeTranscriptUsage(home)(sessionId)).toBeNull()
+  })
+})
+
+describe("copyTranscripts", () => {
+  let other: string
+  beforeEach(() => {
+    other = mkdtempSync(join(tmpdir(), "kk-claude-home-"))
+  })
+  afterEach(() => rmSync(other, { recursive: true, force: true }))
+
+  test("copies the session and its agent transcripts, overwriting an older copy", async () => {
+    const main = write(`${sessionId}.jsonl`, [
+      user,
+      assistant("a", "claude-opus-5-5", { input: 2, cacheWrite: 1000, cacheRead: 0, output: 120 }),
+    ])
+    write(`${sessionId}/subagents/workflows/run1/agent-x.jsonl`, [
+      assistant("b", "claude-haiku-5", { input: 10, cacheWrite: 500, cacheRead: 0, output: 30 }),
+    ])
+
+    expect(await copyTranscripts(sessionId, home, other)).toBe(true)
+    expect(await makeTranscriptUsage(other)(sessionId)).toStrictEqual(await makeTranscriptUsage(home)(sessionId))
+
+    appendFileSync(main, `${assistant("c", "claude-opus-5-5", { input: 1, cacheWrite: 0, cacheRead: 0, output: 5 })}\n`)
+    expect(await copyTranscripts(sessionId, home, other)).toBe(true)
+    const copied = await makeTranscriptUsage(other)(sessionId)
+    expect(copied).toStrictEqual(await makeTranscriptUsage(home)(sessionId))
+    expect(copied?.models[0]?.outputTokens).toBe(125)
+  })
+
+  test("is false for a session without a transcript", async () => {
+    write(`${sessionId}.jsonl`, [user], other)
+    expect(await copyTranscripts(sessionId, home, other)).toBe(false)
   })
 })

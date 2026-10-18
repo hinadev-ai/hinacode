@@ -21,7 +21,7 @@ import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
-import { codexHome, makeRolloutUsage } from "./rollouts.ts"
+import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
 import { elementContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import { GetAccountRateLimitsResponse, GetAccountResponse, type RateLimitWindow } from "./protocol.ts"
@@ -160,6 +160,20 @@ type Run = {
 const interruptTurn = (client: CodexClient, turn: RemoteTurn) =>
   Effect.suspend(() =>
     client.isAlive() ? client.request("turn/interrupt", turn satisfies TurnInterruptParams) : Effect.void,
+  )
+
+const copySession = (threadId: string, from: AccountHome | null, to: AccountHome | null) =>
+  Effect.tryPromise({
+    try: () => copyRollouts(threadId, from?.dir ?? codexHome(), to?.dir ?? codexHome()),
+    catch: (cause) => new AgentError({ provider: "codex", message: `Failed to copy Codex rollouts: ${String(cause)}` }),
+  }).pipe(
+    Effect.flatMap((copied) =>
+      copied
+        ? Effect.void
+        : Effect.fail(
+            new AgentError({ provider: "codex", message: "No Codex rollout for this thread in the old account" }),
+          ),
+    ),
   )
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
@@ -754,6 +768,7 @@ const make = Effect.gen(function* () {
     account,
     planLimits,
     usage: readUsage,
+    copySession,
     listCommands,
     runTurn,
     steer,
