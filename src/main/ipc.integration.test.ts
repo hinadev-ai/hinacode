@@ -170,18 +170,26 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                 },
                 { type: "turn_failed", message: "Provider disconnected before the answer" },
               ]
-            : input.prompt === "simulate usage limit"
+            : input.prompt === "simulate a tool call"
               ? [
-                  {
-                    type: "turn_limited",
-                    limit: {
-                      kind: "usage",
-                      message: "Usage limit reached",
-                      reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
-                    },
-                  },
+                  { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+                  { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
+                  { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
+                  { type: "text_delta", text: "Listed and edited." },
+                  { type: "turn_completed" },
                 ]
-              : scriptedTurn,
+              : input.prompt === "simulate usage limit"
+                ? [
+                    {
+                      type: "turn_limited",
+                      limit: {
+                        kind: "usage",
+                        message: "Usage limit reached",
+                        reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                      },
+                    },
+                  ]
+                : scriptedTurn,
       )
     }),
   steer: () => Effect.void,
@@ -789,6 +797,32 @@ describe("limited threads over rpc", () => {
       },
     )
     expect(response).toMatchObject({ error: { tag: "SchemaError" } })
+  })
+})
+
+describe("compact transcripts over rpc", () => {
+  test("leave out tool outputs and file diffs only when asked", async () => {
+    const root = join(dir, "compact")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "compact", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a tool call" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    const parts = async (compact?: boolean) =>
+      result(await invoke("threads.transcript", { threadId: thread.id, compact })).messages.at(-1)?.parts
+
+    expect(await parts()).toMatchObject([
+      { type: "tool_call", name: "Bash", output: "a.txt\nb.txt" },
+      { type: "file_change", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
+      { type: "text", text: "Listed and edited." },
+    ])
+    const compact = await parts(true)
+    expect(compact).toMatchObject([
+      { type: "tool_call", name: "Bash", status: "done" },
+      { type: "file_change", path: "a.txt", diff: "" },
+      { type: "text", text: "Listed and edited." },
+    ])
+    expect(compact?.[0]).not.toHaveProperty("output")
   })
 })
 
