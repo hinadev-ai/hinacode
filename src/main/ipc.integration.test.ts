@@ -170,18 +170,23 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                 },
                 { type: "turn_failed", message: "Provider disconnected before the answer" },
               ]
-            : input.prompt === "simulate usage limit"
+            : input.prompt === "simulate a crash mid sub-agent"
               ? [
-                  {
-                    type: "turn_limited",
-                    limit: {
-                      kind: "usage",
-                      message: "Usage limit reached",
-                      reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
-                    },
-                  },
+                  { type: "subagent_updated", subagent },
+                  { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
                 ]
-              : scriptedTurn,
+              : input.prompt === "simulate usage limit"
+                ? [
+                    {
+                      type: "turn_limited",
+                      limit: {
+                        kind: "usage",
+                        message: "Usage limit reached",
+                        reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                      },
+                    },
+                  ]
+                : scriptedTurn,
       )
     }),
   steer: () => Effect.void,
@@ -660,6 +665,16 @@ describe("sub-agents over rpc", () => {
     const transcriptEvents = pushed().flatMap((event) => (event.type === "thread.event" ? [event.event.type] : []))
     expect(transcriptEvents).toStrictEqual(["text_delta", "turn_completed"])
     expect(result(await invoke("subagents.list", { threadId: "other" }))).toStrictEqual([])
+  })
+
+  test("a sub-agent still running when its turn ends is stopped", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a crash mid sub-agent" }))
+    await expect
+      .poll(async () => result(await invoke("subagents.list", { threadId: thread.id }))[0]?.status)
+      .toBe("stopped")
+    expect(result(await invoke("subagents.list", { threadId: thread.id }))[0]?.endedAt).not.toBeNull()
   })
 })
 
