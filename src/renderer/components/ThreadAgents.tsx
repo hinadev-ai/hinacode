@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
-import { RiCheckLine, RiErrorWarningLine, RiLoader4Line, RiStopCircleLine } from "react-icons/ri"
+import { RiCheckLine, RiErrorWarningLine, RiStopCircleLine } from "react-icons/ri"
 import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -36,16 +36,21 @@ export const subagentStatusLabel = {
   stopped: m.agents_status_stopped,
 } satisfies Record<SubagentStatus, () => string>
 
+// Running is a still dot: a batch of ten sub-agents would otherwise be ten spinners.
 const statusIcons = {
-  running: <RiLoader4Line aria-hidden className="size-4 animate-spin text-working motion-reduce:animate-none" />,
-  completed: <RiCheckLine aria-hidden className="size-4 text-muted-foreground" />,
-  failed: <RiErrorWarningLine aria-hidden className="size-4 text-destructive" />,
-  stopped: <RiStopCircleLine aria-hidden className="size-4 text-muted-foreground" />,
+  running: <span aria-hidden className="size-1/2 rounded-full bg-working" />,
+  completed: <RiCheckLine aria-hidden className="size-full text-muted-foreground" />,
+  failed: <RiErrorWarningLine aria-hidden className="size-full text-destructive" />,
+  stopped: <RiStopCircleLine aria-hidden className="size-full text-muted-foreground" />,
 } satisfies Record<SubagentStatus, ReactNode>
 
-export function SubagentStatusIcon({ status }: { status: SubagentStatus }) {
+/** `className` sizes the icon, `size-4` by default. */
+export function SubagentStatusIcon({ status, className }: { status: SubagentStatus; className?: string }) {
   return (
-    <span title={subagentStatusLabel[status]()} className="shrink-0">
+    <span
+      title={subagentStatusLabel[status]()}
+      className={cn("flex size-4 shrink-0 items-center justify-center", className)}
+    >
       {statusIcons[status]}
       <span className="sr-only">{subagentStatusLabel[status]()}</span>
     </span>
