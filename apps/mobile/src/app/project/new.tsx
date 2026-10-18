@@ -58,6 +58,7 @@ export default function AddProjectScreen() {
       router.replace({ pathname: "/thread/[id]", params: { id: thread.id } })
     } catch (cause) {
       setError(errorText(cause))
+    } finally {
       setBusy(false)
     }
   }

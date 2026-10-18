@@ -202,8 +202,8 @@ function Checks({ detail, threadId }: { detail: PullRequestDetail; threadId: str
         <Text style={{ color: theme.textMuted, fontSize: 14 }}>{copy("mobile_pr_no_checks")}</Text>
       ) : (
         <View>
-          {runs.map((run, index) => (
-            <CheckRow key={`${index}:${run.name}`} run={run} />
+          {runs.map((run) => (
+            <CheckRow key={run.url ?? run.name} run={run} />
           ))}
         </View>
       )}

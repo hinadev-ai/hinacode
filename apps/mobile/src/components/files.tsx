@@ -346,16 +346,16 @@ function Emphasized({
   hits: ReadonlySet<number>
   color: string
 }) {
-  const runs: { text: string; hit: boolean }[] = []
+  const runs: { text: string; hit: boolean; start: number }[] = []
   for (let index = 0; index < text.length; index++) {
     const hit = hits.has(index + offset)
     const last = runs[runs.length - 1]
     if (last !== undefined && last.hit === hit) last.text += text[index]
-    else runs.push({ text: text[index], hit })
+    else runs.push({ text: text[index], hit, start: index })
   }
-  return runs.map((run, index) =>
+  return runs.map((run) =>
     run.hit ? (
-      <Text key={index} style={[styles.strong, { color }]}>
+      <Text key={run.start} style={[styles.strong, { color }]}>
         {run.text}
       </Text>
     ) : (

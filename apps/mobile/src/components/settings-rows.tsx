@@ -1,4 +1,4 @@
-import { Children, Fragment, type ReactNode } from "react"
+import { Children, Fragment, isValidElement, type ReactNode } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { Toggle } from "@/components/ui"
@@ -24,7 +24,8 @@ export function SettingsGroup({
       </Text>
       <View style={[styles.rows, { backgroundColor: theme.surface }]}>
         {rows.map((row, index) => (
-          <Fragment key={index}>
+          // Children.toArray keys each row by its place among the children, which a hidden row does not shift.
+          <Fragment key={isValidElement(row) && row.key !== null ? row.key : index}>
             {index > 0 && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
             {row}
           </Fragment>
