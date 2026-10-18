@@ -37,6 +37,14 @@ describe("toCommand", () => {
 })
 
 describe("hideUserCommands", () => {
+  test("also disables a renamed user's skill through its directory alias", () => {
+    expect(
+      hideUserCommands([
+        { name: "Create PR", aliases: ["create-pr"], description: "Open a pull request. (user)", argumentHint: "" },
+      ]),
+    ).toStrictEqual({ "Create PR": "off", "create-pr": "off" })
+  })
+
   test("turns off only the user's own skills and commands", () => {
     expect(
       hideUserCommands([
