@@ -106,7 +106,7 @@ const reply = ({ id, method, params }) => {
         },
       })
     case "skills/list":
-      return send({ id, result: { data: [] } })
+      return send({ id, result: { data: control().skills ?? [] } })
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { toCommand } from "./commands.ts"
+import { hideUserCommands, toCommand } from "./commands.ts"
 
 describe("toCommand", () => {
   test("moves a user or project scope from the end of the description into scope", () => {
@@ -33,5 +33,26 @@ describe("toCommand", () => {
       argumentHint: "",
       builtin: true,
     })
+  })
+})
+
+describe("hideUserCommands", () => {
+  test("also disables a renamed user's skill through its directory alias", () => {
+    expect(
+      hideUserCommands([
+        { name: "Create PR", aliases: ["create-pr"], description: "Open a pull request. (user)", argumentHint: "" },
+      ]),
+    ).toStrictEqual({ "Create PR": "off", "create-pr": "off" })
+  })
+
+  test("turns off only the user's own skills and commands", () => {
+    expect(
+      hideUserCommands([
+        { name: "kalan-mode", description: "Kalan's working mode. (user)", argumentHint: "" },
+        { name: "verify", description: "Drive the app. (project)", argumentHint: "" },
+        { name: "docs", description: "Edit docs. (claude.ai sync)", argumentHint: "" },
+        { name: "compact", description: "Summarize the conversation", argumentHint: "", builtin: true },
+      ]),
+    ).toStrictEqual({ "kalan-mode": "off" })
   })
 })

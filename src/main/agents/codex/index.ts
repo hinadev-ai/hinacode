@@ -313,6 +313,9 @@ const make = Effect.gen(function* () {
           const inbox = yield* Queue.unbounded<Incoming>()
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
 
+          const hiddenSkills = input.userSkills
+            ? null
+            : (yield* listSkills(input.cwd, input.home)).filter((skill) => skill.scope === "user")
           const overrides = {
             cwd: input.cwd,
             model: input.model,
@@ -320,6 +323,9 @@ const make = Effect.gen(function* () {
             config: {
               // Off by default in current Codex; the composer's task list is built from its plan.
               tools: { update_plan: { enabled: true } },
+              ...(hiddenSkills !== null && {
+                skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },
+              }),
               mcp_servers: {
                 // `request_secret` waits for the user, so the default 60 s tool timeout is too short.
                 hinacode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
@@ -336,7 +342,9 @@ const make = Effect.gen(function* () {
             : yield* client.request<ThreadStartResponse>("thread/start", overrides)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
-          const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd, input.home) : []
+          const skills = input.prompt.includes("$")
+            ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
+            : []
           const turnStart: TurnStartParams = {
             threadId: thread.id,
             input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],

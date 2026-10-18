@@ -454,6 +454,15 @@ describe("projects, threads and settings over rpc", () => {
     ])
   })
 
+  test("a thread loads the user's own skills until conversation mode turns them off", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.userSkills).toBe(true)
+    result(await invoke("threads.update", { id: thread.id, userSkills: false }))
+    const stored = result(await invoke("threads.list", undefined)).find((listed) => listed.id === thread.id)
+    expect(stored?.userSkills).toBe(false)
+  })
+
   test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))

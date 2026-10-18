@@ -40,6 +40,17 @@ Starting a thread meant filling in a dialog: title, agent, model, worktree toggl
 
 The thread stores `effort` (null means the model's default) and `fastMode` (migration `0004`). `models.list` reports each model's `efforts`, `defaultEffort` and `fastMode`, so the composer only shows the controls a model supports. Changing model drops values the new model can't honor, and switching agent resets both. Claude gets them as the `effort` option and `settings.fastMode` at session start, and through `applyFlagSettings` when they change. Codex gets `effort` and `serviceTier: "priority"` (its "Fast" tier) on `turn/start`.
 
+## Conversation mode
+
+The `Conversation` toggle leaves out the skills and commands in the user's own agent home, for a thread that should just talk. The thread stores `userSkills`, true by default (migration `0018`). Project, plugin and built-in skills still load.
+
+- Claude gets a `settings.skillOverrides` that turns each user-scope command `off`, named from the cached `supportedCommands` probe. The CLI lists skills to the model once per process, and `applyFlagSettings` does not list them again, so a toggle closes the live session and resumes it in a new CLI. Session grants carry over.
+- Codex gets `skills.config` with every `user` skill from `skills/list` set to `enabled: false`, on `thread/start` and `thread/resume`.
+- Muse Code has no way to hide a skill, so the toggle is not shown.
+- The composer filters `user` commands out of its `/` and `$` completions on its own, so the list changes the moment the toggle does.
+
+Earlier turns keep whatever skill listing they already had in the transcript.
+
 ## Access modes
 
 Each thread has an `accessMode` (migration `0005`), picked in the composer's `Access` select. New threads start `supervised`, and the mode can change at any time, including mid-thread.

@@ -487,6 +487,7 @@ const make = Effect.gen(function* () {
               model: thread.model,
               effort: thread.effort,
               fastMode: thread.fastMode,
+              userSkills: thread.userSkills,
               accessMode: thread.accessMode,
               resumeSessionId: thread.providerSessionId,
               home,

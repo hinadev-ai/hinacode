@@ -563,6 +563,8 @@
   "effort_ultra": "Ultra",
   "thread_fast_mode": "Fast",
   "thread_fast_mode_hint": "Faster responses that use more of your plan",
+  "thread_conversation_mode": "Conversation",
+  "thread_conversation_mode_hint": "Leaves out your user skills and commands in this thread",
   "thread_options_more": "More options",
   "thread_option_value": "{name}: {value}",
   "composer_commands_label": "Commands",

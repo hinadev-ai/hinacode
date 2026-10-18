@@ -108,7 +108,9 @@ export function Composer({ thread }: { thread: Thread }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const key = completionKey(thread)
   const commandsResult = useAtomValue(commandsAtom(key))
-  const commands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
+  const commands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []).filter(
+    (command) => thread.userSkills || command.scope !== "user",
+  )
   // A failed load looks exactly like "the agent has no commands" when swallowed, so it is shown instead.
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })

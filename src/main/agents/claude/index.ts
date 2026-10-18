@@ -21,7 +21,7 @@ import { AgentError, type AgentProvider, type Wake } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
-import { toCommand } from "./commands.ts"
+import { hideUserCommands, toCommand } from "./commands.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
@@ -69,6 +69,7 @@ interface Session extends MapState, ApprovalSession {
   model: string
   effort: string | null
   fastMode: boolean
+  readonly userSkills: boolean
   permissionMode: PermissionMode
   sessionId: string | null
   turn: TurnQueue | null
@@ -301,6 +302,16 @@ export const layer = Layer.effect(
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
     const wakes = yield* Queue.unbounded<Wake>()
+    const probedCommands = yield* Cache.make({
+      lookup: probeCommands,
+      capacity: 32,
+      timeToLive: Duration.minutes(1),
+    })
+
+    const skillOverrides = (input: RunTurnInput) =>
+      input.userSkills
+        ? Effect.succeed(null)
+        : Cache.get(probedCommands, commandsKey(input.cwd, input.home)).pipe(Effect.map(hideUserCommands))
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
@@ -499,6 +510,7 @@ export const layer = Layer.effect(
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const base = yield* baseOptions(input.home)
+        const hidden = yield* skillOverrides(input)
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -510,7 +522,7 @@ export const layer = Layer.effect(
                 cwd: input.cwd,
                 model: input.model,
                 ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
-                settings: { fastMode: input.fastMode },
+                settings: { fastMode: input.fastMode, ...(hidden !== null && { skillOverrides: hidden }) },
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
@@ -548,6 +560,7 @@ export const layer = Layer.effect(
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
+          userSkills: input.userSkills,
           permissionMode: mode,
           prompts,
           abort,
@@ -582,7 +595,8 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (sameContext(existing, input)) return claim(existing)
+          // The CLI lists skills to the model once per process, so another skill set needs a new one.
+          if (sameContext(existing, input) && existing.userSkills === input.userSkills) return claim(existing)
           yield* closeSession(existing)
         }
         return yield* startSession(input, mode)
@@ -736,12 +750,6 @@ export const layer = Layer.effect(
         catch: agentError("Failed to read Claude transcripts"),
       })
 
-    const probedCommands = yield* Cache.make({
-      lookup: probeCommands,
-      capacity: 32,
-      timeToLive: Duration.minutes(1),
-    })
-
     const listCommands = ({
       threadId,
       cwd,
@@ -753,7 +761,7 @@ export const layer = Layer.effect(
     }) =>
       Effect.suspend(() => {
         const session = sessions.get(threadId)
-        return session !== undefined && session.cwd === cwd && sameHome(session.home, home)
+        return session !== undefined && session.userSkills && session.cwd === cwd && sameHome(session.home, home)
           ? lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.supportedCommands(),
