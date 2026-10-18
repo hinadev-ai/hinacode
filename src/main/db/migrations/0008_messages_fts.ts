@@ -5,7 +5,7 @@ import { SqlClient } from "effect/sql"
  * What a reader sees in a message without expanding anything, the same text find in thread searches:
  * text parts, a tool call's name and summary field, and a file change's path.
  */
-export const body = (parts: string) => `(
+const body = (parts: string) => `(
   SELECT group_concat(CASE json_extract(value, '$.type')
     WHEN 'text' THEN json_extract(value, '$.text')
     WHEN 'tool_call' THEN json_extract(value, '$.name') || char(10) || coalesce(
