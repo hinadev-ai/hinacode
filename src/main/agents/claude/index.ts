@@ -10,17 +10,9 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
-  type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cache, Cause, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
-import type {
-  AccountHome,
-  AgentAccount,
-  AgentCommand,
-  AgentEvent,
-  ModelInfo,
-  RunTurnInput,
-} from "../../../shared/agent.ts"
+import type { AccountHome, AgentAccount, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
@@ -29,6 +21,7 @@ import { AgentError, type AgentProvider } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
+import { toCommand } from "./commands.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
@@ -60,13 +53,6 @@ const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
 const EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 const isEffortLevel = (effort: string | null): effort is EffortLevel =>
   effort !== null && EFFORT_LEVELS.includes(effort)
-
-const toCommand = (command: SlashCommand): AgentCommand => ({
-  trigger: "/",
-  name: command.name,
-  description: command.description,
-  argumentHint: command.argumentHint,
-})
 
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 

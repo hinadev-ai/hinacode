@@ -37,6 +37,7 @@ import type {
   ServerNotificationParams,
   ServerRequestParams,
   SkillMetadata,
+  SkillScope,
   SkillsListParams,
   SkillsListResponse,
   ThreadItem,
@@ -99,6 +100,9 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<
     return attachment.element ? [image, textInput(elementContext(attachment.element))] : [image]
   }),
 ]
+
+/** The scopes the composer names. Codex ships `system` skills itself, and an administrator installs `admin` ones. */
+const commandScopes: Partial<Record<SkillScope, AgentCommand["scope"]>> = { user: "user", repo: "project" }
 
 /** Codex expands a skill only when it arrives as its own input item next to the `$name` in the text. */
 const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<UserInput> =>
@@ -276,12 +280,16 @@ const make = Effect.gen(function* () {
       Effect.map((skills) =>
         skills
           .filter((skill) => skill.enabled)
-          .map((skill): AgentCommand => ({
-            trigger: "$",
-            name: skill.name,
-            description: skill.shortDescription ?? skill.description,
-            argumentHint: "",
-          })),
+          .map((skill): AgentCommand => {
+            const scope = commandScopes[skill.scope]
+            return {
+              trigger: "$",
+              name: skill.name,
+              description: skill.shortDescription ?? skill.description,
+              argumentHint: "",
+              ...(scope && { scope }),
+            }
+          }),
       ),
     )
 

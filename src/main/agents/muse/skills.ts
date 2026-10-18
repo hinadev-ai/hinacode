@@ -7,6 +7,7 @@ export const toCommand = (skill: SkillCatalogEntry): AgentCommand => ({
   name: skill.selector,
   description: skill.description,
   argumentHint: skill.argumentHint ?? "",
+  ...((skill.source === "user" || skill.source === "project") && { scope: skill.source }),
 })
 
 export interface SkillInvocation {

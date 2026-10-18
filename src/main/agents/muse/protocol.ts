@@ -50,6 +50,8 @@ export const SkillCatalogEntry = Schema.Struct({
   selector: Schema.String,
   description: Schema.String,
   argumentHint: Schema.optional(Schema.String),
+  /** Where the skill comes from: `user`, `project`, `bundled`, `plugin` or a later source. */
+  source: Schema.optional(Schema.String),
 })
 export type SkillCatalogEntry = typeof SkillCatalogEntry.Type
 

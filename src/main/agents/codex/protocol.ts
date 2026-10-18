@@ -87,11 +87,13 @@ export type Model = {
 export type ModelListResponse = { data: Array<Model>; nextCursor: string | null }
 
 export type SkillsListParams = { cwds?: Array<string>; forceReload?: boolean }
+export type SkillScope = "user" | "repo" | "system" | "admin"
 export type SkillMetadata = {
   name: string
   description: string
   shortDescription?: string
   path: string
+  scope: SkillScope
   enabled: boolean
 }
 export type SkillsListResponse = { data: Array<{ cwd: string; skills: Array<SkillMetadata> }> }
