@@ -129,6 +129,7 @@ export const RpcMethods = {
       /** Null goes back to the model's default effort. */
       effort: Schema.optional(Schema.NullOr(Schema.String)),
       fastMode: Schema.optional(Schema.Boolean),
+      userSkills: Schema.optional(Schema.Boolean),
       accessMode: Schema.optional(AccessMode),
       /** Only before the thread has a provider session. Null is the CLI's own login. */
       accountId: Schema.optional(Schema.NullOr(Schema.String)),

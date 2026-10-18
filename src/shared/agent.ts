@@ -275,6 +275,8 @@ export interface RunTurnInput {
   /** Null leaves the model's default effort. */
   readonly effort: string | null
   readonly fastMode: boolean
+  /** False hides the skills and commands in the user's own agent home from the agent. */
+  readonly userSkills: boolean
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
