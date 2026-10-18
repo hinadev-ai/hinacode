@@ -721,6 +721,26 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("keeps user commands available for completions after a conversation turn", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.supportedCommands = () =>
+          Promise.resolve([
+            { name: "personal", description: "User skill. (user)", argumentHint: "" },
+            { name: "project", description: "Project skill. (project)", argumentHint: "" },
+          ])
+        yield* runTurn(turnInput({ userSkills: false }))
+        const live = latestCli()
+        live.supportedCommands.mockResolvedValue([
+          { name: "project", description: "Project skill. (project)", argumentHint: "" },
+        ])
+        const commands = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
+        expect(commands.map((command) => command.name)).toStrictEqual(["personal", "project"])
+      }),
+    ),
+  )
+
   it.effect("stops a turn whose auto mode check is pending without starting or stranding a CLI", () =>
     lifecycle(
       Effect.gen(function* () {

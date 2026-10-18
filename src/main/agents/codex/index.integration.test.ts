@@ -27,10 +27,11 @@ type Control = {
   accountFromHome?: boolean
   subagent?: boolean
   plan?: boolean
+  skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
   method?: string
-  params?: { turnId?: string }
+  params?: { turnId?: string; input?: Array<import("./protocol.ts").UserInput> }
   id?: number
   result?: import("./protocol.ts").ToolRequestUserInputResponse
 }
@@ -147,6 +148,46 @@ describe("Codex app-server log", () => {
     writeFileSync(logPath, '{"method":"turn/start"\n')
     expect(received).toThrow(SyntaxError)
   })
+})
+
+describe("Codex conversation mode", () => {
+  it.live("does not explicitly load user skills named in a conversation prompt", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({
+          skills: [
+            {
+              cwd: tmpdir(),
+              skills: [
+                {
+                  name: "personal",
+                  description: "User skill",
+                  path: "/user/personal/SKILL.md",
+                  scope: "user",
+                  enabled: true,
+                },
+                {
+                  name: "project",
+                  description: "Project skill",
+                  path: "/repo/project/SKILL.md",
+                  scope: "repo",
+                  enabled: true,
+                },
+              ],
+            },
+          ],
+        })
+        yield* provider
+          .runTurn({ ...input("conversation"), userSkills: false, prompt: "$personal $project" })
+          .pipe(Stream.runDrain)
+        const started = received().find((message) => message.method === "turn/start")
+        expect(started?.params?.input?.filter((item) => item.type === "skill")).toStrictEqual([
+          { type: "skill", name: "project", path: "/repo/project/SKILL.md" },
+        ])
+      }),
+    ),
+  )
 })
 
 describe("Codex Stop during startup", () => {
