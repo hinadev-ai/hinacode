@@ -383,6 +383,7 @@
   "delete_dialog_worktree": "Its worktree folder is {path}.",
   "delete_dialog_remove_worktree": "Also remove its worktree, and its branch if merged",
   "delete_dialog_confirm": "Delete thread",
+  "delete_dialog_offline": "Reconnect to {name} to delete this thread.",
   "home_description": "Run Claude Code, Codex and Muse Code on your local repositories. Each thread can get its own git worktree, prepared by your setup script.",
   "settings_automations": "Automations",
   "settings_slack_label": "Slack user token",

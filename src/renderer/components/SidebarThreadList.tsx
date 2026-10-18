@@ -434,7 +434,7 @@ const ThreadRow = memo(function ThreadRow({
                   {archiveDeletes ? m.sidebar_thread_archive_confirm() : m.sidebar_thread_archive()}
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem variant="destructive" disabled={busy} onClick={queue("delete")}>
+              <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
                 <RiDeleteBinLine aria-hidden />
                 {m.sidebar_thread_delete()}
               </DropdownMenuItem>
@@ -454,6 +454,7 @@ const ThreadRow = memo(function ThreadRow({
       )}
       <DeleteThreadDialog
         thread={thread}
+        cloud={cloud}
         open={mode === "delete"}
         onOpenChange={closeDialog}
         focusAfterDelete={focusAfterRemoval}
@@ -523,18 +524,21 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
 
 interface DeleteThreadDialogProps {
   readonly thread: Thread
+  readonly cloud: Cloud | undefined
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   /** Where focus goes once the thread is gone, since the row that opened the dialog is gone too. */
   readonly focusAfterDelete: () => HTMLElement | null
 }
 
-function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
+function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
   const worktree = useActiveWorktree(thread)
   const navigate = useNavigate()
   const { threadId: openThreadId } = useParams({ strict: false })
   const [removeWorktree, setRemoveWorktree] = useState(true)
   const removeWorktreeId = useId()
+  // The cloud owns the thread and its worktree, so deleting needs it to answer.
+  const offline = isStale(cloud)
 
   const [error, remove, isPending] = useActionState(async () => {
     try {
@@ -564,6 +568,11 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
             <FieldLabel htmlFor={removeWorktreeId}>{m.delete_dialog_remove_worktree()}</FieldLabel>
           </Field>
         )}
+        {offline && cloud && (
+          <p className="text-sm text-muted-foreground">
+            {m.delete_dialog_offline({ name: cloud.name })}
+          </p>
+        )}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -571,7 +580,11 @@ function DeleteThreadDialog({ thread, open, onOpenChange, focusAfterDelete }: De
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(remove)}>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={isPending || offline}
+            onClick={() => startTransition(remove)}
+          >
             {m.delete_dialog_confirm()}
           </AlertDialogAction>
         </AlertDialogFooter>
