@@ -135,7 +135,7 @@ export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: 
   )
 }
 
-export const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
+const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
   neutral: [theme.textMuted, theme.neutralBg],
   attention: [theme.attention, theme.attentionBg],
   running: [theme.running, theme.runningBg],
@@ -166,13 +166,13 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   )
 }
 
-export const providerMark: Record<ProviderId, IconName> = {
+const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
 }
 
-export const providerName: Record<ProviderId, string> = {
+const providerName: Record<ProviderId, string> = {
   claude: copy("mobile_provider_claude"),
   codex: copy("mobile_provider_codex"),
   muse: copy("mobile_provider_muse"),

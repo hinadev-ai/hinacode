@@ -1,4 +1,4 @@
-import type { ThreadSearchHit } from "@shared/domain.ts"
+import type { Thread, ThreadSearchHit } from "@shared/domain.ts"
 import { useEffect, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
@@ -57,27 +57,28 @@ type SearchItem =
   | { readonly kind: "thread"; readonly key: string; readonly threadId: string }
   | { readonly kind: "hit"; readonly key: string; readonly hit: ThreadSearchHit }
 
-/** Thread titles that match as the developer types, then messages from every thread. */
-export function SearchResults({ query }: { query: string }) {
-  const theme = useTheme()
-  const projects = useThreads((state) => state.projects)
-  const byId = useThreads((state) => state.byId)
-  const threads = matchThreads(Object.values(byId), projects, query).slice(0, THREAD_LIMIT)
-  const messages = useMessageSearch(query)
-  const hits = messages.state === "done" ? messages.hits : []
-
+/** The rows to show: matching threads, then the messages section once a message search has started. */
+function searchItems(threads: readonly Thread[], messages: MessageSearch): SearchItem[] {
   const items: SearchItem[] = []
   if (threads.length > 0) {
     items.push({ kind: "label", key: "label:threads", label: copy("mobile_search_threads") })
     for (const thread of threads) items.push({ kind: "thread", key: `thread:${thread.id}`, threadId: thread.id })
   }
+  const hits = messages.state === "done" ? messages.hits : []
   if (messages.state !== "idle" && (messages.state !== "done" || hits.length > 0)) {
     items.push({ kind: "label", key: "label:messages", label: copy("mobile_search_messages") })
     for (const hit of hits) items.push({ kind: "hit", key: `hit:${hit.messageId}`, hit })
   }
+  return items
+}
 
-  const nothing =
-    threads.length === 0 && (messages.state === "idle" || (messages.state === "done" && hits.length === 0))
+/** Thread titles that match as the developer types, then messages from every thread. */
+export function SearchResults({ query }: { query: string }) {
+  const projects = useThreads((state) => state.projects)
+  const byId = useThreads((state) => state.byId)
+  const threads = matchThreads(Object.values(byId), projects, query).slice(0, THREAD_LIMIT)
+  const messages = useMessageSearch(query)
+  const items = searchItems(threads, messages)
 
   return (
     <LayoutAnimationConfig skipEntering>
@@ -89,46 +90,55 @@ export function SearchResults({ query }: { query: string }) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
-          if (item.kind === "label") return <SectionLabel label={item.label} />
-          if (item.kind === "hit") return <MessageHitRow hit={item.hit} query={query} />
-          const thread = byId[item.threadId]
-          return thread === undefined ? null : <ThreadRow thread={thread} showProject />
-        }}
-        ListFooterComponent={
-          messages.state === "loading" ? (
-            <Reveal style={styles.status}>
-              <Spinner color={theme.textMuted} />
-              <Text style={[styles.statusText, { color: theme.textMuted }]}>{copy("mobile_search_searching")}</Text>
-            </Reveal>
-          ) : messages.state === "error" ? (
-            <Notice text={messages.error} tone="danger" />
-          ) : nothing ? (
-            <EmptyState
-              icon="RiSearchLine"
-              title={copy("mobile_search_empty")}
-              hint={copy("mobile_search_empty_hint")}
-            />
-          ) : null
-        }
+        renderItem={({ item }) => <SearchRow item={item} query={query} />}
+        ListFooterComponent={<SearchFooter messages={messages} empty={items.length === 0} />}
       />
     </LayoutAnimationConfig>
   )
+}
+
+function SearchRow({ item, query }: { item: SearchItem; query: string }) {
+  const thread = useThreads((state) => (item.kind === "thread" ? state.byId[item.threadId] : undefined))
+  switch (item.kind) {
+    case "label":
+      return <SectionLabel label={item.label} />
+    case "hit":
+      return <MessageHitRow hit={item.hit} query={query} />
+    case "thread":
+      return thread === undefined ? null : <ThreadRow thread={thread} showProject />
+  }
+}
+
+function SearchFooter({ messages, empty }: { messages: MessageSearch; empty: boolean }) {
+  const theme = useTheme()
+  if (messages.state === "loading")
+    return (
+      <Reveal style={styles.status}>
+        <Spinner color={theme.textMuted} />
+        <Text style={[styles.statusText, { color: theme.textMuted }]}>{copy("mobile_search_searching")}</Text>
+      </Reveal>
+    )
+  if (messages.state === "error") return <Notice text={messages.error} tone="danger" />
+  if (empty)
+    return (
+      <EmptyState icon="RiSearchLine" title={copy("mobile_search_empty")} hint={copy("mobile_search_empty_hint")} />
+    )
+  return null
 }
 
 /** Splits `text` around every case-insensitive occurrence of `query`. */
 function emphasize(text: string, query: string) {
   const needle = query.trim().toLowerCase()
   const haystack = text.toLowerCase()
-  const parts: { text: string; match: boolean }[] = []
-  if (needle === "" || haystack.length !== text.length) return [{ text, match: false }]
+  const parts: { text: string; match: boolean; start: number }[] = []
+  if (needle === "" || haystack.length !== text.length) return [{ text, match: false, start: 0 }]
   let start = 0
   for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, start)) {
-    if (at > start) parts.push({ text: text.slice(start, at), match: false })
-    parts.push({ text: text.slice(at, at + needle.length), match: true })
+    if (at > start) parts.push({ text: text.slice(start, at), match: false, start })
+    parts.push({ text: text.slice(at, at + needle.length), match: true, start: at })
     start = at + needle.length
   }
-  if (start < text.length) parts.push({ text: text.slice(start), match: false })
+  if (start < text.length) parts.push({ text: text.slice(start), match: false, start })
   return parts
 }
 
@@ -156,9 +166,9 @@ function MessageHitRow({ hit, query }: { hit: ThreadSearchHit; query: string }) 
           <Text style={[styles.hitTime, { color: theme.textMuted }]}>{time}</Text>
         </View>
         <Text numberOfLines={2} style={[styles.snippet, { color: theme.textMuted }]}>
-          {emphasize(hit.snippet, query).map((part, index) =>
+          {emphasize(hit.snippet, query).map((part) =>
             part.match ? (
-              <Text key={index} style={[styles.match, { color: theme.text }]}>
+              <Text key={part.start} style={[styles.match, { color: theme.text }]}>
                 {part.text}
               </Text>
             ) : (
