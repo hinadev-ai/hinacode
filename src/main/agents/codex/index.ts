@@ -523,7 +523,8 @@ const make = Effect.gen(function* () {
               if (message.kind === "exit") return yield* Effect.fail(message.error)
               const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
               if (message.kind === "notification" && childThreadId !== undefined && subagents.has(childThreadId)) {
-                const childTurnId = (message.params as { turnId?: string }).turnId
+                const childScope = message.params as { turnId?: string; turn?: { id: string } }
+                const childTurnId = childScope.turnId ?? childScope.turn?.id
                 if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
                 yield* handleChildTool(childThreadId, message.method, message.params)
                 const changed = applyChildNotification(
@@ -699,7 +700,7 @@ const make = Effect.gen(function* () {
       const client = runs.get(threadId)?.client
       const turnId = subagentTurns.get(subagentId)
       if (client === undefined || turnId === undefined || !subagentsByThread.get(threadId)?.has(subagentId))
-        return Effect.void
+        return Effect.fail(new AgentError({ provider: "codex", message: "The sub-agent has no active turn to stop" }))
       return interruptTurn(client, { threadId: subagentId, turnId })
     }).pipe(Effect.asVoid)
 
