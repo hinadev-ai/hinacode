@@ -1,6 +1,6 @@
 # HinaCode mobile
 
-The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, merge pull requests, and run a shell in a thread's worktree. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as Markdown with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, raises a banner or a local notification when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
 
 This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
 
@@ -50,6 +50,7 @@ The pairing is stored in the secure store (`localStorage` on web). Rotating the 
 ## Out of scope
 
 - A relay or tunnel; the phone connects to the desktop directly.
-- Push notifications. The app is live only while it is open.
-- Attachments, the file explorer, git graph, settings, automations and secret requests from the phone.
+- Push notifications while the app is closed. Notifications come from the live socket, so they arrive while the app runs or recently went to the background. Remote push needs a development build, since Expo Go on Android dropped it in SDK 53.
+- `gpu-lexer` in the native app. Hermes has no WebGPU, so native code blocks use the small lexer in `src/lib/lexer.ts`. The web build uses `gpu-lexer` when the browser offers WebGPU in a secure context.
+- Attachments, editing files, the git graph, automations and secret requests from the phone.
 - TLS. Use Tailscale for an encrypted path.
