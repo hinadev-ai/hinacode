@@ -16,3 +16,11 @@ export const toCommand = (command: SlashCommand): AgentCommand => {
     ...((scope === "user" || scope === "project") && { scope }),
   }
 }
+
+/** The `skillOverrides` flag setting that hides every user-level skill and command from the model and from `/`. */
+export const hideUserCommands = (commands: ReadonlyArray<SlashCommand>): Record<string, "off"> =>
+  Object.fromEntries(
+    commands
+      .filter((command) => toCommand(command).scope === "user")
+      .flatMap((command) => [command.name, ...(command.aliases ?? [])].map((name) => [name, "off"])),
+  )

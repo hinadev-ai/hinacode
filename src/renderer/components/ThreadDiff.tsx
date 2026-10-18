@@ -3,7 +3,7 @@ import { PatchDiff } from "@pierre/diffs/react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useId, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react"
 import { RiRefreshLine } from "react-icons/ri"
 import type { ChangedFileStatus, ChangesScope, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
@@ -17,19 +17,36 @@ import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
-/** The single-file section of a combined `git diff`, found by its `diff --git a/… b/<path>` header. */
-const patchForFile = (patch: string, path: string) =>
-  patch.split(/^(?=diff --git )/m).find((chunk) => chunk.slice(0, chunk.indexOf("\n")).endsWith(` b/${path}`))
+interface FileDiff {
+  readonly patch: string
+  readonly added: number
+  readonly removed: number
+}
 
-const lineCounts = (filePatch: string | undefined) => {
+const lineCounts = (filePatch: string) => {
   let added = 0
   let removed = 0
-  for (const line of filePatch?.split("\n") ?? []) {
+  for (const line of filePatch.split("\n")) {
     if (line.startsWith("+") && !line.startsWith("+++")) added++
     else if (line.startsWith("-") && !line.startsWith("---")) removed++
   }
   return { added, removed }
 }
+
+/** Each file's section of a combined `git diff`, found by its `diff --git a/… b/<path>` header, with its line counts. */
+const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
+  const chunks = patch.split(/^(?=diff --git )/m)
+  const byPath = new Map<string, FileDiff>()
+  for (const path of paths) {
+    const chunk = chunks.find((candidate) => candidate.slice(0, candidate.indexOf("\n")).endsWith(` b/${path}`))
+    if (chunk !== undefined) byPath.set(path, { patch: chunk, ...lineCounts(chunk) })
+  }
+  return byPath
+}
+
+// PatchDiff renders a whole file in one frame, about 0.07 ms per line: a 12k-line lockfile blocked for 860 ms.
+// Past this many changed lines the file is almost always generated, so it waits until the user asks for it.
+const LARGE_DIFF_LINES = 1000
 
 /** The Diff tab: what the thread changed in its worktree, or in its latest turn. */
 export function ThreadDiff({ thread }: { thread: Thread }) {
@@ -113,6 +130,9 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
     return () => useUi.getState().setSidePanelWide(false)
   }, [openPath])
 
+  const loaded = AsyncResult.isSuccess(changes) ? changes.value : null
+  const diffs = useMemo(() => splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? []), [loaded])
+
   if (AsyncResult.isFailure(changes)) {
     return (
       <p role="alert" className="text-xs text-destructive">
@@ -134,9 +154,9 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
           key={file.path}
           path={file.path}
           status={file.status}
-          filePatch={patchForFile(result.patch, file.path)}
+          diff={diffs.get(file.path)}
           open={openPath === file.path}
-          onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
+          setOpenPath={setOpenPath}
         />
       ))}
     </ul>
@@ -146,15 +166,17 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
 interface ChangedFileRowProps {
   readonly path: string
   readonly status: ChangedFileStatus
-  readonly filePatch: string | undefined
+  readonly diff: FileDiff | undefined
   readonly open: boolean
-  readonly onToggle: () => void
+  readonly setOpenPath: (path: string | null) => void
 }
 
-function ChangedFileRow({ path, status, filePatch, open, onToggle }: ChangedFileRowProps) {
+function ChangedFileRow({ path, status, diff, open, setOpenPath }: ChangedFileRowProps) {
   const diffId = useId()
   const mark = fileStatusMark[status]
-  const { added, removed } = lineCounts(filePatch)
+  const added = diff?.added ?? 0
+  const removed = diff?.removed ?? 0
+  const [showLarge, setShowLarge] = useState(false)
   const theme = useTheme(useClientSettings().appearance.theme)
 
   return (
@@ -163,7 +185,7 @@ function ChangedFileRow({ path, status, filePatch, open, onToggle }: ChangedFile
         type="button"
         aria-expanded={open}
         aria-controls={diffId}
-        onClick={onToggle}
+        onClick={() => setOpenPath(open ? null : path)}
         className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
       >
         <abbr title={fileStatusLabel[status]()} className={`w-3 shrink-0 font-mono no-underline ${mark.className}`}>
@@ -183,9 +205,18 @@ function ChangedFileRow({ path, status, filePatch, open, onToggle }: ChangedFile
       </button>
       {open && (
         <div id={diffId} className="overflow-hidden rounded-md border border-border text-xs">
-          {filePatch ? (
+          {!diff ? (
+            <p className="p-2 text-muted-foreground">{m.diff_file_missing()}</p>
+          ) : added + removed > LARGE_DIFF_LINES && !showLarge ? (
+            <div className="flex items-center justify-between gap-2 p-2">
+              <p className="text-muted-foreground">{m.diff_large({ lines: added + removed })}</p>
+              <Button variant="outline" size="xs" onClick={() => setShowLarge(true)}>
+                {m.diff_large_show()}
+              </Button>
+            </div>
+          ) : (
             <PatchDiff
-              patch={filePatch}
+              patch={diff.patch}
               options={{
                 diffStyle: "unified",
                 theme: theme.codeTheme,
@@ -194,8 +225,6 @@ function ChangedFileRow({ path, status, filePatch, open, onToggle }: ChangedFile
                 disableFileHeader: true,
               }}
             />
-          ) : (
-            <p className="p-2 text-muted-foreground">{m.diff_file_missing()}</p>
           )}
         </div>
       )}

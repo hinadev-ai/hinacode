@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react"
-import { RiArrowLeftLine, RiArrowRightSLine } from "react-icons/ri"
+import { RiArrowLeftLine } from "react-icons/ri"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
@@ -9,9 +9,8 @@ import { Markdown } from "./Markdown.tsx"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
+import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 /**
  * One sub-agent's prompt, tool calls and result, opened in place of the thread's transcript.
@@ -93,8 +92,9 @@ export function SubagentTranscript({
             {subagentStats(subagent, now)}
           </span>
         )}
+        {subagent?.status === "running" && <StopSubagentButton threadId={thread.id} subagent={subagent} />}
       </div>
-      {prompt && <PromptDisclosure prompt={prompt} />}
+      {prompt && <Prompt prompt={prompt} />}
     </div>
   )
 
@@ -130,19 +130,13 @@ export function SubagentTranscript({
   )
 }
 
-function PromptDisclosure({ prompt }: { prompt: string }) {
+function Prompt({ prompt }: { prompt: string }) {
   return (
-    <Collapsible>
-      <CollapsibleTrigger className="group/trigger -ml-2 flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring">
-        <RiArrowRightSLine
-          aria-hidden
-          className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
-        />
-        {m.agents_prompt()}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 max-h-64 overflow-auto border-l-2 border-border pl-3 text-sm">
+    <section className="mt-1 text-sm">
+      <h3 className="mb-1 text-xs text-muted-foreground">{m.agents_prompt()}</h3>
+      <div className="border-l-2 border-border pl-3">
         <Markdown text={prompt} />
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </section>
   )
 }

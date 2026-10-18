@@ -57,6 +57,9 @@ const spawnSubagent = (threadId, turnId) => {
   }
   const command = { type: "commandExecution", id: "child-exec", command: "wc -l", cwd: "/repo", exitCode: null }
   item("item/started", { item: activity })
+  if (control().subagentPending) {
+    return send({ method: "turn/started", params: { threadId: child, turn: { id: "child-turn" } } })
+  }
   childItem("item/started", { item: { ...command, status: "inProgress", aggregatedOutput: null } })
   childItem("item/commandExecution/outputDelta", { itemId: "child-exec", delta: "218\n" })
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
@@ -103,7 +106,7 @@ const reply = ({ id, method, params }) => {
         },
       })
     case "skills/list":
-      return send({ id, result: { data: [] } })
+      return send({ id, result: { data: control().skills ?? [] } })
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })

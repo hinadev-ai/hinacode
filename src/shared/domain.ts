@@ -279,6 +279,8 @@ export const Thread = Schema.Struct({
   effort: Schema.NullOr(Schema.String),
   /** Run turns on the model's faster, pricier service tier. */
   fastMode: Schema.Boolean,
+  /** Loads the skills and commands from the user's own agent home. Off is the composer's conversation mode. */
+  userSkills: Schema.Boolean,
   /** Applies from the next turn, or right away on a live Claude session. */
   accessMode: AccessMode,
   /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */

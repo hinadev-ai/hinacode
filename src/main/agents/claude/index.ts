@@ -17,11 +17,11 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, type Wake } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
-import { toCommand } from "./commands.ts"
+import { hideUserCommands, toCommand } from "./commands.ts"
 import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
@@ -69,6 +69,7 @@ interface Session extends MapState, ApprovalSession {
   model: string
   effort: string | null
   fastMode: boolean
+  readonly userSkills: boolean
   permissionMode: PermissionMode
   sessionId: string | null
   turn: TurnQueue | null
@@ -92,6 +93,13 @@ interface Session extends MapState, ApprovalSession {
 
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
+
+/** The CLI reports it is working while no turn is open: it started on its own, not on a prompt. */
+const startsByItself = (session: Session, message: SDKMessage) =>
+  message.type === "system" &&
+  message.subtype === "session_state_changed" &&
+  message.state === "running" &&
+  session.turn === null
 
 /** A steer of the current turn the CLI has not answered yet, which will get its own result. */
 const awaitsAnswer = (session: Session) => [...session.turnPrompts].some((uuid) => session.unanswered.has(uuid))
@@ -293,6 +301,17 @@ export const layer = Layer.effect(
     const layerScope = yield* Effect.scope
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
+    const wakes = yield* Queue.unbounded<Wake>()
+    const probedCommands = yield* Cache.make({
+      lookup: probeCommands,
+      capacity: 32,
+      timeToLive: Duration.minutes(1),
+    })
+
+    const skillOverrides = (input: RunTurnInput) =>
+      input.userSkills
+        ? Effect.succeed(null)
+        : Cache.get(probedCommands, commandsKey(input.cwd, input.home)).pipe(Effect.map(hideUserCommands))
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
@@ -411,8 +430,8 @@ export const layer = Layer.effect(
       if (message.type === "system" && message.subtype === "session_state_changed") {
         session.reportsState = true
         // Unlike a result, idle waits for background sub-agents and for Claude's replies to their reports.
-        if (message.state === "idle" && session.heldEnd !== null && !awaitsAnswer(session))
-          emit(session, session.heldEnd)
+        if (message.state === "idle" && session.turn !== null && !awaitsAnswer(session))
+          emit(session, session.heldEnd ?? { type: "turn_completed" })
         return
       }
       const answered = answeredPrompts(message)
@@ -455,7 +474,9 @@ export const layer = Layer.effect(
         agentError("Claude Code stream failed"),
       ).pipe(
         Stream.runForEach((message) =>
-          Effect.sync(() => route(session, message)).pipe(Effect.andThen(armExpiry(session))),
+          (startsByItself(session, message) ? wake(session) : Effect.sync(() => route(session, message))).pipe(
+            Effect.andThen(armExpiry(session)),
+          ),
         ),
         Effect.catchCause((cause) =>
           Effect.sync(() => emit(session, { type: "turn_failed", message: Cause.pretty(cause) })),
@@ -489,6 +510,7 @@ export const layer = Layer.effect(
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const base = yield* baseOptions(input.home)
+        const hidden = yield* skillOverrides(input)
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -500,7 +522,7 @@ export const layer = Layer.effect(
                 cwd: input.cwd,
                 model: input.model,
                 ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
-                settings: { fastMode: input.fastMode },
+                settings: { fastMode: input.fastMode, ...(hidden !== null && { skillOverrides: hidden }) },
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
@@ -538,6 +560,7 @@ export const layer = Layer.effect(
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
+          userSkills: input.userSkills,
           permissionMode: mode,
           prompts,
           abort,
@@ -572,7 +595,8 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          if (sameContext(existing, input)) return claim(existing)
+          // The CLI lists skills to the model once per process, so another skill set needs a new one.
+          if (sameContext(existing, input) && existing.userSkills === input.userSkills) return claim(existing)
           yield* closeSession(existing)
         }
         return yield* startSession(input, mode)
@@ -592,6 +616,38 @@ export const layer = Layer.effect(
           catch: agentError("Failed to switch access mode"),
         })
         session.permissionMode = mode
+      })
+
+    const openTurn = (session: Session, turn: TurnQueue) => {
+      session.turn = turn
+      resetTurnLimits(session)
+      session.interrupted = false
+      session.heldEnd = null
+      session.turnPrompts.clear()
+      session.lastRequest = null
+    }
+
+    /** A consumer that stops reading mid-turn means the turn should stop too. */
+    const abandon = (session: Session, turn: TurnQueue) =>
+      session.turn === turn
+        ? Effect.sync(() => {
+            session.turn = null
+            session.turnPrompts.clear()
+          }).pipe(Effect.andThen(interruptQuery(session)))
+        : Effect.void
+
+    /** The CLI started work by itself, such as resuming a sub-agent whose background shell finished. */
+    const wake = (session: Session) =>
+      Effect.gen(function* () {
+        const turn: TurnQueue = yield* Queue.unbounded<AgentEvent, AgentError | Cause.Done>()
+        session.reportsState = true
+        openTurn(session, turn)
+        const events = Stream.fromQueue(turn).pipe(Stream.ensuring(Effect.suspend(() => abandon(session, turn))))
+        yield* Queue.offer(wakes, {
+          threadId: session.threadId,
+          events,
+          discard: Effect.suspend(() => abandon(session, turn)),
+        })
       })
 
     const startTurn = (session: Session, input: RunTurnInput, mode: PermissionMode, turn: TurnQueue) =>
@@ -623,23 +679,16 @@ export const layer = Layer.effect(
         }
         yield* switchPermissionMode(session, mode)
         const message = yield* userMessage(input.prompt, input.attachments)
-        session.turn = turn
-        resetTurnLimits(session)
-        session.interrupted = false
-        session.heldEnd = null
-        session.turnPrompts.clear()
+        if (session.turn !== null) {
+          return yield* new AgentError({
+            provider: "claude",
+            message: "A turn is already running on this thread",
+          })
+        }
+        openTurn(session, turn)
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
-        session.lastRequest = null
-        // A consumer that stops reading mid-turn means the turn should stop too.
-        yield* Effect.addFinalizer(() =>
-          session.turn === turn
-            ? Effect.sync(() => {
-                session.turn = null
-                session.turnPrompts.clear()
-              }).pipe(Effect.andThen(interruptQuery(session)))
-            : Effect.void,
-        )
+        yield* Effect.addFinalizer(() => abandon(session, turn))
         for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
       })
@@ -701,12 +750,6 @@ export const layer = Layer.effect(
         catch: agentError("Failed to read Claude transcripts"),
       })
 
-    const probedCommands = yield* Cache.make({
-      lookup: probeCommands,
-      capacity: 32,
-      timeToLive: Duration.minutes(1),
-    })
-
     const listCommands = ({
       threadId,
       cwd,
@@ -718,7 +761,7 @@ export const layer = Layer.effect(
     }) =>
       Effect.suspend(() => {
         const session = sessions.get(threadId)
-        return session !== undefined && session.cwd === cwd && sameHome(session.home, home)
+        return session !== undefined && session.userSkills && session.cwd === cwd && sameHome(session.home, home)
           ? lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.supportedCommands(),
@@ -738,11 +781,24 @@ export const layer = Layer.effect(
       usage,
       listCommands,
       runTurn,
+      wakes: Stream.fromQueue(wakes),
       steer,
       interrupt: (threadId) => {
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
+      // A sub-agent's id is its CLI task id.
+      stopSubagent: (threadId, subagentId) =>
+        Effect.suspend(() => {
+          const session = sessions.get(threadId)
+          if (session === undefined) return Effect.void
+          return lease(session, (leased) =>
+            Effect.tryPromise({
+              try: () => leased.query.stopTask(subagentId),
+              catch: agentError("Failed to stop the sub-agent"),
+            }),
+          )
+        }),
       respondApproval: approvals.respond,
       respondQuestion: questions.respond,
       setAccessMode: (threadId, accessMode) =>

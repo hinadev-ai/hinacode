@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiBrainLine,
+  RiChat3Line,
   RiFlashlightLine,
   RiGitBranchLine,
   RiGitPullRequestLine,
@@ -292,10 +293,17 @@ interface Choice<V extends string = string> {
   readonly onChange: (value: V) => void
 }
 
-interface FastMode {
+/** A thread setting that is on or off: a pressed button on the toolbar, or a checkbox in More options. */
+interface Toggle {
+  readonly label: string
+  readonly hint: string
+  readonly icon: IconType
   readonly on: boolean
   readonly toggle: () => void
 }
+
+/** Muse Code has no way to leave out the user's own skills. */
+const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
 
 /** The settings beside the model, each shown only when the agent, account or model supports it. */
 function useThreadOptions(thread: Thread, onError: (message: string) => void) {
@@ -343,8 +351,24 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
           onChange: (value) => set({ effort: value === DEFAULT_EFFORT ? null : value }),
         }
 
-  const fast: FastMode | null = current?.fastMode
-    ? { on: thread.fastMode, toggle: () => set({ fastMode: !thread.fastMode }) }
+  const fast: Toggle | null = current?.fastMode
+    ? {
+        label: m.thread_fast_mode(),
+        hint: m.thread_fast_mode_hint(),
+        icon: RiFlashlightLine,
+        on: thread.fastMode,
+        toggle: () => set({ fastMode: !thread.fastMode }),
+      }
+    : null
+
+  const conversation: Toggle | null = hidesUserSkills[thread.provider]
+    ? {
+        label: m.thread_conversation_mode(),
+        hint: m.thread_conversation_mode_hint(),
+        icon: RiChat3Line,
+        on: !thread.userSkills,
+        toggle: () => set({ userSkills: !thread.userSkills }),
+      }
     : null
 
   // Takes effect from the next turn, or at once on a live Claude turn.
@@ -363,7 +387,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
     onChange: (accessMode) => set({ accessMode }),
   }
 
-  return { account, effort, fast, access }
+  return { account, effort, toggles: [fast, conversation].filter((toggle) => toggle !== null), access }
 }
 
 /**
@@ -379,12 +403,12 @@ const fitOptions = (slot: HTMLElement, row: HTMLElement) => {
 }
 
 /**
- * Account, effort, fast mode and access, shown with labels, else as icons, else in a More options menu,
- * whichever fits beside the model picker. It is measured, not set at breakpoints, because the width the
- * labels need changes with the model, the chosen values and the language.
+ * Account, effort, fast mode, conversation mode and access, shown with labels, else as icons, else in a More
+ * options menu, whichever fits beside the model picker. It is measured, not set at breakpoints, because the
+ * width the labels need changes with the model, the chosen values and the language.
  */
 export function ThreadOptions({ thread, onError }: ControlProps) {
-  const { account, effort, fast, access } = useThreadOptions(thread, onError)
+  const { account, effort, toggles, access } = useThreadOptions(thread, onError)
   const slotRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
 
@@ -418,7 +442,9 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
       >
         {account && <ChoiceSelect choice={account} />}
         {effort && <ChoiceSelect choice={effort} picker="effort" />}
-        {fast && <FastToggle fast={fast} />}
+        {toggles.map((toggle) => (
+          <ToggleButton key={toggle.label} toggle={toggle} />
+        ))}
         <ChoiceSelect choice={access} />
       </div>
       <DropdownMenu>
@@ -449,12 +475,12 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
         <DropdownMenuContent side="top" className="w-auto min-w-48">
           {account && <ChoiceSubmenu choice={account} />}
           {effort && <ChoiceSubmenu choice={effort} />}
-          {fast && (
-            <DropdownMenuCheckboxItem checked={fast.on} onCheckedChange={fast.toggle} closeOnClick>
-              <RiFlashlightLine aria-hidden />
-              {m.thread_fast_mode()}
+          {toggles.map(({ label, icon: Icon, on, toggle }) => (
+            <DropdownMenuCheckboxItem key={label} checked={on} onCheckedChange={toggle} closeOnClick>
+              <Icon aria-hidden />
+              {label}
             </DropdownMenuCheckboxItem>
-          )}
+          ))}
           <ChoiceSubmenu choice={access} />
         </DropdownMenuContent>
       </DropdownMenu>
@@ -549,7 +575,8 @@ function ChoiceItemLabel({ item }: { item: ChoiceItem<string> }) {
   )
 }
 
-function FastToggle({ fast }: { fast: FastMode }) {
+function ToggleButton({ toggle }: { toggle: Toggle }) {
+  const Icon = toggle.icon
   return (
     <Tooltip>
       <TooltipTrigger
@@ -558,16 +585,16 @@ function FastToggle({ fast }: { fast: FastMode }) {
             type="button"
             size="sm"
             variant="ghost"
-            aria-pressed={fast.on}
-            onClick={fast.toggle}
+            aria-pressed={toggle.on}
+            onClick={toggle.toggle}
             className="text-xs text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground in-data-[fit=icons]:w-7 in-data-[fit=icons]:px-0 in-data-[fit=icons]:[&>span]:sr-only"
           >
-            <RiFlashlightLine aria-hidden />
-            <span>{m.thread_fast_mode()}</span>
+            <Icon aria-hidden />
+            <span>{toggle.label}</span>
           </Button>
         }
       />
-      <TooltipContent>{m.thread_fast_mode_hint()}</TooltipContent>
+      <TooltipContent>{toggle.hint}</TooltipContent>
     </Tooltip>
   )
 }

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { type Duration, Effect, Layer, ManagedRuntime, Stream } from "effect"
+import { type Duration, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
 import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, Subagent, ThreadUsage } from "../shared/agent.ts"
@@ -19,7 +19,7 @@ import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
-import { AgentError, type AgentProvider } from "./agents/provider.ts"
+import { AgentError, type AgentProvider, type Wake } from "./agents/provider.ts"
 import { registerIpc } from "./ipc.ts"
 import { makeTestAppLayer } from "./testing.ts"
 import { Events } from "./services/Events.ts"
@@ -29,6 +29,7 @@ import { MAX_CALL_KEYS } from "./remote/server.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
+import * as Worktrees from "./services/Worktrees.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
 interface Frame {
@@ -132,6 +133,12 @@ const claudeLimits: PlanLimits = {
 /** A turn prompted with "simulate a held turn" waits for this before it completes. */
 let heldTurn = Promise.withResolvers<void>()
 
+/** Each sub-agent the scripted providers were asked to stop. */
+const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
+
+/** Turns the scripted Claude starts by itself. */
+const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
+
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 
@@ -154,6 +161,12 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      if (input.prompt === "simulate a held sub-agent") {
+        return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
+          Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
+          Stream.concat(Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
+        )
+      }
       if (input.prompt === "simulate a held turn") {
         return Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(
           Stream.flatMap(() => Stream.fromIterable(scriptedTurn)),
@@ -197,8 +210,10 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                   : scriptedTurn,
       )
     }),
+  ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
+  stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
   respondApproval: () => Effect.void,
   respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
@@ -437,6 +452,15 @@ describe("projects, threads and settings over rpc", () => {
       [first.id, "https://github.com/hinadev-ai/hinacode/pull/49"],
       [second.id, "https://github.com/hinadev-ai/hinacode/pull/55"],
     ])
+  })
+
+  test("a thread loads the user's own skills until conversation mode turns them off", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.userSkills).toBe(true)
+    result(await invoke("threads.update", { id: thread.id, userSkills: false }))
+    const stored = result(await invoke("threads.list", undefined)).find((listed) => listed.id === thread.id)
+    expect(stored?.userSkills).toBe(false)
   })
 
   test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
@@ -686,6 +710,28 @@ describe("sub-agents over rpc", () => {
   })
 })
 
+describe("stopping a sub-agent over rpc", () => {
+  test("stops one sub-agent while its turn keeps running", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held sub-agent" }))
+    await expect
+      .poll(async () => result(await invoke("subagents.list", { threadId: thread.id }))[0]?.status)
+      .toBe("running")
+
+    result(await invoke("subagents.stop", { threadId: thread.id, subagentId: subagent.id }))
+    expect(stoppedSubagents).toContainEqual({ threadId: thread.id, subagentId: subagent.id })
+    const [stopped] = result(await invoke("subagents.list", { threadId: thread.id }))
+    expect(stopped?.status).toBe("stopped")
+    expect(stopped?.endedAt).not.toBeNull()
+    expect((await threadOf(thread.id)).status).toBe("running")
+
+    heldTurn.resolve()
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+  })
+})
+
 describe("token usage over rpc", () => {
   test("is null until a turn binds a session, then comes from that session's transcripts", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
@@ -847,6 +893,134 @@ const userTexts = async (threadId: string) =>
   result(await invoke("threads.transcript", { threadId }))
     .messages.filter((message) => message.role === "user")
     .flatMap((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
+
+const assistantTexts = async (threadId: string) =>
+  result(await invoke("threads.transcript", { threadId }))
+    .messages.filter((message) => message.role === "assistant")
+    .map((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""))
+
+const wake = (threadId: string, text: string) =>
+  Effect.runSync(
+    Queue.offer(claudeWakes, {
+      threadId,
+      events: Stream.make({ type: "text_delta", text }, { type: "turn_completed" }),
+      discard: Effect.void,
+    }),
+  )
+
+describe("turns the agent starts over rpc", () => {
+  test("shows a turn the agent starts by itself as a reply of its own", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    electron.pushes.length = 0
+
+    wake(thread.id, "The sub-agent finished.")
+    await expect.poll(() => assistantTexts(thread.id)).toStrictEqual(["", "The sub-agent finished."])
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    const statuses = pushed().flatMap((event) =>
+      event.type === "thread.updated" && event.thread.id === thread.id ? [event.thread.status] : [],
+    )
+    expect(statuses).toStrictEqual(["running", "idle"])
+    expect(await userTexts(thread.id)).toStrictEqual(["simulate a session"])
+  })
+
+  test("discards a wake for an archived thread before reading its events", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.archive", { threadId: thread.id }))
+    const discard = vi.fn()
+    Effect.runSync(
+      Queue.offer(claudeWakes, {
+        threadId: thread.id,
+        events: Stream.never,
+        discard: Effect.sync(discard),
+      }),
+    )
+    await expect.poll(() => discard.mock.calls.length).toBe(1)
+    expect((await threadOf(thread.id)).status).toBe("archived")
+    expect(await assistantTexts(thread.id)).toStrictEqual([])
+  })
+
+  test("waits for workspace changes before admitting a wake", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const worktrees = await runtime.runPromise(Worktrees.Worktrees)
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const archiving = runtime.runPromise(
+      worktrees.exclusive(
+        Effect.gen(function* () {
+          entered.resolve()
+          yield* Effect.promise(() => release.promise)
+          yield* Threads.Threads.use((threads) => threads.update({ id: thread.id, status: "archived" }))
+        }),
+      ),
+    )
+    await entered.promise
+    const admission = vi.spyOn(worktrees, "exclusive")
+    const discard = vi.fn()
+    const storedMessages = () => runtime.runPromise(Messages.Messages.use((messages) => messages.list(thread.id)))
+    try {
+      Effect.runSync(
+        Queue.offer(claudeWakes, {
+          threadId: thread.id,
+          events: Stream.empty,
+          discard: Effect.sync(discard),
+        }),
+      )
+      await expect.poll(async () => admission.mock.calls.length > 0 || (await storedMessages()).length > 0).toBe(true)
+      expect(await storedMessages()).toStrictEqual([])
+      release.resolve()
+      await archiving
+      await expect.poll(() => discard.mock.calls.length).toBe(1)
+      expect((await threadOf(thread.id)).status).toBe("archived")
+    } finally {
+      release.resolve()
+      await archiving
+      admission.mockRestore()
+    }
+  })
+
+  test("queues a message sent while it runs", async () => {
+    const held = Promise.withResolvers<void>()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    Effect.runSync(
+      Queue.offer(claudeWakes, {
+        threadId: thread.id,
+        discard: Effect.void,
+        events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
+          Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
+        ),
+      }),
+    )
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
+    result(await invoke("threads.queue", { threadId: thread.id, text: "then the docs" }))
+    expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual(["then the docs"])
+
+    held.resolve()
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["then the docs"])
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+  })
+
+  test("waits for the running turn before it starts", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+    wake(thread.id, "The sub-agent finished.")
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
+    expect(await assistantTexts(thread.id)).toStrictEqual([""])
+
+    heldTurn.resolve()
+    await expect
+      .poll(() => assistantTexts(thread.id))
+      .toStrictEqual(["Spawned one sub-agent.", "The sub-agent finished."])
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+  })
+})
 
 describe("queued messages over rpc", () => {
   test("runs queued messages in order once the turn completes", async () => {

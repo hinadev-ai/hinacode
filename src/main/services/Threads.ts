@@ -44,10 +44,11 @@ const MAX_LISTED_FILES = 50_000
 /** A placeholder title for a thread nobody has described yet. It doubles as its branch name. */
 export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 
-/** The thread table row. SQLite has no boolean, so `fast_mode` is a bit. */
+/** The thread table row. SQLite has no boolean, so `fast_mode` and `user_skills` are bits. */
 const ThreadRow = Schema.Struct({
   ...Thread.fields,
   fastMode: Schema.BooleanFromBit,
+  userSkills: Schema.BooleanFromBit,
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
 })
@@ -74,6 +75,7 @@ export interface UpdateThread {
   /** Null goes back to the model's default effort. */
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
+  readonly userSkills?: boolean | undefined
   readonly accessMode?: AccessMode | undefined
   readonly status?: ThreadStatus | undefined
   readonly usageLimit?: UsageLimit | null | undefined
@@ -235,6 +237,7 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort: null,
         fastMode: false,
+        userSkills: true,
         accessMode: defaultAccessMode,
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
@@ -287,6 +290,7 @@ const make = Effect.gen(function* () {
         model: input.model ?? current.model,
         effort: input.effort === undefined ? current.effort : input.effort,
         fastMode: input.fastMode ?? current.fastMode,
+        userSkills: input.userSkills ?? current.userSkills,
         accessMode: input.accessMode ?? current.accessMode,
         status: input.status ?? current.status,
         usageLimit:
@@ -304,8 +308,8 @@ const make = Effect.gen(function* () {
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
-            effort = ${next.effort},
-            fast_mode = ${next.fastMode ? 1 : 0}, access_mode = ${next.accessMode}, status = ${next.status},
+            effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0},
+            access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
             queue = ${JSON.stringify(next.queue)}

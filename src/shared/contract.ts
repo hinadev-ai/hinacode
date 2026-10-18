@@ -129,6 +129,7 @@ export const RpcMethods = {
       /** Null goes back to the model's default effort. */
       effort: Schema.optional(Schema.NullOr(Schema.String)),
       fastMode: Schema.optional(Schema.Boolean),
+      userSkills: Schema.optional(Schema.Boolean),
       accessMode: Schema.optional(AccessMode),
       /** Only before the thread has a provider session. Null is the CLI's own login. */
       accountId: Schema.optional(Schema.NullOr(Schema.String)),
@@ -321,6 +322,8 @@ export const RpcMethods = {
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   /** Sub-agents the thread's agent spawned since the app started, newest first. */
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
+  /** Stops one running sub-agent by its `Subagent.id`. The turn that spawned it keeps going. */
+  "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
   /** Tokens the thread spent, read from its agent's transcripts. Null before the first turn or once they are gone. */
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
   /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
@@ -558,6 +561,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "secrets.set": "mutation",
   "secrets.clear": "mutation",
   "subagents.list": "read",
+  "subagents.stop": "mutation",
   "threads.usage": "read",
   "secrets.respond": "mutation",
   "pullRequests.list": "read",

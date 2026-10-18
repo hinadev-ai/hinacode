@@ -26,11 +26,13 @@ type Control = {
   cancelQuestion?: boolean
   accountFromHome?: boolean
   subagent?: boolean
+  subagentPending?: boolean
   plan?: boolean
+  skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
   method?: string
-  params?: { turnId?: string }
+  params?: { turnId?: string; input?: Array<import("./protocol.ts").UserInput> }
   id?: number
   result?: import("./protocol.ts").ToolRequestUserInputResponse
 }
@@ -85,6 +87,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   model: "fake-model",
   effort: null,
   fastMode: false,
+  userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
   home,
@@ -146,6 +149,46 @@ describe("Codex app-server log", () => {
     writeFileSync(logPath, '{"method":"turn/start"\n')
     expect(received).toThrow(SyntaxError)
   })
+})
+
+describe("Codex conversation mode", () => {
+  it.live("does not explicitly load user skills named in a conversation prompt", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({
+          skills: [
+            {
+              cwd: tmpdir(),
+              skills: [
+                {
+                  name: "personal",
+                  description: "User skill",
+                  path: "/user/personal/SKILL.md",
+                  scope: "user",
+                  enabled: true,
+                },
+                {
+                  name: "project",
+                  description: "Project skill",
+                  path: "/repo/project/SKILL.md",
+                  scope: "repo",
+                  enabled: true,
+                },
+              ],
+            },
+          ],
+        })
+        yield* provider
+          .runTurn({ ...input("conversation"), userSkills: false, prompt: "$personal $project" })
+          .pipe(Stream.runDrain)
+        const started = received().find((message) => message.method === "turn/start")
+        expect(started?.params?.input?.filter((item) => item.type === "skill")).toStrictEqual([
+          { type: "skill", name: "project", path: "/repo/project/SKILL.md" },
+        ])
+      }),
+    ),
+  )
 })
 
 describe("Codex Stop during startup", () => {
@@ -273,6 +316,47 @@ describe("Codex plan", () => {
 })
 
 describe("Codex sub-agents", () => {
+  it.live("stops a sub-agent before its first item starts", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, subagentPending: true, holdTurn: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* untilEvent(turn, (event) => event.type === "text_delta")
+
+        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
+          "subagent-thread",
+          "codex-child-thread",
+        )
+        expect(received().filter((message) => message.method === "turn/interrupt")).toMatchObject([
+          { params: { threadId: "codex-child-thread", turnId: "child-turn" } },
+        ])
+
+        yield* provider.interrupt("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+      }),
+    ),
+  )
+
+  it.live("reports when a sub-agent cannot be stopped after its parent turn ends", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+
+        const result = yield* Effect.exit(
+          (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
+            "subagent-thread",
+            "codex-child-thread",
+          ),
+        )
+        expect(result._tag).toBe("Failure")
+      }),
+    ),
+  )
+
   it.live("puts the sub-agent's tool calls in the transcript tagged with its thread id", () =>
     withProvider(
       Effect.gen(function* () {
@@ -291,6 +375,30 @@ describe("Codex sub-agents", () => {
           },
           { type: "tool_call_finished", callId: "child-exec", output: "218\n", isError: false },
         ])
+      }),
+    ),
+  )
+
+  it.live("stops one sub-agent by interrupting its own turn, and keeps the parent's", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, holdTurn: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* untilEvent(turn, (event) => event.type === "tool_call_finished")
+
+        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
+          "subagent-thread",
+          "codex-child-thread",
+        )
+        const interrupts = received().flatMap((message) =>
+          message.method === "turn/interrupt" ? [message.params] : [],
+        )
+        expect(interrupts).toStrictEqual([{ threadId: "codex-child-thread", turnId: "child-turn" }])
+        expect(turn.fiber.pollUnsafe()).toBe(undefined)
+
+        yield* provider.interrupt("subagent-thread")
+        yield* finishesSoon(turn.fiber)
       }),
     ),
   )
