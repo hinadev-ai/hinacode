@@ -17,7 +17,7 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, type Wake } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -92,6 +92,13 @@ interface Session extends MapState, ApprovalSession {
 
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
+
+/** The CLI reports it is working while no turn is open: it started on its own, not on a prompt. */
+const startsByItself = (session: Session, message: SDKMessage) =>
+  message.type === "system" &&
+  message.subtype === "session_state_changed" &&
+  message.state === "running" &&
+  session.turn === null
 
 /** A steer of the current turn the CLI has not answered yet, which will get its own result. */
 const awaitsAnswer = (session: Session) => [...session.turnPrompts].some((uuid) => session.unanswered.has(uuid))
@@ -293,6 +300,7 @@ export const layer = Layer.effect(
     const layerScope = yield* Effect.scope
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
+    const wakes = yield* Queue.unbounded<Wake>()
 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
@@ -411,8 +419,8 @@ export const layer = Layer.effect(
       if (message.type === "system" && message.subtype === "session_state_changed") {
         session.reportsState = true
         // Unlike a result, idle waits for background sub-agents and for Claude's replies to their reports.
-        if (message.state === "idle" && session.heldEnd !== null && !awaitsAnswer(session))
-          emit(session, session.heldEnd)
+        if (message.state === "idle" && session.turn !== null && !awaitsAnswer(session))
+          emit(session, session.heldEnd ?? { type: "turn_completed" })
         return
       }
       const answered = answeredPrompts(message)
@@ -455,7 +463,9 @@ export const layer = Layer.effect(
         agentError("Claude Code stream failed"),
       ).pipe(
         Stream.runForEach((message) =>
-          Effect.sync(() => route(session, message)).pipe(Effect.andThen(armExpiry(session))),
+          (startsByItself(session, message) ? wake(session) : Effect.sync(() => route(session, message))).pipe(
+            Effect.andThen(armExpiry(session)),
+          ),
         ),
         Effect.catchCause((cause) =>
           Effect.sync(() => emit(session, { type: "turn_failed", message: Cause.pretty(cause) })),
@@ -594,6 +604,38 @@ export const layer = Layer.effect(
         session.permissionMode = mode
       })
 
+    const openTurn = (session: Session, turn: TurnQueue) => {
+      session.turn = turn
+      resetTurnLimits(session)
+      session.interrupted = false
+      session.heldEnd = null
+      session.turnPrompts.clear()
+      session.lastRequest = null
+    }
+
+    /** A consumer that stops reading mid-turn means the turn should stop too. */
+    const abandon = (session: Session, turn: TurnQueue) =>
+      session.turn === turn
+        ? Effect.sync(() => {
+            session.turn = null
+            session.turnPrompts.clear()
+          }).pipe(Effect.andThen(interruptQuery(session)))
+        : Effect.void
+
+    /** The CLI started work by itself, such as resuming a sub-agent whose background shell finished. */
+    const wake = (session: Session) =>
+      Effect.gen(function* () {
+        const turn: TurnQueue = yield* Queue.unbounded<AgentEvent, AgentError | Cause.Done>()
+        session.reportsState = true
+        openTurn(session, turn)
+        const events = Stream.fromQueue(turn).pipe(Stream.ensuring(Effect.suspend(() => abandon(session, turn))))
+        yield* Queue.offer(wakes, {
+          threadId: session.threadId,
+          events,
+          discard: Effect.suspend(() => abandon(session, turn)),
+        })
+      })
+
     const startTurn = (session: Session, input: RunTurnInput, mode: PermissionMode, turn: TurnQueue) =>
       Effect.gen(function* () {
         if (session.turn !== null) {
@@ -623,23 +665,16 @@ export const layer = Layer.effect(
         }
         yield* switchPermissionMode(session, mode)
         const message = yield* userMessage(input.prompt, input.attachments)
-        session.turn = turn
-        resetTurnLimits(session)
-        session.interrupted = false
-        session.heldEnd = null
-        session.turnPrompts.clear()
+        if (session.turn !== null) {
+          return yield* new AgentError({
+            provider: "claude",
+            message: "A turn is already running on this thread",
+          })
+        }
+        openTurn(session, turn)
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
-        session.lastRequest = null
-        // A consumer that stops reading mid-turn means the turn should stop too.
-        yield* Effect.addFinalizer(() =>
-          session.turn === turn
-            ? Effect.sync(() => {
-                session.turn = null
-                session.turnPrompts.clear()
-              }).pipe(Effect.andThen(interruptQuery(session)))
-            : Effect.void,
-        )
+        yield* Effect.addFinalizer(() => abandon(session, turn))
         for (const attachment of input.attachments) session.attachmentPaths.add(attachment.path)
         yield* Queue.offer(session.prompts, message)
       })
@@ -738,6 +773,7 @@ export const layer = Layer.effect(
       usage,
       listCommands,
       runTurn,
+      wakes: Stream.fromQueue(wakes),
       steer,
       interrupt: (threadId) => {
         const session = sessions.get(threadId)

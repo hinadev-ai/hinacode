@@ -1,7 +1,7 @@
 import type { ModelInfo, Options, PermissionResult, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Effect, Fiber, Stream } from "effect"
+import { Effect, Fiber, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
@@ -816,6 +816,94 @@ describe("Claude background sub-agents", () => {
         )
         yield* Fiber.join(turn.fiber)
         expect(reported(turn.events)).toEqual(["subagent running", "subagent completed", "All done", "turn_completed"])
+      }),
+    ),
+  )
+  it.effect("keeps a wake that arrives during an asynchronous model switch", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            sessionState("running"),
+            init("session-1"),
+            { ...succeeded, user_message_uuids: [cli.prompts.at(-1)?.uuid] },
+            sessionState("idle"),
+          )
+        yield* runTurn()
+        const modelSwitch = Promise.withResolvers<void>()
+        sdk.setModel = () => modelSwitch.promise
+        const send = yield* provider
+          .runTurn(turnInput({ model: "claude-opus-5-5" }))
+          .pipe(Stream.runCollect, Effect.result, Effect.forkChild)
+        yield* until(() => latestCli().setModel.mock.calls.length === 1)
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        const woken = Option.getOrThrow(yield* Fiber.join(wake))
+
+        modelSwitch.resolve()
+        const result = yield* Fiber.join(send)
+        expect(result._tag).toBe("Failure")
+        expect(latestCli().prompts).toHaveLength(1)
+        latestCli().push(textDelta("The shell finished"), succeeded, sessionState("idle"))
+        expect(reported(yield* Stream.runCollect(woken.events))).toEqual(["The shell finished", "turn_completed"])
+      }),
+    ),
+  )
+
+  it.effect("discards an unclaimed wake once without interrupting a replacement turn", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        yield* runTurn()
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        const woken = Option.getOrThrow(yield* Fiber.join(wake))
+        yield* woken.discard
+        yield* woken.discard
+        expect(latestCli().interrupt).toHaveBeenCalledOnce()
+
+        sdk.respond = () => undefined
+        const replacement = yield* startTurn()
+        yield* until(() => latestCli().prompts.length === 2)
+        yield* woken.discard
+        expect(latestCli().interrupt).toHaveBeenCalledOnce()
+        latestCli().push({ ...succeeded, user_message_uuids: [latestCli().prompts[1]?.uuid] }, sessionState("idle"))
+        yield* Fiber.join(replacement.fiber)
+      }),
+    ),
+  )
+
+  it.effect("hands the runner a turn the CLI starts by itself after going idle", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            sessionState("running"),
+            init("session-1"),
+            { ...succeeded, user_message_uuids: [cli.prompts[0]?.uuid] },
+            sessionState("idle"),
+          )
+        yield* runTurn()
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+
+        latestCli().push(
+          sessionState("running"),
+          subagentStarted,
+          taskNotification("agent-1"),
+          textDelta("The shell finished"),
+          succeeded,
+          sessionState("idle"),
+        )
+        const woken = Option.getOrThrow(yield* Fiber.join(wake))
+        expect(woken.threadId).toBe("thread-1")
+        expect(reported(yield* Stream.runCollect(woken.events))).toEqual([
+          "subagent running",
+          "subagent completed",
+          "The shell finished",
+          "turn_completed",
+        ])
       }),
     ),
   )
