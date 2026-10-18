@@ -19,6 +19,13 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String,
 }) {}
 
+/** A turn the agent started by itself on a thread with no turn running. */
+export interface Wake {
+  readonly threadId: string
+  /** Ends after turn_completed, turn_failed or turn_limited, like runTurn's stream. */
+  readonly events: Stream.Stream<AgentEvent, AgentError>
+}
+
 /**
  * One implementation per agent backend. The runner keeps one provider instance per process;
  * providers own their child processes and in-flight sessions keyed by threadId.
@@ -46,6 +53,11 @@ export interface AgentProvider {
   }) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError>
   /** Streams events for one turn. Ends after turn_completed, turn_failed or turn_limited. */
   readonly runTurn: (input: RunTurnInput) => Stream.Stream<AgentEvent, AgentError>
+  /**
+   * Turns the agent starts by itself, such as Claude replying to a background task that finished after
+   * the turn ended. A provider whose agent never does that leaves it out.
+   */
+  readonly wakes?: Stream.Stream<Wake>
   /** Adds user input to the running turn; its output keeps flowing into that turn's stream. Fails when no turn is running. */
   readonly steer: (
     threadId: string,
