@@ -1,4 +1,4 @@
-import type { ModelInfo, Options, PermissionResult, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { ModelInfo, Options, PermissionResult, SDKUserMessage, SlashCommand } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
 import { Effect, Fiber, Stream } from "effect"
@@ -80,7 +80,7 @@ const sdk = vi.hoisted(() => {
     respond: (_cli: FakeQuery): void | Promise<void> => undefined,
     setModel: (): Promise<void> => Promise.resolve(),
     setPermissionMode: (): Promise<void> => Promise.resolve(),
-    supportedCommands: (): Promise<Array<never>> => Promise.resolve([]),
+    supportedCommands: (): Promise<Array<SlashCommand>> => Promise.resolve([]),
     supportedModels: (): Promise<Array<ModelInfo>> => Promise.resolve([]),
     FakeQuery,
   }
@@ -148,6 +148,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
+  userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
   home: null,
@@ -234,6 +235,26 @@ describe("Claude idle sessions", () => {
       ),
     )
   }
+
+  it.effect("resumes in a new CLI without the user's skills when conversation mode turns on", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.supportedCommands = () =>
+          Promise.resolve([
+            { name: "kalan-mode", description: "Kalan's working mode. (user)", argumentHint: "" },
+            { name: "verify", description: "Drive the app. (project)", argumentHint: "" },
+          ])
+        yield* runTurn()
+        const first = latestCli()
+        expect(first.options.settings).toStrictEqual({ fastMode: false })
+
+        yield* runTurn(turnInput({ userSkills: false }))
+        expect(first.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(latestCli().options.settings).toStrictEqual({ fastMode: false, skillOverrides: { "kalan-mode": "off" } })
+      }),
+    ),
+  )
 
   it.effect("reuses a session prompted before its deadline and restarts the countdown when that turn ends", () =>
     lifecycle(
@@ -680,7 +701,7 @@ describe("Claude idle sessions", () => {
         const provider = yield* ClaudeProvider
         yield* runTurn()
         yield* TestClock.adjust("30 seconds")
-        const listed = Promise.withResolvers<Array<never>>()
+        const listed = Promise.withResolvers<Array<SlashCommand>>()
         sdk.supportedCommands = () => listed.promise
         const listing = yield* provider
           .listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
