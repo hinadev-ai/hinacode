@@ -261,6 +261,8 @@ const handlers: Handlers = {
   "secrets.set": ({ name, value }) => Secrets.use((secrets) => secrets.set(name, value)),
   "secrets.clear": ({ name }) => Secrets.use((secrets) => secrets.clear(name)),
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
+  "subagents.stop": ({ threadId, subagentId }) =>
+    AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),

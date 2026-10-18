@@ -9,7 +9,7 @@ import { Markdown } from "./Markdown.tsx"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
+import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
@@ -93,6 +93,7 @@ export function SubagentTranscript({
             {subagentStats(subagent, now)}
           </span>
         )}
+        {subagent?.status === "running" && <StopSubagentButton threadId={thread.id} subagent={subagent} />}
       </div>
       {prompt && <PromptDisclosure prompt={prompt} />}
     </div>
