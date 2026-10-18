@@ -672,7 +672,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const limit = thread.usageLimit
-      if (thread.status !== "limited" || limit?.kind !== "usage" || limit.reset === null) {
+      if (thread.status !== "limited" || limit === null || limit.reset === null) {
         return yield* new AgentError({ provider: thread.provider, message: "This limit has no automatic reset" })
       }
       return yield* updateThread({
@@ -688,7 +688,7 @@ const make = Effect.gen(function* () {
       if (
         busyThreads.has(thread.id) ||
         thread.status !== "limited" ||
-        limit?.kind !== "usage" ||
+        limit === null ||
         !limit.reset?.autoResume ||
         limit.reset.at > now
       )

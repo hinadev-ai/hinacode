@@ -44,7 +44,7 @@
   "thread_usage_limit_scheduled": "自動再開を予約しました。",
   "thread_usage_limit_cancel_resume": "自動再開をキャンセル",
   "thread_org_spend_limit_title": "組織の利用上限額に達しました",
-  "thread_org_spend_limit_hint": "組織の管理者に月間利用上限額の引き上げを依頼してください。セッションのリセットではこの上限は解除されません。",
+  "thread_org_spend_limit_hint": "組織の管理者に月間利用上限額の引き上げを依頼してください。引き上げ後でなければ、セッションのリセット時に再開しても失敗します。",
   "thread_status_archived": "アーカイブ済み",
   "thread_not_found": "このスレッドは存在しません。",
   "thread_composer_label": "メッセージ",

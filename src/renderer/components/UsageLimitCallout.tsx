@@ -21,7 +21,7 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
       return errorMessage(cause)
     }
   }, null)
-  const reset = limit.kind === "usage" ? limit.reset : null
+  const reset = limit.reset
   const resetDate = reset === null ? null : new Date(reset.at)
   const resetTime =
     resetDate !== null && Number.isFinite(resetDate.getTime())
@@ -39,9 +39,8 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
         {limit.kind === "org_spend" ? m.thread_org_spend_limit_title() : m.thread_usage_limit_title()}
       </h2>
       <p className="text-sm break-words whitespace-pre-wrap">{limit.message}</p>
-      {limit.kind === "org_spend" ? (
-        <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>
-      ) : reset !== null && resetTime !== null ? (
+      {limit.kind === "org_spend" && <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>}
+      {reset !== null && resetTime !== null && (
         <>
           <p className="text-xs text-muted-foreground">
             <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
@@ -60,7 +59,7 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
             </Button>
           </div>
         </>
-      ) : null}
+      )}
       {error && <FieldError>{error}</FieldError>}
     </section>
   )
