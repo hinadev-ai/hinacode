@@ -564,6 +564,7 @@
   "composer_commands_label": "コマンド",
   "composer_mentions_label": "メンション",
   "composer_commands_failed": "コマンドとスキルを読み込めませんでした：{message}",
+  "composer_skill": "スキル：{name}",
   "composer_todos_label": "エージェントのタスク一覧",
   "composer_todos_progress": "{total} 件中 {done} 件完了",
   "access_picker": "実行権限",

@@ -3,6 +3,7 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type Ref,
+  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
@@ -11,12 +12,13 @@ import {
   useState,
 } from "react"
 import { flushSync } from "react-dom"
-import { RiFileLine } from "react-icons/ri"
+import { RiFileLine, RiSlashCommands2 } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import {
   completionAt,
   highlight,
+  leadingSkill,
   type Suggestion,
   suggestionsFor,
   type SyntaxKind,
@@ -24,6 +26,7 @@ import {
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { SkillIcon } from "./icons/SkillIcon.tsx"
 
 /** Colors only, never font or spacing: the highlighted copy must wrap exactly like the textarea above it. */
 const syntaxClass: Record<SyntaxKind, string> = {
@@ -37,6 +40,9 @@ const syntaxClass: Record<SyntaxKind, string> = {
 /** Shared by the textarea and the highlighted copy under it, so both lay text out identically. */
 const textLayout =
   "col-start-1 row-start-1 max-h-60 px-2.5 py-2 text-base whitespace-pre-wrap [overflow-wrap:break-word] [scrollbar-gutter:stable] md:text-sm"
+
+/** Starts both layers' first line after the skill chip, whose width `measureChip` keeps up to date. */
+const afterChip = "indent-[calc(var(--skill-chip-width)_+_--spacing(1.5))]"
 
 interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | "onChange" | "ref"> {
   readonly ref?: Ref<HTMLTextAreaElement>
@@ -52,6 +58,7 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
 /**
  * The composer's textarea with Markdown-ish highlighting and completion of `/commands`, `$skills` and
  * `@` mentions of threads and files. The textarea's own text is transparent and sits over a highlighted copy of the same text.
+ * A skill that starts the message shows as a chip before the text, and the textarea holds only the text after it.
  * The suggestion list is positioned against the nearest positioned ancestor, the composer box.
  */
 export function ComposerInput({
@@ -62,12 +69,16 @@ export function ComposerInput({
   files,
   threads,
   onKeyDown,
+  placeholder,
   className,
   ...props
 }: ComposerInputProps) {
+  const layersRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const highlightRef = useRef<HTMLDivElement>(null)
   const listId = useId()
+  const skillId = useId()
+  /** Caret, selected option and dismissed token are indexes into `text`, the part of the message in the textarea. */
   const [caret, setCaret] = useState(0)
   const [selected, setSelected] = useState({ start: -1, index: 0 })
   /** Start of the token whose suggestions Escape closed; they stay closed until another token is typed. */
@@ -82,9 +93,12 @@ export function ComposerInput({
     }),
     [commands, files, threads],
   )
-  const segments = useMemo(() => highlight(value, known), [value, known])
+  const skill = useMemo(() => leadingSkill(value, commands), [value, commands])
+  const chipToken = skill?.token ?? ""
+  const text = value.slice(chipToken.length)
+  const segments = useMemo(() => highlight(text, known), [text, known])
 
-  const completion = completionAt(value, caret)
+  const completion = completionAt(text, caret)
   const suggestions =
     completion && completion.start !== dismissedAt ? suggestionsFor(completion, commands, files, threads) : []
   const open = completion !== null && suggestions.length > 0
@@ -95,15 +109,36 @@ export function ComposerInput({
     if (open) document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: "nearest" })
   })
 
+  /**
+   * Keeps the chip's width in `--skill-chip-width` for `afterChip`. The observer reads `layersRef` when it fires,
+   * because React attaches a child's ref before its parent's.
+   */
+  const measureChip = useCallback((element: HTMLElement | null) => {
+    if (element === null) return
+    const observer = new ResizeObserver(() =>
+      layersRef.current?.style.setProperty("--skill-chip-width", `${element.offsetWidth}px`),
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  /**
+   * Sets the whole message and puts the caret at `position`, an index into it. Rendering a new value moves the
+   * textarea's caret to its end, so render now and put the caret back. A chip that appears or goes away shifts every
+   * index into `text`, which also invalidates the dismissed token.
+   */
+  const replace = (next: string, position: number) => {
+    const caretInText = Math.max(0, position - (leadingSkill(next, commands)?.token.length ?? 0))
+    flushSync(() => onValueChange(next))
+    textareaRef.current?.setSelectionRange(caretInText, caretInText)
+    setCaret(caretInText)
+    setDismissedAt(null)
+  }
+
   const pick = (suggestion: Suggestion) => {
     if (completion === null) return
-    const insert = `${suggestion.insert} `
-    const rest = value.slice(completion.end).replace(/^ /, "")
-    const position = completion.start + insert.length
-    // Rendering the new value moves the caret to the end, so render now and put the caret after the insert.
-    flushSync(() => onValueChange(value.slice(0, completion.start) + insert + rest))
-    textareaRef.current?.setSelectionRange(position, position)
-    setCaret(position)
+    const before = `${chipToken}${text.slice(0, completion.start)}${suggestion.insert} `
+    replace(before + text.slice(completion.end).replace(/^ /, ""), before.length)
   }
 
   const move = (step: 1 | -1) =>
@@ -132,13 +167,34 @@ export function ComposerInput({
         return
       }
     }
+    const { selectionStart, selectionEnd } = event.currentTarget
+    if (skill && event.key === "Backspace" && selectionStart === 0 && selectionEnd === 0) {
+      event.preventDefault()
+      replace(text, 0)
+      return
+    }
     onKeyDown?.(event)
   }
 
   return (
     <>
-      <div className="grid min-h-0">
-        <div ref={highlightRef} aria-hidden className={cn(textLayout, "pointer-events-none overflow-hidden")}>
+      <div ref={layersRef} className="grid min-h-0">
+        <div
+          ref={highlightRef}
+          aria-hidden
+          className={cn(textLayout, skill && afterChip, "pointer-events-none relative overflow-hidden")}
+        >
+          {skill && (
+            // At the start of the first line, one line high. `indent-0` keeps it from inheriting the indent its own width
+            // sets, and `max-w-1/2` leaves the first word room, which would otherwise break mid-word to fit beside the chip.
+            <span
+              ref={measureChip}
+              className="absolute start-2.5 top-2 flex h-lh max-w-1/2 items-center gap-1 rounded-md bg-syntax-token/12 px-1.5 indent-0 font-medium text-syntax-token"
+            >
+              <SkillIcon className="size-3.5 shrink-0" />
+              <span className="truncate">{skill.command.name}</span>
+            </span>
+          )}
           {segments.map((segment, index) => (
             <span key={index} className={syntaxClass[segment.kind]}>
               {segment.text}
@@ -154,9 +210,16 @@ export function ComposerInput({
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
           aria-activedescendant={open ? optionId(activeIndex) : undefined}
-          value={value}
+          aria-describedby={skill ? skillId : undefined}
+          value={text}
           onChange={(event) => {
-            onValueChange(event.target.value)
+            const next = chipToken + event.target.value
+            // The space that ends a skill's name moves the name into the chip.
+            if (leadingSkill(next, commands)?.token !== skill?.token) {
+              replace(next, chipToken.length + event.target.selectionStart)
+              return
+            }
+            onValueChange(next)
             setCaret(event.target.selectionStart)
           }}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
@@ -164,14 +227,21 @@ export function ComposerInput({
             if (highlightRef.current) highlightRef.current.scrollTop = event.currentTarget.scrollTop
           }}
           onKeyDown={handleKeyDown}
+          placeholder={skill ? skill.command.argumentHint : placeholder}
           className={cn(
             textLayout,
+            skill && afterChip,
             "field-sizing-content min-h-0 w-full resize-none bg-transparent text-transparent caret-foreground outline-none placeholder:text-muted-foreground",
             className,
           )}
           {...props}
         />
       </div>
+      {skill && (
+        <span id={skillId} hidden>
+          {m.composer_skill({ name: skill.command.name })}
+        </span>
+      )}
       {open && (
         <div
           id={listId}
@@ -225,9 +295,15 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
     )
   }
   const { command } = suggestion
+  const isSkill = command.builtin !== true
   return (
     <>
-      <span className="shrink-0 font-mono">{suggestion.insert}</span>
+      {isSkill ? (
+        <SkillIcon className="size-3.5 shrink-0 self-center text-syntax-token" />
+      ) : (
+        <RiSlashCommands2 aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+      )}
+      <span className={cn("shrink-0 font-mono", isSkill && "text-syntax-token")}>{suggestion.insert}</span>
       {command.argumentHint !== "" && (
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{command.argumentHint}</span>
       )}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { completionAt, highlight, matchFiles, matchThreads } from "./composerSyntax.ts"
+import { completionAt, highlight, leadingSkill, matchFiles, matchThreads } from "./composerSyntax.ts"
 
 const known = {
   commands: new Set(["/kalan-mode", "$verify-hinacode"]),
@@ -57,6 +57,34 @@ describe("completionAt", () => {
     expect(completionAt("a@b.c", 5)).toBeNull()
     expect(completionAt("/kalan-mode ", 12)).toBeNull()
     expect(completionAt("plain", 5)).toBeNull()
+  })
+})
+
+const command = (trigger: "/" | "$", name: string, builtin?: true) => ({
+  trigger,
+  name,
+  description: "",
+  argumentHint: "",
+  ...(builtin && { builtin }),
+})
+
+describe("leadingSkill", () => {
+  const commands = [command("/", "compact", true), command("/", "kalan-mode"), command("$", "verify-hinacode")]
+
+  test("finds the skill whose token and a space start the text", () => {
+    expect(leadingSkill("/kalan-mode fix it", commands)).toStrictEqual({
+      command: command("/", "kalan-mode"),
+      token: "/kalan-mode ",
+    })
+    expect(leadingSkill("$verify-hinacode ", commands)?.token).toBe("$verify-hinacode ")
+  })
+
+  test("ignores a skill still being typed, one later in the text, and the agent's own commands", () => {
+    expect(leadingSkill("/kalan-mode", commands)).toBeNull()
+    expect(leadingSkill("/kalan-mode\nfix it", commands)).toBeNull()
+    expect(leadingSkill("use /kalan-mode now", commands)).toBeNull()
+    expect(leadingSkill("/kalan-modes ", commands)).toBeNull()
+    expect(leadingSkill("/compact now", commands)).toBeNull()
   })
 })
 

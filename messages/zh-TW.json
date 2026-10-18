@@ -546,6 +546,7 @@
   "composer_commands_label": "指令",
   "composer_mentions_label": "提及",
   "composer_commands_failed": "無法載入指令與技能：{message}",
+  "composer_skill": "技能：{name}",
   "composer_todos_label": "Agent 任務",
   "composer_todos_progress": "已完成 {done}/{total}",
   "access_picker": "權限",

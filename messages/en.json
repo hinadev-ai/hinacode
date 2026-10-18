@@ -564,6 +564,7 @@
   "composer_commands_label": "Commands",
   "composer_mentions_label": "Mentions",
   "composer_commands_failed": "Could not load commands and skills: {message}",
+  "composer_skill": "Skill: {name}",
   "composer_todos_label": "Agent tasks",
   "composer_todos_progress": "{done} of {total} done",
   "access_picker": "Access",
