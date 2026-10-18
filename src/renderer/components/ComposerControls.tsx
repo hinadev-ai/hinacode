@@ -36,7 +36,7 @@ import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { type ComposerPicker, useUi } from "../stores/ui.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
-import { useProviderAccounts } from "./settings/AccountSettings.tsx"
+import { useDefaultAccountName, useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import {
@@ -300,7 +300,9 @@ interface FastMode {
 /** The settings beside the model, each shown only when the agent, account or model supports it. */
 function useThreadOptions(thread: Thread, onError: (message: string) => void) {
   const current = useThreadModel(thread)
-  const accounts = useProviderAccounts(useThreadEnvironment(thread.id), thread.provider)
+  const environment = useThreadEnvironment(thread.id)
+  const accounts = useProviderAccounts(environment, thread.provider)
+  const defaultAccountName = useDefaultAccountName(environment, thread.provider)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
 
   const account: Choice | null =
@@ -311,7 +313,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
           icon: RiUserLine,
           value: thread.accountId ?? CLI_LOGIN,
           items: [
-            { value: CLI_LOGIN, label: m.account_cli_login() },
+            { value: CLI_LOGIN, label: defaultAccountName },
             ...accounts.map((profile) => ({ value: profile.id, label: profile.name })),
           ],
           // The session's transcript lives in the account's home, so the account is fixed once there is one.

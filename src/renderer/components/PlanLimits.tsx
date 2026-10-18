@@ -8,6 +8,7 @@ import type { Thread } from "../../shared/domain.ts"
 import type { LimitWindow, LimitWindowKind } from "../../shared/limits.ts"
 import { formatMinutes, formatResetIn, limitLevel, mostUsed } from "../lib/planLimits.ts"
 import { accountAtom, accountLimitsAtom, accountsAtom } from "../lib/rpc.ts"
+import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -42,16 +43,17 @@ export function PlanLimits({ openThread }: { openThread: Pick<Thread, "provider"
   const entries = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), () => [])
   // Limits carry no environment, so account names and sign-ins come from This Mac.
   const added = AsyncResult.getOrElse(useAtomValue(accountsAtom(null)), () => [])
+  const { defaultAccountName } = useSettings(null)
   const shown = entries.flatMap((entry): ReadonlyArray<Shown> => {
     const windows = entry.limits?.windows ?? []
     return windows.length === 0 ? [] : [{ ...entry, windows }]
   })
   const groupsOf = (provider: ProviderId) => shown.filter((entry) => entry.provider === provider).length
-  // The CLI's own login has no name; it needs one only next to the provider's added accounts.
+  // The CLI's own login needs a name only next to the provider's added accounts.
   const nameOf = (entry: Shown) =>
     entry.accountId === null
       ? groupsOf(entry.provider) > 1
-        ? m.limits_default_account()
+        ? (defaultAccountName[entry.provider] ?? m.account_default())
         : undefined
       : added.find((account) => account.id === entry.accountId)?.name
   return shown.map((entry) => (

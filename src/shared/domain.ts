@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { ProviderId, Question, TokenUsage } from "./agent.ts"
+import { AgentProfileName, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
@@ -454,6 +454,12 @@ export const Settings = Schema.Struct({
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** What each agent's own login is called in the UI. Null shows the translated "Default". */
+  defaultAccountName: Schema.Struct({
+    claude: Schema.NullOr(AgentProfileName),
+    codex: Schema.NullOr(AgentProfileName),
+    muse: Schema.NullOr(AgentProfileName),
+  }),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
     bindHost: Schema.String,
@@ -480,6 +486,7 @@ export const defaultSettings: Settings = {
   defaultModel: { claude: null, codex: null, muse: null },
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
+  defaultAccountName: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
