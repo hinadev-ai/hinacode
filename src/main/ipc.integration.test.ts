@@ -29,6 +29,7 @@ import { MAX_CALL_KEYS } from "./remote/server.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
+import * as Worktrees from "./services/Worktrees.ts"
 
 type IpcHandler = (event: { sender: object; senderFrame: Frame }, raw: unknown) => Promise<unknown>
 interface Frame {
@@ -899,6 +900,47 @@ describe("turns the agent starts over rpc", () => {
     await expect.poll(() => discard.mock.calls.length).toBe(1)
     expect((await threadOf(thread.id)).status).toBe("archived")
     expect(await assistantTexts(thread.id)).toStrictEqual([])
+  })
+
+  test("waits for workspace changes before admitting a wake", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const worktrees = await runtime.runPromise(Worktrees.Worktrees)
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const archiving = runtime.runPromise(
+      worktrees.exclusive(
+        Effect.gen(function* () {
+          entered.resolve()
+          yield* Effect.promise(() => release.promise)
+          yield* Threads.Threads.use((threads) => threads.update({ id: thread.id, status: "archived" }))
+        }),
+      ),
+    )
+    await entered.promise
+    const admission = vi.spyOn(worktrees, "exclusive")
+    const discard = vi.fn()
+    try {
+      Effect.runSync(
+        Queue.offer(claudeWakes, {
+          threadId: thread.id,
+          events: Stream.empty,
+          discard: Effect.sync(discard),
+        }),
+      )
+      await expect
+        .poll(async () => admission.mock.calls.length > 0 || (await assistantTexts(thread.id)).length > 0)
+        .toBe(true)
+      expect(await assistantTexts(thread.id)).toStrictEqual([])
+      release.resolve()
+      await archiving
+      await expect.poll(() => discard.mock.calls.length).toBe(1)
+      expect((await threadOf(thread.id)).status).toBe("archived")
+    } finally {
+      release.resolve()
+      await archiving
+      admission.mockRestore()
+    }
   })
 
   test("queues a message sent while it runs", async () => {
