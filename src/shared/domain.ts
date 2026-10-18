@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { AgentProfileName, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
@@ -280,7 +280,7 @@ export const Thread = Schema.Struct({
   /** Run turns on the model's faster, pricier service tier. */
   fastMode: Schema.Boolean,
   /** Loads the skills and commands from the user's own agent home. Off is the composer's conversation mode. */
-  userSkills: Schema.Boolean,
+  userSkills: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   /** Applies from the next turn, or right away on a live Claude session. */
   accessMode: AccessMode,
   /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */
@@ -461,7 +461,7 @@ export const Settings = Schema.Struct({
     claude: Schema.NullOr(AgentProfileName),
     codex: Schema.NullOr(AgentProfileName),
     muse: Schema.NullOr(AgentProfileName),
-  }),
+  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
     bindHost: Schema.String,
