@@ -95,6 +95,10 @@ interface Session extends MapState, ApprovalSession {
   answering: ReadonlyArray<string>
   readonly tasks: Map<string, string | undefined>
   taskSnapshots: boolean
+  /** The CLI sends `session_state_changed`, so a turn ends when it goes idle instead of at its result. */
+  reportsState: boolean
+  /** The event that ends the turn once the CLI goes idle, mapped from the turn's latest result. */
+  heldEnd: AgentEvent | null
   claims: number
   expiry: Fiber.Fiber<void> | null
   closed: boolean
@@ -102,6 +106,9 @@ interface Session extends MapState, ApprovalSession {
 
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
+
+/** A steer of the current turn the CLI has not answered yet, which will get its own result. */
+const awaitsAnswer = (session: Session) => [...session.turnPrompts].some((uuid) => session.unanswered.has(uuid))
 
 interface SessionContext {
   readonly cwd: string
@@ -310,6 +317,7 @@ export const layer = Layer.effect(
         Queue.endUnsafe(session.turn)
         session.turn = null
         session.turnPrompts.clear()
+        session.heldEnd = null
       }
     }
 
@@ -414,6 +422,13 @@ export const layer = Layer.effect(
 
     const route = (session: Session, message: SDKMessage) => {
       trackTask(session, message)
+      if (message.type === "system" && message.subtype === "session_state_changed") {
+        session.reportsState = true
+        // Unlike a result, idle waits for background sub-agents and for Claude's replies to their reports.
+        if (message.state === "idle" && session.heldEnd !== null && !awaitsAnswer(session))
+          emit(session, session.heldEnd)
+        return
+      }
       const answered = answeredPrompts(message)
       if (answered !== undefined) session.answering = answered
       // A response that answers only prompts of a turn whose consumer left before its result. The CLI can batch
@@ -424,7 +439,7 @@ export const layer = Layer.effect(
         for (const uuid of answered ?? [...session.unanswered]) session.unanswered.delete(uuid)
         session.answering = []
         // A steer the CLI read too late to abort the response gets its own result after this one.
-        if (stale || [...session.turnPrompts].some((uuid) => session.unanswered.has(uuid))) {
+        if (stale || awaitsAnswer(session)) {
           resetTurnLimits(session)
           return
         }
@@ -440,7 +455,10 @@ export const layer = Layer.effect(
           attachmentPaths: session.attachmentPaths,
         })
       }
-      for (const event of mapMessage(message, session, new Date().toISOString())) emit(session, event)
+      for (const event of mapMessage(message, session, new Date().toISOString())) {
+        if (isTerminal(event) && session.reportsState) session.heldEnd = event
+        else emit(session, event)
+      }
     }
 
     /** Reads every SDK message of the session for its lifetime and routes it to the active turn. */
@@ -491,6 +509,8 @@ export const layer = Layer.effect(
               prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
               options: {
                 ...base,
+                // Sends `session_state_changed`. Its idle is the only signal that background sub-agents are done.
+                env: { ...base.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
                 cwd: input.cwd,
                 model: input.model,
                 ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
@@ -551,6 +571,8 @@ export const layer = Layer.effect(
           answering: [],
           tasks: new Map(),
           taskSnapshots: false,
+          reportsState: false,
+          heldEnd: null,
           claims: 1,
           expiry: null,
           closed: false,
@@ -618,6 +640,7 @@ export const layer = Layer.effect(
         session.turn = turn
         resetTurnLimits(session)
         session.interrupted = false
+        session.heldEnd = null
         session.turnPrompts.clear()
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
