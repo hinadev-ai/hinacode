@@ -21,7 +21,6 @@ export const toCommand = (command: SlashCommand): AgentCommand => {
 export const hideUserCommands = (commands: ReadonlyArray<SlashCommand>): Record<string, "off"> =>
   Object.fromEntries(
     commands
-      .map(toCommand)
-      .filter((command) => command.scope === "user")
-      .map((command) => [command.name, "off"]),
+      .filter((command) => toCommand(command).scope === "user")
+      .flatMap((command) => [command.name, ...(command.aliases ?? [])].map((name) => [name, "off"])),
   )
