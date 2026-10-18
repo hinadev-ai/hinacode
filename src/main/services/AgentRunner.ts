@@ -668,6 +668,9 @@ const make = Effect.gen(function* () {
         activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
     )
 
+  // The provider's reset time is rounded and its clock drifts from ours; resuming on the dot can hit the limit again.
+  const resumeGraceMs = 60_000
+
   const resumeAtReset = (threadId: string, enabled: boolean) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
@@ -690,7 +693,7 @@ const make = Effect.gen(function* () {
         thread.status !== "limited" ||
         limit === null ||
         !limit.reset?.autoResume ||
-        limit.reset.at > now
+        Date.parse(limit.reset.at) + resumeGraceMs > Date.parse(now)
       )
         return
       yield* updateThread({ id: thread.id, usageLimit: { ...limit, reset: { ...limit.reset, autoResume: false } } })
