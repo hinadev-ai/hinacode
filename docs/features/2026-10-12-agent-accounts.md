@@ -12,7 +12,7 @@ A developer with a personal and a work subscription, or two Claude Max seats to 
 1. Settings > Models lists, per agent, the CLI's own login and every account added in hinacode, each with its email and plan.
 2. "Add account" asks for a name, a binary path (prefilled with `claude` or `codex`) and a config directory (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`, absolute or `~`-prefixed). The dialog closes once the account is saved. hinacode does not sign it in.
 3. A signed-out account row shows the command to run in a terminal, such as `CLAUDE_CONFIG_DIR=/Users/me/.claude-work claude auth login` or `CODEX_HOME=/Users/me/.codex-work codex login`, and a "Check again" button that probes the login again.
-4. Each added account can be renamed or removed. "Account for new threads" picks the default per agent.
+4. Each added account can be renamed or removed. The CLI's own login is listed as "Default" and can be renamed too (`Settings.defaultAccountName`), but not removed. "Account for new threads" picks the default per agent.
 5. A new thread starts on the agent's default account. When the agent has more than one account, the composer shows an account picker next to the model. It is disabled once the thread has a provider session, because the transcript lives in that account's home.
 
 ## Design

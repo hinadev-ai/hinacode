@@ -72,6 +72,11 @@ export function useProviderAccounts(environment: EnvironmentId, provider: Provid
   return all.filter((account) => account.provider === provider)
 }
 
+/** What the agent's own login is called: the user's name for it, or "Default". */
+export function useDefaultAccountName(environment: EnvironmentId, provider: ProviderId): string {
+  return useSettings(environment).defaultAccountName[provider] ?? m.account_default()
+}
+
 /** The CLI's own login, then every account added for `provider`, each with who it is signed in as. */
 export function AccountList({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
@@ -80,10 +85,7 @@ export function AccountList({ provider }: { provider: ProviderId }) {
   return (
     <div className="flex flex-col gap-2">
       <ul aria-label={m.settings_accounts_label({ provider: providerLabel[provider]() })} className="flex flex-col">
-        <li className="flex min-h-8 items-center gap-3">
-          <span className="w-28 shrink-0 truncate text-sm">{m.account_cli_login()}</span>
-          <AccountStatus provider={provider} account={null} />
-        </li>
+        <DefaultAccountRow provider={provider} />
         {accounts.map((account) => (
           <AccountRow key={account.id} account={account} />
         ))}
@@ -105,22 +107,97 @@ export function AccountList({ provider }: { provider: ProviderId }) {
 
 type RowDialog = "rename" | "remove"
 
+/** Menu items queue their dialog and open it once the menu has closed and handed focus back. */
+function useRowDialog() {
+  const [dialog, setDialog] = useState<RowDialog | null>(null)
+  const [queued, setQueued] = useState<RowDialog | null>(null)
+  return {
+    dialog,
+    queue: setQueued,
+    onMenuOpenChangeComplete: (open: boolean) => {
+      if (open || !queued) return
+      setDialog(queued)
+      setQueued(null)
+    },
+    onDialogOpenChange: (open: boolean) => {
+      if (!open) setDialog(null)
+    },
+  }
+}
+
+function AccountActions({
+  name,
+  onMenuOpenChangeComplete,
+  children,
+}: {
+  name: string
+  onMenuOpenChangeComplete: (open: boolean) => void
+  children: ReactNode
+}) {
+  return (
+    <DropdownMenu onOpenChangeComplete={onMenuOpenChangeComplete}>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-auto"
+            aria-label={m.settings_account_actions({ name })}
+          />
+        }
+      >
+        <RiMoreFill aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function RenameItem({ onClick }: { onClick: () => void }) {
+  return (
+    <DropdownMenuItem onClick={onClick}>
+      <RiPencilLine aria-hidden />
+      {m.settings_account_rename()}
+    </DropdownMenuItem>
+  )
+}
+
+function DefaultAccountRow({ provider }: { provider: ProviderId }) {
+  const environment = useSettingsEnvironment()
+  const name = useDefaultAccountName(environment, provider)
+  const { defaultAccountName } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const { dialog, queue, onMenuOpenChangeComplete, onDialogOpenChange } = useRowDialog()
+
+  const rename = async (next: string) => {
+    // Naming it back to the translated default stores null, so it follows the UI language again.
+    const stored = next === m.account_default() ? null : next
+    await updateSettings({ defaultAccountName: { ...defaultAccountName, [provider]: stored } })
+  }
+
+  return (
+    <li className="flex min-h-8 items-center gap-x-3 pb-1">
+      <span className="w-28 shrink-0 truncate text-sm font-medium" title={name}>
+        {name}
+      </span>
+      <AccountStatus provider={provider} account={null} />
+      <AccountActions name={name} onMenuOpenChangeComplete={onMenuOpenChangeComplete}>
+        <RenameItem onClick={() => queue("rename")} />
+      </AccountActions>
+      <RenameAccountDialog name={name} onRename={rename} open={dialog === "rename"} onOpenChange={onDialogOpenChange} />
+    </li>
+  )
+}
+
 function AccountRow({ account }: { account: AgentProfile }) {
   const environment = useSettingsEnvironment()
   const status = useAtomValue(accountAtom(environment, account.provider, account.id))
   const refreshStatus = useAtomRefresh(accountAtom(environment, account.provider, account.id))
-  const [dialog, setDialog] = useState<RowDialog | null>(null)
-  const [queued, setQueued] = useState<RowDialog | null>(null)
+  const renameAccount = useAtomSet(renameAccountAtom(environment), { mode: "promise" })
+  const { dialog, queue, onMenuOpenChangeComplete, onDialogOpenChange } = useRowDialog()
   const signedOut = AsyncResult.isSuccess(status) && status.value.type === "signedOut"
-
-  // Menu items queue their dialog and open it once the menu has closed and handed focus back.
-  const runQueued = () => {
-    setDialog(queued)
-    setQueued(null)
-  }
-  const closeDialog = (open: boolean) => {
-    if (!open) setDialog(null)
-  }
 
   return (
     <li className="flex flex-col pb-1">
@@ -129,34 +206,13 @@ function AccountRow({ account }: { account: AgentProfile }) {
           {account.name}
         </span>
         <AccountStatus provider={account.provider} account={account} />
-        <DropdownMenu
-          onOpenChangeComplete={(open) => {
-            if (!open && queued) runQueued()
-          }}
-        >
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="ml-auto"
-                aria-label={m.settings_account_actions({ name: account.name })}
-              />
-            }
-          >
-            <RiMoreFill aria-hidden />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={() => setQueued("rename")}>
-              <RiPencilLine aria-hidden />
-              {m.settings_account_rename()}
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => setQueued("remove")}>
-              <RiDeleteBinLine aria-hidden />
-              {m.settings_account_remove()}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AccountActions name={account.name} onMenuOpenChangeComplete={onMenuOpenChangeComplete}>
+          <RenameItem onClick={() => queue("rename")} />
+          <DropdownMenuItem variant="destructive" onClick={() => queue("remove")}>
+            <RiDeleteBinLine aria-hidden />
+            {m.settings_account_remove()}
+          </DropdownMenuItem>
+        </AccountActions>
       </div>
       <div className="flex min-w-0 flex-col gap-1 pl-31">
         <p className="font-mono text-xs break-all text-muted-foreground">{account.configDir}</p>
@@ -172,8 +228,15 @@ function AccountRow({ account }: { account: AgentProfile }) {
           </div>
         )}
       </div>
-      <RenameAccountDialog account={account} open={dialog === "rename"} onOpenChange={closeDialog} />
-      <RemoveAccountDialog account={account} open={dialog === "remove"} onOpenChange={closeDialog} />
+      <RenameAccountDialog
+        name={account.name}
+        onRename={async (name) => {
+          await renameAccount({ id: account.id, name })
+        }}
+        open={dialog === "rename"}
+        onOpenChange={onDialogOpenChange}
+      />
+      <RemoveAccountDialog account={account} open={dialog === "remove"} onOpenChange={onDialogOpenChange} />
     </li>
   )
 }
@@ -381,26 +444,33 @@ function AddAccountForm({ provider, onCreated }: { provider: AccountProviderId; 
   )
 }
 
-interface AccountDialogBaseProps {
-  readonly account: AgentProfile
+interface RenameAccountDialogProps {
+  readonly name: string
+  readonly onRename: (name: string) => Promise<void>
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
 }
 
-function RenameAccountDialog({ account, open, onOpenChange }: AccountDialogBaseProps) {
+function RenameAccountDialog({ name, onRename, open, onOpenChange }: RenameAccountDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <RenameForm account={account} onSaved={() => onOpenChange(false)} />
+        <RenameForm name={name} onRename={onRename} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
 }
 
-function RenameForm({ account, onSaved }: { account: AgentProfile; onSaved: () => void }) {
-  const environment = useSettingsEnvironment()
-  const renameAccount = useAtomSet(renameAccountAtom(environment), { mode: "promise" })
-  const [name, setName] = useState(account.name)
+function RenameForm({
+  name: current,
+  onRename,
+  onSaved,
+}: {
+  name: string
+  onRename: (name: string) => Promise<void>
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(current)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const inputId = useId()
@@ -410,7 +480,7 @@ function RenameForm({ account, onSaved }: { account: AgentProfile; onSaved: () =
     setError(null)
     startTransition(async () => {
       try {
-        await renameAccount({ id: account.id, name: name.trim() })
+        await onRename(name.trim())
         onSaved()
       } catch (cause) {
         setError(errorMessage(cause))
@@ -421,7 +491,7 @@ function RenameForm({ account, onSaved }: { account: AgentProfile; onSaved: () =
   return (
     <form onSubmit={submit} className="flex min-w-0 flex-col gap-4">
       <DialogHeader>
-        <DialogTitle>{m.account_dialog_rename_title({ name: account.name })}</DialogTitle>
+        <DialogTitle>{m.account_dialog_rename_title({ name: current })}</DialogTitle>
       </DialogHeader>
       <Field>
         <FieldLabel htmlFor={inputId}>{m.account_dialog_name()}</FieldLabel>
@@ -436,12 +506,18 @@ function RenameForm({ account, onSaved }: { account: AgentProfile; onSaved: () =
       </Field>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>{m.common_cancel()}</DialogClose>
-        <Button type="submit" disabled={name.trim() === "" || name.trim() === account.name || pending}>
+        <Button type="submit" disabled={name.trim() === "" || name.trim() === current || pending}>
           {m.account_dialog_save()}
         </Button>
       </DialogFooter>
     </form>
   )
+}
+
+interface AccountDialogBaseProps {
+  readonly account: AgentProfile
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
 }
 
 function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseProps) {
@@ -491,12 +567,13 @@ export function DefaultAccountField({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)
   const { defaultAccount } = useSettings(environment)
+  const defaultAccountName = useDefaultAccountName(environment, provider)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const inputId = `default-account-${provider}`
   if (accounts.length === 0) return null
   const items = [
-    { value: CLI_LOGIN, label: m.account_cli_login() },
+    { value: CLI_LOGIN, label: defaultAccountName },
     ...accounts.map((account) => ({ value: account.id, label: account.name })),
   ]
 

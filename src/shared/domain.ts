@@ -1,5 +1,5 @@
-import { Schema } from "effect"
-import { ProviderId, Question, TokenUsage } from "./agent.ts"
+import { Effect, Schema } from "effect"
+import { AgentProfileName, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
@@ -280,7 +280,7 @@ export const Thread = Schema.Struct({
   /** Run turns on the model's faster, pricier service tier. */
   fastMode: Schema.Boolean,
   /** Loads the skills and commands from the user's own agent home. Off is the composer's conversation mode. */
-  userSkills: Schema.Boolean,
+  userSkills: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   /** Applies from the next turn, or right away on a live Claude session. */
   accessMode: AccessMode,
   /** The agent account the thread bills to. Null is the CLI's own login. Fixed once the thread has a session. */
@@ -456,6 +456,12 @@ export const Settings = Schema.Struct({
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** What each agent's own login is called in the UI. Null shows the translated "Default". */
+  defaultAccountName: Schema.Struct({
+    claude: Schema.NullOr(AgentProfileName),
+    codex: Schema.NullOr(AgentProfileName),
+    muse: Schema.NullOr(AgentProfileName),
+  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
     bindHost: Schema.String,
@@ -482,6 +488,7 @@ export const defaultSettings: Settings = {
   defaultModel: { claude: null, codex: null, muse: null },
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
+  defaultAccountName: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",

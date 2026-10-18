@@ -1,8 +1,9 @@
 import { expect, type Page } from "@playwright/test"
 import { randomUUID } from "node:crypto"
+import { Schema } from "effect"
 import type { AgentEvent } from "../../src/shared/agent.ts"
 import type { TranscriptPush } from "../../src/shared/contract.ts"
-import type { Message, Thread } from "../../src/shared/domain.ts"
+import { type Message, Thread } from "../../src/shared/domain.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
@@ -86,8 +87,9 @@ const firstBoundaryText = async (page: Page, selector: string) => {
 
 When("the agent starts streaming in {string}", async ({ app, names }, title: string) => {
   await expect(app.page.getByRole("heading", { name: "Do anything", exact: true })).toBeVisible()
-  const thread = (await rpc(app.page, "threads.list", undefined)).find((item) => item.title === names.of(title))
-  if (!thread) throw new Error(`no seeded thread named ${title}`)
+  const listed = (await rpc(app.page, "threads.list", undefined)).find((item) => item.title === names.of(title))
+  if (!listed) throw new Error(`no seeded thread named ${title}`)
+  const thread = Schema.decodeUnknownSync(Thread)(listed)
   const { seq } = await rpc(app.page, "threads.transcript", { threadId: thread.id })
   const message: Message = {
     id: randomUUID(),
