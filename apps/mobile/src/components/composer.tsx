@@ -3,9 +3,10 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { useEffect, useRef, useState } from "react"
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native"
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
+import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -58,14 +59,17 @@ function useUnstarted(thread: Thread) {
 
 /**
  * What the composer completes: the agent's `/commands` and `$skills`, the workspace's files and the project's
- * other threads. Commands and files are listed again when the agent, account or worktree changes, and after a
- * turn, which may have added files.
+ * other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
+ * list can run to megabytes in a large repository, so it is fetched only once an `@` asks for it, and again at the
+ * next `@` after the workspace changed or a turn ran.
  */
-function useCompletions(thread: Thread, busy: boolean, onError: OnError) {
+function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onError: OnError) {
   const connected = useConnection((state) => state.status === "connected")
   const [commands, setCommands] = useState<readonly AgentCommand[]>([])
-  const [files, setFiles] = useState<readonly string[]>([])
+  const [files, setFiles] = useState<{ readonly key: string; readonly paths: readonly string[] } | null>(null)
   const byId = useThreads((state) => state.byId)
+  const filesKey = `${thread.id}|${thread.worktreeId}|${busy}`
+  const filesFresh = files?.key === filesKey
   useEffect(() => {
     if (!connected) return
     let current = true
@@ -73,18 +77,25 @@ function useCompletions(thread: Thread, busy: boolean, onError: OnError) {
       (next) => current && setCommands(next),
       (cause: unknown) => current && onError(`Could not list commands: ${errorText(cause)}`),
     )
+    return () => {
+      current = false
+    }
+  }, [connected, thread.id, thread.provider, thread.accountId, thread.worktreeId, busy, onError])
+  useEffect(() => {
+    if (!connected || !wantsFiles || filesFresh) return
+    let current = true
     call("files.list", { threadId: thread.id }).then(
-      (next) => current && setFiles(next),
+      (paths) => current && setFiles({ key: filesKey, paths }),
       (cause: unknown) => current && onError(`Could not list files: ${errorText(cause)}`),
     )
     return () => {
       current = false
     }
-  }, [connected, thread.id, thread.provider, thread.accountId, thread.worktreeId, busy, onError])
+  }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
   const threads = Object.values(byId)
     .filter((other) => other.projectId === thread.projectId && other.id !== thread.id && other.status !== "archived")
     .sort((a, b) => a.sortIndex - b.sortIndex)
-  return { commands, files, threads }
+  return { commands, files: files?.paths ?? [], threads }
 }
 
 export function Composer({ thread }: { thread: Thread }) {
@@ -100,7 +111,8 @@ export function Composer({ thread }: { thread: Thread }) {
   const [error, setError] = useState<string | null>(null)
   const unstarted = useUnstarted(thread)
   const busy = isThreadBusy(thread.status)
-  const completions = useCompletions(thread, busy, setError)
+  const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
+  const completions = useCompletions(thread, busy, wantsFiles, setError)
   const hasDraft = text.trim() !== ""
 
   useEffect(() => {
@@ -530,11 +542,10 @@ function SettingsSheet({
                     Faster responses that use more of your plan
                   </Text>
                 </View>
-                <Switch
+                <Toggle
                   accessibilityLabel="Fast mode"
                   value={thread.fastMode}
                   onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
-                  trackColor={{ true: theme.primary, false: theme.surfaceStrong }}
                 />
               </View>
             </Section>
