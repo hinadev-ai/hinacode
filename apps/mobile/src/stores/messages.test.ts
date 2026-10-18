@@ -135,6 +135,6 @@ describe("reload", () => {
     calls.length = 0
 
     useMessages.getState().reload()
-    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1" }])
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true }])
   })
 })

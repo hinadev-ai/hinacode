@@ -26,6 +26,7 @@ import type {
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
+import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
   branchPullRequestAtom,
@@ -485,25 +486,6 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
     </div>
   )
 }
-
-const fixChecksPrompt = (pullRequest: PullRequestDetail) => {
-  const failing = pullRequest.checkRuns
-    .filter((run) => run.status === "failing")
-    .map((run) => `- ${run.name}${run.url ? `: ${run.url}` : ""}`)
-  return [
-    `CI is failing on ${pullRequest.url} (branch ${pullRequest.headRef}). Failing checks:`,
-    ...failing,
-    "",
-    "Read the failing logs (for GitHub Actions, `gh run view <run-id> --log-failed`), find the root cause, fix it, verify locally, and push.",
-  ].join("\n")
-}
-
-const resolveConflictsPrompt = (pullRequest: PullRequestDetail) =>
-  [
-    `${pullRequest.url} has merge conflicts with ${pullRequest.baseRef}.`,
-    `Fetch origin, merge origin/${pullRequest.baseRef} into ${pullRequest.headRef}, and resolve the conflicts so both sides keep their intent.`,
-    "Run the project's checks, then push.",
-  ].join(" ")
 
 type PendingAction = { type: "merge"; method: MergeMethod } | { type: "close" }
 
