@@ -569,9 +569,7 @@ function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelet
           </Field>
         )}
         {offline && cloud && (
-          <p className="text-sm text-muted-foreground">
-            {m.delete_dialog_offline({ name: cloud.name })}
-          </p>
+          <p className="text-sm text-muted-foreground">{m.delete_dialog_offline({ name: cloud.name })}</p>
         )}
         {error && (
           <p role="alert" className="text-sm text-destructive">
