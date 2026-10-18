@@ -12,14 +12,26 @@ const units: ReadonlyArray<{ unit: Intl.RelativeTimeFormatUnit; size: number; be
   { unit: "year", size: 365 * day, below: Infinity },
 ]
 
+const formats = new Map<string, Intl.RelativeTimeFormat>()
+
+// Building a formatter costs far more than formatting, and every sidebar row asks for one.
+function formatFor(locale: string, numeric: "auto" | "always") {
+  const key = `${locale} ${numeric}`
+  let format = formats.get(key)
+  if (!format) {
+    format = new Intl.RelativeTimeFormat(locale, { style: "narrow", numeric })
+    formats.set(key, format)
+  }
+  return format
+}
+
 /** How long ago `iso` was, in the largest whole unit: "now", "5m ago", "3h ago", "2w ago". */
 export function formatRelativeTime(iso: string, now: number, locale: string): string {
   const elapsed = now - Date.parse(iso)
   // Anything under a minute, including a timestamp slightly in the future from clock skew, is "now".
   if (elapsed < minute) {
-    return new Intl.RelativeTimeFormat(locale, { style: "narrow", numeric: "auto" }).format(0, "second")
+    return formatFor(locale, "auto").format(0, "second")
   }
   const { unit, size } = units.find(({ below }) => elapsed < below)!
-  const format = new Intl.RelativeTimeFormat(locale, { style: "narrow", numeric: "always" })
-  return format.format(-Math.floor(elapsed / size), unit)
+  return formatFor(locale, "always").format(-Math.floor(elapsed / size), unit)
 }
