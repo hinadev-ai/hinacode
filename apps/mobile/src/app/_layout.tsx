@@ -1,14 +1,25 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router"
 import { StatusBar } from "expo-status-bar"
-import { useColorScheme } from "react-native"
+import { useEffect } from "react"
+import { Appearance, Platform } from "react-native"
 import { ConnectionProvider } from "@/components/connection-provider"
-import { useTheme } from "@/hooks/use-theme"
+import { Notifier } from "@/components/notifier"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
+import { usePreferences } from "@/stores/preferences"
 
 export default function RootLayout() {
-  const scheme = useColorScheme()
+  const scheme = useScheme()
   const theme = useTheme()
+  const appearance = usePreferences((state) => state.appearance)
   const base = scheme === "dark" ? DarkTheme : DefaultTheme
+
+  // Native alerts, switches and the keyboard follow the app's appearance only through this override.
+  useEffect(() => {
+    if (Platform.OS !== "web") Appearance.setColorScheme(appearance === "system" ? "unspecified" : appearance)
+  }, [appearance])
+
   return (
     <ThemeProvider
       value={{
@@ -26,6 +37,7 @@ export default function RootLayout() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <ConnectionProvider>
         <Routes />
+        <Notifier />
       </ConnectionProvider>
     </ThemeProvider>
   )
@@ -36,11 +48,15 @@ function Routes() {
   return (
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Protected guard={paired}>
-        <Stack.Screen name="index" options={{ title: "Threads" }} />
-        <Stack.Screen name="thread/[id]" options={{ title: "" }} />
+        <Stack.Screen name="index" options={{ title: copy("mobile_home_title") }} />
+        <Stack.Screen name="thread/[id]/index" options={{ title: "" }} />
+        <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
+        <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
+        <Stack.Screen name="settings" options={{ title: copy("mobile_settings_title") }} />
+        <Stack.Screen name="project/new" options={{ title: copy("mobile_project_new_title"), presentation: "modal" }} />
       </Stack.Protected>
       <Stack.Protected guard={!paired}>
-        <Stack.Screen name="connect" options={{ title: "Pair with desktop" }} />
+        <Stack.Screen name="connect" options={{ title: copy("mobile_connect_title") }} />
       </Stack.Protected>
     </Stack>
   )

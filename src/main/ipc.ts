@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
 import { Cause, Effect, Layer, type ManagedRuntime, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
+import { compactMessage } from "../shared/compactTranscript.ts"
 import {
   PushEvent,
   type RpcEnvelope,
@@ -236,7 +237,12 @@ const handlers: Handlers = {
   "updates.check": () => Updates.use((updates) => updates.check),
   "updates.install": () => Updates.use((updates) => updates.install),
 
-  "threads.transcript": ({ threadId }) => AgentRunner.use((runner) => runner.transcript(threadId)),
+  "threads.transcript": ({ threadId, compact = false }) =>
+    AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+      Effect.map((transcript) =>
+        compact ? { ...transcript, messages: transcript.messages.map(compactMessage) } : transcript,
+      ),
+    ),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace })),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
