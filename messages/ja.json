@@ -615,6 +615,8 @@
   "diff_no_turn": "Git 管理下のディレクトリで開始されたターンがまだありません。",
   "diff_line_counts": "+{added} 行 / -{removed} 行",
   "diff_file_missing": "差分なし",
+  "diff_large": "大きな差分です（{lines} 行の変更）。動作が重くならないよう非表示にしています。",
+  "diff_large_show": "差分を表示",
   "pr_check_skipped": "スキップ",
   "pr_merge_squash": "スカッシュしてマージ (Squash and merge)",
   "pr_merge_commit": "マージコミットを作成 (Create a merge commit)",
