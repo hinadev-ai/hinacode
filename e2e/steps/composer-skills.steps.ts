@@ -26,6 +26,14 @@ When("I type {string} in the message", async ({ todoApp: app }, text: string) =>
   await message(app).pressSequentially(text)
 })
 
+Then("the commands list labels {string} as {string}", async ({ todoApp: app }, insert: string, kind: string) => {
+  const option = app.page
+    .getByRole("listbox", { name: "Commands", exact: true })
+    .getByRole("option")
+    .filter({ hasText: insert })
+  await expect(option).toContainText(kind)
+})
+
 When("I pick {string} from the commands", async ({ todoApp: app }, insert: string) => {
   await app.page
     .getByRole("listbox", { name: "Commands", exact: true })

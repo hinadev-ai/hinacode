@@ -271,6 +271,14 @@ export function ComposerInput({
   )
 }
 
+/** Names what a completion is, for a developer who does not know the icons yet. */
+function commandKind(command: AgentCommand) {
+  if (command.builtin === true) return m.composer_kind_command()
+  if (command.scope === "user") return m.composer_kind_user_skill()
+  if (command.scope === "project") return m.composer_kind_project_skill()
+  return m.composer_kind_skill()
+}
+
 function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   if (suggestion.type === "thread") {
     const { thread } = suggestion
@@ -305,9 +313,12 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       )}
       <span className={cn("shrink-0 font-mono", isSkill && "text-syntax-token")}>{suggestion.insert}</span>
       {command.argumentHint !== "" && (
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">{command.argumentHint}</span>
+        <span className="max-w-1/3 shrink-0 truncate font-mono text-xs text-muted-foreground">
+          {command.argumentHint}
+        </span>
       )}
       <span className="min-w-0 truncate text-xs text-muted-foreground">{command.description}</span>
+      <span className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground">{commandKind(command)}</span>
     </>
   )
 }

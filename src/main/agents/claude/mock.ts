@@ -17,7 +17,13 @@ export type MockScenario = "usage-limit" | "org-spend-limit" | "todos" | "markdo
 
 /** A skill and one of Claude Code's own commands, which the composer shows differently. */
 const commands: ReadonlyArray<AgentCommand> = [
-  { trigger: "/", name: "triage-issue", description: "Reproduce a reported bug and find its cause.", argumentHint: "" },
+  {
+    trigger: "/",
+    name: "triage-issue",
+    description: "Reproduce a reported bug and find its cause.",
+    argumentHint: "",
+    scope: "project",
+  },
   {
     trigger: "/",
     name: "compact",
