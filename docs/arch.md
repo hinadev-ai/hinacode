@@ -212,7 +212,7 @@ sequenceDiagram
     P-->>AR: event
     AR-->>R: push thread.event (seq)
     AR->>AR: foldTranscript in memory
-    AR->>DB: persist dirty messages at most every 500 ms
+    AR->>DB: persist dirty messages every 500 ms, or 10x the last persist time if longer
   end
   opt approval
     P-->>AR: approval_requested
@@ -263,7 +263,7 @@ A first send waiting for setup keeps its private send claim and cancellation sig
 
 ## Renderer sync: snapshot plus pushes
 
-The database lags a running turn by up to 500 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the current `seq`.
+The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the current `seq`.
 
 ```mermaid
 sequenceDiagram
