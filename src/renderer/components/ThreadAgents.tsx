@@ -2,10 +2,12 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
-import { RiCheckLine, RiErrorWarningLine, RiStopCircleLine } from "react-icons/ri"
+import { RiCheckLine, RiErrorWarningLine, RiStopCircleLine, RiStopFill } from "react-icons/ri"
+import { toast } from "sonner"
 import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { callPromise } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -121,6 +123,7 @@ export function ThreadAgents({ thread }: { thread: Thread }) {
         return (
           <SubagentRow
             key={subagent.id}
+            threadId={thread.id}
             subagent={subagent}
             provider={thread.provider}
             now={now}
@@ -149,12 +152,51 @@ export const subagentDetail = (subagent: Subagent) =>
       ? m.agents_last_tool({ tool: subagent.lastTool })
       : null
 
+/** Stops one running sub-agent. Its turn keeps going. */
+export function StopSubagentButton({
+  threadId,
+  subagent,
+  className,
+}: {
+  threadId: string
+  subagent: Subagent
+  className?: string
+}) {
+  const [stopping, setStopping] = useState(false)
+  const stop = async () => {
+    setStopping(true)
+    try {
+      await callPromise("subagents.stop", { threadId, subagentId: subagent.id })
+    } catch (cause) {
+      toast.error(m.agents_stop_failed({ message: errorMessage(cause) }))
+    } finally {
+      setStopping(false)
+    }
+  }
+  const label = m.agents_stop({ label: subagent.label })
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      disabled={stopping}
+      onClick={stop}
+      aria-label={label}
+      title={label}
+      className={cn("text-muted-foreground hover:text-foreground", className)}
+    >
+      <RiStopFill aria-hidden className="size-3 fill-current" />
+    </Button>
+  )
+}
+
 function SubagentRow({
+  threadId,
   subagent,
   provider,
   now,
   onOpen,
 }: {
+  threadId: string
   subagent: Subagent
   provider: Thread["provider"]
   now: number
@@ -189,17 +231,25 @@ function SubagentRow({
   )
 
   return (
-    <li>
+    <li className="group/row flex items-start gap-1">
       {onOpen ? (
         <button
           type="button"
           onClick={onOpen}
-          className="-mx-2 flex w-[calc(100%+1rem)] gap-2.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+          className="-ml-2 flex min-w-0 flex-1 gap-2.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
         >
           {body}
         </button>
       ) : (
-        <div className="flex gap-2.5 py-1.5">{body}</div>
+        <div className="flex min-w-0 flex-1 gap-2.5 py-1.5">{body}</div>
+      )}
+      {subagent.status === "running" && (
+        // Shows on hover or focus, so a long list does not grow a column of stop buttons.
+        <StopSubagentButton
+          threadId={threadId}
+          subagent={subagent}
+          className="mt-1 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100"
+        />
       )}
     </li>
   )

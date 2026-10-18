@@ -57,6 +57,9 @@ const spawnSubagent = (threadId, turnId) => {
   }
   const command = { type: "commandExecution", id: "child-exec", command: "wc -l", cwd: "/repo", exitCode: null }
   item("item/started", { item: activity })
+  if (control().subagentPending) {
+    return send({ method: "turn/started", params: { threadId: child, turn: { id: "child-turn" } } })
+  }
   childItem("item/started", { item: { ...command, status: "inProgress", aggregatedOutput: null } })
   childItem("item/commandExecution/outputDelta", { itemId: "child-exec", delta: "218\n" })
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })

@@ -209,6 +209,8 @@ const make = Effect.gen(function* () {
   const runs = new Map<string, Run>()
   /** Keyed by hinacode threadId; a sub-agent can outlive the turn that spawned it. */
   const subagentsByThread = new Map<string, Subagents>()
+  /** The turn each sub-agent last ran, keyed by its Codex thread id, so it can be stopped on its own. */
+  const subagentTurns = new Map<string, string>()
 
   const listModels = Effect.gen(function* () {
     const client = yield* getClient(null)
@@ -537,6 +539,9 @@ const make = Effect.gen(function* () {
               if (message.kind === "exit") return yield* Effect.fail(message.error)
               const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
               if (message.kind === "notification" && childThreadId !== undefined && subagents.has(childThreadId)) {
+                const childScope = message.params as { turnId?: string; turn?: { id: string } }
+                const childTurnId = childScope.turnId ?? childScope.turn?.id
+                if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
                 yield* handleChildTool(childThreadId, message.method, message.params)
                 const changed = applyChildNotification(
                   subagents,
@@ -705,6 +710,16 @@ const make = Effect.gen(function* () {
       return run.turn && run.client ? interruptTurn(run.client, run.turn).pipe(Effect.catch(() => stop)) : stop
     }).pipe(Effect.asVoid)
 
+  /** Codex reports a sub-agent only while its parent's turn runs, through that run's app-server. */
+  const stopSubagent = (threadId: string, subagentId: string) =>
+    Effect.suspend(() => {
+      const client = runs.get(threadId)?.client
+      const turnId = subagentTurns.get(subagentId)
+      if (client === undefined || turnId === undefined || !subagentsByThread.get(threadId)?.has(subagentId))
+        return Effect.fail(new AgentError({ provider: "codex", message: "The sub-agent has no active turn to stop" }))
+      return interruptTurn(client, { threadId: subagentId, turnId })
+    }).pipe(Effect.asVoid)
+
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
@@ -743,6 +758,7 @@ const make = Effect.gen(function* () {
     runTurn,
     steer,
     interrupt,
+    stopSubagent,
     respondApproval,
     respondQuestion,
     // Codex takes a new approval policy and sandbox with the next turn/start.

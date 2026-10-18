@@ -44,7 +44,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { agentInstructions } from "../agents/instructions.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
-import { AgentError, type AgentProvider } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import type {
@@ -162,6 +162,11 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<ThreadUsage | null, AgentError | PersistenceError | NotFoundError>
     /** Sub-agents the thread's agent spawned since the app started, newest first. */
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
+    /** Stops one running sub-agent; the turn that spawned it keeps going. */
+    readonly stopSubagent: (
+      threadId: string,
+      subagentId: string,
+    ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
@@ -459,33 +464,38 @@ const make = Effect.gen(function* () {
     )
 
     /** Never fails: provider errors become turn_failed. */
-    const run = (prompt: string, attachments: ReadonlyArray<Attachment>) =>
-      Effect.gen(function* () {
-        const [mcpServer, { experimental }] = yield* Effect.all([mcp.connectionFor(thread.id), settings.get])
-        if (yield* Deferred.isDone(stop)) {
-          return yield* handle({ type: "turn_failed", message: "Turn interrupted" })
-        }
-        yield* provider
-          .runTurn({
-            threadId: thread.id,
-            prompt,
-            attachments,
-            cwd,
-            model: thread.model,
-            effort: thread.effort,
-            fastMode: thread.fastMode,
-            userSkills: thread.userSkills,
-            accessMode: thread.accessMode,
-            resumeSessionId: thread.providerSessionId,
-            home,
-            mcpServer,
-            instructions: agentInstructions(experimental),
-          })
-          .pipe(Stream.runForEach(handle))
-      }).pipe(
+    const follow = (events: Stream.Stream<AgentEvent, AgentError | PersistenceError>) =>
+      Stream.runForEach(events, handle).pipe(
         Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
+      )
+
+    const run = (prompt: string, attachments: ReadonlyArray<Attachment>) =>
+      follow(
+        Stream.unwrap(
+          Effect.gen(function* () {
+            const [mcpServer, { experimental }] = yield* Effect.all([mcp.connectionFor(thread.id), settings.get])
+            if (yield* Deferred.isDone(stop)) {
+              return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
+            }
+            return provider.runTurn({
+              threadId: thread.id,
+              prompt,
+              attachments,
+              cwd,
+              model: thread.model,
+              effort: thread.effort,
+              fastMode: thread.fastMode,
+              userSkills: thread.userSkills,
+              accessMode: thread.accessMode,
+              resumeSessionId: thread.providerSessionId,
+              home,
+              mcpServer,
+              instructions: agentInstructions(experimental),
+            })
+          }),
+        ),
       )
 
     const interrupt = Effect.gen(function* () {
@@ -493,7 +503,7 @@ const make = Effect.gen(function* () {
       yield* provider.interrupt(thread.id)
     })
 
-    return { provider, steer, run, handle, interrupt, messages: () => turnMessages }
+    return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
   }
 
   const nameThreadWithPullRequestScope = (thread: Thread, prompt: string) =>
@@ -710,6 +720,57 @@ const make = Effect.gen(function* () {
     scope,
   )
 
+  /**
+   * A turn the agent started by itself, with no user message before its reply. It waits for a turn that
+   * was already starting, which the provider turns away since this one holds the session.
+   */
+  const startWake = ({ threadId, events, discard }: Wake) =>
+    Effect.suspend(() => {
+      let claimed = false
+      let adopted = false
+      return Effect.gen(function* () {
+        while (busyThreads.has(threadId)) yield* Effect.sleep("50 millis")
+        busyThreads.add(threadId)
+        claimed = true
+        const turn = yield* Effect.gen(function* () {
+          const thread = yield* threads.get(threadId)
+          if (thread.status === "archived") return null
+          const provider = yield* providerFor(thread.provider)
+          const home = yield* accounts.home(thread.accountId)
+          const { cwd } = yield* activeWorkspace(threadId)
+          const assistant = openAssistantMessage(threadId, yield* nowIso)
+          yield* insertMessage(assistant)
+          yield* updateThread({ id: threadId, status: "running" })
+          return makeTurn(thread, provider, cwd, home, assistant, Deferred.makeUnsafe<void>())
+        }).pipe(worktrees.exclusive, exclusive(threadId))
+        if (turn === null) return
+        activeTurns.set(threadId, turn)
+        yield* FiberMap.run(turns, threadId, turn.follow(events))
+        adopted = true
+      }).pipe(
+        Effect.ensuring(
+          Effect.suspend(() => {
+            if (adopted) return Effect.void
+            if (claimed) busyThreads.delete(threadId)
+            return discard
+          }),
+        ),
+      )
+    })
+
+  for (const provider of Object.values(providers)) {
+    if (provider.wakes === undefined) continue
+    yield* Effect.forkIn(
+      Stream.runForEach(provider.wakes, (wake) =>
+        Effect.forkIn(
+          startWake(wake).pipe(Effect.catch((error) => Effect.logWarning("agent-started turn did not open", error))),
+          scope,
+        ),
+      ),
+      scope,
+    )
+  }
+
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
@@ -821,6 +882,20 @@ const make = Effect.gen(function* () {
         return yield* providers[thread.provider].usage(thread.providerSessionId, home)
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
+    stopSubagent: (threadId, subagentId) =>
+      Effect.gen(function* () {
+        if (subagents.get(threadId)?.get(subagentId)?.status !== "running") return
+        const { provider: id } = yield* threads.get(threadId)
+        const stop = providers[id].stopSubagent
+        if (stop === undefined) {
+          return yield* new AgentError({ provider: id, message: "This agent cannot stop a single sub-agent" })
+        }
+        yield* stop(threadId, subagentId)
+        // The provider's own report of the stop can arrive with no turn left to carry it.
+        const endedAt = yield* nowIso
+        const latest = subagents.get(threadId)?.get(subagentId)
+        if (latest?.status === "running") yield* updateSubagent(threadId, { ...latest, status: "stopped", endedAt })
+      }),
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
