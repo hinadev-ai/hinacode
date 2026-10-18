@@ -340,7 +340,9 @@ const make = Effect.gen(function* () {
             : yield* client.request<ThreadStartResponse>("thread/start", overrides)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
-          const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd, input.home) : []
+          const skills = input.prompt.includes("$")
+            ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
+            : []
           const turnStart: TurnStartParams = {
             threadId: thread.id,
             input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],

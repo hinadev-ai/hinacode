@@ -726,7 +726,7 @@ export const layer = Layer.effect(
     }) =>
       Effect.suspend(() => {
         const session = sessions.get(threadId)
-        return session !== undefined && session.cwd === cwd && sameHome(session.home, home)
+        return session !== undefined && session.userSkills && session.cwd === cwd && sameHome(session.home, home)
           ? lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.supportedCommands(),
