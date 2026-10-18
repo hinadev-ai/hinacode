@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 const levelText = { normal: "", warning: "text-attention", exhausted: "text-destructive" }
 const levelFill = { normal: "bg-muted-foreground", warning: "bg-attention", exhausted: "bg-destructive" }
 
-const windowLabel = (window: LimitWindowKind) => {
+export const windowLabel = (window: LimitWindowKind) => {
   switch (window.kind) {
     case "session":
       return m.limits_session()
@@ -32,6 +32,15 @@ const windowLabel = (window: LimitWindowKind) => {
 }
 
 const percentOf = (window: LimitWindow) => Math.round(window.usedPercent)
+
+/** "Resets in 2h 10m, Mon 3:40 PM". */
+export const resetLabel = (resetsAt: string, now: number, locale: string) =>
+  m.limits_resets_in({
+    duration: formatResetIn(resetsAt, now, locale),
+    time: new Intl.DateTimeFormat(locale, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(
+      Date.parse(resetsAt),
+    ),
+  })
 
 type Shown = AccountLimits & { readonly windows: ReadonlyArray<LimitWindow> }
 
@@ -147,16 +156,7 @@ export function AccountLimitsGroup({
                 </th>
                 <td className="pt-1 pr-4 text-right">{m.limits_used({ percent: percentOf(window) })}</td>
                 <td className="pt-1 text-background/70">
-                  {window.resetsAt === null
-                    ? m.limits_no_reset()
-                    : m.limits_resets_in({
-                        duration: formatResetIn(window.resetsAt, now, locale),
-                        time: new Intl.DateTimeFormat(locale, {
-                          weekday: "short",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        }).format(Date.parse(window.resetsAt)),
-                      })}
+                  {window.resetsAt === null ? m.limits_no_reset() : resetLabel(window.resetsAt, now, locale)}
                 </td>
               </tr>
             ))}

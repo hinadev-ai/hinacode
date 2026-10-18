@@ -37,7 +37,7 @@ import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { type ComposerPicker, useUi } from "../stores/ui.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
-import { useDefaultAccountName, useProviderAccounts } from "./settings/AccountSettings.tsx"
+import { switchAccount, useAccountHint, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import {
@@ -308,26 +308,29 @@ const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Rec
 /** The settings beside the model, each shown only when the agent, account or model supports it. */
 function useThreadOptions(thread: Thread, onError: (message: string) => void) {
   const current = useThreadModel(thread)
-  const environment = useThreadEnvironment(thread.id)
-  const accounts = useProviderAccounts(environment, thread.provider)
-  const defaultAccountName = useDefaultAccountName(environment, thread.provider)
+  const accounts = useAccountOptions(thread).options
+  const accountHint = useAccountHint()
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
 
   const account: Choice | null =
-    accounts.length === 0
+    accounts.length < 2
       ? null
       : {
           name: m.account_picker(),
           icon: RiUserLine,
           value: thread.accountId ?? CLI_LOGIN,
-          items: [
-            { value: CLI_LOGIN, label: defaultAccountName },
-            ...accounts.map((profile) => ({ value: profile.id, label: profile.name })),
-          ],
-          // The session's transcript lives in the account's home, so the account is fixed once there is one.
-          disabled: thread.providerSessionId !== null,
+          items: accounts.map((option) => ({
+            value: option.id ?? CLI_LOGIN,
+            label: option.name,
+            hint: accountHint(option),
+          })),
+          // The running turn is still writing the transcript the switch copies.
+          disabled: thread.status === "running" || thread.status === "awaiting_approval",
           destructive: false,
-          onChange: (value) => set({ accountId: value === CLI_LOGIN ? null : value }),
+          onChange: (value) =>
+            void switchAccount(thread.id, value === CLI_LOGIN ? null : value).catch((cause: unknown) =>
+              onError(errorMessage(cause)),
+            ),
         }
 
   const effort: Choice | null =
@@ -562,11 +565,11 @@ function ChoiceSubmenu<V extends string>({ choice }: { choice: Choice<V> }) {
 }
 
 function ChoiceItemLabel({ item }: { item: ChoiceItem<string> }) {
-  if (item.icon === undefined) return item.label
+  if (item.icon === undefined && item.hint === undefined) return item.label
   const Icon = item.icon
   return (
     <>
-      <Icon aria-hidden className="mt-0.5 self-start" />
+      {Icon && <Icon aria-hidden className="mt-0.5 self-start" />}
       <span className="flex flex-col">
         {item.label}
         <span className="text-xs text-muted-foreground">{item.hint}</span>

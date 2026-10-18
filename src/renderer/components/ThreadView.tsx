@@ -21,6 +21,7 @@ import { SecretRequestCard } from "./SecretRequestCard.tsx"
 import { SubagentTranscript } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
+import { AccountLimitNotice } from "./AccountSwitch.tsx"
 import { WorktreePreparation } from "./WorktreePreparation.tsx"
 import { Button } from "./ui/button.tsx"
 
@@ -76,8 +77,10 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         <div ref={dockRef} className="absolute inset-x-0 bottom-0 flex max-h-full flex-col">
           <div className="flex min-h-0 flex-col bg-background">
             <PendingRequests thread={thread} />
-            {thread.status === "limited" && thread.usageLimit !== null && (
-              <UsageLimitCallout key={thread.id} threadId={thread.id} limit={thread.usageLimit} />
+            {thread.status === "limited" && thread.usageLimit !== null ? (
+              <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
+            ) : (
+              <AccountLimitNotice key={thread.id} thread={thread} />
             )}
           </div>
           <Composer thread={thread} />
