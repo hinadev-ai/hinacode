@@ -21,8 +21,10 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  memo,
   startTransition,
   useActionState,
+  useCallback,
   useId,
   useMemo,
   useRef,
@@ -153,7 +155,10 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
-  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
+  const focusAfterRemoval = useCallback(
+    () => firstRowRef.current ?? newThreadButtonRef?.current ?? null,
+    [newThreadButtonRef],
+  )
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const plugins = useMemo<DragDropPlugins>(
     () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility()],
@@ -233,7 +238,16 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
+// Memoized so a push for one thread re-renders only its row, and the rows whose index moved.
+const ThreadRow = memo(function ThreadRow({
+  thread,
+  index,
+  group,
+  reorderable,
+  showProject,
+  linkRef,
+  focusAfterRemoval,
+}: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -446,7 +460,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       />
     </li>
   )
-}
+})
 
 /** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
