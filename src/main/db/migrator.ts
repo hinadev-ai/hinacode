@@ -15,7 +15,7 @@ import pullRequestWatch from "./migrations/0013_pull_request_watch.ts"
 import threadPin from "./migrations/0014_thread_pin.ts"
 import environments from "./migrations/0015_environments.ts"
 import threadQueue from "./migrations/0016_thread_queue.ts"
-import threadUserSkills from "./migrations/0017_thread_user_skills.ts"
+import threadUserSkills from "./migrations/0018_thread_user_skills.ts"
 
 const run = Migrator.make({})
 
@@ -40,6 +40,6 @@ export const runMigrations = run({
     "14_thread_pin": threadPin,
     "15_environments": environments,
     "16_thread_queue": threadQueue,
-    "17_thread_user_skills": threadUserSkills,
+    "18_thread_user_skills": threadUserSkills,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

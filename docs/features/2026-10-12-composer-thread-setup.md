@@ -42,7 +42,7 @@ The thread stores `effort` (null means the model's default) and `fastMode` (migr
 
 ## Conversation mode
 
-The `Conversation` toggle leaves out the skills and commands in the user's own agent home, for a thread that should just talk. The thread stores `userSkills`, true by default (migration `0017`). Project, plugin and built-in skills still load.
+The `Conversation` toggle leaves out the skills and commands in the user's own agent home, for a thread that should just talk. The thread stores `userSkills`, true by default (migration `0018`). Project, plugin and built-in skills still load.
 
 - Claude gets a `settings.skillOverrides` that turns each user-scope command `off`, named from the cached `supportedCommands` probe. The CLI lists skills to the model once per process, and `applyFlagSettings` does not list them again, so a toggle closes the live session and resumes it in a new CLI. Session grants carry over.
 - Codex gets `skills.config` with every `user` skill from `skills/list` set to `enabled: false`, on `thread/start` and `thread/resume`.
