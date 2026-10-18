@@ -319,6 +319,15 @@ const make = Effect.gen(function* () {
     return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
   }
 
+  /** Providers report sub-agents only during a turn, so one still running when the turn ends would never stop. */
+  const stopSubagents = (threadId: string, endedAt: string) => {
+    const byId = subagents.get(threadId)
+    const running = [...(byId?.values() ?? [])].filter((subagent) => subagent.status === "running")
+    if (byId === undefined || running.length === 0) return Effect.void
+    for (const subagent of running) byId.set(subagent.id, { ...subagent, status: "stopped", endedAt })
+    return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
+  }
+
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
 
   const insertMessage = (message: Message) =>
@@ -418,6 +427,7 @@ const make = Effect.gen(function* () {
           new AgentError({ provider: "hinacode", message: "The turn ended before the user answered." }),
         )
       }
+      yield* stopSubagents(thread.id, yield* nowIso)
       const last = turnMessages.at(-1)!
       if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
       yield* persist
