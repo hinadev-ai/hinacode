@@ -237,8 +237,16 @@ const effortLabels: Record<string, () => string> = {
   xhigh: m.effort_xhigh,
   max: m.effort_max,
   ultra: m.effort_ultra,
+  ultrathink: m.effort_ultrathink,
+  ultracode: m.effort_ultracode,
 }
 const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
+
+/** Claude Code's ultrathink and ultracode are modes rather than levels, so they say what they do. */
+const effortHints: Record<string, () => string> = {
+  ultrathink: m.effort_ultrathink_hint,
+  ultracode: m.effort_ultracode_hint,
+}
 
 const DEFAULT_EFFORT = "default"
 
@@ -347,7 +355,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
                 ? m.thread_effort_default_named({ effort: effortLabel(current.defaultEffort) })
                 : m.thread_effort_default(),
             },
-            ...current.efforts.map((value) => ({ value, label: effortLabel(value) })),
+            ...current.efforts.map((value) => ({ value, label: effortLabel(value), hint: effortHints[value]?.() })),
           ],
           disabled: false,
           destructive: false,
