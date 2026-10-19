@@ -13,6 +13,18 @@ export type ProviderId = typeof ProviderId.Type
 export const AccountProviderId = Schema.Literals(["claude", "codex"])
 export type AccountProviderId = typeof AccountProviderId.Type
 
+/** The agents whose CLI hinacode checks for a newer release: each publishes on npm and has an `update` command. */
+export const UpdatableProviderId = Schema.Literals(["claude", "codex"])
+export type UpdatableProviderId = typeof UpdatableProviderId.Type
+
+/** A newer release of the agent CLI on PATH than the one installed. */
+export const AgentUpdate = Schema.Struct({
+  provider: UpdatableProviderId,
+  current: Schema.String,
+  latest: Schema.String,
+})
+export type AgentUpdate = typeof AgentUpdate.Type
+
 export const ModelInfo = Schema.Struct({
   id: Schema.String,
   label: Schema.String,

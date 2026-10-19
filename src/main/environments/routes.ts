@@ -40,6 +40,8 @@ export const routes: Record<RpcMethod, Route> = {
   "updates.status": client,
   "updates.check": client,
   "updates.install": client,
+  "agents.updates": client,
+  "agents.update": client,
   "links.favicon": client,
 
   "projects.list": all,
