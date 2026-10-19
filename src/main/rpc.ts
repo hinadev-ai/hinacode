@@ -1,7 +1,7 @@
 import { Cause, Effect, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { compactMessage } from "../shared/compactTranscript.ts"
-import type { NotificationPermission, PermissionRequestOutcome } from "../shared/domain.ts"
+import type { NotificationPermission, Opener, OpenerId, PermissionRequestOutcome } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
@@ -72,6 +72,8 @@ export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
+  readonly openers: Effect.Effect<ReadonlyArray<Opener>>
+  readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
@@ -194,6 +196,8 @@ const handlers: Handlers = {
   "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
   "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),
   "shell.reveal": ({ path }, desktop) => desktop?.reveal(path) ?? Effect.void,
+  "shell.openers": (_, desktop) => desktop?.openers ?? Effect.succeed([]),
+  "shell.openWith": ({ path, opener }, desktop) => desktop?.openWith(path, opener) ?? Effect.void,
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),

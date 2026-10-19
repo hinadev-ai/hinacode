@@ -85,6 +85,9 @@ export const updateClientSettingsAtom = Atom.fn((patch: RpcRequest<"clientSettin
   call("clientSettings.set", patch).pipe(Effect.tap(() => Atom.refresh(clientSettingsAtom))),
 )
 
+/** Apps on this desktop that "Open with" can launch. */
+export const openersAtom = Atom.make(call("shell.openers", undefined))
+
 /** Paired clouds with their link status. A status push lists them again. */
 export const environmentsAtom = Atom.make((get) => {
   get.addFinalizer(onPushEvent((event) => event.type === "environment.status" && get.refreshSelf()))
