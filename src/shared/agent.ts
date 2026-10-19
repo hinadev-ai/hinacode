@@ -227,6 +227,23 @@ export const Subagent = Schema.Struct({
 })
 export type Subagent = typeof Subagent.Type
 
+/**
+ * The agent summarizing the conversation so far to free its context window, by `/compact` or on its own as
+ * the window fills. `postTokens` is null when the agent did not measure the summary.
+ */
+export const Compaction = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("running") }),
+  Schema.Struct({
+    status: Schema.Literal("done"),
+    trigger: Schema.Literals(["manual", "auto"]),
+    preTokens: Schema.Number,
+    postTokens: Schema.NullOr(Schema.Number),
+  }),
+  /** `message` is null when the turn ended before the compaction reported back. */
+  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.NullOr(Schema.String) }),
+])
+export type Compaction = typeof Compaction.Type
+
 export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("session_bound"), providerSessionId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("text_delta"), text: Schema.String }),
@@ -257,6 +274,8 @@ export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions_posted"), text: Schema.String, questions: Schema.Array(Question) }),
   /** Carries the sub-agent's full current state, not a patch. Never part of the transcript. */
   Schema.Struct({ type: Schema.Literal("subagent_updated"), subagent: Subagent }),
+  /** Carries the compaction's full current state, which replaces the one still running. */
+  Schema.Struct({ type: Schema.Literal("compaction_updated"), compaction: Compaction }),
   /** Raised by the built-in MCP server, not the provider, while a turn runs. */
   Schema.Struct({ type: Schema.Literal("secret_requested"), request: SecretRequest }),
   Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),

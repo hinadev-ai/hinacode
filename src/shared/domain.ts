@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
@@ -321,6 +321,7 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("attachment"), attachment: Attachment }),
   /** Questions the agent posted without waiting; `text` is how they read once answered. */
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
+  Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
 ])
 export type MessagePart = typeof MessagePart.Type
 

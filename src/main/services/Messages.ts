@@ -2,7 +2,7 @@ import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { TokenUsage } from "../../shared/agent.ts"
 import { Message, MessagePart } from "../../shared/domain.ts"
-import { failRunningTools } from "../../shared/foldEvent.ts"
+import { failRunningParts } from "../../shared/foldEvent.ts"
 import { nowIso } from "./clock.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 
@@ -73,7 +73,7 @@ const make = Effect.gen(function* () {
     yield* Effect.forEach(
       interrupted,
       (message) =>
-        update({ ...message, parts: failRunningTools(message.parts), completedAt: message.completedAt ?? now }),
+        update({ ...message, parts: failRunningParts(message.parts), completedAt: message.completedAt ?? now }),
       { discard: true },
     )
   })
