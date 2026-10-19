@@ -2,8 +2,8 @@ appId: app.hinacode
 productName: HinaCode
 directories:
   output: dist
-# node-pty ships N-API prebuilds for macOS and Windows, and Linux builds it from source at install time.
-# N-API binaries load in Electron as they are, and rebuilding cannot cross-compile node-pty for Windows on Linux.
+# node-pty ships N-API prebuilds for every platform. N-API binaries load in Electron as they are, and rebuilding
+# cannot cross-compile node-pty for Windows on Linux.
 npmRebuild: false
 # node-pty spawns a native binary, which cannot run from inside app.asar.
 asarUnpack:
@@ -18,7 +18,7 @@ mac:
     - package.json
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
-    - "!**/node_modules/node-pty/prebuilds/{win32,darwin-x64}*/**"
+    - "!**/node_modules/node-pty/prebuilds/{win32,linux,darwin-x64}*/**"
   target:
     - target: dmg
       arch: arm64
@@ -35,7 +35,7 @@ win:
     - package.json
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
-    - "!**/node_modules/node-pty/prebuilds/{darwin,win32-arm64}*/**"
+    - "!**/node_modules/node-pty/prebuilds/{darwin,linux,win32-arm64}*/**"
     - "!**/node_modules/node-pty/build/**"
   target:
     - target: nsis
@@ -50,7 +50,7 @@ linux:
     - package.json
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
-    - "!**/node_modules/node-pty/prebuilds/**"
+    - "!**/node_modules/node-pty/prebuilds/{darwin,win32,linux-arm64}*/**"
   target:
     - target: AppImage
       arch: x64

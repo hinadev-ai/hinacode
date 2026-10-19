@@ -29,7 +29,7 @@ The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows 
 3. The `npm` job then publishes the same version to npm as `hinacode`, for `npx hinacode serve` (see `cloud.md`). It authenticates with npm trusted publishing, which npm only lets you configure on a package that exists. So once, by hand, from a clean checkout of the tag:
 
    ```sh
-   npm pkg set version=0.1.0-alpha.9 && pnpm build && npm publish --tag latest
+   npm pkg set version=0.1.0-alpha.9 && npm pkg delete optionalDependencies && pnpm build && npm publish --tag latest
    ```
 
    Then on npmjs.com, under the package's Settings > Trusted publishing, add GitHub Actions with this repository and the workflow `build.yml`.

@@ -22,7 +22,7 @@ Options, flags first, then environment, then stored settings:
 | `--host <host>`  | `HINACODE_SERVE_HOST`           | Bind host, default `0.0.0.0`                                  |
 | `--rotate-token` | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
 
-On Linux, `npx` builds `node-pty` from source on first install, so the machine needs `python3`, `make` and a C++ compiler (`build-essential` on Debian and Ubuntu).
+Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
 
 ## Keep it running
 

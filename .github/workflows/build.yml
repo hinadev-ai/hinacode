@@ -117,4 +117,8 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: npm pkg set version="${GITHUB_REF_NAME#v}" && pnpm build && npm publish --tag latest
+      # node-mac-permissions is the desktop's, a git dependency that npm would clone and compile on every Mac install.
+      - run: |
+          npm pkg set version="${GITHUB_REF_NAME#v}"
+          npm pkg delete optionalDependencies
+          pnpm build && npm publish --tag latest
