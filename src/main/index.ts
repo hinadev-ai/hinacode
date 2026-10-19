@@ -1,15 +1,10 @@
 import { existsSync, renameSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import * as NodeServices from "@effect/platform-node/NodeServices"
-import { app, BrowserWindow, Menu, net, protocol, session, shell } from "electron"
+import { app, BrowserWindow, Menu, net, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
-import * as ClaudeProvider from "./agents/claude/index.ts"
-import { usageLimitLayer } from "./agents/claude/mock.ts"
-import { CodexProvider } from "./agents/codex/index.ts"
-import { MuseProvider } from "./agents/muse/index.ts"
-import * as Db from "./db/client.ts"
-import { bringToFront, makeEventsLayer, registerIpc } from "./ipc.ts"
+import { makeAppLayer } from "./app.ts"
+import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import {
   BROWSER_PARTITION,
   externalUrl,
@@ -21,37 +16,12 @@ import {
 } from "./security.ts"
 import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
 import { RpcMethods } from "../shared/contract.ts"
-import * as AgentAccounts from "./services/AgentAccounts.ts"
-import * as AgentLogins from "./services/AgentLogins.ts"
-import * as AgentRunner from "./services/AgentRunner.ts"
-import * as Attachments from "./services/Attachments.ts"
-import * as AutoArchive from "./services/AutoArchive.ts"
-import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
-import * as Automations from "./services/automations/Automations.ts"
 import * as Files from "./services/Files.ts"
-import * as Favicons from "./services/Favicons.ts"
-import * as Messages from "./services/Messages.ts"
-import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
-import * as Mcp from "./mcp/index.ts"
-import * as Ports from "./services/Ports.ts"
-import * as Projects from "./services/Projects.ts"
-import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
-import * as RemoteAccess from "./remote/access.ts"
-import * as RemoteServer from "./remote/server.ts"
-import { applyServeConfig, serveConfig } from "./serve.ts"
+import { Keyring } from "./services/Secrets.ts"
 import { hydratePath } from "./shellPath.ts"
-import { pairingUrl } from "../shared/remote.ts"
-import * as Secrets from "./services/Secrets.ts"
-import * as Search from "./services/Search.ts"
-import * as Settings from "./services/Settings.ts"
-import * as Terminals from "./services/Terminals.ts"
-import * as ThreadNaming from "./services/ThreadNaming.ts"
-import * as TinyVm from "./services/tinyVm/TinyVm.ts"
-import * as Threads from "./services/Threads.ts"
-import * as Updates from "./services/Updates.ts"
-import * as Worktrees from "./services/Worktrees.ts"
+import * as Updater from "./updater.ts"
 import icon from "../../assets/icon.png?asset"
 
 // Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves. The name
@@ -60,49 +30,23 @@ import icon from "../../assets/icon.png?asset"
 app.setName("kkcode")
 // Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
 if (process.platform === "win32") app.setAppUserModelId("app.hinacode")
-// `hinacode serve` (or HINACODE_SERVE=1) runs this same binary as a headless cloud: no window, the remote
-// listener on, and pairing printed to stdout. It needs its own HINACODE_USER_DATA, which the lock below enforces.
-const serve = (() => {
-  try {
-    return serveConfig(process.argv, process.env)
-  } catch (error) {
-    // Electron keeps the process alive after a throw at load, so a service manager would never see the failure.
-    console.error(`hinacode serve: ${error instanceof Error ? error.message : String(error)}`)
-    return process.exit(1)
-  }
-})()
 // Lets several instances run side by side during development and testing.
 const userDataOverride = process.env["HINACODE_USER_DATA"]
 if (userDataOverride) app.setPath("userData", userDataOverride)
 // Only the signed release app is on the access list of the login Keychain item `kkcode Safe Storage`. Any other
-// binary (each worktree's dev build, e2e, a cloud under launchd) would ask for the login password on every boot,
+// binary (each worktree's dev build, e2e) would ask for the login password on every boot,
 // so it seals secrets with Chromium's public test key. That key cannot open the release app's secrets, so an
 // unpackaged run also defaults to a profile of its own.
-if (!app.isPackaged || serve) app.commandLine.appendSwitch("use-mock-keychain")
+if (!app.isPackaged) app.commandLine.appendSwitch("use-mock-keychain")
 if (!app.isPackaged && !userDataOverride) app.setPath("userData", join(app.getPath("appData"), "kkcode-dev"))
 // Electron keys the lock on userData. A second process on the same database would run its own pollers and
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
   console.error(`HinaCode is already running on ${app.getPath("userData")}. Set HINACODE_USER_DATA to run another.`)
-  // A desktop launch hands off to the running app, but a cloud that cannot start has failed, and its service manager must see that.
-  app.exit(serve ? 1 : 0)
+  app.exit(0)
 }
 // The login shell takes most of a second to start, so it runs while Electron gets ready.
 const pathHydrated = hydratePath(process.env)
-const mockClaude = process.env["HINACODE_MOCK_CLAUDE"]
-if (
-  mockClaude !== undefined &&
-  mockClaude !== "usage-limit" &&
-  mockClaude !== "org-spend-limit" &&
-  mockClaude !== "todos" &&
-  mockClaude !== "markdown"
-)
-  throw new Error("HINACODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
-if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires HINACODE_USER_DATA")
-const mockResetMs = Number(process.env["HINACODE_MOCK_RESET_MS"] ?? 60000)
-if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || Math.abs(mockResetMs) > 3600000))
-  throw new Error("HINACODE_MOCK_RESET_MS must be between -3600000 and 3600000")
-
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
   // `stream` lets <video> and <audio> seek with Range requests.
@@ -129,14 +73,14 @@ const sandboxed = (response: Response) => {
 }
 
 /** Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
-const serveAttachments = (runtime: AppRuntime) =>
+const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
   protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {
     const url = new URL(request.url)
     const path = decodeURIComponent(url.pathname.slice(1))
     const environment = url.searchParams.get("environment")
     if (environment !== null)
       return fetchFromCloud(runtime, environment, { method: "attachments.read", payload: { path } })
-    if (!isInside(Attachments.attachmentsRoot(), path)) return new Response(null, { status: 403 })
+    if (!isInside(attachmentsRoot, path)) return new Response(null, { status: 403 })
     return net.fetch(pathToFileURL(path).toString())
   })
 
@@ -187,56 +131,13 @@ const serveProjectFiles = (runtime: AppRuntime) =>
     return sandboxed(await net.fetch(pathToFileURL(file).toString(), rangeOf(request)))
   })
 
-const makeAppLayer = (dbPath: string, sbxConfigPath: string) => {
-  const domain = Layer.mergeAll(
-    Threads.layer.pipe(
-      Layer.provideMerge(Terminals.layer),
-      Layer.provideMerge(Worktrees.layer),
-      Layer.provideMerge(Projects.layer),
-      Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
-    ),
-    ClientSettings.layer,
-    Messages.layer,
-    Attachments.layer,
-    Search.layer,
-    Files.layer,
-  )
-  const naming =
-    mockClaude === undefined
-      ? ThreadNaming.layer
-      : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
-  const claude = mockClaude === undefined ? ClaudeProvider.layer : usageLimitLayer(mockClaude, mockResetMs)
-  const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(dirname(dbPath), "tiny-vm"))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess, tinyVm).pipe(
-    Layer.provide(domain),
-  )
-  // A cloud has no app to update in place; it is replaced as a binary, so the updater never starts there.
-  const updates = serve ? Layer.succeed(Updates.Updates, Updates.unsupported(app.getVersion())) : Updates.layer
-  const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
-  // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
-  const services = Layer.mergeAll(
-    Automations.layer,
-    AutoArchive.layer,
-    PullRequestWatcher.layer,
-    updates,
-    Mcp.serverLayer,
-    AgentLogins.layer,
-    Environments.layer.pipe(Layer.provide(Secrets.layer)),
-  ).pipe(Layer.provideMerge(agents))
-  // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
-  // A cloud's address is written below it, so the listener's first read of its settings already has it.
-  return RemoteServer.layer.pipe(
-    Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
-    Layer.provideMerge(services),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer)),
-    Layer.provideMerge(makeEventsLayer()),
-    Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
-    Layer.provide(Db.layer(dbPath)),
-    Layer.provide(NodeServices.layer),
-  )
-}
+const safeStorageKeyring = Layer.succeed(
+  Keyring,
+  Keyring.of({
+    seal: (value) => (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(value) : undefined),
+    open: (sealed) => safeStorage.decryptString(sealed),
+  }),
+)
 
 const QUIT_TIMEOUT_MS = 5000
 
@@ -305,36 +206,6 @@ const createWindow = () => {
   void window.loadURL(appUrl)
 }
 
-const LISTEN_TIMEOUT_MS = 5000
-
-/**
- * Waits until the `hinacode serve` listener is bound, then prints the pairing URL per reachable host.
- * Stdout is the daemon's interface: a terminal, launchd or systemd reads it.
- */
-const startCloud = async (
-  runtime: ManagedRuntime.ManagedRuntime<RemoteAccess.RemoteAccess, unknown>,
-  userData: string,
-) => {
-  const deadline = Date.now() + LISTEN_TIMEOUT_MS
-  for (;;) {
-    const status = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.status))
-    if (status.listening) break
-    if (status.listenError) throw new Error(`remote listener failed: ${status.listenError}`)
-    if (Date.now() > deadline) throw new Error("remote listener did not start in time")
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  const pairing = await runtime.runPromise(RemoteAccess.RemoteAccess.use((remote) => remote.pairing))
-  const lines = [
-    "HinaCode cloud",
-    `data: ${userData}`,
-    "pair a phone with:",
-    `  ${pairingUrl(pairing)}`,
-    "pair a desktop with one of:",
-    ...pairing.hosts.map((host) => `  ${pairingUrl({ ...pairing, hosts: [host] })}`),
-  ]
-  process.stdout.write(`${lines.join("\n")}\n`)
-}
-
 // The default menu labels its app items with `app.name`, which stays "hinacode" to keep userData and the Keychain item.
 const setMacMenu = () =>
   Menu.setApplicationMenu(
@@ -373,7 +244,15 @@ app.whenReady().then(async () => {
       if (existsSync(previous)) renameSync(previous, `${dbPath}${suffix}`)
     }
   }
-  const runtime = ManagedRuntime.make(makeAppLayer(dbPath, sbxConfigPath))
+  const runtime = ManagedRuntime.make(
+    makeAppLayer({
+      userData,
+      sbxConfigPath,
+      keyring: safeStorageKeyring,
+      updates: Updater.layer,
+      toWindows: sendToWindows,
+    }),
+  )
   // Build the layer (open the database, run migrations) before anything can call in.
   await runtime.runPromise(Effect.void)
   let disposed = false
@@ -386,22 +265,10 @@ app.whenReady().then(async () => {
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
     void Promise.race([disposal, timeout]).then(() => app.quit())
   })
-  if (serve) {
-    app.dock?.hide()
-    process.on("SIGINT", () => app.quit())
-    process.on("SIGTERM", () => app.quit())
-    try {
-      await startCloud(runtime, userData)
-    } catch (cause) {
-      console.error("hinacode serve failed", cause)
-      app.exit(1)
-    }
-    return
-  }
   registerIpc(runtime, appUrl)
   app.dock?.setIcon(icon)
   if (process.platform === "darwin") setMacMenu()
-  serveAttachments(runtime)
+  serveAttachments(runtime, join(userData, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
   limitBrowserPermissions()
@@ -417,5 +284,5 @@ app.whenReady().then(async () => {
 })
 
 app.on("window-all-closed", () => {
-  if (!serve && process.platform !== "darwin") app.quit()
+  if (process.platform !== "darwin") app.quit()
 })

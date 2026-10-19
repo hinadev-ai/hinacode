@@ -3,7 +3,6 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
-import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -28,8 +27,6 @@ import * as Terminals from "./Terminals.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
-
-vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false } }))
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-watch-delivery-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))

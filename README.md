@@ -30,7 +30,7 @@ Run a built app with its own data directory, for example to keep a test profile 
 HINACODE_USER_DATA=/tmp/hinacode-test pnpm exec electron out/main/index.js
 ```
 
-Unpackaged runs (`pnpm dev`, `pnpm serve`, e2e and the command above) never touch the login Keychain. They seal secrets with Chromium's public mock key, so save only dummy secrets in them. Without `HINACODE_USER_DATA` they use the `kkcode-dev` profile, not the release app's.
+Unpackaged runs (`pnpm dev`, e2e and the command above) never touch the login Keychain. They seal secrets with Chromium's public mock key, so save only dummy secrets in them. Without `HINACODE_USER_DATA` they use the `kkcode-dev` profile, not the release app's.
 
 Simulate an exhausted Claude account without using the account:
 

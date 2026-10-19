@@ -11,8 +11,10 @@ process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
 
 export default defineConfig({
   main: {
-    // Optional dependencies are bundled by default, which breaks this native module's binding lookup.
     build: {
+      // `daemon` is `hinacode serve`, the same services as plain Node with no Electron (see `bin/hinacode.mjs`).
+      rollupOptions: { input: { index: "src/main/index.ts", daemon: "src/main/daemon.ts" } },
+      // Optional dependencies are bundled by default, which breaks this native module's binding lookup.
       externalizeDeps: {
         include: ["node-mac-permissions"],
         exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node"],

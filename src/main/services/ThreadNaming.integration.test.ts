@@ -30,8 +30,6 @@ import * as ThreadNaming from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
-vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false } }))
-
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
   query: async function* () {
@@ -117,7 +115,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
-    Secrets.layer,
+    Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
     credentialsLayer,
   )
   return AgentRunner.layer.pipe(

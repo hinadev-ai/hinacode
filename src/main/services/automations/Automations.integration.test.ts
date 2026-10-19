@@ -32,8 +32,6 @@ import * as Terminals from "../Terminals.ts"
 import { Automations, layer as automationsLayer } from "./Automations.ts"
 import type { LinearIssueFilter, LinearIssueNode } from "./pollers.ts"
 
-vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false } }))
-
 const linear = vi.hoisted(() => ({
   issues: [] as Array<LinearIssueNode>,
   filters: [] as Array<LinearIssueFilter>,
@@ -86,7 +84,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
-    Secrets.layer,
+    Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
     credentialsLayer,
   )
   const agents = AgentRunner.layer.pipe(

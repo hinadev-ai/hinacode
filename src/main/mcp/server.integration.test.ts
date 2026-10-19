@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, layer } from "@effect/vitest"
-import { vi } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
@@ -28,7 +27,7 @@ import * as GitHub from "../services/GitHub.ts"
 import * as Messages from "../services/Messages.ts"
 import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
-import { Secrets, layer as secretsLayer } from "../services/Secrets.ts"
+import { noKeyring, Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
@@ -39,18 +38,6 @@ import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
-
-vi.mock("electron", async () => {
-  const fs = await import("node:fs")
-  const os = await import("node:os")
-  const path = await import("node:path")
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "hinacode-mcp-"))
-  return {
-    app: { getPath: () => userData },
-    BrowserWindow: {},
-    safeStorage: { isEncryptionAvailable: () => false },
-  }
-})
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
@@ -113,8 +100,8 @@ const core = Layer.mergeAll(
     Layer.provideMerge(Settings.layer),
   ),
   Messages.layer,
-  Attachments.layer,
-  secretsLayer,
+  Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
+  secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
 )
 const vmProfileDir = mkdtempSync(join(tmpdir(), "kk-vm-profile-"))

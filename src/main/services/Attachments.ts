@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { basename, extname, join } from "node:path"
-import { app } from "electron"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { Attachment } from "../../shared/domain.ts"
 import { isInside } from "../security.ts"
@@ -36,8 +35,6 @@ export class AttachmentError extends Schema.TaggedError<AttachmentError>()("Atta
   message: Schema.String,
 }) {}
 
-export const attachmentsRoot = () => join(app.getPath("userData"), "attachments")
-
 const safeName = (name: string) =>
   basename(name)
     .replace(/[^\w.-]+/g, "_")
@@ -54,7 +51,7 @@ const decodeDataUrl = (dataUrl: string) => {
 const failure = (message: string) => (cause: unknown) =>
   new AttachmentError({ message: `${message}: ${cause instanceof Error ? cause.message : String(cause)}` })
 
-/** Copies user-supplied files into `<userData>/attachments/<threadId>/` so agents get a stable absolute path. */
+/** Copies user-supplied files into `<root>/<threadId>/` so agents get a stable absolute path. */
 export class Attachments extends Context.Service<
   Attachments,
   {
@@ -66,10 +63,10 @@ export class Attachments extends Context.Service<
   }
 >()("hinacode/Attachments") {}
 
-const stage = (threadId: string, source: AttachmentSource) =>
+const stage = (root: string) => (threadId: string, source: AttachmentSource) =>
   Effect.gen(function* () {
     const id = randomUUID()
-    const dir = join(attachmentsRoot(), safeName(threadId))
+    const dir = join(root, safeName(threadId))
     yield* Effect.tryPromise({
       try: () => mkdir(dir, { recursive: true }),
       catch: failure("Cannot create attachments dir"),
@@ -106,8 +103,8 @@ export const inlineSource = (path: string) =>
     return { dataUrl: `data:${mimeOf(name)};base64,${data.toString("base64")}`, name }
   })
 
-const read = (path: string) =>
-  isInside(attachmentsRoot(), path)
+const read = (root: string) => (path: string) =>
+  isInside(root, path)
     ? Effect.tryPromise({ try: () => readFile(path), catch: failure(`Cannot read ${basename(path)}`) }).pipe(
         Effect.map((data) => ({ dataUrl: `data:${mimeOf(path)};base64,${data.toString("base64")}` })),
       )
@@ -122,4 +119,6 @@ const attachment = (id: string, name: string, path: string, mime: string, bytes:
   bytes,
 })
 
-export const layer = Layer.succeed(Attachments, Attachments.of({ stage, read }))
+/** `root` is the attachments directory, `<userData>/attachments`. */
+export const layer = (root: string) =>
+  Layer.succeed(Attachments, Attachments.of({ stage: stage(root), read: read(root) }))

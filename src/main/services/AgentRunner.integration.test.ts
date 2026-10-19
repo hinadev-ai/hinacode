@@ -31,8 +31,6 @@ import { ThreadNaming } from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
-vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false } }))
-
 interface Probe {
   readonly runner: AgentRunner["Service"]
   readonly threads: Threads.Threads["Service"]
