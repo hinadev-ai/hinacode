@@ -2,6 +2,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
+import { highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
@@ -16,6 +17,7 @@ import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
+import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessagePartView, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
@@ -123,6 +125,9 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
+/** Only fenced blocks are colored in a sent message; links and thread mentions are found by `linkify` and `WithThreadMentions`. */
+const NO_KNOWN_TOKENS: KnownTokens = { commands: new Set(), files: new Set(), threads: new Set() }
+
 function MessageBody({ message }: { message: Message }) {
   const repository = useThreadRepository()
   const { showElapsedTime } = use(AnswerableContext)
@@ -145,13 +150,21 @@ function MessageBody({ message }: { message: Message }) {
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap wrap-break-word text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
-              {linkify(text, repository).map((segment, index) =>
-                segment.type === "link" ? (
-                  <WebLink key={index} href={segment.href}>
-                    <Highlighted text={segment.text} />
-                  </WebLink>
+              {highlight(text, NO_KNOWN_TOKENS).map((block, blockIndex) =>
+                block.kind === "fence" ? (
+                  <span key={blockIndex} className="font-mono text-[0.91em]">
+                    <HighlightedCode code={block.text} language={block.language} />
+                  </span>
                 ) : (
-                  <WithThreadMentions key={index} text={segment.text} />
+                  linkify(block.text, repository).map((segment, index) =>
+                    segment.type === "link" ? (
+                      <WebLink key={`${blockIndex}:${index}`} href={segment.href}>
+                        <Highlighted text={segment.text} />
+                      </WebLink>
+                    ) : (
+                      <WithThreadMentions key={`${blockIndex}:${index}`} text={segment.text} />
+                    ),
+                  )
                 ),
               )}
             </FindPartContext>

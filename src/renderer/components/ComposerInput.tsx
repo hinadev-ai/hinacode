@@ -25,6 +25,7 @@ import {
 } from "../../shared/composerSyntax.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
+import { HighlightedCode } from "./HighlightedCode.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
 
@@ -195,11 +196,17 @@ export function ComposerInput({
               <span className="truncate">{skill.command.name}</span>
             </span>
           )}
-          {segments.map((segment, index) => (
-            <span key={index} className={syntaxClass[segment.kind]}>
-              {segment.text}
-            </span>
-          ))}
+          {segments.map((segment, index) =>
+            segment.kind === "fence" ? (
+              <span key={index} className={syntaxClass.code}>
+                <HighlightedCode code={segment.text} language={segment.language} />
+              </span>
+            ) : (
+              <span key={index} className={syntaxClass[segment.kind]}>
+                {segment.text}
+              </span>
+            ),
+          )}
           {/* A trailing newline only takes up a line in the textarea once something follows it. */}
           {"​"}
         </div>

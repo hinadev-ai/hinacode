@@ -14,7 +14,8 @@ import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
-import { FindPartContext, Highlighted, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
+import { FindPartContext, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
+import { HighlightedCode } from "./HighlightedCode.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
 /** The proxied URL when the paragraph is nothing but a bare GitHub attachment link, which GitHub embeds. */
@@ -200,7 +201,7 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
     <CodeFigure label={language} code={code}>
       <pre className="overflow-x-auto px-[0.8em] pb-[0.6em] font-mono text-[0.91em]">
         <code>
-          <Highlighted text={code} />
+          <HighlightedCode code={code} language={language} />
         </code>
       </pre>
     </CodeFigure>
