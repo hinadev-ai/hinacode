@@ -230,7 +230,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
       )}
       <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none">
+        <p className="animate-shimmer text-xs text-shimmer motion-reduce:animate-none">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
