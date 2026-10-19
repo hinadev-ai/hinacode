@@ -54,6 +54,23 @@ const EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", 
 const isEffortLevel = (effort: string | null): effort is EffortLevel =>
   effort !== null && EFFORT_LEVELS.includes(effort)
 
+/**
+ * Claude Code modes offered beside the effort levels. Ultrathink is a prompt keyword that asks for deeper
+ * reasoning on the turn at the model's default effort. Ultracode has Claude orchestrate dynamic workflows, and
+ * runs at extra high effort like `claude --effort ultracode`; a model without extra high cannot run it.
+ */
+const ULTRATHINK = "ultrathink"
+const ULTRACODE = "ultracode"
+
+const effortLevelOf = (effort: string | null): EffortLevel | null =>
+  effort === ULTRACODE ? "xhigh" : isEffortLevel(effort) ? effort : null
+
+const withUltrathink = (prompt: string, effort: string | null) =>
+  effort === ULTRATHINK ? `${prompt}\n\n${ULTRATHINK}`.trimStart() : prompt
+
+const effortsOf = (levels: ReadonlyArray<string>) =>
+  levels.length === 0 ? [] : [...levels, ULTRATHINK, ...(levels.includes("xhigh") ? [ULTRACODE] : [])]
+
 type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
 const IDLE_SESSION_TTL = Duration.seconds(60)
@@ -528,6 +545,7 @@ export const layer = Layer.effect(
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const base = yield* baseOptions(input.home)
         const hidden = yield* skillOverrides(input)
+        const effort = effortLevelOf(input.effort)
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -538,8 +556,12 @@ export const layer = Layer.effect(
                 env: { ...base.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
                 cwd: input.cwd,
                 model: input.model,
-                ...(isEffortLevel(input.effort) ? { effort: input.effort } : {}),
-                settings: { fastMode: input.fastMode, ...(hidden !== null && { skillOverrides: hidden }) },
+                ...(effort === null ? {} : { effort }),
+                settings: {
+                  fastMode: input.fastMode,
+                  ...(input.effort === ULTRACODE && { ultracode: true }),
+                  ...(hidden !== null && { skillOverrides: hidden }),
+                },
                 ...(resume === undefined ? {} : { resume }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
@@ -686,7 +708,8 @@ export const layer = Layer.effect(
           yield* Effect.tryPromise({
             try: () =>
               session.query.applyFlagSettings({
-                effortLevel: isEffortLevel(input.effort) ? input.effort : null,
+                effortLevel: effortLevelOf(input.effort),
+                ultracode: input.effort === ULTRACODE,
                 fastMode: input.fastMode,
               }),
             catch: agentError("Failed to switch effort or fast mode"),
@@ -695,7 +718,7 @@ export const layer = Layer.effect(
           session.fastMode = input.fastMode
         }
         yield* switchPermissionMode(session, mode)
-        const message = yield* userMessage(input.prompt, input.attachments)
+        const message = yield* userMessage(withUltrathink(input.prompt, input.effort), input.attachments)
         if (session.turn !== null) {
           return yield* new AgentError({
             provider: "claude",
@@ -745,7 +768,7 @@ export const layer = Layer.effect(
           id,
           label: model.displayName,
           provider: "claude",
-          efforts: model.supportsEffort ? (model.supportedEffortLevels ?? []) : [],
+          efforts: model.supportsEffort ? effortsOf(model.supportedEffortLevels ?? []) : [],
           defaultEffort: null,
           fastMode: model.supportsFastMode ?? false,
           autoMode: model.supportsAutoMode ?? false,
