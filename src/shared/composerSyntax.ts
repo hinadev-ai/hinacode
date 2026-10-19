@@ -11,12 +11,13 @@ export interface KnownTokens {
   readonly threads: ReadonlySet<string>
 }
 
-export interface Segment {
-  readonly kind: SyntaxKind
-  readonly text: string
-}
+/** A fenced block's body is colored by its language, so it carries the language from the opening fence. */
+export type Segment =
+  | { readonly kind: SyntaxKind; readonly text: string }
+  | { readonly kind: "fence"; readonly language: string; readonly text: string }
 
-const FENCE = /^\s*```/
+/** An opening or closing fence, and the language word of an opening one. */
+const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
 /** Inline code, or a `/command`, `$skill` or `@file` token that starts the line or follows whitespace. */
 const INLINE = /`[^`\n]+`|(?<=^|\s)[/$@][^\s]+/g
@@ -51,8 +52,7 @@ const merge = (segments: ReadonlyArray<Segment>) =>
   segments.reduce<Array<Segment>>((merged, segment) => {
     if (segment.text === "") return merged
     const previous = merged.at(-1)
-    if (previous?.kind === segment.kind)
-      merged[merged.length - 1] = { kind: segment.kind, text: previous.text + segment.text }
+    if (previous?.kind === segment.kind) merged[merged.length - 1] = { ...segment, text: previous.text + segment.text }
     else merged.push(segment)
     return merged
   }, [])
@@ -64,16 +64,20 @@ const merge = (segments: ReadonlyArray<Segment>) =>
  */
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
-  let inFence = false
+  /** The open fence's language, "" for a fence without one, or null outside a fence. */
+  let fence: string | null = null
+  const fenceBody = (body: string): Segment =>
+    fence ? { kind: "fence", language: fence, text: body } : { kind: "code", text: body }
   text.split("\n").forEach((line, index) => {
-    if (index > 0) segments.push({ kind: inFence ? "code" : "text", text: "\n" })
-    if (FENCE.test(line)) {
-      inFence = !inFence
+    if (index > 0) segments.push(fence === null ? { kind: "text", text: "\n" } : fenceBody("\n"))
+    const fenceLine = FENCE.exec(line)
+    if (fenceLine) {
+      fence = fence === null ? (fenceLine[1] ?? "") : null
       segments.push({ kind: "code", text: line })
       return
     }
-    if (inFence) {
-      segments.push({ kind: "code", text: line })
+    if (fence !== null) {
+      segments.push(fenceBody(line))
       return
     }
     const bullet = BULLET.exec(line)

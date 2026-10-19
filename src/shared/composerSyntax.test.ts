@@ -30,6 +30,15 @@ describe("highlight", () => {
     ])
   })
 
+  test("hands a fenced block's body to its language, keeping the fences as code", () => {
+    const text = "```ts title=a.ts\nconst a = 1\n/kalan-mode\n```"
+    expect(highlight(text, known)).toStrictEqual([
+      { kind: "code", text: "```ts title=a.ts" },
+      { kind: "fence", language: "ts", text: "\nconst a = 1\n/kalan-mode\n" },
+      { kind: "code", text: "```" },
+    ])
+  })
+
   test("marks mentions of known threads only", () => {
     expect(
       highlight("ask @thread:t-1. and @thread:t-2", known).filter((segment) => segment.kind !== "text"),
