@@ -1,21 +1,30 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live region groups a heading, provider message, and controls.
 import { startTransition, useActionState, useId } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
+import type { Thread } from "../../shared/domain.ts"
 import type { UsageLimit } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
+import { SwitchAccountButton, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 
-export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit: UsageLimit }) {
+export function UsageLimitCallout({
+  thread,
+  limit,
+}: {
+  thread: Pick<Thread, "id" | "provider" | "accountId" | "model">
+  limit: UsageLimit
+}) {
+  const threadId = thread.id
   const titleId = useId()
+  const { suggestion } = useAccountOptions(thread)
   const [error, setAutoResume, isPending] = useActionState(async (_: string | null, enabled: boolean) => {
     try {
-      const thread = await callPromise("threads.resumeAtReset", { id: threadId, enabled })
-      useThreads.getState().upsert(thread)
+      useThreads.getState().upsert(await callPromise("threads.resumeAtReset", { id: threadId, enabled }))
       return null
     } catch (cause) {
       return errorMessage(cause)
@@ -27,6 +36,7 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
     resetDate !== null && Number.isFinite(resetDate.getTime())
       ? new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(resetDate)
       : null
+  const canResume = reset !== null && resetTime !== null
 
   return (
     <section
@@ -40,13 +50,24 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
       </h2>
       <p className="text-sm break-words whitespace-pre-wrap">{limit.message}</p>
       {limit.kind === "org_spend" && <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>}
-      {reset !== null && resetTime !== null && (
-        <>
-          <p className="text-xs text-muted-foreground">
-            <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {reset.autoResume && <p className="text-xs text-attention">{m.thread_usage_limit_scheduled()}</p>}
+      {canResume && (
+        <p className="text-xs text-muted-foreground">
+          <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
+        </p>
+      )}
+      {(suggestion || canResume) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {reset?.autoResume && <p className="text-xs text-attention">{m.thread_usage_limit_scheduled()}</p>}
+          {suggestion && (
+            <SwitchAccountButton
+              key={suggestion.id}
+              threadId={threadId}
+              to={suggestion}
+              resend
+              label={m.account_continue_on({ account: suggestion.name })}
+            />
+          )}
+          {canResume && (
             <Button
               type="button"
               variant="outline"
@@ -57,8 +78,8 @@ export function UsageLimitCallout({ threadId, limit }: { threadId: string; limit
             >
               {reset.autoResume ? m.thread_usage_limit_cancel_resume() : m.thread_usage_limit_resume_at_reset()}
             </Button>
-          </div>
-        </>
+          )}
+        </div>
       )}
       {error && <FieldError>{error}</FieldError>}
     </section>

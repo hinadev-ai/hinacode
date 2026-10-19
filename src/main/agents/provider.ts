@@ -47,6 +47,15 @@ export interface AgentProvider {
    * null). Null when there is no transcript.
    */
   readonly usage: (sessionId: string, home: AccountHome | null) => Effect.Effect<ThreadUsage | null, AgentError>
+  /**
+   * Copies a session's transcripts from one agent home to another, overwriting older copies, so a turn run on
+   * `to` resumes it with its history. A provider without added accounts leaves it out.
+   */
+  readonly copySession?: (
+    sessionId: string,
+    from: AccountHome | null,
+    to: AccountHome | null,
+  ) => Effect.Effect<void, AgentError>
   /** Commands and skills the agent would load for a thread working in `cwd` on the account in `home`. */
   readonly listCommands: (input: {
     readonly threadId: string

@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs"
-import { readdir } from "node:fs/promises"
+import { cp, mkdir, readdir } from "node:fs/promises"
 import { homedir } from "node:os"
-import { basename, join } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 import { Option, Schema } from "effect"
 import type { ThreadUsage } from "../../../shared/agent.ts"
 import { memoizeByFile, readLines, type Tokens, toThreadUsage } from "../usage.ts"
@@ -114,10 +114,35 @@ const readFirstLine = async (path: string) => {
 /** `rollout-2026-09-22T11-35-55-<id>.jsonl` sorts by when the rollout started. */
 const startedAt = (path: string) => basename(path).slice("rollout-".length, "rollout-".length + 19)
 
+const readSessionId = (path: string) =>
+  readFirstLine(path).then(
+    (line) => Option.getOrNull(decodeSessionMetaLine(line))?.payload.session_id ?? null,
+    () => null,
+  )
+
 /**
- * Reads a Codex thread's tokens from its rollouts under `home`. Sub-agents get rollouts of their own whose
- * session_meta names the root thread as `session_id`, and they always start after it.
+ * A Codex thread's rollouts under `home`, its own first. Sub-agents get rollouts of their own whose
+ * session_meta names the root thread as `session_id`, and they always start after it. Empty when the thread
+ * has no rollout.
  */
+export const findRollouts = async (
+  home: string,
+  threadId: string,
+  sessionIdOf: (path: string) => Promise<string | null> = readSessionId,
+): Promise<ReadonlyArray<string>> => {
+  const sessions = join(home, "sessions")
+  const rollouts = (await readdir(sessions, { recursive: true }).catch(() => []))
+    .filter((name) => basename(name).startsWith("rollout-") && name.endsWith(".jsonl"))
+    .map((name) => join(sessions, name))
+  const root = rollouts.find((path) => path.endsWith(`-${threadId}.jsonl`))
+  if (root === undefined) return []
+
+  const later = rollouts.filter((path) => path !== root && startedAt(path) >= startedAt(root))
+  const owners = await Promise.all(later.map(sessionIdOf))
+  return [root, ...later.filter((_, index) => owners[index] === threadId)]
+}
+
+/** Reads a Codex thread's tokens from its rollouts under `home`, sub-agents' included. */
 export const makeRolloutUsage = (home: string) => {
   const parse = memoizeByFile((path) => parseRollout(readLines(path)))
   // A rollout's first line never changes.
@@ -125,29 +150,34 @@ export const makeRolloutUsage = (home: string) => {
   const sessionIdOf = (path: string) => {
     const cached = sessionIds.get(path)
     if (cached !== undefined) return cached
-    const read = readFirstLine(path).then(
-      (line) => Option.getOrNull(decodeSessionMetaLine(line))?.payload.session_id ?? null,
-      () => null,
-    )
+    const read = readSessionId(path)
     sessionIds.set(path, read)
     return read
   }
 
   return async (threadId: string): Promise<ThreadUsage | null> => {
-    const sessions = join(home, "sessions")
-    const rollouts = (await readdir(sessions, { recursive: true }).catch(() => []))
-      .filter((name) => basename(name).startsWith("rollout-") && name.endsWith(".jsonl"))
-      .map((name) => join(sessions, name))
-    const root = rollouts.find((path) => path.endsWith(`-${threadId}.jsonl`))
-    if (root === undefined) return null
+    const rollouts = await findRollouts(home, threadId, sessionIdOf)
+    if (rollouts.length === 0) return null
 
-    const later = rollouts.filter((path) => path !== root && startedAt(path) >= startedAt(root))
-    const owners = await Promise.all(later.map(sessionIdOf))
-    const agents = later.filter((_, index) => owners[index] === threadId)
-
-    const parsed = await Promise.all([root, ...agents].map((path) => parse(path).catch(() => null)))
+    const parsed = await Promise.all(rollouts.map((path) => parse(path).catch(() => null)))
     if (parsed[0] === null) return null
     const found = parsed.filter((spent) => spent !== null)
     return toThreadUsage(found.flat(), found.length)
   }
+}
+
+/**
+ * Copies a Codex thread's rollouts and its sub-agents' from one Codex home to another, at the same paths,
+ * overwriting older copies. False when `from` has no rollout for the thread.
+ */
+export const copyRollouts = async (threadId: string, from: string, to: string): Promise<boolean> => {
+  if (resolve(from) === resolve(to)) return true
+  const rollouts = await findRollouts(from, threadId)
+  if (rollouts.length === 0) return false
+  for (const path of rollouts) {
+    const target = join(to, relative(from, path))
+    await mkdir(dirname(target), { recursive: true })
+    await cp(path, target, { force: true })
+  }
+  return true
 }

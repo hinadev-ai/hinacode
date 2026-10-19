@@ -142,6 +142,13 @@ const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 
+/** Each session the scripted providers copied to another account's home. */
+const copiedSessions: Array<{
+  readonly sessionId: string
+  readonly from: AccountHome | null
+  readonly to: AccountHome | null
+}> = []
+
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
@@ -157,6 +164,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       ? Effect.succeed(home === null ? claudeLimits : null)
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
+  copySession: (sessionId, from, to) => Effect.sync(() => void copiedSessions.push({ sessionId, from, to })),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.suspend(() => {
@@ -196,7 +204,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                     { type: "subagent_updated", subagent },
                     { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
                   ]
-                : input.prompt === "simulate usage limit"
+                : input.prompt === "simulate usage limit" && input.home === null
                   ? [
                       {
                         type: "turn_limited",
@@ -849,6 +857,58 @@ describe("limited threads over rpc", () => {
     expect(failure(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true })).tag).toBe("AgentError")
   })
 
+  test("continues a limited thread on another account with its session and last prompt", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Spare")))
+    const codex = result(await invoke("accounts.create", newAccount("codex", "Elsewhere")))
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const statusOf = async () =>
+      result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(statusOf).toBe("idle")
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate usage limit" }))
+    await expect.poll(statusOf).toBe("limited")
+
+    expect(failure(await invoke("threads.switchAccount", { id: thread.id, accountId: codex.id })).tag).toBe(
+      "NotFoundError",
+    )
+    copiedSessions.length = 0
+    turnHomes.length = 0
+    const switched = result(await invoke("threads.switchAccount", { id: thread.id, accountId: spare.id, resend: true }))
+    expect(switched.accountId).toBe(spare.id)
+    const spareHome = { dir: join(dir, "homes", "spare"), binary: "claude" }
+    expect(copiedSessions).toStrictEqual([{ sessionId: boundSession, from: null, to: spareHome }])
+    await expect.poll(() => turnHomes).toStrictEqual([spareHome])
+    await expect.poll(statusOf).toBe("idle")
+    const prompts = result(await invoke("threads.transcript", { threadId: thread.id }))
+      .messages.filter((message) => message.role === "user")
+      .map((message) => message.parts)
+    expect(prompts.slice(-2)).toStrictEqual([
+      [{ type: "text", text: "simulate usage limit" }],
+      [{ type: "text", text: "simulate usage limit" }],
+    ])
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
+  test("refuses to switch accounts while a turn runs", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Busy")))
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    heldTurn = Promise.withResolvers()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+    expect(failure(await invoke("threads.switchAccount", { id: thread.id, accountId: spare.id })).tag).toBe(
+      "AgentError",
+    )
+    heldTurn.resolve()
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+    )
+    expect(result(await invoke("threads.switchAccount", { id: thread.id, accountId: spare.id })).accountId).toBe(
+      spare.id,
+    )
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
   test("decodes the schedule request before the handler sees it", async () => {
     const response = await electron.handlers.get(RPC_CHANNEL)!(
       { sender: {}, senderFrame: mainFrame },
@@ -1149,7 +1209,8 @@ describe("agent accounts over rpc", () => {
 
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
-    const onCodex = result(await invoke("threads.update", { id: thread.id, provider: "codex", accountId: account.id }))
+    result(await invoke("threads.update", { id: thread.id, provider: "codex" }))
+    const onCodex = result(await invoke("threads.switchAccount", { id: thread.id, accountId: account.id }))
     expect(onCodex.accountId).toBe(account.id)
     turnHomes.length = 0
     result(await invoke("threads.send", { threadId: thread.id, prompt: "hello" }))

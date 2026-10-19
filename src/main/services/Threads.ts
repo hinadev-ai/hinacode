@@ -69,7 +69,7 @@ export interface UpdateThread {
   readonly title?: string | undefined
   /** Refused once the thread has a message. Moves the thread to the new agent's default account unless `accountId` is given. */
   readonly provider?: ProviderId | undefined
-  /** Refused once the thread has a provider session, whose transcript lives in the account's home. */
+  /** Sets the account only. A started session must be copied to the new home first, as `AgentRunner.switchAccount` does. */
   readonly accountId?: string | null | undefined
   readonly model?: string | undefined
   /** Null goes back to the model's default effort. */
@@ -269,12 +269,13 @@ const make = Effect.gen(function* () {
           : switchesAgent
             ? (yield* settings.get).defaultAccount[provider]
             : current.accountId
-      if (accountId !== current.accountId) {
-        if (current.providerSessionId !== null) return yield* new ThreadStartedError({ id: input.id })
-        // An account of another agent is as unknown to this thread as a missing one.
-        if (accountId !== null && (yield* accounts.get(accountId)).provider !== provider) {
-          return yield* new NotFoundError({ entity: "account", id: accountId })
-        }
+      // An account of another agent is as unknown to this thread as a missing one.
+      if (
+        accountId !== current.accountId &&
+        accountId !== null &&
+        (yield* accounts.get(accountId)).provider !== provider
+      ) {
+        return yield* new NotFoundError({ entity: "account", id: accountId })
       }
       return yield* write(current, { ...input, accountId: accountId === current.accountId ? undefined : accountId })
     })

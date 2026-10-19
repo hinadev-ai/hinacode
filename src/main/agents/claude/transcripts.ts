@@ -1,6 +1,6 @@
-import { readdir, stat } from "node:fs/promises"
+import { cp, mkdir, readdir, stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { basename, join, resolve } from "node:path"
 import { Option, Schema } from "effect"
 import type { ThreadUsage } from "../../../shared/agent.ts"
 import { memoizeByFile, readLines, type Tokens, toThreadUsage } from "../usage.ts"
@@ -69,6 +69,12 @@ const isFile = (path: string) =>
     () => false,
   )
 
+const isDirectory = (path: string) =>
+  stat(path).then(
+    (stats) => stats.isDirectory(),
+    () => false,
+  )
+
 /**
  * The folder under `<home>/projects` holding the session. Scanned instead of derived from the session's
  * cwd, so the CLI's path encoding never has to be copied.
@@ -112,4 +118,20 @@ export const makeTranscriptUsage = (home: string) => {
     }
     return toThreadUsage(requests.values(), parsed.filter((transcript) => transcript !== null).length)
   }
+}
+
+/**
+ * Copies a session's transcript and its agent transcripts from one Claude home to another, into the same
+ * project folder, overwriting older copies. False when `from` has no transcript for the session.
+ */
+export const copyTranscripts = async (sessionId: string, from: string, to: string): Promise<boolean> => {
+  if (resolve(from) === resolve(to)) return true
+  const projectDir = await findProjectDir(from, sessionId)
+  if (projectDir === null) return false
+  const target = join(to, "projects", basename(projectDir))
+  await mkdir(target, { recursive: true })
+  await cp(join(projectDir, `${sessionId}.jsonl`), join(target, `${sessionId}.jsonl`), { force: true })
+  const agentsDir = join(projectDir, sessionId)
+  if (await isDirectory(agentsDir)) await cp(agentsDir, join(target, sessionId), { recursive: true, force: true })
+  return true
 }
