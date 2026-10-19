@@ -9,6 +9,7 @@ import {
   Layer,
   Predicate,
   type Schema,
+  Schedule,
   Semaphore,
   Stream,
 } from "effect"
@@ -713,14 +714,10 @@ const make = Effect.gen(function* () {
     }
   })
 
-  yield* Effect.forkIn(
-    Effect.forever(
-      resumeDue.pipe(
-        Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
-        Effect.andThen(Effect.sleep("1 second")),
-      ),
-    ),
-    scope,
+  yield* resumeDue.pipe(
+    Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
+    Effect.repeat(Schedule.spaced("1 second")),
+    Effect.forkIn(scope),
   )
 
   /**
