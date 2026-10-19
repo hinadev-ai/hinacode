@@ -30,7 +30,7 @@ export function UsageLimitCallout({
       return errorMessage(cause)
     }
   }, null)
-  const reset = limit.kind === "usage" ? limit.reset : null
+  const reset = limit.reset
   const resetDate = reset === null ? null : new Date(reset.at)
   const resetTime =
     resetDate !== null && Number.isFinite(resetDate.getTime())
@@ -42,22 +42,18 @@ export function UsageLimitCallout({
     <section
       role="status"
       aria-labelledby={titleId}
-      className="mx-3 mb-2 flex shrink-0 flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
+      className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
     >
       <h2 id={titleId} className="flex items-center gap-2 text-sm font-semibold text-attention">
         <RiErrorWarningLine aria-hidden className="size-4 shrink-0" />
         {limit.kind === "org_spend" ? m.thread_org_spend_limit_title() : m.thread_usage_limit_title()}
       </h2>
       <p className="text-sm break-words whitespace-pre-wrap">{limit.message}</p>
-      {limit.kind === "org_spend" ? (
-        <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>
-      ) : (
-        reset !== null &&
-        resetTime !== null && (
-          <p className="text-xs text-muted-foreground">
-            <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
-          </p>
-        )
+      {limit.kind === "org_spend" && <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>}
+      {canResume && (
+        <p className="text-xs text-muted-foreground">
+          <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
+        </p>
       )}
       {(suggestion || canResume) && (
         <div className="flex flex-wrap items-center gap-2">

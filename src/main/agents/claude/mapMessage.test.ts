@@ -121,7 +121,7 @@ describe("mapMessage usage limits", () => {
     ])
   })
 
-  test("the recorded org spend error ignores the unrelated session reset", () => {
+  test("the recorded org spend error keeps the session reset for resuming", () => {
     const state = newState()
     mapMessage(rejectedRateLimit, state, "now")
     const assistant: SDKMessage = {
@@ -133,7 +133,14 @@ describe("mapMessage usage limits", () => {
     }
     expect(mapMessage(assistant, state, "now")).toEqual([])
     expect(mapMessage({ ...limitResult, result: orgSpendLimitMessage }, state, "now")).toEqual([
-      { type: "turn_limited", limit: { kind: "org_spend", message: orgSpendLimitMessage } },
+      {
+        type: "turn_limited",
+        limit: {
+          kind: "org_spend",
+          message: orgSpendLimitMessage,
+          reset: { at: "2026-10-12T06:00:00.000Z", autoResume: false },
+        },
+      },
     ])
     expect(
       mapMessage({ ...limitResult, result: `Error: ${orgSpendLimitMessage}` }, newState(), "now")[0],

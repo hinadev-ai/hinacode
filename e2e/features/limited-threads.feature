@@ -35,8 +35,8 @@ Feature: Limited threads
     When I retry the usage-limit thread
     Then the usage-limit thread completes successfully and becomes idle
 
-  Scenario: An organization spend limit preserves its message and cannot resume automatically
+  Scenario: An organization spend limit preserves its message and can resume at the session reset
     Given an isolated organization-spend-limit thread
     When I send a message to the organization-spend-limit thread
-    Then the organization spend limit callout preserves the provider message without a resume action
-    And scheduling automatic resume for the organization-spend-limit thread is rejected
+    Then the organization spend limit callout preserves the provider message
+    And I can schedule the organization-spend-limit thread to resume at reset

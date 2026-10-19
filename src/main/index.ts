@@ -100,8 +100,8 @@ if (
   throw new Error("HINACODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
 if (mockClaude !== undefined && !userDataOverride) throw new Error("Claude simulation requires HINACODE_USER_DATA")
 const mockResetMs = Number(process.env["HINACODE_MOCK_RESET_MS"] ?? 60000)
-if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || mockResetMs < 0 || mockResetMs > 3600000))
-  throw new Error("HINACODE_MOCK_RESET_MS must be between 0 and 3600000")
+if (mockClaude !== undefined && (!Number.isFinite(mockResetMs) || Math.abs(mockResetMs) > 3600000))
+  throw new Error("HINACODE_MOCK_RESET_MS must be between -3600000 and 3600000")
 
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
