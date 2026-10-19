@@ -70,10 +70,10 @@ const inline = (line: string, known: KnownTokens): Array<Segment> => {
 
 const merge = (segments: ReadonlyArray<Segment>) =>
   segments.reduce<Array<Segment>>((merged, segment) => {
-    if (segment.kind === "fence") return [...merged, segment]
-    if (segment.text === "") return merged
+    if (segment.kind !== "fence" && segment.text === "") return merged
     const previous = merged.at(-1)
-    if (previous?.kind === segment.kind) merged[merged.length - 1] = { ...segment, text: previous.text + segment.text }
+    if (segment.kind !== "fence" && previous?.kind === segment.kind)
+      merged[merged.length - 1] = { ...segment, text: previous.text + segment.text }
     else merged.push(segment)
     return merged
   }, [])
