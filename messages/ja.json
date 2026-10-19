@@ -941,6 +941,7 @@
   "settings_tiny_vm_profile_hint": "1 つの Chromium プロファイルをこのマシンに保持し、新しい VM すべてに読み込ませます。ログイン状態は VM の再起動後も残り、スレッド間で共有されます。サインイン済みセッションを含むため、どのスレッドのエージェントもその状態で閲覧します。",
   "vm_profile_save": "ブラウザプロファイルを今すぐ保存",
   "vm_profile_copy_note": "この VM が持つのはブラウザプロファイルのコピーです。保存は別スレッドの VM が行うため、ここでのサインインは保持されません。",
+  "vm_screenshot_save": "スクリーンショットを保存",
   "settings_worktree_root": "ワークツリーの保存先",
   "settings_worktree_root_hint": "新しいワークツリーを保存するディレクトリです。プロジェクトごとにフォルダーを作成します。空欄の場合は各プロジェクトと同じ階層の .hinacode-worktrees に保存します。既存のワークツリーは移動しません。",
   "settings_worktree_root_absolute": "/ で始まる絶対パスを入力してください。",

@@ -122,6 +122,7 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.screen.open": thread,
   "vm.files.drop": thread,
   "vm.profile.save": thread,
+  "vm.screenshot.save": thread,
   "attachments.stage": thread,
   "attachments.read": named,
 

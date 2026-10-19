@@ -4,6 +4,7 @@ import { AsyncResult } from "effect/reactivity"
 import { lazy, type ReactNode, Suspense, useEffect, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
+  RiCameraLine,
   RiComputerLine,
   RiErrorWarningLine,
   RiFullscreenLine,
@@ -205,6 +206,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             onClick={() => run(() => callPromise("vm.profile.save", { threadId }))}
           />
         )}
+        <ScreenshotButton threadId={threadId} run={run} />
         {control}
         {!floating && (
           <>
@@ -303,6 +305,20 @@ export function ControlButton({ threadId, vm, pending, run }: ControlButtonProps
       )}
     </Button>
   )
+}
+
+interface ScreenshotButtonProps {
+  readonly threadId: string
+  readonly run: (action: () => Promise<unknown>) => void
+}
+
+export function ScreenshotButton({ threadId, run }: ScreenshotButtonProps) {
+  const save = () =>
+    run(async () => {
+      const attachment = await callPromise("vm.screenshot.save", { threadId })
+      await callPromise("shell.reveal", { path: attachment.path })
+    })
+  return <IconAction icon={RiCameraLine} label={m.vm_screenshot_save()} onClick={save} />
 }
 
 interface IconActionProps {

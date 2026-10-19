@@ -295,6 +295,16 @@ const handlers: Handlers = {
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
   "vm.files.drop": ({ threadId, paths }) => TinyVm.use((vm) => vm.dropFiles(threadId, paths)),
   "vm.profile.save": ({ threadId }) => TinyVm.use((vm) => vm.saveProfile(threadId)),
+  "vm.screenshot.save": ({ threadId }) =>
+    Effect.gen(function* () {
+      const data = yield* TinyVm.use((vm) => vm.screenshot(threadId))
+      return yield* Attachments.use((attachments) =>
+        attachments.stage(threadId, {
+          dataUrl: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
+          name: "vm-screenshot.png",
+        }),
+      )
+    }),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),

@@ -15,6 +15,7 @@ import {
   IconAction,
   type RunningVm,
   ScreenFallback,
+  ScreenshotButton,
   showVmFullscreen,
   TinyVmScreen,
   useVmAction,
@@ -73,6 +74,7 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
         <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-1 pl-2.5">
           <ControlStatus vm={vm} />
           {control}
+          <ScreenshotButton threadId={threadId} run={run} />
           <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
           <IconAction
             icon={RiPictureInPictureExitLine}

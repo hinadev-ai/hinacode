@@ -419,6 +419,11 @@ export const RpcMethods = {
   ),
   /** Saves the VM's Chromium profile to this machine now. Fails unless this VM owns the shared profile. */
   "vm.profile.save": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  /**
+   * Screenshots the thread VM's screen and stages the PNG as a thread attachment on this machine. The
+   * renderer reveals the returned path. Works whichever side has control.
+   */
+  "vm.screenshot.save": rpc(Schema.Struct({ threadId: Schema.String }), Attachment),
 
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
@@ -607,6 +612,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.screen.close": "mutation",
   "vm.files.drop": "mutation",
   "vm.profile.save": "mutation",
+  "vm.screenshot.save": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",
