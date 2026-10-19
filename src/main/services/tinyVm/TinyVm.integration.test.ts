@@ -1,3 +1,4 @@
+import { once } from "node:events"
 import { mkdtempSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -17,7 +18,9 @@ const makeRuntime = (fake: FakeSbx, profileDir: string) =>
     Layer.unwrap(
       Effect.gen(function* () {
         const settings = yield* Settings.Settings
-        yield* settings.set({ experimental: { tinyVm: true, tinyVmTemplate: "default", tinyVmProfile: true } })
+        yield* settings.set({
+          experimental: { tinyVm: true, tinyVmTemplate: "default", tinyVmProfile: true, tinyVmPasskeys: false },
+        })
         return layer({ configPath: fake.configPath, env: {} }, profileDir)
       }),
     ).pipe(
@@ -84,6 +87,36 @@ it.effect("overlapping profile saves all finish without racing the archive file"
 
       expect(results.every((result) => result.status === "fulfilled")).toBe(true)
       expect(yield* Effect.promise(() => readFile(join(dir, "chromium-profile.tgz")))).toEqual(profile)
+    }),
+  ),
+)
+
+it.effect("stageArchive uploads one archive to the guest path and openTunnel reaches a guest port", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir)),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const archive = encodeTar([
+        { type: "file", path: "passkey-extension/manifest.json", data: Buffer.from("{}"), mode: 0o644, mtime: 0 },
+      ])
+      yield* Effect.promise(() =>
+        runtime.runPromise(TinyVm.use((vm) => vm.stageArchive("owner", ".hinacode", archive))),
+      )
+      expect(fake.uploads).toHaveLength(1)
+      expect(fake.uploads[0]).toMatchObject({ path: ".hinacode" })
+      expect(fake.uploads[0]?.bytes).toEqual(Buffer.from(archive))
+
+      const tunnel = yield* Effect.promise(() => runtime.runPromise(TinyVm.use((vm) => vm.openTunnel("owner", 5900))))
+      const greeting =
+        tunnel.head.length > 0
+          ? Buffer.from(tunnel.head)
+          : (yield* Effect.promise(() => once(tunnel.socket, "data")))[0]
+      expect(String(greeting)).toContain("RFB")
+      tunnel.socket.destroy()
     }),
   ),
 )

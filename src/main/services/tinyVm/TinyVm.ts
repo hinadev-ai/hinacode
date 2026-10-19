@@ -59,6 +59,19 @@ export class TinyVm extends Context.Service<
     /** Guest paths the user dropped since the last call, drained so the agent hears about each drop once. */
     readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
     /**
+     * Extracts a tar archive holding one top-level entry into the running VM at `guestPath`, starting the VM
+     * if needed. A relative path resolves against the desktop user's home.
+     */
+    readonly stageArchive: (threadId: string, guestPath: string, tar: Uint8Array) => Effect.Effect<void, VmError>
+    /**
+     * Opens a raw TCP stream to `port` in the running VM, starting it if needed. The caller owns the socket
+     * and destroys it. `head` holds guest bytes that arrived with the upgrade response.
+     */
+    readonly openTunnel: (
+      threadId: string,
+      port: number,
+    ) => Effect.Effect<{ readonly socket: Socket; readonly head: Uint8Array }, VmError>
+    /**
      * Saves the VM's Chromium profile to this machine now. Only the VM that owns the shared profile can save;
      * a copy's save fails rather than clobbering the owner's newer state.
      */
@@ -170,7 +183,12 @@ const make = (source: LoginSource, profileDir?: string) =>
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
-      Effect.orElseSucceed(() => ({ tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false })),
+      Effect.orElseSucceed(() => ({
+        tinyVm: false,
+        tinyVmTemplate: "default",
+        tinyVmProfile: false,
+        tinyVmPasskeys: false,
+      })),
     )
     let enabled = experimental.tinyVm
     let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"
@@ -594,6 +612,12 @@ const make = (source: LoginSource, profileDir?: string) =>
         return paths as ReadonlyArray<string>
       })
 
+    const stageArchive = (threadId: string, guestPath: string, tar: Uint8Array) =>
+      withSandbox(threadId, (sbx, sandboxId) => sbx.putFiles(sandboxId, guestPath, tar))
+
+    const openTunnel = (threadId: string, port: number) =>
+      withSandbox(threadId, (sbx, sandboxId) => sbx.tunnel(sandboxId, port))
+
     const host: Effect.Effect<VmHostStatus> = readLogin(source).pipe(
       Effect.map(sbxClient),
       Effect.flatMap((sbx) =>
@@ -751,6 +775,8 @@ const make = (source: LoginSource, profileDir?: string) =>
       exec,
       dropFiles,
       takeDropped,
+      stageArchive,
+      openTunnel,
       saveProfile,
       openScreen,
       sendScreen,

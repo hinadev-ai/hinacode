@@ -13,6 +13,8 @@ import {
   ControlButton,
   ControlStatus,
   IconAction,
+  PasskeyButton,
+  PasskeyNotice,
   type RunningVm,
   ScreenFallback,
   ScreenshotButton,
@@ -39,6 +41,7 @@ function WhenRunning({ threadId }: { threadId: string }) {
 function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
   const { dropping, onDropFiles } = useVmDrop(threadId, run)
+  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
@@ -75,6 +78,7 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           <ControlStatus vm={vm} />
           {control}
           <ScreenshotButton threadId={threadId} run={run} />
+          {experimental.tinyVmPasskeys && <PasskeyButton threadId={threadId} run={run} />}
           <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
           <IconAction
             icon={RiPictureInPictureExitLine}
@@ -87,6 +91,7 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             {error}
           </p>
         )}
+        {experimental.tinyVmPasskeys && <PasskeyNotice threadId={threadId} run={run} />}
         <Suspense fallback={<ScreenFallback />}>
           <TinyVmScreen
             key={`${vm.sandboxId}:${attempt}`}
