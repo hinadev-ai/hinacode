@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest"
-import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import * as Db from "./db/client.ts"
@@ -11,13 +10,11 @@ import { Settings } from "./services/Settings.ts"
 import * as SettingsModule from "./services/Settings.ts"
 import { applyServeConfig } from "./serve.ts"
 
-vi.mock("electron", () => ({ safeStorage: { isEncryptionAvailable: () => false } }))
-
 const testLayer = RemoteAccessModule.layer.pipe(
   Layer.provideMerge(SecretsModule.layer),
   Layer.provideMerge(SettingsModule.layer),
   Layer.provideMerge(Db.layer(":memory:")),
-  Layer.provide(NodeServices.layer),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
 )
 
 describe("serve mode boot", () => {

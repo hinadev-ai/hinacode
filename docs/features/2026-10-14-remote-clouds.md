@@ -48,7 +48,7 @@ flowchart LR
 
 The cloud is the source of truth and the server is a pipe. See [ADR 0016](../adr/0016-cloud-daemon-and-dumb-relay.md).
 
-### Slice 1: `hinacode serve`, a headless cloud in the existing binary (this change)
+### Slice 1: `hinacode serve`, a headless cloud in the existing binary (replaced by slice 2)
 
 - `src/main/serve.ts` reads the mode from argv (`serve`, `--port`, `--host`, `--rotate-token`) or the environment (`HINACODE_SERVE`, `HINACODE_SERVE_PORT`, `HINACODE_SERVE_HOST`, `HINACODE_SERVE_ROTATE_TOKEN`). Anything invalid fails at boot with the reason, the same way a bad `HINACODE_MOCK_CLAUDE` does.
 - In serve mode `src/main/index.ts` builds the same runtime and then: no window, no dock icon, no protocol handlers for the renderer, no auto-updater (a stub `Updates` layer reports `unsupported`), and `SIGINT` or `SIGTERM` quits through the existing dispose path. The single-instance lock already prevents a desktop and a cloud from sharing one `HINACODE_USER_DATA`.
@@ -56,16 +56,18 @@ The cloud is the source of truth and the server is a pipe. See [ADR 0016](../adr
 - Everything else is inherited: threads, approvals, questions, steering, terminals, PRs and merge, automations, the PR watcher and the MCP thread tools, because they already run in the layer graph with no window. `desktopOnlyMethods` keeps refusing window-only calls.
 - On Linux Electron opens an X display at startup even with no window. `--ozone-platform=headless` skips that, so a cloud needs no display server. Chromium picks its platform before the main script runs, so the flag goes on the command line; `app.commandLine.appendSwitch` at load is too late. macOS ignores the flag.
 
-### Slice 2: the same daemon as a plain Node program
+### Slice 2: the same daemon as a plain Node program, on npm
 
-Delete the Electron runtime dependency from the daemon instead of adding a second implementation. The couplings are known and small:
+`npx hinacode serve` replaces the Electron binary's serve mode, so a server needs Node and nothing else: no AppImage, no display flags, no `ELECTRON_RUN_AS_NODE` trap. The Electron serve mode is deleted rather than kept beside it.
 
-- `src/main/ipc.ts`: move `dispatch` and the handlers to a module that takes an opaque desktop-window handle. Dialogs, `shell.reveal` and notifications sit behind it, and `makeEventsLayer` takes its window sink as an argument instead of calling `BrowserWindow.getAllWindows()`.
-- `src/main/services/Secrets.ts`: take the seal and unseal functions as layer input. The desktop passes `safeStorage`; the daemon passes none and keeps the existing plaintext-with-warning fallback, or a key file beside the database.
-- `src/main/services/Attachments.ts`: the root comes from a paths value the entry point supplies (`HINACODE_USER_DATA`), not `app.getPath`.
-- `src/main/services/Updates.ts`: the daemon gets the stub from slice 1 permanently. A cloud updates by replacing its binary, like Orca's managed-server update, not by an in-app updater.
+- `src/main/app.ts` builds the layer graph for both entries. The entry passes what differs: the `Keyring`, the `Updates` layer, the window push sink, and the serve address.
+- `src/main/rpc.ts` holds the handlers and `dispatch`. Window-only work (dialogs, focus, `shell.reveal`, notifications, the VM screen) is a `DesktopCalls` value that `ipc.ts` builds per call from the calling window; the remote listener passes none and refuses those methods as before.
+- `Secrets` reads a `Keyring` service. The desktop provides `safeStorage`; the daemon provides none and stores plaintext, which is what a Linux cloud under Electron already did, since a headless Linux has no keyring.
+- `Attachments` takes its root as layer input; `Updates.ts` keeps the tag and the stub, and the `electron-updater` layer moves to `updater.ts`.
+- `src/main/daemon.ts` is a second main entry, built to `out/main/daemon.js` and run by `bin/hinacode.mjs`. It defaults `HINACODE_USER_DATA` to `~/.hinacode-cloud`, holds `daemon.pid` and refuses a directory whose Chromium `SingletonLock` names a live desktop app, waits for the listener, prints pairing URLs, and disposes on `SIGINT` or `SIGTERM` within 5 seconds.
+- The root `package.json` is the npm package: `bin`, `files` (`bin`, `out/main`), and `engines` (Node 24, for `node:sqlite`). The release workflow publishes it on every `v*` tag with npm trusted publishing, after dropping the desktop-only `node-mac-permissions` optional dependency, so an install fetches only registry tarballs. `node-pty` is the only native dependency, and `1.2.0-beta.15` ships prebuilds for every platform, so nothing compiles.
 
-`makeAppLayer` moves out of `index.ts` into a module both entries import. The desktop entry adds windows and protocols around it; the daemon entry (`src/daemon/`) adds signal handling and stdout logging. One more electron-vite main entry builds it, and systemd and Docker examples land in `docs/operations/`.
+Verified: `npx --package <tarball> hinacode serve` on the Linux home server installs, pairs, answers `projects.create`, `projects.list` and `models.list` for Claude and Codex over the WebSocket, refuses `dialog.pickFolder` as `DesktopOnly`, refuses a second daemon on the same directory, and frees its lock on `SIGTERM`.
 
 ### Slice 3: the server (relay)
 

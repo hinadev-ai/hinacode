@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest"
-import { vi } from "vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql"
@@ -7,16 +6,10 @@ import * as Db from "../db/client.ts"
 import * as SecretsModule from "./Secrets.ts"
 import { Secrets } from "./Secrets.ts"
 
-vi.mock("electron", () => ({
-  safeStorage: {
-    isEncryptionAvailable: () => false,
-    decryptString: () => {
-      throw new Error("Error while decrypting the ciphertext provided to safeStorage.decryptString.")
-    },
-  },
-}))
-
-const testLayer = SecretsModule.layer.pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer))
+const testLayer = SecretsModule.layer.pipe(
+  Layer.provideMerge(Db.layer(":memory:")),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
+)
 
 describe("Secrets", () => {
   it.effect("reads a secret sealed under another key as unset, and saves it again", () =>

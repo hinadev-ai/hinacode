@@ -3,9 +3,10 @@ import { expect, it } from "@effect/vitest"
 import updater from "electron-updater"
 import { Effect, Layer, Queue } from "effect"
 import { vi } from "vitest"
-import type { PushEvent } from "../../shared/contract.ts"
-import { Events } from "./Events.ts"
-import { layer, Updates } from "./Updates.ts"
+import type { PushEvent } from "../shared/contract.ts"
+import { Events } from "./services/Events.ts"
+import { Updates } from "./services/Updates.ts"
+import { layer } from "./updater.ts"
 
 vi.mock("electron", () => ({ app: { isPackaged: true, getVersion: () => "0.1.0" } }))
 vi.mock("electron-updater", () => ({

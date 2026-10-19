@@ -40,14 +40,10 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
 }
 
 /**
- * The serve configuration for this process, or null in desktop mode. Serve mode starts from the
- * `serve` command or `HINACODE_SERVE=1` (the form a service manager can set). Flags win over the
- * environment, and an invalid value throws, because a daemon that silently picked another port
- * would strand every paired client.
+ * The `hinacode serve` configuration from its flags and environment. Flags win over the environment, and an
+ * invalid value throws, because a daemon that silently picked another port would strand every paired client.
  */
-export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv): ServeConfig | null => {
-  if (!argv.includes("serve") && !envFlag(env, "HINACODE_SERVE")) return null
-
+export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv): ServeConfig => {
   const portFlag = flagValue(argv, "port")
   const envPort = env["HINACODE_SERVE_PORT"]
   const port =

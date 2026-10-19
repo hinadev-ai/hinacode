@@ -99,3 +99,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # This job has no checkout for gh to read the repository from.
           GH_REPO: ${{ github.repository }}
+
+  # `npx hinacode serve`: the cloud daemon as plain Node. npm trusted publishing (OIDC) authenticates this
+  # workflow, so it needs no token. Every release is a prerelease today, and `npx hinacode` resolves `latest`.
+  npm:
+    if: github.ref_type == 'tag'
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      # node-mac-permissions is the desktop's, a git dependency that npm would clone and compile on every Mac install.
+      - run: |
+          npm pkg set version="${GITHUB_REF_NAME#v}"
+          npm pkg delete optionalDependencies
+          pnpm build && npm publish --tag latest

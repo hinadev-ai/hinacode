@@ -12,7 +12,7 @@ flowchart LR
   end
   preload["Preload<br/>window.hinacode"]
   subgraph main["Main process: one Effect ManagedRuntime"]
-    ipc["ipc.ts<br/>rpc handlers"]
+    ipc["ipc.ts + rpc.ts<br/>rpc handlers"]
     services["Services<br/>Threads, Worktrees, Projects,<br/>Messages, Settings, Secrets"]
     runner["AgentRunner"]
     mcp["MCP server<br/>127.0.0.1:random/mcp"]
@@ -53,7 +53,7 @@ flowchart LR
 flowchart LR
   contract["src/shared/contract.ts<br/>RpcMethods + PushEvent"]
   contract --> rendererCall["renderer: callPromise(method, input)"]
-  contract --> mainHandle["main: ipc.ts handler per method"]
+  contract --> mainHandle["main: rpc.ts handler per method"]
   rendererCall -- "channel: rpc" --> mainHandle
   mainHandle -- "channel: event" --> rendererCall
 ```
@@ -65,9 +65,9 @@ flowchart LR
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
-Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, sends `{ type: "auth", token }` first, and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` as the Electron channel with a null window, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments retain the first host. See `features/2026-10-16-resilient-remote.md`.
+Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, sends `{ type: "auth", token }` first, and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` (`rpc.ts`) as the Electron channel with no `DesktopCalls`, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments retain the first host. See `features/2026-10-16-resilient-remote.md`.
 
-`hinacode serve` runs the same runtime as a headless cloud (`src/main/serve.ts`): no window, no ipc registration, a stub `Updates`, the remote listener forced on at boot, and the pairing URLs printed to stdout. It takes its own `HINACODE_USER_DATA` and therefore its own database, projects and threads. This is slice 1 of `features/2026-10-14-remote-clouds.md`; the relay server and multi-cloud clients follow there, under [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
+`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron (`src/main/daemon.ts`, built to `out/main/daemon.js` and published to npm). `app.ts` builds the graph for both entries; the daemon passes no keyring, a stub `Updates`, no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
 ### Environments: routing a window call
 
@@ -96,7 +96,7 @@ The native window starts hidden. The renderer loads settings, applies appearance
 
 ## Main-process layers
 
-The main process is one Effect layer graph, built in `src/main/index.ts` before the window can call in.
+The main process is one Effect layer graph, built by `src/main/app.ts` before the window can call in. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph.
 
 ```mermaid
 flowchart BT
@@ -175,7 +175,7 @@ A Claude turn ends when the CLI reports `session_state_changed: idle`, not at it
 Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
 - `ProviderId`, and `AccountProviderId` if it can have added accounts.
-- The `providers` records in `AgentRunner.ts` and `AgentLogins.ts`, the layer in `src/main/index.ts`, and the fake providers of the integration tests that build those layers.
+- The `providers` records in `AgentRunner.ts` and `AgentLogins.ts`, the layer in `src/main/app.ts`, and the fake providers of the integration tests that build those layers.
 - A migration widening the `provider` CHECK on `thread` and `automation`, as `0011_muse_provider` does.
 - The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
 - `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
@@ -432,7 +432,7 @@ erDiagram
   }
 ```
 
-- `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are encrypted with Electron `safeStorage`: the real login Keychain in the packaged desktop app, Chromium's mock keychain in unpackaged runs and `hinacode serve`. A secret that won't decrypt under the current key reads as unset.
+- `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
 - `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
@@ -556,8 +556,11 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 
 | Concern                                   | Path                                                       |
 | ----------------------------------------- | ---------------------------------------------------------- |
-| Layer graph, window, custom protocols     | `src/main/index.ts`                                        |
-| rpc handlers, event push                  | `src/main/ipc.ts`                                          |
+| Layer graph                               | `src/main/app.ts`                                          |
+| Window, custom protocols                  | `src/main/index.ts`                                        |
+| Cloud daemon (`hinacode serve`)           | `src/main/daemon.ts`                                       |
+| rpc handlers                              | `src/main/rpc.ts`                                          |
+| Electron rpc channel, window calls        | `src/main/ipc.ts`                                          |
 | Navigation, external links, sender checks | `src/main/security.ts`                                     |
 | Turn orchestration                        | `src/main/services/AgentRunner.ts`                         |
 | Transcript folding (shared with renderer) | `src/shared/foldEvent.ts`                                  |

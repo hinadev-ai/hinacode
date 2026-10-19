@@ -1,19 +1,29 @@
 {
   "name": "hinacode",
   "version": "0.1.0-alpha.4",
-  "private": true,
+  "description": "Run coding agents on this machine and drive them from the HinaCode desktop or phone app",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hinadev-ai/hinacode.git"
+  },
+  "bin": {
+    "hinacode": "bin/hinacode.mjs"
+  },
+  "files": [
+    "bin",
+    "out/main"
+  ],
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "postinstall": "node scripts/node-pty-spawn-helper.mjs",
     "dev": "node scripts/dev-app-identity.mjs && electron-vite dev",
     "dev:markdown": "HINACODE_MOCK_CLAUDE=markdown HINACODE_USER_DATA=/tmp/kk-markdown pnpm dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder --publish never",
     "start:xvfb": "DISPLAY=:99 electron-vite preview -- --no-sandbox --disable-gpu --remote-debugging-port=9222",
-    "serve": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron out/main/index.js serve --ozone-platform=headless",
+    "serve": "electron-vite build && node out/main/daemon.js serve",
     "paraglide": "paraglide-js compile --project ./project.inlang --outdir ./src/renderer/paraglide --strategy globalVariable baseLocale --silent",
     "typecheck": "pnpm paraglide && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "oxlint",
@@ -34,7 +44,7 @@
     "anser": "2.3.5",
     "effect": "4.0.3",
     "electron-updater": "6.8.9",
-    "node-pty": "1.1.0",
+    "node-pty": "1.2.0-beta.15",
     "qrcode": "^1.5.4",
     "ws": "8.22.0"
   },
@@ -96,6 +106,9 @@
   },
   "optionalDependencies": {
     "node-mac-permissions": "github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "packageManager": "pnpm@12.10.1"
 }

@@ -2,19 +2,13 @@ import { describe, expect, test } from "@effect/vitest"
 import { serveConfig } from "./serve.ts"
 
 describe("serveConfig", () => {
-  test("stays in desktop mode without the serve command or env", () => {
-    expect(serveConfig(["/opt/hinacode/hinacode"], {})).toBeNull()
-    expect(serveConfig(["/opt/hinacode/hinacode"], { HINACODE_SERVE: "0" })).toBeNull()
-  })
-
   test("reads the serve command with no overrides", () => {
-    expect(serveConfig(["/opt/hinacode/hinacode", "serve"], {})).toStrictEqual({ rotateToken: false })
+    expect(serveConfig(["serve"], {})).toStrictEqual({ rotateToken: false })
   })
 
   test("reads host, port and rotation from the environment", () => {
     expect(
-      serveConfig(["/opt/hinacode/hinacode"], {
-        HINACODE_SERVE: "1",
+      serveConfig(["serve"], {
         HINACODE_SERVE_HOST: "127.0.0.1",
         HINACODE_SERVE_PORT: "49000",
         HINACODE_SERVE_ROTATE_TOKEN: "true",
@@ -24,7 +18,7 @@ describe("serveConfig", () => {
 
   test("flags override the environment", () => {
     expect(
-      serveConfig(["/opt/hinacode/hinacode", "serve", "--port=49100", "--host", "0.0.0.0", "--rotate-token"], {
+      serveConfig(["serve", "--port=49100", "--host", "0.0.0.0", "--rotate-token"], {
         HINACODE_SERVE_PORT: "49000",
         HINACODE_SERVE_HOST: "127.0.0.1",
       }),
@@ -37,7 +31,7 @@ describe("serveConfig", () => {
     expect(() => serveConfig(["hinacode", "serve", "--port", "0"], {})).toThrow(/port/)
   })
 
-  test("refuses an unknown HINACODE_SERVE value instead of guessing", () => {
-    expect(() => serveConfig(["hinacode"], { HINACODE_SERVE: "yes" })).toThrow(/HINACODE_SERVE/)
+  test("refuses an unknown HINACODE_SERVE_ROTATE_TOKEN value instead of guessing", () => {
+    expect(() => serveConfig(["serve"], { HINACODE_SERVE_ROTATE_TOKEN: "yes" })).toThrow(/HINACODE_SERVE_ROTATE_TOKEN/)
   })
 })

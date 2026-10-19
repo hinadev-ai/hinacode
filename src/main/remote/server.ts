@@ -17,7 +17,7 @@ import {
   type ServerFrame,
   SLOW_CONSUMER_BYTES,
 } from "../../shared/remote.ts"
-import { type AppServices, dispatch } from "../ipc.ts"
+import { type AppServices, dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
 import {

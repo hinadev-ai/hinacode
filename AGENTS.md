@@ -28,7 +28,7 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI run
 ## Architecture
 
 ```
-src/main      Electron main. One Effect ManagedRuntime built in index.ts.
+src/main      Main process. One Effect layer graph (app.ts), run by Electron (index.ts) or as the Node cloud daemon (daemon.ts).
   agents/     AgentProvider implementations: claude/, codex/. Registered in services/AgentRunner.ts.
   services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, automations/, ...)
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
@@ -40,7 +40,7 @@ src/shared    Effect Schema contracts only: contract.ts (rpc method map), domain
 messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 ```
 
-- Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/ipc.ts`. Main pushes live updates on the `event` channel.
+- Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/rpc.ts`. Main pushes live updates on the `event` channel.
 - Main-process code is Effect services: `class X extends Context.Service<...>` plus an exported `layer`. Follow `services/Threads.ts`.
 - Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped.
 - A new agent backend is one `AgentProvider` in `src/main/agents/` plus the registrations listed under "Agent providers" in `docs/arch.md`.
@@ -75,7 +75,7 @@ HinaCode runs agents that execute code on the user's machine. Hold a few boundar
   - The MCP server listens on loopback only, and its credential scopes each call to one thread.
   - Webhooks require an HMAC signature, checked with `timingSafeEqual`.
   - The attachment protocol refuses paths outside its root.
-- **Secrets** go through `services/Secrets.ts` (Electron `safeStorage`). Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs and `hinacode serve` switch themselves to Chromium's mock keychain (`src/main/index.ts`), so never add a launch path that asks the user for their password.
+- **Secrets** go through `services/Secrets.ts`, sealed by the `Keyring` the entry point provides. Never log them, put them in a URL, or send them to the renderer. Only the packaged desktop app uses the real login Keychain. Unpackaged runs switch themselves to Chromium's mock keychain (`src/main/index.ts`), and `hinacode serve` has no keyring, so never add a launch path that asks the user for their password.
 - **Anything that crosses a process or network boundary** gets decoded with a schema, and the change gets a test like `security.test.ts` or `mcp/server.test.ts`.
 - **Importing a project trusts it.** Its `.claude` settings, hooks and `CLAUDE.md` load the same way they do in the CLI. There is no per-project trust setting, so don't add one (see `docs/adr/0008-import-trusts-the-project.md`).
 - **Don't over-engineer.** This is a single-user local app. Skip RBAC, audit logs, rate limiters, and encryption layers on top of the OS keyring. If a threat needs an attacker who already has the user's shell, it is out of scope.

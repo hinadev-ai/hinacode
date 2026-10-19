@@ -5,7 +5,7 @@ import type { ClaudeProvider } from "./agents/claude/index.ts"
 import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
-import { makeEventsLayer } from "./ipc.ts"
+import { sendToWindows } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as RemoteServer from "./remote/server.ts"
@@ -16,7 +16,7 @@ import * as Attachments from "./services/Attachments.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
-import type { Events, PushBroadcast, WindowPush } from "./services/Events.ts"
+import { type Events, makeEventsLayer, type PushBroadcast, type WindowPush } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
 import * as Git from "./services/Git.ts"
@@ -45,9 +45,12 @@ export interface TestAppOptions {
 
 /**
  * The app layer of `index.ts` with scripted agents, no automations and no updater, over a SQLite file at `dbPath`.
- * Tests must mock `electron` first.
+ * Tests that keep the default `events` must mock `electron` first.
  */
-export const makeTestAppLayer = (dbPath: string, { providers, events = makeEventsLayer() }: TestAppOptions) => {
+export const makeTestAppLayer = (
+  dbPath: string,
+  { providers, events = makeEventsLayer(sendToWindows) }: TestAppOptions,
+) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Terminals.layer),
@@ -58,7 +61,7 @@ export const makeTestAppLayer = (dbPath: string, { providers, events = makeEvent
     ),
     ClientSettings.layer,
     Messages.layer,
-    Attachments.layer,
+    Attachments.layer(join(dirname(dbPath), "attachments")),
     Search.layer,
     Files.layer,
   )
@@ -81,6 +84,6 @@ export const makeTestAppLayer = (dbPath: string, { providers, events = makeEvent
     Layer.provideMerge(events),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(Db.layer(dbPath)),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, Secrets.noKeyring)),
   )
 }
