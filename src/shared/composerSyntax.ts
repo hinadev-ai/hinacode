@@ -11,12 +11,33 @@ export interface KnownTokens {
   readonly threads: ReadonlySet<string>
 }
 
-export interface Segment {
+export interface Span {
   readonly kind: SyntaxKind
   readonly text: string
 }
 
-const FENCE = /^\s*```/
+/** A fenced block, kept whole so its body can be colored by its language and shown without the fence lines. */
+export interface Fence {
+  readonly kind: "fence"
+  /** The language word of the opening fence, "" when it names none. */
+  readonly language: string
+  readonly open: string
+  readonly lines: ReadonlyArray<string>
+  /** Null while the block is still unclosed. */
+  readonly close: string | null
+}
+
+export type Segment = Span | Fence
+
+export const fenceCode = (fence: Fence) => fence.lines.join("\n")
+
+export const segmentText = (segment: Segment) =>
+  segment.kind === "fence"
+    ? [segment.open, ...segment.lines, ...(segment.close === null ? [] : [segment.close])].join("\n")
+    : segment.text
+
+/** An opening or closing fence, and the language word of an opening one. */
+const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
 /** Inline code, or a `/command`, `$skill` or `@file` token that starts the line or follows whitespace. */
 const INLINE = /`[^`\n]+`|(?<=^|\s)[/$@][^\s]+/g
@@ -49,10 +70,10 @@ const inline = (line: string, known: KnownTokens): Array<Segment> => {
 
 const merge = (segments: ReadonlyArray<Segment>) =>
   segments.reduce<Array<Segment>>((merged, segment) => {
-    if (segment.text === "") return merged
+    if (segment.kind !== "fence" && segment.text === "") return merged
     const previous = merged.at(-1)
-    if (previous?.kind === segment.kind)
-      merged[merged.length - 1] = { kind: segment.kind, text: previous.text + segment.text }
+    if (segment.kind !== "fence" && previous?.kind === segment.kind)
+      merged[merged.length - 1] = { ...segment, text: previous.text + segment.text }
     else merged.push(segment)
     return merged
   }, [])
@@ -64,23 +85,29 @@ const merge = (segments: ReadonlyArray<Segment>) =>
  */
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
-  let inFence = false
-  text.split("\n").forEach((line, index) => {
-    if (index > 0) segments.push({ kind: inFence ? "code" : "text", text: "\n" })
-    if (FENCE.test(line)) {
-      inFence = !inFence
-      segments.push({ kind: "code", text: line })
-      return
-    }
-    if (inFence) {
-      segments.push({ kind: "code", text: line })
-      return
+  const lines = text.split("\n")
+  for (let index = 0; index < lines.length; index++) {
+    if (index > 0) segments.push({ kind: "text", text: "\n" })
+    const line = lines[index] ?? ""
+    const fence = FENCE.exec(line)
+    if (fence) {
+      const close = lines.findIndex((next, at) => at > index && FENCE.test(next))
+      const end = close === -1 ? lines.length : close
+      segments.push({
+        kind: "fence",
+        language: fence[1] ?? "",
+        open: line,
+        lines: lines.slice(index + 1, end),
+        close: lines[close] ?? null,
+      })
+      index = end
+      continue
     }
     const bullet = BULLET.exec(line)
     const markerEnd = bullet ? bullet[0].length : 0
     if (bullet) segments.push({ kind: "text", text: bullet[1] ?? "" }, { kind: "bullet", text: bullet[2] ?? "" })
     segments.push(...inline(line.slice(markerEnd), known))
-  })
+  }
   return merge(segments)
 }
 

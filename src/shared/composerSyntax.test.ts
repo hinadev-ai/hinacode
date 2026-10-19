@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { completionAt, highlight, leadingSkill, matchFiles, matchThreads } from "./composerSyntax.ts"
+import { completionAt, highlight, leadingSkill, matchFiles, matchThreads, segmentText } from "./composerSyntax.ts"
 
 const known = {
   commands: new Set(["/kalan-mode", "$verify-hinacode"]),
@@ -12,7 +12,7 @@ describe("highlight", () => {
     const text =
       "This is kalan\n* item\n  - nested\n1. first\n`hello` and /kalan-mode\n/usr/bin is a path\nsee @src/main/ipc.ts, not @nope or a@b.c"
     const segments = highlight(text, known)
-    expect(segments.map((segment) => segment.text).join("")).toBe(text)
+    expect(segments.map(segmentText).join("")).toBe(text)
     expect(segments.filter((segment) => segment.kind !== "text")).toStrictEqual([
       { kind: "bullet", text: "*" },
       { kind: "bullet", text: "-" },
@@ -23,11 +23,18 @@ describe("highlight", () => {
     ])
   })
 
-  test("treats a fenced block as code, fences included, and nothing inside it as a command", () => {
-    const text = "run\n```\n/kalan-mode\n```\nafter"
-    expect(highlight(text, known).filter((segment) => segment.kind !== "text")).toStrictEqual([
-      { kind: "code", text: "```\n/kalan-mode\n```" },
+  test("keeps a fenced block whole, with its language, and nothing inside it as a command", () => {
+    const text = "run\n```ts title=a.ts\nconst a = 1\n/kalan-mode\n```\nafter"
+    expect(highlight(text, known)).toStrictEqual([
+      { kind: "text", text: "run\n" },
+      { kind: "fence", language: "ts", open: "```ts title=a.ts", lines: ["const a = 1", "/kalan-mode"], close: "```" },
+      { kind: "text", text: "\nafter" },
     ])
+  })
+
+  test("keeps every character of empty and unclosed fences", () => {
+    for (const text of ["```\n```", "```\n\n```", "```py", "```py\nx = 1\n"])
+      expect(highlight(text, known).map(segmentText).join("")).toBe(text)
   })
 
   test("marks mentions of known threads only", () => {

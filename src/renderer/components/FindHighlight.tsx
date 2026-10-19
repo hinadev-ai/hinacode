@@ -37,6 +37,55 @@ export function highlight(text: string, pattern: RegExp | null, part: number | n
   return nodes
 }
 
+/** A run of text in one color, like a syntax token. */
+export interface Run {
+  readonly text: string
+  readonly color?: string
+}
+
+/**
+ * Colored runs with the find bar's matches marked. A match across several runs gets one `<mark>`, because the find
+ * bar picks its current match by position among the marks.
+ */
+export function highlightRuns(runs: ReadonlyArray<Run>, pattern: RegExp | null, part: number | null): ReactNode {
+  const text = runs.map((run) => run.text).join("")
+  const matches = pattern === null ? [] : [...text.matchAll(pattern)].filter((match) => match[0] !== "")
+  const nodes: Array<ReactNode> = []
+  let mark: Array<ReactNode> = []
+  let next = 0
+  let offset = 0
+  const closeMark = () => {
+    const match = matches[next++]
+    nodes.push(
+      <mark key={`m${match?.index}`} data-find-match="" data-find-part={part ?? undefined} className={markClassName}>
+        {mark}
+      </mark>,
+    )
+    mark = []
+  }
+  runs.forEach((run, index) => {
+    let start = 0
+    while (start < run.text.length) {
+      const match = matches[next]
+      const matchStart = (match?.index ?? Infinity) - offset
+      const matchEnd = matchStart + (match?.[0].length ?? 0)
+      const inMatch = matchStart <= start
+      const end = Math.min(run.text.length, inMatch ? matchEnd : matchStart)
+      const span = (
+        <span key={`${index}:${start}`} style={{ color: run.color }}>
+          {run.text.slice(start, end)}
+        </span>
+      )
+      if (inMatch) mark.push(span)
+      else nodes.push(span)
+      if (inMatch && end === matchEnd) closeMark()
+      start = end
+    }
+    offset += run.text.length
+  })
+  return nodes
+}
+
 /** Plain text with the find bar's matches marked. */
 export function Highlighted({ text }: { text: string }) {
   return highlight(text, useFindPattern(), useContext(FindPartContext))

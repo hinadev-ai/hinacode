@@ -17,6 +17,8 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import {
   completionAt,
+  type Fence,
+  fenceCode,
   highlight,
   leadingSkill,
   type Suggestion,
@@ -25,6 +27,7 @@ import {
 } from "../../shared/composerSyntax.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
+import { HighlightedCode } from "./HighlightedCode.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
 
@@ -40,6 +43,9 @@ const syntaxClass: Record<SyntaxKind, string> = {
 /** Shared by the textarea and the highlighted copy under it, so both lay text out identically. */
 const textLayout =
   "col-start-1 row-start-1 max-h-60 px-2.5 py-2 text-base whitespace-pre-wrap [overflow-wrap:break-word] [scrollbar-gutter:stable] md:text-sm"
+
+/** A trailing newline only takes up a line in the textarea once something follows it. */
+const TRAILING_LINE = "\u200b"
 
 /** Starts both layers' first line after the skill chip, whose width `measureChip` keeps up to date. */
 const afterChip = "indent-[calc(var(--skill-chip-width)_+_--spacing(1.5))]"
@@ -195,13 +201,20 @@ export function ComposerInput({
               <span className="truncate">{skill.command.name}</span>
             </span>
           )}
-          {segments.map((segment, index) => (
-            <span key={index} className={syntaxClass[segment.kind]}>
-              {segment.text}
-            </span>
-          ))}
-          {/* A trailing newline only takes up a line in the textarea once something follows it. */}
-          {"​"}
+          {segments.map((segment, index) => {
+            if (segment.kind === "fence")
+              return (
+                <FenceCard key={index} fence={segment} firstLine={index === 0} last={index === segments.length - 1} />
+              )
+            // A card is a block, which already ends its line, so the line break after it would add one.
+            const shown = segments[index - 1]?.kind === "fence" ? segment.text.replace(/^\n/, "") : segment.text
+            return (
+              <span key={index} className={syntaxClass[segment.kind]}>
+                {shown}
+              </span>
+            )
+          })}
+          {segments.at(-1)?.kind !== "fence" && TRAILING_LINE}
         </div>
         <textarea
           ref={textareaRef}
@@ -268,6 +281,27 @@ export function ComposerInput({
         </div>
       )}
     </>
+  )
+}
+
+/**
+ * A fenced block as one full-width card. It keeps the textarea's font and line height, and its padding only extends
+ * the fill sideways into the layer's own padding, so every line stays where the textarea puts it.
+ */
+function FenceCard({ fence, firstLine, last }: { fence: Fence; firstLine: boolean; last: boolean }) {
+  return (
+    // Only the layer's first line starts after the skill chip, and a block would inherit that indent.
+    <span className={cn("-mx-1 block rounded-md bg-muted px-1 text-foreground", !firstLine && "indent-0")}>
+      <span className="text-muted-foreground">{fence.open}</span>
+      {fence.lines.length > 0 && (
+        <>
+          {"\n"}
+          <HighlightedCode code={fenceCode(fence)} language={fence.language} />
+        </>
+      )}
+      {fence.close !== null && <span className="text-muted-foreground">{`\n${fence.close}`}</span>}
+      {last && TRAILING_LINE}
+    </span>
   )
 }
 

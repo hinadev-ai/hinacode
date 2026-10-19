@@ -1,6 +1,5 @@
-import { DEFAULT_THEMES, type DiffsHighlighter, getSharedHighlighter } from "@pierre/diffs"
 import { useParams } from "@tanstack/react-router"
-import { type ReactNode, Suspense, use, useState } from "react"
+import { type ReactNode, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -20,8 +19,6 @@ import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { spawnsSubagent, statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
-import { useTheme } from "../lib/appearance.ts"
-import { useClientSettings } from "../lib/settings.ts"
 import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -30,7 +27,8 @@ import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
-import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
+import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
+import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
@@ -383,37 +381,13 @@ function AnsiText({ text }: { text: string }) {
   ))
 }
 
-const shellHighlighters = new Map<string, Promise<DiffsHighlighter>>()
-
-const shellHighlighter = (theme: string) => {
-  let highlighter = shellHighlighters.get(theme)
-  if (highlighter === undefined) {
-    highlighter = getSharedHighlighter({ themes: [theme], langs: ["shellscript"] })
-    shellHighlighters.set(theme, highlighter)
-  }
-  return highlighter
-}
-
 /** Unmarked by Find on purpose: the command's row already carries its marks. */
 function ShellCode({ code }: { code: string }) {
-  const { codeTheme, scheme } = useTheme(useClientSettings().appearance.theme)
   return (
-    <Suspense fallback={code}>
-      <ShellTokens code={code} theme={codeTheme ?? DEFAULT_THEMES[scheme]} />
-    </Suspense>
+    <FindPatternContext value={null}>
+      <HighlightedCode code={code} language="shellscript" />
+    </FindPatternContext>
   )
-}
-
-function ShellTokens({ code, theme }: { code: string; theme: string }) {
-  const { tokens } = use(shellHighlighter(theme)).codeToTokens(code, { lang: "shellscript", theme })
-  return tokens.flatMap((line, index) => [
-    ...(index === 0 ? [] : ["\n"]),
-    ...line.map((token) => (
-      <span key={token.offset} style={{ color: token.color }}>
-        {token.content}
-      </span>
-    )),
-  ])
 }
 
 function ToolSection({ label, text, scroll }: { label: string; text: string; scroll: string }) {
