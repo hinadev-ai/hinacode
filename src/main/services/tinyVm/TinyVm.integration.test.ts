@@ -18,7 +18,9 @@ const makeRuntime = (fake: FakeSbx, profileDir: string) =>
     Layer.unwrap(
       Effect.gen(function* () {
         const settings = yield* Settings.Settings
-        yield* settings.set({ experimental: { tinyVm: true, tinyVmTemplate: "default", tinyVmProfile: true } })
+        yield* settings.set({
+          experimental: { tinyVm: true, tinyVmTemplate: "default", tinyVmProfile: true, tinyVmPasskeys: false },
+        })
         return layer({ configPath: fake.configPath, env: {} }, profileDir)
       }),
     ).pipe(

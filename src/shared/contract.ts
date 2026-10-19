@@ -60,6 +60,7 @@ import {
   ThreadVm,
   VmControl,
   VmHostStatus,
+  VmPasskey,
   Worktree,
   WorkspaceChoice,
   OpenPullRequest,
@@ -424,6 +425,14 @@ export const RpcMethods = {
    * renderer reveals the returned path. Works whichever side has control.
    */
   "vm.screenshot.save": rpc(Schema.Struct({ threadId: Schema.String }), Attachment),
+  "vm.passkey.get": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
+  /**
+   * Arms the thread VM's passkey relay. Copies the proxy extension into the VM, restarts its Chromium with
+   * the extension, and resolves with the relay state. Idempotent while armed.
+   */
+  "vm.passkey.prepare": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
+  /** Cancels the pending passkey ceremony, if any. The VM page sees the error a dismissed prompt gives. */
+  "vm.passkey.cancel": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
 
   /** Adds input to the running turn; starts a turn like `threads.send` when none is running. */
   "threads.steer": rpc(
@@ -613,6 +622,9 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.files.drop": "mutation",
   "vm.profile.save": "mutation",
   "vm.screenshot.save": "mutation",
+  "vm.passkey.get": "read",
+  "vm.passkey.prepare": "mutation",
+  "vm.passkey.cancel": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",
@@ -650,6 +662,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "fs.watch",
   "vm.screen.open",
   "vm.files.drop",
+  "vm.passkey.prepare",
   "remote.pairing",
   "remote.rotateToken",
   "clientSettings.get",
@@ -734,6 +747,7 @@ export const PushEvent = Schema.Union([
   /** The desktop's link to a cloud changed state. */
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
+  Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   /** Sent after the stream's last `vm.screen.data`. */

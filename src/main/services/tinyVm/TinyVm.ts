@@ -183,7 +183,12 @@ const make = (source: LoginSource, profileDir?: string) =>
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
-      Effect.orElseSucceed(() => ({ tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false })),
+      Effect.orElseSucceed(() => ({
+        tinyVm: false,
+        tinyVmTemplate: "default",
+        tinyVmProfile: false,
+        tinyVmPasskeys: false,
+      })),
     )
     let enabled = experimental.tinyVm
     let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"

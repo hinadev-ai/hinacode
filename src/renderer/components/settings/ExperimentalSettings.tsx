@@ -38,6 +38,15 @@ export function ExperimentalSettings() {
     }
   }
 
+  const setPasskeys = async (tinyVmPasskeys: boolean) => {
+    setError(null)
+    try {
+      await updateSettings({ experimental: { ...experimental, tinyVmPasskeys } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
   const setTemplate = async (tinyVmTemplate: string) => {
     setError(null)
     try {
@@ -75,6 +84,19 @@ export function ExperimentalSettings() {
               id="settings-experimental-tiny-vm-profile"
               checked={experimental.tinyVmProfile}
               onCheckedChange={(checked) => void setProfile(checked)}
+            />
+          </Field>
+        )}
+        {experimental.tinyVm && (
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="settings-experimental-tiny-vm-passkeys">{m.settings_tiny_vm_passkeys()}</FieldLabel>
+              <FieldDescription>{m.settings_tiny_vm_passkeys_hint()}</FieldDescription>
+            </FieldContent>
+            <Switch
+              id="settings-experimental-tiny-vm-passkeys"
+              checked={experimental.tinyVmPasskeys}
+              onCheckedChange={(checked) => void setPasskeys(checked)}
             />
           </Field>
         )}
