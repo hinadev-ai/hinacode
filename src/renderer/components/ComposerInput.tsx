@@ -17,6 +17,7 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import {
   completionAt,
+  fenceCode,
   highlight,
   leadingSkill,
   type Suggestion,
@@ -199,7 +200,14 @@ export function ComposerInput({
           {segments.map((segment, index) =>
             segment.kind === "fence" ? (
               <span key={index} className={syntaxClass.code}>
-                <HighlightedCode code={segment.text} language={segment.language} />
+                {segment.open}
+                {segment.lines.length > 0 && (
+                  <>
+                    {"\n"}
+                    <HighlightedCode code={fenceCode(segment)} language={segment.language} />
+                  </>
+                )}
+                {segment.close !== null && `\n${segment.close}`}
               </span>
             ) : (
               <span key={index} className={syntaxClass[segment.kind]}>

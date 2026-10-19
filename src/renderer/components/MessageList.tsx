@@ -1,8 +1,9 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
+import { cn } from "cn"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
 import type { Message } from "../../shared/domain.ts"
-import { highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
+import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
@@ -125,11 +126,48 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
-/** Only fenced blocks are colored in a sent message; links and thread mentions are found by `linkify` and `WithThreadMentions`. */
+/** A sent message only shows code apart; links and thread mentions are found by `linkify` and `WithThreadMentions`. */
 const NO_KNOWN_TOKENS: KnownTokens = { commands: new Set(), files: new Set(), threads: new Set() }
 
-function MessageBody({ message }: { message: Message }) {
+/** Sits on the bubble's fill, which is the same color as `bg-muted`. */
+const insetCode = "bg-background font-mono text-[0.91em]"
+
+/** What the developer sent: fenced blocks as code cards without their fence lines, and inline code as pills. */
+function SentText({ text }: { text: string }) {
   const repository = useThreadRepository()
+  const segments = highlight(text, NO_KNOWN_TOKENS)
+  return segments.map((segment, index) => {
+    if (segment.kind === "fence")
+      return (
+        <pre key={index} className={cn(insetCode, "my-1.5 overflow-x-auto rounded-lg px-3 py-2 whitespace-pre")}>
+          <code>
+            <HighlightedCode code={fenceCode(segment)} language={segment.language} />
+          </code>
+        </pre>
+      )
+    if (segment.kind === "code")
+      return (
+        <code key={index} className={cn(insetCode, "rounded-[0.25em] px-[0.3em] py-[0.1em]")}>
+          <Highlighted text={segment.text.slice(1, -1)} />
+        </code>
+      )
+    // The line breaks around a code card would add blank lines beside it.
+    let prose = segment.text
+    if (segments[index - 1]?.kind === "fence") prose = prose.replace(/^\n/, "")
+    if (segments[index + 1]?.kind === "fence") prose = prose.replace(/\n$/, "")
+    return linkify(prose, repository).map((link, linkIndex) =>
+      link.type === "link" ? (
+        <WebLink key={`${index}:${linkIndex}`} href={link.href}>
+          <Highlighted text={link.text} />
+        </WebLink>
+      ) : (
+        <WithThreadMentions key={`${index}:${linkIndex}`} text={link.text} />
+      ),
+    )
+  })
+}
+
+function MessageBody({ message }: { message: Message }) {
   const { showElapsedTime } = use(AnswerableContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
@@ -150,23 +188,7 @@ function MessageBody({ message }: { message: Message }) {
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap wrap-break-word text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
-              {highlight(text, NO_KNOWN_TOKENS).map((block, blockIndex) =>
-                block.kind === "fence" ? (
-                  <span key={blockIndex} className="font-mono text-[0.91em]">
-                    <HighlightedCode code={block.text} language={block.language} />
-                  </span>
-                ) : (
-                  linkify(block.text, repository).map((segment, index) =>
-                    segment.type === "link" ? (
-                      <WebLink key={`${blockIndex}:${index}`} href={segment.href}>
-                        <Highlighted text={segment.text} />
-                      </WebLink>
-                    ) : (
-                      <WithThreadMentions key={`${blockIndex}:${index}`} text={segment.text} />
-                    ),
-                  )
-                ),
-              )}
+              <SentText text={text} />
             </FindPartContext>
           </div>
         )}
