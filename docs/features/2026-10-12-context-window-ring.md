@@ -25,7 +25,7 @@ A long thread fills the model's context window until the agent compacts or degra
 
 - Live updates during a running turn. The ring updates when each turn completes.
 - A per-category breakdown like Claude's `/context`.
-- Compaction controls.
+- Compaction controls. A compaction does lower the ring, see `2026-10-20-context-compaction.md`.
 
 ## Verification
 
