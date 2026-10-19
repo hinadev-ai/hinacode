@@ -499,7 +499,9 @@ test("clears pending questions immediately when a turn reaches a usage limit", a
   const request = { id: "q-limit", threadId, provider: "codex" as const, questions: [] }
   store().receive(event(1, { type: "question_requested", request }))
   expect(ready().questions).toStrictEqual([request])
-  store().receive(event(2, { type: "turn_limited", limit: { kind: "org_spend", message: "Usage exhausted" } }))
+  store().receive(
+    event(2, { type: "turn_limited", limit: { kind: "org_spend", message: "Usage exhausted", reset: null } }),
+  )
   expect(ready().questions).toStrictEqual([])
 })
 

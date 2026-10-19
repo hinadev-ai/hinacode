@@ -44,7 +44,7 @@
   "thread_usage_limit_scheduled": "Automatic resume scheduled.",
   "thread_usage_limit_cancel_resume": "Cancel automatic resume",
   "thread_org_spend_limit_title": "Organization spend limit reached",
-  "thread_org_spend_limit_hint": "Ask an organization admin to raise the monthly spend limit. A session reset does not clear this limit.",
+  "thread_org_spend_limit_hint": "Ask an organization admin to raise the monthly spend limit. Resuming at the session reset only helps once they do.",
   "thread_status_archived": "Archived",
   "thread_not_found": "This thread no longer exists.",
   "thread_composer_label": "Message",

@@ -216,12 +216,10 @@ function mapResult(
         ? limitMessage
         : reason || limitMessage || (result.subtype === "success" ? "Claude returned an error" : result.subtype)
     if (limited) {
+      const kind = orgSpendLimitText.test(reason) || orgSpendLimitText.test(limitMessage ?? "") ? "org_spend" : "usage"
       return {
         type: "turn_limited",
-        limit:
-          orgSpendLimitText.test(reason) || orgSpendLimitText.test(limitMessage ?? "")
-            ? { kind: "org_spend", message }
-            : { kind: "usage", message, reset: resetAt === null ? null : { at: resetAt, autoResume: false } },
+        limit: { kind, message, reset: resetAt === null ? null : { at: resetAt, autoResume: false } },
       }
     }
     return { type: "turn_failed", message }

@@ -44,7 +44,7 @@
   "thread_usage_limit_scheduled": "已排定自動繼續。",
   "thread_usage_limit_cancel_resume": "取消自動繼續",
   "thread_org_spend_limit_title": "已達組織每月支出上限",
-  "thread_org_spend_limit_hint": "請組織管理員提高每月支出上限。重設工作階段不會解除這個上限。",
+  "thread_org_spend_limit_hint": "請組織管理員提高每月支出上限。上限提高後，在工作階段重設時繼續才會成功。",
   "thread_status_archived": "已歸檔",
   "thread_not_found": "這個對話串已不存在。",
   "thread_composer_label": "訊息",

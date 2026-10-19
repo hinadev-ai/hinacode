@@ -72,7 +72,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     }
   },
   automaticResumeApp: async ({}, provide, testInfo) => {
-    const app = await spawnApp({ mockClaude: "usage-limit", mockResetMs: 5_000 })
+    // Automatic resume waits a minute past the reset, so a reset 55 seconds ago resumes in about 5 seconds.
+    const app = await spawnApp({ mockClaude: "usage-limit", mockResetMs: -55_000 })
     try {
       await provide(app)
       if (testInfo.status !== testInfo.expectedStatus) {

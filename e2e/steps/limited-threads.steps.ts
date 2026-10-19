@@ -250,14 +250,17 @@ When("I send a message to the organization-spend-limit thread", async ({ orgSpen
 })
 
 Then(
-  "the organization spend limit callout preserves the provider message without a resume action",
+  "the organization spend limit callout preserves the provider message",
   async ({ orgSpendLimitApp: app, $testInfo }) => {
     const status = callout(app, orgSpendMessage)
     await expect(status.getByRole("heading", { name: "Organization spend limit reached", exact: true })).toBeVisible()
     await expect(status.getByText(orgSpendMessage, { exact: true })).toBeVisible()
-    await expect(status.getByRole("button")).toHaveCount(0)
     await expect.poll(async () => (await onlyThread(app)).status).toBe("limited")
-    expect((await onlyThread(app)).usageLimit).toEqual({ kind: "org_spend", message: orgSpendMessage })
+    expect((await onlyThread(app)).usageLimit).toMatchObject({
+      kind: "org_spend",
+      message: orgSpendMessage,
+      reset: { at: expect.any(String), autoResume: false },
+    })
     await $testInfo.attach("org-spend-limit", {
       body: await screenshot(app, "org-spend-limit-en-dark"),
       contentType: "image/png",
@@ -265,13 +268,11 @@ Then(
   },
 )
 
-Then(
-  "scheduling automatic resume for the organization-spend-limit thread is rejected",
-  async ({ orgSpendLimitApp: app }) => {
-    const thread = await onlyThread(app)
-    await expect(rpc(app.page, "threads.resumeAtReset", { id: thread.id, enabled: true })).rejects.toThrow(
-      "This limit has no automatic reset",
-    )
-    expect((await onlyThread(app)).usageLimit).toEqual({ kind: "org_spend", message: orgSpendMessage })
-  },
-)
+When("I can schedule the organization-spend-limit thread to resume at reset", async ({ orgSpendLimitApp: app }) => {
+  const status = callout(app, orgSpendMessage)
+  await status.getByRole("button", { name: "Resume at reset", exact: true }).click()
+  await expect(status.getByRole("button", { name: "Cancel automatic resume", exact: true })).toBeVisible()
+  await expect
+    .poll(async () => (await onlyThread(app)).usageLimit)
+    .toMatchObject({ kind: "org_spend", reset: { autoResume: true } })
+})

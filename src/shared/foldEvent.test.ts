@@ -66,7 +66,7 @@ describe("foldEvent", () => {
     ]
     const next = foldTranscript(
       messages,
-      { type: "turn_limited", limit: { kind: "org_spend", message: "Spend limit reached" } },
+      { type: "turn_limited", limit: { kind: "org_spend", message: "Spend limit reached", reset: null } },
       now,
     )
     expect(next[0]?.parts[0]).toMatchObject({ status: "error" })
