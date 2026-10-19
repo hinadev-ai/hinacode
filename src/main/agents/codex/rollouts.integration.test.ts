@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "@effect/vitest"
-import { makeRolloutUsage } from "./rollouts.ts"
+import { copyRollouts, makeRolloutUsage } from "./rollouts.ts"
 
 const root = "01a0c6f7-8e77-75b1-9d6a-f583fa33e0da"
 const child = "01a0c6f8-4963-79d3-a97a-5abc24adef4e"
@@ -38,7 +38,9 @@ let home: string
 const write = (day: string, time: string, id: string, lines: ReadonlyArray<string>) => {
   const dir = join(home, "sessions", ...day.split("-"))
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, `rollout-${day}T${time}-${id}.jsonl`), lines.map((line) => `${line}\n`).join(""))
+  const file = join(dir, `rollout-${day}T${time}-${id}.jsonl`)
+  writeFileSync(file, lines.map((line) => `${line}\n`).join(""))
+  return file
 }
 
 beforeEach(() => {
@@ -101,5 +103,45 @@ describe("makeRolloutUsage", () => {
 
   test("is null for a thread without a rollout", async () => {
     expect(await makeRolloutUsage(home)(root)).toBeNull()
+  })
+})
+
+describe("copyRollouts", () => {
+  let other: string
+  beforeEach(() => {
+    other = mkdtempSync(join(tmpdir(), "kk-codex-home-"))
+  })
+  afterEach(() => rmSync(other, { recursive: true, force: true }))
+
+  test("copies the thread's rollout and its sub-agents' to the same paths, overwriting older copies", async () => {
+    const rootFile = write("2026-09-22", "11-35-07", root, [
+      sessionMeta(root, root),
+      turnContext("gpt-6-astra"),
+      tokenCount(1000, 600, 50),
+    ])
+    write("2026-09-23", "09-00-00", child, [
+      sessionMeta(child, root),
+      turnContext("gpt-6-sol"),
+      tokenCount(500, 200, 20),
+    ])
+    const unrelatedFile = write("2026-09-22", "11-40-00", unrelated, [
+      sessionMeta(unrelated, unrelated),
+      turnContext("gpt-6-astra"),
+      tokenCount(9999, 0, 9999),
+    ])
+
+    expect(await copyRollouts(root, home, other)).toBe(true)
+    expect(await makeRolloutUsage(other)(root)).toStrictEqual(await makeRolloutUsage(home)(root))
+    expect(existsSync(unrelatedFile.replace(home, other))).toBe(false)
+
+    appendFileSync(rootFile, `${tokenCount(2000, 600, 80)}\n`)
+    expect(await copyRollouts(root, home, other)).toBe(true)
+    const copied = await makeRolloutUsage(other)(root)
+    expect(copied).toStrictEqual(await makeRolloutUsage(home)(root))
+    expect(copied?.models.find((used) => used.model === "gpt-6-astra")?.outputTokens).toBe(80)
+  })
+
+  test("is false for a thread without a rollout", async () => {
+    expect(await copyRollouts(root, home, other)).toBe(false)
   })
 })

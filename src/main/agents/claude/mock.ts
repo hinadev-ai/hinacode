@@ -106,8 +106,24 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
             plan: "Claude Max",
             organization: "Example Org",
           }),
-        planLimits: () => Effect.succeed(null),
+        // The CLI's own login has spent its 5-hour window and added accounts have room, so a switch can be tried.
+        planLimits: (home) =>
+          Effect.succeed(
+            scenario === "usage-limit"
+              ? {
+                  windows: [
+                    {
+                      window: { kind: "session" },
+                      usedPercent: home === null ? 100 : 12,
+                      resetsAt: new Date(Date.now() + resetAfterMs).toISOString(),
+                    },
+                  ],
+                  readAt: new Date().toISOString(),
+                }
+              : null,
+          ),
         usage: () => Effect.succeed(null),
+        copySession: () => Effect.void,
         listCommands: () => Effect.succeed(commands),
         runTurn: (input) =>
           Stream.suspend(() => {

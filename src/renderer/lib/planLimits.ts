@@ -30,3 +30,23 @@ export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
     (top, window) => (top === undefined || window.usedPercent > top.usedPercent ? window : top),
     undefined,
   )
+
+const blocks = (window: LimitWindow, model: string) =>
+  limitLevel(window.usedPercent) === "exhausted" &&
+  (window.window.kind !== "model" || model.toLowerCase().includes(window.window.name.toLowerCase()))
+
+/** An unknown reset sorts last, since nothing says the account recovers sooner. */
+const resetsLater = (a: LimitWindow, b: LimitWindow) =>
+  a.resetsAt === null || (b.resetsAt !== null && a.resetsAt > b.resetsAt)
+
+/**
+ * The spent window that keeps an account from running `model`, the one that resets last. A per-model window
+ * counts only for models whose id contains its name, such as "Fable" for `claude-fable-5-1`.
+ */
+export const spentWindow = (windows: ReadonlyArray<LimitWindow>, model: string) =>
+  windows
+    .filter((window) => blocks(window, model))
+    .reduce<LimitWindow | undefined>(
+      (last, window) => (last === undefined || resetsLater(window, last) ? window : last),
+      undefined,
+    )

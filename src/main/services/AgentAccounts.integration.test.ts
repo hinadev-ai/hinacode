@@ -109,25 +109,6 @@ describe("agent accounts", () => {
     ),
   )
 
-  it.effect("fixes the account once the thread has a provider session", () =>
-    withServices(() =>
-      Effect.gen(function* () {
-        const accounts = yield* AgentAccounts
-        const work = yield* accounts.create(newAccount("claude", "Work"))
-        const thread = yield* newThread
-        const threads = yield* Threads
-        expect((yield* threads.update({ id: thread.id, accountId: work.id })).accountId).toBe(work.id)
-        yield* threads.update({ id: thread.id, providerSessionId: "session" })
-
-        const error = yield* threads.update({ id: thread.id, accountId: null }).pipe(Effect.flip)
-        expect(error._tag).toBe("ThreadStartedError")
-        expect((yield* threads.update({ id: thread.id, accountId: work.id, title: "same account" })).title).toBe(
-          "same account",
-        )
-      }),
-    ),
-  )
-
   it.effect("refuses to remove an account a thread uses, then removes it and its default but keeps its home", () =>
     withServices((root) =>
       Effect.gen(function* () {

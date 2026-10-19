@@ -27,7 +27,7 @@ import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
 import { elementContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
-import { claudeHome, makeTranscriptUsage } from "./transcripts.ts"
+import { claudeHome, copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()(
   "hinacode/agents/ClaudeProvider",
@@ -176,6 +176,23 @@ const agentError = (message: string) => (cause: unknown) =>
     provider: "claude",
     message: `${message}: ${cause instanceof Error ? cause.message : String(cause)}`,
   })
+
+const copySession = (sessionId: string, from: AccountHome | null, to: AccountHome | null) =>
+  Effect.tryPromise({
+    try: () => copyTranscripts(sessionId, from?.dir ?? claudeHome(), to?.dir ?? claudeHome()),
+    catch: agentError("Failed to copy Claude transcripts"),
+  }).pipe(
+    Effect.flatMap((copied) =>
+      copied
+        ? Effect.void
+        : Effect.fail(
+            new AgentError({
+              provider: "claude",
+              message: "No Claude transcript for this session in the old account",
+            }),
+          ),
+    ),
+  )
 
 /** The Messages API rejects base64 images above 5 MB. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -779,6 +796,7 @@ export const layer = Layer.effect(
       account,
       planLimits,
       usage,
+      copySession,
       listCommands,
       runTurn,
       wakes: Stream.fromQueue(wakes),
