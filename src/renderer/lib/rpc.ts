@@ -2,7 +2,7 @@ import { Effect, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
-import type { Thread, ThreadVm } from "../../shared/domain.ts"
+import type { Thread } from "../../shared/domain.ts"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   tag: Schema.String,
@@ -317,24 +317,45 @@ export const threadPortsAtom = Atom.family((threadId: string) =>
   ),
 )
 
-/** The thread's tiny VM, kept current by `vm.updated`. A push that lands before `vm.get` answers wins over it. */
-export const threadVmAtom = Atom.family((threadId: string) =>
-  Atom.make((get) => {
-    let pushed: ThreadVm | undefined
+const pushFirst =
+  <A>(extract: (event: PushEvent) => A | undefined, fetch: Effect.Effect<A, RpcError>) =>
+  (get: {
+    addFinalizer: (finalizer: () => void) => void
+    setSelf: (result: AsyncResult.AsyncResult<A, RpcError>) => void
+  }) => {
+    let pushed: A | undefined
     get.addFinalizer(
       onPushEvent((event) => {
-        if (event.type !== "vm.updated" || event.threadId !== threadId) return
-        pushed = event.vm
-        get.setSelf(AsyncResult.success(event.vm))
+        const value = extract(event)
+        if (value === undefined) return
+        pushed = value
+        get.setSelf(AsyncResult.success(value))
       }),
     )
-    return Effect.map(call("vm.get", { threadId }), (fetched) => pushed ?? fetched)
-  }),
+    return Effect.map(fetch, (fetched) => pushed ?? fetched)
+  }
+
+export const threadVmAtom = Atom.family((threadId: string) =>
+  Atom.make(
+    pushFirst(
+      (event) => (event.type === "vm.updated" && event.threadId === threadId ? event.vm : undefined),
+      call("vm.get", { threadId }),
+    ),
+  ),
 )
 
 /** Whether hinacode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
+)
+
+export const threadVmPasskeyAtom = Atom.family((threadId: string) =>
+  Atom.make(
+    pushFirst(
+      (event) => (event.type === "vm.passkey.updated" && event.threadId === threadId ? event.passkey : undefined),
+      call("vm.passkey.get", { threadId }),
+    ),
+  ),
 )
 
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])

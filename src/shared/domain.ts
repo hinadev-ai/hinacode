@@ -413,6 +413,11 @@ export const ExperimentalSettings = Schema.Struct({
    * VM restarts and carry across threads. Only one running VM saves it back; the others get a copy.
    */
   tinyVmProfile: Schema.Boolean,
+  /**
+   * Lets a site in the VM ask for a passkey that lives on this Mac. The ceremony runs in a Chrome window here
+   * and the result goes back to the VM page. Needs the fingerprint button in the VM view per thread before use.
+   */
+  tinyVmPasskeys: Schema.Boolean,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -494,7 +499,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false },
+  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
   worktreeRoot: null,
 }
 
@@ -582,6 +587,27 @@ export const VmHostStatus = Schema.Union([
   Schema.Struct({ status: Schema.Literal("unreachable"), url: Schema.String, message: Schema.String }),
 ])
 export type VmHostStatus = typeof VmHostStatus.Type
+
+/** Which WebAuthn call a site in the VM made. `get` signs in and `create` registers a new passkey. */
+export const VmPasskeyKind = Schema.Literals(["get", "create"])
+export type VmPasskeyKind = typeof VmPasskeyKind.Type
+
+/**
+ * One thread's passkey relay. `ready` means the guest extension is armed and no site is asking. `pending`
+ * names the origin that is waiting for the user to approve in the Chrome window on this Mac.
+ */
+export const VmPasskey = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("off") }),
+  Schema.Struct({ status: Schema.Literal("ready") }),
+  Schema.Struct({
+    status: Schema.Literal("pending"),
+    kind: VmPasskeyKind,
+    origin: Schema.String,
+    rpId: Schema.String,
+  }),
+  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
+])
+export type VmPasskey = typeof VmPasskey.Type
 
 /** What a pull request watch can report. The absence of news, such as pending checks, is not an event. */
 export const WatchEventKind = Schema.Literals([

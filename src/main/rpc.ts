@@ -27,6 +27,7 @@ import { Settings } from "./services/Settings.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
+import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
@@ -56,6 +57,7 @@ export type AppServices =
   | RemoteAccess
   | Events
   | TinyVm
+  | VmPasskeyRelay
 
 export interface HandlerError {
   readonly _tag: string
@@ -295,6 +297,19 @@ const handlers: Handlers = {
   "vm.screen.close": ({ streamId }) => TinyVm.use((vm) => vm.closeScreen(streamId)),
   "vm.files.drop": ({ threadId, paths }) => TinyVm.use((vm) => vm.dropFiles(threadId, paths)),
   "vm.profile.save": ({ threadId }) => TinyVm.use((vm) => vm.saveProfile(threadId)),
+  "vm.screenshot.save": ({ threadId }) =>
+    Effect.gen(function* () {
+      const data = yield* TinyVm.use((vm) => vm.screenshot(threadId))
+      return yield* Attachments.use((attachments) =>
+        attachments.stage(threadId, {
+          dataUrl: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
+          name: "vm-screenshot.png",
+        }),
+      )
+    }),
+  "vm.passkey.get": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.get(threadId)),
+  "vm.passkey.prepare": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.prepare(threadId)),
+  "vm.passkey.cancel": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.cancel(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),

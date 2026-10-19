@@ -517,7 +517,7 @@ const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = fals
   Effect.gen(function* () {
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
-    yield* settings.set({ experimental: { tinyVm: on, tinyVmTemplate, tinyVmProfile } })
+    yield* settings.set({ experimental: { tinyVm: on, tinyVmTemplate, tinyVmProfile, tinyVmPasskeys: false } })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
 

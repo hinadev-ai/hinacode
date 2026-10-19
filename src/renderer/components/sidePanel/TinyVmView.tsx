@@ -4,18 +4,20 @@ import { AsyncResult } from "effect/reactivity"
 import { lazy, type ReactNode, Suspense, useEffect, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
+  RiCameraLine,
   RiComputerLine,
   RiErrorWarningLine,
+  RiFingerprintLine,
   RiFullscreenLine,
   RiLoader4Line,
   RiPictureInPicture2Line,
   RiPictureInPictureExitLine,
   RiSave3Line,
 } from "react-icons/ri"
-import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/domain.ts"
+import type { Thread, ThreadVm, VmControl, VmPasskey, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, threadVmAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { callPromise, threadVmAtom, threadVmPasskeyAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
@@ -189,6 +191,7 @@ function NoVm({ threadId }: { threadId: string }) {
 function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
   const { dropping, onDropFiles } = useVmDrop(threadId, run)
+  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const floating = useUi((state) => state.vmPlacements[threadId] === "floating")
   const setPlacement = useUi((state) => state.setVmPlacement)
   const [attempt, setAttempt] = useState(0)
@@ -205,6 +208,8 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             onClick={() => run(() => callPromise("vm.profile.save", { threadId }))}
           />
         )}
+        <ScreenshotButton threadId={threadId} run={run} />
+        {experimental.tinyVmPasskeys && <PasskeyButton threadId={threadId} run={run} />}
         {control}
         {!floating && (
           <>
@@ -228,6 +233,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       {vm.profile === "copy" && (
         <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_profile_copy_note()}</p>
       )}
+      {experimental.tinyVmPasskeys && <PasskeyNotice threadId={threadId} run={run} />}
       {floating ? (
         <Centered>
           <RiPictureInPicture2Line aria-hidden className="size-6 text-muted-foreground" />
@@ -305,16 +311,86 @@ export function ControlButton({ threadId, vm, pending, run }: ControlButtonProps
   )
 }
 
+interface VmActionButtonProps {
+  readonly threadId: string
+  readonly run: (action: () => Promise<unknown>) => void
+}
+
+export function ScreenshotButton({ threadId, run }: VmActionButtonProps) {
+  const save = () =>
+    run(async () => {
+      const attachment = await callPromise("vm.screenshot.save", { threadId })
+      await callPromise("shell.reveal", { path: attachment.path })
+    })
+  return <IconAction icon={RiCameraLine} label={m.vm_screenshot_save()} onClick={save} />
+}
+
+export function PasskeyButton({ threadId, run }: VmActionButtonProps) {
+  const passkey = useAtomValue(threadVmPasskeyAtom(threadId))
+  if (!AsyncResult.isSuccess(passkey)) return null
+  const state: VmPasskey = passkey.value
+  const prepare = () => run(() => callPromise("vm.passkey.prepare", { threadId }))
+  switch (state.status) {
+    case "off":
+    case "failed":
+      return <IconAction icon={RiFingerprintLine} label={m.vm_passkey_prepare()} onClick={prepare} />
+    case "ready":
+      return (
+        <IconAction icon={RiFingerprintLine} label={m.vm_passkey_ready()} onClick={prepare} className="text-success" />
+      )
+    case "pending":
+      return <IconAction icon={RiFingerprintLine} label={m.vm_passkey_pending({ origin: state.origin })} disabled />
+  }
+}
+
+export function PasskeyNotice({ threadId, run }: VmActionButtonProps) {
+  const passkey = useAtomValue(threadVmPasskeyAtom(threadId))
+  if (!AsyncResult.isSuccess(passkey)) return null
+  const state: VmPasskey = passkey.value
+  if (state.status === "failed") {
+    return (
+      <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
+        {state.message}
+      </p>
+    )
+  }
+  if (state.status !== "pending") return null
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+      <RiFingerprintLine aria-hidden className="size-3.5 shrink-0" />
+      <p aria-live="polite" className="min-w-0 flex-1 truncate" title={m.vm_passkey_pending({ origin: state.origin })}>
+        {m.vm_passkey_pending({ origin: state.origin })}
+      </p>
+      <Button variant="outline" size="xs" onClick={() => run(() => callPromise("vm.passkey.cancel", { threadId }))}>
+        {m.vm_passkey_cancel()}
+      </Button>
+    </div>
+  )
+}
+
 interface IconActionProps {
   readonly icon: IconType
   readonly label: string
-  readonly onClick: () => void
+  readonly onClick?: () => void
+  readonly disabled?: boolean
+  readonly className?: string
 }
 
-export function IconAction({ icon: Icon, label, onClick }: IconActionProps) {
+export function IconAction({ icon: Icon, label, onClick, disabled = false, className }: IconActionProps) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} onClick={onClick} />}>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+            onClick={onClick}
+            disabled={disabled}
+            className={className}
+          />
+        }
+      >
         <Icon aria-hidden />
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
