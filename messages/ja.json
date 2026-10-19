@@ -383,6 +383,7 @@
   "delete_dialog_worktree": "ワークツリーのパス：{path}",
   "delete_dialog_remove_worktree": "ワークツリーも削除する（マージ済みのブランチも削除）",
   "delete_dialog_confirm": "スレッドを削除",
+  "delete_dialog_offline": "このスレッドを削除するには {name} に再接続してください。",
   "home_description": "ローカルリポジトリで Claude Code、Codex、Muse Code を実行できます。スレッドごとに独立した Git ワークツリーを作成し、専用のセットアップスクリプトで環境を整えられます。",
   "settings_automations": "オートメーション",
   "settings_slack_label": "Slack ユーザートークン",
