@@ -1,6 +1,15 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, type RefObject, startTransition, useActionState, useRef, useState, useTransition } from "react"
+import {
+  type FormEvent,
+  type RefObject,
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
@@ -113,6 +122,10 @@ function useCloudUpdate(cloud: Cloud) {
 
 function CloudVersion({ cloud }: { cloud: Cloud }) {
   const status = useCloudUpdate(cloud)
+  // A cloud checks npm every few hours on its own; opening this page asks for a release published since.
+  useEffect(() => {
+    void callPromise("updates.check", undefined, { environment: cloud.id })
+  }, [cloud.id])
   if (status === null) return null
   return <span className="tabular-nums">{m.environment_version({ version: status.current })}</span>
 }
