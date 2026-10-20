@@ -25,6 +25,8 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[edited ${part.path}]`
     case "attachment":
       return `[attachment ${part.attachment.name}]`
+    case "compaction":
+      return `[context compaction: ${part.compaction.status}]`
   }
 }
 

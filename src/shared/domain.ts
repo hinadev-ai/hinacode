@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 
@@ -321,6 +321,7 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("attachment"), attachment: Attachment }),
   /** Questions the agent posted without waiting; `text` is how they read once answered. */
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
+  Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
 ])
 export type MessagePart = typeof MessagePart.Type
 
@@ -421,9 +422,36 @@ export const ExperimentalSettings = Schema.Struct({
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
+/** Apps "Open with" knows how to launch. Main lists the ones installed on this desktop. */
+export const OpenerId = Schema.Literals([
+  "vscode",
+  "cursor",
+  "windsurf",
+  "zed",
+  "sublime",
+  "xcode",
+  "terminal",
+  "iterm",
+  "ghostty",
+  "warp",
+])
+export type OpenerId = typeof OpenerId.Type
+
+export const Opener = Schema.Struct({
+  id: OpenerId,
+  name: Schema.String,
+  /** Editors open a single file too. Terminals only open folders. */
+  opensFiles: Schema.Boolean,
+  /** The app's own icon as a PNG data URL, when the OS gives one. */
+  icon: Schema.NullOr(Schema.String),
+})
+export type Opener = typeof Opener.Type
+
 /** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
 export const ClientSettings = Schema.Struct({
   locale: Locale,
+  /** The app "Open with" used last, which the thread header opens in one click. */
+  openWith: Schema.NullOr(OpenerId),
   /** CommandId -> canonical chord such as "mod+shift+p". Only user overrides are stored. */
   keybindings: Schema.Record(Schema.String, Schema.String),
   appearance: Appearance,
@@ -433,6 +461,7 @@ export type ClientSettings = typeof ClientSettings.Type
 
 export const defaultClientSettings: ClientSettings = {
   locale: "en",
+  openWith: null,
   keybindings: {},
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   notifications: { completed: true, needsInput: true, failed: true, sound: true },

@@ -8,6 +8,7 @@ import {
   AgentProfile,
   AgentProfileName,
   AgentConfigDir,
+  AgentUpdate,
   AgentBinary,
   ApprovalDecision,
   ApprovalRequest,
@@ -18,6 +19,7 @@ import {
   QuestionRequest,
   SecretRequest,
   ThreadUsage,
+  UpdatableProviderId,
 } from "./agent.ts"
 import {
   AccessMode,
@@ -42,6 +44,8 @@ import {
   PermissionRequestOutcome,
   Message,
   OpenPort,
+  Opener,
+  OpenerId,
   Project,
   GitHubAuth,
   PullRequest,
@@ -204,6 +208,10 @@ export const RpcMethods = {
   ),
   /** Shows the path in the OS file manager. */
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
+  /** The apps on this desktop that "Open with" can launch. */
+  "shell.openers": rpc(Schema.Void, Schema.Array(Opener)),
+  /** Opens a folder or file in the app. Fails when the app is not installed. */
+  "shell.openWith": rpc(Schema.Struct({ path: Schema.String, opener: OpenerId }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
   "notifications.permission": rpc(Schema.Void, NotificationPermission),
@@ -227,6 +235,10 @@ export const RpcMethods = {
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
   "agents.account": rpc(Schema.Struct({ provider: ProviderId, accountId: Schema.NullOr(Schema.String) }), AgentAccount),
+  /** Agent CLIs on this desktop's PATH with a newer release, checked now. */
+  "agents.updates": rpc(Schema.Void, Schema.Array(AgentUpdate)),
+  /** Runs the agent CLI's own `update` and returns the version it installed. */
+  "agents.update": rpc(Schema.Struct({ provider: UpdatableProviderId }), Schema.String),
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
@@ -546,6 +558,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "git.log": "read",
   "git.show": "read",
   "shell.reveal": "mutation",
+  "shell.openers": "read",
+  "shell.openWith": "mutation",
   "settings.get": "read",
   "notifications.permission": "read",
   "notifications.askPermission": "mutation",
@@ -557,6 +571,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "environments.remove": "mutation",
   "models.list": "read",
   "agents.account": "read",
+  "agents.updates": "read",
+  "agents.update": "mutation",
   "limits.list": "read",
   "accounts.list": "read",
   "accounts.create": "mutation",
@@ -657,6 +673,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",
+  "shell.openers",
+  "shell.openWith",
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",
@@ -670,6 +688,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.list",
   "environments.add",
   "environments.remove",
+  "agents.update",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([

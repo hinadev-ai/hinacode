@@ -1,11 +1,11 @@
 import { Fragment, type RefObject, useState } from "react"
-import { RiAddLine, RiDeleteBinLine, RiFolderOpenLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
-import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
+import { OpenWithSubmenu } from "./OpenWith.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { Button } from "./ui/button.tsx"
 import {
@@ -122,12 +122,7 @@ function ProjectMenuItems({ project, onPick }: { project: Project; onPick: (pick
         <RiAddLine aria-hidden />
         {m.sidebar_project_new_thread()}
       </DropdownMenuItem>
-      {environmentOf(project) === null && (
-        <DropdownMenuItem onClick={() => void callPromise("shell.reveal", { path: project.rootPath })}>
-          <RiFolderOpenLine aria-hidden />
-          {m.sidebar_project_reveal()}
-        </DropdownMenuItem>
-      )}
+      {environmentOf(project) === null && <OpenWithSubmenu path={project.rootPath} target="folder" />}
       <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onPick({ action: "delete", project })}>
         <RiDeleteBinLine aria-hidden />
         {m.sidebar_project_delete()}

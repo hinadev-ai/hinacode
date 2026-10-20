@@ -2,6 +2,7 @@ import { getRouteApi } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { useEffect, useRef } from "react"
 import { FloatingTinyVm } from "../components/FloatingTinyVm.tsx"
+import { ThreadOpenWith } from "../components/OpenWith.tsx"
 import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
@@ -48,6 +49,7 @@ export function ThreadRoute() {
           overlay={<FloatingTinyVm threadId={thread.id} />}
           actions={
             <>
+              <ThreadOpenWith thread={thread} />
               <TerminalToggle threadId={thread.id} />
               {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
             </>

@@ -290,7 +290,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>
-      {unstarted && <WorkspacePicker thread={thread} workspace={workspace} />}
+      {unstarted && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
       {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )

@@ -30,6 +30,8 @@ export const routes: Record<RpcMethod, Route> = {
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
   "shell.reveal": client,
+  "shell.openers": client,
+  "shell.openWith": client,
   "notifications.permission": client,
   "notifications.askPermission": client,
   "clientSettings.get": client,
@@ -40,6 +42,8 @@ export const routes: Record<RpcMethod, Route> = {
   "updates.status": client,
   "updates.check": client,
   "updates.install": client,
+  "agents.updates": client,
+  "agents.update": client,
   "links.favicon": client,
 
   "projects.list": all,

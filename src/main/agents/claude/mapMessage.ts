@@ -42,6 +42,27 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
           return subagentProgress(message, state)
         case "task_notification":
           return subagentEnded(message, state, now)
+        case "status":
+          if (message.status === "compacting")
+            return [{ type: "compaction_updated", compaction: { status: "running" } }]
+          if (message.compact_result === "failed") {
+            return [
+              {
+                type: "compaction_updated",
+                compaction: { status: "failed", message: message.compact_error ?? null },
+              },
+            ]
+          }
+          return []
+        case "compact_boundary": {
+          const { trigger, pre_tokens, post_tokens } = message.compact_metadata
+          return [
+            {
+              type: "compaction_updated",
+              compaction: { status: "done", trigger, preTokens: pre_tokens, postTokens: post_tokens ?? null },
+            },
+          ]
+        }
         default:
           return []
       }

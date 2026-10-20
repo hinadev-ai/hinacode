@@ -41,6 +41,7 @@ import { useUi } from "../stores/ui.ts"
 import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
 import { FileViewer } from "./FileViewer.tsx"
 import { Button } from "./ui/button.tsx"
+import { OpenWithSubmenu } from "./OpenWith.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 
@@ -349,12 +350,10 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                   {m.explorer_copy_path()}
                 </DropdownMenuItem>
                 {canReveal && (
-                  <DropdownMenuItem
-                    onClick={() => void callPromise("shell.reveal", { path: `${root}/${selectedEntry.path}` })}
-                  >
-                    <RiFolderOpenLine aria-hidden />
-                    {m.panel_reveal()}
-                  </DropdownMenuItem>
+                  <OpenWithSubmenu
+                    path={`${root}/${selectedEntry.path}`}
+                    target={selectedEntry.kind === "dir" ? "folder" : "file"}
+                  />
                 )}
               </ContextMenuContent>
             )}

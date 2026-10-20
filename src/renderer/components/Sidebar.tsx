@@ -7,7 +7,6 @@ import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
-  RiCloudLine,
   RiFilter3Fill,
   RiFilter3Line,
   RiFolder3Line,
@@ -15,7 +14,7 @@ import {
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, Thread } from "../../shared/domain.ts"
-import { environmentName, environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
+import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
 import { groupProjects, type ProjectGroup as Group } from "../lib/projectGroups.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
@@ -447,45 +446,24 @@ interface NewThreadButtonProps {
   readonly onNewThread: (project: Project) => void
 }
 
-/** Starts a thread in the project, or asks which machine to start it on when the group spans several. */
+/**
+ * Starts a thread on the group's first machine that is connected, This Mac's when it has one. Before the first
+ * message the composer can move the thread to another machine in the group.
+ */
 function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonProps) {
   const clouds = useClouds()
-  const label = m.sidebar_new_thread_in({ project: projects[0].name })
-  const className =
-    "opacity-0 group-hover/project:opacity-100 group-data-[menu-open=true]/project:opacity-100 focus:opacity-100 data-popup-open:opacity-100"
-  if (projects.length === 1)
-    return (
-      <Button
-        ref={buttonRef}
-        variant="ghost"
-        size="icon-xs"
-        className={className}
-        aria-label={label}
-        onClick={() => onNewThread(projects[0])}
-      >
-        <RiAddLine aria-hidden />
-      </Button>
-    )
+  const project =
+    projects.find((member) => !isStale(clouds.find((cloud) => cloud.id === environmentOf(member)))) ?? projects[0]
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        ref={buttonRef}
-        render={<Button variant="ghost" size="icon-xs" className={className} aria-label={label} />}
-      >
-        <RiAddLine aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        {projects.map((project) => {
-          const environment = environmentOf(project)
-          const Icon = environment === null ? RiFolder3Line : RiCloudLine
-          return (
-            <DropdownMenuItem key={project.id} onClick={() => onNewThread(project)}>
-              <Icon aria-hidden />
-              {environmentName(environment, clouds)}
-            </DropdownMenuItem>
-          )
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button
+      ref={buttonRef}
+      variant="ghost"
+      size="icon-xs"
+      className="opacity-0 group-hover/project:opacity-100 group-data-[menu-open=true]/project:opacity-100 focus:opacity-100"
+      aria-label={m.sidebar_new_thread_in({ project: project.name })}
+      onClick={() => onNewThread(project)}
+    >
+      <RiAddLine aria-hidden />
+    </Button>
   )
 }

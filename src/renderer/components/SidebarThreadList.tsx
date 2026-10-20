@@ -329,7 +329,7 @@ const ThreadRow = memo(function ThreadRow({
       data-archived={archived}
       data-stale={isStale(cloud)}
       // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -603,7 +603,7 @@ const rowState = (status: ThreadStatus, unseen: Outcome | undefined): RowState =
 
 /**
  * How loudly a row reads. A thread that needs the user is at full contrast and a working one recedes to
- * muted. Color, not opacity, so the muted branch line stays above 4.5:1 and the status icon keeps its color.
+ * muted and faded, until it is hovered, focused or open.
  */
 const rowEmphasis = {
   awaiting_approval: "attention",

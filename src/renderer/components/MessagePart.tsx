@@ -4,6 +4,7 @@ import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
   RiCheckLine,
+  RiContractUpDownLine,
   RiEditLine,
   RiErrorWarningLine,
   RiFileEditLine,
@@ -15,6 +16,7 @@ import {
   RiTerminalBoxLine,
   RiToolsLine,
 } from "react-icons/ri"
+import type { Compaction } from "../../shared/agent.ts"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
@@ -47,6 +49,8 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <FileChangePart path={part.path} diff={part.diff} />
     case "attachment":
       return <AttachmentView attachment={part.attachment} />
+    case "compaction":
+      return <CompactionPart compaction={part.compaction} />
   }
 }
 
@@ -424,4 +428,52 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
       </CollapsibleContent>
     </Collapsible>
   )
+}
+
+const formatTokens = (tokens: number) => new Intl.NumberFormat(getLocale(), { notation: "compact" }).format(tokens)
+
+/** A rule across the transcript: what sits above it reaches the agent only as a summary from here on. */
+function CompactionPart({ compaction }: { compaction: Compaction }) {
+  return (
+    <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+      <span aria-hidden className="h-px flex-1 bg-border" />
+      <CompactionLabel compaction={compaction} />
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+function CompactionLabel({ compaction }: { compaction: Compaction }) {
+  switch (compaction.status) {
+    case "running":
+      return (
+        <span className="flex items-center gap-1.5">
+          {statusIcon.running}
+          {m.compaction_running()}
+        </span>
+      )
+    case "done":
+      return (
+        <span className="flex items-center gap-1.5">
+          <RiContractUpDownLine aria-hidden className="size-3.5 shrink-0" />
+          {compaction.trigger === "auto" ? m.compaction_done_auto() : m.compaction_done()}
+          {compaction.postTokens !== null && (
+            <span className="tabular-nums">
+              {m.compaction_tokens({
+                before: formatTokens(compaction.preTokens),
+                after: formatTokens(compaction.postTokens),
+              })}
+            </span>
+          )}
+        </span>
+      )
+    case "failed":
+      return (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0 text-destructive" />
+          {m.compaction_failed()}
+          {compaction.message !== null && <span className="min-w-0 truncate">{compaction.message}</span>}
+        </span>
+      )
+  }
 }
