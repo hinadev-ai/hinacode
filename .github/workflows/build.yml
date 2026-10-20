@@ -101,7 +101,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
 
   # `npx hinacode serve`: the cloud daemon as plain Node. npm trusted publishing (OIDC) authenticates this
-  # workflow, so it needs no token. Every release is a prerelease today, and `npx hinacode` resolves `latest`.
+  # workflow, so it needs no token. It only stages the version; a maintainer approves it with 2FA, so a leaked
+  # workflow cannot ship a package alone. Every release is a prerelease today, and `npx hinacode` resolves `latest`.
   npm:
     if: github.ref_type == 'tag'
     needs: release
@@ -121,4 +122,4 @@ jobs:
       - run: |
           npm pkg set version="${GITHUB_REF_NAME#v}"
           npm pkg delete optionalDependencies
-          pnpm build && npm publish --tag latest
+          pnpm build && npm stage publish --tag latest

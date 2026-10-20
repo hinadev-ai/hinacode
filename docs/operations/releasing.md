@@ -26,13 +26,12 @@ The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows 
 
    The `draft` job creates a draft release with notes generated from the pull requests merged since the previous `v*` tag. Each build job writes the tag's version into `package.json` before packaging. The build jobs upload the DMG, the macOS zip, the Windows installer, the AppImage, their blockmaps, and `latest-mac.yml`, `latest.yml` and `latest-linux.yml` into it, and the `release` job publishes it. Installers skip Actions artifact storage, so its quota cannot block a release. If a build job fails, rerun the failed jobs; the upload replaces assets already in the draft.
 
-3. The `npm` job then publishes the same version to npm as `hinacode`, for `npx hinacode serve` (see `cloud.md`). It authenticates with npm trusted publishing, which npm only lets you configure on a package that exists. So once, by hand, from a clean checkout of the tag:
+3. The `npm` job then stages the same version on npm as `hinacode`, for `npx hinacode serve` (see `cloud.md`). It authenticates with npm trusted publishing, set up under the package's Settings > Trusted publishing for this repository and `build.yml`. A staged version is not public until a maintainer approves it with 2FA:
 
    ```sh
-   npm pkg set version=0.1.0-alpha.9 && npm pkg delete optionalDependencies && pnpm build && npm publish --tag latest
+   npm stage list hinacode
+   npm stage approve <stage-id>
    ```
-
-   Then on npmjs.com, under the package's Settings > Trusted publishing, add GitHub Actions with this repository and the workflow `build.yml`.
 
 For a local build without signing or publishing, run `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist -c.mac.notarize=false`. It builds for the current platform, and the output lands in `dist/`.
 
