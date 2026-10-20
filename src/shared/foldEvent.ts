@@ -46,18 +46,29 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         ...message,
         parts: [...message.parts, { type: "questions", text: event.text, questions: event.questions }],
       }
+    case "compaction_updated": {
+      const part = { type: "compaction" as const, compaction: event.compaction }
+      const running = message.parts.findLastIndex(isRunningCompaction)
+      return {
+        ...message,
+        parts:
+          running === -1
+            ? [...message.parts, part]
+            : message.parts.map((existing, index) => (index === running ? part : existing)),
+      }
+    }
     case "turn_completed":
-      return { ...message, parts: failRunningTools(message.parts), completedAt: now, usage: event.usage ?? null }
+      return { ...message, parts: failRunningParts(message.parts), completedAt: now, usage: event.usage ?? null }
     case "turn_failed":
       return {
         ...message,
-        parts: [...failRunningTools(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
+        parts: [...failRunningParts(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
         completedAt: now,
       }
     case "turn_limited":
       return {
         ...message,
-        parts: [...failRunningTools(message.parts), { type: "text", text: event.limit.message }],
+        parts: [...failRunningParts(message.parts), { type: "text", text: event.limit.message }],
         completedAt: now,
       }
     default:
@@ -90,7 +101,7 @@ export function foldTranscript(
   if (event.type === "turn_completed" || event.type === "turn_failed" || event.type === "turn_limited") {
     next = next.map((message, index) => {
       if (index === target) return message
-      const parts = failRunningTools(message.parts)
+      const parts = failRunningParts(message.parts)
       return parts === message.parts ? message : { ...message, parts }
     })
   }
@@ -99,12 +110,18 @@ export function foldTranscript(
 
 const isToolCall = (part: MessagePart, callId: string) => part.type === "tool_call" && part.callId === callId
 
-/** A turn that ended (interrupted, failed) while tools ran will never report their results. */
-export function failRunningTools(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
-  if (!parts.some((part) => part.type === "tool_call" && part.status === "running")) return parts
-  return parts.map((part) =>
-    part.type === "tool_call" && part.status === "running" ? { ...part, status: "error" } : part,
-  )
+const isRunningCompaction = (part: MessagePart) => part.type === "compaction" && part.compaction.status === "running"
+const isRunning = (part: MessagePart) =>
+  (part.type === "tool_call" && part.status === "running") || isRunningCompaction(part)
+
+/** A turn that ended (interrupted, failed) while tools or a compaction ran will never report their results. */
+export function failRunningParts(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
+  if (!parts.some(isRunning)) return parts
+  return parts.map((part): MessagePart => {
+    if (part.type === "tool_call" && part.status === "running") return { ...part, status: "error" }
+    if (isRunningCompaction(part)) return { type: "compaction", compaction: { status: "failed", message: null } }
+    return part
+  })
 }
 
 /** Deltas extend the trailing part of the same kind, so one streamed paragraph stays one part. */

@@ -375,3 +375,48 @@ describe("mapMessage context window", () => {
     expect(usage?.context).toBeUndefined()
   })
 })
+
+describe("mapMessage compaction", () => {
+  const now = "2026-10-20T10:00:00.000Z"
+  const ids = { uuid: "a3c1f5e2-9b7d-4e1a-8c2f-1d3e5f7a9b0c", session_id: "compact-session" } as const
+  const status = (fields: Partial<Extract<SDKMessage, { subtype: "status" }>>): SDKMessage => ({
+    type: "system",
+    subtype: "status",
+    status: null,
+    ...ids,
+    ...fields,
+  })
+
+  test("follows /compact from start to the boundary, as the CLI sends it", () => {
+    const state = newState()
+    const messages: Array<SDKMessage> = [
+      status({ status: "compacting" }),
+      status({ compact_result: "success" }),
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 16398, post_tokens: 1859, duration_ms: 11789 },
+        ...ids,
+      },
+    ]
+    expect(messages.flatMap((message) => mapMessage(message, state, now))).toEqual([
+      { type: "compaction_updated", compaction: { status: "running" } },
+      {
+        type: "compaction_updated",
+        compaction: { status: "done", trigger: "manual", preTokens: 16398, postTokens: 1859 },
+      },
+    ])
+  })
+
+  test("reports why a compaction failed", () => {
+    expect(
+      mapMessage(
+        status({ compact_result: "failed", compact_error: "Not enough messages to compact." }),
+        newState(),
+        now,
+      ),
+    ).toEqual([
+      { type: "compaction_updated", compaction: { status: "failed", message: "Not enough messages to compact." } },
+    ])
+  })
+})

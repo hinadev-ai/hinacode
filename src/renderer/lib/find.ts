@@ -41,6 +41,7 @@ export function searchableText(part: MessagePart): string {
       return part.path
     case "reasoning":
     case "attachment":
+    case "compaction":
       return ""
   }
 }

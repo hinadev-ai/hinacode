@@ -1,4 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
+import type { Compaction } from "./agent.ts"
 import type { Message } from "./domain.ts"
 import { foldEvent, foldTranscript } from "./foldEvent.ts"
 
@@ -78,6 +79,29 @@ describe("foldEvent", () => {
     const message = assistant("m1")
     expect(foldEvent(message, { type: "session_bound", providerSessionId: "s" }, now)).toBe(message)
     expect(foldEvent(message, { type: "approval_resolved", requestId: "a" }, now)).toBe(message)
+  })
+})
+
+const compaction = (state: Compaction) => ({ type: "compaction_updated" as const, compaction: state })
+
+describe("foldEvent compaction", () => {
+  const done = { status: "done", trigger: "auto", preTokens: 160000, postTokens: 12000 } as const
+
+  test("a compaction runs in place until it reports back", () => {
+    const running = foldEvent(assistant("m1", [{ type: "text", text: "hi" }]), compaction({ status: "running" }), now)
+    const finished = foldEvent(running, compaction(done), now)
+    expect(finished.parts).toStrictEqual([
+      { type: "text", text: "hi" },
+      { type: "compaction", compaction: done },
+    ])
+    expect(foldEvent(finished, compaction(done), now).parts).toHaveLength(3)
+  })
+
+  test("a turn that ends mid-compaction fails it", () => {
+    const running = foldEvent(assistant("m1"), compaction({ status: "running" }), now)
+    expect(foldEvent(running, { type: "turn_completed" }, now).parts).toStrictEqual([
+      { type: "compaction", compaction: { status: "failed", message: null } },
+    ])
   })
 })
 

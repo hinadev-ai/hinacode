@@ -1,6 +1,8 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-tabindex -- a native <meter> cannot draw a ring, and the meter takes focus so keyboard users can open its tooltip.
 import { cn } from "cn"
+import { useShallow } from "zustand/react/shallow"
 import type { ContextWindow } from "../../shared/agent.ts"
+import type { MessagePart } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useMessages } from "../stores/messages.ts"
@@ -12,20 +14,34 @@ const WARNING_FRACTION = 0.8
 
 const formatTokens = (tokens: number) => new Intl.NumberFormat(getLocale(), { notation: "compact" }).format(tokens)
 
-/** The context window as of the thread's latest completed turn that reported one. */
-const latestContext = (threadId: string) => (state: ReturnType<typeof useMessages.getState>) => {
-  const history = state.byThread[threadId]
-  if (history?.status !== "ready") return null
-  for (let index = history.messages.length - 1; index >= 0; index--) {
-    const message = history.messages[index]
-    if (message?.role === "assistant" && message.usage?.context !== undefined) return message.usage.context
+/**
+ * The context window as of the thread's latest completed turn that reported one. A `/compact` turn makes
+ * no model request, so a compaction after that turn sets what is used instead.
+ */
+const latestContext =
+  (threadId: string) =>
+  (state: ReturnType<typeof useMessages.getState>): ContextWindow | null => {
+    const history = state.byThread[threadId]
+    if (history?.status !== "ready") return null
+    let compactedTo: number | null = null
+    for (let index = history.messages.length - 1; index >= 0; index--) {
+      const message = history.messages[index]
+      if (message?.role !== "assistant") continue
+      const context = message.usage?.context
+      if (context !== undefined) return compactedTo === null ? context : { ...context, usedTokens: compactedTo }
+      compactedTo ??= compactedTokens(message.parts)
+    }
+    return null
   }
-  return null
+
+const compactedTokens = (parts: ReadonlyArray<MessagePart>) => {
+  const compaction = parts.findLast((part) => part.type === "compaction")?.compaction
+  return compaction?.status === "done" ? compaction.postTokens : null
 }
 
 /** How full the agent's context window is, so the developer knows when to start a fresh thread. */
 export function ContextRing({ threadId }: { threadId: string }) {
-  const context = useMessages(latestContext(threadId))
+  const context = useMessages(useShallow(latestContext(threadId)))
   if (context === null) return null
   return <Ring context={context} />
 }

@@ -1,4 +1,11 @@
-import type { ApprovalDecision, ApprovalRequest, Question, QuestionAnswers, QuestionRequest } from "@shared/agent.ts"
+import type {
+  ApprovalDecision,
+  ApprovalRequest,
+  Compaction,
+  Question,
+  QuestionAnswers,
+  QuestionRequest,
+} from "@shared/agent.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
@@ -280,8 +287,20 @@ function PartView({ part }: { part: MessagePart }) {
       )
     case "questions":
       return <Text style={[styles.text, { color: theme.text }]}>{part.text}</Text>
+    case "compaction":
+      return (
+        <Text style={{ color: part.compaction.status === "failed" ? theme.danger : theme.textMuted }}>
+          {copy(compactionCopy[part.compaction.status])}
+        </Text>
+      )
   }
 }
+
+const compactionCopy = {
+  running: "mobile_chat_compacting",
+  done: "mobile_chat_compacted",
+  failed: "mobile_chat_compaction_failed",
+} as const satisfies Record<Compaction["status"], CopyKey>
 
 const toolStatus = {
   running: { label: "mobile_chat_tool_running", tone: "running", icon: "RiLoader4Line" },
