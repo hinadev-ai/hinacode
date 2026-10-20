@@ -26,7 +26,8 @@ Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Win
 
 ## Keep it running
 
-- Install it once instead of resolving it on every boot: `npm install -g hinacode`, then run `hinacode serve`. Update with `npm install -g hinacode@latest` and a restart.
+- Install it once instead of resolving it on every boot: `npm install -g --allow-scripts=node-pty hinacode`, then run `hinacode serve`. npm 11 skips node-pty's install script without that flag, and the terminal then fails to start.
+- Update from the desktop: Settings, Environments, `Update all`. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
 - systemd user unit: `ExecStart=/usr/bin/env hinacode serve`, `Environment=PATH=...` with the directories of `node`, `claude`, `codex` and `gh`, `Restart=on-failure`, `StandardOutput=append:%h/.hinacode-cloud/serve.log`. Run `loginctl enable-linger $USER` so it starts at boot without a login. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
 - launchd: `hinacode serve`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
 - Agent logins belong to the cloud: run `claude login`, `codex login`, `muse login` and `gh auth login` in a shell on that machine, once. hinacode never signs in for you.
