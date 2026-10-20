@@ -1,9 +1,17 @@
-import { useAtomSet } from "@effect/atom-react"
+import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type RefObject, startTransition, useActionState, useRef, useState, useTransition } from "react"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
-import { addEnvironmentAtom, removeEnvironmentAtom } from "../../lib/rpc.ts"
+import {
+  addEnvironmentAtom,
+  callPromise,
+  cloudUpdatesAtom,
+  installUpdatesAtom,
+  removeEnvironmentAtom,
+  updateStatusAtom,
+} from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
@@ -34,7 +42,11 @@ export function EnvironmentSettings() {
   }
 
   return (
-    <SettingsSection title={m.settings_environments()} description={m.environments_description()}>
+    <SettingsSection
+      title={m.settings_environments()}
+      description={m.environments_description()}
+      action={<UpdateAllButton />}
+    >
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>
       ) : (
@@ -61,11 +73,13 @@ function EnvironmentRow({ cloud, onPairAgain }: { cloud: Cloud; onPairAgain: () 
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span className="font-mono">{cloudAddress(cloud)}</span>
             <EnvironmentStatusText status={cloud.status} />
+            {cloud.status === "connected" && <CloudVersion cloud={cloud} />}
             {cloud.status !== "connected" && cloud.lastSeenAt !== null && (
               <span>{m.environment_last_seen({ time: formatRelativeTime(cloud.lastSeenAt, now, locale) })}</span>
             )}
           </span>
         </div>
+        {cloud.status === "connected" && <CloudUpdateButton cloud={cloud} />}
         {cloud.status === "unauthorized" && (
           <Button variant="outline" size="sm" onClick={onPairAgain}>
             {m.environment_pair_again()}
@@ -74,11 +88,75 @@ function EnvironmentRow({ cloud, onPairAgain }: { cloud: Cloud; onPairAgain: () 
         <RemoveEnvironmentButton cloud={cloud} />
       </div>
       {cloud.status === "unauthorized" && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
+      {cloud.status === "connected" && <CloudUpdateHint cloud={cloud} />}
       {cloud.status === "incompatible" && (
         <FieldDescription>{m.environment_incompatible_hint({ name: cloud.name })}</FieldDescription>
       )}
     </li>
   )
+}
+
+function UpdateAllButton() {
+  const ready = AsyncResult.getOrElse(useAtomValue(cloudUpdatesAtom), (): ReadonlyArray<string> => [])
+  const installUpdates = useAtomSet(installUpdatesAtom)
+  if (ready.length === 0) return null
+  return (
+    <Button size="sm" onClick={() => installUpdates(ready)}>
+      {m.environment_update_all()}
+    </Button>
+  )
+}
+
+function useCloudUpdate(cloud: Cloud) {
+  return AsyncResult.getOrElse(useAtomValue(updateStatusAtom(cloud.id)), () => null)
+}
+
+function CloudVersion({ cloud }: { cloud: Cloud }) {
+  const status = useCloudUpdate(cloud)
+  if (status === null) return null
+  return <span className="tabular-nums">{m.environment_version({ version: status.current })}</span>
+}
+
+function CloudUpdateButton({ cloud }: { cloud: Cloud }) {
+  const state = useCloudUpdate(cloud)?.state
+  const installUpdates = useAtomSet(installUpdatesAtom)
+  switch (state?.type) {
+    case "ready":
+      return (
+        <Button variant="outline" size="sm" onClick={() => installUpdates([cloud.id])}>
+          {m.environment_update_to({ version: state.version })}
+        </Button>
+      )
+    case "downloading":
+      return (
+        <Button variant="outline" size="sm" disabled>
+          {m.environment_updating_to({ version: state.version })}
+        </Button>
+      )
+    case "failed":
+      return (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void callPromise("updates.check", undefined, { environment: cloud.id })}
+        >
+          {m.update_check()}
+        </Button>
+      )
+    default:
+      return null
+  }
+}
+
+function CloudUpdateHint({ cloud }: { cloud: Cloud }) {
+  const state = useCloudUpdate(cloud)?.state
+  if (state?.type === "ready") {
+    return (
+      <FieldDescription>{m.environment_update_hint({ name: cloud.name, version: state.version })}</FieldDescription>
+    )
+  }
+  if (state?.type === "failed") return <FieldError>{state.message}</FieldError>
+  return null
 }
 
 function RemoveEnvironmentButton({ cloud }: { cloud: Cloud }) {

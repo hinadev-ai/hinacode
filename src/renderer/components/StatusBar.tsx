@@ -77,7 +77,7 @@ function ThreadTokens({ threadId }: { threadId: string }) {
 }
 
 function RestartToUpdate() {
-  const status = AsyncResult.getOrElse(useAtomValue(updateStatusAtom), () => null)
+  const status = AsyncResult.getOrElse(useAtomValue(updateStatusAtom(null)), () => null)
   if (status?.state.type !== "ready") return null
   const { version } = status.state
   return (
