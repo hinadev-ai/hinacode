@@ -51,7 +51,8 @@ import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
-import { callPromise, currentBranchAtom, projectsAtom } from "../lib/rpc.ts"
+import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { cn } from "../lib/utils.ts"
 import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
@@ -63,6 +64,7 @@ import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import {
@@ -350,7 +352,7 @@ const ThreadRow = memo(function ThreadRow({
           <StatusIndicator state={state} />
         </Link>
       )}
-      <ThreadMeta {...meta} cloud={cloud} />
+      <ThreadMeta {...meta} cloud={cloud} environment={environment} />
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
@@ -675,7 +677,8 @@ function ThreadMeta({
   links,
   updatedAt,
   cloud,
-}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined }) {
+  environment,
+}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
@@ -698,7 +701,7 @@ function ThreadMeta({
           <span className="truncate font-mono">{branch}</span>
         </span>
       )}
-      {latest && <PullRequestNumber latest={latest} count={links.length} />}
+      {latest && <PullRequestNumber latest={latest} count={links.length} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
           <RiEyeLine aria-hidden className="size-3" />
@@ -726,8 +729,18 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
 }
 
 /** The newest linked pull request, with a stack icon when the thread linked several. Opens on GitHub. */
-function PullRequestNumber({ latest, count }: { latest: PullRequestLink; count: number }) {
+function PullRequestNumber({
+  latest,
+  count,
+  environment,
+}: {
+  latest: PullRequestLink
+  count: number
+  environment: EnvironmentId
+}) {
   const number = pullRequestNumber(latest.url)
+  const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
+  const status = AsyncResult.isSuccess(lookup) ? lookup.value.status : undefined
   return (
     <a
       href={latest.url}
@@ -738,9 +751,13 @@ function PullRequestNumber({ latest, count }: { latest: PullRequestLink; count: 
       }
       title={latest.url}
       // Above the row link's ::after, so it opens the pull request instead of the thread.
-      className="relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      className={cn(
+        "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        status ? statusIndicator[status].className : "hover:text-foreground",
+      )}
     >
-      {count > 1 && <RiStackLine aria-hidden className="size-3" />}#{number}
+      {count > 1 && <RiStackLine aria-hidden className="size-3" />}
+      <StatusIcon status={status} className="size-3" />#{number}
     </a>
   )
 }
