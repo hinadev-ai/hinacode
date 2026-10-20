@@ -71,6 +71,8 @@
   --color-destructive: var(--destructive);
   --color-attention: var(--attention);
   --color-success: var(--success);
+  --color-pr-open: var(--pr-open);
+  --color-pr-merged: var(--pr-merged);
   --color-provider-claude: var(--provider-claude);
   --color-provider-codex: var(--provider-codex);
   --color-provider-muse: var(--provider-muse);
@@ -150,6 +152,9 @@
   --attention: oklch(0.473 0.137 46.201);
   /* Connected, signed in or done. It shares a value with --vcs-added, not a role. */
   --success: oklch(0.508 0.118 165.612);
+  /* GitHub's pull request state colors, so a state reads the same here as on github.com. */
+  --pr-open: #1a7f37;
+  --pr-merged: #8250df;
   /* Brand marks, darkened from the brand color where needed to clear 3:1 on the light surfaces. */
   --provider-claude: #c15f3c;
   --provider-muse: #0064e0;
@@ -188,6 +193,8 @@
   --destructive: oklch(0.704 0.191 22.216);
   --attention: oklch(0.828 0.189 84.429);
   --success: oklch(0.765 0.177 163.223);
+  --pr-open: #3fb950;
+  --pr-merged: #a371f7;
   --provider-claude: #d97757;
   --provider-muse: #0081fb;
   --border: oklch(1 0 0 / 10%);
