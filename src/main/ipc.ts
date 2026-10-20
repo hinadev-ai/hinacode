@@ -5,6 +5,7 @@ import { type PushEvent, type RpcEnvelope, type RpcMethod, RpcMethods } from "..
 import { routes } from "./environments/routes.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import { type AppServices, type DesktopCalls, dispatch, type HandlerError, RpcCall } from "./rpc.ts"
+import { listOpeners, openWith } from "./openers.ts"
 import { isTrustedSender } from "./security.ts"
 import { inlineSource } from "./services/Attachments.ts"
 import { Environments } from "./services/Environments.ts"
@@ -27,6 +28,8 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
     if (window) bringToFront(window)
   }),
   reveal: (path) => Effect.sync(() => shell.showItemInFolder(path)),
+  openers: listOpeners,
+  openWith,
   pickFolder: Effect.map(showOpenDialog(window, { properties: ["openDirectory", "createDirectory"] }), (result) =>
     result.canceled ? null : (result.filePaths[0] ?? null),
   ),

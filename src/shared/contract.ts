@@ -44,6 +44,8 @@ import {
   PermissionRequestOutcome,
   Message,
   OpenPort,
+  Opener,
+  OpenerId,
   Project,
   GitHubAuth,
   PullRequest,
@@ -206,6 +208,10 @@ export const RpcMethods = {
   ),
   /** Shows the path in the OS file manager. */
   "shell.reveal": rpc(Schema.Struct({ path: Schema.String }), Schema.Void),
+  /** The apps on this desktop that "Open with" can launch. */
+  "shell.openers": rpc(Schema.Void, Schema.Array(Opener)),
+  /** Opens a folder or file in the app. Fails when the app is not installed. */
+  "shell.openWith": rpc(Schema.Struct({ path: Schema.String, opener: OpenerId }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
   "notifications.permission": rpc(Schema.Void, NotificationPermission),
@@ -552,6 +558,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "git.log": "read",
   "git.show": "read",
   "shell.reveal": "mutation",
+  "shell.openers": "read",
+  "shell.openWith": "mutation",
   "settings.get": "read",
   "notifications.permission": "read",
   "notifications.askPermission": "mutation",
@@ -665,6 +673,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",
+  "shell.openers",
+  "shell.openWith",
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",
