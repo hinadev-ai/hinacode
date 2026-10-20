@@ -548,6 +548,7 @@
   "sidebar_pull_request_stack": "リンクされた {count} 件のうち最新の PR #{number} を開く",
   "sidebar_watching": "プルリクエストを監視中",
   "thread_workspace_picker": "ワークスペース",
+  "thread_environment_picker": "環境",
   "settings_text_generation_model": "スレッド命名モデル",
   "settings_text_generation_model_hint": "最初のプロンプトからスレッド名とブランチ名を自動生成するモデルを指定します。",
   "settings_default_access": "デフォルトの実行権限",

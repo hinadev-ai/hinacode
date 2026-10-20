@@ -1,16 +1,19 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { useAtomValue } from "@effect/atom-react"
+import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
   RiBrainLine,
   RiChat3Line,
+  RiCloudLine,
   RiFlashlightLine,
   RiGitBranchLine,
   RiGitPullRequestLine,
   RiLockUnlockLine,
+  RiMacbookLine,
   RiMoreLine,
   RiShieldCheckLine,
   RiShieldUserLine,
@@ -18,7 +21,7 @@ import {
 } from "react-icons/ri"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { AccessMode, type OpenPullRequest, type Thread } from "../../shared/domain.ts"
+import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
@@ -28,9 +31,12 @@ import {
   defaultBranchAtom,
   type EnvironmentId,
   modelsAtom,
+  projectsAtom,
   pullRequestsAtom,
 } from "../lib/rpc.ts"
-import { useThreadEnvironment } from "../lib/environments.ts"
+import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
+import { groupProjects } from "../lib/projectGroups.ts"
+import { moveUnstartedThread } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
@@ -746,11 +752,51 @@ function RefInput({
   )
 }
 
+const environmentIcon = (project: Project | undefined) =>
+  environmentOf(project) === null ? RiMacbookLine : RiCloudLine
+
+/**
+ * The machine the thread runs on, among those its project's group spans. Picking another moves the unstarted thread
+ * there. Hidden when the repository is on one machine only.
+ */
+function EnvironmentPicker({ thread, onError }: ControlProps) {
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const clouds = useClouds()
+  const navigate = useNavigate()
+  const [isMoving, startMoving] = useTransition()
+  const members = groupProjects(projects).find((group) =>
+    group.projects.some((project) => project.id === thread.projectId),
+  )?.projects
+  if (members === undefined || members.length < 2) return null
+
+  const choice: Choice = {
+    name: m.thread_environment_picker(),
+    icon: environmentIcon(members.find((project) => project.id === thread.projectId)),
+    value: thread.projectId,
+    items: members.map((project) => ({
+      value: project.id,
+      label: environmentName(environmentOf(project), clouds),
+      icon: environmentIcon(project),
+    })),
+    disabled: isMoving,
+    destructive: false,
+    onChange: (projectId) =>
+      startMoving(async () => {
+        try {
+          await moveUnstartedThread(thread, projectId, navigate)
+        } catch (cause) {
+          onError(errorMessage(cause))
+        }
+      }),
+  }
+  return <ChoiceSelect choice={choice} />
+}
+
 /**
  * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new worktree
  * forked from a branch or checked out from a pull request.
  */
-export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspace: Draft["workspace"] }) {
+export function WorkspacePicker({ thread, workspace, onError }: ControlProps & { workspace: Draft["workspace"] }) {
   const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
   const defaultBranch = AsyncResult.getOrElse(useAtomValue(defaultBranchAtom(thread.projectId)), () => "main")
   const setWorkspace = (next: Draft["workspace"]) => useDrafts.getState().setWorkspace(thread.id, next)
@@ -759,7 +805,8 @@ export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspa
   const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : RiGitBranchLine
 
   return (
-    <div className="mx-auto mt-1 flex w-full max-w-3xl px-1">
+    <div className="mx-auto mt-1 flex w-full max-w-3xl items-center gap-1 px-1">
+      <EnvironmentPicker thread={thread} onError={onError} />
       <fieldset
         aria-label={m.thread_workspace_picker()}
         className="flex h-7 min-w-0 items-center rounded-full border border-border text-xs text-muted-foreground"

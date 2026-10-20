@@ -548,6 +548,7 @@
   "sidebar_pull_request_stack": "Open pull request #{number}, the newest of {count} linked",
   "sidebar_watching": "Watching a pull request",
   "thread_workspace_picker": "Workspace",
+  "thread_environment_picker": "Environment",
   "settings_text_generation_model": "Thread naming",
   "settings_text_generation_model_hint": "Names a thread and its branch from its first message.",
   "settings_default_access": "Default access",
