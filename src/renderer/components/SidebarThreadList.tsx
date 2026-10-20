@@ -33,20 +33,24 @@ import {
 import { flushSync } from "react-dom"
 import {
   RiArchiveLine,
+  RiCheckboxCircleFill,
   RiDeleteBinLine,
   RiDraggable,
   RiErrorWarningFill,
-  RiErrorWarningLine,
   RiEyeLine,
   RiEyeOffLine,
   RiGitBranchLine,
+  RiHourglassFill,
   RiInboxUnarchiveLine,
   RiMoreFill,
   RiPencilLine,
+  RiPulseLine,
   RiPushpinLine,
+  RiQuestionFill,
   RiStackLine,
   RiUnpinLine,
 } from "react-icons/ri"
+import type { IconType } from "react-icons"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -613,40 +617,32 @@ const rowEmphasis = {
   running: "working",
 } satisfies Record<RowState, "attention" | "resting" | "working">
 
-const statusDot: Partial<Record<RowState, { label: () => string; className: string }>> = {
-  unseen_completed: { label: m.thread_status_unseen_completed, className: "bg-sidebar-foreground" },
-  running: { label: m.thread_status_running, className: "bg-success animate-pulse motion-reduce:animate-none" },
+const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconType; className: string }>> = {
+  running: {
+    label: m.thread_status_running,
+    Icon: RiPulseLine,
+    className: "text-muted-foreground",
+  },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
+    Icon: RiQuestionFill,
     className:
-      "relative bg-attention after:absolute after:inset-0 after:animate-attention after:rounded-full after:bg-inherit motion-reduce:after:hidden",
+      "text-attention after:absolute after:inset-0.5 after:animate-attention after:rounded-full after:border after:border-current after:[animation-fill-mode:forwards] motion-reduce:after:hidden",
   },
+  limited: { label: m.thread_status_limited, Icon: RiHourglassFill, className: "text-attention" },
+  unseen_completed: { label: m.thread_status_unseen_completed, Icon: RiCheckboxCircleFill, className: "text-success" },
+  unseen_failed: { label: m.thread_status_unseen_failed, Icon: RiErrorWarningFill, className: "text-destructive" },
 }
 
 function StatusIndicator({ state }: { state: RowState }): ReactNode {
-  if (state === "unseen_failed") {
-    return (
-      <span title={m.thread_status_unseen_failed()} className="flex shrink-0 items-center">
-        <RiErrorWarningFill aria-hidden className="size-3.5 text-destructive" />
-        <span className="sr-only">{m.thread_status_unseen_failed()}</span>
-      </span>
-    )
-  }
-  if (state === "limited") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-attention/10 px-1.5 py-0.5 text-xs whitespace-nowrap text-attention">
-        <RiErrorWarningLine aria-hidden className="size-3" />
-        {m.thread_status_limited()}
-      </span>
-    )
-  }
-  const dot = statusDot[state]
-  if (!dot) return null
+  const status = statusIcons[state]
+  if (!status) return null
+  const { label, Icon, className } = status
   return (
-    <span title={dot.label()} className="flex shrink-0 items-center">
-      <span aria-hidden className={`size-2 rounded-full ${dot.className}`} />
-      <span className="sr-only">{dot.label()}</span>
+    <span title={label()} className={`relative flex shrink-0 items-center ${className}`}>
+      <Icon aria-hidden className="size-3.5" />
+      <span className="sr-only">{label()}</span>
     </span>
   )
 }
