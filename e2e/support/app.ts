@@ -82,6 +82,7 @@ const appEnv = (userData: string, options: SpawnAppOptions) => {
   return {
     ...env,
     HINACODE_USER_DATA: userData,
+    HINACODE_SKIP_AGENT_UPDATES: "1",
     ...(options.mockClaude === undefined ? {} : { HINACODE_MOCK_CLAUDE: options.mockClaude }),
     ...(options.mockResetMs === undefined ? {} : { HINACODE_MOCK_RESET_MS: String(options.mockResetMs) }),
   }
