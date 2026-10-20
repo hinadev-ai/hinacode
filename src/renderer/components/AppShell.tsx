@@ -2,6 +2,7 @@ import { Outlet, useRouter } from "@tanstack/react-router"
 import { useEffect, useRef } from "react"
 import { useKeybindings } from "../keybindings/useKeybindings.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
+import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { Sidebar } from "./Sidebar.tsx"
 import { StatusBar } from "./StatusBar.tsx"
@@ -23,6 +24,7 @@ function useMouseHistoryButtons() {
 export function AppShell() {
   useKeybindings()
   useMouseHistoryButtons()
+  useAgentUpdateNotices()
   const compact = usePanelLayout() === "compact"
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
 

@@ -8,6 +8,7 @@ import {
   AgentProfile,
   AgentProfileName,
   AgentConfigDir,
+  AgentUpdate,
   AgentBinary,
   ApprovalDecision,
   ApprovalRequest,
@@ -18,6 +19,7 @@ import {
   QuestionRequest,
   SecretRequest,
   ThreadUsage,
+  UpdatableProviderId,
 } from "./agent.ts"
 import {
   AccessMode,
@@ -227,6 +229,10 @@ export const RpcMethods = {
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
   "agents.account": rpc(Schema.Struct({ provider: ProviderId, accountId: Schema.NullOr(Schema.String) }), AgentAccount),
+  /** Agent CLIs on this desktop's PATH with a newer release, checked now. */
+  "agents.updates": rpc(Schema.Void, Schema.Array(AgentUpdate)),
+  /** Runs the agent CLI's own `update` and returns the version it installed. */
+  "agents.update": rpc(Schema.Struct({ provider: UpdatableProviderId }), Schema.String),
   /** Plan limits of every signed-in account, read at most once a minute per account. */
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
@@ -557,6 +563,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "environments.remove": "mutation",
   "models.list": "read",
   "agents.account": "read",
+  "agents.updates": "read",
+  "agents.update": "mutation",
   "limits.list": "read",
   "accounts.list": "read",
   "accounts.create": "mutation",
@@ -670,6 +678,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.list",
   "environments.add",
   "environments.remove",
+  "agents.update",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([

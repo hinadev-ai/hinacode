@@ -1,5 +1,6 @@
 import { Cause, Effect, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
+import { availableUpdates, installUpdate } from "./agents/updates.ts"
 import { compactMessage } from "../shared/compactTranscript.ts"
 import type { NotificationPermission, PermissionRequestOutcome } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
@@ -208,6 +209,8 @@ const handlers: Handlers = {
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "agents.account": ({ provider, accountId }) => AgentLogins.use((logins) => logins.account(provider, accountId)),
+  "agents.updates": () => availableUpdates,
+  "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
