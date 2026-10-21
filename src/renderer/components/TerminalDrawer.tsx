@@ -80,7 +80,11 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
         className="min-h-0 flex-1 gap-0"
       >
         <div className="flex h-8 shrink-0 items-center gap-1 px-2">
-          <TabsList variant="line" aria-label={m.terminal_sessions()} className="min-w-0 overflow-x-auto">
+          <TabsList
+            variant="line"
+            aria-label={m.terminal_sessions()}
+            className="min-w-0 overflow-x-auto overflow-y-hidden"
+          >
             {sessions.map((session, index) => (
               <SessionTab
                 key={session.id}
@@ -129,7 +133,7 @@ function SessionTab({ session, name, onClose }: { session: TerminalSession; name
   const exited = session.status === "exited"
   return (
     <div className="group/session flex items-center">
-      <TabsTrigger value={session.id} className="h-7 flex-none gap-1.5 px-2 text-xs">
+      <TabsTrigger value={session.id} className="h-6 flex-none gap-1.5 px-2 text-xs">
         {name}
         {exited && <span className="text-muted-foreground">{m.terminal_tab_exited()}</span>}
       </TabsTrigger>
