@@ -21,7 +21,7 @@ A developer with two Claude or Codex accounts hits the 5-hour limit on one of th
 - `AgentProvider.copySession(sessionId, from, to)` is optional. Muse Code has no added accounts and leaves it out.
 - rpc `threads.switchAccount { id, accountId, resend? }` runs in `AgentRunner` under the thread's lock. It is refused while a turn runs. A thread with a session is copied first, then gets the new `accountId`. A `limited` thread goes back to `idle`, since its limit belonged to the old account. With `resend`, the last user prompt and its attachments are sent again, as Resume at reset does.
 - `threads.update` no longer takes `accountId`, so an account change always goes through the handoff.
-- The renderer decides whether an account is spent from `limits.list`: a window at 100% blocks, and a `model` window blocks only threads whose model id contains its name. The reset shown is the latest among spent windows. Threads of a remote environment show no limit hints, because `limits.list` only reads this Mac.
+- The renderer decides whether an account is spent from `limits.list`: a window at 100% blocks, and a `model` window blocks only threads whose model id contains its name. The reset shown is the latest among spent windows. Threads of a remote environment show no limit hints, because `limits.list` only reads this machine.
 
 ## Out of scope
 

@@ -17,7 +17,7 @@ const keysAndIds = (projects: ReadonlyArray<Project>) =>
   groupProjects(projects).map((group) => [group.key, group.projects.map((member) => member.id)])
 
 describe("groupProjects", () => {
-  test("the same repository on This Mac and a cloud is one group, This Mac first", () => {
+  test("the same repository on this machine and a cloud is one group, this machine first", () => {
     const projects = [
       project("mac-web", { repository: "acme/web" }),
       project("mac-docs", { repository: "acme/docs" }),
