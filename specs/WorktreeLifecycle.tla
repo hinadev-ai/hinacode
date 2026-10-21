@@ -244,6 +244,10 @@ Next ==
 
 Spec == Init /\ [][Next]_vars
 
+\* The user keeps asking to archive (strong fairness: retrying whenever archiving is possible), and every
+\* turn ends, by itself or by Stop. SetupDone gets no fairness, since a setup script may never exit.
+LiveSpec == Spec /\ \A t \in Threads : SF_vars(Archive(t)) /\ WF_vars(TurnCompleted(t))
+
 -------------------------------------------------------------------------------------
 NoDeleteUnderRunningTurn ==
   \A f \in Fibers, t \in Threads :
@@ -257,4 +261,9 @@ CreateWaitsForDeletion == \A t \in Threads : createPc[t] = "add" => ~DeletionInP
 LiveRowHasDirectory == \A r \in Rows : worktreeStatus[r] \in {"ready", "failed"} => r \in dirs
 
 TurnRunsWhereSent == \A t \in Threads : turnPc[t] = "running" /\ sentToWorktree[t] => cwd[t] = t
+
+\* No thread gets stuck: whatever its worktree's setup script does, archiving it eventually works. Retried
+\* failed deletions can use up MaxRemovals, after which the bound, not the code, refuses a removal.
+FibersExhausted == \A f \in Fibers : deletions[f].pc /= "unused"
+ArchiveEventually == \A t \in Threads : threadStatus[t] /= "none" ~> threadStatus[t] = "archived" \/ FibersExhausted
 =====================================================================================
