@@ -24,9 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 
@@ -75,6 +76,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
   const [name, setName] = useState(project?.name ?? "")
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
+  const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
@@ -86,7 +88,8 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
     try {
-      if (project) await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript })
+      if (project)
+        await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript, linearReview })
       else if (repository)
         await cloneProject({
           environment,
@@ -185,6 +188,15 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
             </span>
           </FieldDescription>
         </Field>
+        {project && (
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="project-linear-review">{m.project_linear_review()}</FieldLabel>
+              <FieldDescription>{m.project_linear_review_hint()}</FieldDescription>
+            </FieldContent>
+            <Switch id="project-linear-review" checked={linearReview} onCheckedChange={setLinearReview} />
+          </Field>
+        )}
       </FieldGroup>
       {error && <FieldError>{error}</FieldError>}
       <DialogFooter>

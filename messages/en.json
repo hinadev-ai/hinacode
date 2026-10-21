@@ -23,6 +23,8 @@
   "project_setup_optional": "Optional",
   "project_setup_placeholder": "pnpm install",
   "project_setup_hint": "Setup script runs in every new worktree with:",
+  "project_linear_review": "Open pull requests on linear.review",
+  "project_linear_review_hint": "Experimental. Pull request links of this project open on linear.review instead of GitHub.",
   "project_setup_root_var": "the project root",
   "project_setup_worktree_var": "the new worktree",
   "project_submit": "Add project",

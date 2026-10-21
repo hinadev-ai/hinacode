@@ -21,6 +21,8 @@ export const Project = Schema.Struct({
    * when it is not the top level. Only `projects.list` sets it. Absent without a GitHub `origin`.
    */
   repository: Schema.optionalKey(Schema.String),
+  /** Experimental. Opens the project's GitHub pull request links on linear.review instead. */
+  linearReview: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 })
 export type Project = typeof Project.Type
 

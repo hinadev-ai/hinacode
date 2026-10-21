@@ -57,7 +57,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
-import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
+import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -659,6 +659,7 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     // A removed worktree's branch is struck through: the thread works in the project root now.
     removed: worktree?.status === "removed",
     links,
+    threadId: thread.id,
     updatedAt: thread.updatedAt,
   }
 }
@@ -671,6 +672,7 @@ function ThreadMeta({
   branch,
   removed,
   links,
+  threadId,
   updatedAt,
   cloud,
   environment,
@@ -697,7 +699,9 @@ function ThreadMeta({
           <span className="truncate font-mono">{branch}</span>
         </span>
       )}
-      {latest && <PullRequestNumber latest={latest} count={links.length} environment={environment} />}
+      {latest && (
+        <PullRequestNumber threadId={threadId} latest={latest} count={links.length} environment={environment} />
+      )}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
           <RiEyeLine aria-hidden className="size-3" />
@@ -724,28 +728,31 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
   )
 }
 
-/** The newest linked pull request, with a stack icon when the thread linked several. Opens on GitHub. */
+/** The newest linked pull request, with a stack icon when the thread linked several. */
 function PullRequestNumber({
+  threadId,
   latest,
   count,
   environment,
 }: {
+  threadId: string
   latest: PullRequestLink
   count: number
   environment: EnvironmentId
 }) {
   const number = pullRequestNumber(latest.url)
+  const href = usePullRequestHref(threadId, latest.url)
   const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
   const status = AsyncResult.isSuccess(lookup) ? lookup.value.status : undefined
   return (
     <a
-      href={latest.url}
+      href={href}
       target="_blank"
       rel="noreferrer"
       aria-label={
         count > 1 ? m.sidebar_pull_request_stack({ number, count: String(count) }) : m.sidebar_pull_request({ number })
       }
-      title={latest.url}
+      title={href}
       // Above the row link's ::after, so it opens the pull request instead of the thread.
       className={cn(
         "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
