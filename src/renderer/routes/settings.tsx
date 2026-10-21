@@ -39,12 +39,10 @@ import { m } from "../paraglide/messages.js"
 
 interface SettingsPage {
   readonly id: string
-  /** `app` edits this machine. `environment` edits the machine picked in the settings nav. */
   readonly scope: "app" | "environment"
   readonly label: () => string
   readonly icon: IconType
   readonly component: ComponentType
-  /** A cloud refuses the page's methods, so it shows for this machine only. */
   readonly localOnly?: boolean
 }
 
@@ -206,7 +204,6 @@ export function SettingsRoute() {
   )
 }
 
-/** Radio value of this machine, which has no environment id. */
 const THIS_MACHINE = ""
 
 interface EnvironmentPickerProps {

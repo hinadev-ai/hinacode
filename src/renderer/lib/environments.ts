@@ -22,14 +22,12 @@ export const useClouds = () =>
 export const environmentOf = (project: Pick<Project, "environmentId"> | undefined): EnvironmentId =>
   project?.environmentId ?? null
 
-/** Where a thread runs, which is where its project lives. This machine while the thread or project is unknown. */
 export function useThreadEnvironment(threadId: string | null | undefined): EnvironmentId {
   const projectId = useThreads((state) => (threadId ? state.byId[threadId]?.projectId : undefined))
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   return environmentOf(projects.find((project) => project.id === projectId))
 }
 
-/** The paired cloud an environment id names, or undefined for this machine. */
 export function useCloud(environment: EnvironmentId): Cloud | undefined {
   return useClouds().find((cloud) => cloud.id === environment)
 }
@@ -60,7 +58,6 @@ export const statusDot: Record<EnvironmentStatus, string> = {
   incompatible: "bg-attention",
 }
 
-/** The environment the settings route edits, from `?environment=<id>`. This machine without one, or for an unpaired id. */
 export function useSettingsEnvironment(): EnvironmentId {
   const { environment } = useSearch({ strict: false })
   const clouds = useClouds()

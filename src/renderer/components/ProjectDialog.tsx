@@ -82,7 +82,6 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [environment, setEnvironment] = useState<EnvironmentId>(() => environmentOf(project))
   const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
-  // The folder picker shows this machine's disk, so a cloud project is typed as a path on that machine.
   const canBrowse = environment === null
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
@@ -261,7 +260,6 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
   )
 }
 
-/** Radio value of this machine, which has no environment id. */
 const THIS_MACHINE = ""
 
 interface WhereFieldProps {
@@ -271,7 +269,6 @@ interface WhereFieldProps {
   readonly onChange: (environment: EnvironmentId) => void
 }
 
-/** Where the project lives. Hidden until a cloud is paired, since this machine is then the only place. */
 function WhereField({ editable, value, onChange }: WhereFieldProps) {
   const clouds = useClouds()
   if (clouds.length === 0 && value === null) return null

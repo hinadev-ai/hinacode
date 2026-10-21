@@ -50,7 +50,6 @@ type Shown = AccountLimits & { readonly windows: ReadonlyArray<LimitWindow> }
  */
 export function PlanLimits({ openThread }: { openThread: Pick<Thread, "provider" | "accountId"> | undefined }) {
   const entries = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), () => [])
-  // Limits carry no environment, so account names and sign-ins come from this machine.
   const added = AsyncResult.getOrElse(useAtomValue(accountsAtom(null)), () => [])
   const { defaultAccountName } = useSettings(null)
   const shown = entries.flatMap((entry): ReadonlyArray<Shown> => {
