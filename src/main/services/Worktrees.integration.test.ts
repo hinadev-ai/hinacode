@@ -321,6 +321,27 @@ describe("background setup", () => {
       }),
     ),
   )
+
+  it.live("stopping a setup script that never finishes fails the worktree and releases a send waiting on it", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const pidPath = join(root, "setup.pid")
+        yield* startHangingSetup(projectId, pidPath)
+        const thread = yield* createThread(projectId, "hung", "kk/hung")
+        yield* waitForSetupOutput(thread.worktreeId)
+        const waiting = yield* Effect.forkChild(
+          Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!)),
+        )
+
+        yield* Worktrees.use((worktrees) => worktrees.stopSetup(thread.worktreeId!))
+        const prepared = yield* Fiber.join(waiting)
+        expect(prepared.status).toBe("failed")
+        expect(prepared.setupLog).toMatch(/Setup script was stopped\.\n$/)
+        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+        expect(existsSync(prepared.path)).toBe(true)
+      }),
+    ),
+  )
 })
 
 /** Ignores SIGTERM, as a script stuck in a child that traps it would. Gives up on its own so a failing test cannot leak it. */

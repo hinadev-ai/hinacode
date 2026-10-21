@@ -109,7 +109,6 @@ export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("Thre
 }
 
 const busyReasons = {
-  setup: "its setup script is still running",
   turn: "a thread is still running in it",
   shared: "another thread still uses it",
 } as const
@@ -117,7 +116,7 @@ const busyReasons = {
 /** Removing the worktree now would delete files something is still working on. */
 export class WorktreeBusyError extends Schema.TaggedError<WorktreeBusyError>()("WorktreeBusyError", {
   path: Schema.String,
-  reason: Schema.Literals(["setup", "turn", "shared"]),
+  reason: Schema.Literals(["turn", "shared"]),
 }) {
   override get message(): string {
     return `Cannot remove ${this.path}: ${busyReasons[this.reason]}`

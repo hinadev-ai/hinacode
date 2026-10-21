@@ -172,6 +172,8 @@ export const RpcMethods = {
     Worktree,
   ),
   "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
+  /** Kills a setup script still running; the worktree ends `failed`. */
+  "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** The branch's GitHub pull request via `gh`, or null when there is none. */
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   /** Null when the scope has no base: the thread has no live worktree, or no turn started in a git checkout. */
@@ -546,6 +548,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.create": "mutation",
   "worktrees.remove": "mutation",
   "worktrees.setupLog": "read",
+  "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
   "threads.archive": "mutation",
