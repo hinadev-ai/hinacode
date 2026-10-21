@@ -130,7 +130,7 @@ export function StatusIcon({
   )
 }
 
-const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
+export const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
 
 /**
  * The PR tab. Every pull request the thread has: the ones agents linked plus the one GitHub has for the
@@ -273,11 +273,11 @@ function PullRequestRow({
 const pullRequestSummary = ({ title, status, review }: PullRequest) =>
   [pullRequestStatusLabel[status](), review && reviewLabel[review](), title].filter(Boolean).join(" · ")
 
-function ChecksIndicator({ checks }: { checks: ChecksStatus }) {
-  const { Icon, className, label } = checksIndicator[checks]
+export function ChecksIndicator({ checks, className }: { checks: ChecksStatus; className?: string }) {
+  const { Icon, className: color, label } = checksIndicator[checks]
   return (
     <span title={label()} className="flex shrink-0">
-      <Icon aria-hidden className={cn("size-3.5", className)} />
+      <Icon aria-hidden className={cn("size-3.5", color, className)} />
       <span className="sr-only">{label()}</span>
     </span>
   )

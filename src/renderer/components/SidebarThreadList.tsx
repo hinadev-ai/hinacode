@@ -68,7 +68,7 @@ import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
+import { ChecksIndicator, isOpen, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import {
@@ -743,24 +743,31 @@ function PullRequestNumber({
   const number = pullRequestNumber(latest.url)
   const href = usePullRequestHref(threadId, latest.url)
   const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
-  const status = AsyncResult.isSuccess(lookup) ? lookup.value.status : undefined
+  const pullRequest = AsyncResult.isSuccess(lookup) ? lookup.value : undefined
+  const status = pullRequest?.status
+  const openChecks = pullRequest && isOpen(pullRequest.status) ? pullRequest.checks : null
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={
-        count > 1 ? m.sidebar_pull_request_stack({ number, count: String(count) }) : m.sidebar_pull_request({ number })
-      }
-      title={href}
-      // Above the row link's ::after, so it opens the pull request instead of the thread.
-      className={cn(
-        "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        status ? statusIndicator[status].className : "hover:text-foreground",
-      )}
-    >
-      {count > 1 && <RiStackLine aria-hidden className="size-3" />}
-      <StatusIcon status={status} className="size-3" />#{number}
-    </a>
+    <>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={
+          count > 1
+            ? m.sidebar_pull_request_stack({ number, count: String(count) })
+            : m.sidebar_pull_request({ number })
+        }
+        title={href}
+        // Above the row link's ::after, so it opens the pull request instead of the thread.
+        className={cn(
+          "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          status ? statusIndicator[status].className : "hover:text-foreground",
+        )}
+      >
+        {count > 1 && <RiStackLine aria-hidden className="size-3" />}
+        <StatusIcon status={status} className="size-3" />#{number}
+      </a>
+      {openChecks && <ChecksIndicator checks={openChecks} className="-ml-1 size-3" />}
+    </>
   )
 }
