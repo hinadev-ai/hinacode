@@ -1,9 +1,10 @@
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
 import type { PullRequest, Thread, Worktree, WorktreeStatus } from "../../../shared/domain.ts"
-import { environmentName, useClouds, useThreadEnvironment } from "../../lib/environments.ts"
+import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { useWorktrees } from "../../stores/worktrees.ts"
@@ -123,11 +124,13 @@ function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canRev
 }
 
 function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
+  const { threadId } = useParams({ strict: false })
+  const href = usePullRequestHref(threadId, pullRequest.url)
   const label = m.panel_pr_badge({ state: pullRequestStatusLabel[pullRequest.status]() })
   return (
     <Badge
       variant={pullRequest.status === "merged" ? "default" : "outline"}
-      render={<a href={pullRequest.url} target="_blank" rel="noreferrer" title={pullRequest.url} aria-label={label} />}
+      render={<a href={href} target="_blank" rel="noreferrer" title={href} aria-label={label} />}
     >
       <RiGitPullRequestLine aria-hidden />
       {label}

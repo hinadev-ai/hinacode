@@ -17,6 +17,7 @@ import environments from "./migrations/0015_environments.ts"
 import threadQueue from "./migrations/0016_thread_queue.ts"
 import ftsOnCompletion from "./migrations/0017_fts_on_completion.ts"
 import threadUserSkills from "./migrations/0018_thread_user_skills.ts"
+import projectLinearReview from "./migrations/0019_project_linear_review.ts"
 
 const run = Migrator.make({})
 
@@ -43,5 +44,6 @@ export const runMigrations = run({
     "16_thread_queue": threadQueue,
     "17_fts_on_completion": ftsOnCompletion,
     "18_thread_user_skills": threadUserSkills,
+    "19_project_linear_review": projectLinearReview,
   }),
 }).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))

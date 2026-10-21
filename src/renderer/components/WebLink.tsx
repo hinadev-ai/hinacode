@@ -1,8 +1,10 @@
 import { useAtomValue } from "@effect/atom-react"
+import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { createContext, type ReactNode, useContext } from "react"
 import { RiGlobalLine } from "react-icons/ri"
 import { parsePullRequestUrl, pullRequestLabel } from "../lib/pullRequestRefs.ts"
+import { usePullRequestHref } from "../lib/environments.ts"
 import { faviconAtom } from "../lib/rpc.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { PullRequestLink } from "./PullRequestLink.tsx"
@@ -43,10 +45,12 @@ function FetchedFavicon({ origin }: { origin: string }) {
  */
 export function WebLink({ href, children }: { href: string; children: ReactNode }) {
   const repository = useThreadRepository()
+  const { threadId } = useParams({ strict: false })
+  const pullRequestHref = usePullRequestHref(threadId, href)
   const pullRequest = parsePullRequestUrl(href)
   if (pullRequest) {
     return (
-      <PullRequestLink href={href} pullRequest={pullRequest}>
+      <PullRequestLink href={pullRequestHref} pullRequest={pullRequest}>
         {children === href ? pullRequestLabel(pullRequest, repository) : children}
       </PullRequestLink>
     )

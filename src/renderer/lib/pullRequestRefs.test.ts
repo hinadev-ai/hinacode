@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import { linkify } from "./linkify.ts"
-import { linkPullRequestNumbers, parsePullRequestUrl, pullRequestLabel } from "./pullRequestRefs.ts"
+import { linearReviewUrl, linkPullRequestNumbers, parsePullRequestUrl, pullRequestLabel } from "./pullRequestRefs.ts"
 
 const repository = { owner: "hinadev-ai", name: "hinacode" }
 const numbers = (text: string) =>
@@ -66,5 +66,21 @@ describe("pullRequestLabel", () => {
     expect(pullRequestLabel({ owner: "HINADEV-AI", name: "hinacode", number: 4 }, repository)).toBe("#4")
     expect(pullRequestLabel({ owner: "other", name: "hinacode", number: 4 }, repository)).toBe("other/hinacode#4")
     expect(pullRequestLabel({ owner: "other", name: "hinacode", number: 4 }, null)).toBe("other/hinacode#4")
+  })
+})
+
+describe("linearReviewUrl", () => {
+  test("moves a pull request and its subpages to linear.review", () => {
+    expect(linearReviewUrl("https://github.com/linear/linear/pull/1311")).toBe(
+      "https://linear.review/linear/linear/pull/1311",
+    )
+    expect(linearReviewUrl("https://github.com/linear/linear/pull/1311/files")).toBe(
+      "https://linear.review/linear/linear/pull/1311/files",
+    )
+  })
+
+  test("leaves other urls alone", () => {
+    for (const url of ["https://github.com/linear/linear/issues/4", "https://example.com/a/b/pull/1"])
+      expect(linearReviewUrl(url)).toBe(url)
   })
 })

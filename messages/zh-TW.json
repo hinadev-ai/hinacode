@@ -23,6 +23,8 @@
   "project_setup_optional": "選填",
   "project_setup_placeholder": "pnpm install",
   "project_setup_hint": "會在每個新的工作樹中執行，並提供：",
+  "project_linear_review": "在 linear.review 開啟 Pull Request",
+  "project_linear_review_hint": "實驗性功能。這個專案的 Pull Request 連結會在 linear.review 開啟，而不是 GitHub。",
   "project_setup_root_var": "專案根目錄",
   "project_setup_worktree_var": "新的工作樹",
   "project_submit": "新增專案",

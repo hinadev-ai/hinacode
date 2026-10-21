@@ -116,6 +116,7 @@ export const RpcMethods = {
       name: Schema.optional(Schema.String),
       rootPath: Schema.optional(Schema.String),
       setupScript: Schema.optional(Schema.NullOr(Schema.String)),
+      linearReview: Schema.optional(Schema.Boolean),
     }),
     Project,
   ),

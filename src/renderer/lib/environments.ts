@@ -5,6 +5,7 @@ import type { Environments, EnvironmentStatus, Project } from "../../shared/doma
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { useThreads } from "../stores/threads.ts"
+import { linearReviewUrl } from "./pullRequestRefs.ts"
 import { formatRelativeTime } from "./relativeTime.ts"
 import { type EnvironmentId, environmentsAtom, projectsAtom } from "./rpc.ts"
 import { useNow } from "./useNow.ts"
@@ -93,4 +94,12 @@ export function useCloudStateText(cloud: Cloud): string | null {
     case "incompatible":
       return m.environment_update_on({ name: cloud.name })
   }
+}
+
+/** Where a pull request link of the thread opens: GitHub, or linear.review when its project turned that on. */
+export function usePullRequestHref(threadId: string | null | undefined, url: string): string {
+  const projectId = useThreads((state) => (threadId ? state.byId[threadId]?.projectId : undefined))
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const linearReview = projects.find((project) => project.id === projectId)?.linearReview ?? false
+  return linearReview ? linearReviewUrl(url) : url
 }

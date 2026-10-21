@@ -23,6 +23,8 @@
   "project_setup_optional": "任意",
   "project_setup_placeholder": "pnpm install",
   "project_setup_hint": "セットアップスクリプトは新しいワークツリーごとに、以下の環境変数とともに実行されます：",
+  "project_linear_review": "プルリクエストを linear.review で開く",
+  "project_linear_review_hint": "試験的な機能です。このプロジェクトのプルリクエストのリンクを GitHub ではなく linear.review で開きます。",
   "project_setup_root_var": "プロジェクトのルートパス",
   "project_setup_worktree_var": "新規ワークツリーのパス",
   "project_submit": "プロジェクトを追加",
