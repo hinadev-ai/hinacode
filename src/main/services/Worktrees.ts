@@ -86,7 +86,7 @@ export class Worktrees extends Context.Service<
     /**
      * Marks the worktree removed and returns at once; the checkout and (per `deleteBranch`) the
      * branch are deleted in the background, so a large tree does not hold up the caller.
-     * Refuses while its setup script or a turn of a thread using it runs.
+     * Stops a setup script still running, and refuses while a turn of a thread using it runs.
      * `owner` is the thread giving the worktree up, and any other open thread using it also blocks
      * removal. Without `owner` the caller speaks for every thread, as when deleting the project.
      */
@@ -126,6 +126,8 @@ export class Worktrees extends Context.Service<
      * turn never starts in a checkout the setup script is still preparing.
      */
     readonly whenPrepared: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
+    /** Kills a setup script still running. The worktree ends `failed`, and a send waiting on it goes ahead. */
+    readonly stopSetup: (id: string) => Effect.Effect<void>
   }
 >()("hinacode/Worktrees") {}
 
@@ -256,6 +258,8 @@ const make = Effect.gen(function* () {
           },
           extendEnv: true,
           stdin: "ignore",
+          // Without it, a script that ignores SIGTERM would keep stopSetup waiting forever.
+          forceKillAfter: "3 seconds",
         }),
       )
       yield* handle.all.pipe(
@@ -283,6 +287,12 @@ const make = Effect.gen(function* () {
           Effect.ignore,
         ),
       ),
+      Effect.onInterrupt(() =>
+        appendLog(worktree.id, "\nSetup script was stopped.\n").pipe(
+          Effect.andThen(setStatus(worktree.id, "failed")),
+          Effect.ignore,
+        ),
+      ),
     )
 
   /** Setup scripts still running, by worktree id, so a send can wait for the one preparing its checkout. */
@@ -297,6 +307,11 @@ const make = Effect.gen(function* () {
       }
       return yield* get(id)
     })
+
+  const stopSetup = (id: string) => {
+    const running = setups.get(id)
+    return running === undefined ? Effect.void : Fiber.interrupt(running)
+  }
 
   /**
    * Deletions still running, by project and branch, so a create of the same branch waits for the old
@@ -424,9 +439,6 @@ const make = Effect.gen(function* () {
 
   const ensureRemovable = (worktree: Worktree, owner: string | undefined) =>
     Effect.gen(function* () {
-      if (worktree.status === "preparing") {
-        return yield* new WorktreeBusyError({ path: worktree.path, reason: "setup" })
-      }
       const users = yield* findUsers(worktree.id).pipe(Effect.mapError(persistence("worktrees.remove")))
       if (users.some((thread) => isThreadBusy(thread.status))) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "turn" })
@@ -467,9 +479,12 @@ const make = Effect.gen(function* () {
       const worktree = yield* get(id)
       if (worktree.status === "removed") return worktree
       yield* ensureRemovable(worktree, owner)
+      yield* stopSetup(id)
+      // Read again: a stopped setup has moved the row to failed, the status a failed deletion restores.
+      const stopped = yield* get(id)
       const { rootPath } = yield* projects.get(worktree.projectId)
       const removed = yield* setStatus(id, "removed")
-      const deletion = yield* Effect.forkDetach(deleteFiles(rootPath, worktree, deleteBranch))
+      const deletion = yield* Effect.forkDetach(deleteFiles(rootPath, stopped, deleteBranch))
       removals.set(removalKey(worktree.projectId, worktree.branch), deletion)
       return removed
     })
@@ -554,6 +569,7 @@ const make = Effect.gen(function* () {
     fetch,
     renameBranch,
     whenPrepared,
+    stopSetup,
   })
 })
 

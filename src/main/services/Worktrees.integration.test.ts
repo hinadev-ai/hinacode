@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
@@ -303,7 +303,80 @@ describe("background setup", () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it.live("archiving stops a setup script that never finishes and removes its checkout", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const pidPath = join(root, "setup.pid")
+        yield* startHangingSetup(projectId, pidPath)
+        const thread = yield* createThread(projectId, "hung", "kk/hung")
+        yield* waitForSetupOutput(thread.worktreeId)
+        const { path } = yield* worktreeOf(thread.worktreeId)
+
+        const archived = yield* archiveRemovingWorktree(thread.id)
+        expect(archived.status).toBe("archived")
+        expect((yield* worktreeOf(thread.worktreeId)).status).toBe("removed")
+        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+        yield* waitUntilDeleted(path)
+      }),
+    ),
+  )
+
+  it.live("stopping a setup script that never finishes fails the worktree and releases a send waiting on it", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const pidPath = join(root, "setup.pid")
+        yield* startHangingSetup(projectId, pidPath)
+        const thread = yield* createThread(projectId, "hung", "kk/hung")
+        yield* waitForSetupOutput(thread.worktreeId)
+        const waiting = yield* Effect.forkChild(
+          Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!)),
+        )
+
+        yield* Worktrees.use((worktrees) => worktrees.stopSetup(thread.worktreeId!))
+        const prepared = yield* Fiber.join(waiting)
+        expect(prepared.status).toBe("failed")
+        expect(prepared.setupLog).toMatch(/Setup script was stopped\.\n$/)
+        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+        expect(existsSync(prepared.path)).toBe(true)
+      }),
+    ),
+  )
 })
+
+/** Ignores SIGTERM, as a script stuck in a child that traps it would. Gives up on its own so a failing test cannot leak it. */
+const startHangingSetup = (projectId: string, pidPath: string) =>
+  Projects.use((projects) =>
+    projects.update({
+      id: projectId,
+      setupScript: [
+        `echo $$ > "${pidPath}"`,
+        "trap '' TERM",
+        'printf "setup started\\n"',
+        "attempt=0",
+        'while [ "$attempt" -lt 200 ]; do attempt=$((attempt + 1)); sleep 0.1; done',
+      ].join("\n"),
+    }),
+  )
+
+const waitForSetupOutput = (worktreeId: string | null) =>
+  Effect.gen(function* () {
+    const updates = yield* PubSub.subscribe(yield* Pushes)
+    if ((yield* worktreeOf(worktreeId)).setupLog !== "") return
+    while (true) {
+      const event = yield* PubSub.take(updates)
+      if (event.type === "worktree.setupLog" && event.id === worktreeId) return
+    }
+  }).pipe(Effect.scoped)
+
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 describe("worktree ownership", () => {
   it.live("a second thread on the same branch is refused instead of sharing the checkout", () =>

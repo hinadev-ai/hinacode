@@ -461,24 +461,60 @@ stateDiagram-v2
 
 Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and archiving clear the limit. Restart preserves limited threads and scheduled requests.
 
+A thread with a worktree, as `specs/WorktreeLifecycle.tla` models it. `pnpm chart:thread` redraws this chart from every state TLC reaches, and `WorktreeLifecycle.Liveness.cfg` checks that archiving works from each of them, whatever the setup script does. `running` stands for `awaiting_approval` too, and a row still `preparing` at boot becomes `failed`.
+
+<!-- thread-chart:start -->
+
 ```mermaid
 stateDiagram-v2
   direction LR
-  state "Worktree" as W {
-    [*] --> preparing: git worktree add
-    preparing --> ready: setup script exits 0
-    preparing --> failed: script fails, or the app quit mid-setup
-    ready --> removed: archive with removeWorktree / remove
-    failed --> removed: remove
-  }
+  state "archived, worktree failed" as archived_failed
+  state "archived, worktree ready" as archived_ready
+  state "archived, worktree removed" as archived_removed
+  state "idle, worktree failed" as idle_failed
+  state "idle, worktree preparing" as idle_preparing
+  state "idle, worktree ready" as idle_ready
+  state "idle, worktree removed" as idle_removed
+  state "running, worktree failed" as running_failed
+  state "running, worktree ready" as running_ready
+  state "running, worktree removed" as running_removed
+  [*] --> idle_failed: ThreadInsert
+  [*] --> idle_preparing: ThreadInsert
+  [*] --> idle_ready: ThreadInsert
+  [*] --> idle_removed: ThreadInsert
+  archived_failed --> archived_removed: RemoveWorktree
+  archived_ready --> archived_removed: RemoveWorktree
+  archived_removed --> archived_failed: DelRestore
+  archived_removed --> archived_ready: DelRestore
+  idle_failed --> archived_removed: Archive
+  idle_failed --> idle_removed: RemoveWorktree
+  idle_failed --> running_failed: StartTurn
+  idle_preparing --> archived_removed: Archive
+  idle_preparing --> idle_failed: SetupDone, StopSetup
+  idle_preparing --> idle_ready: SetupDone
+  idle_preparing --> idle_removed: RemoveWorktree
+  idle_ready --> archived_removed: Archive
+  idle_ready --> idle_removed: RemoveWorktree
+  idle_ready --> running_ready: StartTurn
+  idle_removed --> archived_removed: Archive
+  idle_removed --> idle_failed: DelRestore
+  idle_removed --> idle_ready: DelRestore
+  idle_removed --> running_removed: StartTurn
+  running_failed --> idle_failed: TurnCompleted
+  running_ready --> idle_ready: TurnCompleted
+  running_removed --> idle_removed: TurnCompleted
+  running_removed --> running_failed: DelRestore
+  running_removed --> running_ready: DelRestore
 ```
 
-- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe.
+<!-- thread-chart:end -->
+
+- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe. A script can hang, so the setup log has a Stop button (`worktrees.stopSetup`), and removing the worktree stops it too. Stopping kills the script's process group, with SIGKILL after 3 seconds, and the worktree ends `failed`, so a send waiting on it goes ahead.
 - **Terminals** live in main memory until closed, with their thread, or with the app, and outlive a renderer reload. Each keeps its last 256 KiB of UTF-8 output, and every `terminal.data` carries `offset`, where its text starts in the session's output, in UTF-16 characters. A screen calls `terminal.attach` with the offset it has reached when its session opens, when the drawer first lists the sessions, when a cloud reconnects, and when a push skips ahead. The answer appends, or clears the screen when the scrollback no longer reaches that offset, and pushes that overlap it are trimmed (`lib/terminalStream.ts`). An exited session can be attached until it is closed.
 - **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
 - **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads whose links are all merged, and pushes `thread.updated`.
 - **PullRequestWatcher** sweeps every minute over links whose `watch` JSON is set. It diffs a fresh `gh` detail read against the snapshot the thread was last told about (`services/pullRequestWatch.ts`), and wakes the thread through `AgentRunner.steerWhen` when checks fail or pass, the review changes, the branch conflicts, or the pull request merges or closes. Each watch start has a fresh UUID generation. The runner rechecks thread eligibility and generation inside the thread semaphore for active steering, or inside the worktree lock for an idle turn. Queued news cannot revive an archived thread or bypass a new approval or usage limit. Stopped watches cannot deliver unaccepted news, while accepted delivery can finish after a stop. Poll writes compare the generation in their SQL update, so they cannot overwrite a replacement watch. The snapshot only moves when its news was delivered or a poll found no news. A watch ends on merge or close, after 25 wakes, or after 15 unreadable polls in a row. See [the feature doc](features/2026-10-14-pull-request-watch.md).
-- **Removal is refused** (`WorktreeBusyError`) while setup runs, while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
+- **Removal is refused** (`WorktreeBusyError`) while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
 - A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background (only the title for a thread already linked to a pull request when naming starts, such as a pull request checkout, whose branch must keep its name), using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
 
 ## Built-in MCP server

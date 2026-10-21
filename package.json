@@ -28,6 +28,7 @@
     "typecheck": "pnpm paraglide && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.web-test.json && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "oxlint",
     "check:specs": "node scripts/tlc.mjs",
+    "chart:thread": "node scripts/thread-chart.mjs",
     "format": "oxfmt",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
