@@ -26,7 +26,7 @@ interface Picked {
 }
 
 interface ProjectMenuProps {
-  /** A project group's members, This Mac's first. */
+  /** A project group's members, this machine's first. */
   readonly projects: readonly [Project, ...Array<Project>]
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void

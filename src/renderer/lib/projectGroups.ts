@@ -4,7 +4,7 @@ import type { Project } from "../../shared/domain.ts"
 export interface ProjectGroup {
   /** The shared `repository`, or the project id when nothing is shared. */
   readonly key: string
-  /** At most one project per machine, in list order, so This Mac's comes first. */
+  /** At most one project per machine, in list order, so this machine's comes first. */
   readonly projects: readonly [Project, ...Array<Project>]
 }
 

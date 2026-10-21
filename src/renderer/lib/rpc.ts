@@ -9,7 +9,7 @@ export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   message: Schema.String,
 }) {}
 
-/** Where a named call runs: a cloud's id, or null for this Mac. Other calls find their environment from their ids. */
+/** Where a named call runs: a cloud's id, or null for this machine. Other calls find their environment from their ids. */
 export type EnvironmentId = string | null
 
 export interface CallOptions {

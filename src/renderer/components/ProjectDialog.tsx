@@ -82,7 +82,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [environment, setEnvironment] = useState<EnvironmentId>(() => environmentOf(project))
   const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
-  // The folder picker shows this Mac's disk, so a cloud project is typed as a path on that machine.
+  // The folder picker shows this machine's disk, so a cloud project is typed as a path on that machine.
   const canBrowse = environment === null
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
@@ -261,8 +261,8 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
   )
 }
 
-/** Radio value of This Mac, which has no environment id. */
-const THIS_MAC = ""
+/** Radio value of this machine, which has no environment id. */
+const THIS_MACHINE = ""
 
 interface WhereFieldProps {
   /** A project stays where it was added, so editing one only shows where it lives. */
@@ -271,7 +271,7 @@ interface WhereFieldProps {
   readonly onChange: (environment: EnvironmentId) => void
 }
 
-/** Where the project lives. Hidden until a cloud is paired, since This Mac is then the only place. */
+/** Where the project lives. Hidden until a cloud is paired, since this machine is then the only place. */
 function WhereField({ editable, value, onChange }: WhereFieldProps) {
   const clouds = useClouds()
   if (clouds.length === 0 && value === null) return null
@@ -283,7 +283,7 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
       </Field>
     )
   const items = [
-    { value: THIS_MAC, label: m.environment_this_mac() },
+    { value: THIS_MACHINE, label: m.environment_this_machine() },
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (
@@ -292,8 +292,8 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
       <div>
         <Select
           items={items}
-          value={value ?? THIS_MAC}
-          onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MAC ? null : next)}
+          value={value ?? THIS_MACHINE}
+          onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MACHINE ? null : next)}
         >
           <SelectTrigger id="project-where" className="w-56">
             <SelectValue />

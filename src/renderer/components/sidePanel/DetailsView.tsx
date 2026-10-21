@@ -22,7 +22,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
-  // A cloud's paths only exist on that machine, so this Mac cannot open them in a folder.
+  // A cloud's paths only exist on that machine, so this machine cannot open them in a folder.
   const local = environment === null
 
   return (

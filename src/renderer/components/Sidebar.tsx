@@ -381,7 +381,7 @@ function ProjectGroup({ group, tab, query, focusAfterDelete }: ProjectGroupProps
   const hasActiveThreads = useThreads(
     (state) => selectProjectThreads(...projects.map((project) => project.id))(state).length > 0,
   )
-  // This Mac's project comes first, so the group has a cloud only when every member is on one.
+  // This machine's project comes first, so the group has a cloud only when every member is on one.
   const cloud = useCloud(environmentOf(first))
   const cloudMarkId = useId()
 
@@ -447,7 +447,7 @@ interface NewThreadButtonProps {
 }
 
 /**
- * Starts a thread on the group's first machine that is connected, This Mac's when it has one. Before the first
+ * Starts a thread on the group's first machine that is connected, this machine's when it has one. Before the first
  * message the composer can move the thread to another machine in the group.
  */
 function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonProps) {

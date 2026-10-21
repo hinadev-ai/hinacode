@@ -39,12 +39,12 @@ import { m } from "../paraglide/messages.js"
 
 interface SettingsPage {
   readonly id: string
-  /** `app` edits this Mac. `environment` edits the machine picked in the settings nav. */
+  /** `app` edits this machine. `environment` edits the machine picked in the settings nav. */
   readonly scope: "app" | "environment"
   readonly label: () => string
   readonly icon: IconType
   readonly component: ComponentType
-  /** A cloud refuses the page's methods, so it shows for This Mac only. */
+  /** A cloud refuses the page's methods, so it shows for this machine only. */
   readonly localOnly?: boolean
 }
 
@@ -171,7 +171,7 @@ export function SettingsRoute() {
           <section aria-labelledby="settings-group-environment" className="flex flex-col gap-1">
             {clouds.length === 0 ? (
               <h2 id="settings-group-environment" className="px-2 pt-1 text-xs font-medium text-muted-foreground">
-                {m.environment_this_mac()}
+                {m.environment_this_machine()}
               </h2>
             ) : (
               <EnvironmentPicker
@@ -206,8 +206,8 @@ export function SettingsRoute() {
   )
 }
 
-/** Radio value of This Mac, which has no environment id. */
-const THIS_MAC = ""
+/** Radio value of this machine, which has no environment id. */
+const THIS_MACHINE = ""
 
 interface EnvironmentPickerProps {
   readonly labelId: string
@@ -218,7 +218,7 @@ interface EnvironmentPickerProps {
 
 function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPickerProps) {
   const items = [
-    { value: THIS_MAC, label: m.environment_this_mac() },
+    { value: THIS_MACHINE, label: m.environment_this_machine() },
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (
@@ -228,8 +228,8 @@ function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPick
       </h2>
       <Select
         items={items}
-        value={value ?? THIS_MAC}
-        onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MAC ? null : next)}
+        value={value ?? THIS_MACHINE}
+        onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MACHINE ? null : next)}
       >
         <SelectTrigger aria-labelledby={labelId} size="sm" className="w-full">
           <SelectValue />
