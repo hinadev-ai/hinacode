@@ -464,6 +464,7 @@ Limited threads persist a typed `usageLimit` in the thread row. A usage limit ca
 A thread with a worktree, as `specs/WorktreeLifecycle.tla` models it. `pnpm chart:thread` redraws this chart from every state TLC reaches, and `WorktreeLifecycle.Liveness.cfg` checks that archiving works from each of them, whatever the setup script does. `running` stands for `awaiting_approval` too, and a row still `preparing` at boot becomes `failed`.
 
 <!-- thread-chart:start -->
+
 ```mermaid
 stateDiagram-v2
   direction LR
@@ -505,6 +506,7 @@ stateDiagram-v2
   running_removed --> running_failed: DelRestore
   running_removed --> running_ready: DelRestore
 ```
+
 <!-- thread-chart:end -->
 
 - **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe. A script can hang, so the setup log has a Stop button (`worktrees.stopSetup`), and removing the worktree stops it too. Stopping kills the script's process group, with SIGKILL after 3 seconds, and the worktree ends `failed`, so a send waiting on it goes ahead.

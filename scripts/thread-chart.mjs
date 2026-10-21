@@ -66,5 +66,5 @@ const end = "<!-- thread-chart:end -->"
 const doc = readFileSync(arch, "utf8")
 const [before, rest] = doc.split(start)
 const after = rest.slice(rest.indexOf(end))
-writeFileSync(arch, `${before}${start}\n${chart}\n${after}`)
+writeFileSync(arch, `${before}${start}\n\n${chart}\n\n${after}`)
 console.log(`${states.length} states, ${edges.size} transitions written to docs/arch.md`)
