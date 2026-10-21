@@ -73,7 +73,8 @@ jobs:
   linux-and-windows:
     needs: draft
     if: ${{ !cancelled() && needs.draft.result != 'failure' }}
-    runs-on: ubuntu-latest
+    # Wine in this container fails with "socket: Function not implemented" on the ubuntu-26.04 host.
+    runs-on: ubuntu-24.04
     # NSIS needs Wine to build the Windows installer on Linux.
     container: electronuserland/builder:24-wine
     timeout-minutes: 45

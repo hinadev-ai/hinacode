@@ -33,25 +33,30 @@ import {
 import { flushSync } from "react-dom"
 import {
   RiArchiveLine,
+  RiCheckboxCircleFill,
   RiDeleteBinLine,
   RiDraggable,
   RiErrorWarningFill,
-  RiErrorWarningLine,
   RiEyeLine,
   RiEyeOffLine,
   RiGitBranchLine,
+  RiHourglassFill,
   RiInboxUnarchiveLine,
   RiMoreFill,
   RiPencilLine,
+  RiPulseLine,
   RiPushpinLine,
+  RiQuestionFill,
   RiStackLine,
   RiUnpinLine,
 } from "react-icons/ri"
+import type { IconType } from "react-icons"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
-import { callPromise, currentBranchAtom, projectsAtom } from "../lib/rpc.ts"
+import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { cn } from "../lib/utils.ts"
 import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
@@ -63,6 +68,7 @@ import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import {
@@ -325,7 +331,7 @@ const ThreadRow = memo(function ThreadRow({
       data-archived={archived}
       data-stale={isStale(cloud)}
       // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
@@ -350,7 +356,7 @@ const ThreadRow = memo(function ThreadRow({
           <StatusIndicator state={state} />
         </Link>
       )}
-      <ThreadMeta {...meta} cloud={cloud} />
+      <ThreadMeta {...meta} cloud={cloud} environment={environment} />
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
@@ -599,7 +605,7 @@ const rowState = (status: ThreadStatus, unseen: Outcome | undefined): RowState =
 
 /**
  * How loudly a row reads. A thread that needs the user is at full contrast and a working one recedes to
- * muted. Color, not opacity, so the muted branch line stays above 4.5:1 and the status dot keeps its color.
+ * muted and faded, until it is hovered, focused or open.
  */
 const rowEmphasis = {
   awaiting_approval: "attention",
@@ -611,40 +617,32 @@ const rowEmphasis = {
   running: "working",
 } satisfies Record<RowState, "attention" | "resting" | "working">
 
-const statusDot: Partial<Record<RowState, { label: () => string; className: string }>> = {
-  unseen_completed: { label: m.thread_status_unseen_completed, className: "bg-sidebar-foreground" },
-  running: { label: m.thread_status_running, className: "bg-success animate-pulse motion-reduce:animate-none" },
+const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconType; className: string }>> = {
+  running: {
+    label: m.thread_status_running,
+    Icon: RiPulseLine,
+    className: "text-muted-foreground",
+  },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
+    Icon: RiQuestionFill,
     className:
-      "relative bg-attention after:absolute after:inset-0 after:animate-attention after:rounded-full after:bg-inherit motion-reduce:after:hidden",
+      "text-attention after:absolute after:inset-0.5 after:animate-attention after:rounded-full after:border after:border-current after:[animation-fill-mode:forwards] motion-reduce:after:hidden",
   },
+  limited: { label: m.thread_status_limited, Icon: RiHourglassFill, className: "text-attention" },
+  unseen_completed: { label: m.thread_status_unseen_completed, Icon: RiCheckboxCircleFill, className: "text-success" },
+  unseen_failed: { label: m.thread_status_unseen_failed, Icon: RiErrorWarningFill, className: "text-destructive" },
 }
 
 function StatusIndicator({ state }: { state: RowState }): ReactNode {
-  if (state === "unseen_failed") {
-    return (
-      <span title={m.thread_status_unseen_failed()} className="flex shrink-0 items-center">
-        <RiErrorWarningFill aria-hidden className="size-3.5 text-destructive" />
-        <span className="sr-only">{m.thread_status_unseen_failed()}</span>
-      </span>
-    )
-  }
-  if (state === "limited") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-attention/10 px-1.5 py-0.5 text-xs whitespace-nowrap text-attention">
-        <RiErrorWarningLine aria-hidden className="size-3" />
-        {m.thread_status_limited()}
-      </span>
-    )
-  }
-  const dot = statusDot[state]
-  if (!dot) return null
+  const status = statusIcons[state]
+  if (!status) return null
+  const { label, Icon, className } = status
   return (
-    <span title={dot.label()} className="flex shrink-0 items-center">
-      <span aria-hidden className={`size-2 rounded-full ${dot.className}`} />
-      <span className="sr-only">{dot.label()}</span>
+    <span title={label()} className={`relative flex shrink-0 items-center ${className}`}>
+      <Icon aria-hidden className="size-3.5" />
+      <span className="sr-only">{label()}</span>
     </span>
   )
 }
@@ -677,7 +675,8 @@ function ThreadMeta({
   threadId,
   updatedAt,
   cloud,
-}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined }) {
+  environment,
+}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
   const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
@@ -700,7 +699,9 @@ function ThreadMeta({
           <span className="truncate font-mono">{branch}</span>
         </span>
       )}
-      {latest && <PullRequestNumber threadId={threadId} latest={latest} count={links.length} />}
+      {latest && (
+        <PullRequestNumber threadId={threadId} latest={latest} count={links.length} environment={environment} />
+      )}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
           <RiEyeLine aria-hidden className="size-3" />
@@ -728,9 +729,21 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
 }
 
 /** The newest linked pull request, with a stack icon when the thread linked several. */
-function PullRequestNumber({ threadId, latest, count }: { threadId: string; latest: PullRequestLink; count: number }) {
+function PullRequestNumber({
+  threadId,
+  latest,
+  count,
+  environment,
+}: {
+  threadId: string
+  latest: PullRequestLink
+  count: number
+  environment: EnvironmentId
+}) {
   const number = pullRequestNumber(latest.url)
   const href = usePullRequestHref(threadId, latest.url)
+  const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
+  const status = AsyncResult.isSuccess(lookup) ? lookup.value.status : undefined
   return (
     <a
       href={href}
@@ -741,9 +754,13 @@ function PullRequestNumber({ threadId, latest, count }: { threadId: string; late
       }
       title={href}
       // Above the row link's ::after, so it opens the pull request instead of the thread.
-      className="relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      className={cn(
+        "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        status ? statusIndicator[status].className : "hover:text-foreground",
+      )}
     >
-      {count > 1 && <RiStackLine aria-hidden className="size-3" />}#{number}
+      {count > 1 && <RiStackLine aria-hidden className="size-3" />}
+      <StatusIcon status={status} className="size-3" />#{number}
     </a>
   )
 }

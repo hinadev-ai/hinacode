@@ -213,7 +213,8 @@ const handlers: Handlers = {
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "agents.account": ({ provider, accountId }) => AgentLogins.use((logins) => logins.account(provider, accountId)),
-  "agents.updates": () => availableUpdates,
+  // e2e runs on machines with real, possibly outdated CLIs, whose update toast would cover the UI under test.
+  "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),

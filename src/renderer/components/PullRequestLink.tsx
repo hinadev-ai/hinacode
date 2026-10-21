@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import { RiGitPullRequestLine, RiGithubFill } from "react-icons/ri"
+import { RiGithubFill } from "react-icons/ri"
 import type { PullRequest } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import type { PullRequestRef } from "../lib/pullRequestRefs.ts"
@@ -9,7 +9,13 @@ import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
-import { checksIndicator, pullRequestStatusLabel, reviewLabel, statusColor } from "./ThreadPullRequests.tsx"
+import {
+  checksIndicator,
+  pullRequestStatusLabel,
+  reviewLabel,
+  StatusIcon,
+  statusIndicator,
+} from "./ThreadPullRequests.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 
@@ -80,8 +86,8 @@ function PullRequestDetails({ pullRequest }: { pullRequest: PullRequest }) {
     <>
       <p className="line-clamp-2 text-sm font-medium">{title}</p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className={cn("flex items-center gap-1", statusColor[status])}>
-          <RiGitPullRequestLine aria-hidden className="size-3.5" />
+        <span className={cn("flex items-center gap-1", statusIndicator[status].className)}>
+          <StatusIcon status={status} />
           {pullRequestStatusLabel[status]()}
         </span>
         {checksStatus && (

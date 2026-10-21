@@ -10,6 +10,9 @@ import {
   RiExternalLinkLine,
   RiEyeFill,
   RiEyeLine,
+  RiGitClosePullRequestLine,
+  RiGitMergeLine,
+  RiGitPrDraftLine,
   RiGitPullRequestLine,
   RiIndeterminateCircleLine,
   RiLinkUnlinkM,
@@ -76,12 +79,12 @@ export const pullRequestStatusLabel = {
   closed: m.pr_state_closed,
 } satisfies Record<PullRequestStatus, () => string>
 
-export const statusColor = {
-  draft: "text-muted-foreground",
-  open: "text-success",
-  merged: "text-violet-500",
-  closed: "text-destructive",
-} satisfies Record<PullRequestStatus, string>
+export const statusIndicator = {
+  draft: { Icon: RiGitPrDraftLine, className: "text-muted-foreground" },
+  open: { Icon: RiGitPullRequestLine, className: "text-pr-open" },
+  merged: { Icon: RiGitMergeLine, className: "text-pr-merged" },
+  closed: { Icon: RiGitClosePullRequestLine, className: "text-destructive" },
+} satisfies Record<PullRequestStatus, { Icon: IconType; className: string }>
 
 export const reviewLabel = {
   approved: m.pr_review_approved,
@@ -106,6 +109,26 @@ const mergeLabel = {
   merge: m.pr_merge_commit,
   rebase: m.pr_merge_rebase,
 } satisfies Record<MergeMethod, () => string>
+
+/** The pull request's state as GitHub draws it. Before the state loads, a plain muted pull request icon. */
+export function StatusIcon({
+  status,
+  colored = false,
+  className,
+}: {
+  status: PullRequestStatus | undefined
+  colored?: boolean
+  className?: string
+}) {
+  const indicator = status && statusIndicator[status]
+  const Icon = indicator?.Icon ?? RiGitPullRequestLine
+  return (
+    <Icon
+      aria-hidden
+      className={cn("size-3.5 shrink-0", colored && (indicator?.className ?? "text-muted-foreground"), className)}
+    />
+  )
+}
 
 const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
 
@@ -227,10 +250,7 @@ function PullRequestRow({
         onClick={onSelect}
         className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-muted"
       >
-        <RiGitPullRequestLine
-          aria-hidden
-          className={cn("size-3.5 shrink-0", pullRequest ? statusColor[pullRequest.status] : "text-muted-foreground")}
-        />
+        <StatusIcon status={pullRequest?.status} colored />
         <span className="min-w-0 truncate font-mono text-muted-foreground" title={pullRequest ? undefined : url}>
           #{pullRequest?.number ?? shortName(url)}
         </span>
@@ -343,8 +363,8 @@ function PullRequestHeader({
         {linked && <UnlinkButton threadId={threadId} url={pullRequest.url} onUnlinkFailed={onUnlinkFailed} />}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span className={cn("flex items-center gap-1 font-medium", statusColor[pullRequest.status])}>
-          <RiGitPullRequestLine aria-hidden className="size-3.5" />
+        <span className={cn("flex items-center gap-1 font-medium", statusIndicator[pullRequest.status].className)}>
+          <StatusIcon status={pullRequest.status} />
           {pullRequestStatusLabel[pullRequest.status]()}
         </span>
         {pullRequest.review && <span>{reviewLabel[pullRequest.review]()}</span>}
