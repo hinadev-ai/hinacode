@@ -558,16 +558,25 @@ export const Environment = Schema.Struct({
 export type Environment = typeof Environment.Type
 
 /**
- * The desktop's link to a cloud. `unauthorized` and `incompatible` stop retrying: only a new pairing URL, or
- * updating one side so both speak the same `REMOTE_PROTOCOL_VERSION`, brings it back.
+ * The desktop's link to a cloud. `unauthorized` stops retrying until a new pairing URL. `incompatible` keeps
+ * retrying, so the cloud reconnects on its own once one side is updated to the other's `REMOTE_PROTOCOL_VERSION`.
  */
 export const EnvironmentStatus = Schema.Literals(["connecting", "connected", "offline", "unauthorized", "incompatible"])
 export type EnvironmentStatus = typeof EnvironmentStatus.Type
 
-/** Every paired cloud with its link. `lastSeenAt` is when it last answered, null before the first connection. */
+/**
+ * Every paired cloud with its link. `lastSeenAt` is when it last answered, null before the first connection.
+ * `protocol` is the cloud's `REMOTE_PROTOCOL_VERSION`, set only while `incompatible`, so the UI can say which side
+ * to update.
+ */
 export const Environments = Schema.Struct({
   clouds: Schema.Array(
-    Schema.Struct({ ...Environment.fields, status: EnvironmentStatus, lastSeenAt: Schema.NullOr(Timestamp) }),
+    Schema.Struct({
+      ...Environment.fields,
+      status: EnvironmentStatus,
+      lastSeenAt: Schema.NullOr(Timestamp),
+      protocol: Schema.optional(Schema.Int),
+    }),
   ),
 })
 export type Environments = typeof Environments.Type

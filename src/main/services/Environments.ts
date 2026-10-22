@@ -205,6 +205,8 @@ interface Cloud {
   environment: Environment
   status: EnvironmentStatus
   lastSeenAt: string | null
+  /** The cloud's protocol version while it speaks another one than this desktop. */
+  protocol: number | null
   /** Set only while the socket is authenticated, so a call never goes to a socket that is still dialing. */
   live: Live | null
   readonly outbox: Map<number, Pending>
@@ -214,7 +216,8 @@ interface Cloud {
 
 interface SessionEnd {
   readonly code: number
-  readonly incompatible: boolean
+  /** The cloud's protocol version when it is not this desktop's. */
+  readonly otherProtocol: number | null
   readonly connectedMs: number
 }
 
@@ -317,7 +320,7 @@ const make = Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
       let connectedAt: number | null = null
-      let otherVersion = false
+      let otherProtocol: number | null = null
       let heardAt = now()
       const heard = () => {
         heardAt = now()
@@ -331,10 +334,11 @@ const make = Effect.gen(function* () {
               switch (frame.type) {
                 case "ready": {
                   if (frame.version !== REMOTE_PROTOCOL_VERSION) {
-                    otherVersion = true
+                    otherProtocol = frame.version
                     return socket.close()
                   }
                   connectedAt = now()
+                  cloud.protocol = null
                   const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                   cloud.live = live
                   for (const call of cloud.outbox.values()) {
@@ -397,12 +401,15 @@ const make = Effect.gen(function* () {
       const code = yield* Deferred.await(closed)
       return {
         code,
-        incompatible: otherVersion,
+        otherProtocol,
         connectedMs: connectedAt === null ? 0 : now() - connectedAt,
       } satisfies SessionEnd
     }).pipe(Effect.scoped)
 
-  /** Keeps `cloud` connected until interrupted, refused, or speaking another protocol version. */
+  /**
+   * Keeps `cloud` connected until interrupted or refused. A cloud on another protocol version keeps being retried,
+   * so it reconnects on its own once updated.
+   */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
       const { name } = cloud.environment
@@ -415,15 +422,17 @@ const make = Effect.gen(function* () {
       let attempt = 0
       for (;;) {
         const end = yield* session(cloud, token)
-        if (end.incompatible) {
-          failAll(cloud, incompatible(name))
-          return yield* setStatus(cloud, "incompatible")
-        }
         if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
           failAll(cloud, unauthorized(name))
           return yield* setStatus(cloud, "unauthorized")
         }
-        yield* setStatus(cloud, "offline")
+        if (end.otherProtocol === null) {
+          yield* setStatus(cloud, "offline")
+        } else {
+          cloud.protocol = end.otherProtocol
+          failAll(cloud, incompatible(name))
+          yield* setStatus(cloud, "incompatible")
+        }
         if (end.connectedMs >= STABLE_MS) attempt = 0
         yield* Effect.sleep(reconnectDelay(attempt))
         attempt++
@@ -448,6 +457,7 @@ const make = Effect.gen(function* () {
         environment,
         status: "connecting",
         lastSeenAt: null,
+        protocol: null,
         live: null,
         outbox: new Map(),
         remembered: new Map(),
@@ -462,7 +472,10 @@ const make = Effect.gen(function* () {
     return {
       clouds: rows.map((row) => {
         const cloud = clouds.get(row.id)
-        return { ...row, status: cloud?.status ?? "offline", lastSeenAt: cloud?.lastSeenAt ?? null }
+        const entry = { ...row, status: cloud?.status ?? "offline", lastSeenAt: cloud?.lastSeenAt ?? null }
+        return cloud?.status === "incompatible" && cloud.protocol !== null
+          ? { ...entry, protocol: cloud.protocol }
+          : entry
       }),
     }
   })
