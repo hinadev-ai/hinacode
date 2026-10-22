@@ -337,6 +337,7 @@ const make = Effect.gen(function* () {
             config: {
               // Off by default in current Codex; the composer's task list is built from its plan.
               tools: { update_plan: { enabled: true } },
+              ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
               ...(hiddenSkills !== null && {
                 skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },
               }),
@@ -614,12 +615,22 @@ const make = Effect.gen(function* () {
                 }
                 case "item/started": {
                   const params = message.params as ServerNotificationParams[typeof method]
+                  if (params.item.type === "contextCompaction") {
+                    yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+                  }
                   yield* startTool(params.item)
                   yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }
                 case "item/completed": {
                   const params = message.params as ServerNotificationParams[typeof method]
+                  if (params.item.type === "contextCompaction") {
+                    yield* emit({
+                      type: "compaction_updated",
+                      // Codex starts compaction only by itself, and its item carries no token counts.
+                      compaction: { status: "done", trigger: "auto", preTokens: null, postTokens: null },
+                    })
+                  }
                   yield* finishTool(params.item)
                   if (params.item.type === "agentMessage" && params.item.questions) {
                     yield* emit({

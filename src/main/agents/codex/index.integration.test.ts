@@ -28,11 +28,16 @@ type Control = {
   subagent?: boolean
   subagentPending?: boolean
   plan?: boolean
+  compaction?: boolean
   skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
   method?: string
-  params?: { turnId?: string; input?: Array<import("./protocol.ts").UserInput> }
+  params?: {
+    turnId?: string
+    input?: Array<import("./protocol.ts").UserInput>
+    config?: { model_auto_compact_token_limit?: number }
+  }
   id?: number
   result?: import("./protocol.ts").ToolRequestUserInputResponse
 }
@@ -150,6 +155,41 @@ describe("Codex app-server log", () => {
     writeFileSync(logPath, '{"method":"turn/start"\n')
     expect(received).toThrow(SyntaxError)
   })
+})
+
+describe("Codex auto-compact", () => {
+  it.live("passes the threshold to Codex and shows the compaction it runs", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ compaction: true })
+        const events = yield* provider
+          .runTurn({ ...input("auto-compact"), autoCompactTokens: 200_000 })
+          .pipe(Stream.runCollect)
+        const started = received().find((message) => message.method === "thread/start")
+        expect(started?.params?.config?.model_auto_compact_token_limit).toBe(200_000)
+        expect(events.filter((event) => event.type === "compaction_updated")).toStrictEqual([
+          { type: "compaction_updated", compaction: { status: "running" } },
+          {
+            type: "compaction_updated",
+            compaction: { status: "done", trigger: "auto", preTokens: null, postTokens: null },
+          },
+        ])
+      }),
+    ),
+  )
+
+  it.live("leaves Codex's own threshold alone by default", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        yield* provider.runTurn(input("default-compact")).pipe(Stream.runDrain)
+        const started = received().find((message) => message.method === "thread/start")
+        expect(started?.params?.config).not.toHaveProperty("model_auto_compact_token_limit")
+      }),
+    ),
+  )
 })
 
 describe("Codex conversation mode", () => {
