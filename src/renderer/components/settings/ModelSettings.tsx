@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, useState, useTransition } from "react"
+import { type FormEvent, useRef, useState, useTransition } from "react"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
@@ -158,6 +158,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
   const current = autoCompactTokens[provider]
   const [draft, setDraft] = useState(current === null ? "" : String(current / 1000))
   const inputId = `auto-compact-${provider}`
+  const inputRef = useRef<HTMLInputElement>(null)
   const next = draft.trim() === "" ? null : Number(draft) * 1000
 
   const save = (tokens: number | null) =>
@@ -176,11 +177,18 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
     save(next)
   }
 
+  // The clear button unmounts once the setting is null, which would leave keyboard focus on the page.
+  const clear = () => {
+    save(null)
+    inputRef.current?.focus()
+  }
+
   return (
     <Field>
       <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
-      <form onSubmit={onSubmit} className="flex items-center gap-2">
+      <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-2">
         <Input
+          ref={inputRef}
           id={inputId}
           type="number"
           inputMode="numeric"
@@ -190,14 +198,14 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={m.settings_auto_compact_default()}
-          className="w-44 tabular-nums"
+          className="w-56 shrink-0 tabular-nums"
         />
-        <span className="text-sm text-muted-foreground">{m.settings_auto_compact_unit()}</span>
+        <span className="text-sm whitespace-nowrap text-muted-foreground">{m.settings_auto_compact_unit()}</span>
         <Button type="submit" variant="outline" disabled={next === current || pending}>
           {m.settings_save()}
         </Button>
         {current !== null && (
-          <Button variant="ghost" size="sm" disabled={pending} onClick={() => save(null)}>
+          <Button variant="ghost" size="sm" disabled={pending} onClick={clear}>
             {m.settings_auto_compact_clear()}
           </Button>
         )}
