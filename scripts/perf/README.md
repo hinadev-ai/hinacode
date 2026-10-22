@@ -22,9 +22,9 @@ Results land in `.context/perf/`. Reload the renderer after seeding: the sidebar
 ## Profile typing, streaming and thread switching
 
 `measure.mjs` reloads the renderer with `react-commits.js` installed where React DevTools would hook in, so
-`typing`, `switch`, `reply` and `typing-reply` report which components rendered in every commit, next to the renderer's script,
-style and layout time from `Performance.getMetrics`. The renderer bundle is not minified, so component names
-survive the production build.
+`typing`, `switch`, `reply` and `typing-reply` report which components rendered in every commit, next to the
+renderer's script, style and layout time from `Performance.getMetrics`. The renderer bundle is not minified, so
+component names survive the production build.
 
 | Scenario                  | What it does                                           | Read first                                    |
 | ------------------------- | ------------------------------------------------------ | --------------------------------------------- |
@@ -59,6 +59,32 @@ Every capture also writes `<label>-<name>.commits.json`. `commits.mjs` groups it
 rendered, so a commit that repeats with more components than it needs stands out. `PROFILE=1` adds a CPU profile
 for `analyze-profile.mjs`. `TRACE=1` adds a trace that the DevTools Performance panel opens, and `trace-summary.mjs`
 totals its style, layout and paint work. Both add overhead, so compare only runs captured the same way.
+
+### 2026-10-22 capture
+
+On Linux under Xvfb, five interleaved runs per build at `CPU_THROTTLE=4`. The sidebar held 85 threads, and the
+reply thread ended in three long fixture replies. Base is `982843a`. The candidate compiles the renderer with the
+React Compiler, estimates messages at 500 px, keeps the last message id out of the shared transcript context,
+moves the `text-shimmer` band with `translate`, and reads the open thread only when a thread is deleted.
+
+| Measurement                        |    Base | Candidate | Change |
+| ---------------------------------- | ------: | --------: | -----: |
+| Typing, key to next paint p50      | 21.5 ms |   15.1 ms |   -30% |
+| Typing, key to next paint p95      | 26.7 ms |   19.4 ms |   -27% |
+| Typing mid-reply, key to paint p95 | 43.8 ms |   28.1 ms |   -36% |
+| Thread switch, warm open           |  234 ms |    177 ms |   -24% |
+| Thread switch, component renders   |    1604 |       507 |   -68% |
+| Thread switch, long tasks          |  136 ms |      0 ms |  -100% |
+| Reply, frame p95                   | 16.7 ms |    9.6 ms |   -43% |
+| Reply, component renders           |    3612 |      1801 |   -50% |
+
+A keystroke renders 4 components instead of 98. Paint events during a reply fell from about 390 to 40 in
+`TRACE=1` captures once the shimmer moved to the compositor. Unthrottled, typing p50 went from 4.0 to 2.8 ms and a
+warm switch from 49 to 45 ms. Raw captures use the `before3` and `after3` labels.
+
+Deferring transcript updates with `useDeferredValue` was measured and left out. It did not move typing mid-reply,
+because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
+finishes, and mermaid layout.
 
 ## Measure streaming Markdown
 
