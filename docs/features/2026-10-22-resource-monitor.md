@@ -23,12 +23,13 @@ This is a development tool. Packaged builds do not run it.
 
 A Go binary in `tools/resource-monitor` with two commands.
 
-`watch -root <pid> -instance <id> -out <file>` samples every 5 seconds until the root process is gone, then waits 3 seconds and writes a final sample. It tracks two sets of processes:
+`watch -root <pid> -instance <id> -out <file>` samples every 5 seconds until the root process is gone, then waits 3 seconds and writes a final sample. It tracks three sets of processes:
 
 - every descendant of the root, walked from the parent pids each sample. A child counts only when it started after its parent, so a reused pid does not adopt strangers.
-- every process whose environment has `HINACODE_INSTANCE=<id>`. The app sets that variable on itself at startup to a new random id, so everything it spawns inherits it, including a daemon that double-forks and is reparented to init before any sample sees it. The id changes per launch, so after a quick restart the new run does not count the last run's processes while they shut down. The monitor reads each process's environment once and caches the answer. The OS fixes that environment at exec, and only the root can exec a process into the tag, so the answer holds for the process's life.
+- every process an earlier sample saw as a descendant, until it exits. A dev server started with `nohup` in a terminal stays a descendant until the terminal closes, so this finds it once it is reparented, on any OS and for any binary.
+- every process whose environment has `HINACODE_INSTANCE=<id>`. The app sets that variable on itself at startup to a new random id, so everything it spawns inherits it, including a daemon that double-forks and is reparented to init before any sample sees it. The id changes per launch, so after a quick restart the new run does not count the last run's processes while they shut down. The monitor reads each process's environment once and caches the answer. The OS fixes that environment at exec, and only the root can exec a process into the tag, so the answer holds for the process's life. macOS hides the environment of Apple's restricted binaries, such as `/bin/sleep`, from other processes (`KERN_PROCARGS2` in XNU's `kern_sysctl.c`), so on macOS the tag only finds a daemon that is not one of those.
 
-A process in the second set but not the first is detached, which is how an orphan looks while the app still runs. Zombies, exited processes their parent has not reaped yet, are left out.
+A tracked process that is not currently a descendant is detached, which is how an orphan looks while the app still runs. Zombies, exited processes their parent has not reaped yet, are left out.
 
 The memory number is not RSS:
 

@@ -13,8 +13,8 @@ import (
 
 const maxCommandBytes = 512
 
-// Scanner selects the processes that belong to one HinaCode run: the root's descendants and any process
-// tagged with HINACODE_INSTANCE=<instance>.
+// Scanner selects the processes that belong to one HinaCode run: the root's descendants, any process it has
+// seen as a descendant before, and any process tagged with HINACODE_INSTANCE=<instance>.
 type Scanner struct {
 	root identity
 	tag  string
@@ -23,6 +23,9 @@ type Scanner struct {
 	// outside that environment, which only the root does, and the root's children are descendants. So one read
 	// holds for the life of a process.
 	tagged map[identity]bool
+	// Descendants seen in an earlier scan stay tracked after they are reparented away. macOS hides the
+	// environment of Apple's restricted binaries, such as /bin/sleep, so the tag alone misses them.
+	known map[identity]bool
 }
 
 func NewScanner(ctx context.Context, root int32, instance string, self int32) (*Scanner, error) {
@@ -41,6 +44,7 @@ func NewScanner(ctx context.Context, root int32, instance string, self int32) (*
 		tag:    "HINACODE_INSTANCE=" + instance,
 		self:   self,
 		tagged: make(map[identity]bool),
+		known:  make(map[identity]bool),
 	}, nil
 }
 
@@ -84,7 +88,10 @@ func (s *Scanner) Scan(ctx context.Context) (Sample, bool, error) {
 		}
 		p := byPID[r.pid]
 		attached := tree[r.pid]
-		if !attached && !s.isTagged(ctx, p, id) {
+		if attached {
+			s.known[id] = true
+		}
+		if !attached && !s.known[id] && !s.isTagged(ctx, p, id) {
 			continue
 		}
 		// An exited process stays listed until its parent reaps it, and it still answers memory reads.
@@ -103,6 +110,11 @@ func (s *Scanner) Scan(ctx context.Context) (Sample, bool, error) {
 	for id := range s.tagged {
 		if !seen[id] {
 			delete(s.tagged, id)
+		}
+	}
+	for id := range s.known {
+		if !seen[id] {
+			delete(s.known, id)
 		}
 	}
 	return sample, alive, nil
