@@ -66,6 +66,7 @@ export function Sidebar({
   const overlayOpen = useUi((state) => state.sidebarOverlayOpen)
   const setOverlayOpen = useUi((state) => state.setSidebarOverlayOpen)
   const addProjectOpen = useUi((state) => state.addProjectOpen)
+  const addProjectEnvironment = useUi((state) => state.addProjectEnvironment)
   const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
   const sidebarWidth = useUi((state) => state.sidebarWidth)
   const tab = useUi((state) => state.sidebarTab)
@@ -145,7 +146,11 @@ export function Sidebar({
         ))}
       </Tabs>
 
-      <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
+      <ProjectDialog
+        open={addProjectOpen}
+        onOpenChange={(open) => setAddProjectOpen(open)}
+        environment={addProjectEnvironment}
+      />
       {!compact && sidebarOpen && (
         <ResizeHandle
           label={m.sidebar_resize()}

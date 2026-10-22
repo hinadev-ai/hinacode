@@ -37,9 +37,11 @@ interface ProjectDialogProps {
   readonly onOpenChange: (open: boolean) => void
   /** The project to edit. Without one the dialog adds a new project. */
   readonly project?: Project
+  /** Where a new project starts out. */
+  readonly environment?: EnvironmentId
 }
 
-export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProps) {
+export function ProjectDialog({ open, onOpenChange, project, environment = null }: ProjectDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -50,7 +52,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
           </DialogDescription>
         </DialogHeader>
         {/* Inside the popup so the form state resets every time the dialog opens. */}
-        <ProjectForm project={project} onSaved={() => onOpenChange(false)} />
+        <ProjectForm project={project} initialEnvironment={environment} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
@@ -70,7 +72,13 @@ function useDefaultCloneParent(environment: EnvironmentId) {
   return newest ? parentOf(newest.rootPath) : "~/code"
 }
 
-function ProjectForm({ project, onSaved }: { project: Project | undefined; onSaved: () => void }) {
+interface ProjectFormProps {
+  readonly project: Project | undefined
+  readonly initialEnvironment: EnvironmentId
+  readonly onSaved: () => void
+}
+
+function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps) {
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
   const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
@@ -82,7 +90,9 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
-  const [environment, setEnvironment] = useState<EnvironmentId>(() => environmentOf(project))
+  const [environment, setEnvironment] = useState<EnvironmentId>(() =>
+    project ? environmentOf(project) : initialEnvironment,
+  )
   const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
   const canBrowse = environment === null
 
