@@ -2,7 +2,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
-import type { Message } from "../../shared/domain.ts"
+import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
@@ -26,22 +26,21 @@ import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { WorkedFor } from "./WorkedFor.tsx"
 
 const keyExtractor = (message: Message) => message.id
+const ESTIMATED_MESSAGE_SIZE = 500
+const getItemType = (message: Message) => message.role
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
 // Spacers instead of container padding: the list measures header and footer, but not padding.
 const edgeSpacer = <div className="h-4" />
 // The thread's composer floats over the list's end, see `useDockHeight`.
 const endSpacer = <div className="h-[calc(var(--dock-height,0px)+1rem)]" />
 
-/** Posted questions stay answerable only while nothing has been said after them. */
-const AnswerableContext = createContext<{
-  readonly lastMessageId: string | undefined
-  readonly providerLabel: string
-  readonly showElapsedTime: boolean
-}>({
-  lastMessageId: undefined,
+const TranscriptContext = createContext<{ readonly providerLabel: string; readonly showElapsedTime: boolean }>({
   providerLabel: "",
   showElapsedTime: true,
 })
+
+/** Posted questions stay answerable only while nothing has been said after them. */
+const LastMessageContext = createContext<string | undefined>(undefined)
 
 /**
  * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
@@ -64,28 +63,27 @@ export function MessageList({
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
 }) {
-  const lastMessageId = messages.at(-1)?.id
-  const answerable = useMemo(
-    () => ({ lastMessageId, providerLabel, showElapsedTime }),
-    [lastMessageId, providerLabel, showElapsedTime],
-  )
+  const transcript = useMemo(() => ({ providerLabel, showElapsedTime }), [providerLabel, showElapsedTime])
   return (
-    <AnswerableContext value={answerable}>
-      <LegendList
-        ref={listRef}
-        data={messages}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        estimatedItemSize={120}
-        alignItemsAtEnd={alignItemsAtEnd}
-        initialScrollAtEnd
-        maintainScrollAtEnd
-        maintainVisibleContentPosition
-        ListHeaderComponent={header ?? edgeSpacer}
-        ListFooterComponent={endSpacer}
-        className="min-h-0 flex-1"
-      />
-    </AnswerableContext>
+    <TranscriptContext value={transcript}>
+      <LastMessageContext value={messages.at(-1)?.id}>
+        <LegendList
+          ref={listRef}
+          data={messages}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
+          getItemType={getItemType}
+          alignItemsAtEnd={alignItemsAtEnd}
+          initialScrollAtEnd
+          maintainScrollAtEnd
+          maintainVisibleContentPosition
+          ListHeaderComponent={header ?? edgeSpacer}
+          ListFooterComponent={endSpacer}
+          className="min-h-0 flex-1"
+        />
+      </LastMessageContext>
+    </TranscriptContext>
   )
 }
 
@@ -168,7 +166,7 @@ function SentText({ text }: { text: string }) {
 }
 
 function MessageBody({ message }: { message: Message }) {
-  const { showElapsedTime } = use(AnswerableContext)
+  const { showElapsedTime } = use(TranscriptContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -230,7 +228,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
       )}
       <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="animate-shimmer text-xs text-shimmer motion-reduce:animate-none">
+        <p className="text-xs text-shimmer">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
@@ -247,7 +245,6 @@ function AssistantParts({
   parts: ReadonlyArray<IndexedMessagePart>
   writingIndex?: number
 }) {
-  const { lastMessageId, providerLabel } = use(AnswerableContext)
   return presentationBlocks(parts).map((block) => {
     const { index } = block
     if (block.type === "tools") {
@@ -258,14 +255,24 @@ function AssistantParts({
       <FindPartContext key={index} value={index}>
         {part.type === "text" ? (
           <ReplyText text={part.text} done={index !== writingIndex} />
-        ) : part.type === "questions" && message.id === lastMessageId ? (
-          <PostedQuestionsCard threadId={message.threadId} questions={part.questions} providerLabel={providerLabel} />
+        ) : part.type === "questions" ? (
+          <QuestionsPart message={message} part={part} />
         ) : (
           <MessagePartView part={part} />
         )}
       </FindPartContext>
     )
   })
+}
+
+function QuestionsPart({ message, part }: { message: Message; part: Extract<MessagePart, { type: "questions" }> }) {
+  const lastMessageId = use(LastMessageContext)
+  const { providerLabel } = use(TranscriptContext)
+  return message.id === lastMessageId ? (
+    <PostedQuestionsCard threadId={message.threadId} questions={part.questions} providerLabel={providerLabel} />
+  ) : (
+    <MessagePartView part={part} />
+  )
 }
 
 /**
