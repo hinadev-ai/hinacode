@@ -220,16 +220,18 @@ describe("cloud updater", () => {
 describe("isIdle", () => {
   const thread = { status: "idle", queue: [] } as const
   it.each([
-    ["a running turn", { threads: [{ ...thread, status: "running" as const }], worktrees: [], terminals: 0 }],
+    ["a running turn", { threads: [{ ...thread, status: "running" as const }], worktrees: [], terminals: [] }],
     [
       "a turn awaiting approval",
-      { threads: [{ ...thread, status: "awaiting_approval" as const }], worktrees: [], terminals: 0 },
+      { threads: [{ ...thread, status: "awaiting_approval" as const }], worktrees: [], terminals: [] },
     ],
-    ["a queued message", { threads: [{ ...thread, queue: [{}] as never }], worktrees: [], terminals: 0 }],
-    ["a setup script", { threads: [thread], worktrees: [{ status: "preparing" as const }], terminals: 0 }],
-    ["an open terminal", { threads: [thread], worktrees: [], terminals: 1 }],
+    ["a queued message", { threads: [{ ...thread, queue: [{}] as never }], worktrees: [], terminals: [] }],
+    ["a setup script", { threads: [thread], worktrees: [{ status: "preparing" as const }], terminals: [] }],
+    ["a running terminal", { threads: [thread], worktrees: [], terminals: [{ status: "running" as const }] }],
   ])("is busy with %s", (_, state) => expect(isIdle(state)).toBe(false))
 
   it("is idle with nothing in progress", () =>
-    expect(isIdle({ threads: [thread], worktrees: [{ status: "ready" }], terminals: 0 })).toBe(true))
+    expect(isIdle({ threads: [thread], worktrees: [{ status: "ready" }], terminals: [{ status: "exited" }] })).toBe(
+      true,
+    ))
 })

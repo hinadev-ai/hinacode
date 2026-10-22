@@ -38,7 +38,7 @@ Once a check leaves the cloud `ready`, it asks every minute whether it is idle, 
 
 - a thread `running` or `awaiting_approval` (`isThreadBusy`), or with a message in its queue;
 - a worktree still `preparing`, which means its setup script is running;
-- an open terminal session, because `process.execve` kills its shell, such as a `pnpm test` started from the phone.
+- a terminal session still running, because `process.execve` kills its shell, such as a `pnpm test` started from the phone. A terminal whose shell has exited stays listed until its tab closes, and does not count.
 
 It checks before npm starts, not after, and restarts as soon as npm finishes. Waiting for idle after the install would leave the old process running against replaced files on disk. A turn started during npm's own run, about half a minute, is the one piece of work a restart can still cut off.
 

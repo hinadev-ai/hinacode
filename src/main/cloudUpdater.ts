@@ -2,7 +2,7 @@ import { execFile } from "node:child_process"
 import { basename, delimiter, dirname } from "node:path"
 import { promisify } from "node:util"
 import { Effect, Layer, Schedule, Schema, Semaphore } from "effect"
-import { isThreadBusy, type Thread, type UpdateState, type Worktree } from "../shared/domain.ts"
+import { isThreadBusy, type TerminalSession, type Thread, type UpdateState, type Worktree } from "../shared/domain.ts"
 import { Events } from "./services/Events.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Threads } from "./services/Threads.ts"
@@ -38,14 +38,15 @@ const globalPrefix = (packageRoot: string) => {
 
 /**
  * Whether restarting the cloud now would destroy no work in progress: no turn running or waiting on the user, no
- * message queued for one, no worktree setup script running, and no terminal open, since a restart kills its shell.
+ * message queued for one, no worktree setup script running, and no terminal still running, since a restart kills its
+ * shell. An exited terminal stays listed until its tab is closed, and holds nothing.
  */
 export const isIdle = (cloud: {
   readonly threads: ReadonlyArray<Pick<Thread, "status" | "queue">>
   readonly worktrees: ReadonlyArray<Pick<Worktree, "status">>
-  readonly terminals: number
+  readonly terminals: ReadonlyArray<Pick<TerminalSession, "status">>
 }) =>
-  cloud.terminals === 0 &&
+  cloud.terminals.every((terminal) => terminal.status !== "running") &&
   cloud.threads.every((thread) => !isThreadBusy(thread.status) && thread.queue.length === 0) &&
   cloud.worktrees.every((worktree) => worktree.status !== "preparing")
 
@@ -131,7 +132,7 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
     const idle = Effect.gen(function* () {
       const list = yield* threads.list
       const sessions = yield* Effect.forEach(list, (thread) => terminals.list(thread.id))
-      return isIdle({ threads: list, worktrees: yield* worktrees.list, terminals: sessions.flat().length })
+      return isIdle({ threads: list, worktrees: yield* worktrees.list, terminals: sessions.flat() })
     }).pipe(Effect.orElseSucceed(() => false))
     const installWhenIdle = Effect.suspend(() =>
       state.type === "ready" ? Effect.flatMap(idle, (yes) => (yes ? install : Effect.void)) : Effect.void,
