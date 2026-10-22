@@ -21,13 +21,14 @@ Options, flags first, then environment, then stored settings:
 | `--port <n>`     | `HINACODE_SERVE_PORT`           | Listener port, default 48081                                  |
 | `--host <host>`  | `HINACODE_SERVE_HOST`           | Bind host, default `0.0.0.0`                                  |
 | `--rotate-token` | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
+|                  | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |
 
 Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
 
 ## Keep it running
 
 - Install it once instead of resolving it on every boot: `npm install -g --allow-scripts=node-pty hinacode`, then run `hinacode serve`. npm 11 skips node-pty's install script without that flag, and the terminal then fails to start.
-- Update from the desktop: Settings, Environments, `Update all`. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
+- A cloud installed with `npm install -g` updates itself: it checks npm every 4 hours and installs a new release once no turn, queued message, setup script or terminal is running. To update right away, use Settings, Environments, `Update all` on the desktop. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
 - systemd user unit: `ExecStart=/usr/bin/env hinacode serve`, `Environment=PATH=...` with the directories of `node`, `claude`, `codex` and `gh`, `Restart=on-failure`, `StandardOutput=append:%h/.hinacode-cloud/serve.log`. Run `loginctl enable-linger $USER` so it starts at boot without a login. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
 - launchd: `hinacode serve`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
 - Agent logins belong to the cloud: run `claude login`, `codex login`, `muse login` and `gh auth login` in a shell on that machine, once. hinacode never signs in for you.
