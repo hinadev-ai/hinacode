@@ -941,6 +941,8 @@
   "sidebar_thread_archive_confirm": "Archive…",
   "sidebar_thread_unarchive": "Unarchive",
   "sidebar_thread_unarchive_label": "Unarchive {title}",
+  "sidebar_thread_archive_label": "Archive {title}",
+  "sidebar_thread_delete_label": "Delete {title}",
   "sidebar_thread_unwatch": "Stop watching",
   "sidebar_archive_failed": "Could not archive: {message}",
   "sidebar_unarchive_failed": "Could not unarchive: {message}",
