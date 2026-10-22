@@ -92,3 +92,6 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
   return { hosts, port, token }
 }
+
+/** Whether a listener's `listenError` means another program holds the port. Node puts the code in the message. */
+export const isPortInUse = (listenError: string) => listenError.includes("EADDRINUSE")

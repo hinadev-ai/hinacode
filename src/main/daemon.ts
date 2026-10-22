@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
 import type { RemotePairing } from "../shared/domain.ts"
-import { pairingUrl } from "../shared/remote.ts"
+import { isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
 import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
@@ -87,11 +87,17 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
 }
 
 /** Waits until the listener is bound, then returns what pairs a client with it. */
-const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess, unknown>) => {
+const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | Settings, unknown>) => {
   const deadline = Date.now() + LISTEN_TIMEOUT_MS
   for (;;) {
     const status = await runtime.runPromise(RemoteAccess.use((remote) => remote.status))
     if (status.listening) break
+    if (status.listenError !== null && isPortInUse(status.listenError)) {
+      const { port } = (await runtime.runPromise(Settings.use((settings) => settings.get))).remote
+      throw new Error(
+        `port ${port} is in use, perhaps by the HinaCode desktop's Remote or another cloud. Pick another with --port <n>.`,
+      )
+    }
     if (status.listenError !== null) throw new Error(`remote listener failed: ${status.listenError}`)
     if (Date.now() > deadline) throw new Error("remote listener did not start in time")
     await new Promise((resolve) => setTimeout(resolve, 50))
