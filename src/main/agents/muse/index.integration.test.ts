@@ -86,7 +86,7 @@ const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTur
       ),
       Effect.forkChild,
     )
-    return { fiber, events, arrived, threadId: turnInput.threadId }
+    return { fiber, events, arrived, threadId: turnInput.threadId, input: turnInput }
   })
 
 type Turn = Effect.Success<ReturnType<typeof startTurn>>
@@ -109,6 +109,24 @@ const ofType =
     event.type === type
 
 const eventsOf = <T extends AgentEvent["type"]>(turn: Turn, type: T) => turn.events.filter(ofType(type))
+
+/** Runs the next turn in a finished turn's Muse session and returns its events. */
+const followUp = (turn: Turn, autoCompactTokens: number | null) =>
+  Effect.gen(function* () {
+    const provider = yield* MuseProvider
+    const [bound] = eventsOf(turn, "session_bound")
+    const events: Array<AgentEvent> = []
+    yield* provider
+      .runTurn({ ...turn.input, resumeSessionId: bound!.providerSessionId, autoCompactTokens })
+      .pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event))))
+    return events
+  })
+
+const replyOf = (events: ReadonlyArray<AgentEvent>) =>
+  events
+    .filter(ofType("text_delta"))
+    .map((event) => event.text)
+    .join("")
 
 /** A fresh `muse serve` per test, shut down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, MuseProvider>) =>
@@ -325,6 +343,46 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           yield* provider.interrupt(turn.threadId)
           yield* Fiber.join(turn.fiber)
           expect(turn.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "compacts the session before a turn once its context reaches the threshold",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const first = yield* startTurn("supervised")
+          yield* Fiber.join(first.fiber)
+          // The fake endpoint reports 7 input tokens per call, past this threshold.
+          const events = yield* followUp(first, 5)
+
+          expect(events.filter(ofType("compaction_updated")).map((event) => event.compaction)).toStrictEqual([
+            { status: "running" },
+            { status: "done", trigger: "auto", preTokens: expect.any(Number), postTokens: expect.any(Number) },
+          ])
+          const compacted = events.findIndex((event) => event.type === "compaction_updated")
+          expect(compacted).toBeLessThan(events.findIndex(ofType("text_delta")))
+          expect(replyOf(events)).toBe(REPLY)
+          expect(events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "leaves the context alone without a threshold",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const first = yield* startTurn("supervised")
+          yield* Fiber.join(first.fiber)
+          const events = yield* followUp(first, null)
+
+          expect(events.filter(ofType("compaction_updated"))).toStrictEqual([])
+          expect(replyOf(events)).toBe(REPLY)
+          expect(events.at(-1)?.type).toBe("turn_completed")
         }),
       ),
     TURN_TIMEOUT,

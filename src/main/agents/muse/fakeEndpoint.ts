@@ -56,7 +56,12 @@ const catalog = JSON.stringify({
   ],
 })
 
-type Tool = { readonly name?: string; readonly type?: string; readonly tools?: ReadonlyArray<Tool> }
+type Tool = {
+  readonly name?: string
+  readonly type?: string
+  readonly tools?: ReadonlyArray<Tool>
+  readonly parameters?: { readonly required?: ReadonlyArray<string> }
+}
 
 /** Muse nests its tools in namespaces, `{"type":"namespace","name":"muse","tools":[...]}`. */
 const offeredTools = (body: string): Array<Tool> => {
@@ -89,6 +94,21 @@ const replyWithTool = (response: ServerResponse, call: ScriptedCall, n: number) 
     }),
   )
   response.end(completed(id))
+}
+
+/** Muse's compaction summarizer does not stream, and takes its summary only as a `generate_summary` call. */
+const replyWithSummary = (response: ServerResponse, summarizer: Tool) => {
+  const summary = Object.fromEntries((summarizer.parameters?.required ?? []).map((field) => [field, "None known."]))
+  const call = {
+    type: "function_call",
+    id: "fc_summary",
+    call_id: "call_summary",
+    name: "generate_summary",
+    arguments: JSON.stringify(summary),
+    status: "completed",
+  }
+  response.writeHead(200, { "content-type": "application/json" })
+  response.end(JSON.stringify(frame("resp_summary", "completed", { usage: FAKE_USAGE, output: [call] })))
 }
 
 const replyWithText = (response: ServerResponse, text: string, held: boolean) => {
@@ -128,6 +148,11 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
         if (!body.includes(waiter.when)) continue
         waiting.delete(waiter)
         waiter.resolve()
+      }
+      const summarizer = offeredTools(body).find((tool) => tool.name === "generate_summary")
+      if (summarizer !== undefined) {
+        replyWithSummary(response, summarizer)
+        return
       }
       response.writeHead(200, { "content-type": "text/event-stream" })
       // Muse's reminder agents call the endpoint too, and one may land first, so a call is routed by content.
