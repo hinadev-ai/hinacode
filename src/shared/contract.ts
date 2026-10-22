@@ -234,6 +234,8 @@ export const RpcMethods = {
   "environments.add": rpc(Schema.Struct({ name: Schema.String, pairingUrl: Schema.String }), Environment),
   /** Forgets the cloud and its token. Its projects and threads stay on the cloud. */
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  /** Dials an offline or incompatible cloud now instead of after its backoff. Calls waiting for it keep waiting. */
+  "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
@@ -573,6 +575,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "environments.list": "read",
   "environments.add": "mutation",
   "environments.remove": "mutation",
+  "environments.reconnect": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -692,6 +695,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.list",
   "environments.add",
   "environments.remove",
+  "environments.reconnect",
   "agents.update",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */

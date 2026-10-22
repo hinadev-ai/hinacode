@@ -48,6 +48,10 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    /** Dials a cloud now instead of after its backoff. Does nothing while it is connected or refused its token. */
+    readonly reconnect: (id: string) => Effect.Effect<void>
+    /** `reconnect` for every cloud, for when the network may have come back, such as waking from sleep. */
+    readonly reconnectAll: Effect.Effect<void>
     /**
      * Runs one call on a cloud. A call made or cut off while the cloud is unreachable waits for it to reconnect, and
      * answers `Timeout` once the cloud has been unreachable for a minute in total.
@@ -252,6 +256,8 @@ interface Cloud {
   protocol: number | null
   /** Set only while the socket is authenticated, so a call never goes to a socket that is still dialing. */
   live: Live | null
+  /** Set only while waiting out the backoff; completing it dials at once. */
+  wake: Deferred.Deferred<void> | null
   readonly outbox: Map<number, Pending>
   /** The last successful answer per method, for `gather` while the cloud cannot answer. */
   readonly remembered: Map<RpcMethod, { readonly payload: string; readonly result: unknown }>
@@ -477,8 +483,14 @@ const make = Effect.gen(function* () {
           yield* setStatus(cloud, "incompatible")
         }
         if (end.connectedMs >= STABLE_MS) attempt = 0
-        yield* Effect.sleep(reconnectDelay(attempt))
-        attempt++
+        const wake = yield* Deferred.make<void>()
+        cloud.wake = wake
+        const woken = yield* Effect.race(
+          Effect.sleep(reconnectDelay(attempt)).pipe(Effect.as(false)),
+          Deferred.await(wake).pipe(Effect.as(true)),
+        )
+        cloud.wake = null
+        attempt = woken ? 0 : attempt + 1
       }
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("environment connection stopped", cause)))
 
@@ -502,6 +514,7 @@ const make = Effect.gen(function* () {
         lastSeenAt: null,
         protocol: null,
         live: null,
+        wake: null,
         outbox: new Map(),
         remembered: new Map(),
       }
@@ -571,6 +584,17 @@ const make = Effect.gen(function* () {
       owners.forget(id)
     })
 
+  const reconnect = (id: string) =>
+    Effect.suspend(() => {
+      const cloud = clouds.get(id)
+      const wake = cloud?.wake
+      if (cloud === undefined || wake == null) return Effect.void
+      cloud.wake = null
+      return setStatus(cloud, "connecting").pipe(Effect.andThen(Deferred.succeed(wake, undefined)))
+    })
+
+  const reconnectAll = Effect.suspend(() => Effect.forEach([...clouds.keys()], reconnect, { discard: true }))
+
   const forward = (environmentId: string, { method, payload }: ForwardedCall) =>
     Effect.suspend(() => {
       const cloud = clouds.get(environmentId)
@@ -632,7 +656,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.forEach(yield* findAll(undefined).pipe(Effect.mapError(persistence("environments.load"))), start)
 
-  return Environments.of({ list, add, remove, forward, gather, owner: owners.owner })
+  return Environments.of({ list, add, remove, reconnect, reconnectAll, forward, gather, owner: owners.owner })
 })
 
 export const layer = Layer.effect(Environments, make)

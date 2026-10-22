@@ -654,6 +654,21 @@ describe("desktop environments over a flaky link", () => {
     }
   })
 
+  test("reconnecting skips the backoff, and calls queued meanwhile go out once connected", async () => {
+    const scripted = await pair("asleep")
+    scripted.socket().terminate()
+    await pushedEventually(statusOf("asleep", "offline"))
+    const read = forward("asleep", { method: "settings.get", payload: undefined })
+
+    await clocked.runPromise(Environments.use((environments) => environments.reconnectAll))
+    await vi.waitFor(() => expect(electron.pushes.filter(statusOf("asleep", "connected"))).toHaveLength(2))
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
+    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    await remove("asleep")
+    scripted.stop()
+  })
+
   test("a cloud without call keys gets mutations bare, and one cut off is reported instead of sent twice", async () => {
     const scripted = await pair("old", { features: [] })
     const update = forward("old", { method: "threads.update", payload: { id: "t1", title: "x" } })
