@@ -28,11 +28,16 @@ type Control = {
   subagent?: boolean
   subagentPending?: boolean
   plan?: boolean
+  compaction?: boolean
   skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
   method?: string
-  params?: { turnId?: string; input?: Array<import("./protocol.ts").UserInput> }
+  params?: {
+    turnId?: string
+    input?: Array<import("./protocol.ts").UserInput>
+    config?: { model_auto_compact_token_limit?: number }
+  }
   id?: number
   result?: import("./protocol.ts").ToolRequestUserInputResponse
 }
@@ -87,6 +92,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   model: "fake-model",
   effort: null,
   fastMode: false,
+  autoCompactTokens: null,
   userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
@@ -149,6 +155,70 @@ describe("Codex app-server log", () => {
     writeFileSync(logPath, '{"method":"turn/start"\n')
     expect(received).toThrow(SyntaxError)
   })
+})
+
+describe("Codex auto-compact", () => {
+  it.live("passes the threshold to Codex and shows the compaction it runs", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ compaction: true })
+        const events = yield* provider
+          .runTurn({ ...input("auto-compact"), autoCompactTokens: 200_000 })
+          .pipe(Stream.runCollect)
+        const started = received().find((message) => message.method === "thread/start")
+        expect(started?.params?.config?.model_auto_compact_token_limit).toBe(200_000)
+        expect(events.filter((event) => event.type === "compaction_updated")).toStrictEqual([
+          { type: "compaction_updated", compaction: { status: "running" } },
+          {
+            type: "compaction_updated",
+            compaction: { status: "done", trigger: "auto", preTokens: null, postTokens: null },
+          },
+        ])
+      }),
+    ),
+  )
+
+  it.live("unloads a loaded thread before resuming it with a new threshold", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const turn = (autoCompactTokens: number | null) =>
+          provider
+            .runTurn({ ...input("threshold-change"), resumeSessionId: "codex-thread", autoCompactTokens })
+            .pipe(Stream.runDrain)
+        yield* turn(500_000)
+        yield* turn(500_000)
+        expect(countOf("thread/unsubscribe")).toBe(0)
+        yield* turn(200_000)
+        yield* turn(null)
+        const methods = received()
+          .map((message) => message.method)
+          .filter((method) => method === "thread/unsubscribe" || method === "thread/resume")
+        expect(methods).toStrictEqual([
+          "thread/resume",
+          "thread/resume",
+          "thread/unsubscribe",
+          "thread/resume",
+          "thread/unsubscribe",
+          "thread/resume",
+        ])
+      }),
+    ),
+  )
+
+  it.live("leaves Codex's own threshold alone by default", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        yield* provider.runTurn(input("default-compact")).pipe(Stream.runDrain)
+        const started = received().find((message) => message.method === "thread/start")
+        expect(started?.params?.config).not.toHaveProperty("model_auto_compact_token_limit")
+      }),
+    ),
+  )
 })
 
 describe("Codex conversation mode", () => {

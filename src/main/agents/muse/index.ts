@@ -5,6 +5,7 @@ import type {
   AccountHome,
   AgentEvent,
   ApprovalDecision,
+  Compaction,
   ContextWindow,
   QuestionAnswers,
   RunTurnInput,
@@ -30,6 +31,7 @@ import {
   type ItemDeltaParams,
   type ItemStartedParams,
   ModelList,
+  type SessionCompactResult,
   type SessionContextUsageParams,
   type SessionResumeResult,
   type SessionStartResult,
@@ -82,6 +84,10 @@ interface LoadedSession {
   model: string | null
   approvalMode: ApprovalMode | null
   cwd: string
+  /** The context size Muse last reported, null until it reports one. */
+  usedTokens: number | null
+  /** True while a compaction runs, which may outlive the turn that asked for it. */
+  compacting: boolean
 }
 
 interface HostEntry {
@@ -186,6 +192,37 @@ const promptParts = (
     return [skill, ...images]
   })
 
+/** Keeps each loaded session's context size and compaction state current, between turns too. */
+const trackContext = (sessions: Map<string, LoadedSession>, method: string, params: unknown) => {
+  const session = sessions.get((params as { sessionId?: string } | undefined)?.sessionId ?? "")
+  if (session === undefined) return
+  if (method === "session/contextUsage") session.usedTokens = (params as SessionContextUsageParams).usedTokens
+  if ((params as { item?: Item }).item?.kind !== "compaction") return
+  if (method === "item/started") session.compacting = true
+  if (method === "item/completed") session.compacting = false
+}
+
+const decodeContextUsage = Schema.decodeUnknownOption(Schema.Struct({ usedTokens: Schema.Number }))
+
+/** The session's latest context size, read backward from the end of its view so no item history loads. */
+const latestUsedTokens = (host: MuseHost, sessionId: string) =>
+  Effect.gen(function* () {
+    let cursor: string | null = null
+    do {
+      const raw: unknown = yield* host.request("view/page", {
+        sessionId,
+        direction: "backward",
+        limit: 100,
+        ...(cursor === null ? {} : { cursor }),
+      })
+      const page: ViewPage = yield* Schema.decodeUnknownEffect(ViewPage)(raw)
+      const usage = page.events.findLast((event) => event.method === "session/contextUsage")
+      if (usage !== undefined) return Option.getOrNull(decodeContextUsage(usage.params))?.usedTokens ?? null
+      cursor = page.nextCursor
+    } while (cursor !== null)
+    return null
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
+
 const interruptTurn = (host: MuseHost, sessionId: string, turnId: string) =>
   Effect.suspend(() =>
     host.isAlive()
@@ -221,13 +258,18 @@ const make = Effect.gen(function* () {
           Scope.provide(scope),
           Effect.onError(() => Scope.close(scope, Exit.void)),
         )
+        const sessions = new Map<string, LoadedSession>()
         yield* host
           .subscribe((message) => {
-            if (message.kind !== "notification" || message.method !== "usage/changed") return
-            planUsage = Option.getOrElse(decodePlanUsage(message.params), () => planUsage)
+            if (message.kind !== "notification") return
+            if (message.method === "usage/changed") {
+              planUsage = Option.getOrElse(decodePlanUsage(message.params), () => planUsage)
+            } else {
+              trackContext(sessions, message.method, message.params)
+            }
           })
           .pipe(Scope.provide(scope))
-        current = { host, scope, sessions: new Map() }
+        current = { host, scope, sessions }
         return current
       }),
     )
@@ -306,14 +348,26 @@ const make = Effect.gen(function* () {
               Effect.catch(() => Effect.succeed(undefined)),
             )
           if (resumed !== undefined) {
-            sessions.set(known, { model: resumed.modelId, approvalMode: resumed.approvalMode?.mode ?? null, cwd })
+            sessions.set(known, {
+              model: resumed.modelId,
+              approvalMode: resumed.approvalMode?.mode ?? null,
+              cwd,
+              usedTokens: null,
+              compacting: false,
+            })
             return known
           }
         }
         const { session } = yield* host
           .command<SessionStartResult>("session/start", { workspaceRoot: cwd })
           .pipe(Effect.mapError(toAgentError))
-        sessions.set(session.sessionId, { model: session.modelId ?? null, approvalMode: null, cwd })
+        sessions.set(session.sessionId, {
+          model: session.modelId ?? null,
+          approvalMode: null,
+          cwd,
+          usedTokens: null,
+          compacting: false,
+        })
         probeSessions.set(cwd, session.sessionId)
         return session.sessionId
       }),
@@ -356,7 +410,13 @@ const make = Effect.gen(function* () {
           approvalMode,
           config,
         })
-        sessions.set(session.sessionId, { model: input.model, approvalMode, cwd: input.cwd })
+        sessions.set(session.sessionId, {
+          model: input.model,
+          approvalMode,
+          cwd: input.cwd,
+          usedTokens: null,
+          compacting: false,
+        })
         threadSessions.set(input.threadId, session.sessionId)
         return session.sessionId
       }
@@ -368,7 +428,14 @@ const make = Effect.gen(function* () {
           excludeItems: true,
           config,
         })
-        loaded = { model: session.modelId, approvalMode: session.approvalMode?.mode ?? null, cwd: input.cwd }
+        loaded = {
+          model: session.modelId,
+          approvalMode: session.approvalMode?.mode ?? null,
+          cwd: input.cwd,
+          // An `excludeItems` resume carries no context usage.
+          usedTokens: input.autoCompactTokens === null ? null : yield* latestUsedTokens(host, sessionId),
+          compacting: false,
+        }
         sessions.set(sessionId, loaded)
       }
       threadSessions.set(input.threadId, sessionId)
@@ -406,24 +473,6 @@ const make = Effect.gen(function* () {
           run.sessionId = sessionId
           yield* emit({ type: "session_bound", providerSessionId: sessionId })
 
-          // MSP has no developer instructions, so hinacode's ride in front of the prompt.
-          const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
-          run.turnStart = yield* host
-            .command<TurnStartResult>("turn/start", {
-              sessionId,
-              // Muse shows `displayText`, never the instructions in front of the prompt.
-              input: prompt,
-              displayText: input.prompt,
-              ...(input.effort === null ? {} : { reasoningEffort: input.effort }),
-            })
-            .pipe(
-              Effect.map((ack) => ack.turnId),
-              Effect.mapError(toAgentError),
-              Effect.forkIn(providerScope),
-            )
-          const turnId = yield* Fiber.join(run.turnStart)
-          run.turnId = turnId
-
           const threadGrants = grants.get(input.threadId) ?? new Set<string>()
           grants.set(input.threadId, threadGrants)
           const pendingApprovals = new Map<string, Approval>()
@@ -435,6 +484,8 @@ const make = Effect.gen(function* () {
           const toolOutput = new Map<string, string>()
           const openTools = new Set<string>()
           let context: ContextWindow | undefined
+          /** True while the compaction hinacode asked for before the turn runs. */
+          let compacting = false
 
           const decide = (approval: Approval, decision: ApprovalDecision) =>
             Effect.gen(function* () {
@@ -628,9 +679,27 @@ const make = Effect.gen(function* () {
                 return finishText(item, "reasoning_delta", (item.summary ?? []).join(SUMMARY_BREAK))
               case "toolCall":
                 return finishTool(item)
+              case "compaction":
+                return finishCompaction(item)
               default:
                 return Effect.void
             }
+          }
+
+          /** A noop leaves the context as small as Muse can make it, which reads as done rather than failed. */
+          const finishCompaction = (item: Item) => {
+            const trigger = compacting || item.trigger !== "manual" ? "auto" : "manual"
+            compacting = false
+            const compaction: Compaction =
+              item.outcome === "compacted" || item.outcome === "noop"
+                ? {
+                    status: "done",
+                    trigger,
+                    preTokens: item.tokensBefore ?? null,
+                    postTokens: item.tokensAfter ?? null,
+                  }
+                : { status: "failed", message: item.reason ?? null }
+            return emit({ type: "compaction_updated", compaction })
           }
 
           const finishTurn = (params: TurnCompletedParams) =>
@@ -686,6 +755,9 @@ const make = Effect.gen(function* () {
                 case "item/started": {
                   const { item } = message.params as ItemStartedParams
                   if (item.kind === "toolCall") yield* startTool(item)
+                  if (item.kind === "compaction") {
+                    yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+                  }
                   return false
                 }
                 case "item/delta":
@@ -710,7 +782,7 @@ const make = Effect.gen(function* () {
                 }
                 case "turn/completed": {
                   const params = message.params as TurnCompletedParams
-                  if (params.turnId !== turnId) return false
+                  if (params.turnId !== run.turnId) return false
                   yield* finishTurn(params)
                   return true
                 }
@@ -718,6 +790,42 @@ const make = Effect.gen(function* () {
                   return false
               }
             })
+
+          // MSP takes no compaction threshold, so hinacode compacts before the turn. Muse rejects a turn/start that
+          // arrives during a compaction with `runtime_busy` and has no call that cancels one, so the turn waits for
+          // the compaction item to settle, including one a stopped turn left running.
+          const loaded = entry.sessions.get(sessionId)
+          const usedTokens = loaded?.usedTokens ?? null
+          if (loaded?.compacting) {
+            compacting = true
+            yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+          } else if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
+            const ack = yield* host.command<SessionCompactResult>("session/compact", { sessionId }).pipe(
+              Effect.map((result) => result.status),
+              Effect.catch((error) => Effect.logWarning("session/compact failed", error.message).pipe(Effect.as(null))),
+            )
+            compacting = ack === "accepted"
+          }
+          if (compacting) {
+            yield* Queue.take(inbox).pipe(Effect.flatMap(handle), Effect.repeat({ while: () => compacting }))
+          }
+
+          // MSP has no developer instructions, so hinacode's ride in front of the prompt.
+          const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
+          run.turnStart = yield* host
+            .command<TurnStartResult>("turn/start", {
+              sessionId,
+              // Muse shows `displayText`, never the instructions in front of the prompt.
+              input: prompt,
+              displayText: input.prompt,
+              ...(input.effort === null ? {} : { reasoningEffort: input.effort }),
+            })
+            .pipe(
+              Effect.map((ack) => ack.turnId),
+              Effect.mapError(toAgentError),
+              Effect.forkIn(providerScope),
+            )
+          run.turnId = yield* Fiber.join(run.turnStart)
 
           while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
         })

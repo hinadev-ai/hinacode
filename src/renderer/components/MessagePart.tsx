@@ -457,7 +457,7 @@ function CompactionLabel({ compaction }: { compaction: Compaction }) {
         <span className="flex items-center gap-1.5">
           <RiContractUpDownLine aria-hidden className="size-3.5 shrink-0" />
           {compaction.trigger === "auto" ? m.compaction_done_auto() : m.compaction_done()}
-          {compaction.postTokens !== null && (
+          {compaction.preTokens !== null && compaction.postTokens !== null && (
             <span className="tabular-nums">
               {m.compaction_tokens({
                 before: formatTokens(compaction.preTokens),

@@ -486,7 +486,10 @@ const make = Effect.gen(function* () {
       follow(
         Stream.unwrap(
           Effect.gen(function* () {
-            const [mcpServer, { experimental }] = yield* Effect.all([mcp.connectionFor(thread.id), settings.get])
+            const [mcpServer, { experimental, autoCompactTokens }] = yield* Effect.all([
+              mcp.connectionFor(thread.id),
+              settings.get,
+            ])
             if (yield* Deferred.isDone(stop)) {
               return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
             }
@@ -498,6 +501,7 @@ const make = Effect.gen(function* () {
               model: thread.model,
               effort: thread.effort,
               fastMode: thread.fastMode,
+              autoCompactTokens: autoCompactTokens[provider.id],
               userSkills: thread.userSkills,
               accessMode: thread.accessMode,
               resumeSessionId: thread.providerSessionId,

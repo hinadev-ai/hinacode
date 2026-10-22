@@ -10,6 +10,7 @@ export type {
   ItemCompletedParams,
   ItemDeltaParams,
   ItemStartedParams,
+  SessionCompactResult,
   SessionContextUsageParams,
   SessionResumeResult,
   SessionStartResult,
