@@ -16,6 +16,7 @@ jobs:
       app: ${{ steps.app.outputs.app }}
       desktop: ${{ steps.app.outputs.desktop }}
       site: ${{ steps.site.outputs.site }}
+      resource-monitor: ${{ steps.resource-monitor.outputs.resource-monitor }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -47,6 +48,13 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: resource-monitor
+        with:
+          filters: |
+            resource-monitor:
+              - 'tools/resource-monitor/**'
               - '.github/workflows/ci.yml'
 
   check:
@@ -127,3 +135,39 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
+
+  resource-monitor-linux:
+    name: resource monitor (linux)
+    needs: changes
+    if: needs.changes.outputs.resource-monitor == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/resource-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/resource-monitor/go.mod
+          cache-dependency-path: tools/resource-monitor/go.sum
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test ./...
+      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null .
+
+  resource-monitor-macos:
+    name: resource monitor (macos)
+    needs: changes
+    # The home runner must never run code from a fork's pull request.
+    if: needs.changes.outputs.resource-monitor == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, macOS, ARM64, home]
+    defaults:
+      run:
+        working-directory: tools/resource-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/resource-monitor/go.mod
+          cache-dependency-path: tools/resource-monitor/go.sum
+      - run: CGO_ENABLED=0 go test ./...
