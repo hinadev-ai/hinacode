@@ -372,13 +372,15 @@ interface ScriptedOptions {
   readonly features?: ReadonlyArray<string>
   readonly autoPong?: boolean
   readonly version?: number
+  readonly host?: string
+  readonly port?: number
 }
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   let version = options.version ?? REMOTE_PROTOCOL_VERSION
   const server = new WebSocketServer({
-    host: "127.0.0.1",
-    port: 0,
+    host: options.host ?? "127.0.0.1",
+    port: options.port ?? 0,
     path: REMOTE_PATH,
     autoPong: options.autoPong ?? true,
   })
@@ -436,8 +438,8 @@ describe("desktop environments over a flaky link", () => {
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
   const testTime = () => clocked.runPromise(Clock.currentTimeMillis)
 
-  const add = (pairingUrl: string) =>
-    clocked.runPromise(Environments.use((environments) => environments.add({ name: "", pairingUrl })))
+  const add = (url: string) =>
+    clocked.runPromise(Environments.use((environments) => environments.add({ name: "", pairingUrl: url })))
   const pair = async (id: string, options: ScriptedOptions = {}) => {
     const scripted = await scriptedCloud(id, options)
     await add(scripted.pairingUrl)
@@ -605,26 +607,49 @@ describe("desktop environments over a flaky link", () => {
     scripted.stop()
   })
 
-  test("pairing probes every host at once and keeps the first in URL order that answers", async () => {
+  test("pairing waits about a second for an earlier host, not the whole probe timeout", async () => {
     const scripted = await scriptedCloud("second-host", {})
     const held: Array<Socket> = []
     const blackhole = createServer((socket) => held.push(socket))
     await new Promise<void>((resolve) => blackhole.listen({ host: "::1", port: scripted.port }, resolve))
     try {
       let added: Awaited<ReturnType<typeof add>> | undefined
-      const adding = add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+      const startedAt = await testTime()
+      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
         (environment) => (added = environment),
       )
       await vi.waitFor(() => expect(held).toHaveLength(1))
-      await vi.waitFor(() => expect(scripted.socket()).toBeDefined())
-      await adjust("9 seconds")
-      expect(added).toBeUndefined()
-      await adjust("1 second")
-      expect(await adding).toMatchObject({ id: "second-host", host: "127.0.0.1" })
+      await vi.waitFor(async () => {
+        await adjust("100 millis")
+        expect(added).toMatchObject({ id: "second-host", host: "127.0.0.1" })
+      })
+      expect((await testTime()) - startedAt).toBeLessThan(2_000)
       await remove("second-host")
     } finally {
       for (const socket of held) socket.destroy()
       blackhole.close()
+      scripted.stop()
+    }
+  })
+
+  test("pairing keeps an earlier host that answers within a second of a later one", async () => {
+    const scripted = await scriptedCloud("both-hosts", {})
+    const slow = await scriptedCloud("both-hosts", { host: "::1", port: scripted.port })
+    slow.holdReady()
+    try {
+      let added: Awaited<ReturnType<typeof add>> | undefined
+      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+        (environment) => (added = environment),
+      )
+      await vi.waitFor(() => expect(scripted.socket()).toBeDefined())
+      await vi.waitFor(() => expect(slow.hasHeldReady()).toBe(true))
+      await adjust("500 millis")
+      expect(added).toBeUndefined()
+      slow.releaseReady()
+      await vi.waitFor(() => expect(added).toMatchObject({ id: "both-hosts", host: "::1" }))
+      await remove("both-hosts")
+    } finally {
+      slow.stop()
       scripted.stop()
     }
   })

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto"
-import { Clock, Context, Deferred, Effect, type Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
+import { Clock, Context, Deferred, Effect, Fiber, FiberMap, Layer, Option, Schedule, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
 import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import {
   type ClientFrame,
+  type PairingTarget,
   parsePairingUrl,
   REMOTE_PROTOCOL_VERSION,
   remoteWebSocketUrl,
@@ -70,6 +71,8 @@ const PING_INTERVAL = "10 seconds"
 const SILENCE_LIMIT_MS = 25_000
 const OFFLINE_LIMIT_MS = 60_000
 const STABLE_MS = 60_000
+/** How long pairing waits for an earlier host in the URL once a later one answered. */
+const PREFER_EARLIER_HOST_MS = 1_000
 
 const reconnectDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 60_000) * (0.7 + Math.random() * 0.6)
 
@@ -182,6 +185,46 @@ const probe = (target: Address & { readonly token: string }) => {
     }),
   )
 }
+
+/**
+ * Probes every host of a pairing at once and keeps the first in URL order that answers. Once any host answered,
+ * earlier hosts get `PREFER_EARLIER_HOST_MS` more, so an address this desktop cannot reach, such as a Tailscale
+ * address off the tailnet, does not hold pairing for the whole probe timeout. When none answers, a refused token
+ * outranks unreachable hosts.
+ */
+const probeHosts = (pairing: PairingTarget) =>
+  Effect.gen(function* () {
+    const answers: Array<Ready | undefined> = []
+    const graceOver = yield* Deferred.make<void>()
+    let graceStarted = false
+    const startGrace = Effect.suspend(() => {
+      if (graceStarted) return Effect.void
+      graceStarted = true
+      return Effect.forkScoped(
+        Effect.sleep(PREFER_EARLIER_HOST_MS).pipe(Effect.andThen(Deferred.succeed(graceOver, undefined))),
+      )
+    })
+    const probes = yield* Effect.forEach(pairing.hosts, (host, index) =>
+      Effect.forkScoped(
+        probe({ host, port: pairing.port, token: pairing.token }).pipe(
+          Effect.tap((ready) => {
+            answers[index] = ready
+            return startGrace
+          }),
+          Effect.result,
+        ),
+      ),
+    )
+    const failures: Array<EnvironmentUnreachable | EnvironmentUnauthorized> = []
+    for (const fiber of probes) {
+      const outcome = yield* Effect.raceFirst(Fiber.join(fiber), Deferred.await(graceOver).pipe(Effect.as(null)))
+      if (outcome === null || outcome._tag === "Success") break
+      failures.push(outcome.failure)
+    }
+    const won = answers.findIndex((ready) => ready !== undefined)
+    if (won !== -1) return { host: pairing.hosts[won]!, ready: answers[won]! }
+    return yield* Effect.fail(failures.find((error) => error._tag === "EnvironmentUnauthorized") ?? failures[0]!)
+  }).pipe(Effect.scoped)
 
 interface Live {
   readonly socket: WebSocket
@@ -488,8 +531,8 @@ const make = Effect.gen(function* () {
           message: "Paste the hinacode://connect URL that hinacode serve printed.",
         })
       }
-      const target = { host: pairing.hosts[0], port: pairing.port, token: pairing.token }
-      const ready = yield* probe(target)
+      const { host, ready } = yield* probeHosts(pairing)
+      const target = { host, port: pairing.port, token: pairing.token }
       if (ready.environment?.id === self.id) {
         return yield* new InvalidPairingUrl({ message: "That pairing URL is for this desktop." })
       }
