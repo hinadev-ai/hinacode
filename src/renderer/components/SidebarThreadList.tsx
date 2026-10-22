@@ -54,6 +54,7 @@ import type { IconType } from "react-icons"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
@@ -68,6 +69,7 @@ import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
+import { PullRequestCard } from "./PullRequestLink.tsx"
 import { ChecksIndicator, isOpen, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
@@ -85,6 +87,7 @@ import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Input } from "./ui/input.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
@@ -742,23 +745,24 @@ function PullRequestNumber({
   environment: EnvironmentId
 }) {
   const number = pullRequestNumber(latest.url)
+  const pullRequestRef = parsePullRequestUrl(latest.url)
   const href = usePullRequestHref(threadId, latest.url)
   const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
   const pullRequest = AsyncResult.isSuccess(lookup) ? lookup.value : undefined
   const status = pullRequest?.status
   const openChecks = pullRequest && isOpen(pullRequest.status) ? pullRequest.checks : null
   return (
-    <>
-      <a
+    <HoverCard>
+      <HoverCardTrigger
         href={href}
         target="_blank"
         rel="noreferrer"
+        delay={300}
         aria-label={
           count > 1
             ? m.sidebar_pull_request_stack({ number, count: String(count) })
             : m.sidebar_pull_request({ number })
         }
-        title={href}
         // Above the row link's ::after, so it opens the pull request instead of the thread.
         className={cn(
           "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
@@ -767,8 +771,13 @@ function PullRequestNumber({
       >
         {count > 1 && <RiStackLine aria-hidden className="size-3" />}
         <StatusIcon status={status} className="size-3" />#{number}
-      </a>
+      </HoverCardTrigger>
       {openChecks && <ChecksIndicator checks={openChecks} className="-ml-1 size-3" />}
-    </>
+      {pullRequestRef && (
+        <HoverCardContent align="start" className="w-80">
+          <PullRequestCard pullRequest={pullRequestRef} environment={environment} />
+        </HoverCardContent>
+      )}
+    </HoverCard>
   )
 }
