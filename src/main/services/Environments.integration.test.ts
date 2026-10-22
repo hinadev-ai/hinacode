@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import type { AddressInfo } from "node:net"
+import { type AddressInfo, createServer, type Socket } from "node:net"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
@@ -175,9 +175,14 @@ const setCloudRemote = (enabled: boolean) =>
     Settings.use((settings) => settings.set({ remote: { enabled, bindHost: "127.0.0.1", port: cloudPort } })),
   )
 
-const cloudPairing = async (token?: string) => {
+/** The second host is unroutable, so a pairing that waits for it hangs. */
+const cloudPairing = async (options: { token?: string; hosts?: [string, ...Array<string>] } = {}) => {
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  return pairingUrl({ hosts: ["127.0.0.1", "192.0.2.1"], port: pairing.port, token: token ?? pairing.token })
+  return pairingUrl({
+    hosts: options.hosts ?? ["127.0.0.1", "192.0.2.1"],
+    port: pairing.port,
+    token: options.token ?? pairing.token,
+  })
 }
 
 const gitRepo = (path: string) => {
@@ -239,7 +244,10 @@ describe("desktop environments", () => {
     expect(failure(await invoke("environments.add", { name: "home", pairingUrl: "https://example.com" })).tag).toBe(
       "InvalidPairingUrl",
     )
-    const wrong = await invoke("environments.add", { name: "home", pairingUrl: await cloudPairing("not-the-token") })
+    const wrong = await invoke("environments.add", {
+      name: "home",
+      pairingUrl: await cloudPairing({ token: "not-the-token", hosts: ["127.0.0.1"] }),
+    })
     expect(failure(wrong)).toMatchObject({ tag: "EnvironmentUnauthorized" })
     expect(result(await invoke("environments.list", undefined)).clouds).toStrictEqual([])
   })
@@ -397,6 +405,7 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   await new Promise((resolve) => server.once("listening", resolve))
   const { port } = server.address() as AddressInfo
   return {
+    port,
     pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
     calls,
     holdReady: () => {
@@ -594,6 +603,30 @@ describe("desktop environments over a flaky link", () => {
     expect(await listed("newer")).not.toHaveProperty("protocol")
     await remove("newer")
     scripted.stop()
+  })
+
+  test("pairing probes every host at once and keeps the first in URL order that answers", async () => {
+    const scripted = await scriptedCloud("second-host", {})
+    const held: Array<Socket> = []
+    const blackhole = createServer((socket) => held.push(socket))
+    await new Promise<void>((resolve) => blackhole.listen({ host: "::1", port: scripted.port }, resolve))
+    try {
+      let added: Awaited<ReturnType<typeof add>> | undefined
+      const adding = add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+        (environment) => (added = environment),
+      )
+      await vi.waitFor(() => expect(held).toHaveLength(1))
+      await vi.waitFor(() => expect(scripted.socket()).toBeDefined())
+      await adjust("9 seconds")
+      expect(added).toBeUndefined()
+      await adjust("1 second")
+      expect(await adding).toMatchObject({ id: "second-host", host: "127.0.0.1" })
+      await remove("second-host")
+    } finally {
+      for (const socket of held) socket.destroy()
+      blackhole.close()
+      scripted.stop()
+    }
   })
 
   test("a cloud without call keys gets mutations bare, and one cut off is reported instead of sent twice", async () => {
