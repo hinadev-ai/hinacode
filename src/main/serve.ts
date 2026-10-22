@@ -3,6 +3,56 @@ import { RemoteAccess } from "./remote/access.ts"
 import type { PersistenceError } from "./services/errors.ts"
 import { Settings } from "./services/Settings.ts"
 
+export const USAGE = `Usage: hinacode <command> [options]
+
+Commands:
+  serve   Run a HinaCode cloud: agents, worktrees and threads on this machine, driven from the desktop or phone app.
+  pair    Print the pairing URLs and QR code of the cloud again, without restarting it.
+
+serve options:
+  --port <n>        Port to listen on, or HINACODE_SERVE_PORT.
+  --host <host>     Address to bind, or HINACODE_SERVE_HOST. 0.0.0.0 for every interface.
+  --rotate-token    Replace the token, which unpairs every client, or HINACODE_SERVE_ROTATE_TOKEN=1.
+
+  -h, --help        Print this help.
+  --version         Print the version.
+
+Data lives in HINACODE_USER_DATA, default ~/.hinacode-cloud.`
+
+/** A command line that does not parse. The CLI prints it with the usage and exits 1. */
+export class UsageError extends Error {}
+
+export type Command = "help" | "version" | "serve" | "pair"
+
+const OPTIONS: Record<
+  "serve" | "pair",
+  { readonly values: ReadonlyArray<string>; readonly switches: ReadonlyArray<string> }
+> = {
+  serve: { values: ["--port", "--host"], switches: ["--rotate-token"] },
+  pair: { values: [], switches: [] },
+}
+
+/** The command `argv` asks for. An unknown option throws, so a typo never starts a daemon on the wrong port. */
+export const parseCommand = (argv: ReadonlyArray<string>): Command => {
+  if (argv.includes("--help") || argv.includes("-h")) return "help"
+  const [command, ...rest] = argv
+  if (command === "--version") return "version"
+  if (command !== "serve" && command !== "pair") {
+    throw new UsageError(command === undefined ? "missing command" : `unknown command ${command}`)
+  }
+  const { values, switches } = OPTIONS[command]
+  for (let index = 0; index < rest.length; index++) {
+    const arg = rest[index]!
+    const name = arg.split("=")[0]!
+    if (values.includes(name)) {
+      if (name === arg) index++
+    } else if (!switches.includes(arg)) {
+      throw new UsageError(arg.startsWith("-") ? `unknown option ${name}` : `unexpected argument ${arg}`)
+    }
+  }
+  return command
+}
+
 /**
  * How one `hinacode serve` boot differs from the stored settings. A field left out keeps the stored
  * value, so a plain restart converges on the same listener and the same token.
