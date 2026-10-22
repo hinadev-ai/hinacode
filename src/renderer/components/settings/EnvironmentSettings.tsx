@@ -10,6 +10,7 @@ import {
   useState,
   useTransition,
 } from "react"
+import type { Environment } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
@@ -17,6 +18,7 @@ import { addEnvironmentAtom, removeEnvironmentAtom } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
+import { useUi } from "../../stores/ui.ts"
 import { EnvironmentStatusText } from "../EnvironmentStatusText.tsx"
 import {
   AlertDialog,
@@ -221,17 +223,20 @@ function RemoveEnvironmentButton({ cloud }: { cloud: Cloud }) {
 
 function AddEnvironmentForm() {
   const addEnvironment = useAtomSet(addEnvironmentAtom, { mode: "promise" })
+  const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
   const [name, setName] = useState("")
   const [pairingUrl, setPairingUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [added, setAdded] = useState<Environment | null>(null)
   const [pending, startAdd] = useTransition()
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     startAdd(async () => {
       setError(null)
+      setAdded(null)
       try {
-        await addEnvironment({ name: name.trim(), pairingUrl: pairingUrl.trim() })
+        setAdded(await addEnvironment({ name: name.trim(), pairingUrl: pairingUrl.trim() }))
         setName("")
         setPairingUrl("")
       } catch (cause) {
@@ -280,10 +285,20 @@ function AddEnvironmentForm() {
           {error && <FieldError>{error}</FieldError>}
         </Field>
       </FieldGroup>
-      <div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Button type="submit" disabled={pending || pairingUrl.trim() === ""}>
           {pending ? m.environment_adding() : m.environment_add_submit()}
         </Button>
+        <output className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          {added && (
+            <>
+              <span>{m.environment_added({ name: added.name })}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setAddProjectOpen(true, added.id)}>
+                {m.environment_add_project_on({ name: added.name })}
+              </Button>
+            </>
+          )}
+        </output>
       </div>
     </form>
   )

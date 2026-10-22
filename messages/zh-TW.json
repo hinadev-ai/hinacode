@@ -1218,6 +1218,8 @@
   "environment_pair_again": "重新配對",
   "environment_new_pairing_url_label": "新的配對 URL",
   "environment_pair_submit": "配對",
+  "environment_added": "已連線到 {name}",
+  "environment_add_project_on": "在 {name} 上新增專案",
   "environment_update_on": "請更新 {name} 上的 HinaCode",
   "environment_incompatible_hint": "這台桌面與 {name} 的協定版本不同。請更新較舊的 HinaCode 後重新配對",
   "environments_empty": "尚未新增環境。在另一台機器執行 hinacode serve，並貼上它印出的 URL",

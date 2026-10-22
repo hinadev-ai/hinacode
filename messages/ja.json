@@ -1191,6 +1191,8 @@
   "environment_pair_again": "再ペアリング",
   "environment_new_pairing_url_label": "新しいペアリング URL",
   "environment_pair_submit": "ペアリング",
+  "environment_added": "{name} に接続しました。",
+  "environment_add_project_on": "{name} にプロジェクトを追加",
   "environment_update_on": "{name} の HinaCode を更新してください",
   "environment_incompatible_hint": "このデスクトップと {name} のプロトコルバージョンが異なります。古いほうの HinaCode を更新してから、再ペアリングしてください。",
   "environments_empty": "環境はまだありません。別のマシンで hinacode serve を実行し、表示された URL を貼り付けてください。",
