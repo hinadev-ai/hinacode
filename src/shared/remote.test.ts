@@ -52,10 +52,10 @@ describe("pairing URLs", () => {
     const printed = [
       "hinacode serve is listening on port 47821",
       "pair a desktop with one of:",
-      "  hinacode://connect?host=100.64.0.2&host=192.168.1.5&port=47821&token=abc",
-      "  hinacode://connect?host=192.168.1.5&port=47821&token=abc",
+      "  hinacode://connect?host=100.64.0.2&host=192.0.2.10&port=47821&token=abc",
+      "  hinacode://connect?host=192.0.2.10&port=47821&token=abc",
     ].join("\n")
-    expect(parsePairingUrl(printed)).toEqual({ hosts: ["100.64.0.2", "192.168.1.5"], port: 47821, token: "abc" })
+    expect(parsePairingUrl(printed)).toEqual({ hosts: ["100.64.0.2", "192.0.2.10"], port: 47821, token: "abc" })
   })
 
   it("finds the URL between words on one line", () => {

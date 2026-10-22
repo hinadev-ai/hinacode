@@ -6,8 +6,8 @@ describe("suggestProjectName", () => {
     ["/home/me/code/hinacode", "hinacode"],
     ["~/code/hinacode/ ", "hinacode"],
     ["C:\\Users\\me\\code\\hinacode", "hinacode"],
-    ["kjj6198/hinacode", "hinacode"],
-    ["https://github.com/kjj6198/hinacode.git", "hinacode"],
+    ["acme/web", "web"],
+    ["https://github.com/acme/web.git", "web"],
     ["", ""],
   ])("names %j %j", (source, name) => {
     expect(suggestProjectName(source)).toBe(name)
