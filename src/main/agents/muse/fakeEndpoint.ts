@@ -27,6 +27,8 @@ export interface FakeEndpoint {
   script: (call: ScriptedCall) => void
   /** Leaves every completion whose request carries `when` open after its first delta, until the client goes away. */
   hold: (when: string) => void
+  /** Leaves every compaction summary unanswered until the returned release is called. */
+  holdSummaries: () => () => void
   /** Resolves once a completion request carrying `when` has arrived. */
   requested: (when: string) => Promise<void>
   close: () => Promise<void>
@@ -130,6 +132,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
   const bodies: Array<string> = []
   const scripts: Array<ScriptedCall> = []
   const holds: Array<string> = []
+  let heldSummaries: Array<() => void> | undefined
   const waiting = new Set<{ readonly when: string; readonly resolve: () => void }>()
   let scripted = 0
 
@@ -151,7 +154,9 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
       }
       const summarizer = offeredTools(body).find((tool) => tool.name === "generate_summary")
       if (summarizer !== undefined) {
-        replyWithSummary(response, summarizer)
+        const answer = () => replyWithSummary(response, summarizer)
+        if (heldSummaries === undefined) answer()
+        else heldSummaries.push(answer)
         return
       }
       response.writeHead(200, { "content-type": "text/event-stream" })
@@ -192,6 +197,14 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
     baseUrl,
     script: (call) => scripts.push(call),
     hold: (when) => holds.push(when),
+    holdSummaries: () => {
+      const held: Array<() => void> = []
+      heldSummaries = held
+      return () => {
+        heldSummaries = undefined
+        for (const answer of held.splice(0)) answer()
+      }
+    },
     requested: (when) =>
       bodies.some((body) => body.includes(when))
         ? Promise.resolve()

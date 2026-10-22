@@ -71,13 +71,9 @@ const writeProbeSkill = (cwd: string) => {
   )
 }
 
-const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTurnInput) => void = () => {}) =>
+const forkTurn = (turnInput: RunTurnInput) =>
   Effect.gen(function* () {
     const provider = yield* MuseProvider
-    turns += 1
-    const marker = `kk-muse-turn-${turns}-${Date.now()}`
-    const turnInput = input(accessMode, marker)
-    setup(marker, turnInput)
     const events: Array<AgentEvent> = []
     const arrived = yield* PubSub.unbounded<AgentEvent>()
     const fiber = yield* provider.runTurn(turnInput).pipe(
@@ -87,6 +83,15 @@ const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTur
       Effect.forkChild,
     )
     return { fiber, events, arrived, threadId: turnInput.threadId, input: turnInput }
+  })
+
+const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTurnInput) => void = () => {}) =>
+  Effect.suspend(() => {
+    turns += 1
+    const marker = `kk-muse-turn-${turns}-${Date.now()}`
+    const turnInput = input(accessMode, marker)
+    setup(marker, turnInput)
+    return forkTurn(turnInput)
   })
 
 type Turn = Effect.Success<ReturnType<typeof startTurn>>
@@ -110,23 +115,26 @@ const ofType =
 
 const eventsOf = <T extends AgentEvent["type"]>(turn: Turn, type: T) => turn.events.filter(ofType(type))
 
-/** Runs the next turn in a finished turn's Muse session and returns its events. */
+/** Starts the next turn in a turn's Muse session. */
 const followUp = (turn: Turn, autoCompactTokens: number | null) =>
-  Effect.gen(function* () {
-    const provider = yield* MuseProvider
-    const [bound] = eventsOf(turn, "session_bound")
-    const events: Array<AgentEvent> = []
-    yield* provider
-      .runTurn({ ...turn.input, resumeSessionId: bound!.providerSessionId, autoCompactTokens })
-      .pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event))))
-    return events
-  })
+  forkTurn({ ...turn.input, resumeSessionId: eventsOf(turn, "session_bound")[0]!.providerSessionId, autoCompactTokens })
 
-const replyOf = (events: ReadonlyArray<AgentEvent>) =>
-  events
-    .filter(ofType("text_delta"))
+const replyOf = (turn: Turn) =>
+  eventsOf(turn, "text_delta")
     .map((event) => event.text)
     .join("")
+
+const compactionsOf = (turn: Turn) => eventsOf(turn, "compaction_updated").map((event) => event.compaction)
+
+const isCompacting = (event: AgentEvent): event is Extract<AgentEvent, { type: "compaction_updated" }> =>
+  event.type === "compaction_updated" && event.compaction.status === "running"
+
+const compactedAuto = {
+  status: "done",
+  trigger: "auto",
+  preTokens: expect.any(Number),
+  postTokens: expect.any(Number),
+}
 
 /** A fresh `muse serve` per test, shut down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, MuseProvider>) =>
@@ -356,16 +364,14 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           const first = yield* startTurn("supervised")
           yield* Fiber.join(first.fiber)
           // The fake endpoint reports 7 input tokens per call, past this threshold.
-          const events = yield* followUp(first, 5)
+          const next = yield* followUp(first, 5)
+          yield* Fiber.join(next.fiber)
 
-          expect(events.filter(ofType("compaction_updated")).map((event) => event.compaction)).toStrictEqual([
-            { status: "running" },
-            { status: "done", trigger: "auto", preTokens: expect.any(Number), postTokens: expect.any(Number) },
-          ])
-          const compacted = events.findIndex((event) => event.type === "compaction_updated")
-          expect(compacted).toBeLessThan(events.findIndex(ofType("text_delta")))
-          expect(replyOf(events)).toBe(REPLY)
-          expect(events.at(-1)?.type).toBe("turn_completed")
+          expect(compactionsOf(next)).toStrictEqual([{ status: "running" }, compactedAuto])
+          const compacted = next.events.findLastIndex(ofType("compaction_updated"))
+          expect(compacted).toBeLessThan(next.events.findIndex(ofType("text_delta")))
+          expect(replyOf(next)).toBe(REPLY)
+          expect(next.events.at(-1)?.type).toBe("turn_completed")
         }),
       ),
     TURN_TIMEOUT,
@@ -378,13 +384,70 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
         Effect.gen(function* () {
           const first = yield* startTurn("supervised")
           yield* Fiber.join(first.fiber)
-          const events = yield* followUp(first, null)
+          const next = yield* followUp(first, null)
+          yield* Fiber.join(next.fiber)
 
-          expect(events.filter(ofType("compaction_updated"))).toStrictEqual([])
-          expect(replyOf(events)).toBe(REPLY)
-          expect(events.at(-1)?.type).toBe("turn_completed")
+          expect(compactionsOf(next)).toStrictEqual([])
+          expect(replyOf(next)).toBe(REPLY)
+          expect(next.events.at(-1)?.type).toBe("turn_completed")
         }),
       ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "reads a resumed session's context and compacts it before the reply",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* withProvider(
+          Effect.gen(function* () {
+            const turn = yield* startTurn("supervised")
+            yield* Fiber.join(turn.fiber)
+            return turn
+          }),
+        )
+        // A fresh host has to resume the session before it can run the turn.
+        const next = yield* withProvider(
+          Effect.gen(function* () {
+            const turn = yield* followUp(first, 5)
+            yield* Fiber.join(turn.fiber)
+            return turn
+          }),
+        )
+
+        expect(compactionsOf(next)).toStrictEqual([{ status: "running" }, compactedAuto])
+        expect(replyOf(next)).toBe(REPLY)
+        expect(next.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "runs the next turn after the compaction a stopped turn left running",
+    () => {
+      const release = endpoint.holdSummaries()
+      return withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const first = yield* startTurn("supervised")
+          yield* Fiber.join(first.fiber)
+          const stopped = yield* followUp(first, 5)
+          yield* untilEvent(stopped, isCompacting)
+          yield* provider.interrupt(first.threadId)
+          yield* Fiber.join(stopped.fiber)
+          expect(stopped.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
+
+          // Muse cannot cancel a compaction, so the next turn waits for it instead of failing as busy.
+          const next = yield* followUp(first, 5)
+          yield* untilEvent(next, isCompacting)
+          release()
+          yield* Fiber.join(next.fiber)
+          expect(compactionsOf(next)).toStrictEqual([{ status: "running" }, compactedAuto])
+          expect(replyOf(next)).toBe(REPLY)
+          expect(next.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ).pipe(Effect.ensuring(Effect.sync(release)))
+    },
     TURN_TIMEOUT,
   )
 

@@ -84,8 +84,10 @@ interface LoadedSession {
   model: string | null
   approvalMode: ApprovalMode | null
   cwd: string
-  /** The context size Muse last reported, null until a turn on this host reports one. */
+  /** The context size Muse last reported, null until it reports one. */
   usedTokens: number | null
+  /** True while a compaction runs, which may outlive the turn that asked for it. */
+  compacting: boolean
 }
 
 interface HostEntry {
@@ -190,6 +192,37 @@ const promptParts = (
     return [skill, ...images]
   })
 
+/** Keeps each loaded session's context size and compaction state current, between turns too. */
+const trackContext = (sessions: Map<string, LoadedSession>, method: string, params: unknown) => {
+  const session = sessions.get((params as { sessionId?: string } | undefined)?.sessionId ?? "")
+  if (session === undefined) return
+  if (method === "session/contextUsage") session.usedTokens = (params as SessionContextUsageParams).usedTokens
+  if ((params as { item?: Item }).item?.kind !== "compaction") return
+  if (method === "item/started") session.compacting = true
+  if (method === "item/completed") session.compacting = false
+}
+
+const decodeContextUsage = Schema.decodeUnknownOption(Schema.Struct({ usedTokens: Schema.Number }))
+
+/** The session's latest context size, read backward from the end of its view so no item history loads. */
+const latestUsedTokens = (host: MuseHost, sessionId: string) =>
+  Effect.gen(function* () {
+    let cursor: string | null = null
+    do {
+      const raw: unknown = yield* host.request("view/page", {
+        sessionId,
+        direction: "backward",
+        limit: 100,
+        ...(cursor === null ? {} : { cursor }),
+      })
+      const page: ViewPage = yield* Schema.decodeUnknownEffect(ViewPage)(raw)
+      const usage = page.events.findLast((event) => event.method === "session/contextUsage")
+      if (usage !== undefined) return Option.getOrNull(decodeContextUsage(usage.params))?.usedTokens ?? null
+      cursor = page.nextCursor
+    } while (cursor !== null)
+    return null
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
+
 const interruptTurn = (host: MuseHost, sessionId: string, turnId: string) =>
   Effect.suspend(() =>
     host.isAlive()
@@ -225,13 +258,18 @@ const make = Effect.gen(function* () {
           Scope.provide(scope),
           Effect.onError(() => Scope.close(scope, Exit.void)),
         )
+        const sessions = new Map<string, LoadedSession>()
         yield* host
           .subscribe((message) => {
-            if (message.kind !== "notification" || message.method !== "usage/changed") return
-            planUsage = Option.getOrElse(decodePlanUsage(message.params), () => planUsage)
+            if (message.kind !== "notification") return
+            if (message.method === "usage/changed") {
+              planUsage = Option.getOrElse(decodePlanUsage(message.params), () => planUsage)
+            } else {
+              trackContext(sessions, message.method, message.params)
+            }
           })
           .pipe(Scope.provide(scope))
-        current = { host, scope, sessions: new Map() }
+        current = { host, scope, sessions }
         return current
       }),
     )
@@ -315,6 +353,7 @@ const make = Effect.gen(function* () {
               approvalMode: resumed.approvalMode?.mode ?? null,
               cwd,
               usedTokens: null,
+              compacting: false,
             })
             return known
           }
@@ -322,7 +361,13 @@ const make = Effect.gen(function* () {
         const { session } = yield* host
           .command<SessionStartResult>("session/start", { workspaceRoot: cwd })
           .pipe(Effect.mapError(toAgentError))
-        sessions.set(session.sessionId, { model: session.modelId ?? null, approvalMode: null, cwd, usedTokens: null })
+        sessions.set(session.sessionId, {
+          model: session.modelId ?? null,
+          approvalMode: null,
+          cwd,
+          usedTokens: null,
+          compacting: false,
+        })
         probeSessions.set(cwd, session.sessionId)
         return session.sessionId
       }),
@@ -365,14 +410,19 @@ const make = Effect.gen(function* () {
           approvalMode,
           config,
         })
-        sessions.set(session.sessionId, { model: input.model, approvalMode, cwd: input.cwd, usedTokens: null })
+        sessions.set(session.sessionId, {
+          model: input.model,
+          approvalMode,
+          cwd: input.cwd,
+          usedTokens: null,
+          compacting: false,
+        })
         threadSessions.set(input.threadId, session.sessionId)
         return session.sessionId
       }
       const sessionId = input.resumeSessionId
       let loaded = sessions.get(sessionId)
       if (loaded === undefined) {
-        // An `excludeItems` resume carries no context usage, so the first turn after it cannot compact first.
         const { session } = yield* host.command<SessionResumeResult>("session/resume", {
           sessionId,
           excludeItems: true,
@@ -382,7 +432,9 @@ const make = Effect.gen(function* () {
           model: session.modelId,
           approvalMode: session.approvalMode?.mode ?? null,
           cwd: input.cwd,
-          usedTokens: null,
+          // An `excludeItems` resume carries no context usage.
+          usedTokens: input.autoCompactTokens === null ? null : yield* latestUsedTokens(host, sessionId),
+          compacting: false,
         }
         sessions.set(sessionId, loaded)
       }
@@ -726,8 +778,6 @@ const make = Effect.gen(function* () {
                 case "session/contextUsage": {
                   const { usedTokens, windowTokens } = message.params as SessionContextUsageParams
                   if (windowTokens !== undefined) context = { usedTokens, maxTokens: windowTokens }
-                  const loaded = entry.sessions.get(sessionId)
-                  if (loaded !== undefined) loaded.usedTokens = usedTokens
                   return false
                 }
                 case "turn/completed": {
@@ -742,17 +792,22 @@ const make = Effect.gen(function* () {
             })
 
           // MSP takes no compaction threshold, so hinacode compacts before the turn. Muse rejects a turn/start that
-          // arrives during a compaction with `runtime_busy`, so the turn waits for the compaction item to settle.
-          const usedTokens = entry.sessions.get(sessionId)?.usedTokens ?? null
-          if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
+          // arrives during a compaction with `runtime_busy` and has no call that cancels one, so the turn waits for
+          // the compaction item to settle, including one a stopped turn left running.
+          const loaded = entry.sessions.get(sessionId)
+          const usedTokens = loaded?.usedTokens ?? null
+          if (loaded?.compacting) {
+            compacting = true
+            yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+          } else if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
             const ack = yield* host.command<SessionCompactResult>("session/compact", { sessionId }).pipe(
               Effect.map((result) => result.status),
               Effect.catch((error) => Effect.logWarning("session/compact failed", error.message).pipe(Effect.as(null))),
             )
             compacting = ack === "accepted"
-            if (compacting) {
-              yield* Queue.take(inbox).pipe(Effect.flatMap(handle), Effect.repeat({ while: () => compacting }))
-            }
+          }
+          if (compacting) {
+            yield* Queue.take(inbox).pipe(Effect.flatMap(handle), Effect.repeat({ while: () => compacting }))
           }
 
           // MSP has no developer instructions, so hinacode's ride in front of the prompt.
