@@ -12,7 +12,7 @@ Every thread that runs in a worktree leaves a checkout in the worktree root. A d
 1. Settings, General, Worktrees lists every live worktree HinaCode manages, on this machine and on every paired cloud, grouped by project.
 2. Each row shows the branch, the path, the threads that use it, and a badge when the checkout has uncommitted changes, is gone from disk, is still setting up, or failed setup.
 3. Remove opens a confirmation. It names the branch and path and says uncommitted changes are lost for good. A dirty checkout gets the warning in the destructive color.
-4. Confirming removes the checkout and the row disappears. Remove is disabled while a thread using the worktree runs a turn or its setup script runs, with the reason as a tooltip.
+4. Confirming removes the checkout and the row disappears. Remove is disabled while a thread using the worktree runs a turn or its setup script runs, and the row shows why in a badge.
 
 ## Design
 
