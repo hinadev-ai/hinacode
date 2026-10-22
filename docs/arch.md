@@ -609,3 +609,4 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |
 | File listing, reading, watching           | `src/main/services/Files.ts`                               |
+| Development resource monitor              | `src/main/resourceMonitor.ts`, `tools/resource-monitor/`   |

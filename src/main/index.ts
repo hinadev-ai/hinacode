@@ -20,6 +20,7 @@ import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
 import * as GitHub from "./services/GitHub.ts"
 import { Keyring } from "./services/Secrets.ts"
+import { startResourceMonitor } from "./resourceMonitor.ts"
 import { hydratePath } from "./shellPath.ts"
 import * as Updater from "./updater.ts"
 import icon from "../../assets/icon.png?asset"
@@ -45,6 +46,7 @@ if (!app.requestSingleInstanceLock()) {
   console.error(`HinaCode is already running on ${app.getPath("userData")}. Set HINACODE_USER_DATA to run another.`)
   app.exit(0)
 }
+if (!app.isPackaged) startResourceMonitor(app.getPath("userData"))
 // The login shell takes most of a second to start, so it runs while Electron gets ready.
 const pathHydrated = hydratePath(process.env)
 protocol.registerSchemesAsPrivileged([
