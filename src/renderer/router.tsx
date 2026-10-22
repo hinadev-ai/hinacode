@@ -28,11 +28,15 @@ const settingsRoute = createRoute({
   }),
 })
 
+const LOCATION_KEY = "hinacode.location"
+
 // Electron has no address bar, and memory history keeps working under file:// in production.
 export const router = createRouter({
   routeTree: rootRoute.addChildren([homeRoute, threadRoute, settingsRoute]),
-  history: createMemoryHistory({ initialEntries: ["/"] }),
+  history: createMemoryHistory({ initialEntries: [localStorage.getItem(LOCATION_KEY) ?? "/"] }),
 })
+
+router.subscribe("onResolved", ({ toLocation }) => localStorage.setItem(LOCATION_KEY, toLocation.href))
 
 declare module "@tanstack/react-router" {
   interface Register {
