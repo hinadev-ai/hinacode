@@ -1,7 +1,7 @@
 import { useAtomSet } from "@effect/atom-react"
 import { type FormEvent, type RefObject, startTransition, useActionState, useRef, useState, useTransition } from "react"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { type Cloud, cloudAddress, useClouds } from "../../lib/environments.ts"
+import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import { addEnvironmentAtom, removeEnvironmentAtom } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
@@ -74,9 +74,7 @@ function EnvironmentRow({ cloud, onPairAgain }: { cloud: Cloud; onPairAgain: () 
         <RemoveEnvironmentButton cloud={cloud} />
       </div>
       {cloud.status === "unauthorized" && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
-      {cloud.status === "incompatible" && (
-        <FieldDescription>{m.environment_incompatible_hint({ name: cloud.name })}</FieldDescription>
-      )}
+      {cloud.status === "incompatible" && <FieldDescription>{incompatibleText(cloud)}</FieldDescription>}
     </li>
   )
 }
