@@ -131,18 +131,20 @@ export function Sidebar({
             <InboxList query={query.trim().toLocaleLowerCase()} />
           </ScrollArea>
         </TabsContent>
-        {(["threads", "archived"] as const).map((value) => (
-          <TabsContent key={value} value={value} className="flex min-h-0 flex-col">
-            <ScrollArea className="min-h-0 flex-1">
-              <ProjectList
-                tab={value}
-                query={query.trim().toLocaleLowerCase()}
-                onAddProject={() => setAddProjectOpen(true)}
-                focusAfterDelete={addProjectButtonRef}
-              />
-            </ScrollArea>
-          </TabsContent>
-        ))}
+        <TabsContent value="threads" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <ProjectList
+              query={query.trim().toLocaleLowerCase()}
+              onAddProject={() => setAddProjectOpen(true)}
+              focusAfterDelete={addProjectButtonRef}
+            />
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="archived" className="flex min-h-0 flex-col">
+          <ScrollArea className="min-h-0 flex-1">
+            <ArchivedList query={query.trim().toLocaleLowerCase()} />
+          </ScrollArea>
+        </TabsContent>
       </Tabs>
 
       <ProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
@@ -181,23 +183,14 @@ type Query = string
 
 const includes = (text: string, query: Query) => text.toLocaleLowerCase().includes(query)
 
-type ProjectTab = Exclude<SidebarTab, "inbox">
-
-/** The projects' rows in one tab: those whose title or project name matches the query. */
-const tabThreads = (
-  state: Pick<ThreadsState, "byId">,
-  projects: ReadonlyArray<Project>,
-  tab: ProjectTab,
-  query: Query,
-) => {
-  const select = tab === "archived" ? selectArchivedThreads : selectUnpinnedProjectThreads
-  return select(...projects.map((project) => project.id))(state).filter(
+/** The projects' unpinned active threads whose title or project name matches the query. */
+const projectThreads = (state: Pick<ThreadsState, "byId">, projects: ReadonlyArray<Project>, query: Query) =>
+  selectUnpinnedProjectThreads(...projects.map((project) => project.id))(state).filter(
     (thread) =>
       query === "" ||
       includes(thread.title, query) ||
       projects.some((project) => project.id === thread.projectId && includes(project.name, query)),
   )
-}
 
 /** Threads of the filtered projects whose title or project name matches the query. */
 function useMatchingThreads(select: (state: Pick<ThreadsState, "byId">) => ReadonlyArray<Thread>, query: Query) {
@@ -241,11 +234,23 @@ function InboxList({ query }: { query: Query }) {
   )
 }
 
+/** Archived threads of every project in one list, the most recently updated on top. */
+function ArchivedList({ query }: { query: Query }) {
+  const threads = useMatchingThreads(selectArchivedThreads, query)
+  return threads.length === 0 ? (
+    <p className="px-3 py-2 text-xs text-muted-foreground">
+      {query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
+    </p>
+  ) : (
+    <SidebarThreadList group="archived" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+  )
+}
+
 /**
- * The Threads tab with no query lists every project and every active thread. Only this list keeps empty
- * projects, for their new thread button, and only this list can be reordered, since a drop saves every row's position.
+ * With no query the Threads tab lists every project and every active thread. Only then does it keep empty
+ * projects, for their new thread button, and only then can it be reordered, since a drop saves every row's position.
  */
-const isFullList = (tab: ProjectTab, query: Query) => tab === "threads" && query === ""
+const isFullList = (query: Query) => query === ""
 
 /** The projects the filter picks. A filter whose projects are all gone shows every project. */
 function useFilteredProjects(projects: ReadonlyArray<Project>) {
@@ -304,14 +309,13 @@ function ProjectFilterMenu() {
 }
 
 interface ProjectListProps {
-  readonly tab: ProjectTab
   readonly query: Query
   readonly onAddProject: () => void
   /** Takes focus after a project is deleted. */
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectListProps) {
+function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps) {
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
@@ -320,7 +324,7 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
   const shownKeys = useThreads(
     useShallow((state) =>
       groups
-        .filter((group) => isFullList(tab, query) || tabThreads(state, group.projects, tab, query).length > 0)
+        .filter((group) => isFullList(query) || projectThreads(state, group.projects, query).length > 0)
         .map((group) => group.key),
     ),
   )
@@ -341,12 +345,10 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
       ) : (
         <ul ref={listRef} className="flex flex-col gap-0.5 px-1.5 pb-3">
           {shown.length === 0 && (
-            <li className="px-1.5 py-2 text-xs text-muted-foreground">
-              {tab === "archived" && query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
-            </li>
+            <li className="px-1.5 py-2 text-xs text-muted-foreground">{m.sidebar_no_matches()}</li>
           )}
           {shown.map((group) => (
-            <ProjectGroup key={group.key} group={group} tab={tab} query={query} focusAfterDelete={focusAfterDelete} />
+            <ProjectGroup key={group.key} group={group} query={query} focusAfterDelete={focusAfterDelete} />
           ))}
         </ul>
       ),
@@ -363,12 +365,11 @@ function ProjectList({ tab, query, onAddProject, focusAfterDelete }: ProjectList
 
 interface ProjectGroupProps {
   readonly group: Group
-  readonly tab: ProjectTab
   readonly query: Query
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function ProjectGroup({ group, tab, query, focusAfterDelete }: ProjectGroupProps) {
+function ProjectGroup({ group, query, focusAfterDelete }: ProjectGroupProps) {
   const { projects } = group
   const [first] = projects
   const navigate = useNavigate()
@@ -376,7 +377,7 @@ function ProjectGroup({ group, tab, query, focusAfterDelete }: ProjectGroupProps
   const newThreadButtonRef = useRef<HTMLButtonElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [open, setOpen] = useState(true)
-  const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => tabThreads(state, projects, tab, query)))
+  const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => projectThreads(state, projects, query)))
   // A project whose active threads are all pinned is not empty, they are listed above the tabs.
   const hasActiveThreads = useThreads(
     (state) => selectProjectThreads(...projects.map((project) => project.id))(state).length > 0,
@@ -429,8 +430,8 @@ function ProjectGroup({ group, tab, query, focusAfterDelete }: ProjectGroupProps
           <SidebarThreadList
             group={group.key}
             threads={threads}
-            reorderable={isFullList(tab, query)}
-            showEmptyHint={isFullList(tab, query) && !hasActiveThreads}
+            reorderable={isFullList(query)}
+            showEmptyHint={isFullList(query) && !hasActiveThreads}
             newThreadButtonRef={newThreadButtonRef}
           />
         </CollapsibleContent>
