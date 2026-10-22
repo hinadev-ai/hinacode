@@ -14,6 +14,7 @@ import type {
   PullRequestStatus,
   ReviewStatus,
   OpenPullRequest,
+  PullRequestMatch,
 } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
 import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV } from "./Git.ts"
@@ -136,9 +137,11 @@ const reviewStatus: Record<string, ReviewStatus> = {
   REVIEW_REQUIRED: "reviewRequired",
 }
 
+const pullRequestStatus = (state: typeof PullRequestFields.Type.state, isDraft: boolean): PullRequestStatus =>
+  state === "OPEN" ? (isDraft ? "draft" : "open") : state === "MERGED" ? "merged" : "closed"
+
 export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest => {
-  const status: PullRequestStatus =
-    json.state === "OPEN" ? (json.isDraft ? "draft" : "open") : json.state === "MERGED" ? "merged" : "closed"
+  const status = pullRequestStatus(json.state, json.isDraft)
   return {
     url: json.url,
     number: json.number,
@@ -213,6 +216,20 @@ const decodeOpenPullRequests = Schema.decodeUnknownEffect(
   ),
 )
 
+const decodePullRequestMatches = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Array(
+      Schema.Struct({
+        number: Schema.Int,
+        title: Schema.String,
+        state: PullRequestFields.fields.state,
+        isDraft: Schema.Boolean,
+        author: Schema.Struct({ login: Schema.String }),
+      }),
+    ),
+  ),
+)
+
 /** GitHub as the user's `gh` login sees it. Every call runs `gh` without prompts. */
 export class GitHub extends Context.Service<
   GitHub,
@@ -245,6 +262,11 @@ export class GitHub extends Context.Service<
     readonly openPullRequests: (
       cwd: string,
     ) => Effect.Effect<ReadonlyArray<OpenPullRequest>, GitHubError | Schema.SchemaError>
+    /** Pull requests of `repository` in any state that match `query`, best match first; the newest for "". */
+    readonly searchPullRequests: (
+      repository: GitHubRepository,
+      query: string,
+    ) => Effect.Effect<ReadonlyArray<PullRequestMatch>, GitHubError | Schema.SchemaError>
     /** Opens a pull request from the pushed `head` branch, titled and described from its commits. Returns its URL. */
     readonly createPullRequest: (
       cwd: string,
@@ -354,6 +376,31 @@ const make = Effect.gen(function* () {
       ]).pipe(
         Effect.flatMap(decodeOpenPullRequests),
         Effect.map((list) => list.map(({ author, ...pullRequest }) => ({ ...pullRequest, author: author.login }))),
+      ),
+    searchPullRequests: ({ owner, name }, query) =>
+      gh(homedir(), [
+        "pr",
+        "list",
+        "--repo",
+        `${owner}/${name}`,
+        "--state",
+        "all",
+        "--limit",
+        "20",
+        // The = form, so a query starting with a dash is never read as a flag.
+        ...(query === "" ? [] : [`--search=${query}`]),
+        "--json",
+        "number,title,state,isDraft,author",
+      ]).pipe(
+        Effect.flatMap(decodePullRequestMatches),
+        Effect.map((list) =>
+          list.map(({ number, title, state, isDraft, author }) => ({
+            number,
+            title,
+            status: pullRequestStatus(state, isDraft),
+            author: author.login,
+          })),
+        ),
       ),
     createPullRequest,
     clone,

@@ -194,6 +194,18 @@ const handlers: Handlers = {
         GitHubSignedOutError: () => Effect.succeed([]),
       }),
     ),
+  "projects.searchPullRequests": ({ id, query }) =>
+    Effect.gen(function* () {
+      const { rootPath } = yield* Projects.use((projects) => projects.get(id))
+      const repository = yield* GitHub.use((github) => github.repository(rootPath))
+      if (repository === null) return []
+      return yield* GitHub.use((github) => github.searchPullRequests(repository, query))
+    }).pipe(
+      Effect.catchTags({
+        GitHubCliMissingError: () => Effect.succeed([]),
+        GitHubSignedOutError: () => Effect.succeed([]),
+      }),
+    ),
   "projects.icon": ({ id }) => Projects.use((projects) => projects.icon(id)),
   "git.log": ({ root, limit = 200 }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.log(root, limit)))),
   "git.show": ({ root, hash }) => knownRoot(root).pipe(Effect.andThen(Git.use((git) => git.show(root, hash)))),

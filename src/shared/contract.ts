@@ -68,6 +68,7 @@ import {
   Worktree,
   WorkspaceChoice,
   OpenPullRequest,
+  PullRequestMatch,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
 
@@ -189,6 +190,14 @@ export const RpcMethods = {
   "projects.branches": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(Schema.String)),
   /** Open pull requests of the project's repository, newest first. Empty when `gh` is missing or signed out. */
   "projects.pullRequests": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(OpenPullRequest)),
+  /**
+   * Pull requests of the project's GitHub repository in any state, best match first, or the newest for an empty query.
+   * Empty when the project is not on GitHub or `gh` is missing or signed out.
+   */
+  "projects.searchPullRequests": rpc(
+    Schema.Struct({ id: Schema.String, query: Schema.String }),
+    Schema.Array(PullRequestMatch),
+  ),
   /** Fetches `origin`, so the branch picker and a new worktree's default base are current. */
   "projects.fetch": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** The project's own favicon as a data URL, or null when it has none. */
@@ -557,6 +566,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "projects.defaultBranch": "read",
   "projects.branches": "read",
   "projects.pullRequests": "read",
+  "projects.searchPullRequests": "read",
   "projects.fetch": "mutation",
   "projects.icon": "read",
   "git.log": "read",

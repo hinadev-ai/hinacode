@@ -84,6 +84,7 @@ export const routes: Record<RpcMethod, Route> = {
   "projects.defaultBranch": project,
   "projects.branches": project,
   "projects.pullRequests": project,
+  "projects.searchPullRequests": project,
   "projects.fetch": project,
   "projects.icon": project,
   "threads.create": owner("project", "projectId"),
