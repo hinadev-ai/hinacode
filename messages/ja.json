@@ -1195,7 +1195,7 @@
   "environment_update_to": "{version} に更新",
   "environment_updating_to": "{version} に更新中…",
   "environment_update_all": "すべて更新",
-  "environment_update_hint": "{name} に {version} をインストールして再起動します。実行中のターンは停止します。",
+  "environment_update_hint": "{name} に {version} を今すぐインストールして再起動します。実行中のターンは停止します。そのままにしておくと、{name} は何も実行していないときに自動で更新されます。",
   "environments_empty": "環境はまだありません。別のマシンで hinacode serve を実行し、表示された URL を貼り付けてください。",
   "settings_editing_for": "設定の編集対象",
   "settings_environment_loading": "{name} の設定を読み込んでいます…",

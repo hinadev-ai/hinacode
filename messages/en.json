@@ -1240,7 +1240,7 @@
   "environment_update_to": "Update to {version}",
   "environment_updating_to": "Updating to {version}…",
   "environment_update_all": "Update all",
-  "environment_update_hint": "Installs {version} on {name}, then restarts it. Turns running there stop.",
+  "environment_update_hint": "Installs {version} on {name} now and restarts it, which stops running turns. Left alone, {name} updates itself once nothing is running there.",
   "environments_empty": "No environments yet. Run hinacode serve on another machine and paste the URL it prints.",
   "settings_editing_for": "Editing settings for",
   "settings_environment_loading": "Loading settings of {name}…",

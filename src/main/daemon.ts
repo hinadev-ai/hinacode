@@ -8,7 +8,7 @@ import { pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import { RemoteAccess } from "./remote/access.ts"
-import { serveConfig } from "./serve.ts"
+import { autoUpdate, serveConfig } from "./serve.ts"
 import { noKeyring } from "./services/Secrets.ts"
 import { hydratePath } from "./shellPath.ts"
 
@@ -117,6 +117,7 @@ const main = async (argv: ReadonlyArray<string>) => {
         current: version,
         packageRoot,
         registry: process.env["npm_config_registry"] || "https://registry.npmjs.org",
+        autoInstall: autoUpdate(process.env),
         restart: () =>
           stop(() =>
             process.execve!(process.execPath, [process.execPath, ...process.execArgv, ...process.argv.slice(1)]),

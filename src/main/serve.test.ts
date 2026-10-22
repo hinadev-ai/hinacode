@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { serveConfig } from "./serve.ts"
+import { autoUpdate, serveConfig } from "./serve.ts"
 
 describe("serveConfig", () => {
   test("reads the serve command with no overrides", () => {
@@ -33,5 +33,18 @@ describe("serveConfig", () => {
 
   test("refuses an unknown HINACODE_SERVE_ROTATE_TOKEN value instead of guessing", () => {
     expect(() => serveConfig(["serve"], { HINACODE_SERVE_ROTATE_TOKEN: "yes" })).toThrow(/HINACODE_SERVE_ROTATE_TOKEN/)
+  })
+})
+
+describe("autoUpdate", () => {
+  test("is on unless the environment turns it off", () => {
+    expect(autoUpdate({})).toBe(true)
+    expect(autoUpdate({ HINACODE_SERVE_AUTO_UPDATE: "1" })).toBe(true)
+    expect(autoUpdate({ HINACODE_SERVE_AUTO_UPDATE: "0" })).toBe(false)
+    expect(autoUpdate({ HINACODE_SERVE_AUTO_UPDATE: "false" })).toBe(false)
+  })
+
+  test("refuses a value it does not understand", () => {
+    expect(() => autoUpdate({ HINACODE_SERVE_AUTO_UPDATE: "yes" })).toThrow("HINACODE_SERVE_AUTO_UPDATE must be 1 or 0")
   })
 })

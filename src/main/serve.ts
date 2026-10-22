@@ -28,6 +28,10 @@ const portOf = (raw: string, source: string): number => {
   return port
 }
 
+/** Whether a cloud installs new releases on its own once idle. On unless `HINACODE_SERVE_AUTO_UPDATE` is 0 or false. */
+export const autoUpdate = (env: NodeJS.ProcessEnv): boolean =>
+  env["HINACODE_SERVE_AUTO_UPDATE"] === undefined || envFlag(env, "HINACODE_SERVE_AUTO_UPDATE")
+
 /** The `--name value` and `--name=value` spellings, or undefined when the flag is absent. */
 const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
   const inline = argv.find((arg) => arg.startsWith(`--${name}=`))

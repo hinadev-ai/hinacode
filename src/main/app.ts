@@ -45,7 +45,7 @@ export interface AppOptions {
   /** Where `sbx login` keeps its login. */
   readonly sbxConfigPath: string
   readonly keyring: Layer.Layer<Secrets.Keyring>
-  readonly updates: Layer.Layer<Updates, never, Events>
+  readonly updates: Layer.Layer<Updates, never, Events | Threads.Threads | Worktrees.Worktrees | Terminals.Terminals>
   /** Sends a push to the desktop windows. A cloud has none. */
   readonly toWindows: (event: typeof PushEvent.Encoded) => void
   /** Set for `hinacode serve`: forces the remote listener on at this address. */

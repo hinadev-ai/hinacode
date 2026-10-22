@@ -1222,7 +1222,7 @@
   "environment_update_to": "更新到 {version}",
   "environment_updating_to": "正在更新到 {version}…",
   "environment_update_all": "全部更新",
-  "environment_update_hint": "在 {name} 安裝 {version} 後重新啟動。正在執行的回合會停止。",
+  "environment_update_hint": "立即在 {name} 安裝 {version} 並重新啟動，正在執行的回合會停止。若不處理，{name} 會在沒有任何工作執行時自行更新。",
   "environments_empty": "尚未新增環境。在另一台機器執行 hinacode serve，並貼上它印出的 URL",
   "settings_editing_for": "正在編輯的設定",
   "settings_environment_loading": "正在載入 {name} 的設定…",

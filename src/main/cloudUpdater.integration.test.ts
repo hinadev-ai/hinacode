@@ -6,11 +6,27 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { Deferred, Effect, Layer } from "effect"
-import { layer } from "./cloudUpdater.ts"
+import { TestClock } from "effect/testing"
+import { isIdle, layer } from "./cloudUpdater.ts"
 import { Events } from "./services/Events.ts"
+import { Terminals } from "./services/Terminals.ts"
+import { Threads } from "./services/Threads.ts"
 import { Updates } from "./services/Updates.ts"
+import { Worktrees } from "./services/Worktrees.ts"
 
 const noEvents = Layer.succeed(Events, { publish: () => Effect.void })
+
+/** The cloud's work in progress as the updater sees it. Mutable, so a test can let a busy cloud go idle. */
+const cloud = (busy: { running: boolean }) =>
+  Layer.mergeAll(
+    noEvents,
+    Layer.mock(Threads, {
+      list: Effect.sync(() => [{ id: "t1", status: busy.running ? "running" : "idle", queue: [] }] as never),
+    }),
+    Layer.mock(Worktrees, { list: Effect.succeed([]) }),
+    Layer.mock(Terminals, { list: () => Effect.succeed([]) }),
+  )
+const idleCloud = cloud({ running: false })
 
 /** A registry that serves one `hinacode` release, or fails every request when `release` is null. */
 const startRegistry = (release: { version: string; tarball?: string } | null) =>
@@ -75,10 +91,10 @@ describe("cloud updater", () => {
       const registry = yield* startRegistry({ version: "0.2.0" })
       const packageRoot = mkdtempSync(join(tmpdir(), "hinacode-checkout-"))
       const status = yield* statusAfterCheck.pipe(
-        Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {} })),
+        Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {}, autoInstall: false })),
       )
       expect(status).toEqual({ current: "0.1.0", state: { type: "unsupported" } })
-    }).pipe(Effect.provide(noEvents), Effect.scoped),
+    }).pipe(Effect.provide(idleCloud), Effect.scoped),
   )
 
   it.effect("is up to date when latest is the running version", () =>
@@ -86,10 +102,10 @@ describe("cloud updater", () => {
       const registry = yield* startRegistry({ version: "0.1.0" })
       const { packageRoot } = globalInstall("0.1.0")
       const status = yield* statusAfterCheck.pipe(
-        Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {} })),
+        Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {}, autoInstall: false })),
       )
       expect(status.state).toEqual({ type: "upToDate" })
-    }).pipe(Effect.provide(noEvents), Effect.scoped),
+    }).pipe(Effect.provide(idleCloud), Effect.scoped),
   )
 
   it.effect("reports a failed check with the registry's status", () =>
@@ -97,10 +113,10 @@ describe("cloud updater", () => {
       const registry = yield* startRegistry(null)
       const { packageRoot } = globalInstall("0.1.0")
       const status = yield* statusAfterCheck.pipe(
-        Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {} })),
+        Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {}, autoInstall: false })),
       )
       expect(status.state.type).toBe("failed")
-    }).pipe(Effect.provide(noEvents), Effect.scoped),
+    }).pipe(Effect.provide(idleCloud), Effect.scoped),
   )
 
   it.effect("installs latest into its own prefix, then restarts", () =>
@@ -123,6 +139,7 @@ describe("cloud updater", () => {
             packageRoot,
             registry,
             restart: () => Deferred.doneUnsafe(restarted, Effect.void),
+            autoInstall: false,
           }),
         ),
       )
@@ -130,6 +147,54 @@ describe("cloud updater", () => {
         readFileSync(join(prefix, "lib", "node_modules", "hinacode", "package.json"), "utf8"),
       )
       expect(installed.version).toBe("0.2.0")
-    }).pipe(Effect.provide(noEvents), Effect.scoped),
+    }).pipe(Effect.provide(idleCloud), Effect.scoped),
   )
+
+  it.effect("installs on its own only once the cloud goes idle", () =>
+    Effect.gen(function* () {
+      process.env["npm_config_cache"] = mkdtempSync(join(tmpdir(), "hinacode-npm-cache-"))
+      const registry = yield* startRegistry({ version: "0.2.0", tarball: packRelease("0.2.0") })
+      const { packageRoot } = globalInstall("0.1.0")
+      const busy = { running: true }
+      const restarted = yield* Deferred.make<void>()
+      yield* Effect.gen(function* () {
+        const updates = yield* Updates
+        yield* updates.check
+        yield* TestClock.adjust("5 minutes")
+        expect((yield* updates.status).state).toEqual({ type: "ready", version: "0.2.0" })
+        busy.running = false
+        yield* TestClock.adjust("1 minute")
+        expect((yield* updates.status).state).toEqual({ type: "downloading", version: "0.2.0" })
+        yield* Deferred.await(restarted)
+      }).pipe(
+        Effect.provide(
+          layer({
+            current: "0.1.0",
+            packageRoot,
+            registry,
+            restart: () => Deferred.doneUnsafe(restarted, Effect.void),
+            autoInstall: true,
+          }),
+        ),
+        Effect.provide(cloud(busy)),
+      )
+    }).pipe(Effect.scoped),
+  )
+})
+
+describe("isIdle", () => {
+  const thread = { status: "idle", queue: [] } as const
+  it.each([
+    ["a running turn", { threads: [{ ...thread, status: "running" as const }], worktrees: [], terminals: 0 }],
+    [
+      "a turn awaiting approval",
+      { threads: [{ ...thread, status: "awaiting_approval" as const }], worktrees: [], terminals: 0 },
+    ],
+    ["a queued message", { threads: [{ ...thread, queue: [{}] as never }], worktrees: [], terminals: 0 }],
+    ["a setup script", { threads: [thread], worktrees: [{ status: "preparing" as const }], terminals: 0 }],
+    ["an open terminal", { threads: [thread], worktrees: [], terminals: 1 }],
+  ])("is busy with %s", (_, state) => expect(isIdle(state)).toBe(false))
+
+  it("is idle with nothing in progress", () =>
+    expect(isIdle({ threads: [thread], worktrees: [{ status: "ready" }], terminals: 0 })).toBe(true))
 })
