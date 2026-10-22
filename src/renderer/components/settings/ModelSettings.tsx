@@ -2,7 +2,7 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
 import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
-import { AccessMode } from "../../../shared/domain.ts"
+import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
@@ -86,6 +86,7 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
       {AsyncResult.isSuccess(models) && models.value.length > 0 && (
         <ModelPresetField provider={provider} models={models.value} />
       )}
+      <AutoCompactField provider={provider} />
     </FieldSet>
   )
 }
@@ -142,6 +143,66 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
         )}
       </div>
       <FieldDescription>{m.settings_model_preset_hint()}</FieldDescription>
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
+/** The field is in thousands, like Claude Code's `/autocompact 500k`; the setting is in tokens. */
+function AutoCompactField({ provider }: { provider: ProviderId }) {
+  const environment = useSettingsEnvironment()
+  const { autoCompactTokens } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+  const current = autoCompactTokens[provider]
+  const [draft, setDraft] = useState(current === null ? "" : String(current / 1000))
+  const inputId = `auto-compact-${provider}`
+  const next = draft.trim() === "" ? null : Number(draft) * 1000
+
+  const save = (tokens: number | null) =>
+    startTransition(async () => {
+      setError(null)
+      try {
+        await updateSettings({ autoCompactTokens: { ...autoCompactTokens, [provider]: tokens } })
+        setDraft(tokens === null ? "" : String(tokens / 1000))
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    save(next)
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
+      <form onSubmit={onSubmit} className="flex items-center gap-2">
+        <Input
+          id={inputId}
+          type="number"
+          inputMode="numeric"
+          min={AUTO_COMPACT_RANGE.minimum / 1000}
+          max={AUTO_COMPACT_RANGE.maximum / 1000}
+          step={1}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={m.settings_auto_compact_default()}
+          className="w-44 tabular-nums"
+        />
+        <span className="text-sm text-muted-foreground">{m.settings_auto_compact_unit()}</span>
+        <Button type="submit" variant="outline" disabled={next === current || pending}>
+          {m.settings_save()}
+        </Button>
+        {current !== null && (
+          <Button variant="ghost" size="sm" disabled={pending} onClick={() => save(null)}>
+            {m.settings_auto_compact_clear()}
+          </Button>
+        )}
+      </form>
+      <FieldDescription>{m.settings_auto_compact_hint()}</FieldDescription>
       {error && <FieldError>{error}</FieldError>}
     </Field>
   )
