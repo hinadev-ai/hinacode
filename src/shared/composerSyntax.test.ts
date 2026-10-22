@@ -1,5 +1,13 @@
 import { describe, expect, test } from "@effect/vitest"
-import { completionAt, highlight, leadingSkill, matchFiles, matchThreads, segmentText } from "./composerSyntax.ts"
+import {
+  completionAt,
+  highlight,
+  leadingSkill,
+  matchFiles,
+  matchPullRequests,
+  matchThreads,
+  segmentText,
+} from "./composerSyntax.ts"
 
 const known = {
   commands: new Set(["/kalan-mode", "$verify-hinacode"]),
@@ -53,6 +61,7 @@ describe("completionAt", () => {
     expect(completionAt("/kal", 4)).toStrictEqual({ trigger: "/", query: "kal", start: 0, end: 4 })
     expect(completionAt("use $ver now", 8)).toStrictEqual({ trigger: "$", query: "ver", start: 4, end: 8 })
     expect(completionAt("read @src/ma", 12)).toStrictEqual({ trigger: "@", query: "src/ma", start: 5, end: 12 })
+    expect(completionAt("see #26", 7)).toStrictEqual({ trigger: "#", query: "26", start: 4, end: 7 })
   })
 
   test("covers the whole token when the caret is inside it", () => {
@@ -64,6 +73,24 @@ describe("completionAt", () => {
     expect(completionAt("a@b.c", 5)).toBeNull()
     expect(completionAt("/kalan-mode ", 12)).toBeNull()
     expect(completionAt("plain", 5)).toBeNull()
+    expect(completionAt("a#1", 3)).toBeNull()
+  })
+
+  test("leaves a Markdown heading alone", () => {
+    expect(completionAt("## Plan", 2)).toBeNull()
+    expect(completionAt("# Plan", 1)).toStrictEqual({ trigger: "#", query: "", start: 0, end: 1 })
+  })
+})
+
+describe("matchPullRequests", () => {
+  test("matches a number prefix or a title substring", () => {
+    const pullRequests = [
+      { number: 261, title: "Reopen the last route" },
+      { number: 26, title: "Add the ports panel" },
+      { number: 12, title: "Persist ROUTE state" },
+    ]
+    expect(matchPullRequests(pullRequests, "26").map((pr) => pr.number)).toStrictEqual([261, 26])
+    expect(matchPullRequests(pullRequests, "route").map((pr) => pr.number)).toStrictEqual([261, 12])
   })
 })
 

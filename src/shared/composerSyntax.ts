@@ -1,5 +1,5 @@
 import type { AgentCommand } from "./agent.ts"
-import type { Thread } from "./domain.ts"
+import type { PullRequestMatch, Thread } from "./domain.ts"
 import { mentionedThreadId, threadMention } from "./threadMention.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "command" | "mention"
@@ -112,8 +112,8 @@ export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segme
 }
 
 export interface CompletionQuery {
-  /** `@` mentions a file or a thread; the others are the agent's command triggers. */
-  readonly trigger: AgentCommand["trigger"] | "@"
+  /** `@` mentions a file or a thread, `#` a pull request; the others are the agent's command triggers. */
+  readonly trigger: AgentCommand["trigger"] | "@" | "#"
   /** What has been typed after the trigger, up to the caret. */
   readonly query: string
   /** The whole token around the caret, which a picked command replaces. */
@@ -123,15 +123,20 @@ export interface CompletionQuery {
 
 const isSpace = (char: string | undefined) => char !== undefined && /\s/.test(char)
 
-/** The `/command`, `$skill` or `@mention` token the caret is in, if it starts the line or follows whitespace. */
+/**
+ * The `/command`, `$skill`, `@mention` or `#pull-request` token the caret is in, if it starts the line or follows
+ * whitespace. `##` starts a Markdown heading, not a pull request.
+ */
 export function completionAt(text: string, caret: number): CompletionQuery | null {
   let start = caret
   while (start > 0 && !isSpace(text[start - 1])) start--
   const trigger = text[start]
-  if (start === caret || (trigger !== "/" && trigger !== "$" && trigger !== "@")) return null
+  if (start === caret || (trigger !== "/" && trigger !== "$" && trigger !== "@" && trigger !== "#")) return null
+  const query = text.slice(start + 1, caret)
+  if (trigger === "#" && query.startsWith("#")) return null
   let end = caret
   while (end < text.length && !isSpace(text[end])) end++
-  return { trigger, query: text.slice(start + 1, caret), start, end }
+  return { trigger, query, start, end }
 }
 
 /** The skill `text` starts with, and its `/name ` or `$name ` token including the space that ends it. */
@@ -185,6 +190,17 @@ export function matchThreads<T extends Pick<Thread, "title">>(threads: ReadonlyA
   return [...titleStarts, ...titleContains]
 }
 
+/** Pull requests whose number starts with `query` or whose title contains it, in the given order. */
+export function matchPullRequests<T extends Pick<PullRequestMatch, "number" | "title">>(
+  pullRequests: ReadonlyArray<T>,
+  query: string,
+) {
+  const needle = query.toLowerCase()
+  return pullRequests.filter(
+    (pullRequest) => String(pullRequest.number).startsWith(needle) || pullRequest.title.toLowerCase().includes(needle),
+  )
+}
+
 const MAX_SUGGESTIONS = 50
 
 /** One row of the completion list. `insert` replaces the token at the caret. */
@@ -192,15 +208,24 @@ export type Suggestion =
   | { readonly type: "command"; readonly insert: string; readonly command: AgentCommand }
   | { readonly type: "file"; readonly insert: string; readonly path: string }
   | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
+  | { readonly type: "pullRequest"; readonly insert: string; readonly pullRequest: PullRequestMatch }
 
-/** Threads then files for `@`, else the commands of the typed trigger, at most `MAX_SUGGESTIONS`. */
+/**
+ * Threads then files for `@`, `pullRequests` for `#`, else the commands of the typed trigger, at most
+ * `MAX_SUGGESTIONS`. `pullRequests` are already matched to the query, by GitHub's search.
+ */
 export const suggestionsFor = (
   completion: CompletionQuery,
   commands: ReadonlyArray<AgentCommand>,
   files: ReadonlyArray<string>,
   threads: ReadonlyArray<Thread>,
+  pullRequests: ReadonlyArray<PullRequestMatch>,
 ): ReadonlyArray<Suggestion> => {
   const { trigger } = completion
+  if (trigger === "#")
+    return pullRequests
+      .slice(0, MAX_SUGGESTIONS)
+      .map((pullRequest) => ({ type: "pullRequest", insert: `#${pullRequest.number}`, pullRequest }))
   const suggestions: ReadonlyArray<Suggestion> =
     trigger === "@"
       ? [
