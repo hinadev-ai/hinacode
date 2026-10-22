@@ -17,7 +17,7 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "node scripts/dev-app-identity.mjs && electron-vite dev",
+    "dev": "node scripts/dev-app-identity.mjs && node scripts/build-resource-monitor.mjs && electron-vite dev",
     "dev:markdown": "HINACODE_MOCK_CLAUDE=markdown HINACODE_USER_DATA=/tmp/kk-markdown pnpm dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -29,6 +29,7 @@
     "lint": "oxlint",
     "check:specs": "node scripts/tlc.mjs",
     "chart:thread": "node scripts/thread-chart.mjs",
+    "resource-monitor": "tools/resource-monitor/bin/resource-monitor",
     "format": "oxfmt",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
