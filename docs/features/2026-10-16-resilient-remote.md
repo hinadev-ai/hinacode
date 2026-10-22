@@ -81,7 +81,7 @@ Both get the same policy:
 - **Outbox.** A pending call is `{ id, method, payload, key?, offlineSince: number | null, resolve, reject }`. A dropped socket no longer rejects it. After the next `ready`, every pending call is sent again in order, with its key if it is a mutation. A call made while reconnecting is queued, not refused. A call fails with tag `Timeout` once its link has been down for 60 s in total, and the message says a mutation may still have run. Time while connected does not count, because the heartbeat already notices a dead link, and calls such as `projects.clone` can legitimately take minutes.
 - **Heartbeat.** It sends `ping` every 10 s while connected and in the foreground. If no frame of any kind arrives for 25 s, it closes the socket and reconnects. The desktop keeps its protocol pings, with the same 25 s rule.
 - **Connect timeout.** If `ready` has not arrived 10 s after the socket was created, it closes the socket and retries.
-- **Backoff.** 0.5, 1, 2, 4, 8 s, capped at 10 s on the phone and 60 s on the desktop, with ±30% jitter. It retries on every close code except 4001 and 4002.
+- **Backoff.** 0.5, 1, 2, 4, 8 s, capped at 10 s on the phone and 60 s on the desktop, with ±30% jitter. It retries on every close code except 4001 and 4002. The desktop skips its backoff when the user presses Reconnect and when the machine wakes from sleep.
 - **Phone triggers.** NetInfo (`@react-native-community/netinfo`) reports a network change, so the phone closes the current socket and reconnects at once, since after a Wi-Fi to cellular switch the old TCP connection is dead even if it looks open. When the app returns to the foreground, a connected phone pings and reconnects if nothing answers within 5 s, and an offline phone skips its backoff.
 
 ### Phone state across a reconnect
@@ -102,7 +102,7 @@ Both get the same policy:
 
 The phone's `Transport` takes one socket URL per host. It tries the last host that worked first, then the others in order, moving on at each failed attempt, including the 10 s ready timeout. A drop after a handshake, a network change and a return to the foreground all start again from the host that worked. 4001 and 4002 stop without trying other hosts. The host that worked is remembered for the life of the connection, not stored; a pairing stored by an older app as `{ host }` is read as one host.
 
-The QR code in Settings > Remote carries every reachable host, Tailscale first, and the page lists them instead of asking for one. `hinacode serve` prints that URL for phones and one single-host URL per address for desktops, since desktop environments keep one host in this change: `environments.add` takes the first.
+The QR code in Settings > Remote carries every reachable host, Tailscale first, and the page lists them instead of asking for one. `hinacode serve` prints that URL for phones and one single-host URL per address for desktops. A desktop environment keeps one host: `environments.add` probes every host at once and stores the earliest in URL order that answers, waiting at most a second for earlier hosts once a later one answered, so the phone's URL pairs a desktop too.
 
 ## Slices
 
@@ -118,7 +118,7 @@ Each slice is one PR with its own check:
 - A server-side event log or resuming from a `seq`. Snapshots after a reconnect already repair gaps, and a log would be a second source of truth.
 - Push notifications to a closed phone app, a relay or tunnel, and TLS, all unchanged from remote mode.
 - Chunking individual response frames. A very large snapshot on a slow link can still exceed the 8 MiB buffer or 25 s silence limits and repeatedly reconnect.
-- Several hosts per desktop environment, and remembering clouds across a desktop restart.
+- Rotating between several hosts on a desktop environment after pairing, and remembering clouds across a desktop restart.
 - Desktop notifications for approvals requested during an outage.
 
 ## Verification
