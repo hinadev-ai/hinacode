@@ -640,6 +640,41 @@ describe("removal", () => {
   )
 })
 
+describe("force removal", () => {
+  const cases: ReadonlyArray<readonly [string, (root: string, path: string) => void]> = [
+    ["has uncommitted changes", (_root, path) => writeFileSync(join(path, "draft.txt"), "unsaved")],
+    ["is locked", (root, path) => void git(root, "worktree", "lock", path)],
+    ["is already gone from disk", (_root, path) => rmSync(path, { recursive: true, force: true })],
+    [
+      "is locked and already gone from disk",
+      (root, path) => {
+        git(root, "worktree", "lock", path)
+        rmSync(path, { recursive: true, force: true })
+      },
+    ],
+  ]
+  for (const [state, arrange] of cases) {
+    it.live(`deletes a checkout that ${state}`, () =>
+      withRepo(({ root, projectId }) =>
+        Effect.gen(function* () {
+          const thread = yield* createThread(projectId, "old", "kk/old")
+          yield* waitUntilSetUp(thread.worktreeId)
+          const worktree = yield* worktreeOf(thread.worktreeId)
+          arrange(root, worktree.path)
+
+          yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "keep"))
+          // A create of the same branch waits for the deletion to finish.
+          yield* Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/old", baseRef: "main" }))
+
+          expect((yield* worktreeOf(worktree.id)).status).toBe("removed")
+          expect(existsSync(worktree.path)).toBe(false)
+          expect(git(root, "worktree", "list", "--porcelain")).not.toContain(`worktree ${worktree.path}\n`)
+        }),
+      ),
+    )
+  }
+})
+
 describe("startup", () => {
   it.live("fails setup a quit or crash interrupted, the same way on every start", () =>
     withRepo(({ projectId, restart }) =>
