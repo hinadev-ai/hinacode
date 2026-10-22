@@ -358,36 +358,16 @@ describe("desktop environments", () => {
     expect(await desktop.runPromise(Secrets.use((secrets) => secrets.has(`environment.${cloudId}.token`)))).toBe(false)
     expect(result(await invoke("projects.list", undefined)).map((project) => project.name)).toStrictEqual(["here"])
   })
-
-  test("a cloud on another protocol version is incompatible and not retried", async () => {
-    const server = new WebSocketServer({ host: "127.0.0.1", port: 0, path: REMOTE_PATH })
-    let connections = 0
-    server.on("connection", (socket) => {
-      connections++
-      socket.on("message", () =>
-        socket.send(JSON.stringify({ type: "ready", version: 999, environment: { id: "future", name: "future" } })),
-      )
-    })
-    await new Promise((resolve) => server.once("listening", resolve))
-    try {
-      const { port } = server.address() as AddressInfo
-      const added = result(
-        await invoke("environments.add", {
-          name: "",
-          pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
-        }),
-      )
-      expect(added).toMatchObject({ id: "future", name: "future" })
-      await pushedEventually(statusOf("future", "incompatible"))
-      expect(connections).toBe(2)
-      result(await invoke("environments.remove", { id: "future" }))
-    } finally {
-      server.close()
-    }
-  })
 })
 
-const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<string>; autoPong?: boolean }) => {
+interface ScriptedOptions {
+  readonly features?: ReadonlyArray<string>
+  readonly autoPong?: boolean
+  readonly version?: number
+}
+
+const scriptedCloud = async (id: string, options: ScriptedOptions) => {
+  let version = options.version ?? REMOTE_PROTOCOL_VERSION
   const server = new WebSocketServer({
     host: "127.0.0.1",
     port: 0,
@@ -406,7 +386,7 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<str
       current = socket
       const ready: ServerFrame = {
         type: "ready",
-        version: REMOTE_PROTOCOL_VERSION,
+        version,
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
       }
@@ -427,6 +407,9 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<str
       current!.send(JSON.stringify(heldReady))
       heldReady = undefined
     },
+    update: () => {
+      version = REMOTE_PROTOCOL_VERSION
+    },
     socket: () => current!,
     send: (frame: ServerFrame) => current!.send(JSON.stringify(frame)),
     stop: () => {
@@ -442,20 +425,20 @@ describe("desktop environments over a flaky link", () => {
   const forward = (environmentId: string, call: ForwardedCall) =>
     clocked.runPromise(Environments.use((environments) => environments.forward(environmentId, call)))
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
-  const lastSeenAt = async (id: string) =>
-    (await clocked.runPromise(Environments.use((environments) => environments.list))).clouds.find(
-      (entry) => entry.id === id,
-    )?.lastSeenAt
   const testTime = () => clocked.runPromise(Clock.currentTimeMillis)
 
-  const pair = async (id: string, options: Parameters<typeof scriptedCloud>[1] = {}) => {
+  const add = (pairingUrl: string) =>
+    clocked.runPromise(Environments.use((environments) => environments.add({ name: "", pairingUrl })))
+  const pair = async (id: string, options: ScriptedOptions = {}) => {
     const scripted = await scriptedCloud(id, options)
-    await clocked.runPromise(
-      Environments.use((environments) => environments.add({ name: "", pairingUrl: scripted.pairingUrl })),
-    )
+    await add(scripted.pairingUrl)
     await pushedEventually(statusOf(id, "connected"))
     return scripted
   }
+  const listed = async (id: string) =>
+    (await clocked.runPromise(Environments.use((environments) => environments.list))).clouds.find(
+      (entry) => entry.id === id,
+    )
   const remove = (id: string) => clocked.runPromise(Environments.use((environments) => environments.remove(id)))
 
   const reconnectUntil = (done: () => void) =>
@@ -544,7 +527,7 @@ describe("desktop environments over a flaky link", () => {
     for (let step = 0; step < 12; step++) {
       await adjust("10 seconds")
       const now = new Date(await testTime()).toISOString()
-      await vi.waitFor(async () => expect(await lastSeenAt("slow")).toBe(now))
+      await vi.waitFor(async () => expect((await listed("slow"))?.lastSeenAt).toBe(now))
     }
     expect(answer).toBeUndefined()
 
@@ -564,7 +547,7 @@ describe("desktop environments over a flaky link", () => {
     await adjust("10 seconds")
     scripted.send({ type: "pong", at: 0 })
     const heardAt = new Date(await testTime()).toISOString()
-    await vi.waitFor(async () => expect(await lastSeenAt("silent")).toBe(heardAt))
+    await vi.waitFor(async () => expect((await listed("silent"))?.lastSeenAt).toBe(heardAt))
 
     await adjust(24_999)
     let held: RpcEnvelope<unknown> | undefined
@@ -594,6 +577,22 @@ describe("desktop environments over a flaky link", () => {
     await pushedEventually(statusOf("rotated", "unauthorized"))
     expect(await forward("rotated", { method: "settings.get", payload: undefined })).toStrictEqual(refused)
     await remove("rotated")
+    scripted.stop()
+  })
+
+  test("a cloud on a newer protocol fails pending calls, names its version, and reconnects once updated", async () => {
+    const scripted = await scriptedCloud("newer", { version: REMOTE_PROTOCOL_VERSION + 1 })
+    await add(scripted.pairingUrl)
+    await pushedEventually(statusOf("newer", "incompatible"))
+    expect(await listed("newer")).toMatchObject({ status: "incompatible", protocol: REMOTE_PROTOCOL_VERSION + 1 })
+    expect(await forward("newer", { method: "settings.get", payload: undefined })).toMatchObject({
+      error: { tag: "EnvironmentIncompatible" },
+    })
+
+    scripted.update()
+    await reconnectUntil(() => expect(electron.pushes.some(statusOf("newer", "connected"))).toBe(true))
+    expect(await listed("newer")).not.toHaveProperty("protocol")
+    await remove("newer")
     scripted.stop()
   })
 
