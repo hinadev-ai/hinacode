@@ -12,6 +12,7 @@ import { useMessages } from "../stores/messages.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
+import { CloudNotice } from "./CloudNotice.tsx"
 import { Composer } from "./Composer.tsx"
 import { FindBar } from "./FindBar.tsx"
 import { FindPatternContext } from "./FindHighlight.tsx"
@@ -82,6 +83,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
             ) : (
               <AccountLimitNotice key={thread.id} thread={thread} />
             )}
+            <CloudNotice threadId={thread.id} />
           </div>
           <Composer thread={thread} />
         </div>
