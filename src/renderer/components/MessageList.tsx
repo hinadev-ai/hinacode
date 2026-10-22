@@ -26,6 +26,8 @@ import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { WorkedFor } from "./WorkedFor.tsx"
 
 const keyExtractor = (message: Message) => message.id
+const ESTIMATED_MESSAGE_SIZE = 500
+const getItemType = (message: Message) => message.role
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
 // Spacers instead of container padding: the list measures header and footer, but not padding.
 const edgeSpacer = <div className="h-4" />
@@ -76,7 +78,8 @@ export function MessageList({
         data={messages}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        estimatedItemSize={120}
+        estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
+        getItemType={getItemType}
         alignItemsAtEnd={alignItemsAtEnd}
         initialScrollAtEnd
         maintainScrollAtEnd
