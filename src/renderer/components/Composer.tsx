@@ -133,14 +133,11 @@ export function Composer({ thread }: { thread: Thread }) {
     const prompt = promptWithComments(sent.text, sent.comments)
     setError(null)
     startSending(async () => {
-      try {
-        await deliver(thread.id, prompt, sent, { busy, unstarted, delivery })
-      } catch (cause) {
+      await deliver(thread.id, prompt, sent, { busy, unstarted, delivery }).catch((cause: unknown) => {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
-      } finally {
-        if (sent.workspace?.mode === "local") refreshRootBranch()
-      }
+      })
+      if (sent.workspace?.mode === "local") refreshRootBranch()
     })
   }
 

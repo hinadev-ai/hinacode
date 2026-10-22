@@ -115,35 +115,50 @@ SetupDone(r) ==
   /\ setupRunning' = setupRunning \ {r}
   /\ UNCHANGED <<dirs, branches, lock, removals, deletions, createPc, awaited, newBranch, turnVars>>
 
-\* Worktrees.ts:425-438 ensureRemovable. Its "shared" check (434-437) is vacuous with one thread per row.
-Removable(r) == worktreeStatus[r] /= "preparing" /\ threadStatus[r] /= "running"
+\* Worktrees.ts:290-295,311-314 stopSetup interrupts the setup fiber, whose onInterrupt marks the row failed.
+\* The kill escalates to SIGKILL (Worktrees.ts:262), so it returns even when the script ignores SIGTERM.
+StopSetup(r) ==
+  /\ r \in setupRunning
+  /\ worktreeStatus' = [worktreeStatus EXCEPT ![r] = "failed"]
+  /\ setupRunning' = setupRunning \ {r}
+  /\ UNCHANGED <<dirs, branches, lock, removals, deletions, createPc, awaited, newBranch, turnVars>>
+
+\* Worktrees.ts:437-447 ensureRemovable. Its "shared" check is vacuous with one thread per row.
+Removable(r) == threadStatus[r] /= "running"
 
 FreeFiber == CHOOSE f \in Fibers : deletions[f].pc = "unused"
 
-\* Worktrees.ts:469-473 removeWhileExclusive: setStatus removed, forkDetach deleteFiles, removals.set
+\* Worktrees.ts:477-490 removeWhileExclusive: stopSetup, read the row again, setStatus removed, forkDetach
+\* deleteFiles, removals.set. It holds the lock while stopSetup waits, and nothing that runs meanwhile reads
+\* more than whether the row is live, which it stays, so the steps are one action. A failed deletion
+\* restores the row as failed, never preparing, since no setup runs for it anymore.
 StartRemoval(r) ==
   /\ \E f \in Fibers : deletions[f].pc = "unused"
   /\ worktreeStatus' = [worktreeStatus EXCEPT ![r] = "removed"]
-  /\ deletions' = [deletions EXCEPT ![FreeFiber] = [row |-> r, pc |-> "list", old |-> worktreeStatus[r]]]
+  /\ setupRunning' = setupRunning \ {r}
+  /\ deletions' = [deletions EXCEPT ![FreeFiber] =
+       [row |-> r, pc |-> "list", old |-> IF r \in setupRunning THEN "failed" ELSE worktreeStatus[r]]]
   /\ removals' = FreeFiber
 
 \* Worktrees.ts:468 remove when the row is already removed returns it unchanged
 CanRemove(r) == lock = "free" /\ worktreeStatus[r] /= "none" /\ (worktreeStatus[r] = "removed" \/ Removable(r))
 Remove(r) ==
-  IF worktreeStatus[r] = "removed" THEN UNCHANGED <<worktreeStatus, deletions, removals>> ELSE StartRemoval(r)
+  IF worktreeStatus[r] = "removed" THEN UNCHANGED <<worktreeStatus, deletions, removals, setupRunning>>
+  ELSE StartRemoval(r)
 
 \* ipc.ts:66 worktrees.remove with no owner, as DeleteProjectDialog.tsx:59 calls it
 RemoveWorktree(r) ==
   /\ CanRemove(r) /\ worktreeStatus[r] /= "removed" /\ StartRemoval(r)
-  /\ UNCHANGED <<dirs, branches, lock, createVars, turnVars>>
+  /\ UNCHANGED <<dirs, branches, lock, createPc, awaited, newBranch, turnVars>>
 
-\* Threads.ts archive with Settings.archive.removeWorktree on removes the worktree with the thread as owner,
-\* then updates the thread. With the setting off it only updates the thread, which races with nothing.
+\* Threads.ts:425-438 archive refuses a busy thread, and with Settings.archive.removeWorktree on removes the
+\* worktree with the thread as owner, then updates the thread. With the setting off it only updates the
+\* thread, which races with nothing.
 Archive(t) ==
-  /\ threadStatus[t] \in {"idle", "running"} /\ archivePc[t] = "none" /\ CanRemove(t) /\ Remove(t)
+  /\ threadStatus[t] = "idle" /\ archivePc[t] = "none" /\ CanRemove(t) /\ Remove(t)
   /\ archivePc' = [archivePc EXCEPT ![t] = "done"]
   /\ threadStatus' = [threadStatus EXCEPT ![t] = "archived"]
-  /\ UNCHANGED <<dirs, branches, lock, createVars, busyThreads, turnPc, cwd, sentToWorktree>>
+  /\ UNCHANGED <<dirs, branches, lock, createPc, awaited, newBranch, busyThreads, turnPc, cwd, sentToWorktree>>
 
 SetDel(f, pc) == deletions' = [deletions EXCEPT ![f].pc = pc]
 DelUnchanged == UNCHANGED <<worktreeStatus, lock, removals, createVars, turnVars>>
@@ -207,12 +222,13 @@ Send(t) ==
   /\ turnPc' = [turnPc EXCEPT ![t] = "start"]
   /\ UNCHANGED <<wtVars, createVars, threadStatus, cwd, archivePc>>
 
-\* AgentRunner.ts:485-510 startTurn under the worktree lock: resolve cwd (workspace.ts:25-28 falls back to
-\* the project root for a removed row) and mark the thread running. A thread sent to a worktree that is no
-\* longer live fails instead (496-501), and sendWhen releases busyThreads (541).
+\* AgentRunner.ts:561-585 startTurn under the worktree lock: resolve cwd (workspace.ts:25-28 falls back to
+\* the project root for a removed row) and mark the thread running. An archived thread, or one sent to a
+\* worktree that is no longer live, fails instead (567-575), and sendWhen releases busyThreads.
 StartTurn(t) ==
   /\ turnPc[t] = "start" /\ lock = "free"
-  /\ IF sentToWorktree[t] /\ worktreeStatus[t] = "removed"
+  /\ t \notin setupRunning  \* AgentRunner.ts:554-559 waits for whenPrepared before taking the lock
+  /\ IF threadStatus[t] = "archived" \/ (sentToWorktree[t] /\ worktreeStatus[t] = "removed")
        THEN /\ busyThreads' = busyThreads \ {t} /\ turnPc' = [turnPc EXCEPT ![t] = "none"]
             /\ UNCHANGED <<threadStatus, cwd>>
        ELSE /\ cwd' = [cwd EXCEPT ![t] = IF worktreeStatus[t] = "removed" THEN Root ELSE t]
@@ -236,13 +252,17 @@ Finish(t) ==
 Next ==
   \/ \E t \in Threads :
        \/ CreateBegin(t) \/ CreateFindLive(t) \/ CreateBranchExists(t) \/ CreateGitAdd(t)
-       \/ CreateInsert(t) \/ ThreadInsert(t) \/ SetupDone(t) \/ RemoveWorktree(t)
+       \/ CreateInsert(t) \/ ThreadInsert(t) \/ SetupDone(t) \/ StopSetup(t) \/ RemoveWorktree(t)
        \/ Archive(t) \/ Send(t) \/ StartTurn(t) \/ TurnCompleted(t) \/ Finish(t)
   \/ \E f \in Fibers :
        \/ DelList(f) \/ DelRemove(f) \/ DelPrune(f) \/ DelBranchCheck(f)
        \/ DelBranchD(f) \/ DelRestore(f) \/ DelCleanup(f)
 
 Spec == Init /\ [][Next]_vars
+
+\* The user keeps asking to archive (strong fairness: retrying whenever archiving is possible), and every
+\* turn ends, by itself or by Stop. SetupDone gets no fairness, since a setup script may never exit.
+LiveSpec == Spec /\ \A t \in Threads : SF_vars(Archive(t)) /\ WF_vars(TurnCompleted(t))
 
 -------------------------------------------------------------------------------------
 NoDeleteUnderRunningTurn ==
@@ -257,4 +277,9 @@ CreateWaitsForDeletion == \A t \in Threads : createPc[t] = "add" => ~DeletionInP
 LiveRowHasDirectory == \A r \in Rows : worktreeStatus[r] \in {"ready", "failed"} => r \in dirs
 
 TurnRunsWhereSent == \A t \in Threads : turnPc[t] = "running" /\ sentToWorktree[t] => cwd[t] = t
+
+\* No thread gets stuck: whatever its worktree's setup script does, archiving it eventually works. Retried
+\* failed deletions can use up MaxRemovals, after which the bound, not the code, refuses a removal.
+FibersExhausted == \A f \in Fibers : deletions[f].pc /= "unused"
+ArchiveEventually == \A t \in Threads : threadStatus[t] /= "none" ~> threadStatus[t] = "archived" \/ FibersExhausted
 =====================================================================================

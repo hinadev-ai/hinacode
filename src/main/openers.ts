@@ -82,11 +82,13 @@ const launch = (location: string, path: string) =>
       execFile("open", ["-a", location, path], (error) => (error ? reject(error) : resolve()))
       return
     }
+    // The editor outlives this app by design, so it drops the tag the development resource monitor follows.
+    const env = { ...process.env, HINACODE_INSTANCE: undefined }
     // A `.cmd` shim only runs through the shell on Windows, which joins the arguments unquoted.
     const child =
       process.platform === "win32"
-        ? spawn(`"${location}"`, [`"${path}"`], { detached: true, stdio: "ignore", shell: true })
-        : spawn(location, [path], { detached: true, stdio: "ignore" })
+        ? spawn(`"${location}"`, [`"${path}"`], { detached: true, stdio: "ignore", shell: true, env })
+        : spawn(location, [path], { detached: true, stdio: "ignore", env })
     child.once("error", reject)
     child.once("spawn", () => {
       child.unref()

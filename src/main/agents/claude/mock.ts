@@ -13,7 +13,8 @@ import markdownFixture from "./fixtures/markdown.md?raw"
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
-export type MockScenario = "usage-limit" | "org-spend-limit" | "todos" | "markdown"
+export const mockScenarios = ["usage-limit", "org-spend-limit", "todos", "markdown", "stream"] as const
+export type MockScenario = (typeof mockScenarios)[number]
 
 /** A skill and one of Claude Code's own commands, which the composer shows differently. */
 const commands: ReadonlyArray<AgentCommand> = [
@@ -38,9 +39,20 @@ const toolCall = (callId: string, name: string, input: unknown, output: string):
   { type: "tool_call_finished", callId, output, isError: false },
 ]
 
+const chunks = (text: string, size: number) => text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) ?? []
+
 /** Every turn replies with a fixture of each Markdown construct, in chunks like a streamed reply. */
 const markdownTurn = (): Array<AgentEvent> => [
-  ...(markdownFixture.match(/[\s\S]{1,400}/g) ?? []).map((text): AgentEvent => ({ type: "text_delta", text })),
+  ...chunks(markdownFixture, 400).map((text): AgentEvent => ({ type: "text_delta", text })),
+  { type: "turn_completed" },
+]
+
+const streamTurn = (): Array<AgentEvent> => [
+  ...chunks(markdownFixture.slice(0, 900), 30).map((text): AgentEvent => ({ type: "reasoning_delta", text })),
+  ...Array.from({ length: 6 }, (_, index) =>
+    toolCall(`stream-read-${index}`, "Read", { file_path: `src/file-${index}.ts` }, markdownFixture),
+  ).flat(),
+  ...chunks(markdownFixture, 30).map((text): AgentEvent => ({ type: "text_delta", text })),
   { type: "turn_completed" },
 ]
 
@@ -128,6 +140,8 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
         runTurn: (input) =>
           Stream.suspend(() => {
             if (scenario === "markdown") return Stream.fromIterable(markdownTurn())
+            if (scenario === "stream")
+              return Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))
             if (scenario === "todos") {
               const first = !attempted.has(input.threadId)
               attempted.add(input.threadId)

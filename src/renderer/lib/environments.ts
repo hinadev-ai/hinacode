@@ -5,6 +5,7 @@ import type { Environments, EnvironmentStatus, Project } from "../../shared/doma
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { useThreads } from "../stores/threads.ts"
+import { linearReviewUrl } from "./pullRequestRefs.ts"
 import { formatRelativeTime } from "./relativeTime.ts"
 import { type EnvironmentId, environmentsAtom, projectsAtom } from "./rpc.ts"
 import { useNow } from "./useNow.ts"
@@ -21,14 +22,12 @@ export const useClouds = () =>
 export const environmentOf = (project: Pick<Project, "environmentId"> | undefined): EnvironmentId =>
   project?.environmentId ?? null
 
-/** Where a thread runs, which is where its project lives. This Mac while the thread or project is unknown. */
 export function useThreadEnvironment(threadId: string | null | undefined): EnvironmentId {
   const projectId = useThreads((state) => (threadId ? state.byId[threadId]?.projectId : undefined))
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   return environmentOf(projects.find((project) => project.id === projectId))
 }
 
-/** The paired cloud an environment id names, or undefined for This Mac. */
 export function useCloud(environment: EnvironmentId): Cloud | undefined {
   return useClouds().find((cloud) => cloud.id === environment)
 }
@@ -38,7 +37,7 @@ export const isStale = (cloud: Cloud | undefined) => cloud !== undefined && clou
 
 export const environmentName = (environment: EnvironmentId, clouds: ReadonlyArray<Cloud>) =>
   environment === null
-    ? m.environment_this_mac()
+    ? m.environment_this_machine()
     : (clouds.find((cloud) => cloud.id === environment)?.name ?? environment)
 
 export const cloudAddress = (cloud: Pick<Cloud, "host" | "port">) => `${cloud.host}:${cloud.port}`
@@ -59,7 +58,6 @@ export const statusDot: Record<EnvironmentStatus, string> = {
   incompatible: "bg-attention",
 }
 
-/** The environment the settings route edits, from `?environment=<id>`. This Mac without one, or for an unpaired id. */
 export function useSettingsEnvironment(): EnvironmentId {
   const { environment } = useSearch({ strict: false })
   const clouds = useClouds()
@@ -93,4 +91,12 @@ export function useCloudStateText(cloud: Cloud): string | null {
     case "incompatible":
       return m.environment_update_on({ name: cloud.name })
   }
+}
+
+/** Where a pull request link of the thread opens: GitHub, or linear.review when its project turned that on. */
+export function usePullRequestHref(threadId: string | null | undefined, url: string): string {
+  const projectId = useThreads((state) => (threadId ? state.byId[threadId]?.projectId : undefined))
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const linearReview = projects.find((project) => project.id === projectId)?.linearReview ?? false
+  return linearReview ? linearReviewUrl(url) : url
 }

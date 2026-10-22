@@ -2,11 +2,11 @@
 
 TLA+ models of the protocols in hinacode where several actors share state: the main process, the renderer, the agent CLIs, and git. TLC, the TLA+ model checker, runs every interleaving of their steps within small bounds. A test runs one.
 
-| Spec                    | Models                                                                   | Checks                                                                                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ClaudeTurnRouting.tla` | `agents/claude/index.ts` pump, steer, interrupt, with AgentRunner's turn | Every answer reaches the turn that sent its prompt and no reply to a background sub-agent is lost (`NoCrossTurnLeak`, `NoSilentDrop`), and every turn ends (`TurnsEnd`) |
-| `TranscriptSync.tla`    | `stores/messages.ts` snapshot plus `seq` replay over Electron IPC        | Each event is folded once (`NoDuplicateApply`, `NoGapAtQuiescence`) and a superseded snapshot is never applied (`StaleSnapshotNeverApplied`)                            |
-| `WorktreeLifecycle.tla` | `Worktrees.ts` create, remove and archive racing with turns              | A live row has its checkout (`LiveRowHasDirectory`) and a turn sent to a worktree runs there (`TurnRunsWhereSent`)                                                      |
+| Spec                    | Models                                                                   | Checks                                                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClaudeTurnRouting.tla` | `agents/claude/index.ts` pump, steer, interrupt, with AgentRunner's turn | Every answer reaches the turn that sent its prompt and no reply to a background sub-agent is lost (`NoCrossTurnLeak`, `NoSilentDrop`), and every turn ends (`TurnsEnd`)          |
+| `TranscriptSync.tla`    | `stores/messages.ts` snapshot plus `seq` replay over Electron IPC        | Each event is folded once (`NoDuplicateApply`, `NoGapAtQuiescence`) and a superseded snapshot is never applied (`StaleSnapshotNeverApplied`)                                     |
+| `WorktreeLifecycle.tla` | `Worktrees.ts` create, remove and archive racing with turns and setup    | A live row has its checkout (`LiveRowHasDirectory`), a turn sent to a worktree runs there (`TurnRunsWhereSent`), and archiving works even when setup hangs (`ArchiveEventually`) |
 
 ## Run
 
@@ -24,6 +24,8 @@ To read a counterexample, run TLC on a config directly. It prints the shortest s
 ```sh
 java -cp node_modules/.cache/tla2tools-1.7.4.jar tlc2.TLC -config specs/Name.Property.cfg specs/Name.tla
 ```
+
+`pnpm chart:thread` redraws the thread and worktree chart in `docs/arch.md` from the states TLC reaches in `WorktreeLifecycle.Liveness.cfg`. Run it after changing that spec.
 
 ## Writing a model
 

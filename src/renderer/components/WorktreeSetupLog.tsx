@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef } from "react"
 import type { Worktree } from "../../shared/domain.ts"
+import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
+import { Button } from "./ui/button.tsx"
 
 /** Distance from the bottom, in pixels, within which new output keeps the log pinned to the end. */
 const STICK_THRESHOLD = 24
@@ -42,6 +44,16 @@ export function WorktreeSetupLog({ worktree }: { worktree: Worktree }) {
         >
           {setupLog}
         </pre>
+      )}
+      {worktree.status === "preparing" && (
+        <Button
+          variant="outline"
+          size="xs"
+          className="self-start"
+          onClick={() => void callPromise("worktrees.stopSetup", { id: worktree.id })}
+        >
+          {m.panel_setup_stop()}
+        </Button>
       )}
     </div>
   )

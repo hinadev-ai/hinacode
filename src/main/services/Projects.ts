@@ -32,6 +32,7 @@ export interface UpdateProject {
   readonly name?: string | undefined
   readonly rootPath?: string | undefined
   readonly setupScript?: string | null | undefined
+  readonly linearReview?: boolean | undefined
 }
 
 type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError
@@ -77,6 +78,9 @@ const ICON_DIRS = ["", "public", "static", "app", "src/app", "assets", "apps/web
 const ICON_PATHS = ICON_DIRS.flatMap((dir) => ICON_NAMES.map((name) => join(dir, name)))
 const ICON_LIMIT_BYTES = 100 * 1024
 
+/** The project table row. SQLite has no boolean, so `linear_review` is a bit. */
+const ProjectRow = Schema.Struct({ ...Project.fields, linearReview: Schema.BooleanFromBit })
+
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const fs = yield* FileSystem.FileSystem
@@ -85,12 +89,12 @@ const make = Effect.gen(function* () {
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
-    Result: Project,
+    Result: ProjectRow,
     execute: () => sql`SELECT * FROM project ORDER BY created_at`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,
-    Result: Project,
+    Result: ProjectRow,
     execute: (id) => sql`SELECT * FROM project WHERE id = ${id}`,
   })
 
@@ -123,11 +127,17 @@ const make = Effect.gen(function* () {
   const insert = (input: CreateProject) =>
     Effect.gen(function* () {
       const now = yield* nowIso
-      const project: Project = { id: randomUUID(), ...input, createdAt: now, updatedAt: now }
-      yield* sql`INSERT INTO project ${sql.insert(project)}`.pipe(
+      const { linearReview, ...row }: Project = {
+        id: randomUUID(),
+        ...input,
+        linearReview: false,
+        createdAt: now,
+        updatedAt: now,
+      }
+      yield* sql`INSERT INTO project ${sql.insert(row)}`.pipe(
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
-      return project
+      return { ...row, linearReview }
     })
 
   const create = (input: CreateProject) =>
@@ -200,12 +210,13 @@ const make = Effect.gen(function* () {
         name: input.name ?? current.name,
         rootPath: input.rootPath ?? current.rootPath,
         setupScript: input.setupScript === undefined ? current.setupScript : input.setupScript,
+        linearReview: input.linearReview ?? current.linearReview,
         updatedAt: yield* nowIso,
       }
       yield* sql`
         UPDATE project
         SET name = ${next.name}, root_path = ${next.rootPath}, setup_script = ${next.setupScript},
-            updated_at = ${next.updatedAt}
+            linear_review = ${next.linearReview ? 1 : 0}, updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(mapWriteError("projects.update", next.rootPath)))
       return next

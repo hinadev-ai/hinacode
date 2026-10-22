@@ -7,6 +7,7 @@ const project = (id: string, extra: Partial<Project> = {}): Project => ({
   name: id,
   rootPath: `/code/${id}`,
   setupScript: null,
+  linearReview: false,
   createdAt: "2026-10-15T00:00:00.000Z",
   updatedAt: "2026-10-15T00:00:00.000Z",
   ...extra,
@@ -16,7 +17,7 @@ const keysAndIds = (projects: ReadonlyArray<Project>) =>
   groupProjects(projects).map((group) => [group.key, group.projects.map((member) => member.id)])
 
 describe("groupProjects", () => {
-  test("the same repository on This Mac and a cloud is one group, This Mac first", () => {
+  test("the same repository on this machine and a cloud is one group, this machine first", () => {
     const projects = [
       project("mac-web", { repository: "acme/web" }),
       project("mac-docs", { repository: "acme/docs" }),

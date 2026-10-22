@@ -4,6 +4,7 @@
 //   holdTurn: keep a started turn running until turn/interrupt instead of completing it right away
 //   accountFromHome: account/read reports `<basename of $CODEX_HOME>@example.com`
 //   subagent: spawn a sub-agent thread that runs one command before the turn completes
+//   compaction: compact the context before the turn's reply, as Codex does past model_auto_compact_token_limit
 import { appendFileSync, readFileSync, watch } from "node:fs"
 import { basename } from "node:path"
 import { createInterface } from "node:readline"
@@ -145,6 +146,14 @@ const reply = ({ id, method, params }) => {
             ],
           },
         })
+      }
+      if (control().compaction) {
+        for (const event of ["item/started", "item/completed"]) {
+          send({
+            method: event,
+            params: { threadId: params.threadId, turnId, item: { type: "contextCompaction", id: "c1" } },
+          })
+        }
       }
       if (control().subagent) spawnSubagent(params.threadId, turnId)
       if (!control().holdTurn) {

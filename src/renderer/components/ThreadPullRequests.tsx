@@ -39,7 +39,7 @@ import {
   pullRequestStatusAtom,
 } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
-import { useOpenThreadEnvironment } from "../lib/environments.ts"
+import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { type PullRequestSection, useUi } from "../stores/ui.ts"
@@ -130,7 +130,7 @@ export function StatusIcon({
   )
 }
 
-const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
+export const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
 
 /**
  * The PR tab. Every pull request the thread has: the ones agents linked plus the one GitHub has for the
@@ -273,11 +273,11 @@ function PullRequestRow({
 const pullRequestSummary = ({ title, status, review }: PullRequest) =>
   [pullRequestStatusLabel[status](), review && reviewLabel[review](), title].filter(Boolean).join(" · ")
 
-function ChecksIndicator({ checks }: { checks: ChecksStatus }) {
-  const { Icon, className, label } = checksIndicator[checks]
+export function ChecksIndicator({ checks, className }: { checks: ChecksStatus; className?: string }) {
+  const { Icon, className: color, label } = checksIndicator[checks]
   return (
     <span title={label()} className="flex shrink-0">
-      <Icon aria-hidden className={cn("size-3.5", className)} />
+      <Icon aria-hidden className={cn("size-3.5", color, className)} />
       <span className="sr-only">{label()}</span>
     </span>
   )
@@ -326,7 +326,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
     .onError((error) => (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2 text-xs">
-          <PullRequestLink url={url} className="min-w-0 flex-1" />
+          <PullRequestLink threadId={threadId} url={url} className="min-w-0 flex-1" />
           {linked && <UnlinkButton threadId={threadId} url={url} onUnlinkFailed={onUnlinkFailed} />}
         </div>
         {/* Without a gh login every lookup fails the same way; the auth hint below explains it once. */}
@@ -368,7 +368,7 @@ function PullRequestHeader({
           {pullRequestStatusLabel[pullRequest.status]()}
         </span>
         {pullRequest.review && <span>{reviewLabel[pullRequest.review]()}</span>}
-        <PullRequestLink url={pullRequest.url} className="hover:text-foreground" />
+        <PullRequestLink threadId={threadId} url={pullRequest.url} className="hover:text-foreground" />
       </div>
       <p
         className="truncate font-mono text-xs text-muted-foreground"
@@ -380,13 +380,14 @@ function PullRequestHeader({
   )
 }
 
-function PullRequestLink({ url, className }: { url: string; className?: string }) {
+function PullRequestLink({ threadId, url, className }: { threadId: string; url: string; className?: string }) {
+  const href = usePullRequestHref(threadId, url)
   return (
     <a
-      href={url}
+      href={href}
       target="_blank"
       rel="noreferrer"
-      title={url}
+      title={href}
       className={cn(
         "flex items-center gap-1 rounded-sm font-mono underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
         className,

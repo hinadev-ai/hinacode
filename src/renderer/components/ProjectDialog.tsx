@@ -24,9 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 
@@ -75,18 +76,19 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
   const [name, setName] = useState(project?.name ?? "")
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
+  const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [environment, setEnvironment] = useState<EnvironmentId>(() => environmentOf(project))
   const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
-  // The folder picker shows this Mac's disk, so a cloud project is typed as a path on that machine.
   const canBrowse = environment === null
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
     try {
-      if (project) await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript })
+      if (project)
+        await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript, linearReview })
       else if (repository)
         await cloneProject({
           environment,
@@ -185,6 +187,15 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
             </span>
           </FieldDescription>
         </Field>
+        {project && (
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="project-linear-review">{m.project_linear_review()}</FieldLabel>
+              <FieldDescription>{m.project_linear_review_hint()}</FieldDescription>
+            </FieldContent>
+            <Switch id="project-linear-review" checked={linearReview} onCheckedChange={setLinearReview} />
+          </Field>
+        )}
       </FieldGroup>
       {error && <FieldError>{error}</FieldError>}
       <DialogFooter>
@@ -249,8 +260,7 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
   )
 }
 
-/** Radio value of This Mac, which has no environment id. */
-const THIS_MAC = ""
+const THIS_MACHINE = ""
 
 interface WhereFieldProps {
   /** A project stays where it was added, so editing one only shows where it lives. */
@@ -259,7 +269,6 @@ interface WhereFieldProps {
   readonly onChange: (environment: EnvironmentId) => void
 }
 
-/** Where the project lives. Hidden until a cloud is paired, since This Mac is then the only place. */
 function WhereField({ editable, value, onChange }: WhereFieldProps) {
   const clouds = useClouds()
   if (clouds.length === 0 && value === null) return null
@@ -271,7 +280,7 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
       </Field>
     )
   const items = [
-    { value: THIS_MAC, label: m.environment_this_mac() },
+    { value: THIS_MACHINE, label: m.environment_this_machine() },
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (
@@ -280,8 +289,8 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
       <div>
         <Select
           items={items}
-          value={value ?? THIS_MAC}
-          onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MAC ? null : next)}
+          value={value ?? THIS_MACHINE}
+          onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MACHINE ? null : next)}
         >
           <SelectTrigger id="project-where" className="w-56">
             <SelectValue />

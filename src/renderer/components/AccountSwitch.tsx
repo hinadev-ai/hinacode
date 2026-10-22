@@ -31,10 +31,6 @@ export interface AccountOption {
   readonly spent: LimitWindow | undefined
 }
 
-/**
- * Every account the thread's agent can run on, with its plan limits, and the least used other account with room
- * left to suggest. Limits are read on this Mac only, so a remote thread's accounts have none.
- */
 export function useAccountOptions(thread: AccountThread) {
   const environment = useThreadEnvironment(thread.id)
   const added = useProviderAccounts(environment, thread.provider)

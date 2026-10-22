@@ -21,6 +21,8 @@ export const Project = Schema.Struct({
    * when it is not the top level. Only `projects.list` sets it. Absent without a GitHub `origin`.
    */
   repository: Schema.optionalKey(Schema.String),
+  /** Experimental. Opens the project's GitHub pull request links on linear.review instead. */
+  linearReview: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 })
 export type Project = typeof Project.Type
 
@@ -472,6 +474,9 @@ export const defaultClientSettings: ClientSettings = {
  * is a setting row too, but it is encrypted with safeStorage and never leaves the main process, so it is not part
  * of this shape.
  */
+export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
+const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
+
 export const Settings = Schema.Struct({
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
@@ -495,6 +500,15 @@ export const Settings = Schema.Struct({
     claude: Schema.NullOr(AgentProfileName),
     codex: Schema.NullOr(AgentProfileName),
     muse: Schema.NullOr(AgentProfileName),
+  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
+  /**
+   * How full each agent's context window gets, in tokens, before it compacts the conversation. Null keeps the
+   * agent's own threshold. The range is Claude Code's, which ignores anything outside it.
+   */
+  autoCompactTokens: Schema.Struct({
+    claude: Schema.NullOr(AutoCompactTokens),
+    codex: Schema.NullOr(AutoCompactTokens),
+    muse: Schema.NullOr(AutoCompactTokens),
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
   /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
   automations: Schema.Struct({
@@ -523,6 +537,7 @@ export const defaultSettings: Settings = {
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   defaultAccountName: { claude: null, codex: null, muse: null },
+  autoCompactTokens: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",

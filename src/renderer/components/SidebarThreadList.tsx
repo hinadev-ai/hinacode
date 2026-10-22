@@ -14,7 +14,7 @@ import { DragDropProvider } from "@dnd-kit/react"
 import { useSortable } from "@dnd-kit/react/sortable"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomValue } from "@effect/atom-react"
-import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import { Link, useRouter } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import {
   type ComponentProps,
@@ -57,7 +57,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
-import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
+import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -68,7 +68,7 @@ import { useThreads } from "../stores/threads.ts"
 import { type Outcome, useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
+import { ChecksIndicator, isOpen, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import {
@@ -539,20 +539,21 @@ interface DeleteThreadDialogProps {
 
 function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
   const worktree = useActiveWorktree(thread)
-  const navigate = useNavigate()
-  const { threadId: openThreadId } = useParams({ strict: false })
+  const router = useRouter()
   const [removeWorktree, setRemoveWorktree] = useState(true)
   const removeWorktreeId = useId()
   // The cloud owns the thread and its worktree, so deleting needs it to answer.
   const offline = isStale(cloud)
 
   const [error, remove, isPending] = useActionState(async () => {
-    try {
-      await callPromise("threads.delete", { id: thread.id, removeWorktree: worktree !== undefined && removeWorktree })
-    } catch (cause) {
-      return errorMessage(cause)
+    const failure = await callPromise("threads.delete", {
+      id: thread.id,
+      removeWorktree: worktree !== undefined && removeWorktree,
+    }).then(() => null, errorMessage)
+    if (failure !== null) return failure
+    if (router.matchRoute({ to: "/thread/$threadId", params: { threadId: thread.id } }) !== false) {
+      await router.navigate({ to: "/" })
     }
-    if (openThreadId === thread.id) await navigate({ to: "/" })
     useThreads.getState().remove(thread.id)
     useDrafts.getState().discard(thread.id)
     return null
@@ -659,6 +660,7 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     // A removed worktree's branch is struck through: the thread works in the project root now.
     removed: worktree?.status === "removed",
     links,
+    threadId: thread.id,
     updatedAt: thread.updatedAt,
   }
 }
@@ -671,6 +673,7 @@ function ThreadMeta({
   branch,
   removed,
   links,
+  threadId,
   updatedAt,
   cloud,
   environment,
@@ -697,7 +700,9 @@ function ThreadMeta({
           <span className="truncate font-mono">{branch}</span>
         </span>
       )}
-      {latest && <PullRequestNumber latest={latest} count={links.length} environment={environment} />}
+      {latest && (
+        <PullRequestNumber threadId={threadId} latest={latest} count={links.length} environment={environment} />
+      )}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
           <RiEyeLine aria-hidden className="size-3" />
@@ -724,36 +729,46 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
   )
 }
 
-/** The newest linked pull request, with a stack icon when the thread linked several. Opens on GitHub. */
+/** The newest linked pull request, with a stack icon when the thread linked several. */
 function PullRequestNumber({
+  threadId,
   latest,
   count,
   environment,
 }: {
+  threadId: string
   latest: PullRequestLink
   count: number
   environment: EnvironmentId
 }) {
   const number = pullRequestNumber(latest.url)
+  const href = usePullRequestHref(threadId, latest.url)
   const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
-  const status = AsyncResult.isSuccess(lookup) ? lookup.value.status : undefined
+  const pullRequest = AsyncResult.isSuccess(lookup) ? lookup.value : undefined
+  const status = pullRequest?.status
+  const openChecks = pullRequest && isOpen(pullRequest.status) ? pullRequest.checks : null
   return (
-    <a
-      href={latest.url}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={
-        count > 1 ? m.sidebar_pull_request_stack({ number, count: String(count) }) : m.sidebar_pull_request({ number })
-      }
-      title={latest.url}
-      // Above the row link's ::after, so it opens the pull request instead of the thread.
-      className={cn(
-        "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        status ? statusIndicator[status].className : "hover:text-foreground",
-      )}
-    >
-      {count > 1 && <RiStackLine aria-hidden className="size-3" />}
-      <StatusIcon status={status} className="size-3" />#{number}
-    </a>
+    <>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={
+          count > 1
+            ? m.sidebar_pull_request_stack({ number, count: String(count) })
+            : m.sidebar_pull_request({ number })
+        }
+        title={href}
+        // Above the row link's ::after, so it opens the pull request instead of the thread.
+        className={cn(
+          "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          status ? statusIndicator[status].className : "hover:text-foreground",
+        )}
+      >
+        {count > 1 && <RiStackLine aria-hidden className="size-3" />}
+        <StatusIcon status={status} className="size-3" />#{number}
+      </a>
+      {openChecks && <ChecksIndicator checks={openChecks} className="-ml-1 size-3" />}
+    </>
   )
 }

@@ -2,7 +2,7 @@ import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
 import * as ClaudeProvider from "./agents/claude/index.ts"
-import { usageLimitLayer } from "./agents/claude/mock.ts"
+import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
@@ -56,13 +56,13 @@ export interface AppOptions {
 const simulatedClaude = (env: NodeJS.ProcessEnv) => {
   const mode = env["HINACODE_MOCK_CLAUDE"]
   if (mode === undefined) return undefined
-  if (mode !== "usage-limit" && mode !== "org-spend-limit" && mode !== "todos" && mode !== "markdown")
-    throw new Error("HINACODE_MOCK_CLAUDE must be usage-limit, org-spend-limit, todos or markdown")
+  const scenario = mockScenarios.find((candidate) => candidate === mode)
+  if (scenario === undefined) throw new Error(`HINACODE_MOCK_CLAUDE must be one of ${mockScenarios.join(", ")}`)
   if (!env["HINACODE_USER_DATA"]) throw new Error("Claude simulation requires HINACODE_USER_DATA")
   const resetMs = Number(env["HINACODE_MOCK_RESET_MS"] ?? 60000)
   if (!Number.isFinite(resetMs) || Math.abs(resetMs) > 3600000)
     throw new Error("HINACODE_MOCK_RESET_MS must be between -3600000 and 3600000")
-  return usageLimitLayer(mode, resetMs)
+  return usageLimitLayer(scenario, resetMs)
 }
 
 /** Every main-process service, for the desktop app (`index.ts`) and for `hinacode serve` (`daemon.ts`). */

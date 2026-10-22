@@ -175,7 +175,7 @@ export type ThreadItem =
       /** Set by `request_user_input_async`: the user answers with their next message, and the item has no deltas. */
       questions?: Array<AsyncUserInputQuestion> | null
     }
-  | { type: "reasoning" | "userMessage" | "plan" | "webSearch"; id: string }
+  | { type: "reasoning" | "userMessage" | "plan" | "webSearch" | "contextCompaction"; id: string }
 
 export type AsyncUserInputQuestion = { title: string; options: Array<string> | null }
 

@@ -135,6 +135,7 @@ export const routes: Record<RpcMethod, Route> = {
 
   "worktrees.remove": owner("worktree", "id"),
   "worktrees.setupLog": owner("worktree", "id"),
+  "worktrees.stopSetup": owner("worktree", "id"),
   "worktrees.pullRequest": owner("worktree", "id"),
 
   "terminal.write": owner("terminal", "id"),

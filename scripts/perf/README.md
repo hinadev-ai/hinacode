@@ -10,11 +10,81 @@ node scripts/perf/fatfill.mjs <worktree> 60000               # fake node_modules
 node scripts/perf/measure.mjs <port> <label> switch <threadId...>
 node scripts/perf/measure.mjs <port> <label> scroll <threadId> [pxPerFrame]   # PROFILE=1 writes a .cpuprofile
 node scripts/perf/measure.mjs <port> <label> archive <threadId>  # turns on worktree removal first
+node scripts/perf/measure.mjs <port> <label> typing <threadId>   # composer key-to-paint latency
+node scripts/perf/measure.mjs <port> <label> reply <threadId>    # needs HINACODE_MOCK_CLAUDE=stream
+node scripts/perf/measure.mjs <port> <label> typing-reply <threadId>  # typing while that reply streams
 node scripts/perf/analyze-profile.mjs .context/perf/<label>-scroll.cpuprofile
 node scripts/perf/compare.mjs <before-label> <after-label>
 ```
 
 Results land in `.context/perf/`. Reload the renderer after seeding: the sidebar only reads threads at boot.
+
+## Profile typing, streaming and thread switching
+
+`measure.mjs` reloads the renderer with `react-commits.js` installed where React DevTools would hook in, so
+`typing`, `switch`, `reply` and `typing-reply` report which components rendered in every commit, next to the
+renderer's script, style and layout time from `Performance.getMetrics`. The renderer bundle is not minified, so
+component names survive the production build.
+
+| Scenario                  | What it does                                           | Read first                                    |
+| ------------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `typing <threadId>`       | Types 91 characters into the composer, 50 ms apart     | Key to next paint p50 and p95, renders/key    |
+| `switch <threadId...>`    | Opens each thread from the sidebar, three rounds       | Open time, renders, long tasks                |
+| `reply <threadId>`        | Sends "go" and waits until the mock reply has finished | Frame gaps, renders, `MessageBody` renders    |
+| `typing-reply <threadId>` | Sends "go", then types while the reply streams         | Key to next paint of keys that land mid-reply |
+
+`reply` needs an instance started with `HINACODE_MOCK_CLAUDE=stream`. Its turn runs through the real main process:
+reasoning, six reads, then the Markdown fixture in 30-character deltas every 20 ms. No account is used. Both
+reply scenarios fail unless the fixture's text ends up on screen, so a failed turn cannot pass as a fast one.
+
+To compare renderer builds, save each build and let `suite.sh` alternate them on one instance, so they share the
+same data, main process and machine state. It runs under `CPU_THROTTLE=4` unless told otherwise, which makes
+this machine closer to a low-end laptop.
+
+```sh
+S=.agents/skills/verify-hinacode/scripts
+HINACODE_MOCK_CLAUDE=stream $S/launch.sh 9473 /tmp/kk-perf-ab
+$S/seed-repo.sh /tmp/kk-perf-ab/repo && node scripts/perf/seed.mjs /tmp/kk-perf-ab /tmp/kk-perf-ab/repo
+pnpm build && cp -r out .context/perf/before-out   # on the base commit
+pnpm build && cp -r out .context/perf/after-out    # on the change
+scripts/perf/suite.sh 9473 /tmp/kk-perf-ab 5 before=.context/perf/before-out after=.context/perf/after-out
+node scripts/perf/suite-compare.mjs before after
+```
+
+`suite.sh` swaps only `out/renderer`, so a main-process change needs an instance per build. It refuses a label
+that already has results, because `suite-compare.mjs` takes the median over every run of a label. Judge latency by
+p50 and p95; a single slow key or frame moves the max from run to run.
+
+Every capture also writes `<label>-<name>.commits.json`. `commits.mjs` groups its commits by which components
+rendered, so a commit that repeats with more components than it needs stands out. `PROFILE=1` adds a CPU profile
+for `analyze-profile.mjs`. `TRACE=1` adds a trace that the DevTools Performance panel opens, and `trace-summary.mjs`
+totals its style, layout and paint work. Both add overhead, so compare only runs captured the same way.
+
+### 2026-10-22 capture
+
+On Linux under Xvfb, five interleaved runs per build at `CPU_THROTTLE=4`. The sidebar held 85 threads, and the
+reply thread ended in three long fixture replies. Base is `982843a`. The candidate compiles the renderer with the
+React Compiler, estimates messages at 500 px, keeps the last message id out of the shared transcript context,
+moves the `text-shimmer` band with `translate`, and reads the open thread only when a thread is deleted.
+
+| Measurement                        |    Base | Candidate | Change |
+| ---------------------------------- | ------: | --------: | -----: |
+| Typing, key to next paint p50      | 21.5 ms |   15.1 ms |   -30% |
+| Typing, key to next paint p95      | 26.7 ms |   19.4 ms |   -27% |
+| Typing mid-reply, key to paint p95 | 43.8 ms |   28.1 ms |   -36% |
+| Thread switch, warm open           |  234 ms |    177 ms |   -24% |
+| Thread switch, component renders   |    1604 |       507 |   -68% |
+| Thread switch, long tasks          |  136 ms |      0 ms |  -100% |
+| Reply, frame p95                   | 16.7 ms |    9.6 ms |   -43% |
+| Reply, component renders           |    3612 |      1801 |   -50% |
+
+A keystroke renders 4 components instead of 98. Paint events during a reply fell from about 390 to 40 in
+`TRACE=1` captures once the shimmer moved to the compositor. Unthrottled, typing p50 went from 4.0 to 2.8 ms and a
+warm switch from 49 to 45 ms. Raw captures use the `before3` and `after3` labels.
+
+Deferring transcript updates with `useDeferredValue` was measured and left out. It did not move typing mid-reply,
+because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
+finishes, and mermaid layout.
 
 ## Measure streaming Markdown
 

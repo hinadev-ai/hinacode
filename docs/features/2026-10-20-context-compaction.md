@@ -24,8 +24,7 @@ Claude Code summarizes a long conversation to free its context window, either on
 
 ## Out of scope
 
-- Codex compaction (`contextCompaction` items). The shape is provider neutral, so Codex can emit the same event later.
-- Settings for the auto-compact window or for turning compaction off. Claude Code already reads `autoCompactWindow` and `autoCompactEnabled` from the settings files HinaCode loads.
+- Turning compaction off. Claude Code already reads `autoCompactEnabled` from the settings files HinaCode loads. The threshold setting, and compaction from Codex and Muse Code, are in `2026-10-22-auto-compact-threshold.md`.
 - Marking the auto-compact threshold on the context ring.
 
 ## Verification
