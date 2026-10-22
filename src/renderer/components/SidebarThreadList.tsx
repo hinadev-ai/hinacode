@@ -14,7 +14,7 @@ import { DragDropProvider } from "@dnd-kit/react"
 import { useSortable } from "@dnd-kit/react/sortable"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomValue } from "@effect/atom-react"
-import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import { Link, useRouter } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import {
   type ComponentProps,
@@ -539,20 +539,21 @@ interface DeleteThreadDialogProps {
 
 function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
   const worktree = useActiveWorktree(thread)
-  const navigate = useNavigate()
-  const { threadId: openThreadId } = useParams({ strict: false })
+  const router = useRouter()
   const [removeWorktree, setRemoveWorktree] = useState(true)
   const removeWorktreeId = useId()
   // The cloud owns the thread and its worktree, so deleting needs it to answer.
   const offline = isStale(cloud)
 
   const [error, remove, isPending] = useActionState(async () => {
-    try {
-      await callPromise("threads.delete", { id: thread.id, removeWorktree: worktree !== undefined && removeWorktree })
-    } catch (cause) {
-      return errorMessage(cause)
+    const failure = await callPromise("threads.delete", {
+      id: thread.id,
+      removeWorktree: worktree !== undefined && removeWorktree,
+    }).then(() => null, errorMessage)
+    if (failure !== null) return failure
+    if (router.matchRoute({ to: "/thread/$threadId", params: { threadId: thread.id } }) !== false) {
+      await router.navigate({ to: "/" })
     }
-    if (openThreadId === thread.id) await navigate({ to: "/" })
     useThreads.getState().remove(thread.id)
     useDrafts.getState().discard(thread.id)
     return null
