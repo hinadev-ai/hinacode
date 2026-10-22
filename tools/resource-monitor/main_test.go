@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -63,11 +64,11 @@ func TestWatchReportsSurvivorAfterRootExits(t *testing.T) {
 	}
 	t.Cleanup(func() { killPID(survivor) })
 	for {
-		if data, _ := os.ReadFile(log); bytes.Contains(data, []byte("\n")) {
+		if data, _ := os.ReadFile(log); bytes.Contains(data, fmt.Appendf(nil, `"pid":%d,`, survivor)) {
 			break
 		}
 		if ctx.Err() != nil {
-			t.Fatal("watch never wrote a sample while the root ran")
+			t.Fatal("watch never sampled the survivor while the root ran")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
