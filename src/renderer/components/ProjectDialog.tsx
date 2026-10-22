@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { suggestProjectName } from "../lib/projectName.ts"
 
 interface ProjectDialogProps {
   readonly open: boolean
@@ -55,7 +56,6 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
   )
 }
 
-const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? ""
 const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
 
 /**
@@ -74,8 +74,10 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
   const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
-  const [name, setName] = useState(project?.name ?? "")
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
+  // Null until the user types a name, so the name follows the folder or repository typed above it.
+  const [typedName, setTypedName] = useState<string | null>(project?.name ?? null)
+  const name = typedName ?? suggestProjectName(rootPath)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
@@ -109,7 +111,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
     const picked = await callPromise("dialog.pickFolder", undefined)
     if (!picked) return
     setRootPath(picked)
-    if (!name.trim()) setName(basename(picked))
+    if (!typedName?.trim()) setTypedName(null)
   }
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -156,7 +158,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
             id="project-name"
             required={!repository}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => setTypedName(event.target.value)}
             placeholder={repository?.name ?? m.project_name_placeholder()}
           />
         </Field>
