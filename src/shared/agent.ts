@@ -248,7 +248,8 @@ export const Compaction = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("done"),
     trigger: Schema.Literals(["manual", "auto"]),
-    preTokens: Schema.Number,
+    /** Null when the agent does not report the sizes, as Codex does not. */
+    preTokens: Schema.NullOr(Schema.Number),
     postTokens: Schema.NullOr(Schema.Number),
   }),
   /** `message` is null when the turn ended before the compaction reported back. */
@@ -306,6 +307,8 @@ export interface RunTurnInput {
   /** Null leaves the model's default effort. */
   readonly effort: string | null
   readonly fastMode: boolean
+  /** Context tokens that make the agent compact. Null keeps the agent's own threshold. */
+  readonly autoCompactTokens: number | null
   /** False hides the skills and commands in the user's own agent home from the agent. */
   readonly userSkills: boolean
   readonly accessMode: AccessMode

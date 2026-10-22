@@ -149,6 +149,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
+  autoCompactTokens: null,
   userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
@@ -253,6 +254,21 @@ describe("Claude idle sessions", () => {
         expect(first.close).toHaveBeenCalled()
         expect(latestCli().options.resume).toBe("session-1")
         expect(latestCli().options.settings).toStrictEqual({ fastMode: false, skillOverrides: { "kalan-mode": "off" } })
+      }),
+    ),
+  )
+
+  it.effect("resumes in a new CLI with the auto-compact window the settings changed to", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn()
+        const first = latestCli()
+        expect(first.options.settings).toStrictEqual({ fastMode: false })
+
+        yield* runTurn(turnInput({ autoCompactTokens: 300_000 }))
+        expect(first.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(latestCli().options.settings).toStrictEqual({ fastMode: false, autoCompactWindow: 300_000 })
       }),
     ),
   )

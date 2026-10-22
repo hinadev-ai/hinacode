@@ -87,6 +87,7 @@ interface Session extends MapState, ApprovalSession {
   effort: string | null
   fastMode: boolean
   readonly userSkills: boolean
+  readonly autoCompactTokens: number | null
   permissionMode: PermissionMode
   sessionId: string | null
   turn: TurnQueue | null
@@ -559,6 +560,7 @@ export const layer = Layer.effect(
                 ...(effort === null ? {} : { effort }),
                 settings: {
                   fastMode: input.fastMode,
+                  ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
                   ...(input.effort === ULTRACODE && { ultracode: true }),
                   ...(hidden !== null && { skillOverrides: hidden }),
                 },
@@ -600,6 +602,7 @@ export const layer = Layer.effect(
           effort: input.effort,
           fastMode: input.fastMode,
           userSkills: input.userSkills,
+          autoCompactTokens: input.autoCompactTokens,
           permissionMode: mode,
           prompts,
           abort,
@@ -634,8 +637,14 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          // The CLI lists skills to the model once per process, so another skill set needs a new one.
-          if (sameContext(existing, input) && existing.userSkills === input.userSkills) return claim(existing)
+          // The CLI lists skills to the model and reads the auto-compact window once per process, so a
+          // change to either needs a new one.
+          if (
+            sameContext(existing, input) &&
+            existing.userSkills === input.userSkills &&
+            existing.autoCompactTokens === input.autoCompactTokens
+          )
+            return claim(existing)
           yield* closeSession(existing)
         }
         return yield* startSession(input, mode)

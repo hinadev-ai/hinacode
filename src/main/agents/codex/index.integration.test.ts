@@ -87,6 +87,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   model: "fake-model",
   effort: null,
   fastMode: false,
+  autoCompactTokens: null,
   userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
