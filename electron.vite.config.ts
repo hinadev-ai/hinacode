@@ -30,7 +30,7 @@ export default defineConfig({
   renderer: {
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
     plugins: [
-      react(),
+      react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
       tailwindcss(),
       paraglideVitePlugin({
         project: resolve(import.meta.dirname, "project.inlang"),
