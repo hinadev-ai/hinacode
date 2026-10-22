@@ -452,7 +452,8 @@ const make = Effect.gen(function* () {
   const deleteFiles = (rootPath: string, worktree: Worktree, deleteBranch: DeleteBranch) =>
     Effect.gen(function* () {
       if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
-        yield* git.run(rootPath, ["worktree", "remove", "--force", worktree.path])
+        // The second `--force` also removes a locked checkout, which `git worktree prune` would keep.
+        yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path])
       }
       yield* git.run(rootPath, ["worktree", "prune"])
 
