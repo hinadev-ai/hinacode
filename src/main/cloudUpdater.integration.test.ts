@@ -17,14 +17,14 @@ import { Worktrees } from "./services/Worktrees.ts"
 const noEvents = Layer.succeed(Events, { publish: () => Effect.void })
 
 /** The cloud's work in progress as the updater sees it. Mutable, so a test can let a busy cloud go idle. */
-const cloud = (busy: { running: boolean }) =>
+const cloud = (busy: { running: boolean }, terminals: ReadonlyArray<{ status: "running" | "exited" }> = []) =>
   Layer.mergeAll(
     noEvents,
     Layer.mock(Threads, {
       list: Effect.sync(() => [{ id: "t1", status: busy.running ? "running" : "idle", queue: [] }] as never),
     }),
     Layer.mock(Worktrees, { list: Effect.succeed([]) }),
-    Layer.mock(Terminals, { list: () => Effect.succeed([]) }),
+    Layer.mock(Terminals, { list: () => Effect.succeed(terminals as never) }),
   )
 const idleCloud = cloud({ running: false })
 
@@ -78,6 +78,14 @@ const packRelease = (version: string) => {
     readdirSync(source).find((file) => file.endsWith(".tgz"))!,
   )
 }
+
+/** Waits on the real clock for the check the cloud runs at boot, since the registry answers in real time. */
+const bootChecked = Effect.gen(function* () {
+  const updates = yield* Updates
+  while (["idle", "checking"].includes((yield* updates.status).state.type)) {
+    yield* TestClock.withLive(Effect.sleep("20 millis"))
+  }
+})
 
 const statusAfterCheck = Effect.gen(function* () {
   const updates = yield* Updates
@@ -159,7 +167,7 @@ describe("cloud updater", () => {
       const restarted = yield* Deferred.make<void>()
       yield* Effect.gen(function* () {
         const updates = yield* Updates
-        yield* updates.check
+        yield* bootChecked
         yield* TestClock.adjust("5 minutes")
         expect((yield* updates.status).state).toEqual({ type: "ready", version: "0.2.0" })
         busy.running = false
@@ -177,6 +185,33 @@ describe("cloud updater", () => {
           }),
         ),
         Effect.provide(cloud(busy)),
+      )
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("installs on its own when its only terminal has exited", () =>
+    Effect.gen(function* () {
+      process.env["npm_config_cache"] = mkdtempSync(join(tmpdir(), "hinacode-npm-cache-"))
+      const registry = yield* startRegistry({ version: "0.2.0", tarball: packRelease("0.2.0") })
+      const { packageRoot } = globalInstall("0.1.0")
+      const restarted = yield* Deferred.make<void>()
+      yield* Effect.gen(function* () {
+        const updates = yield* Updates
+        yield* bootChecked
+        yield* TestClock.adjust("1 minute")
+        expect((yield* updates.status).state).toEqual({ type: "downloading", version: "0.2.0" })
+        yield* Deferred.await(restarted)
+      }).pipe(
+        Effect.provide(
+          layer({
+            current: "0.1.0",
+            packageRoot,
+            registry,
+            restart: () => Deferred.doneUnsafe(restarted, Effect.void),
+            autoInstall: true,
+          }),
+        ),
+        Effect.provide(cloud({ running: false }, [{ status: "exited" }])),
       )
     }).pipe(Effect.scoped),
   )
