@@ -512,6 +512,32 @@
   ],
   "project_delete_remove_worktrees": "ワークツリーも削除する（マージ済みのブランチも削除）",
   "project_delete_confirm": "プロジェクトを削除",
+  "settings_worktrees": "ワークツリー",
+  "settings_worktrees_description": "HinaCode が管理するすべてのワークツリーです。このマシンとペアリングした環境のものを含みます。削除するとフォルダが空きます。",
+  "settings_worktrees_empty": "ワークツリーはありません。ワークツリーで動くスレッドを作るとここに表示されます。",
+  "settings_worktree_unknown_project": "不明なプロジェクト",
+  "settings_worktree_dirty": "未コミットの変更あり",
+  "settings_worktree_missing": "フォルダなし",
+  "settings_worktree_failed": "セットアップ失敗",
+  "settings_worktree_preparing": "セットアップ中",
+  "settings_worktree_running": "スレッド実行中",
+  "settings_worktree_no_threads": "スレッドなし",
+  "settings_worktree_remove": "ワークツリー {branch} を削除",
+  "worktree_remove_title": "ワークツリー {branch} を削除しますか？",
+  "worktree_remove_body": "フォルダ {path} を削除します。未コミットの変更は失われ、元に戻せません。",
+  "worktree_remove_dirty": "このワークツリーには未コミットの変更があります。",
+  "worktree_remove_branch": "ブランチ {branch} は {base} にマージ済みの場合のみ削除されます。",
+  "worktree_remove_threads": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 件のスレッドが使っています。メッセージは残り、次のターンからプロジェクトのフォルダで動きます。",
+        "countPlural=other": "{count} 件のスレッドが使っています。メッセージは残り、次のターンからプロジェクトのフォルダで動きます。"
+      }
+    }
+  ],
+  "worktree_remove_confirm": "ワークツリーを削除",
   "settings_appearance": "外観",
   "settings_theme": "テーマ",
   "settings_contrast": "コントラスト",
