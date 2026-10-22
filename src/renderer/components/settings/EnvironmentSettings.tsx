@@ -8,6 +8,7 @@ import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
 import { EnvironmentStatusText } from "../EnvironmentStatusText.tsx"
+import { ReconnectButton } from "../ReconnectButton.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,7 @@ function EnvironmentRow({ cloud, onPairAgain }: { cloud: Cloud; onPairAgain: () 
             {m.environment_pair_again()}
           </Button>
         )}
+        {(cloud.status === "offline" || cloud.status === "incompatible") && <ReconnectButton cloud={cloud} />}
         <RemoveEnvironmentButton cloud={cloud} />
       </div>
       {cloud.status === "unauthorized" && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}

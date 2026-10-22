@@ -1191,6 +1191,7 @@
   "environment_pair_again": "再ペアリング",
   "environment_update_desktop": "{name} ではより新しい HinaCode が動いています。このデスクトップを更新してください。",
   "environment_update_cloud": "{name} の HinaCode を更新してください。更新されると自動で再接続します。",
+  "environment_reconnect": "再接続",
   "environments_empty": "環境はまだありません。別のマシンで hinacode serve を実行し、表示された URL を貼り付けてください。",
   "settings_editing_for": "設定の編集対象",
   "settings_environment_loading": "{name} の設定を読み込んでいます…",
