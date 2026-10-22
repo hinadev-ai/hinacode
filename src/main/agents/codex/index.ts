@@ -225,6 +225,8 @@ const make = Effect.gen(function* () {
   const subagentsByThread = new Map<string, Subagents>()
   /** The turn each sub-agent last ran, keyed by its Codex thread id, so it can be stopped on its own. */
   const subagentTurns = new Map<string, string>()
+  /** The auto-compact threshold each Codex thread was loaded with, keyed by its Codex thread id. */
+  const loadedCompactLimits = new Map<string, number | null>()
 
   const listModels = Effect.gen(function* () {
     const client = yield* getClient(null)
@@ -348,6 +350,12 @@ const make = Effect.gen(function* () {
             },
             developerInstructions: input.instructions,
           } satisfies ThreadStartParams
+          const resumed = input.resumeSessionId
+          const loadedLimit = resumed === null ? undefined : loadedCompactLimits.get(resumed)
+          if (resumed !== null && loadedLimit !== undefined && loadedLimit !== input.autoCompactTokens) {
+            // Codex ignores thread/resume config for a thread it has loaded, so a new threshold needs it unloaded.
+            yield* client.request("thread/unsubscribe", { threadId: resumed })
+          }
           const { thread, sandbox } = input.resumeSessionId
             ? yield* client.request<ThreadStartResponse>("thread/resume", {
                 ...overrides,
@@ -355,6 +363,7 @@ const make = Effect.gen(function* () {
                 excludeTurns: true,
               } satisfies ThreadResumeParams)
             : yield* client.request<ThreadStartResponse>("thread/start", overrides)
+          loadedCompactLimits.set(thread.id, input.autoCompactTokens)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
           const skills = input.prompt.includes("$")

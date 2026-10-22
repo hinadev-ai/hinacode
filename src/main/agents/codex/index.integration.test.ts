@@ -179,6 +179,35 @@ describe("Codex auto-compact", () => {
     ),
   )
 
+  it.live("unloads a loaded thread before resuming it with a new threshold", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const turn = (autoCompactTokens: number | null) =>
+          provider
+            .runTurn({ ...input("threshold-change"), resumeSessionId: "codex-thread", autoCompactTokens })
+            .pipe(Stream.runDrain)
+        yield* turn(500_000)
+        yield* turn(500_000)
+        expect(countOf("thread/unsubscribe")).toBe(0)
+        yield* turn(200_000)
+        yield* turn(null)
+        const methods = received()
+          .map((message) => message.method)
+          .filter((method) => method === "thread/unsubscribe" || method === "thread/resume")
+        expect(methods).toStrictEqual([
+          "thread/resume",
+          "thread/resume",
+          "thread/unsubscribe",
+          "thread/resume",
+          "thread/unsubscribe",
+          "thread/resume",
+        ])
+      }),
+    ),
+  )
+
   it.live("leaves Codex's own threshold alone by default", () =>
     withProvider(
       Effect.gen(function* () {
