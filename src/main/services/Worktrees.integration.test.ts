@@ -675,6 +675,35 @@ describe("force removal", () => {
   }
 })
 
+describe("checkout states", () => {
+  it.live("reports clean, dirty and missing checkouts, and leaves removed worktrees out", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const ids: Record<string, string> = {}
+        for (const name of ["clean", "dirty", "missing", "removed"]) {
+          const thread = yield* createThread(projectId, name, `kk/${name}`)
+          yield* waitUntilSetUp(thread.worktreeId)
+          ids[name] = thread.worktreeId!
+        }
+        writeFileSync(join((yield* worktreeOf(ids["dirty"]!)).path, "draft.txt"), "unsaved")
+        rmSync((yield* worktreeOf(ids["missing"]!)).path, { recursive: true, force: true })
+        yield* Worktrees.use((worktrees) => worktrees.remove(ids["removed"]!, "keep"))
+
+        const checkouts = yield* Worktrees.use((worktrees) => worktrees.checkouts)
+
+        expect(checkouts).toHaveLength(3)
+        expect(checkouts).toEqual(
+          expect.arrayContaining([
+            { id: ids["clean"], state: "clean" },
+            { id: ids["dirty"], state: "dirty" },
+            { id: ids["missing"], state: "missing" },
+          ]),
+        )
+      }),
+    ),
+  )
+})
+
 describe("startup", () => {
   it.live("fails setup a quit or crash interrupted, the same way on every start", () =>
     withRepo(({ projectId, restart }) =>
