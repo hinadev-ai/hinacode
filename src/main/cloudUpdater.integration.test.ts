@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
@@ -68,24 +68,48 @@ const startRegistry = (release: { version: string; tarball?: string } | null) =>
     ({ server }) => Effect.callback<void>((resume) => void server.close(() => resume(Effect.void))),
   ).pipe(Effect.map(({ url }) => url))
 
-/** A global npm prefix with `hinacode` installed at `version`. */
-const globalInstall = (version: string) => {
-  const prefix = mkdtempSync(join(tmpdir(), "hinacode-prefix-"))
-  const packageRoot = join(prefix, "lib", "node_modules", "hinacode")
-  mkdirSync(packageRoot, { recursive: true })
-  writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "hinacode", version }))
-  return { prefix, packageRoot }
-}
-
-const packRelease = (version: string) => {
-  const source = mkdtempSync(join(tmpdir(), "hinacode-release-"))
-  writeFileSync(join(source, "package.json"), JSON.stringify({ name: "hinacode", version }))
-  execFileSync("npm", ["pack", "--pack-destination", source], { cwd: source, stdio: "ignore" })
-  return join(
-    source,
-    readdirSync(source).find((file) => file.endsWith(".tgz"))!,
+/** A temp directory removed when the test's scope closes, even when the test fails. */
+const tempDir = (prefix: string) =>
+  Effect.acquireRelease(
+    Effect.sync(() => mkdtempSync(join(tmpdir(), prefix))),
+    (dir) => Effect.sync(() => rmSync(dir, { recursive: true, force: true })),
   )
-}
+
+/** Gives npm a throwaway cache for the scope, then puts back whatever the worker had before. */
+const npmCache = Effect.gen(function* () {
+  const dir = yield* tempDir("hinacode-npm-cache-")
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const previous = process.env["npm_config_cache"]
+      process.env["npm_config_cache"] = dir
+      return previous
+    }),
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env["npm_config_cache"]
+        else process.env["npm_config_cache"] = previous
+      }),
+  )
+})
+
+/** A global npm prefix with `hinacode` installed at `version`. */
+const globalInstall = (version: string) =>
+  Effect.map(tempDir("hinacode-prefix-"), (prefix) => {
+    const packageRoot = join(prefix, "lib", "node_modules", "hinacode")
+    mkdirSync(packageRoot, { recursive: true })
+    writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "hinacode", version }))
+    return { prefix, packageRoot }
+  })
+
+const packRelease = (version: string) =>
+  Effect.map(tempDir("hinacode-release-"), (source) => {
+    writeFileSync(join(source, "package.json"), JSON.stringify({ name: "hinacode", version }))
+    execFileSync("npm", ["pack", "--pack-destination", source], { cwd: source, stdio: "ignore" })
+    return join(
+      source,
+      readdirSync(source).find((file) => file.endsWith(".tgz"))!,
+    )
+  })
 
 /** Waits for the check the cloud runs at boot to settle, one published state change at a time. */
 const bootChecked = (changes: Changes) =>
@@ -104,7 +128,7 @@ describe("cloud updater", () => {
   it.effect("does not update a package outside a global npm install", () =>
     Effect.gen(function* () {
       const registry = yield* startRegistry({ version: "0.2.0" })
-      const packageRoot = mkdtempSync(join(tmpdir(), "hinacode-checkout-"))
+      const packageRoot = yield* tempDir("hinacode-checkout-")
       const status = yield* statusAfterCheck.pipe(
         Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {}, autoInstall: false })),
       )
@@ -115,7 +139,7 @@ describe("cloud updater", () => {
   it.effect("is up to date when latest is the running version", () =>
     Effect.gen(function* () {
       const registry = yield* startRegistry({ version: "0.1.0" })
-      const { packageRoot } = globalInstall("0.1.0")
+      const { packageRoot } = yield* globalInstall("0.1.0")
       const status = yield* statusAfterCheck.pipe(
         Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {}, autoInstall: false })),
       )
@@ -126,7 +150,7 @@ describe("cloud updater", () => {
   it.effect("reports a failed check with the registry's status", () =>
     Effect.gen(function* () {
       const registry = yield* startRegistry(null)
-      const { packageRoot } = globalInstall("0.1.0")
+      const { packageRoot } = yield* globalInstall("0.1.0")
       const status = yield* statusAfterCheck.pipe(
         Effect.provide(layer({ current: "0.1.0", packageRoot, registry, restart: () => {}, autoInstall: false })),
       )
@@ -136,9 +160,9 @@ describe("cloud updater", () => {
 
   it.effect("installs latest into its own prefix, then restarts", () =>
     Effect.gen(function* () {
-      process.env["npm_config_cache"] = mkdtempSync(join(tmpdir(), "hinacode-npm-cache-"))
-      const registry = yield* startRegistry({ version: "0.2.0", tarball: packRelease("0.2.0") })
-      const { prefix, packageRoot } = globalInstall("0.1.0")
+      yield* npmCache
+      const registry = yield* startRegistry({ version: "0.2.0", tarball: yield* packRelease("0.2.0") })
+      const { prefix, packageRoot } = yield* globalInstall("0.1.0")
       const restarted = yield* Deferred.make<void>()
       yield* Effect.gen(function* () {
         const updates = yield* Updates
@@ -167,9 +191,9 @@ describe("cloud updater", () => {
 
   it.effect("installs on its own only once the cloud goes idle", () =>
     Effect.gen(function* () {
-      process.env["npm_config_cache"] = mkdtempSync(join(tmpdir(), "hinacode-npm-cache-"))
-      const registry = yield* startRegistry({ version: "0.2.0", tarball: packRelease("0.2.0") })
-      const { packageRoot } = globalInstall("0.1.0")
+      yield* npmCache
+      const registry = yield* startRegistry({ version: "0.2.0", tarball: yield* packRelease("0.2.0") })
+      const { packageRoot } = yield* globalInstall("0.1.0")
       const busy = { running: true }
       const changes = yield* Queue.unbounded<void>()
       const restarted = yield* Deferred.make<void>()
@@ -199,9 +223,9 @@ describe("cloud updater", () => {
 
   it.effect("installs on its own when its only terminal has exited", () =>
     Effect.gen(function* () {
-      process.env["npm_config_cache"] = mkdtempSync(join(tmpdir(), "hinacode-npm-cache-"))
-      const registry = yield* startRegistry({ version: "0.2.0", tarball: packRelease("0.2.0") })
-      const { packageRoot } = globalInstall("0.1.0")
+      yield* npmCache
+      const registry = yield* startRegistry({ version: "0.2.0", tarball: yield* packRelease("0.2.0") })
+      const { packageRoot } = yield* globalInstall("0.1.0")
       const changes = yield* Queue.unbounded<void>()
       const restarted = yield* Deferred.make<void>()
       yield* Effect.gen(function* () {
