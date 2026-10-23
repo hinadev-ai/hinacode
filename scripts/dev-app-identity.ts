@@ -13,8 +13,8 @@ const NAME = "HinaCode"
 const require = createRequire(import.meta.url)
 const bundle = process.platform === "darwin" ? join(require("electron"), "..", "..", "..") : undefined
 const plist = bundle && join(bundle, "Contents", "Info.plist")
-const plistBuddy = (command) =>
-  execFileSync("/usr/libexec/PlistBuddy", ["-c", command, plist], { encoding: "utf8" }).trim()
+const plistBuddy = (command: string) =>
+  execFileSync("/usr/libexec/PlistBuddy", ["-c", command, plist!], { encoding: "utf8" }).trim()
 
 if (plist && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
   plistBuddy(`Set :CFBundleName ${NAME}`)

@@ -42,7 +42,6 @@ jobs:
               - '!scripts/**'
               - '!**/*.test.ts'
               - '!**/*.test.tsx'
-              - '!**/*.test.mjs'
               - '!.github/workflows/build.yml'
               - '!.github/workflows/react-doctor.yml'
               - '!.oxlintrc.json'

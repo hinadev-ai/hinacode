@@ -1,30 +1,63 @@
 #!/usr/bin/env node
-// Usage: compare.mjs <before-label> <after-label>
+// Usage: compare.ts <before-label> <after-label>
 // Prints before/after for every scenario both labels have in .context/perf/.
 import assert from "node:assert/strict"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+type Frames = {
+  samples: number
+  avg: number
+  p95: number
+  max: number
+  over33: number
+  over50: number
+  visibility: string
+  hidden: boolean
+}
+type Capture = {
+  rounds: { ms: number }[]
+  heapStart: { jsHeapUsedMB: number }
+  heapEnd: { jsHeapUsedMB: number }
+  run: { avg: number; p95: number; over50: number; longTaskMs: number }
+  archiveMs: number
+  probeMaxMs: number
+  workload: { sha256: string; deltas: number } & Record<string, unknown>
+  history: { sha256: string }
+  viewport: unknown
+  profileEnabled: boolean
+  parseEnabled: boolean
+  instrumented: boolean
+  instrumentation: unknown
+  domSha256: string
+  idle: Frames
+  stream: Frames
+  raw: { visibility: string; hidden: boolean; dom: { busy: string }; events: unknown[] }
+  timing: { deltas: number; emitMs: number }
+  parsing: { count: number; totalMs: number; chars: number; maxMs: number }
+  longTaskMs: number
+}
+
 const resultsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".context", "perf")
 
 const [before, after] = process.argv.slice(2)
-if (![before, after].every((label) => /^[\w-]+$/.test(label ?? ""))) {
-  throw new Error("usage: compare.mjs <before-label> <after-label>")
+if (!before || !after || ![before, after].every((label) => /^[\w-]+$/.test(label))) {
+  throw new Error("usage: compare.ts <before-label> <after-label>")
 }
 
-const load = (label, scenario) => {
+const load = (label: string, scenario: string): Capture | null => {
   const file = join(resultsDir, `${label}-${scenario}.json`)
   return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null
 }
-const row = (name, a, b, unit = "") => {
+const row = (name: string, a: unknown, b: unknown, unit = "") => {
   const delta =
     typeof a === "number" && typeof b === "number"
       ? `${b - a >= 0 ? "+" : ""}${(b - a).toFixed(1)}${a === 0 ? "" : ` (${((100 * (b - a)) / a).toFixed(0)}%)`}`
       : ""
   console.log(`${name.padEnd(34)} ${String(a).padStart(10)}${unit}  ${String(b).padStart(10)}${unit}  ${delta}`)
 }
-const median = (xs) => xs.toSorted((x, y) => x - y)[Math.floor(xs.length / 2)]
+const median = (xs: number[]) => xs.toSorted((x, y) => x - y)[Math.floor(xs.length / 2)]
 
 console.log(`${"metric".padEnd(34)} ${before.padStart(12)}  ${after.padStart(12)}  delta`)
 let matched = 0
@@ -78,7 +111,7 @@ for (const scenario of ["switch", "scroll", "archive", "stream"]) {
       assert.equal(run.raw.events.length, run.workload.deltas + 2, "incomplete event evidence")
       if (run.parseEnabled) assert(run.instrumentation && run.parsing?.count > 0, "missing parse evidence")
     }
-    const metrics = [
+    const metrics: [string, number, number][] = [
       ["idle: p95 frame ms", a.idle.p95, b.idle.p95],
       ["stream: sampled frames", a.stream.samples, b.stream.samples],
       ["stream: avg frame ms", a.stream.avg, b.stream.avg],

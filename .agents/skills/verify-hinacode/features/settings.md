@@ -28,8 +28,8 @@ Preconditions:
 - Instance launched and doctor passes, project `demo` exists, `codex` is installed for the Codex model list.
 - `AB="agent-browser --session kkv-$PORT-settings"`, connected.
 
-- **Codex default model.** Open `Models`. `$AB find role combobox click --name "Codex"`, `$AB wait '[role=option]'`, pick the first option. `$S/rpc.mjs $PORT settings.get` shows it under `defaultModel.codex`, and an automation switched to Codex preselects it. Screenshot `settings-01-codex-default.png`. If `codex` cannot list models the field is a free-text id with a notice; report that instead.
-- **Slack token.** Open `Integrations`, fill `Slack user token` with `xoxp-test-not-real`, `Save`. The status reads `A key is stored.`, `$S/rpc.mjs $PORT secrets.has '{"name":"slack.token"}'` prints `true`; `Clear` returns it to `No key stored.` Screenshot `settings-02-slack-stored.png`.
+- **Codex default model.** Open `Models`. `$AB find role combobox click --name "Codex"`, `$AB wait '[role=option]'`, pick the first option. `$S/rpc.ts $PORT settings.get` shows it under `defaultModel.codex`, and an automation switched to Codex preselects it. Screenshot `settings-01-codex-default.png`. If `codex` cannot list models the field is a free-text id with a notice; report that instead.
+- **Slack token.** Open `Integrations`, fill `Slack user token` with `xoxp-test-not-real`, `Save`. The status reads `A key is stored.`, `$S/rpc.ts $PORT secrets.has '{"name":"slack.token"}'` prints `true`; `Clear` returns it to `No key stored.` Screenshot `settings-02-slack-stored.png`.
 
 ## Gotchas
 

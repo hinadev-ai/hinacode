@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
 
-const [file] = process.argv.slice(2)
-if (!file) throw new Error("usage: trace-summary.mjs <label-name.trace.json>")
-const { traceEvents } = JSON.parse(readFileSync(file, "utf8"))
+type TraceEvent = {
+  ph: string
+  name: string
+  pid: number
+  tid: number
+  ts: number
+  dur: number
+  args: {
+    name?: string
+    elementCount?: number
+    beginData?: { dirtyObjects?: number; totalObjects?: number }
+    data?: { clip?: [number, number, number, number, number, number, number, number]; nodeId?: number }
+  }
+}
 
-const threadName = new Map()
+const [file] = process.argv.slice(2)
+if (!file) throw new Error("usage: trace-summary.ts <label-name.trace.json>")
+const { traceEvents }: { traceEvents: TraceEvent[] } = JSON.parse(readFileSync(file, "utf8"))
+
+const threadName = new Map<string, string | undefined>()
 for (const event of traceEvents) {
   if (event.ph === "M" && event.name === "thread_name") threadName.set(`${event.pid}:${event.tid}`, event.args.name)
 }
@@ -25,7 +40,7 @@ const tracked = [
   "ParseAuthorStyleSheet",
 ]
 
-const totals = new Map()
+const totals = new Map<string, { count: number; ms: number; end: number }>()
 for (const event of main.filter((candidate) => candidate.ph === "X").toSorted((a, b) => a.ts - b.ts)) {
   if (!tracked.includes(event.name)) continue
   const total = totals.get(event.name) ?? { count: 0, ms: 0, end: 0 }
@@ -43,7 +58,7 @@ for (const name of tracked) {
     console.log(`${name.padEnd(22)} ${String(total.count).padStart(6)} × ${total.ms.toFixed(1).padStart(8)} ms`)
 }
 
-const biggest = (name, describe) => {
+const biggest = (name: string, describe: (event: TraceEvent) => string) => {
   const events = main.filter((event) => event.ph === "X" && event.name === name).toSorted((a, b) => b.dur - a.dur)
   console.log(`\nlargest ${name}`)
   for (const event of events.slice(0, 5))

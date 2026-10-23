@@ -16,5 +16,5 @@ agent-browser --session kkv-9241-breakui --cdp 9241 screenshot "$PWD/.context/sh
 .agents/skills/verify-hinacode/scripts/cleanup.sh 9241 /tmp/kk-breakui kkv-9241-breakui
 ```
 
-When you add a field to the UI, add its worst case to `seed.mjs` too. The schema it writes follows
+When you add a field to the UI, add its worst case to `seed.ts` too. The schema it writes follows
 `src/main/db/migrations/`, so update it when a migration renames or drops a column.

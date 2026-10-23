@@ -1,17 +1,22 @@
 #!/usr/bin/env node
-// Usage: mcp-call.mjs '<connection json>' [tool] ['<json args>']
+// Usage: mcp-call.ts '<connection json>' [tool] ['<json args>']
 // Talks to hinacode's built-in MCP server as an agent would (streamable HTTP, JSON-RPC).
 // Without a tool it lists tools. The connection is `{"url","headers"}` from
-// `rpc.mjs <port> mcp.connection '{"threadId":"..."}'`; its bearer credential decides the thread.
+// `rpc.ts <port> mcp.connection '{"threadId":"..."}'`; its bearer credential decides the thread.
 const [connection, tool, args = "{}"] = process.argv.slice(2)
 if (!connection) {
-  console.error("usage: mcp-call.mjs '<connection json>' [tool] ['<json args>']")
+  console.error("usage: mcp-call.ts '<connection json>' [tool] ['<json args>']")
   process.exit(2)
 }
-const { url, headers } = JSON.parse(connection)
-let session
+type Connection = { url: string; headers: Record<string, string> }
+type JsonRpcResponse<T> = { id?: number; result: T; error?: unknown }
+type ToolList = { tools: { name: string; description?: string }[] }
+type ToolResult = { isError?: boolean; content: { text?: string }[] }
+
+const { url, headers }: Connection = JSON.parse(connection)
+let session: string | undefined
 let nextId = 1
-const post = async (method, params, notification = false) => {
+const post = async <T>(method: string, params: object, notification = false): Promise<T | undefined> => {
   const message = { jsonrpc: "2.0", method, params, ...(notification ? {} : { id: nextId++ }) }
   const response = await fetch(url, {
     method: "POST",
@@ -27,7 +32,7 @@ const post = async (method, params, notification = false) => {
   const text = await response.text()
   if (!response.ok) throw new Error(`${method}: HTTP ${response.status} ${text}`)
   if (notification || text.trim() === "") return undefined
-  const json = response.headers.get("content-type")?.includes("text/event-stream")
+  const json: JsonRpcResponse<T> = response.headers.get("content-type")?.includes("text/event-stream")
     ? text
         .split("\n")
         .filter((line) => line.startsWith("data:"))
@@ -45,10 +50,10 @@ await post("initialize", {
 })
 await post("notifications/initialized", {}, true)
 if (!tool) {
-  const { tools } = await post("tools/list", {})
+  const { tools } = (await post<ToolList>("tools/list", {}))!
   for (const t of tools) console.log(`${t.name}\t${t.description?.split("\n")[0] ?? ""}`)
 } else {
-  const result = await post("tools/call", { name: tool, arguments: JSON.parse(args) })
+  const result = (await post<ToolResult>("tools/call", { name: tool, arguments: JSON.parse(args) }))!
   console.log(`isError=${result.isError ?? false}`)
   console.log(result.content.map((c) => c.text ?? JSON.stringify(c)).join("\n"))
   if (result.isError) process.exit(1)

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Usage: seed.mjs <user-data-dir> <repo-path>
+// Usage: seed.ts <user-data-dir> <repo-path>
 // Inserts one project and several threads with synthetic transcripts straight into hinacode.sqlite.
 // Deterministic (seeded PRNG) so before/after runs render the same bytes. Reload the renderer afterwards.
 import { DatabaseSync } from "node:sqlite"
@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto"
 
 const [data, repo, heavyProjectId] = process.argv.slice(2)
 if (!data || !repo) {
-  console.error("usage: seed.mjs <user-data-dir> <repo-path> [existing-project-id-for-heavy-thread]")
+  console.error("usage: seed.ts <user-data-dir> <repo-path> [existing-project-id-for-heavy-thread]")
   process.exit(2)
 }
 // Heavy mode: one thread with transcripts ten times larger (long Read/Bash outputs), under an existing project.
@@ -20,13 +20,13 @@ const db = new DatabaseSync(`${data}/hinacode.sqlite`)
 
 let seed = 42
 const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
-const pick = (list) => list[Math.floor(rand() * list.length)]
+const pick = <T>(list: T[]): T => list[Math.floor(rand() * list.length)]!
 const words =
   "render scroll thread worktree sqlite effect electron renderer main process memory footprint virtual list markdown tool call diff patch commit branch".split(
     " ",
   )
-const sentence = (n) => Array.from({ length: n }, () => pick(words)).join(" ")
-const lines = (count, width) =>
+const sentence = (n: number) => Array.from({ length: n }, () => pick(words)).join(" ")
+const lines = (count: number, width: number) =>
   Array.from({ length: count * scale }, (_, i) => `${String(i).padStart(4, "0")}  ${sentence(width)}`).join("\n")
 
 const markdown = () => `## ${sentence(3)}
@@ -50,7 +50,7 @@ export const ${pick(words)} = (${pick(words)}: string) => {
 
 ${sentence(25)}.`
 
-const diff = (path) => `diff --git a/${path} b/${path}
+const diff = (path: string) => `diff --git a/${path} b/${path}
 --- a/${path}
 +++ b/${path}
 @@ -1,8 +1,9 @@
@@ -94,7 +94,7 @@ const toolCall = () => {
 }
 
 const assistantParts = () => {
-  const parts = [{ type: "reasoning", text: sentence(60) }]
+  const parts: Record<string, unknown>[] = [{ type: "reasoning", text: sentence(60) }]
   const calls = 1 + Math.floor(rand() * 3)
   for (let i = 0; i < calls; i++) parts.push(toolCall())
   if (rand() < 0.5) {
@@ -106,7 +106,7 @@ const assistantParts = () => {
 }
 
 const now = footprint ? Date.parse("2026-10-16T00:00:00Z") : Date.now()
-const iso = (offsetMs) => new Date(now - offsetMs).toISOString()
+const iso = (offsetMs: number) => new Date(now - offsetMs).toISOString()
 
 const insertThread = db.prepare(
   "INSERT INTO thread (id, project_id, worktree_id, title, provider, model, provider_session_id, status, sort_index, created_at, updated_at) VALUES (?, ?, NULL, ?, 'claude', 'claude-sonnet-5-5', NULL, 'idle', ?, ?, ?)",
@@ -122,7 +122,7 @@ if (!heavy && !footprint) {
   ).run(projectId, repo, iso(0), iso(0))
 }
 
-const plan = footprint
+const plan: [string, number][] = footprint
   ? Array.from({ length: 30 }, (_, i) => [i < 5 ? `long ${i}` : `small ${i}`, i < 5 ? 1000 : 5])
   : heavy
     ? [["heavy 150 turns", 150]]
@@ -133,7 +133,7 @@ const plan = footprint
         ["small b", 5],
         ["small c", 5],
       ]
-const threads = {}
+const threads: Record<string, string> = {}
 db.exec("BEGIN")
 plan.forEach(([title, turns], index) => {
   const currentProject = footprint ? `perf-project-${Math.floor(index / 10)}` : projectId

@@ -36,7 +36,7 @@ Preconditions:
 
 ## Gotchas
 
-- `Attach files` opens a native GTK picker that CDP cannot see. Report `attach-button` as not driven, or stage directly with `$S/rpc.mjs $PORT attachments.stage '{"threadId":"<id>","source":{"path":"/abs/file"}}'` and say so.
+- `Attach files` opens a native GTK picker that CDP cannot see. Report `attach-button` as not driven, or stage directly with `$S/rpc.ts $PORT attachments.stage '{"threadId":"<id>","source":{"path":"/abs/file"}}'` and say so.
 - Files built in `eval` have no disk path (`pathForFile` returns `""`), so they are staged from a data URL. Real drops from a file manager are staged by path. These are different code paths; say which one you proved.
 - Claude does not interrupt a running Bash command when steered; the steer applies after the command finishes.
 - Steering with attachments was not proven in earlier runs; treat it as a separate sub-feature if you test it.

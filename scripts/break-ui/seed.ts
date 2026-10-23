@@ -1,26 +1,29 @@
 // Worst-case data for the break-ui skill: long names, unbreakable URLs, non-Latin and RTL text, missing files,
 // empty and huge lists. Writes straight into a stopped instance's SQLite, the same boundary real data crosses.
-// Usage: node scripts/break-ui/seed.mjs <user-data-dir>   (launch.sh next to this file runs the whole flow)
+// Usage: node scripts/break-ui/seed.ts <user-data-dir>   (launch.sh next to this file runs the whole flow)
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { DatabaseSync } from "node:sqlite"
+import { DatabaseSync, type SQLInputValue } from "node:sqlite"
+
+type Row = Record<string, SQLInputValue | object>
+type Project = { id: string; name: string; root_path: string }
 
 const data = process.argv[2]
-if (!data) throw new Error("Usage: node scripts/break-ui/seed.mjs <user-data-dir>")
+if (!data) throw new Error("Usage: node scripts/break-ui/seed.ts <user-data-dir>")
 const db = new DatabaseSync(join(data, "hinacode.sqlite"))
 
 let clock = Date.parse("2026-10-17T05:00:00Z")
 const at = () => new Date((clock += 1000)).toISOString()
-const insert = (table, row) => {
+const insert = (table: string, row: Row) => {
   const keys = Object.keys(row)
   db.prepare(`INSERT INTO ${table} (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(
-    ...keys.map((k) => (row[k] !== null && typeof row[k] === "object" ? JSON.stringify(row[k]) : row[k])),
+    ...Object.values(row).map((value) => (value !== null && typeof value === "object" ? JSON.stringify(value) : value)),
   )
 }
 
-const worktree = (project, branch) => {
+const worktree = (project: Project, branch: string) => {
   const id = randomUUID()
   insert("worktree", {
     id,
@@ -36,7 +39,7 @@ const worktree = (project, branch) => {
 }
 
 let sort = 0
-const thread = (project, title, extra = {}) => {
+const thread = (project: Project, title: string, extra: Row = {}) => {
   const id = randomUUID()
   insert("thread", {
     id,
@@ -54,7 +57,7 @@ const thread = (project, title, extra = {}) => {
   return id
 }
 
-const message = (threadId, role, parts, usage = null) =>
+const message = (threadId: string, role: string, parts: object[], usage: object | null = null) =>
   insert("message", {
     id: randomUUID(),
     thread_id: threadId,
@@ -65,7 +68,7 @@ const message = (threadId, role, parts, usage = null) =>
     usage,
   })
 
-const call = (name, input, output, status = "done") => ({
+const call = (name: string, input: object, output: string | undefined, status = "done") => ({
   type: "tool_call",
   callId: randomUUID(),
   name,
@@ -74,10 +77,10 @@ const call = (name, input, output, status = "done") => ({
   status,
 })
 
-const project = (name) => {
+const project = (name: string): Project => {
   const rootPath = join(data, "repos", name)
   mkdirSync(rootPath, { recursive: true })
-  const git = (...args) => execFileSync("git", ["-C", rootPath, ...args])
+  const git = (...args: string[]) => execFileSync("git", ["-C", rootPath, ...args])
   git("init", "-q", "-b", "main")
   writeFileSync(join(rootPath, "README.md"), `# ${name}\n`)
   git("add", "README.md")

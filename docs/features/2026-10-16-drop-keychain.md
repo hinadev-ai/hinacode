@@ -9,7 +9,7 @@ Date: 2026-10-16
 
 The signed release app is always on the list for an item it created, and a Developer ID signature keeps it on the list across updates. The prompts come from every other binary that uses the name `hinacode`:
 
-- `pnpm dev` runs a `HinaCode.app` that `scripts/dev-app-identity.mjs` re-signs ad hoc inside each checkout's `node_modules`. HinaCode works in a worktree per thread, so every worktree is a new binary and a new prompt.
+- `pnpm dev` runs a `HinaCode.app` that `scripts/dev-app-identity.ts` re-signs ad hoc inside each checkout's `node_modules`. HinaCode works in a worktree per thread, so every worktree is a new binary and a new prompt.
 - `pnpm serve`, e2e runs, `verify-hinacode` and perf runs are the same unpackaged Electron. Today they stay out of the Keychain only because seven call sites remember to pass `--use-mock-keychain`, and `e2e/support/startup-observer.cjs` refuses to start without it.
 - `hinacode serve` under launchd has nobody to answer a prompt. `docs/operations/cloud.md` tells you to answer it once in a terminal.
 
@@ -27,7 +27,7 @@ One rule: only the packaged desktop app uses the real Keychain.
 - `src/main/index.ts` calls `app.commandLine.appendSwitch("use-mock-keychain")` before anything touches `safeStorage`, when `!app.isPackaged` or in serve mode. Chromium reads the switch when it fetches the key (`KeychainKeyProvider`'s `GetKeyTask`), so adding it at runtime has the same effect as passing it on the command line. The mock key is Chromium's public test key. Secrets in these profiles are only obfuscated, which is the same protection a Linux server already gets.
 - An unpackaged run without `HINACODE_USER_DATA` defaults to `<appData>/kkcode-dev`, not `<appData>/kkcode`. The mock key cannot decrypt the release app's secrets, so a dev run on the release profile would lose its tokens. That was already unusual, because the single-instance lock stops `pnpm dev` while the release app is open.
 - `Secrets.get` treats a secret it cannot decrypt as unset and logs the secret's name. Today it throws, and because `remote.token` is read at boot, a profile sealed under another key never starts. Now `RemoteAccess` issues a fresh token, and the user pastes the Linear key again.
-- The explicit `--use-mock-keychain` flags in e2e, `verify-hinacode`, `scripts/perf/memory.mjs` and the README go away, and so does the e2e startup guard. `scripts/perf/packaged.mjs` keeps its flag, because it runs the packaged app.
+- The explicit `--use-mock-keychain` flags in e2e, `verify-hinacode`, `scripts/perf/memory.ts` and the README go away, and so does the e2e startup guard. `scripts/perf/packaged.ts` keeps its flag, because it runs the packaged app.
 
 Migration: none. The release app's rows are untouched. A dev profile or a cloud with rows sealed under the real key reads them as unset once: a cloud prints a new pairing URL and its phones and desktops pair again. A Linear key has to be saved again.
 

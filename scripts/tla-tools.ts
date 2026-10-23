@@ -15,7 +15,7 @@ export const specsDir = join(root, "specs")
 export const jar = join(root, "node_modules", ".cache", "tla2tools-1.7.4.jar")
 export const java = process.env.JAVA_HOME ? join(process.env.JAVA_HOME, "bin", "java") : "java"
 
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex")
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
 
 if (!existsSync(jar)) {
   const bytes = Buffer.from(await (await fetch(TLA_TOOLS.url)).arrayBuffer())

@@ -32,7 +32,7 @@ For a manual simulation, launch with `HINACODE_MOCK_CLAUDE=usage-limit` and an i
 Preconditions:
 
 - Instance launched and doctor passes; `$S/seed-repo.sh $DATA/repo` done.
-- A project `demo` on `$DATA/repo` and a thread `claude chat` with agent `Claude Code` and model `Sonnet 5.5`, created through the UI as in `projects-and-threads.md` (new thread, rename, pick `Sonnet 5.5`), or seeded with `$S/rpc.mjs $PORT threads.create '{"projectId":"<id>"}'`, then `$S/rpc.mjs $PORT threads.update '{"id":"<thread id>","title":"claude chat","model":"claude-sonnet-5-5"}'`, then `$AB reload`. The first send renames the thread, so find it afterwards by id or by the new `h1`, not by `claude chat`.
+- A project `demo` on `$DATA/repo` and a thread `claude chat` with agent `Claude Code` and model `Sonnet 5.5`, created through the UI as in `projects-and-threads.md` (new thread, rename, pick `Sonnet 5.5`), or seeded with `$S/rpc.ts $PORT threads.create '{"projectId":"<id>"}'`, then `$S/rpc.ts $PORT threads.update '{"id":"<thread id>","title":"claude chat","model":"claude-sonnet-5-5"}'`, then `$AB reload`. The first send renames the thread, so find it afterwards by id or by the new `h1`, not by `claude chat`.
 - The `claude` CLI is logged in (`claude --version` works for this user).
 - `AB="agent-browser --session kkv-$PORT-chat-claude"`, connected, thread open.
 
@@ -42,7 +42,7 @@ Preconditions:
 - **Approval.** Send `Use the Bash tool to run: echo approved > approved.txt`. `$AB wait --text "Claude Code needs your approval"`. The card shows the command; the header reads `Awaiting approval`. Screenshot `chat-claude-03-approval.png`. Run `$AB find role button click --name "Allow" --exact`. The Bash tool row turns `Done`, and `cat $DATA/repo/approved.txt` prints `approved`.
 - **Deny.** Send `Use the Bash tool to run: rm README.md`, wait for the card, click `Deny`. The row ends `Failed` or the reply says it was denied, and `$DATA/repo/README.md` still exists.
 - **Interrupt.** Send `Use the Bash tool to run in the foreground: python3 -c 'import time; time.sleep(120)'` (the CLI refuses a bare foreground `sleep`), `Allow` it, wait until the tool row reads `Running`, then `$AB find role button click --name "Stop" --exact` (or `$AB press Control+Shift+C`). Within a few seconds the header returns to `Idle` and the cut-off Bash row ends `Failed`. Screenshot `chat-claude-04-interrupted.png`.
-- **Side effects.** `$S/rpc.mjs $PORT threads.transcript '{"threadId":"<id>"}' > "$SHOTS/chat-claude-05-messages.txt"` contains the user prompts, the assistant text `pong`, and tool parts for the Bash calls.
+- **Side effects.** `$S/rpc.ts $PORT threads.transcript '{"threadId":"<id>"}' > "$SHOTS/chat-claude-05-messages.txt"` contains the user prompts, the assistant text `pong`, and tool parts for the Bash calls.
 - **Restore and resume.** `$S/stop.sh $DATA`, `$S/launch.sh $PORT $DATA --no-build`, `$AB connect $PORT`, open `claude chat`. All earlier messages and tool rows are present. Screenshot `chat-claude-06-restored.png`. Send `What single word did you reply with first?`. The answer is `pong`, proving the session resumed. Screenshot `chat-claude-07-resumed.png`.
 
 ## Gotchas

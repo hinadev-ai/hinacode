@@ -23,7 +23,7 @@ An automation starts a new thread from a prompt template when an event arrives: 
 - `Settings` > `Automations`: `New automation`, the per-row `Enable <name>` switch, `Runs and details`, `Edit`, `Delete`, the listener settings at the top.
 - Senders POST to the webhook URL shown after creation and in `Runs and details`.
 
-## Driving it with agent-browser, webhook.sh and rpc.mjs
+## Driving it with agent-browser, webhook.sh and rpc.ts
 
 Preconditions:
 
@@ -32,7 +32,7 @@ Preconditions:
 - `AB="agent-browser --session kkv-$PORT-automations"`, connected.
 
 - **Signed delivery.** `$S/webhook.sh "$URL" "$SECRET" '{"word":"ping"}' d1` prints 202 with a `threadId`. Without a reload the sidebar gains a thread in `demo` whose first message is `Reply with the word ping only.` and whose reply is `ping`. Screenshot `automations-01-thread-started.png`.
-- **Dedup.** Repeat the same command with `d1`: 200 with `"skipped":true` and no new thread. `Runs and details` shows a `Skipped` run with `Already handled event d1`. Screenshot `automations-02-dedup.png`. `$S/rpc.mjs $PORT automations.runs '{"id":"<id>","limit":10}' > "$SHOTS/automations-03-runs.txt"`.
+- **Dedup.** Repeat the same command with `d1`: 200 with `"skipped":true` and no new thread. `Runs and details` shows a `Skipped` run with `Already handled event d1`. Screenshot `automations-02-dedup.png`. `$S/rpc.ts $PORT automations.runs '{"id":"<id>","limit":10}' > "$SHOTS/automations-03-runs.txt"`.
 - **Run now.** Open `Runs and details`, set `Sample payload` to `{"body":{"word":"manual"}}`, click `Run now`. A `Started` run and a thread with `Reply with the word manual only.` appear; `Open thread` opens it. Screenshot `automations-04-run-now.png`.
 - **Worktree run.** Edit the automation: `Run in a new worktree` on, `Branch template` `kk/hook-{{body.word}}`. Deliver `{"word":"wt"}` with `d3`. The new thread's panel shows branch `kk/hook-wt` and `Ready`.
 - **Listener port conflict.** Set the listener `Port` to a port another process holds. `Runs and details` shows `The listener is not running: ...`. Set it back to `40000 + $PORT`.

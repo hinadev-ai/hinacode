@@ -9,6 +9,6 @@ try {
     stdio: "inherit",
   })
 } catch (error) {
-  if (error.code !== "ENOENT") throw error
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
   console.log("Skipping the resource monitor: Go is not installed.")
 }

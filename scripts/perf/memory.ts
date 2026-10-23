@@ -6,13 +6,45 @@ import { DatabaseSync } from "node:sqlite"
 import { join, dirname, resolve as resolvePath } from "node:path"
 import { createServer } from "node:net"
 import { createHash } from "node:crypto"
-import { launchPackaged } from "./packaged.mjs"
+import type { Profiler, Session } from "node:inspector"
+import { launchPackaged } from "./packaged.ts"
+import type { RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../../src/shared/contract.ts"
+
+declare global {
+  var __kkPerfSession: Session | undefined
+}
+
+type Thread = RpcResponseEncoded<"threads.create">
+type Sample = {
+  name: string
+  rendererHeapBytes: number
+  processes: { executable: string }[]
+  detachedDescendants: unknown[]
+}
+type Results = {
+  label: string | undefined
+  scenario: string
+  packagedApp: string | undefined
+  packagedAsarSha256: string | null
+  revision: string
+  diffSha256: string
+  samples: Sample[]
+  ownership?: unknown
+  startup?: unknown
+  workload?: unknown
+  switches?: unknown[]
+  mainSnapshot?: string
+  threads?: (Thread | undefined)[]
+  transcripts?: unknown[]
+  resume?: unknown
+  error?: string
+}
 
 const [label, scenario = "history", check] = process.argv.slice(2)
 if (!/^[\w-]+$/.test(label ?? "") || !["history", "claude", "footprint", "startup"].includes(scenario))
-  throw new Error("usage: memory.mjs <label> [history|claude|footprint|startup] [--check]")
+  throw new Error("usage: memory.ts <label> [history|claude|footprint|startup] [--check]")
 const root = process.cwd()
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const packagedApp = process.env.HINACODE_PERF_APP
 const port = Number(process.env.HINACODE_PERF_PORT ?? 9600)
 if (packagedApp && (port < 9600 || port > 9699)) throw new Error("use a CDP port from 9600 to 9699")
@@ -40,7 +72,7 @@ execFileSync(
   ],
   { stdio: "ignore" },
 )
-const env = { ...process.env, HINACODE_USER_DATA: data }
+const env: Record<string, string> = { ...process.env, HINACODE_USER_DATA: data }
 delete env.ELECTRON_RUN_AS_NODE
 delete env.ELECTRON_RENDERER_URL
 const startedAt = performance.now()
@@ -48,7 +80,7 @@ const appLog = createWriteStream(join(root, ".context/perf", `${label}-${scenari
 const app = packagedApp
   ? await launchPackaged({ executablePath: packagedApp, port, cwd: root, env, log: appLog })
   : await electron.launch({
-      executablePath,
+      executablePath: executablePath as unknown as string,
       args: [
         ...(packagedApp ? [`--remote-debugging-port=${port}`] : ["--no-sandbox", "--disable-gpu"]),
         "--mute-audio",
@@ -61,7 +93,7 @@ if (!packagedApp) {
   app.process().stdout?.pipe(appLog)
   app.process().stderr?.pipe(appLog)
 }
-const results = {
+const results: Results = {
   label,
   scenario,
   packagedApp,
@@ -98,12 +130,12 @@ try {
   }))
   if (ownership.cwd !== root || ownership.data !== data) throw new Error("wrong app")
   results.ownership = ownership
-  const rpc = async (method, payload) => {
-    const reply = await page.evaluate(async (request) => window.hinacode.rpc(request.method, request.payload), {
+  const rpc = async <M extends RpcMethod>(method: M, payload?: RpcRequestEncoded<M>) => {
+    const reply = (await page.evaluate(async (request) => window.hinacode.rpc(request.method, request.payload), {
       method,
       payload,
-    })
-    if (reply.error) throw new Error(JSON.stringify(reply.error))
+    })) as RpcEnvelope<RpcResponseEncoded<M>>
+    if ("error" in reply) throw new Error(JSON.stringify(reply.error))
     return reply.result
   }
   await rpc("settings.get")
@@ -113,7 +145,7 @@ try {
       performance.getEntriesByType("paint").map(({ name, startTime }) => ({ name, startTime })),
     ),
   }
-  const webhookPort = await new Promise((resolve, reject) => {
+  const webhookPort = await new Promise<number>((resolve, reject) => {
     const server = createServer()
     server.once("error", reject)
     server.listen(0, "127.0.0.1", () => {
@@ -125,14 +157,14 @@ try {
   await rpc("settings.set", { automations: { bindHost: "127.0.0.1", port: webhookPort } })
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Performance.enable")
-  const observedProcesses = new Map()
-  const sample = async (name) => {
+  const observedProcesses = new Map<number, string>()
+  const sample = async (name: string) => {
     await cdp.send("HeapProfiler.collectGarbage")
     const main = await app.evaluate(async () => {
       const { Session } = process.getBuiltinModule("node:inspector")
       const session = new Session()
       session.connect()
-      await new Promise((resolve, reject) =>
+      await new Promise<void>((resolve, reject) =>
         session.post("HeapProfiler.collectGarbage", (e) => (e ? reject(e) : resolve())),
       )
       session.disconnect()
@@ -144,7 +176,7 @@ try {
       }
     })
     const { metrics } = await cdp.send("Performance.getMetrics")
-    const metric = (n) => metrics.find((m) => m.name === n)?.value
+    const metric = (n: string) => metrics.find((m) => m.name === n)?.value
     const processes = execFileSync("ps", ["-axo", "pid=,ppid=,rss=,comm="], { encoding: "utf8" })
       .trim()
       .split("\n")
@@ -155,7 +187,7 @@ try {
           pid: Number(m[1]),
           ppid: Number(m[2]),
           rssBytes: Number(m[3]) * 1024,
-          executable: m[4].split("/").at(-1),
+          executable: m[4]!.split("/").at(-1)!,
         }
       })
     const ids = new Set([ownership.pid])
@@ -171,7 +203,7 @@ try {
     const value = {
       name,
       elapsedMs: performance.now() - startedAt,
-      rendererHeapBytes: metric("JSHeapUsedSize"),
+      rendererHeapBytes: metric("JSHeapUsedSize")!,
       domNodes: metric("Nodes"),
       listeners: metric("JSEventListeners"),
       rssBytes: owned.reduce((n, p) => n + p.rssBytes, 0),
@@ -204,7 +236,7 @@ try {
       }
     } else console.log(JSON.stringify(summary))
   }
-  const series = async (name, seconds) => {
+  const series = async (name: string, seconds: number) => {
     for (let i = 0; i < seconds; i += 5) {
       await pause(5000)
       await sample(`${name}-${i + 5}s`)
@@ -220,15 +252,15 @@ try {
       mkdirSync(`${repo}-${i}`)
       execFileSync("git", ["clone", "--quiet", repo, `${repo}-${i}`])
     }
-    const seed = JSON.parse(
-      execFileSync(process.execPath, [join(root, "scripts/perf/seed.mjs"), data, repo, "--footprint"], {
+    const seed: { bytes: unknown; threads: Record<string, string> } = JSON.parse(
+      execFileSync(process.execPath, [join(root, "scripts/perf/seed.ts"), data, repo, "--footprint"], {
         encoding: "utf8",
       }),
     )
     const db = new DatabaseSync(join(data, "hinacode.sqlite"))
     const digest = createHash("sha256")
     for (const row of db.prepare("SELECT * FROM message ORDER BY rowid").iterate()) digest.update(JSON.stringify(row))
-    results.workload = {
+    const workload = {
       projects: 3,
       threads: 30,
       longTranscripts: 5,
@@ -238,10 +270,11 @@ try {
       idleSeconds: Number(process.env.PERF_IDLE_SECONDS ?? 300),
       gpu: packagedApp ? "default" : "disabled",
     }
+    results.workload = workload
     const lastMessages = Object.fromEntries(
       Object.values(seed.threads).map((id) => [
         id,
-        db.prepare("SELECT id FROM message WHERE thread_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(id)
+        db.prepare("SELECT id FROM message WHERE thread_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(id)!
           .id,
       ]),
     )
@@ -260,12 +293,12 @@ try {
       const session = new Session()
       session.connect()
       globalThis.__kkPerfSession = session
-      await new Promise((resolve, reject) => session.post("Profiler.enable", (e) => (e ? reject(e) : resolve())))
-      await new Promise((resolve, reject) => session.post("Profiler.start", (e) => (e ? reject(e) : resolve())))
+      await new Promise<void>((resolve, reject) => session.post("Profiler.enable", (e) => (e ? reject(e) : resolve())))
+      await new Promise<void>((resolve, reject) => session.post("Profiler.start", (e) => (e ? reject(e) : resolve())))
     })
     results.switches = []
     for (let i = 0; i < 10; i++) {
-      const id = ids[i % ids.length]
+      const id = ids[i % ids.length]!
       const before = performance.now()
       await page.locator(`a[href="/thread/${id}"]`).click()
       await expect(page.locator(`main article[data-message-id="${lastMessages[id]}"]`)).toBeVisible({ timeout: 30000 })
@@ -281,8 +314,8 @@ try {
     const { profile } = await cdp.send("Profiler.stop")
     writeFileSync(join(root, ".context/perf", `${label}-renderer.cpuprofile`), JSON.stringify(profile))
     const mainProfile = await app.evaluate(async () => {
-      const session = globalThis.__kkPerfSession
-      const result = await new Promise((resolve, reject) =>
+      const session = globalThis.__kkPerfSession!
+      const result = await new Promise<Profiler.StopReturnType>((resolve, reject) =>
         session.post("Profiler.stop", (e, r) => (e ? reject(e) : resolve(r))),
       )
       session.disconnect()
@@ -291,7 +324,7 @@ try {
     })
     writeFileSync(join(root, ".context/perf", `${label}-main.cpuprofile`), JSON.stringify(mainProfile))
     await page.screenshot({ path: join(root, ".context/perf", `${label}-left-threads.png`) })
-    await series("closed-idle", results.workload.idleSeconds)
+    await series("closed-idle", workload.idleSeconds)
     if (process.env.PERF_SNAPSHOT === "1") {
       results.mainSnapshot = await app.evaluate(
         (_, path) => process.getBuiltinModule("node:v8").writeHeapSnapshot(path),
@@ -299,7 +332,7 @@ try {
       )
       const snapshotPath = join(root, ".context/perf", `${label}-renderer.heapsnapshot`)
       const snapshot = createWriteStream(snapshotPath)
-      const onChunk = ({ chunk }) => snapshot.write(chunk)
+      const onChunk = ({ chunk }: { chunk: string }) => snapshot.write(chunk)
       cdp.on("HeapProfiler.addHeapSnapshotChunk", onChunk)
       await cdp.send("HeapProfiler.takeHeapSnapshot")
       cdp.off("HeapProfiler.addHeapSnapshotChunk", onChunk)
@@ -310,12 +343,13 @@ try {
     const partCount = 128
     const outputBytes = 65536
     const output = "memory benchmark output\n".repeat(Math.ceil(outputBytes / 24)).slice(0, outputBytes)
-    results.workload = {
+    const workload: Record<string, unknown> = {
       count,
       partCount,
       outputBytes: output.length,
       sha256: createHash("sha256").update(output).digest("hex"),
     }
+    results.workload = workload
     const db = new DatabaseSync(join(data, "hinacode.sqlite"))
     const now = "2026-10-14T00:00:00.000Z"
     db.prepare(
@@ -331,7 +365,7 @@ try {
     for (let i = 0; i < count; i++) {
       const id = `memory-${i}`
       thread.run(id, `Memory thread ${i}`, "running", i, now, now)
-      const parts = Array.from({ length: partCount }, (_, p) => ({
+      const parts: Record<string, unknown>[] = Array.from({ length: partCount }, (_, p) => ({
         type: "tool_call",
         callId: `${id}-tool-${p}`,
         name: "Read",
@@ -344,7 +378,7 @@ try {
     }
     thread.run("memory-empty", "Memory empty", "idle", count, now, now)
     db.exec("COMMIT")
-    results.workload.persistedBytes = db.prepare("SELECT sum(length(parts)) AS bytes FROM message").get().bytes
+    workload.persistedBytes = db.prepare("SELECT sum(length(parts)) AS bytes FROM message").get()!.bytes
     db.close()
     await page.reload()
     await expect(page.locator('a[href="/thread/memory-0"]')).toBeVisible()
@@ -361,7 +395,7 @@ try {
     await sample("left-running")
     const threads = await rpc("threads.list")
     await app.evaluate(({ BrowserWindow }, completedThreads) => {
-      const window = BrowserWindow.getAllWindows()[0]
+      const window = BrowserWindow.getAllWindows()[0]!
       for (const completedThread of completedThreads) {
         window.webContents.send("event", {
           type: "thread.event",
@@ -382,12 +416,13 @@ try {
       const seeded = results.samples.find((s) => s.name === "seeded")
       const hidden = results.samples.find((s) => s.name === "completed-background")
       expect(
-        hidden.rendererHeapBytes - seeded.rendererHeapBytes,
+        hidden!.rendererHeapBytes - seeded!.rendererHeapBytes,
         "hidden transcripts must release their tool output",
       ).toBeLessThan(20 * 1048576)
     }
   } else {
-    results.workload = { threads: 3, model: "claude-sonnet-5-5", prompt: "Reply with only OK. Do not use tools." }
+    const workload = { threads: 3, model: "claude-sonnet-5-5", prompt: "Reply with only OK. Do not use tools." }
+    results.workload = workload
     const project = await rpc("projects.create", { name: "Memory lifecycle", rootPath: repo, setupScript: null })
     results.threads = []
     for (let i = 0; i < 3; i++) {
@@ -395,7 +430,7 @@ try {
       await rpc("threads.update", { id: thread.id, title: `Lifecycle ${i}`, model: "claude-sonnet-5-5" })
       await page.reload()
       await page.locator(`a[href="/thread/${thread.id}"]`).click()
-      await page.getByRole("combobox", { name: "Message", exact: true }).fill(results.workload.prompt)
+      await page.getByRole("combobox", { name: "Message", exact: true }).fill(workload.prompt)
       await page.getByRole("button", { name: "Send", exact: true }).click()
       await expect
         .poll(
@@ -418,15 +453,17 @@ try {
     await sample("idle-70s")
     if (check === "--check") {
       expect(
-        results.samples.at(-1).processes.filter((p) => p.executable === "claude"),
+        results.samples.at(-1)!.processes.filter((p) => p.executable === "claude"),
         "idle Claude processes must exit",
       ).toHaveLength(0)
-      expect(results.samples.at(-1).detachedDescendants, "idle cleanup must not orphan child processes").toHaveLength(0)
+      expect(results.samples.at(-1)!.detachedDescendants, "idle cleanup must not orphan child processes").toHaveLength(
+        0,
+      )
     }
     await page.screenshot({ path: join(root, ".context/shots", `${label}-claude-memory.png`) })
-    const first = results.threads[0]
+    const first = results.threads[0]!
     await page.locator(`a[href="/thread/${first.id}"]`).click()
-    await page.getByRole("combobox", { name: "Message", exact: true }).fill(results.workload.prompt)
+    await page.getByRole("combobox", { name: "Message", exact: true }).fill(workload.prompt)
     await page.getByRole("button", { name: "Send", exact: true }).click()
     await expect
       .poll(
@@ -438,7 +475,7 @@ try {
         { timeout: 120000 },
       )
       .toBe(2)
-    const resumed = (await rpc("threads.list")).find((thread) => thread.id === first.id)
+    const resumed = (await rpc("threads.list")).find((thread) => thread.id === first.id)!
     expect(resumed.providerSessionId, "follow-up preserves the provider session").toBe(first.providerSessionId)
     results.resume = { sameSessionId: true, status: resumed.status }
     await sample("resumed-first")

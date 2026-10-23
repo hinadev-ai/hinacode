@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "moduleDetection": "force"
+  },
+  "include": ["scripts/**/*.ts", ".agents/skills/*/scripts/*.ts", "apps/mobile/scripts/*.mts", "src/preload/index.d.ts"]
+}
