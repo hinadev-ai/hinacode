@@ -112,6 +112,9 @@ export const removeEnvironmentAtom = Atom.fn((id: string) =>
   ),
 )
 
+/** Answers at once. The cloud's status pushes tell how the new attempt went. */
+export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
+
 export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
 )

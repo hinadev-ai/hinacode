@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import type { AddressInfo } from "node:net"
+import { type AddressInfo, createServer, type Socket } from "node:net"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
@@ -175,9 +175,14 @@ const setCloudRemote = (enabled: boolean) =>
     Settings.use((settings) => settings.set({ remote: { enabled, bindHost: "127.0.0.1", port: cloudPort } })),
   )
 
-const cloudPairing = async (token?: string) => {
+/** The second host is unroutable, so a pairing that waits for it hangs. */
+const cloudPairing = async (options: { token?: string; hosts?: [string, ...Array<string>] } = {}) => {
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
-  return pairingUrl({ hosts: ["127.0.0.1", "192.0.2.1"], port: pairing.port, token: token ?? pairing.token })
+  return pairingUrl({
+    hosts: options.hosts ?? ["127.0.0.1", "192.0.2.1"],
+    port: pairing.port,
+    token: options.token ?? pairing.token,
+  })
 }
 
 const gitRepo = (path: string) => {
@@ -239,7 +244,10 @@ describe("desktop environments", () => {
     expect(failure(await invoke("environments.add", { name: "home", pairingUrl: "https://example.com" })).tag).toBe(
       "InvalidPairingUrl",
     )
-    const wrong = await invoke("environments.add", { name: "home", pairingUrl: await cloudPairing("not-the-token") })
+    const wrong = await invoke("environments.add", {
+      name: "home",
+      pairingUrl: await cloudPairing({ token: "not-the-token", hosts: ["127.0.0.1"] }),
+    })
     expect(failure(wrong)).toMatchObject({ tag: "EnvironmentUnauthorized" })
     expect(result(await invoke("environments.list", undefined)).clouds).toStrictEqual([])
   })
@@ -358,39 +366,21 @@ describe("desktop environments", () => {
     expect(await desktop.runPromise(Secrets.use((secrets) => secrets.has(`environment.${cloudId}.token`)))).toBe(false)
     expect(result(await invoke("projects.list", undefined)).map((project) => project.name)).toStrictEqual(["here"])
   })
-
-  test("a cloud on another protocol version is incompatible and not retried", async () => {
-    const server = new WebSocketServer({ host: "127.0.0.1", port: 0, path: REMOTE_PATH })
-    let connections = 0
-    server.on("connection", (socket) => {
-      connections++
-      socket.on("message", () =>
-        socket.send(JSON.stringify({ type: "ready", version: 999, environment: { id: "future", name: "future" } })),
-      )
-    })
-    await new Promise((resolve) => server.once("listening", resolve))
-    try {
-      const { port } = server.address() as AddressInfo
-      const added = result(
-        await invoke("environments.add", {
-          name: "",
-          pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
-        }),
-      )
-      expect(added).toMatchObject({ id: "future", name: "future" })
-      await pushedEventually(statusOf("future", "incompatible"))
-      expect(connections).toBe(2)
-      result(await invoke("environments.remove", { id: "future" }))
-    } finally {
-      server.close()
-    }
-  })
 })
 
-const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<string>; autoPong?: boolean }) => {
+interface ScriptedOptions {
+  readonly features?: ReadonlyArray<string>
+  readonly autoPong?: boolean
+  readonly version?: number
+  readonly host?: string
+  readonly port?: number
+}
+
+const scriptedCloud = async (id: string, options: ScriptedOptions) => {
+  let version = options.version ?? REMOTE_PROTOCOL_VERSION
   const server = new WebSocketServer({
-    host: "127.0.0.1",
-    port: 0,
+    host: options.host ?? "127.0.0.1",
+    port: options.port ?? 0,
     path: REMOTE_PATH,
     autoPong: options.autoPong ?? true,
   })
@@ -406,7 +396,7 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<str
       current = socket
       const ready: ServerFrame = {
         type: "ready",
-        version: REMOTE_PROTOCOL_VERSION,
+        version,
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
       }
@@ -417,6 +407,7 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<str
   await new Promise((resolve) => server.once("listening", resolve))
   const { port } = server.address() as AddressInfo
   return {
+    port,
     pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
     calls,
     holdReady: () => {
@@ -426,6 +417,9 @@ const scriptedCloud = async (id: string, options: { features?: ReadonlyArray<str
     releaseReady: () => {
       current!.send(JSON.stringify(heldReady))
       heldReady = undefined
+    },
+    update: () => {
+      version = REMOTE_PROTOCOL_VERSION
     },
     socket: () => current!,
     send: (frame: ServerFrame) => current!.send(JSON.stringify(frame)),
@@ -442,20 +436,20 @@ describe("desktop environments over a flaky link", () => {
   const forward = (environmentId: string, call: ForwardedCall) =>
     clocked.runPromise(Environments.use((environments) => environments.forward(environmentId, call)))
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
-  const lastSeenAt = async (id: string) =>
-    (await clocked.runPromise(Environments.use((environments) => environments.list))).clouds.find(
-      (entry) => entry.id === id,
-    )?.lastSeenAt
   const testTime = () => clocked.runPromise(Clock.currentTimeMillis)
 
-  const pair = async (id: string, options: Parameters<typeof scriptedCloud>[1] = {}) => {
+  const add = (url: string) =>
+    clocked.runPromise(Environments.use((environments) => environments.add({ name: "", pairingUrl: url })))
+  const pair = async (id: string, options: ScriptedOptions = {}) => {
     const scripted = await scriptedCloud(id, options)
-    await clocked.runPromise(
-      Environments.use((environments) => environments.add({ name: "", pairingUrl: scripted.pairingUrl })),
-    )
+    await add(scripted.pairingUrl)
     await pushedEventually(statusOf(id, "connected"))
     return scripted
   }
+  const listed = async (id: string) =>
+    (await clocked.runPromise(Environments.use((environments) => environments.list))).clouds.find(
+      (entry) => entry.id === id,
+    )
   const remove = (id: string) => clocked.runPromise(Environments.use((environments) => environments.remove(id)))
 
   const reconnectUntil = (done: () => void) =>
@@ -544,7 +538,7 @@ describe("desktop environments over a flaky link", () => {
     for (let step = 0; step < 12; step++) {
       await adjust("10 seconds")
       const now = new Date(await testTime()).toISOString()
-      await vi.waitFor(async () => expect(await lastSeenAt("slow")).toBe(now))
+      await vi.waitFor(async () => expect((await listed("slow"))?.lastSeenAt).toBe(now))
     }
     expect(answer).toBeUndefined()
 
@@ -564,7 +558,7 @@ describe("desktop environments over a flaky link", () => {
     await adjust("10 seconds")
     scripted.send({ type: "pong", at: 0 })
     const heardAt = new Date(await testTime()).toISOString()
-    await vi.waitFor(async () => expect(await lastSeenAt("silent")).toBe(heardAt))
+    await vi.waitFor(async () => expect((await listed("silent"))?.lastSeenAt).toBe(heardAt))
 
     await adjust(24_999)
     let held: RpcEnvelope<unknown> | undefined
@@ -594,6 +588,84 @@ describe("desktop environments over a flaky link", () => {
     await pushedEventually(statusOf("rotated", "unauthorized"))
     expect(await forward("rotated", { method: "settings.get", payload: undefined })).toStrictEqual(refused)
     await remove("rotated")
+    scripted.stop()
+  })
+
+  test("a cloud on a newer protocol fails pending calls, names its version, and reconnects once updated", async () => {
+    const scripted = await scriptedCloud("newer", { version: REMOTE_PROTOCOL_VERSION + 1 })
+    await add(scripted.pairingUrl)
+    await pushedEventually(statusOf("newer", "incompatible"))
+    expect(await listed("newer")).toMatchObject({ status: "incompatible", protocol: REMOTE_PROTOCOL_VERSION + 1 })
+    expect(await forward("newer", { method: "settings.get", payload: undefined })).toMatchObject({
+      error: { tag: "EnvironmentIncompatible" },
+    })
+
+    scripted.update()
+    await reconnectUntil(() => expect(electron.pushes.some(statusOf("newer", "connected"))).toBe(true))
+    expect(await listed("newer")).not.toHaveProperty("protocol")
+    await remove("newer")
+    scripted.stop()
+  })
+
+  test("pairing waits about a second for an earlier host, not the whole probe timeout", async () => {
+    const scripted = await scriptedCloud("second-host", {})
+    const held: Array<Socket> = []
+    const blackhole = createServer((socket) => held.push(socket))
+    await new Promise<void>((resolve) => blackhole.listen({ host: "::1", port: scripted.port }, resolve))
+    try {
+      let added: Awaited<ReturnType<typeof add>> | undefined
+      const startedAt = await testTime()
+      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+        (environment) => (added = environment),
+      )
+      await vi.waitFor(() => expect(held).toHaveLength(1))
+      await vi.waitFor(async () => {
+        await adjust("100 millis")
+        expect(added).toMatchObject({ id: "second-host", host: "127.0.0.1" })
+      })
+      expect((await testTime()) - startedAt).toBeLessThan(2_000)
+      await remove("second-host")
+    } finally {
+      for (const socket of held) socket.destroy()
+      blackhole.close()
+      scripted.stop()
+    }
+  })
+
+  test("pairing keeps an earlier host that answers within a second of a later one", async () => {
+    const scripted = await scriptedCloud("both-hosts", {})
+    const slow = await scriptedCloud("both-hosts", { host: "::1", port: scripted.port })
+    slow.holdReady()
+    try {
+      let added: Awaited<ReturnType<typeof add>> | undefined
+      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+        (environment) => (added = environment),
+      )
+      await vi.waitFor(() => expect(scripted.socket()).toBeDefined())
+      await vi.waitFor(() => expect(slow.hasHeldReady()).toBe(true))
+      await adjust("500 millis")
+      expect(added).toBeUndefined()
+      slow.releaseReady()
+      await vi.waitFor(() => expect(added).toMatchObject({ id: "both-hosts", host: "::1" }))
+      await remove("both-hosts")
+    } finally {
+      slow.stop()
+      scripted.stop()
+    }
+  })
+
+  test("reconnecting skips the backoff, and calls queued meanwhile go out once connected", async () => {
+    const scripted = await pair("asleep")
+    scripted.socket().terminate()
+    await pushedEventually(statusOf("asleep", "offline"))
+    const read = forward("asleep", { method: "settings.get", payload: undefined })
+
+    await clocked.runPromise(Environments.use((environments) => environments.reconnectAll))
+    await vi.waitFor(() => expect(electron.pushes.filter(statusOf("asleep", "connected"))).toHaveLength(2))
+    await vi.waitFor(() => expect(scripted.calls).toHaveLength(1))
+    scripted.send({ type: "result", id: scripted.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
+    expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    await remove("asleep")
     scripted.stop()
   })
 

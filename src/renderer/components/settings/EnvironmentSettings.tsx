@@ -12,7 +12,7 @@ import {
 } from "react"
 import type { Environment } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { type Cloud, cloudAddress, useClouds } from "../../lib/environments.ts"
+import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import { addEnvironmentAtom, removeEnvironmentAtom } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
@@ -20,6 +20,7 @@ import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
 import { useUi } from "../../stores/ui.ts"
 import { EnvironmentStatusText } from "../EnvironmentStatusText.tsx"
+import { ReconnectButton } from "../ReconnectButton.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,6 +96,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
               {m.environment_pair_again()}
             </Button>
           )}
+          {(cloud.status === "offline" || cloud.status === "incompatible") && <ReconnectButton cloud={cloud} />}
           <RemoveEnvironmentButton cloud={cloud} />
         </div>
       </div>
@@ -102,9 +104,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
       {unauthorized && pairing && (
         <PairAgainForm id={pairFormId} cloud={cloud} onCancel={cancelPairing} onPaired={() => setPairing(false)} />
       )}
-      {cloud.status === "incompatible" && (
-        <FieldDescription>{m.environment_incompatible_hint({ name: cloud.name })}</FieldDescription>
-      )}
+      {cloud.status === "incompatible" && <FieldDescription>{incompatibleText(cloud)}</FieldDescription>}
     </li>
   )
 }

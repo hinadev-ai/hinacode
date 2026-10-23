@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { useParams, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { Environments, EnvironmentStatus, Project } from "../../shared/domain.ts"
+import { REMOTE_PROTOCOL_VERSION } from "../../shared/remote.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -70,6 +71,12 @@ export function useOpenThreadEnvironment(): EnvironmentId {
   return useThreadEnvironment(threadId)
 }
 
+/** Which side of an incompatible link to update: the one on the older protocol. */
+export const incompatibleText = (cloud: Pick<Cloud, "name" | "protocol">) =>
+  cloud.protocol !== undefined && cloud.protocol > REMOTE_PROTOCOL_VERSION
+    ? m.environment_update_desktop({ name: cloud.name })
+    : m.environment_update_cloud({ name: cloud.name })
+
 /**
  * A cloud's state in words, or null while connected. Offline says when it last answered, and the two states that
  * stop retrying say what to do.
@@ -89,7 +96,7 @@ export function useCloudStateText(cloud: Cloud): string | null {
     case "unauthorized":
       return m.environment_pair_again()
     case "incompatible":
-      return m.environment_update_on({ name: cloud.name })
+      return incompatibleText(cloud)
   }
 }
 
