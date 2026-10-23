@@ -90,6 +90,10 @@ const categoryLabel = {
 
 const shortCommit = (head: string) => head.slice(0, 7)
 
+/** Notes have no id of their own; their line and text tell them apart within a file. */
+const noteKey = (note: GuideFileNote | GuideLineNote) =>
+  "line" in note ? `${note.side}:${note.line}:${note.text}` : note.text
+
 /** The PR tab's Code view: the pull request's changed files, in path order or grouped by its guide. */
 export function PullRequestCode({ url }: { url: string }) {
   const environment = useOpenThreadEnvironment()
@@ -219,8 +223,8 @@ function PullRequestFileRow({ entry }: { entry: GuideFile }) {
       notes={
         notes.length > 0 && (
           <ul className="flex flex-col gap-1 pl-6">
-            {notes.map((note, index) => (
-              <li key={index}>
+            {notes.map((note) => (
+              <li key={noteKey(note)}>
                 <NoteCard note={note} />
               </li>
             ))}
@@ -230,8 +234,8 @@ function PullRequestFileRow({ entry }: { entry: GuideFile }) {
       lineAnnotations={noteAnnotations(entry.lineNotes)}
       renderAnnotation={({ metadata }) => (
         <ul className="flex flex-col gap-1 px-2 py-1.5 font-sans">
-          {metadata.map((note, index) => (
-            <li key={index}>
+          {metadata.map((note) => (
+            <li key={noteKey(note)}>
               <NoteCard note={note} inline />
             </li>
           ))}
@@ -319,11 +323,16 @@ function GuideView({ environment, url, head, status, files }: GuideViewProps) {
         <Markdown text={guide.summary} />
       </div>
       <ol className="flex flex-col divide-y divide-border">
-        {[...groups, ...(others.length > 0 ? [other] : [])].map((group, index) => (
-          <li key={`${index}:${group.key}`} className="py-4 first:pt-0">
+        {groups.map((group) => (
+          <li key={group.key} className="py-4 first:pt-0">
             <GuideGroupView group={group} />
           </li>
         ))}
+        {others.length > 0 && (
+          <li className="py-4 first:pt-0">
+            <GuideGroupView group={other} />
+          </li>
+        )}
       </ol>
       <p className="text-xs text-muted-foreground">
         {m.guide_written_by({ model: guide.model, commit: shortCommit(guide.head) })}
@@ -373,8 +382,8 @@ function GuideGroupView({ group }: { group: ResolvedGroup }) {
       )}
       {group.children.length > 0 && (
         <ol className="ml-2 flex flex-col gap-4 border-l border-border pl-3">
-          {group.children.map((child, index) => (
-            <li key={`${index}:${child.key}`}>
+          {group.children.map((child) => (
+            <li key={child.key}>
               <GuideGroupView group={child} />
             </li>
           ))}

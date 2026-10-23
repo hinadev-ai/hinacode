@@ -298,6 +298,8 @@ function TextGenerationModelField() {
   )
 }
 
+const GUIDE_EFFORTS = new Set(CLAUDE_EFFORT_LEVELS)
+
 /** Guides are written through the Claude Agent SDK, like thread names, so only Claude models are offered. */
 function PullRequestGuideField() {
   const environment = useSettingsEnvironment()
@@ -312,11 +314,12 @@ function PullRequestGuideField() {
     ? listed
     : [unlistedModel(pullRequestGuide.model, "claude"), ...listed]
   const effortsOf = (id: string) =>
-    (items.find((model) => model.id === id)?.efforts ?? []).filter((effort) => CLAUDE_EFFORT_LEVELS.includes(effort))
+    (items.find((model) => model.id === id)?.efforts ?? []).filter((effort) => GUIDE_EFFORTS.has(effort))
   const efforts = effortsOf(pullRequestGuide.model)
-  const effortItems = (efforts.includes(pullRequestGuide.effort) ? efforts : [pullRequestGuide.effort, ...efforts]).map(
-    (value) => ({ value, label: effortLabel(value) }),
-  )
+  const effortItems = [...new Set([...efforts, pullRequestGuide.effort])].map((value) => ({
+    value,
+    label: effortLabel(value),
+  }))
 
   const save = async (next: typeof pullRequestGuide) => {
     setError(null)

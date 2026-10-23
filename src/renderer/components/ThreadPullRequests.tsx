@@ -180,14 +180,6 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   return (
     <div className="flex flex-col gap-4">
       {urls.length === 0 && <p className="text-xs text-muted-foreground">{m.pr_links_empty()}</p>}
-      {selected && (
-        <Tabs value={tab} onValueChange={(value: PullRequestTab) => setTab(value)}>
-          <TabsList variant="line" aria-label={m.pr_view_label()}>
-            <TabsTrigger value="info">{m.pr_tab_info()}</TabsTrigger>
-            <TabsTrigger value="code">{m.pr_tab_code()}</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      )}
       {urls.length > 1 && (
         <ul aria-label={m.pr_links_title()} className="flex flex-col gap-0.5">
           {urls.map((url) => (
@@ -201,25 +193,43 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
           ))}
         </ul>
       )}
-      {selected &&
-        (tab === "info" ? (
-          <PullRequestDetailView
-            key={selected}
-            threadId={threadId}
-            url={selected}
-            watch={watch}
-            linked={linked.has(selected)}
-            onUnlinkFailed={setUnlinkError}
-          />
-        ) : (
-          <PullRequestCode key={selected} url={selected} />
-        ))}
+      {selected && (
+        <SelectedPullRequest
+          key={selected}
+          threadId={threadId}
+          url={selected}
+          watch={watch}
+          linked={linked.has(selected)}
+          tab={tab}
+          onTabChange={setTab}
+          onUnlinkFailed={setUnlinkError}
+        />
+      )}
       {unlinkError && (
         <p role="alert" className="text-xs text-destructive">
           {unlinkError}
         </p>
       )}
       <GitHubAuthHint />
+    </div>
+  )
+}
+
+interface SelectedPullRequestProps extends PullRequestDetailViewProps {
+  readonly tab: PullRequestTab
+  readonly onTabChange: (tab: PullRequestTab) => void
+}
+
+function SelectedPullRequest({ tab, onTabChange, ...detail }: SelectedPullRequestProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Tabs value={tab} onValueChange={(value: PullRequestTab) => onTabChange(value)}>
+        <TabsList variant="line" aria-label={m.pr_view_label()}>
+          <TabsTrigger value="info">{m.pr_tab_info()}</TabsTrigger>
+          <TabsTrigger value="code">{m.pr_tab_code()}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {tab === "info" ? <PullRequestDetailView {...detail} /> : <PullRequestCode url={detail.url} />}
     </div>
   )
 }

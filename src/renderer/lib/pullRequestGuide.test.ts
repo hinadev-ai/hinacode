@@ -82,6 +82,14 @@ describe("resolveGuide", () => {
     expect(groups.flatMap((resolved) => resolved.files.flatMap((entry) => entry.fileNotes))).toStrictEqual([])
   })
 
+  test("groups get unique keys even when the model repeats one", () => {
+    const { groups } = resolveGuide(
+      guide([group("ui", ["a.ts"]), group("ui", ["b.ts"], { children: [group("ui", ["c.ts"])] })]),
+      [file("a.ts"), file("b.ts"), file("c.ts")],
+    )
+    expect([groups[0]?.key, groups[1]?.key, groups[1]?.children[0]?.key]).toStrictEqual(["ui", "ui-2", "ui-3"])
+  })
+
   test("a group is critical when it, one of its notes or one of its children is", () => {
     const { groups } = resolveGuide(
       guide([

@@ -17,6 +17,7 @@ export interface GuideFile {
 }
 
 export interface ResolvedGroup {
+  /** The model's key, suffixed when it repeats one, so it is unique within the guide. */
   readonly key: string
   readonly label: string
   readonly summary: string | undefined
@@ -49,6 +50,13 @@ export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullR
   }
   for (const file of files) byPath.set(file.path, file)
   const placed = new Set<string>()
+  const keys = new Set<string>()
+  const uniqueKey = (key: string) => {
+    let unique = key
+    for (let count = 2; keys.has(unique); count++) unique = `${key}-${count}`
+    keys.add(unique)
+    return unique
+  }
 
   const resolveFiles = (group: GuideGroup) =>
     group.filePaths.flatMap((path): Array<GuideFile> => {
@@ -68,6 +76,7 @@ export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullR
     })
 
   const resolveGroup = (group: GuideGroup): ResolvedGroup | null => {
+    const key = uniqueKey(group.key)
     const own = resolveFiles(group)
     const children = (group.children ?? []).flatMap((child) => {
       const resolved = resolveGroup(child)
@@ -76,7 +85,7 @@ export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullR
     if (own.length === 0 && children.length === 0) return null
     const notes = own.flatMap((entry) => [...entry.fileNotes, ...entry.lineNotes, ...entry.strayLineNotes])
     return {
-      key: group.key,
+      key,
       label: group.label,
       summary: group.summary,
       category: group.category,
