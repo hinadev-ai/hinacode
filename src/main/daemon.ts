@@ -2,17 +2,18 @@ import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSyn
 import { createRequire } from "node:module"
 import { homedir, hostname } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
 import type { RemotePairing } from "../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
+import * as CloudUpdater from "./cloudUpdater.ts"
 import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
-import { parseCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
+import { autoUpdate, parseCommand, restartCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
 import { layer as SecretsLayer, noKeyring } from "./services/Secrets.ts"
 import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
-import { unsupported, Updates } from "./services/Updates.ts"
 import { hydratePath } from "./shellPath.ts"
 
 const QUIT_TIMEOUT_MS = 5000
@@ -20,6 +21,7 @@ const LISTEN_TIMEOUT_MS = 5000
 
 // Bundled to out/main/daemon.js, and run from source in tests; package.json is two levels up from both.
 const { version } = createRequire(import.meta.url)("../../package.json") as { version: string }
+const packageRoot = fileURLToPath(new URL("../..", import.meta.url))
 
 /** Electron's `appData`, where `sbx login` keeps its config. */
 const appData = () =>
@@ -61,6 +63,8 @@ const lockDataDir = (dir: string) => {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
       const pid = Number(readFileSync(path, "utf8"))
+      // After an update, `process.execve` boots the new release under the same pid, holding the lock already.
+      if (pid === process.pid) break
       if (isAlive(pid)) throw new Error(`another hinacode serve (pid ${pid}) uses ${dir}`, { cause: error })
       rmSync(path, { force: true })
     }
@@ -116,22 +120,33 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
       userData,
       sbxConfigPath: join(appData(), "sbx", "config.json"),
       keyring: noKeyring,
-      updates: Layer.succeed(Updates, unsupported(version)),
+      updates: CloudUpdater.layer({
+        current: version,
+        packageRoot,
+        registry: process.env["npm_config_registry"] || "https://registry.npmjs.org",
+        autoInstall: autoUpdate(process.env),
+        restart: () =>
+          stop(() => {
+            const { file, args, env } = restartCommand(process)
+            process.execve!(file, args, env)
+          }),
+      }),
       toWindows: () => {},
       serve: config,
     }),
   )
   let stopping = false
-  const stop = () => {
+  const stop = (then: () => void) => {
     if (stopping) return
     stopping = true
     // Running turns persist their messages and status, but a stuck one must not hold the service manager forever.
     const disposal = runtime.dispose().catch((cause: unknown) => console.error("runtime dispose failed", cause))
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
-    void Promise.race([disposal, timeout]).then(() => process.exit(0))
+    void Promise.race([disposal, timeout]).then(then)
   }
-  process.on("SIGINT", stop)
-  process.on("SIGTERM", stop)
+  const quit = () => stop(() => process.exit(0))
+  process.on("SIGINT", quit)
+  process.on("SIGTERM", quit)
   // Build the layer (open the database, run migrations, bind the listener) before printing anything.
   await runtime.runPromise(Effect.void)
   process.stdout.write(await pairingText(userData, await listening(runtime)))

@@ -413,10 +413,41 @@ export const remotePairingAtom = Atom.make((get) => {
   return call("remote.pairing", undefined)
 })
 
-export const updateStatusAtom = Atom.make((get) => {
-  get.addFinalizer(onPushEvent((event) => event.type === "update.changed" && get.refreshSelf()))
-  return call("updates.status", undefined)
-})
+/** A reconnect asks again, since a cloud comes back on a new version after it updates itself. */
+export const updateStatusAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent(
+        (event) => (event.type === "update.changed" || event.type === "environment.status") && get.refreshSelf(),
+      ),
+    )
+    return call("updates.status", undefined, { environment })
+  }),
+)
+
+/** Connected clouds with a release ready to install. A cloud whose status fails to load is left out. */
+export const cloudUpdatesAtom = Atom.make((get) =>
+  Effect.gen(function* () {
+    const { clouds } = yield* get.result(environmentsAtom)
+    const ready = yield* Effect.forEach(
+      clouds.filter((cloud) => cloud.status === "connected"),
+      (cloud) =>
+        get.result(updateStatusAtom(cloud.id)).pipe(
+          Effect.map((status) => (status.state.type === "ready" ? [cloud.id] : [])),
+          Effect.orElseSucceed(() => []),
+        ),
+      { concurrency: "unbounded" },
+    )
+    return ready.flat()
+  }),
+)
+
+export const installUpdatesAtom = Atom.fn((environments: ReadonlyArray<EnvironmentId>) =>
+  Effect.forEach(environments, (environment) => call("updates.install", undefined, { environment }), {
+    concurrency: "unbounded",
+    discard: true,
+  }),
+)
 
 const onAutomationRun = (listener: (automationId: string) => void) =>
   onPushEvent((event) => event.type === "automation.run" && listener(event.run.automationId))

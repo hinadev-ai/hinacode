@@ -90,7 +90,7 @@ const updateStateText = (state: UpdateState) => {
 }
 
 function VersionField() {
-  const status = AsyncResult.getOrElse(useAtomValue(updateStatusAtom), () => null)
+  const status = AsyncResult.getOrElse(useAtomValue(updateStatusAtom(null)), () => null)
   if (status === null) return null
   const { current, state } = status
   const busy = state.type === "unsupported" || state.type === "checking" || state.type === "downloading"

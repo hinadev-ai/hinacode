@@ -63,7 +63,7 @@ type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "r
 
 - **`all`** (`projects.list`, `threads.list`, `worktrees.list`, `pullRequests.all`, `search.threads`) asks every environment in parallel. A cloud that is not connected contributes its last answer to the same call from memory, so its projects and threads stay listed.
 - **`owner`** looks the id up in an in-memory owner index. Main fills it from every answer and push it relays: lists and creates teach thread, project, worktree, terminal and automation ids; `worktree.path` and `project.rootPath` teach roots for `git.*` and `fs.*`; approval, question and secret requests in thread events teach request ids. An id nobody has claimed belongs to this machine, which is also what every id is with no cloud paired. Roots are paths, not UUIDs, so a cloud project at the same path as one on this desktop takes its `git.*` and `fs.*` calls; Mac and Linux home directories keep that rare.
-- **`named`** reads an `environment` field on the ipc envelope, next to `method` and `payload`. Only `settings.*`, `accounts.*`, `agents.account`, `models.list`, `secrets.*`, `github.*`, `vm.host`, `remote.*`, `projects.create`, `projects.clone`, `ports.kill`, `automations.list` and `limits.list` are named, and the renderer passes it from the settings picker, the project dialog, or the thread in view. GitHub calls go where the thread's `gh` is signed in. Plan limits are named so the status bar shows this machine's accounts once instead of every machine's copy of the same subscription.
+- **`named`** reads an `environment` field on the ipc envelope, next to `method` and `payload`. Only `settings.*`, `accounts.*`, `agents.account`, `models.list`, `secrets.*`, `github.*`, `vm.host`, `remote.*`, `projects.create`, `projects.clone`, `ports.kill`, `automations.list`, `limits.list` and `updates.*` are named, and the renderer passes it from the settings picker, the project dialog, or the thread in view. GitHub calls go where the thread's `gh` is signed in. Plan limits are named so the status bar shows this machine's accounts once instead of every machine's copy of the same subscription.
 - Pending calls survive a dropped link and calls made while reconnecting queue in order. Reads rerun on reconnect; mutations reuse a call key when the cloud advertises support. A call times out after a total minute offline. See `2026-10-16-resilient-remote.md`.
 
 ### Connections
@@ -93,7 +93,7 @@ The pairing URL crosses from the renderer to main once, in `environments.add`, d
 - Moving a project or a thread to another machine. A project, its threads and worktrees stay where they were created; grouping only lists them together.
 - Grouping by anything but a GitHub `origin`, and a per-project switch to keep a repository's machines apart (T3 has one). They wait for someone who needs them.
 - Methods a cloud refuses as desktop-only: attachments, the live file explorer, the Tiny VM screen and the cloud's own pairing page answer `DesktopOnly` on a cloud's threads.
-- Remembering a cloud's last state across a desktop restart, scoped tokens, the relay (slice 3), and updating a cloud from the desktop.
+- Remembering a cloud's last state across a desktop restart, scoped tokens, and the relay (slice 3). Updating a cloud from the desktop is `2026-10-20-update-clouds.md`.
 
 ## Verification
 

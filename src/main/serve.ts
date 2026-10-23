@@ -17,6 +17,9 @@ serve options:
   -h, --help        Print this help.
   --version         Print the version.
 
+A cloud installed with npm install -g installs new releases on its own once nothing is running.
+Set HINACODE_SERVE_AUTO_UPDATE=0 to update it by hand instead.
+
 Data lives in HINACODE_USER_DATA, default ~/.hinacode-cloud.`
 
 /** A command line that does not parse. The CLI prints it with the usage and exits 1. */
@@ -77,6 +80,28 @@ const portOf = (raw: string, source: string): number => {
   }
   return port
 }
+
+/**
+ * What `process.execve` runs to boot an installed update in place of this process. It drops the token rotation the
+ * cloud was started with, which already happened, so an update never unpairs every client.
+ */
+export const restartCommand = (process: {
+  readonly execPath: string
+  readonly execArgv: ReadonlyArray<string>
+  readonly argv: ReadonlyArray<string>
+  readonly env: NodeJS.ProcessEnv
+}) => {
+  const { HINACODE_SERVE_ROTATE_TOKEN: _rotated, ...env } = process.env
+  return {
+    file: process.execPath,
+    args: [process.execPath, ...process.execArgv, ...process.argv.slice(1).filter((arg) => arg !== "--rotate-token")],
+    env,
+  }
+}
+
+/** Whether a cloud installs new releases on its own once idle. On unless `HINACODE_SERVE_AUTO_UPDATE` is 0 or false. */
+export const autoUpdate = (env: NodeJS.ProcessEnv): boolean =>
+  env["HINACODE_SERVE_AUTO_UPDATE"] === undefined || envFlag(env, "HINACODE_SERVE_AUTO_UPDATE")
 
 /** The `--name value` and `--name=value` spellings, or undefined when the flag is absent. */
 const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
