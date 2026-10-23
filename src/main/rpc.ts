@@ -174,6 +174,7 @@ const handlers: Handlers = {
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
+  "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),

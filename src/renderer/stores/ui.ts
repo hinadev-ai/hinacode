@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
+import type { EnvironmentId } from "../lib/rpc.ts"
 import {
   clampWidth,
   loadWidth,
@@ -91,6 +92,8 @@ interface UiState {
   /** Replaced to ask the composer to open one of its pickers. */
   readonly pickerRequest: { readonly picker: ComposerPicker } | null
   readonly addProjectOpen: boolean
+  /** Where the Add project dialog starts, for opening it on a cloud that was just paired. */
+  readonly addProjectEnvironment: EnvironmentId
   /** The thread whose find bar is open, or null. */
   readonly findThreadId: string | null
   readonly findQuery: string
@@ -120,7 +123,7 @@ interface UiState {
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
   readonly requestPicker: (picker: ComposerPicker) => void
-  readonly setAddProjectOpen: (open: boolean) => void
+  readonly setAddProjectOpen: (open: boolean, environment?: EnvironmentId) => void
   /** Opens and focuses the thread's find bar, replacing its query when one is given. */
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
@@ -178,6 +181,7 @@ export const useUi = create<UiState>()((set, get) => ({
   interruptRequest: 0,
   pickerRequest: null,
   addProjectOpen: false,
+  addProjectEnvironment: null,
   findThreadId: null,
   findQuery: "",
   findMessageId: null,
@@ -232,7 +236,8 @@ export const useUi = create<UiState>()((set, get) => ({
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
   requestPicker: (picker) => set({ pickerRequest: { picker } }),
-  setAddProjectOpen: (addProjectOpen) => set({ addProjectOpen }),
+  setAddProjectOpen: (addProjectOpen, environment = null) =>
+    set({ addProjectOpen, addProjectEnvironment: environment }),
   openFind: (threadId, query, messageId) =>
     set((state) => ({
       findThreadId: threadId,

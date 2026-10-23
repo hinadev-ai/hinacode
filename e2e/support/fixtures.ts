@@ -188,6 +188,7 @@ AfterScenario(async ({ app, $testInfo }) => {
   await app.page.evaluate(() => {
     localStorage.removeItem("hinacode.sidebarProjects")
     localStorage.removeItem("hinacode.sidebarTab")
+    localStorage.removeItem("hinacode.location")
   })
   await app.setWindow({ width: 1280, height: 820, zoom: 1 })
   await app.page.setViewportSize({ width: 1280, height: 820 })

@@ -21,6 +21,7 @@ import {
   type PullRequest,
   ThreadStatus,
   Worktree,
+  type WorktreeCheckout,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
 import { nowIso } from "./clock.ts"
@@ -56,6 +57,8 @@ export class Worktrees extends Context.Service<
   Worktrees,
   {
     readonly list: Effect.Effect<ReadonlyArray<Worktree>, PersistenceError>
+    /** The checkout state of every worktree not removed. A checkout git cannot read is left out. */
+    readonly checkouts: Effect.Effect<ReadonlyArray<WorktreeCheckout>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
     /**
      * Adds the git worktree and returns it in `preparing`, then runs the project's setup script in the
@@ -452,7 +455,8 @@ const make = Effect.gen(function* () {
   const deleteFiles = (rootPath: string, worktree: Worktree, deleteBranch: DeleteBranch) =>
     Effect.gen(function* () {
       if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
-        yield* git.run(rootPath, ["worktree", "remove", "--force", worktree.path])
+        // The second `--force` also removes a locked checkout, which `git worktree prune` would keep.
+        yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path])
       }
       yield* git.run(rootPath, ["worktree", "prune"])
 
@@ -491,6 +495,26 @@ const make = Effect.gen(function* () {
 
   const remove = (id: string, deleteBranch: DeleteBranch, owner?: string) =>
     exclusive(removeWhileExclusive(id, deleteBranch, owner))
+
+  const checkoutOf = (worktree: Worktree) =>
+    Effect.gen(function* () {
+      if (!(yield* fs.exists(worktree.path)))
+        return Option.some<WorktreeCheckout>({ id: worktree.id, state: "missing" })
+      const status = yield* git.run(worktree.path, ["status", "--porcelain"])
+      return Option.some<WorktreeCheckout>({ id: worktree.id, state: status.trim() === "" ? "clean" : "dirty" })
+    }).pipe(Effect.orElseSucceed(Option.none<WorktreeCheckout>))
+
+  const checkouts = findAll(undefined).pipe(
+    Effect.mapError(persistence("worktrees.checkouts")),
+    Effect.flatMap((all) =>
+      Effect.forEach(
+        all.filter((worktree) => worktree.status !== "removed"),
+        checkoutOf,
+        { concurrency: 8 },
+      ),
+    ),
+    Effect.map((states) => states.flatMap(Option.toArray)),
+  )
 
   const changes = (id: string) =>
     Effect.gen(function* () {
@@ -553,6 +577,7 @@ const make = Effect.gen(function* () {
 
   return Worktrees.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("worktrees.list"))),
+    checkouts,
     get,
     create,
     createFromPullRequest,

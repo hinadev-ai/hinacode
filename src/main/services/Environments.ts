@@ -14,6 +14,7 @@ import {
 } from "../../shared/remote.ts"
 import { learnFromAnswer, learnFromPush, makeOwners } from "../environments/owners.ts"
 import type { Entity } from "../environments/routes.ts"
+import { unreachableMessage } from "../environments/unreachable.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events, WindowPush } from "./Events.ts"
@@ -154,6 +155,7 @@ const probe = (target: Address & { readonly token: string }) => {
   const where = `${target.host}:${target.port}`
   return Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
     let reason = "the connection closed"
+    let errorCode: string | undefined
     const socket = dial(target, target.token, {
       onFrame: (frame) => {
         if (frame.type !== "ready") return
@@ -161,7 +163,9 @@ const probe = (target: Address & { readonly token: string }) => {
         socket.close()
       },
       onError: (error) => {
-        reason = error.message
+        // A host with several addresses fails with an AggregateError, whose message is empty.
+        reason = error.message || reason
+        errorCode = "code" in error && typeof error.code === "string" ? error.code : undefined
       },
       onClose: (code) => {
         if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
@@ -173,7 +177,7 @@ const probe = (target: Address & { readonly token: string }) => {
             ),
           )
         }
-        resume(Effect.fail(new EnvironmentUnreachable({ message: `Could not reach ${where}: ${reason}` })))
+        resume(Effect.fail(new EnvironmentUnreachable({ message: unreachableMessage(target, errorCode, reason) })))
       },
     })
     return Effect.sync(() => socket.terminate())
@@ -183,7 +187,7 @@ const probe = (target: Address & { readonly token: string }) => {
       orElse: () =>
         Effect.fail(
           new EnvironmentUnreachable({
-            message: `Could not reach ${where}: no answer within ${READY_TIMEOUT_MS / 1000} seconds`,
+            message: unreachableMessage(target, "ETIMEDOUT", `no answer within ${READY_TIMEOUT_MS / 1000} seconds`),
           }),
         ),
     }),

@@ -87,6 +87,13 @@ export const updateClientSettingsAtom = Atom.fn((patch: RpcRequest<"clientSettin
 /** Apps on this desktop that "Open with" can launch. */
 export const openersAtom = Atom.make(call("shell.openers", undefined))
 
+/** The checkout state of every live worktree by id, read fresh each time a view mounts it. */
+export const worktreeCheckoutsAtom = Atom.make(
+  call("worktrees.checkouts", undefined).pipe(
+    Effect.map((checkouts) => new Map(checkouts.map((checkout) => [checkout.id, checkout.state]))),
+  ),
+)
+
 /** Paired clouds with their link status. A status push lists them again. */
 export const environmentsAtom = Atom.make((get) => {
   get.addFinalizer(onPushEvent((event) => event.type === "environment.status" && get.refreshSelf()))

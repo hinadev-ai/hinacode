@@ -46,4 +46,8 @@ export const runMigrations = run({
     "18_thread_user_skills": threadUserSkills,
     "19_project_linear_review": projectLinearReview,
   }),
-}).pipe(Effect.tap((ran) => Effect.logInfo("migrations ran", ran)))
+}).pipe(
+  Effect.tap((ran) =>
+    ran.length === 0 ? Effect.void : Effect.logInfo(`migrations ran up to ${ran.at(-1)?.join("_")}`),
+  ),
+)

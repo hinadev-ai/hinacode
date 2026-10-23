@@ -30,15 +30,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { suggestProjectName } from "../lib/projectName.ts"
 
 interface ProjectDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   /** The project to edit. Without one the dialog adds a new project. */
   readonly project?: Project
+  /** Where a new project starts out. */
+  readonly environment?: EnvironmentId
 }
 
-export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProps) {
+export function ProjectDialog({ open, onOpenChange, project, environment = null }: ProjectDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -49,13 +52,12 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
           </DialogDescription>
         </DialogHeader>
         {/* Inside the popup so the form state resets every time the dialog opens. */}
-        <ProjectForm project={project} onSaved={() => onOpenChange(false)} />
+        <ProjectForm project={project} initialEnvironment={environment} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
 }
 
-const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? ""
 const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
 
 /**
@@ -70,17 +72,27 @@ function useDefaultCloneParent(environment: EnvironmentId) {
   return newest ? parentOf(newest.rootPath) : "~/code"
 }
 
-function ProjectForm({ project, onSaved }: { project: Project | undefined; onSaved: () => void }) {
+interface ProjectFormProps {
+  readonly project: Project | undefined
+  readonly initialEnvironment: EnvironmentId
+  readonly onSaved: () => void
+}
+
+function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps) {
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
   const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
-  const [name, setName] = useState(project?.name ?? "")
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
+  // Null until the user types a name, so the name follows the folder or repository typed above it.
+  const [typedName, setTypedName] = useState<string | null>(project?.name ?? null)
+  const name = typedName ?? suggestProjectName(rootPath)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
-  const [environment, setEnvironment] = useState<EnvironmentId>(() => environmentOf(project))
+  const [environment, setEnvironment] = useState<EnvironmentId>(() =>
+    project ? environmentOf(project) : initialEnvironment,
+  )
   const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
   const canBrowse = environment === null
 
@@ -109,7 +121,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
     const picked = await callPromise("dialog.pickFolder", undefined)
     if (!picked) return
     setRootPath(picked)
-    if (!name.trim()) setName(basename(picked))
+    if (!typedName?.trim()) setTypedName(null)
   }
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -156,7 +168,7 @@ function ProjectForm({ project, onSaved }: { project: Project | undefined; onSav
             id="project-name"
             required={!repository}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => setTypedName(event.target.value)}
             placeholder={repository?.name ?? m.project_name_placeholder()}
           />
         </Field>

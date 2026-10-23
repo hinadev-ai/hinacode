@@ -66,6 +66,7 @@ import {
   VmHostStatus,
   VmPasskey,
   Worktree,
+  WorktreeCheckout,
   WorkspaceChoice,
   OpenPullRequest,
 } from "./domain.ts"
@@ -171,6 +172,8 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, deleteBranch: Schema.Literals(["keep", "ifMerged", "force"]) }),
     Worktree,
   ),
+  /** The checkout state of every live worktree. A checkout git cannot read is left out. */
+  "worktrees.checkouts": rpc(Schema.Void, Schema.Array(WorktreeCheckout)),
   "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   /** Kills a setup script still running; the worktree ends `failed`. */
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
@@ -549,6 +552,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.list": "read",
   "worktrees.create": "mutation",
   "worktrees.remove": "mutation",
+  "worktrees.checkouts": "read",
   "worktrees.setupLog": "read",
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
