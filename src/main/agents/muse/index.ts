@@ -5,6 +5,7 @@ import type {
   AccountHome,
   AgentEvent,
   ApprovalDecision,
+  BackgroundTask,
   Compaction,
   ContextWindow,
   QuestionAnswers,
@@ -14,8 +15,9 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { elementContext } from "../elementContext.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, type BackgroundTasksChange } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
+import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
 import { type Incoming, makeMuseHost, type MuseHost, toAgentError } from "./host.ts"
 import { editedPath, toolInput, toolName, toolResult } from "./items.ts"
@@ -37,6 +39,7 @@ import {
   type SessionStartResult,
   SkillList,
   SubscriptionUsage,
+  ToolCallFrame,
   type TurnCompletedParams,
   type TurnInputPart,
   type TurnStartResult,
@@ -95,6 +98,8 @@ interface HostEntry {
   readonly scope: Scope.Closeable
   /** A session stays loaded in the host that opened it; another host gets `sessionInUse` until this one exits. */
   readonly sessions: Map<string, LoadedSession>
+  /** Each session's tool calls running in the background. They end with the host. */
+  readonly backgroundTasks: Map<string, ReadonlyArray<BackgroundTask>>
 }
 
 /** A turn on one hinacode thread, from the moment it is asked for until its stream ends. */
@@ -237,6 +242,39 @@ const make = Effect.gen(function* () {
   /** The plan usage the host last reported. A fresh host has none until it makes a model call. */
   let planUsage: SubscriptionUsage | undefined
   const decodePlanUsage = Schema.decodeUnknownOption(SubscriptionUsage)
+  const decodeToolCall = Schema.decodeUnknownOption(ToolCallFrame)
+  const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
+
+  const threadOf = (sessionId: string) =>
+    [...threadSessions.entries()].find(([, session]) => session === sessionId)?.[0]
+
+  const setBackgroundTasks = (entry: HostEntry, sessionId: string, tasks: ReadonlyArray<BackgroundTask>) => {
+    if ((entry.backgroundTasks.get(sessionId) ?? []) === tasks) return
+    if (tasks.length === 0) entry.backgroundTasks.delete(sessionId)
+    else entry.backgroundTasks.set(sessionId, tasks)
+    const threadId = threadOf(sessionId)
+    if (threadId !== undefined) Queue.offerUnsafe(backgroundTaskChanges, { threadId, tasks })
+  }
+
+  /** Follows tool calls into and out of the background, after their turn too, since MSP has no task-set event. */
+  const trackBackgroundTasks = (entry: HostEntry, message: Incoming) => {
+    if (message.kind === "exit") {
+      for (const sessionId of entry.backgroundTasks.keys()) setBackgroundTasks(entry, sessionId, [])
+      return
+    }
+    if (message.kind !== "notification") return
+    if (message.method === "session/closed") {
+      const sessionId = (message.params as { sessionId?: string } | undefined)?.sessionId
+      if (sessionId !== undefined) setBackgroundTasks(entry, sessionId, [])
+      return
+    }
+    if (message.method !== "item/updated" && message.method !== "item/completed") return
+    const frame = decodeToolCall(message.params)
+    if (Option.isNone(frame)) return
+    const { sessionId, item } = frame.value
+    const previous = entry.backgroundTasks.get(sessionId) ?? []
+    setBackgroundTasks(entry, sessionId, backgroundTasksAfter(previous, item, new Date().toISOString()))
+  }
 
   /** Spawned on first use and respawned after it dies, like Codex's app-server. */
   const getEntry = (home: AccountHome | null) =>
@@ -258,18 +296,19 @@ const make = Effect.gen(function* () {
           Scope.provide(scope),
           Effect.onError(() => Scope.close(scope, Exit.void)),
         )
-        const sessions = new Map<string, LoadedSession>()
+        const entry: HostEntry = { host, scope, sessions: new Map(), backgroundTasks: new Map() }
         yield* host
           .subscribe((message) => {
+            trackBackgroundTasks(entry, message)
             if (message.kind !== "notification") return
             if (message.method === "usage/changed") {
               planUsage = Option.getOrElse(decodePlanUsage(message.params), () => planUsage)
             } else {
-              trackContext(sessions, message.method, message.params)
+              trackContext(entry.sessions, message.method, message.params)
             }
           })
           .pipe(Scope.provide(scope))
-        current = { host, scope, sessions }
+        current = entry
         return current
       }),
     )
@@ -483,6 +522,8 @@ const make = Effect.gen(function* () {
           const summaryParts = new Map<string, string>()
           const toolOutput = new Map<string, string>()
           const openTools = new Set<string>()
+          /** Calls whose row closed when they went to the background; the tray follows them from there. */
+          const backgroundedTools = new Set<string>()
           let context: ContextWindow | undefined
           /** True while the compaction hinacode asked for before the turn runs. */
           let compacting = false
@@ -631,9 +672,26 @@ const make = Effect.gen(function* () {
             })
           }
 
+          const backgroundTool = (params: unknown) =>
+            Effect.gen(function* () {
+              const frame = decodeToolCall(params)
+              if (Option.isNone(frame)) return
+              const { item } = frame.value
+              if (!isBackgrounded(item) || !openTools.has(item.itemId)) return
+              openTools.delete(item.itemId)
+              toolOutput.delete(item.itemId)
+              backgroundedTools.add(item.itemId)
+              yield* emit({
+                type: "tool_call_finished",
+                callId: item.itemId,
+                output: "Running in the background",
+                isError: false,
+              })
+            })
+
           const finishTool = (item: Item) =>
             Effect.gen(function* () {
-              if (item.tool === undefined) return
+              if (item.tool === undefined || backgroundedTools.has(item.itemId)) return
               yield* startTool(item)
               openTools.delete(item.itemId)
               yield* emit({
@@ -760,6 +818,9 @@ const make = Effect.gen(function* () {
                   }
                   return false
                 }
+                case "item/updated":
+                  yield* backgroundTool(message.params)
+                  return false
                 case "item/delta":
                   yield* onDelta(message.params as ItemDeltaParams)
                   return false
@@ -886,6 +947,25 @@ const make = Effect.gen(function* () {
       loaded.approvalMode = mode
     })
 
+  /** A background task's id is its `toolCall` item's id. The ended call's `item/completed` drops it from the set. */
+  const stopBackgroundTask = (threadId: string, taskId: string) =>
+    Effect.gen(function* () {
+      const sessionId = threadSessions.get(threadId)
+      if (!current?.host.isAlive() || sessionId === undefined) return
+      const { host, backgroundTasks } = current
+      const tasks = backgroundTasks.get(sessionId) ?? []
+      yield* host.command("task/stop", { sessionId, taskId }).pipe(
+        // Muse 1.4.12 refuses `task/stop` with `invalid_target` for a shell it backgrounded past its yield time,
+        // though `task/stopAll` reaches it. Stopping all is only the same thing when it is the one task.
+        Effect.catch((error) =>
+          tasks.length === 1 && tasks[0]!.id === taskId
+            ? host.command("task/stopAll", { sessionId })
+            : Effect.fail(error),
+        ),
+        Effect.mapError(toAgentError),
+      )
+    })
+
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>
     Effect.suspend(() => {
       const deferred = approvals.get(requestId)
@@ -908,6 +988,7 @@ const make = Effect.gen(function* () {
     runTurn,
     steer,
     interrupt,
+    backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     respondApproval,
     respondQuestion,
     setAccessMode,

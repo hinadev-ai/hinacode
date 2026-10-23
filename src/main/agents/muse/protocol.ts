@@ -85,3 +85,23 @@ export const ViewPage = Schema.Struct({
   nextCursor: Schema.NullOr(Schema.String),
 })
 export type ViewPage = typeof ViewPage.Type
+
+/**
+ * A `toolCall` from `item/updated` or `item/completed`, with the fields that say whether it runs in the background.
+ * Muse 1.4.12 marks a call it backgrounded itself, because it outlived its `yield_time_ms`, only with
+ * `backgroundStatus.state: "backgrounded"`, which the SDK does not type. `background: true` marks a call sent
+ * to the background with `task/background`.
+ */
+export const ToolCallFrame = Schema.Struct({
+  sessionId: Schema.String,
+  item: Schema.Struct({
+    itemId: Schema.String,
+    kind: Schema.Literal("toolCall"),
+    status: Schema.String,
+    tool: Schema.optional(Schema.String),
+    args: Schema.optional(Schema.String),
+    background: Schema.optional(Schema.Boolean),
+    backgroundStatus: Schema.optional(Schema.Struct({ state: Schema.String })),
+  }),
+})
+export type ToolCall = (typeof ToolCallFrame.Type)["item"]

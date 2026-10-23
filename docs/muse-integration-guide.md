@@ -38,6 +38,7 @@ flowchart LR
 | `items.ts`, `approvals.ts`, `questions.ts` | Pure mappings from MSP items, approvals and questions                                                      |
 | `skills.ts`                                | Slash completions and typed skill invocations                                                              |
 | `usage.ts`                                 | Thread tokens from `view/page`, memoized per session                                                       |
+| `backgroundTasks.ts`                       | The background task set after a `toolCall` item changes                                                    |
 
 ## A turn
 
@@ -105,6 +106,14 @@ Host flags fix the sandbox posture for the host's lifetime. The approval mode be
 - hinacode picks the choice by its `decision`, not its id. "Allow" sends `approved`, "Allow for session" sends `approvedForSession` and falls back to `approved`, and "Deny" sends `denied` or `abort`. Shell stages offer no session choice, so hinacode also keeps its own session grant for the exact command, as it does for Claude. [ADR 0009](adr/0009-scoped-session-approvals.md) explains why a grant covers only that command.
 - A compound shell command is one approval with one stage per segment. Deciding a stage acks `terminal: false`, then Muse 1.4.7 sends `approval/updated` with `change.kind: "stageResolved"` and the next `currentRequirementId`. It does not re-issue `approval/request`, although MSP's reference says it does. hinacode answers every stage with the user's one decision, from either frame, and never answers a stage twice, since a repeat gets `approvalAlreadyResolved`.
 - Before a shell approval reaches the user, Muse may run a reviewer. It shows up as `approval/updated` with `reviewStarted`, then `reviewCompleted`.
+
+## Background tasks
+
+MSP has no event for a change in a session's task set, so `backgroundTasks.ts` follows `toolCall` items instead, on every frame the host sends, during a turn or after it. A call joins the set at the `item/updated` that marks it backgrounded and leaves at its `item/completed`. The id is the item's id, which MSP also uses as the task id.
+
+- Muse 1.4.12 backgrounds a `bash` call that outlives its `yield_time_ms` (10 s by default) and marks it only with `backgroundStatus.state: "backgrounded"`, which the SDK does not type. `task/list` leaves such a call out, and `task/stop` refuses it with `invalid_target`; only `task/stopAll` reaches it. A call sent there with `task/background` has `background: true`, is listed, and `task/stop` works. hinacode tries `task/stop` and falls back to `task/stopAll` when the task is the session's only one.
+- The transcript closes a backgrounded call's row as "Running in the background" instead of failing it at the turn's end.
+- When a background shell finishes, Muse starts a turn on its own to hand the result to the model. hinacode does not show that turn yet.
 
 ## Usage and plan limits
 

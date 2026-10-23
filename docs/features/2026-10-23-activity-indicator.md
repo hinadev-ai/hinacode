@@ -23,6 +23,7 @@ The plan line expands with Enter or Space. Each stop button is in the tab order 
 - `BackgroundTask { id, kind: shell | workflow | other, label, startedAt }` in `src/shared/agent.ts`. Sub-agents stay `Subagent`.
 - `AgentProvider.backgroundTasks` is optional and pairs `changes`, a stream of `{ threadId, tasks }` with replace semantics, with `stop(threadId, taskId)`. A provider cannot list tasks it cannot stop.
 - Claude maps the CLI's `background_tasks_changed` snapshot in `backgroundTasksOf` (`agents/claude/mapMessage.ts`). It drops `local_agent` tasks, which are sub-agents, and `ambient` ones, which the CLI says are not activity. Stop calls `query.stopTask`. Closing the CLI session emits an empty set, because its shells end with the process.
+- Codex polls `thread/backgroundTerminals/list` and Muse follows backgrounded `toolCall` items. `docs/agent-providers.md` has the details and what each provider still lacks.
 - `AgentRunner` keeps the latest set per thread in memory and pushes `thread.backgroundTasks`. `backgroundTasks.list` loads it and `backgroundTasks.stop` stops one. Both route to clouds like `subagents.*`.
 - The renderer keeps them in `stores/backgroundTasks.ts`. `ActivityIndicator` is the tray. `TodoActivity`, `SubagentActivity` and `BackgroundTaskActivity` are its sections, each built from `ActivityRow` and each rendering nothing when empty, so the tray hides with `:empty`.
 

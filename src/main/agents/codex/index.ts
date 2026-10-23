@@ -1,11 +1,25 @@
 import { randomUUID } from "node:crypto"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import {
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Queue,
+  Schema,
+  Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import type {
   AccountHome,
   AgentAccount,
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
+  BackgroundTask,
   ModelInfo,
   Question,
   QuestionAnswers,
@@ -17,14 +31,19 @@ import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, type BackgroundTasksChange } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
 import { elementContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
-import { GetAccountRateLimitsResponse, GetAccountResponse, type RateLimitWindow } from "./protocol.ts"
+import {
+  GetAccountRateLimitsResponse,
+  GetAccountResponse,
+  type RateLimitWindow,
+  ThreadBackgroundTerminalsListResponse,
+} from "./protocol.ts"
 import type {
   ApprovalDecisionWire,
   AsyncUserInputQuestion,
@@ -50,6 +69,8 @@ import type {
   ToolRequestUserInputParams,
   ToolRequestUserInputQuestion,
   ToolRequestUserInputResponse,
+  ThreadBackgroundTerminalsListParams,
+  ThreadBackgroundTerminalsTerminateParams,
   TurnSteerParams,
   UserInput,
 } from "./protocol.ts"
@@ -178,6 +199,20 @@ const copySession = (threadId: string, from: AccountHome | null, to: AccountHome
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
+/** Codex has no notification for background terminals, so a thread that may have some is polled. */
+const TERMINAL_POLL_INTERVAL = Duration.seconds(2)
+
+/** The background terminals of one HinaCode thread, on the app-server and Codex thread that run them. */
+type Terminals = {
+  readonly client: CodexClient
+  readonly codexThreadId: string
+  tasks: ReadonlyArray<BackgroundTask>
+  poll?: Fiber.Fiber<void>
+}
+
+const sameTasks = (a: ReadonlyArray<BackgroundTask>, b: ReadonlyArray<BackgroundTask>) =>
+  a.length === b.length && a.every((task, index) => task.id === b[index]?.id)
+
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
   const clientLock = yield* Semaphore.make(1)
@@ -227,6 +262,77 @@ const make = Effect.gen(function* () {
   const subagentTurns = new Map<string, string>()
   /** The auto-compact threshold each Codex thread was loaded with, keyed by its Codex thread id. */
   const loadedCompactLimits = new Map<string, number | null>()
+  /** Keyed by HinaCode threadId, only while its terminals are polled. */
+  const terminalsByThread = new Map<string, Terminals>()
+  const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
+
+  const listTerminals = (terminals: Terminals) =>
+    Effect.gen(function* () {
+      const found: ThreadBackgroundTerminalsListResponse["data"][number][] = []
+      let cursor: string | null = null
+      do {
+        const params: ThreadBackgroundTerminalsListParams = { threadId: terminals.codexThreadId, cursor, limit: 100 }
+        const raw = yield* terminals.client.request<unknown>("thread/backgroundTerminals/list", params)
+        const page: ThreadBackgroundTerminalsListResponse = yield* Schema.decodeUnknownEffect(
+          ThreadBackgroundTerminalsListResponse,
+        )(raw)
+        found.push(...page.data)
+        cursor = page.nextCursor
+      } while (cursor)
+      return found
+    })
+
+  /** A failed list means the app-server or its thread is gone, and the terminals with it. */
+  const refreshTerminals = (threadId: string, terminals: Terminals) =>
+    Effect.gen(function* () {
+      const listed = yield* listTerminals(terminals).pipe(Effect.orElseSucceed(() => []))
+      const now = yield* nowIso
+      const tasks = listed.map((terminal): BackgroundTask => ({
+        id: terminal.processId,
+        kind: "shell",
+        label: terminal.command,
+        startedAt: terminals.tasks.find((task) => task.id === terminal.processId)?.startedAt ?? now,
+      }))
+      if (sameTasks(terminals.tasks, tasks)) return tasks
+      terminals.tasks = tasks
+      yield* Queue.offer(backgroundTaskChanges, { threadId, tasks })
+      return tasks
+    })
+
+  /** Polls until the thread has no turn running and no terminal left. */
+  const watchTerminals = (threadId: string, client: CodexClient, codexThreadId: string) =>
+    Effect.gen(function* () {
+      const current = terminalsByThread.get(threadId)
+      if (current?.client === client && current.codexThreadId === codexThreadId) return
+      if (current?.poll) yield* Fiber.interrupt(current.poll)
+      const terminals: Terminals = { client, codexThreadId, tasks: current?.tasks ?? [] }
+      terminalsByThread.set(threadId, terminals)
+      terminals.poll = yield* Effect.gen(function* () {
+        while (true) {
+          yield* Effect.sleep(TERMINAL_POLL_INTERVAL)
+          const tasks = yield* refreshTerminals(threadId, terminals)
+          if (tasks.length === 0 && !runs.has(threadId)) return
+        }
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => terminalsByThread.get(threadId) === terminals && terminalsByThread.delete(threadId)),
+        ),
+        Effect.forkIn(providerScope),
+      )
+    })
+
+  const stopBackgroundTask = (threadId: string, taskId: string) =>
+    Effect.suspend(() => {
+      const terminals = terminalsByThread.get(threadId)
+      if (terminals === undefined) return Effect.void
+      const params: ThreadBackgroundTerminalsTerminateParams = {
+        threadId: terminals.codexThreadId,
+        processId: taskId,
+      }
+      return terminals.client
+        .request("thread/backgroundTerminals/terminate", params)
+        .pipe(Effect.andThen(refreshTerminals(threadId, terminals)), Effect.asVoid)
+    })
 
   const listModels = Effect.gen(function* () {
     const client = yield* getClient(null)
@@ -387,6 +493,8 @@ const make = Effect.gen(function* () {
           const commandOutput = new Map<string, string>()
           const startedTools = new Set<string>()
           const openTools = new Set<string>()
+          /** Commands whose process can keep running after the turn, in Codex's background terminals. */
+          const backgroundable = new Set<string>()
           const approvalIdByRpcId = new Map<string | number, string>()
           const questionIdByRpcId = new Map<string | number, string>()
           let subagents = subagentsByThread.get(input.threadId)
@@ -628,6 +736,10 @@ const make = Effect.gen(function* () {
                     yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
                   }
                   yield* startTool(params.item)
+                  if (params.item.type === "commandExecution" && params.item.processId != null) {
+                    backgroundable.add(params.item.id)
+                    yield* watchTerminals(input.threadId, client, thread.id)
+                  }
                   yield* emitSubagents(applyParentItem(subagents, params.item, yield* nowIso))
                   return false
                 }
@@ -689,8 +801,11 @@ const make = Effect.gen(function* () {
                   const { status, error } = params.turn
                   // An interrupted turn completes without item/completed for the tools it cut off.
                   for (const callId of openTools) {
-                    const output = commandOutput.get(callId) ?? `Turn ${status}`
-                    yield* emit({ type: "tool_call_finished", callId, output, isError: true })
+                    // A completed turn leaves a long-running command going in a background terminal, not failed.
+                    const isError = status !== "completed" || !backgroundable.has(callId)
+                    const output =
+                      commandOutput.get(callId) ?? (isError ? `Turn ${status}` : "Running in the background")
+                    yield* emit({ type: "tool_call_finished", callId, output, isError })
                   }
                   openTools.clear()
                   yield* emit(
@@ -791,6 +906,7 @@ const make = Effect.gen(function* () {
     copySession,
     listCommands,
     runTurn,
+    backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     steer,
     interrupt,
     stopSubagent,

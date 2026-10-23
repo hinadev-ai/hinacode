@@ -21,6 +21,7 @@ const command = {
   status: "inProgress",
   aggregatedOutput: null,
   exitCode: null,
+  processId: null,
 } as const satisfies ThreadItem
 const answer = { type: "agentMessage", id: "msg_0f80", text: "218" } as const satisfies ThreadItem
 const tokenUsage = {

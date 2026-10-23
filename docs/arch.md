@@ -179,6 +179,7 @@ Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 - A migration widening the `provider` CHECK on `thread` and `automation`, as `0011_muse_provider` does.
 - The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
 - `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
+- The capability checklist in [`agent-providers.md`](agent-providers.md), so no harness feature is silently missing.
 
 ## A turn, end to end
 

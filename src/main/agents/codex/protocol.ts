@@ -136,6 +136,8 @@ export type ThreadItem =
       status: CommandExecutionStatus
       aggregatedOutput: string | null
       exitCode: number | null
+      /** Set when the command runs in a unified-exec process, which can outlive the turn as a background terminal. */
+      processId: string | null
     }
   | { type: "fileChange"; id: string; changes: Array<FileUpdateChange>; status: PatchApplyStatus }
   | {
@@ -316,3 +318,12 @@ export const GetAccountRateLimitsResponse = Schema.Struct({
   rateLimitsByLimitId: Schema.NullOr(Schema.Record(Schema.String, RateLimitSnapshot)),
 })
 export type GetAccountRateLimitsResponse = typeof GetAccountRateLimitsResponse.Type
+
+export type ThreadBackgroundTerminalsListParams = { threadId: string; cursor?: string | null; limit?: number | null }
+export type ThreadBackgroundTerminalsTerminateParams = { threadId: string; processId: string }
+export const ThreadBackgroundTerminal = Schema.Struct({ processId: Schema.String, command: Schema.String })
+export const ThreadBackgroundTerminalsListResponse = Schema.Struct({
+  data: Schema.Array(ThreadBackgroundTerminal),
+  nextCursor: Schema.NullOr(Schema.String),
+})
+export type ThreadBackgroundTerminalsListResponse = typeof ThreadBackgroundTerminalsListResponse.Type
