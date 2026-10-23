@@ -38,6 +38,7 @@ interface TestFixtures {
   readonly automaticResumeApp: HinacodeApp
   readonly orgSpendLimitApp: HinacodeApp
   readonly todoApp: HinacodeApp
+  readonly activityApp: HinacodeApp
   readonly names: Names
   /** A throwaway git repository on `main` with a README and a gitignored `.env`, inside the app's user-data directory. */
   readonly repo: string
@@ -106,6 +107,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       await provide(app)
       if (testInfo.status !== testInfo.expectedStatus) {
         await testInfo.attach("todo-screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
+      }
+    } finally {
+      await app.close()
+    }
+  },
+  activityApp: async ({}, provide, testInfo) => {
+    const app = await spawnApp({ mockClaude: "activity" })
+    try {
+      await provide(app)
+      if (testInfo.status !== testInfo.expectedStatus) {
+        await testInfo.attach("activity-screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
       }
     } finally {
       await app.close()

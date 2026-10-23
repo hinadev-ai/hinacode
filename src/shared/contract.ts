@@ -15,6 +15,7 @@ import {
   ModelInfo,
   ProviderId,
   Subagent,
+  BackgroundTask,
   QuestionAnswers,
   QuestionRequest,
   SecretRequest,
@@ -366,6 +367,9 @@ export const RpcMethods = {
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
   /** Stops one running sub-agent by its `Subagent.id`. The turn that spawned it keeps going. */
   "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
+  /** Background tasks the thread's agent has running now, oldest first. */
+  "backgroundTasks.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(BackgroundTask)),
+  "backgroundTasks.stop": rpc(Schema.Struct({ threadId: Schema.String, taskId: Schema.String }), Schema.Void),
   /** Tokens the thread spent, read from its agent's transcripts. Null before the first turn or once they are gone. */
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
   /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
@@ -629,6 +633,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "secrets.clear": "mutation",
   "subagents.list": "read",
   "subagents.stop": "mutation",
+  "backgroundTasks.list": "read",
+  "backgroundTasks.stop": "mutation",
   "threads.usage": "read",
   "secrets.respond": "mutation",
   "pullRequests.list": "read",
@@ -775,6 +781,12 @@ export const PushEvent = Schema.Union([
     type: Schema.Literal("thread.subagents"),
     threadId: Schema.String,
     subagents: Schema.Array(Subagent),
+  }),
+  /** Every background task the thread's agent has running, oldest first, sent whenever the set changes. */
+  Schema.Struct({
+    type: Schema.Literal("thread.backgroundTasks"),
+    threadId: Schema.String,
+    tasks: Schema.Array(BackgroundTask),
   }),
   /** Something changed directly inside a folder `fs.watch` asked for. */
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),

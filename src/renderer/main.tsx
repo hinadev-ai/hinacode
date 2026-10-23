@@ -14,6 +14,7 @@ import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
 import { router } from "./router.tsx"
+import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
 import { usePullRequestGuides } from "./stores/pullRequestGuides.ts"
@@ -89,6 +90,8 @@ onPushEvent((event) => {
       return usePullRequestGuides.getState().replace(event.url, event.state)
     case "thread.subagents":
       return useSubagents.getState().replace(event.threadId, event.subagents)
+    case "thread.backgroundTasks":
+      return useBackgroundTasks.getState().replace(event.threadId, event.tasks)
     case "terminal.data":
       return writeTerminal(event.id, event.data, event.offset)
     case "terminal.exited":

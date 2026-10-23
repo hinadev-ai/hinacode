@@ -1,11 +1,12 @@
 import type {
+  SDKBackgroundTasksChangedMessage,
   SDKMessage,
   SDKResultMessage,
   SDKTaskNotificationMessage,
   SDKTaskProgressMessage,
   SDKTaskStartedMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import type { AgentEvent, Subagent, TokenUsage } from "../../../shared/agent.ts"
+import type { AgentEvent, BackgroundTask, BackgroundTaskKind, Subagent, TokenUsage } from "../../../shared/agent.ts"
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 
@@ -214,6 +215,28 @@ function subagentEnded(message: SDKTaskNotificationMessage, state: MapState, now
 function updateSubagent(state: MapState, subagent: Subagent): Array<AgentEvent> {
   state.subagents.set(subagent.id, subagent)
   return [{ type: "subagent_updated", subagent }]
+}
+
+const backgroundKinds: Partial<Record<string, BackgroundTaskKind>> = { local_bash: "shell", local_workflow: "workflow" }
+
+/**
+ * The CLI's live background tasks as HinaCode shows them. Sub-agents (`local_agent`) are left out because they
+ * are `Subagent`s, and ambient tasks because the CLI says they are not activity. A task keeps the `startedAt` it
+ * had in `previous`.
+ */
+export function backgroundTasksOf(
+  message: SDKBackgroundTasksChangedMessage,
+  previous: ReadonlyArray<BackgroundTask>,
+  now: string,
+): ReadonlyArray<BackgroundTask> {
+  return message.tasks
+    .filter((task) => task.task_type !== "local_agent" && task.ambient !== true)
+    .map((task) => ({
+      id: task.task_id,
+      kind: backgroundKinds[task.task_type] ?? "other",
+      label: task.description,
+      startedAt: previous.find((known) => known.id === task.task_id)?.startedAt ?? now,
+    }))
 }
 
 const limitErrorText =

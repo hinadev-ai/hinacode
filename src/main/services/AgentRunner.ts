@@ -26,6 +26,7 @@ import type {
   QuestionAnswers,
   QuestionRequest,
   Subagent,
+  BackgroundTask,
   SecretRequest,
   ThreadUsage,
 } from "../../shared/agent.ts"
@@ -178,6 +179,12 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       subagentId: string,
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+    /** Background tasks the thread's agent has running now, oldest first. */
+    readonly backgroundTasks: (threadId: string) => Effect.Effect<ReadonlyArray<BackgroundTask>>
+    readonly stopBackgroundTask: (
+      threadId: string,
+      taskId: string,
+    ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
@@ -297,6 +304,8 @@ const make = Effect.gen(function* () {
   const threadLocks = new Map<string, Semaphore.Semaphore>()
   /** Latest state of each sub-agent per thread, in spawn order. Kept in memory only, so it ends with the app. */
   const subagents = new Map<string, Map<string, Subagent>>()
+  /** Background tasks per thread, as the provider last reported them. A thread with none is absent. */
+  const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
   let seq = 0
 
   // Nothing runs at boot, so whatever a killed app left running is over.
@@ -823,6 +832,18 @@ const make = Effect.gen(function* () {
     )
   }
 
+  for (const provider of Object.values(providers)) {
+    if (provider.backgroundTasks === undefined) continue
+    yield* Effect.forkIn(
+      Stream.runForEach(provider.backgroundTasks.changes, ({ threadId, tasks }) => {
+        if (tasks.length === 0) backgroundTasks.delete(threadId)
+        else backgroundTasks.set(threadId, tasks)
+        return push.publish({ type: "thread.backgroundTasks", threadId, tasks })
+      }),
+      scope,
+    )
+  }
+
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
@@ -948,6 +969,16 @@ const make = Effect.gen(function* () {
         const endedAt = yield* nowIso
         const latest = subagents.get(threadId)?.get(subagentId)
         if (latest?.status === "running") yield* updateSubagent(threadId, { ...latest, status: "stopped", endedAt })
+      }),
+    backgroundTasks: (threadId) => Effect.sync(() => backgroundTasks.get(threadId) ?? []),
+    stopBackgroundTask: (threadId, taskId) =>
+      Effect.gen(function* () {
+        const { provider: id } = yield* threads.get(threadId)
+        const tasks = providers[id].backgroundTasks
+        if (tasks === undefined) {
+          return yield* new AgentError({ provider: id, message: "This agent cannot stop a background task" })
+        }
+        yield* tasks.stop(threadId, taskId)
       }),
     listCommands: (threadId) =>
       Effect.gen(function* () {

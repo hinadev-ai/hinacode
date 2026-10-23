@@ -7,6 +7,7 @@ import type {
   AgentCommand,
   AgentEvent,
   ApprovalDecision,
+  BackgroundTask,
   ModelInfo,
   ProviderId,
   QuestionAnswers,
@@ -26,6 +27,12 @@ export interface Wake {
   readonly events: Stream.Stream<AgentEvent, AgentError>
   /** Stops this turn if the runner cannot adopt its stream. Safe after it has ended or been replaced. */
   readonly discard: Effect.Effect<void>
+}
+
+/** The thread's background tasks after a change, replacing the ones before. */
+export interface BackgroundTasksChange {
+  readonly threadId: string
+  readonly tasks: ReadonlyArray<BackgroundTask>
 }
 
 /**
@@ -76,6 +83,15 @@ export interface AgentProvider {
     attachments: ReadonlyArray<Attachment>,
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
+  /**
+   * Work the agent keeps running between tool calls and turns, such as Claude's `run_in_background` shells. A
+   * provider whose agent cannot list and stop them leaves it out.
+   */
+  readonly backgroundTasks?: {
+    /** Emits for every thread whose set changes, including the empty set when its session ends. */
+    readonly changes: Stream.Stream<BackgroundTasksChange>
+    readonly stop: (threadId: string, taskId: string) => Effect.Effect<void, AgentError>
+  }
   /** Stops one sub-agent of the thread by its `Subagent.id`. A provider that cannot leaves it out. */
   readonly stopSubagent?: (threadId: string, subagentId: string) => Effect.Effect<void, AgentError>
   readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
