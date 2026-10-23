@@ -38,6 +38,16 @@ jobs:
             desktop:
               - *app
               - '!apps/mobile/**'
+              - '!tools/**'
+              - '!scripts/**'
+              - '!**/*.test.ts'
+              - '!**/*.test.tsx'
+              - '!**/*.test.mjs'
+              - '!.github/workflows/build.yml'
+              - '!.github/workflows/react-doctor.yml'
+              - '!.oxlintrc.json'
+              - '!.oxfmtrc.json'
+              - '!skills-lock.json'
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: site
         with:
