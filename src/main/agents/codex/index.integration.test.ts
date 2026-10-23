@@ -2,10 +2,11 @@ import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, watch,
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, PubSub, Stream } from "effect"
+import { Effect, Fiber, PubSub, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
+import type { BackgroundTasksChange } from "../provider.ts"
 import { CodexProvider } from "./index.ts"
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
@@ -29,6 +30,7 @@ type Control = {
   subagentPending?: boolean
   plan?: boolean
   compaction?: boolean
+  backgroundTerminal?: boolean
   skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
@@ -488,6 +490,42 @@ const pendingQuestion = (turn: Turn) => {
   if (requested?.type !== "question_requested") throw new Error("No pending question")
   return requested.request
 }
+
+describe("Codex background terminals", () => {
+  it.live("lists a command left running after the turn, stops it, and empties the set", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))
+        const changes = yield* Queue.unbounded<BackgroundTasksChange>()
+        yield* backgroundTasks.changes.pipe(
+          Stream.runForEach((change) => Queue.offer(changes, change)),
+          Effect.forkChild,
+        )
+        setControl({ backgroundTerminal: true })
+        const turn = yield* startTurn("terminal-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events).toContainEqual({
+          type: "tool_call_finished",
+          callId: "dev-server",
+          output: "Running in the background",
+          isError: false,
+        })
+
+        expect(yield* Queue.take(changes)).toMatchObject({
+          threadId: "terminal-thread",
+          tasks: [{ id: "1001", kind: "shell", label: "pnpm dev", startedAt: expect.any(String) }],
+        })
+
+        yield* backgroundTasks.stop("terminal-thread", "1001")
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toMatchObject(
+          [{ params: { threadId: "codex-thread", processId: "1001" } }],
+        )
+        expect(yield* Queue.take(changes)).toStrictEqual({ threadId: "terminal-thread", tasks: [] })
+      }),
+    ),
+  )
+})
 
 describe("Codex questions", () => {
   it.live("maps blocking questions and returns option and typed answers on the request id", () =>

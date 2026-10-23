@@ -5,6 +5,7 @@
 //   accountFromHome: account/read reports `<basename of $CODEX_HOME>@example.com`
 //   subagent: spawn a sub-agent thread that runs one command before the turn completes
 //   compaction: compact the context before the turn's reply, as Codex does past model_auto_compact_token_limit
+//   backgroundTerminal: start a command that keeps running in a background terminal after the turn completes
 import { appendFileSync, readFileSync, watch } from "node:fs"
 import { basename } from "node:path"
 import { createInterface } from "node:readline"
@@ -67,6 +68,8 @@ const spawnSubagent = (threadId, turnId) => {
 }
 
 const held = []
+/** Background terminals keyed by Codex thread id. */
+const terminals = new Map()
 let turns = 0
 let activeQuestion = null
 
@@ -156,6 +159,20 @@ const reply = ({ id, method, params }) => {
         }
       }
       if (control().subagent) spawnSubagent(params.threadId, turnId)
+      if (control().backgroundTerminal) {
+        const item = {
+          type: "commandExecution",
+          id: "dev-server",
+          command: "pnpm dev",
+          cwd: "/repo",
+          processId: "1001",
+          status: "inProgress",
+          aggregatedOutput: null,
+          exitCode: null,
+        }
+        terminals.set(params.threadId, [{ itemId: item.id, processId: item.processId, command: item.command }])
+        send({ method: "item/started", params: { threadId: params.threadId, turnId, item } })
+      }
       if (!control().holdTurn) {
         for (const tokenUsage of turnTokenUsage) {
           send({ method: "thread/tokenUsage/updated", params: { threadId: params.threadId, turnId, tokenUsage } })
@@ -166,6 +183,22 @@ const reply = ({ id, method, params }) => {
         method: "item/agentMessage/delta",
         params: { threadId: params.threadId, turnId, itemId: "message", delta: "working" },
       })
+    }
+    case "thread/backgroundTerminals/list": {
+      const data = (terminals.get(params.threadId) ?? []).map((terminal) => ({
+        ...terminal,
+        cwd: "/repo",
+        osPid: 4242,
+        cpuPercent: 0.5,
+        rssKb: 1024,
+      }))
+      return send({ id, result: { data, nextCursor: null } })
+    }
+    case "thread/backgroundTerminals/terminate": {
+      const running = terminals.get(params.threadId) ?? []
+      const rest = running.filter((terminal) => terminal.processId !== params.processId)
+      terminals.set(params.threadId, rest)
+      return send({ id, result: { terminated: rest.length < running.length } })
     }
     case "turn/interrupt":
       send({ id, result: {} })
