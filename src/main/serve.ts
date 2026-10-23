@@ -81,17 +81,23 @@ const portOf = (raw: string, source: string): number => {
   return port
 }
 
-/** What `process.execve` runs to boot an installed update in place of this process. */
+/**
+ * What `process.execve` runs to boot an installed update in place of this process. It drops the token rotation the
+ * cloud was started with, which already happened, so an update never unpairs every client.
+ */
 export const restartCommand = (process: {
   readonly execPath: string
   readonly execArgv: ReadonlyArray<string>
   readonly argv: ReadonlyArray<string>
   readonly env: NodeJS.ProcessEnv
-}) => ({
-  file: process.execPath,
-  args: [process.execPath, ...process.execArgv, ...process.argv.slice(1)],
-  env: process.env,
-})
+}) => {
+  const { HINACODE_SERVE_ROTATE_TOKEN: _rotated, ...env } = process.env
+  return {
+    file: process.execPath,
+    args: [process.execPath, ...process.execArgv, ...process.argv.slice(1).filter((arg) => arg !== "--rotate-token")],
+    env,
+  }
+}
 
 /** Whether a cloud installs new releases on its own once idle. On unless `HINACODE_SERVE_AUTO_UPDATE` is 0 or false. */
 export const autoUpdate = (env: NodeJS.ProcessEnv): boolean =>
