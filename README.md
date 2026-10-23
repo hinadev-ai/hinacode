@@ -9,7 +9,7 @@ HinaCode is an Electron app built for coding agents. It currently supports Claud
 
 ## Development
 
-Requires Node 24 or later, pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Muse Code threads need the `muse` CLI, signed in with `muse login`. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
+Requires Node 24.22.1 or later (26.12.1 or later on Node 26), pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Muse Code threads need the `muse` CLI, signed in with `muse login`. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
 
 ```sh
 pnpm install
