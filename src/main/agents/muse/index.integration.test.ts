@@ -8,6 +8,7 @@ import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import { findBinary } from "../binary.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
+import type { BackgroundTasksChange } from "../provider.ts"
 import { FAKE_MODEL_ID, type FakeEndpoint, startFakeEndpoint, startFakeMcpServer } from "./fakeEndpoint.ts"
 import { MuseProvider } from "./index.ts"
 
@@ -141,6 +142,43 @@ const withProvider = <A, E>(effect: Effect.Effect<A, E, MuseProvider>) =>
   effect.pipe(Effect.provide(MuseProvider.layer))
 
 const TURN_TIMEOUT = 60_000
+
+/** Muse moves a shell to the background once it outlives `yield_time_ms`. */
+const backgroundShell = (command: string) => (marker: string) =>
+  endpoint.script({
+    when: marker,
+    name: "bash",
+    arguments: { command, description: "Wait in the background", yield_time_ms: 200 },
+  })
+
+/** Collects the provider's background task changes, subscribed before any turn starts. */
+const watchBackgroundTasks = Effect.gen(function* () {
+  const provider = yield* MuseProvider
+  const tasks = provider.backgroundTasks
+  if (tasks === undefined) return yield* Effect.die("backgroundTasks is missing")
+  const changes: Array<BackgroundTasksChange> = []
+  const arrived = yield* PubSub.unbounded<BackgroundTasksChange>()
+  yield* tasks.changes.pipe(
+    Stream.runForEach((change) =>
+      Effect.sync(() => changes.push(change)).pipe(Effect.andThen(PubSub.publish(arrived, change))),
+    ),
+    Effect.forkChild,
+  )
+  /** Resolves with the first change for `threadId` that matches `predicate`. */
+  const until = (threadId: string, predicate: (change: BackgroundTasksChange) => boolean) => {
+    const matches = (change: BackgroundTasksChange) => change.threadId === threadId && predicate(change)
+    return Effect.gen(function* () {
+      const updates = yield* PubSub.subscribe(arrived)
+      const seen = changes.find(matches)
+      if (seen !== undefined) return seen
+      while (true) {
+        const change = yield* PubSub.take(updates)
+        if (matches(change)) return change
+      }
+    }).pipe(Effect.scoped)
+  }
+  return { stop: tasks.stop, changes, until }
+})
 
 const twoStages = (marker: string) =>
   endpoint.script({
@@ -277,6 +315,63 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           ])
           expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ isError: true }])
           expect(turn.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "lists a shell that went to the background and stops it",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const tasks = yield* watchBackgroundTasks
+          const turn = yield* startTurn("full", backgroundShell("sleep 60"))
+          const { tasks: running } = yield* tasks.until(turn.threadId, (change) => change.tasks.length > 0)
+          expect(running).toStrictEqual([
+            { id: expect.any(String), kind: "shell", label: "Wait in the background", startedAt: expect.any(String) },
+          ])
+          yield* Fiber.join(turn.fiber)
+          // The shell outlives its turn, so its row closes when it leaves instead of failing at the turn's end.
+          expect(eventsOf(turn, "tool_call_finished")).toStrictEqual([
+            { type: "tool_call_finished", callId: running[0]!.id, output: "Running in the background", isError: false },
+          ])
+          expect(turn.events.at(-1)?.type).toBe("turn_completed")
+
+          yield* tasks.stop(turn.threadId, running[0]!.id)
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length === 0)
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "drops a background shell from the set once it finishes",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const tasks = yield* watchBackgroundTasks
+          const turn = yield* startTurn("full", backgroundShell("sleep 2"))
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length > 0)
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length === 0)
+          yield* Fiber.join(turn.fiber)
+          expect(tasks.changes.filter((change) => change.threadId === turn.threadId)).toHaveLength(2)
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "empties a thread's background tasks when the host dies",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const tasks = yield* watchBackgroundTasks
+          const turn = yield* startTurn("full", backgroundShell("sleep 60"))
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length > 0)
+          yield* Fiber.join(turn.fiber)
+          execFileSync("pkill", ["-KILL", "-P", String(process.pid), "-f", "serve --trust-workspace"])
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length === 0)
         }),
       ),
     TURN_TIMEOUT,
