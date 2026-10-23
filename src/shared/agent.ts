@@ -80,6 +80,9 @@ export interface AccountHome {
 }
 
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
+/** The reasoning efforts Claude Code takes as `effort`, lowest first. */
+export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
+
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   id,
   label: id,

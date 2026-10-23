@@ -187,6 +187,108 @@ export const PullRequestDetail = Schema.Struct({
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 
+export const PullRequestFileStatus = Schema.Literals(["added", "removed", "modified", "renamed", "copied"])
+export type PullRequestFileStatus = typeof PullRequestFileStatus.Type
+
+/** One file of `gh pr diff`. */
+export const PullRequestFile = Schema.Struct({
+  path: Schema.String,
+  /** The path before a rename or copy. */
+  previousPath: Schema.NullOr(Schema.String),
+  status: PullRequestFileStatus,
+  additions: Schema.Int,
+  deletions: Schema.Int,
+  binary: Schema.Boolean,
+  /** This file's section of the diff, headers included, as `PatchDiff` takes it. */
+  patch: Schema.String,
+})
+export type PullRequestFile = typeof PullRequestFile.Type
+
+/** The part of the system a guide group touches. These are pulls.review's categories, which its prompt explains. */
+export const GuideCategory = Schema.Literals([
+  "ui",
+  "api",
+  "core",
+  "data",
+  "cli",
+  "security",
+  "tests",
+  "docs",
+  "examples",
+  "deps",
+  "build",
+  "scripts",
+  "config",
+  "i18n",
+  "assets",
+  "other",
+])
+export type GuideCategory = typeof GuideCategory.Type
+
+const GuideNoteFields = {
+  path: Schema.String,
+  /** Markdown. */
+  text: Schema.String,
+  critical: Schema.optional(Schema.Boolean),
+}
+
+export const GuideFileNote = Schema.Struct(GuideNoteFields)
+export type GuideFileNote = typeof GuideFileNote.Type
+
+/** `additions` lines are numbered in the new file, `deletions` lines in the old one, as in the hunk headers. */
+export const GuideLineNote = Schema.Struct({
+  ...GuideNoteFields,
+  side: Schema.Literals(["additions", "deletions"]),
+  line: Schema.Number,
+})
+export type GuideLineNote = typeof GuideLineNote.Type
+
+const GuideGroupFields = {
+  key: Schema.String,
+  label: Schema.String,
+  /** Markdown. */
+  summary: Schema.optional(Schema.String),
+  category: GuideCategory,
+  critical: Schema.optional(Schema.Boolean),
+  /** Files of this group itself, not of its children. */
+  filePaths: Schema.Array(Schema.String),
+  fileNotes: Schema.optional(Schema.Array(GuideFileNote)),
+  lineNotes: Schema.optional(Schema.Array(GuideLineNote)),
+}
+
+/** Groups nest one level at most: a child has no children. */
+export const GuideGroup = Schema.Struct({
+  ...GuideGroupFields,
+  children: Schema.optional(Schema.Array(Schema.Struct(GuideGroupFields))),
+})
+export type GuideGroup = typeof GuideGroup.Type
+
+/** A pull request's changed files grouped by intent and explained, in review order. */
+export const PullRequestGuide = Schema.Struct({
+  /** The head commit the guide was written for. */
+  head: Schema.String,
+  model: Schema.String,
+  generatedAt: Timestamp,
+  /** Markdown. */
+  summary: Schema.String,
+  groups: Schema.Array(GuideGroup),
+})
+export type PullRequestGuide = typeof PullRequestGuide.Type
+
+/** A guide being written for `head`, or the reason the last attempt for `head` failed. */
+export const PullRequestGuideJob = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("running"), head: Schema.String }),
+  Schema.Struct({ status: Schema.Literal("failed"), head: Schema.String, message: Schema.String }),
+])
+export type PullRequestGuideJob = typeof PullRequestGuideJob.Type
+
+export const PullRequestGuideState = Schema.Struct({
+  /** The newest finished guide. Its head may be older than the pull request's. */
+  guide: Schema.NullOr(PullRequestGuide),
+  job: Schema.NullOr(PullRequestGuideJob),
+})
+export type PullRequestGuideState = typeof PullRequestGuideState.Type
+
 export const MergeMethod = Schema.Literals(["squash", "merge", "rebase"])
 export type MergeMethod = typeof MergeMethod.Type
 
@@ -538,6 +640,8 @@ export const Settings = Schema.Struct({
   }),
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
+  /** The Claude model and reasoning effort that write pull request guides. */
+  pullRequestGuide: Schema.Struct({ model: Schema.String, effort: Schema.String }),
   /** The access mode new threads start with. */
   defaultAccessMode: AccessMode,
   archive: ArchiveSettings,
@@ -556,6 +660,7 @@ export const defaultSettings: Settings = {
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
+  pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
   experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },

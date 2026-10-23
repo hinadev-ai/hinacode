@@ -12,7 +12,14 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cache, Cause, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
-import type { AccountHome, AgentAccount, AgentEvent, ModelInfo, RunTurnInput } from "../../../shared/agent.ts"
+import {
+  type AccountHome,
+  type AgentAccount,
+  type AgentEvent,
+  CLAUDE_EFFORT_LEVELS,
+  type ModelInfo,
+  type RunTurnInput,
+} from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
@@ -50,9 +57,8 @@ const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
   fallbackModel("claude-haiku-5-5", "Haiku 5.5"),
 ]
 
-const EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 const isEffortLevel = (effort: string | null): effort is EffortLevel =>
-  effort !== null && EFFORT_LEVELS.includes(effort)
+  effort !== null && CLAUDE_EFFORT_LEVELS.includes(effort)
 
 /**
  * Claude Code modes offered beside the effort levels. Ultrathink is a prompt keyword that asks for deeper

@@ -15,12 +15,13 @@ import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
-import { GitHub } from "./services/GitHub.ts"
+import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import { Projects } from "./services/Projects.ts"
+import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
@@ -44,6 +45,7 @@ export type AppServices =
   | AgentRunner
   | McpCredentials
   | PullRequests
+  | PullRequestGuides
   | Search
   | Secrets
   | Ports
@@ -287,7 +289,15 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
-  "github.pullRequestDetail": ({ url }) => GitHub.use((github) => github.pullRequestDetail(url)),
+  // Opening a pull request is one of the moments main learns its head, so its guide starts right then.
+  "github.pullRequestDetail": ({ url }) =>
+    GitHub.use((github) => github.pullRequestDetail(url)).pipe(
+      Effect.tap((detail) => PullRequestGuides.use((guides) => guides.ensure(detail))),
+    ),
+  "github.pullRequestDiff": ({ url }) =>
+    GitHub.use((github) => github.pullRequestDiff(url)).pipe(Effect.flatMap(pullRequestFiles)),
+  "pullRequestGuides.get": ({ url }) => PullRequestGuides.use((guides) => guides.get(url)),
+  "pullRequestGuides.retry": ({ url }) => PullRequestGuides.use((guides) => guides.retry(url)),
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.repository": ({ projectId }) =>
