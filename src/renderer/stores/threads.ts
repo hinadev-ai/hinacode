@@ -55,10 +55,8 @@ export const selectPinnedThreads = (state: Pick<ThreadsState, "byId">) =>
     .filter((thread) => isActive(thread) && isPinned(thread))
     .toSorted((a, b) => (a.pinnedAt ?? "").localeCompare(b.pinnedAt ?? ""))
 
-/** The projects' archived threads, most recently updated first. */
-export const selectArchivedThreads =
-  (...projectIds: ReadonlyArray<string>) =>
-  (state: Pick<ThreadsState, "byId">) =>
-    inProjects(state, projectIds)
-      .filter((thread) => !isActive(thread))
-      .toSorted(newestFirst)
+/** Archived threads of every project, most recently updated first. */
+export const selectArchivedThreads = (state: Pick<ThreadsState, "byId">) =>
+  Object.values(state.byId)
+    .filter((thread) => !isActive(thread))
+    .toSorted(newestFirst)
