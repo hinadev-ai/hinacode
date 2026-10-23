@@ -287,6 +287,9 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
+  "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
+  "backgroundTasks.stop": ({ threadId, taskId }) =>
+    AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),

@@ -16,6 +16,7 @@ import {
   type AccountHome,
   type AgentAccount,
   type AgentEvent,
+  type BackgroundTask,
   CLAUDE_EFFORT_LEVELS,
   type ModelInfo,
   type RunTurnInput,
@@ -24,12 +25,12 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider, type Wake } from "../provider.ts"
+import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { hideUserCommands, toCommand } from "./commands.ts"
-import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
+import { backgroundTasksOf, isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
 import { elementContext } from "../elementContext.ts"
@@ -106,6 +107,8 @@ interface Session extends MapState, ApprovalSession {
   answering: ReadonlyArray<string>
   readonly tasks: Map<string, string | undefined>
   taskSnapshots: boolean
+  /** What the latest snapshot showed as background tasks. Only CLIs that send snapshots fill it. */
+  backgroundTasks: ReadonlyArray<BackgroundTask>
   /** The CLI sends `session_state_changed`, so a turn ends when it goes idle instead of at its result. */
   reportsState: boolean
   /** The event that ends the turn once the CLI goes idle, mapped from the turn's latest result. */
@@ -343,6 +346,7 @@ export const layer = Layer.effect(
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
     const wakes = yield* Queue.unbounded<Wake>()
+    const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
     const probedCommands = yield* Cache.make({
       lookup: probeCommands,
       capacity: 32,
@@ -375,9 +379,17 @@ export const layer = Layer.effect(
       session.expiry = null
     }
 
+    const setBackgroundTasks = (session: Session, tasks: ReadonlyArray<BackgroundTask>) => {
+      if (session.backgroundTasks.length === 0 && tasks.length === 0) return
+      session.backgroundTasks = tasks
+      Queue.offerUnsafe(backgroundTaskChanges, { threadId: session.threadId, tasks })
+    }
+
     const closeSessionUnsafe = (session: Session) => {
       if (session.closed) return
       session.closed = true
+      // The CLI's background shells end with its process.
+      setBackgroundTasks(session, [])
       cancelExpiry(session)
       if (sessions.get(session.threadId) === session) sessions.delete(session.threadId)
       Queue.shutdownUnsafe(session.prompts)
@@ -439,6 +451,7 @@ export const layer = Layer.effect(
         session.taskSnapshots = true
         session.tasks.clear()
         for (const task of message.tasks) if (task.ambient !== true) session.tasks.set(task.task_id, task.run_id)
+        setBackgroundTasks(session, backgroundTasksOf(message, session.backgroundTasks, new Date().toISOString()))
         return
       }
       // CLIs that predate snapshots only send these edges, and the SDK says not to correlate the two streams.
@@ -628,6 +641,7 @@ export const layer = Layer.effect(
           answering: [],
           tasks: new Map(),
           taskSnapshots: false,
+          backgroundTasks: [],
           reportsState: false,
           heldEnd: null,
           claims: 1,
@@ -838,6 +852,21 @@ export const layer = Layer.effect(
       listCommands,
       runTurn,
       wakes: Stream.fromQueue(wakes),
+      backgroundTasks: {
+        changes: Stream.fromQueue(backgroundTaskChanges),
+        // A background task's id is its CLI task id, like a sub-agent's.
+        stop: (threadId, taskId) =>
+          Effect.suspend(() => {
+            const session = sessions.get(threadId)
+            if (session === undefined) return Effect.void
+            return lease(session, (leased) =>
+              Effect.tryPromise({
+                try: () => leased.query.stopTask(taskId),
+                catch: agentError("Failed to stop the background task"),
+              }),
+            )
+          }),
+      },
       steer,
       interrupt: (threadId) => {
         const session = sessions.get(threadId)

@@ -797,6 +797,41 @@ describe("Claude sub-agents", () => {
   )
 })
 
+describe("Claude background tasks", () => {
+  it.effect(
+    "reports the shells it runs after the turn, stops one by its task id, and clears them when the CLI exits",
+    () =>
+      lifecycle(
+        Effect.gen(function* () {
+          const provider = yield* ClaudeProvider
+          const tasks = provider.backgroundTasks
+          if (tasks === undefined) return yield* Effect.die("backgroundTasks is missing")
+          const changes = yield* tasks.changes.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild)
+          sdk.respond = (cli) =>
+            cli.push(
+              init("session-1"),
+              backgroundTasks(
+                { task_id: "shell-1", description: "pnpm dev" },
+                { task_id: "agent-1", task_type: "local_agent", description: "Audit the sidebar" },
+              ),
+              succeeded,
+            )
+          yield* runTurn()
+
+          yield* tasks.stop("thread-1", "shell-1")
+          expect(latestCli().stopTask).toHaveBeenCalledWith("shell-1")
+
+          latestCli().close()
+          const [running, ended] = yield* Fiber.join(changes)
+          expect(running?.tasks.map((task) => [task.id, task.kind, task.label])).toStrictEqual([
+            ["shell-1", "shell", "pnpm dev"],
+          ])
+          expect(ended).toStrictEqual({ threadId: "thread-1", tasks: [] })
+        }),
+      ),
+  )
+})
+
 const sessionState = (state: "idle" | "running") => ({ type: "system", subtype: "session_state_changed", state })
 
 /** What a turn showed, in order: sub-agent statuses, text and its end. */

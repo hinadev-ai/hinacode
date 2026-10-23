@@ -1,7 +1,7 @@
-import type { SDKMessage, SDKResultSuccess } from "@anthropic-ai/claude-agent-sdk"
+import type { SDKBackgroundTasksChangedMessage, SDKMessage, SDKResultSuccess } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, test } from "@effect/vitest"
 import type { AgentEvent } from "../../../shared/agent.ts"
-import { isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
+import { backgroundTasksOf, isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { orgSpendLimitMessage, usageLimitAssistant, rejectedRateLimit } from "./fixtures/usageLimit.ts"
 
 const newState = (): MapState => ({
@@ -343,6 +343,52 @@ const completedUsage = (events: ReadonlyArray<AgentEvent>) => {
   if (event?.type !== "turn_completed") throw new Error(`expected turn_completed, got ${event?.type}`)
   return event.usage
 }
+
+const snapshot = (tasks: SDKBackgroundTasksChangedMessage["tasks"]): SDKBackgroundTasksChangedMessage => ({
+  type: "system",
+  subtype: "background_tasks_changed",
+  tasks,
+  uuid: "00000000-0000-4000-8000-000000000000",
+  session_id: "session",
+})
+
+describe("backgroundTasksOf", () => {
+  test("lists shells and workflows, but not sub-agents or ambient watchers", () => {
+    const tasks = backgroundTasksOf(
+      snapshot([
+        { task_id: "b1", task_type: "local_bash", description: "pnpm dev" },
+        { task_id: "a1", task_type: "local_agent", subagent_type: "Explore", description: "Find the router" },
+        { task_id: "m1", task_type: "monitor_mcp", description: "Watch CI", ambient: true },
+        { task_id: "w1", task_type: "local_workflow", description: "review-changes" },
+        { task_id: "x1", task_type: "mcp_task", description: "Render video" },
+      ]),
+      [],
+      "2026-10-23T10:00:00.000Z",
+    )
+    expect(tasks).toStrictEqual([
+      { id: "b1", kind: "shell", label: "pnpm dev", startedAt: "2026-10-23T10:00:00.000Z" },
+      { id: "w1", kind: "workflow", label: "review-changes", startedAt: "2026-10-23T10:00:00.000Z" },
+      { id: "x1", kind: "other", label: "Render video", startedAt: "2026-10-23T10:00:00.000Z" },
+    ])
+  })
+
+  test("keeps when a task was first seen across later snapshots", () => {
+    const first = backgroundTasksOf(
+      snapshot([{ task_id: "b1", task_type: "local_bash", description: "pnpm dev" }]),
+      [],
+      "2026-10-23T10:00:00.000Z",
+    )
+    const second = backgroundTasksOf(
+      snapshot([
+        { task_id: "b1", task_type: "local_bash", description: "pnpm dev" },
+        { task_id: "b2", task_type: "local_bash", description: "pnpm test --watch" },
+      ]),
+      first,
+      "2026-10-23T10:05:00.000Z",
+    )
+    expect(second.map((task) => task.startedAt)).toStrictEqual(["2026-10-23T10:00:00.000Z", "2026-10-23T10:05:00.000Z"])
+  })
+})
 
 describe("mapMessage context window", () => {
   const now = "2026-10-12T10:00:00.000Z"
