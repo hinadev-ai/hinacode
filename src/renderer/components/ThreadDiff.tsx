@@ -1,18 +1,15 @@
 import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-react"
-import { PatchDiff } from "@pierre/diffs/react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { RiRefreshLine } from "react-icons/ri"
-import type { ChangedFileStatus, ChangesScope, Thread } from "../../shared/domain.ts"
-import { useTheme } from "../lib/appearance.ts"
+import type { ChangesScope, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
-import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { useWorktrees } from "../stores/worktrees.ts"
-import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
+import { FileDiffRow, fileStatusMark } from "./FilePatch.tsx"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
@@ -43,10 +40,6 @@ const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
   }
   return byPath
 }
-
-// PatchDiff renders a whole file in one frame, about 0.07 ms per line: a 12k-line lockfile blocked for 860 ms.
-// Past this many changed lines the file is almost always generated, so it waits until the user asks for it.
-const LARGE_DIFF_LINES = 1000
 
 /** The Diff tab: what the thread changed in its worktree, or in its latest turn. */
 export function ThreadDiff({ thread }: { thread: Thread }) {
@@ -150,84 +143,17 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
   return (
     <ul className="flex flex-col gap-0.5">
       {result.files.map((file) => (
-        <ChangedFileRow
+        <FileDiffRow
           key={file.path}
           path={file.path}
-          status={file.status}
-          diff={diffs.get(file.path)}
+          mark={fileStatusMark[file.status]}
+          added={diffs.get(file.path)?.added ?? 0}
+          removed={diffs.get(file.path)?.removed ?? 0}
+          patch={diffs.get(file.path)?.patch}
           open={openPath === file.path}
-          setOpenPath={setOpenPath}
+          onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
         />
       ))}
     </ul>
-  )
-}
-
-interface ChangedFileRowProps {
-  readonly path: string
-  readonly status: ChangedFileStatus
-  readonly diff: FileDiff | undefined
-  readonly open: boolean
-  readonly setOpenPath: (path: string | null) => void
-}
-
-function ChangedFileRow({ path, status, diff, open, setOpenPath }: ChangedFileRowProps) {
-  const diffId = useId()
-  const mark = fileStatusMark[status]
-  const added = diff?.added ?? 0
-  const removed = diff?.removed ?? 0
-  const [showLarge, setShowLarge] = useState(false)
-  const theme = useTheme(useClientSettings().appearance.theme)
-
-  return (
-    <li className="flex flex-col gap-1">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={diffId}
-        onClick={() => setOpenPath(open ? null : path)}
-        className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
-      >
-        <abbr title={fileStatusLabel[status]()} className={`w-3 shrink-0 font-mono no-underline ${mark.className}`}>
-          {mark.letter}
-        </abbr>
-        <span className="min-w-0 flex-1 truncate font-mono" title={path}>
-          {path}
-        </span>
-        <span className="shrink-0 font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
-          <span aria-hidden className="text-vcs-added">
-            +{added}
-          </span>{" "}
-          <span aria-hidden className="text-destructive">
-            −{removed}
-          </span>
-        </span>
-      </button>
-      {open && (
-        <div id={diffId} className="overflow-hidden rounded-md border border-border text-xs">
-          {!diff ? (
-            <p className="p-2 text-muted-foreground">{m.diff_file_missing()}</p>
-          ) : added + removed > LARGE_DIFF_LINES && !showLarge ? (
-            <div className="flex items-center justify-between gap-2 p-2">
-              <p className="text-muted-foreground">{m.diff_large({ lines: added + removed })}</p>
-              <Button variant="outline" size="xs" onClick={() => setShowLarge(true)}>
-                {m.diff_large_show()}
-              </Button>
-            </div>
-          ) : (
-            <PatchDiff
-              patch={diff.patch}
-              options={{
-                diffStyle: "unified",
-                theme: theme.codeTheme,
-                themeType: theme.scheme,
-                overflow: "wrap",
-                disableFileHeader: true,
-              }}
-            />
-          )}
-        </div>
-      )}
-    </li>
   )
 }
