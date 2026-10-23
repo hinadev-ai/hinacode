@@ -27,6 +27,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
@@ -99,6 +100,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Automations.layer,
     AutoArchive.layer,
     PullRequestWatcher.layer,
+    mockClaude === undefined ? PullRequestGuides.layer : PullRequestGuides.idleLayer,
     updates,
     Mcp.serverLayer,
     AgentLogins.layer,

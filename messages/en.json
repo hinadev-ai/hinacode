@@ -1554,5 +1554,63 @@
   "mobile_row_pull_request": "Pull request #{number}",
   "mobile_row_pull_request_stack": "Pull request #{number}, the newest of {count} linked",
   "mobile_row_watching": "Watching a pull request",
-  "mobile_home_toggle_project": "Show or hide threads in {project}"
+  "mobile_home_toggle_project": "Show or hide threads in {project}",
+  "pr_view_label": "Pull request view",
+  "pr_tab_info": "Info",
+  "pr_tab_code": "Code",
+  "pr_code_view_label": "List the changes by",
+  "pr_code_view_files": "Files",
+  "pr_code_view_guide": "Guide",
+  "pr_code_summary": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} file changed",
+        "countPlural=other": "{count} files changed"
+      }
+    }
+  ],
+  "file_status_renamed": "Renamed",
+  "file_status_copied": "Copied",
+  "guide_writing": "Writing the guide for {commit}…",
+  "guide_writing_hint": "Claude groups the changed files by intent and explains each group. It takes a minute or two.",
+  "guide_failed": "Could not write the guide: {message}",
+  "guide_outdated": "Written for {commit}. The pull request has newer commits.",
+  "guide_outdated_writing": "A guide for the latest commit is on its way.",
+  "guide_closed": "Guides are written for open pull requests.",
+  "guide_not_started": "The guide has not started yet.",
+  "guide_other": "Other changes",
+  "guide_other_hint": "Files the guide does not cover.",
+  "guide_critical": "Needs extra care",
+  "guide_written_by": "Written by {model} for {commit}",
+  "guide_group_files": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} file",
+        "countPlural=other": "{count} files"
+      }
+    }
+  ],
+  "guide_line": "Line {line}",
+  "guide_category_ui": "UI",
+  "guide_category_api": "API",
+  "guide_category_core": "Core logic",
+  "guide_category_data": "Data",
+  "guide_category_cli": "CLI",
+  "guide_category_security": "Security",
+  "guide_category_tests": "Tests",
+  "guide_category_docs": "Docs",
+  "guide_category_examples": "Examples",
+  "guide_category_deps": "Dependencies",
+  "guide_category_build": "Build",
+  "guide_category_scripts": "Scripts",
+  "guide_category_config": "Config",
+  "guide_category_i18n": "Translations",
+  "guide_category_assets": "Assets",
+  "guide_category_other": "Other",
+  "settings_guide_model": "Pull request guide",
+  "settings_guide_model_hint": "Writes a guide in the background for each open pull request linked to a thread."
 }

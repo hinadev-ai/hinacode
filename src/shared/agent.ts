@@ -79,6 +79,8 @@ export interface AccountHome {
   readonly binary: string
 }
 
+export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
+
 /** A model the agent no longer lists, such as a thread's saved model or a typed id. */
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
   id,

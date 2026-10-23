@@ -1509,5 +1509,63 @@
   "mobile_row_pull_request": "プルリクエスト #{number}",
   "mobile_row_pull_request_stack": "リンクされた {count} 件のうち最新のプルリクエスト #{number}",
   "mobile_row_watching": "プルリクエストを監視中",
-  "mobile_home_toggle_project": "{project} のスレッドの表示/非表示を切り替え"
+  "mobile_home_toggle_project": "{project} のスレッドの表示/非表示を切り替え",
+  "pr_view_label": "プルリクエストの表示",
+  "pr_tab_info": "情報",
+  "pr_tab_code": "コード",
+  "pr_code_view_label": "変更の表示方法",
+  "pr_code_view_files": "ファイル",
+  "pr_code_view_guide": "ガイド",
+  "pr_code_summary": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 件のファイルを変更",
+        "countPlural=other": "{count} 件のファイルを変更"
+      }
+    }
+  ],
+  "file_status_renamed": "名前変更",
+  "file_status_copied": "コピー",
+  "guide_writing": "{commit} のガイドを作成中…",
+  "guide_writing_hint": "Claude が変更ファイルを目的ごとにまとめ、グループごとに説明します。1〜2 分ほどかかります。",
+  "guide_failed": "ガイドを作成できませんでした：{message}",
+  "guide_outdated": "このガイドは {commit} 時点のものです。その後のコミットは含まれていません。",
+  "guide_outdated_writing": "最新コミットのガイドを作成中です。",
+  "guide_closed": "ガイドはオープン中のプルリクエストにのみ作成されます。",
+  "guide_not_started": "ガイドの作成はまだ始まっていません。",
+  "guide_other": "その他の変更",
+  "guide_other_hint": "ガイドに含まれていないファイルです。",
+  "guide_critical": "特に注意が必要",
+  "guide_written_by": "{model} が {commit} 時点で作成",
+  "guide_group_files": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} ファイル",
+        "countPlural=other": "{count} ファイル"
+      }
+    }
+  ],
+  "guide_line": "{line} 行目",
+  "guide_category_ui": "UI",
+  "guide_category_api": "API",
+  "guide_category_core": "コアロジック",
+  "guide_category_data": "データ",
+  "guide_category_cli": "CLI",
+  "guide_category_security": "セキュリティ",
+  "guide_category_tests": "テスト",
+  "guide_category_docs": "ドキュメント",
+  "guide_category_examples": "サンプル",
+  "guide_category_deps": "依存関係",
+  "guide_category_build": "ビルド",
+  "guide_category_scripts": "スクリプト",
+  "guide_category_config": "設定",
+  "guide_category_i18n": "翻訳",
+  "guide_category_assets": "アセット",
+  "guide_category_other": "その他",
+  "settings_guide_model": "プルリクエストガイド",
+  "settings_guide_model_hint": "スレッドにリンクされたオープン中のプルリクエストごとに、バックグラウンドでガイドを作成します。"
 }

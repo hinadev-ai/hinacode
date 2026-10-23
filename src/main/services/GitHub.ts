@@ -1,5 +1,6 @@
 import { homedir } from "node:os"
 import { dirname } from "node:path"
+import { parsePatch } from "@pulls.review/core/patch-parser"
 import { Context, Effect, Layer, Schema } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import type {
@@ -11,6 +12,7 @@ import type {
   MergeMethod,
   PullRequest,
   PullRequestDetail,
+  PullRequestFile,
   PullRequestStatus,
   ReviewStatus,
   OpenPullRequest,
@@ -187,6 +189,29 @@ export const toPullRequestDetail = (json: typeof PullRequestDetailJson.Type): Pu
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
 })
 
+export const pullRequestFiles = (diff: string): Effect.Effect<ReadonlyArray<PullRequestFile>> =>
+  Effect.forEach(
+    diff.split(/^(?=diff --git )/m).filter((section) => section.startsWith("diff --git ")),
+    (patch) =>
+      Effect.promise(() => parsePatch(patch)).pipe(
+        Effect.map(([file]) =>
+          file === undefined
+            ? []
+            : [
+                {
+                  path: file.path,
+                  previousPath: file.previousPath ?? null,
+                  status: file.status,
+                  additions: file.additions,
+                  deletions: file.deletions,
+                  binary: file.isBinary,
+                  patch,
+                },
+              ],
+        ),
+      ),
+  ).pipe(Effect.map((files) => files.flat()))
+
 const decodeAuthStatus = Schema.decodeUnknownEffect(AuthStatusJson)
 const decodePullRequest = Schema.decodeUnknownEffect(PullRequestJson)
 const decodePullRequestDetail = Schema.decodeUnknownEffect(PullRequestDetailJson)
@@ -245,6 +270,7 @@ export class GitHub extends Context.Service<
     readonly pullRequestDetail: (
       url: string,
     ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly pullRequestDiff: (url: string) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError>
     /** Never deletes the branch: it is usually checked out in a local worktree. */
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
@@ -356,6 +382,7 @@ const make = Effect.gen(function* () {
         Effect.flatMap(decodePullRequestDetail),
         Effect.map(toPullRequestDetail),
       ),
+    pullRequestDiff: (raw) => ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]),
     merge: (raw, method) => ghByUrl(raw, (url) => ["pr", "merge", url, `--${method}`]).pipe(Effect.asVoid),
     close: (raw) => ghByUrl(raw, (url) => ["pr", "close", url]).pipe(Effect.asVoid),
     branchPullRequest,

@@ -16,6 +16,7 @@ import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotification
 import { router } from "./router.tsx"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
+import { usePullRequestGuides } from "./stores/pullRequestGuides.ts"
 import { loadAllPullRequestsAtom, usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
@@ -84,6 +85,8 @@ onPushEvent((event) => {
       return useWorktrees.getState().appendSetupLog(event.id, event.chunk)
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
+    case "pullRequest.guide":
+      return usePullRequestGuides.getState().replace(event.url, event.state)
     case "thread.subagents":
       return useSubagents.getState().replace(event.threadId, event.subagents)
     case "terminal.data":

@@ -45,6 +45,7 @@ import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts
 import { type PullRequestSection, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Markdown } from "./Markdown.tsx"
+import { PullRequestCode } from "./PullRequestCode.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
 /** "owner/repo#123" for a canonical GitHub pull request URL. */
 const shortName = (url: string) => {
@@ -132,9 +134,11 @@ export function StatusIcon({
 
 export const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
 
+type PullRequestTab = "info" | "code"
+
 /**
  * The PR tab. Every pull request the thread has: the ones agents linked plus the one GitHub has for the
- * worktree branch. Several show as a list to pick from; the picked one shows in full below.
+ * worktree branch. Several show as a list to pick from; the picked one shows below, as its info or its code.
  */
 export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const threadId = thread.id
@@ -149,6 +153,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
     () => null,
   )
   const [picked, setPicked] = useState<string | null>(null)
+  const [tab, setTab] = useState<PullRequestTab>("info")
   const [unlinkError, setUnlinkError] = useState<string | null>(null)
 
   if (!links) {
@@ -189,12 +194,14 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
         </ul>
       )}
       {selected && (
-        <PullRequestDetailView
+        <SelectedPullRequest
           key={selected}
           threadId={threadId}
           url={selected}
           watch={watch}
           linked={linked.has(selected)}
+          tab={tab}
+          onTabChange={setTab}
           onUnlinkFailed={setUnlinkError}
         />
       )}
@@ -204,6 +211,25 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
         </p>
       )}
       <GitHubAuthHint />
+    </div>
+  )
+}
+
+interface SelectedPullRequestProps extends PullRequestDetailViewProps {
+  readonly tab: PullRequestTab
+  readonly onTabChange: (tab: PullRequestTab) => void
+}
+
+function SelectedPullRequest({ tab, onTabChange, ...detail }: SelectedPullRequestProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Tabs value={tab} onValueChange={(value: PullRequestTab) => onTabChange(value)}>
+        <TabsList variant="line" aria-label={m.pr_view_label()}>
+          <TabsTrigger value="info">{m.pr_tab_info()}</TabsTrigger>
+          <TabsTrigger value="code">{m.pr_tab_code()}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {tab === "info" ? <PullRequestDetailView {...detail} /> : <PullRequestCode url={detail.url} />}
     </div>
   )
 }

@@ -1,13 +1,13 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useRef, useState, useTransition } from "react"
-import { type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
+import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
-import { accessModes } from "../ComposerControls.tsx"
+import { accessModes, effortLabel } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
@@ -27,6 +27,7 @@ export function ModelSettings() {
         ))}
         <DefaultAccessField />
         <TextGenerationModelField />
+        <PullRequestGuideField />
       </FieldGroup>
     </SettingsSection>
   )
@@ -292,6 +293,84 @@ function TextGenerationModelField() {
       <FieldLabel htmlFor={inputId}>{m.settings_text_generation_model()}</FieldLabel>
       <ModelSelect inputId={inputId} models={items} current={textGenerationModel} onSave={save} clearable={false} />
       <FieldDescription>{m.settings_text_generation_model_hint()}</FieldDescription>
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
+const GUIDE_EFFORTS = new Set(CLAUDE_EFFORT_LEVELS)
+
+function PullRequestGuideField() {
+  const environment = useSettingsEnvironment()
+  const models = useAtomValue(modelsAtom(environment, "claude"))
+  const { pullRequestGuide } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const inputId = "pull-request-guide-model"
+
+  const listed = AsyncResult.getOrElse(models, (): ReadonlyArray<ModelInfo> => [])
+  const items = listed.some((model) => model.id === pullRequestGuide.model)
+    ? listed
+    : [unlistedModel(pullRequestGuide.model, "claude"), ...listed]
+  const effortsOf = (id: string) =>
+    (items.find((model) => model.id === id)?.efforts ?? []).filter((effort) => GUIDE_EFFORTS.has(effort))
+  const efforts = effortsOf(pullRequestGuide.model)
+  const effortItems = [...new Set([...efforts, pullRequestGuide.effort])].map((value) => ({
+    value,
+    label: effortLabel(value),
+  }))
+
+  const save = async (next: typeof pullRequestGuide) => {
+    setError(null)
+    try {
+      await updateSettings({ pullRequestGuide: next })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  const effortKeptOrDefaultFor = (model: string) => {
+    const available = effortsOf(model)
+    if (available.length === 0 || available.includes(pullRequestGuide.effort)) return pullRequestGuide.effort
+    return (
+      items.find((candidate) => candidate.id === model)?.defaultEffort ?? available.at(-1) ?? pullRequestGuide.effort
+    )
+  }
+
+  const saveModel = async (model: string | null) => {
+    if (model === null) return
+    await save({ model, effort: effortKeptOrDefaultFor(model) })
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{m.settings_guide_model()}</FieldLabel>
+      <div className="flex flex-wrap items-center gap-2">
+        <ModelSelect
+          inputId={inputId}
+          models={items}
+          current={pullRequestGuide.model}
+          onSave={saveModel}
+          clearable={false}
+        />
+        <Select
+          items={effortItems}
+          value={pullRequestGuide.effort}
+          onValueChange={(effort) => effort !== null && void save({ ...pullRequestGuide, effort })}
+        >
+          <SelectTrigger aria-label={m.thread_effort_picker()} className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {effortItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <FieldDescription>{m.settings_guide_model_hint()}</FieldDescription>
       {error && <FieldError>{error}</FieldError>}
     </Field>
   )

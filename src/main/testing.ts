@@ -24,6 +24,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
+import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -45,7 +46,8 @@ export interface TestAppOptions {
 }
 
 /**
- * The app layer of `index.ts` with scripted agents, no automations and no updater, over a SQLite file at `dbPath`.
+ * The app layer of `index.ts` with scripted agents, no automations, no updater and no pull request guides, over a
+ * SQLite file at `dbPath`.
  * Tests that keep the default `events` must mock `electron` first.
  */
 export const makeTestAppLayer = (
@@ -81,7 +83,7 @@ export const makeTestAppLayer = (
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
   const environments = Environments.layer.pipe(Layer.provide(Layer.mergeAll(Secrets.layer, agents)))
-  const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments)
+  const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments, PullRequestGuides.idleLayer)
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return RemoteServer.layer.pipe(
     Layer.provideMerge(app),

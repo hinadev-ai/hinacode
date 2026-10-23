@@ -1,7 +1,15 @@
 import { describe, expect, it, test } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import { ChildProcessSpawner } from "effect/process"
-import { GitHub, layer, parseAuthStatus, summarizeChecks, toPullRequest, toPullRequestDetail } from "./GitHub.ts"
+import {
+  GitHub,
+  layer,
+  parseAuthStatus,
+  pullRequestFiles,
+  summarizeChecks,
+  toPullRequest,
+  toPullRequestDetail,
+} from "./GitHub.ts"
 import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
 
 const account = (overrides: Partial<{ state: string; active: boolean; login: string }>) => ({
@@ -197,5 +205,110 @@ describe("pull request actions", () => {
         expect(error._tag).toBe("PullRequestUrlInvalidError")
       }
     }).pipe(Effect.provide(github)),
+  )
+})
+
+const DIFF = `diff --git a/a.txt b/a.txt
+index 4cb29ea..ea14db2 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,3 +1,4 @@
+ one
+-two
++2
+ three
++four
+diff --git a/added.md b/added.md
+new file mode 100644
+index 0000000..fa49b07
+--- /dev/null
++++ b/added.md
+@@ -0,0 +1 @@
++new file
+diff --git a/gone.txt b/gone.txt
+deleted file mode 100644
+index 2fa992c..0000000
+--- a/gone.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-keep
+diff --git a/logo.png b/logo.png
+index f584f40..6bf43ff 100644
+Binary files a/logo.png and b/logo.png differ
+diff --git a/old-name.ts b/src-new-name.ts
+similarity index 73%
+rename from old-name.ts
+rename to src-new-name.ts
+index 7a28df3..adc7e54 100644
+--- a/old-name.ts
++++ b/src-new-name.ts
+@@ -1,4 +1,4 @@
+ alpha
+ beta
+ gamma
+-delta
++DELTA
+`
+
+describe("pullRequestFiles", () => {
+  it.effect("reads each file's status and counts, and keeps its own section of the diff", () =>
+    Effect.gen(function* () {
+      const files = yield* pullRequestFiles(DIFF)
+      expect(files.map((file) => ({ ...file, patch: undefined }))).toStrictEqual([
+        {
+          path: "a.txt",
+          previousPath: null,
+          status: "modified",
+          additions: 2,
+          deletions: 1,
+          binary: false,
+          patch: undefined,
+        },
+        {
+          path: "added.md",
+          previousPath: null,
+          status: "added",
+          additions: 1,
+          deletions: 0,
+          binary: false,
+          patch: undefined,
+        },
+        {
+          path: "gone.txt",
+          previousPath: null,
+          status: "removed",
+          additions: 0,
+          deletions: 1,
+          binary: false,
+          patch: undefined,
+        },
+        {
+          path: "logo.png",
+          previousPath: null,
+          status: "modified",
+          additions: 0,
+          deletions: 0,
+          binary: true,
+          patch: undefined,
+        },
+        {
+          path: "src-new-name.ts",
+          previousPath: "old-name.ts",
+          status: "renamed",
+          additions: 1,
+          deletions: 1,
+          binary: false,
+          patch: undefined,
+        },
+      ])
+      expect(files[0]?.patch).toBe(DIFF.slice(0, DIFF.indexOf("diff --git a/added.md")))
+      expect(files.map((file) => file.patch).join("")).toBe(DIFF)
+    }),
+  )
+
+  it.effect("an empty diff has no files", () =>
+    Effect.gen(function* () {
+      expect(yield* pullRequestFiles("")).toStrictEqual([])
+    }),
   )
 })

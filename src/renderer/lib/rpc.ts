@@ -44,7 +44,7 @@ export const onPushEvent = (listener: (event: PushEvent) => void) =>
   window.hinacode.onEvent((raw) => listener(decodePushEvent(raw)))
 
 /** An atom family over several arguments, keyed by their JSON. Every argument must survive a JSON round trip. */
-const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
+export const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
   const family = Atom.family((key: string) => make(...(JSON.parse(key) as Args)))
   return (...args: Args) => family(JSON.stringify(args))
 }
@@ -296,6 +296,10 @@ export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, u
 /** Everything the PR tab shows about one pull request. */
 export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
   call("github.pullRequestDetail", { url }, { environment }),
+)
+
+export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: string, _forHead: string) =>
+  Atom.make(call("github.pullRequestFiles", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
 )
 
 /**

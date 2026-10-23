@@ -50,6 +50,8 @@ import {
   GitHubAuth,
   PullRequest,
   PullRequestDetail,
+  PullRequestFile,
+  PullRequestGuideState,
   PullRequestLink,
   RemotePairing,
   RemoteStatus,
@@ -384,8 +386,11 @@ export const RpcMethods = {
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
   "github.pullRequestDetail": rpc(Schema.Struct({ url: Schema.String }), PullRequestDetail),
+  "github.pullRequestFiles": rpc(Schema.Struct({ url: Schema.String }), Schema.Array(PullRequestFile)),
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
+  "pullRequestGuides.get": rpc(Schema.Struct({ url: Schema.String }), PullRequestGuideState),
+  "pullRequestGuides.retry": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   /** The GitHub repository the project's `origin` points at, or null. */
   "github.repository": rpc(Schema.Struct({ projectId: Schema.String }), Schema.NullOr(GitHubRepository)),
   /** The icon of the url's site as a data URL, or null. Main only ever GETs the origin root and the icon. */
@@ -635,8 +640,11 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "github.auth": "read",
   "github.pullRequest": "read",
   "github.pullRequestDetail": "read",
+  "github.pullRequestFiles": "read",
   "github.merge": "mutation",
   "github.close": "mutation",
+  "pullRequestGuides.get": "read",
+  "pullRequestGuides.retry": "mutation",
   "github.repository": "read",
   "links.favicon": "read",
   "mcp.connection": "read",
@@ -761,6 +769,7 @@ export const PushEvent = Schema.Union([
     threadId: Schema.String,
     links: Schema.Array(PullRequestLink),
   }),
+  Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
   /** Every sub-agent of the thread, newest first, sent whenever one of them changes. */
   Schema.Struct({
     type: Schema.Literal("thread.subagents"),

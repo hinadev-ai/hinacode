@@ -246,7 +246,7 @@ const effortLabels: Record<string, () => string> = {
   ultrathink: m.effort_ultrathink,
   ultracode: m.effort_ultracode,
 }
-const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
+export const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
 
 /** Claude Code's ultrathink and ultracode are modes rather than levels, so they say what they do. */
 const effortHints: Record<string, () => string> = {

@@ -38,7 +38,7 @@ import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { emptyTree, flattenTree, parentOf, type TreeRow, useExplorer } from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
-import { fileStatusLabel, fileStatusMark } from "./FilePatch.tsx"
+import { fileStatusMark } from "./FilePatch.tsx"
 import { FileViewer } from "./FileViewer.tsx"
 import { Button } from "./ui/button.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
@@ -447,11 +447,7 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
   const { entry, depth } = row
   const isDir = entry.kind === "dir"
   const mark = entry.gitStatus === null ? null : fileStatusMark[entry.gitStatus]
-  const description = [
-    unsaved && m.viewer_unsaved(),
-    entry.gitStatus && fileStatusLabel[entry.gitStatus](),
-    entry.ignored && m.explorer_ignored(),
-  ]
+  const description = [unsaved && m.viewer_unsaved(), mark?.label(), entry.ignored && m.explorer_ignored()]
     .filter(Boolean)
     .join(", ")
 
