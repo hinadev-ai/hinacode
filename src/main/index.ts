@@ -1,7 +1,7 @@
 import { existsSync, renameSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { app, BrowserWindow, Menu, net, protocol, safeStorage, session, shell } from "electron"
+import { app, BrowserWindow, Menu, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
@@ -268,6 +268,10 @@ app.whenReady().then(async () => {
     void Promise.race([disposal, timeout]).then(() => app.quit())
   })
   registerIpc(runtime, appUrl)
+  // Clouds dropped while asleep would otherwise wait out a backoff of up to a minute after waking.
+  powerMonitor.on("resume", () =>
+    runtime.runFork(Effect.flatMap(Environments.Environments, (environments) => environments.reconnectAll)),
+  )
   app.dock?.setIcon(icon)
   if (process.platform === "darwin") setMacMenu()
   serveAttachments(runtime, join(userData, "attachments"))

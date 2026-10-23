@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { ClientFrame, pairingUrl, parsePairingUrl, remoteWebSocketUrl, ServerFrame } from "./remote.ts"
+import { ClientFrame, isPortInUse, pairingUrl, parsePairingUrl, remoteWebSocketUrl, ServerFrame } from "./remote.ts"
 
 describe("remote frames", () => {
   it("keeps known capabilities when ready advertises a future feature", () => {
@@ -26,6 +26,13 @@ describe("remote frames", () => {
   })
 })
 
+describe("isPortInUse", () => {
+  it("recognizes the error Node gives for a taken port", () => {
+    expect(isPortInUse("listen EADDRINUSE: address already in use 0.0.0.0:48081")).toBe(true)
+    expect(isPortInUse("listen EACCES: permission denied 0.0.0.0:80")).toBe(false)
+  })
+})
+
 describe("pairing URLs", () => {
   it("round-trips every host in order", () => {
     const target = {
@@ -48,7 +55,27 @@ describe("pairing URLs", () => {
     })
   })
 
+  it("finds the URL inside the lines hinacode serve prints", () => {
+    const printed = [
+      "hinacode serve is listening on port 47821",
+      "pair a desktop with one of:",
+      "  hinacode://connect?host=100.64.0.2&host=192.0.2.10&port=47821&token=abc",
+      "  hinacode://connect?host=192.0.2.10&port=47821&token=abc",
+    ].join("\n")
+    expect(parsePairingUrl(printed)).toEqual({ hosts: ["100.64.0.2", "192.0.2.10"], port: 47821, token: "abc" })
+  })
+
+  it("finds the URL between words on one line", () => {
+    expect(parsePairingUrl("pair with hinacode://connect?host=a&port=1&token=t\tthen connect")).toEqual({
+      hosts: ["a"],
+      port: 1,
+      token: "t",
+    })
+  })
+
   it.each([
+    ["text without a pairing URL", "pair a desktop with one of:"],
+    ["a pairing URL glued to a word", "url:hinacode://connect?host=a&port=1&token=t"],
     ["another scheme", "https://connect?host=a&port=1&token=t"],
     ["another action", "hinacode://pair?host=a&port=1&token=t"],
     ["no host", "hinacode://connect?port=1&token=t"],

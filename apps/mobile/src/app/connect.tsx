@@ -39,7 +39,7 @@ export default function ConnectScreen() {
         </View>
         <Text style={[styles.lead, { color: theme.textMuted }]}>
           On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
-          the pairing URL.
+          the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.
         </Text>
         {refused !== null && <Notice text={refused} tone="danger" />}
         {native && (

@@ -174,6 +174,7 @@ const handlers: Handlers = {
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
+  "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
@@ -208,6 +209,7 @@ const handlers: Handlers = {
   "environments.list": () => Environments.use((environments) => environments.list),
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
+  "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),

@@ -2,16 +2,18 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import {
   type FormEvent,
-  type RefObject,
+  type KeyboardEvent,
   startTransition,
   useActionState,
   useEffect,
+  useId,
   useRef,
   useState,
   useTransition,
 } from "react"
+import type { Environment } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { type Cloud, cloudAddress, useClouds } from "../../lib/environments.ts"
+import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
   addEnvironmentAtom,
@@ -24,7 +26,9 @@ import {
 import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
+import { useUi } from "../../stores/ui.ts"
 import { EnvironmentStatusText } from "../EnvironmentStatusText.tsx"
+import { ReconnectButton } from "../ReconnectButton.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,13 +46,6 @@ import { SettingsSection } from "./SettingsSection.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
-  const [name, setName] = useState("")
-  const pairingUrlRef = useRef<HTMLInputElement>(null)
-
-  const pairAgain = (cloud: Cloud) => {
-    setName(cloud.name)
-    pairingUrlRef.current?.focus()
-  }
 
   return (
     <SettingsSection
@@ -61,47 +58,140 @@ export function EnvironmentSettings() {
       ) : (
         <ul aria-label={m.settings_environments()} className="flex flex-col divide-y divide-border rounded-lg border">
           {clouds.map((cloud) => (
-            <EnvironmentRow key={cloud.id} cloud={cloud} onPairAgain={() => pairAgain(cloud)} />
+            <EnvironmentRow key={cloud.id} cloud={cloud} />
           ))}
         </ul>
       )}
-      <AddEnvironmentForm name={name} onNameChange={setName} pairingUrlRef={pairingUrlRef} />
+      <AddEnvironmentForm />
     </SettingsSection>
   )
 }
 
-function EnvironmentRow({ cloud, onPairAgain }: { cloud: Cloud; onPairAgain: () => void }) {
+function EnvironmentRow({ cloud }: { cloud: Cloud }) {
   const now = useNow()
   const locale = useLocale((state) => state.locale)
+  const [pairing, setPairing] = useState(false)
+  const pairAgainRef = useRef<HTMLButtonElement>(null)
+  const pairFormId = useId()
+  const unauthorized = cloud.status === "unauthorized"
+
+  const cancelPairing = () => {
+    setPairing(false)
+    pairAgainRef.current?.focus()
+  }
 
   return (
     <li className="flex flex-col gap-1 px-4 py-3">
-      <div className="flex items-center gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-48 flex-1 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{cloud.name}</span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="font-mono">{cloudAddress(cloud)}</span>
+            <span className="min-w-0 truncate font-mono">{cloudAddress(cloud)}</span>
             <EnvironmentStatusText status={cloud.status} />
             {cloud.status === "connected" && <CloudVersion cloud={cloud} />}
-            {cloud.status !== "connected" && cloud.lastSeenAt !== null && (
-              <span>{m.environment_last_seen({ time: formatRelativeTime(cloud.lastSeenAt, now, locale) })}</span>
+            {cloud.status !== "connected" && !unauthorized && cloud.lastSeenAt !== null && (
+              <span className="whitespace-nowrap">
+                {m.environment_last_seen({ time: formatRelativeTime(cloud.lastSeenAt, now, locale) })}
+              </span>
             )}
           </span>
         </div>
-        {cloud.status === "connected" && <CloudUpdateButton cloud={cloud} />}
-        {cloud.status === "unauthorized" && (
-          <Button variant="outline" size="sm" onClick={onPairAgain}>
-            {m.environment_pair_again()}
-          </Button>
-        )}
-        <RemoveEnvironmentButton cloud={cloud} />
+        <div className="flex shrink-0 items-center gap-2">
+          {cloud.status === "connected" && <CloudUpdateButton cloud={cloud} />}
+          {unauthorized && (
+            <Button
+              ref={pairAgainRef}
+              variant="outline"
+              size="sm"
+              aria-expanded={pairing}
+              aria-controls={pairing ? pairFormId : undefined}
+              onClick={() => (pairing ? cancelPairing() : setPairing(true))}
+            >
+              {m.environment_pair_again()}
+            </Button>
+          )}
+          {(cloud.status === "offline" || cloud.status === "incompatible") && <ReconnectButton cloud={cloud} />}
+          <RemoveEnvironmentButton cloud={cloud} />
+        </div>
       </div>
-      {cloud.status === "unauthorized" && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
+      {unauthorized && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
       {cloud.status === "connected" && <CloudUpdateHint cloud={cloud} />}
-      {cloud.status === "incompatible" && (
-        <FieldDescription>{m.environment_incompatible_hint({ name: cloud.name })}</FieldDescription>
+      {unauthorized && pairing && (
+        <PairAgainForm id={pairFormId} cloud={cloud} onCancel={cancelPairing} onPaired={() => setPairing(false)} />
       )}
+      {cloud.status === "incompatible" && <FieldDescription>{incompatibleText(cloud)}</FieldDescription>}
     </li>
+  )
+}
+
+interface PairAgainFormProps {
+  readonly id: string
+  readonly cloud: Cloud
+  readonly onCancel: () => void
+  readonly onPaired: () => void
+}
+
+/** Pairing a URL for a cloud that is already listed updates that cloud, so this keeps its name and its projects. */
+function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
+  const addEnvironment = useAtomSet(addEnvironmentAtom, { mode: "promise" })
+  const [pairingUrl, setPairingUrl] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startPair] = useTransition()
+  const inputId = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => inputRef.current?.focus(), [])
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    startPair(async () => {
+      setError(null)
+      try {
+        await addEnvironment({ name: cloud.name, pairingUrl: pairingUrl.trim() })
+        onPaired()
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Escape") return
+    // Keeps the settings page from treating this Escape as leaving the page.
+    event.preventDefault()
+    onCancel()
+  }
+
+  return (
+    <form id={id} onSubmit={onSubmit} className="mt-2">
+      <Field>
+        <FieldLabel htmlFor={inputId}>{m.environment_new_pairing_url_label()}</FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            ref={inputRef}
+            id={inputId}
+            required
+            value={pairingUrl}
+            onChange={(event) => setPairingUrl(event.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="hinacode://connect?…"
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={error !== null}
+            className="min-w-48 flex-1 font-mono"
+          />
+          <div className="flex shrink-0 gap-2">
+            <Button type="submit" disabled={pending || pairingUrl.trim() === ""}>
+              {pending ? m.environment_adding() : m.environment_pair_submit()}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onCancel}>
+              {m.common_cancel()}
+            </Button>
+          </div>
+        </div>
+        {error && <FieldError>{error}</FieldError>}
+      </Field>
+    </form>
   )
 }
 
@@ -213,26 +303,23 @@ function RemoveEnvironmentButton({ cloud }: { cloud: Cloud }) {
   )
 }
 
-interface AddEnvironmentFormProps {
-  readonly name: string
-  readonly onNameChange: (name: string) => void
-  /** Pair again focuses it, since pasting a new URL for a listed cloud updates that cloud. */
-  readonly pairingUrlRef: RefObject<HTMLInputElement | null>
-}
-
-function AddEnvironmentForm({ name, onNameChange, pairingUrlRef }: AddEnvironmentFormProps) {
+function AddEnvironmentForm() {
   const addEnvironment = useAtomSet(addEnvironmentAtom, { mode: "promise" })
+  const setAddProjectOpen = useUi((state) => state.setAddProjectOpen)
+  const [name, setName] = useState("")
   const [pairingUrl, setPairingUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [added, setAdded] = useState<Environment | null>(null)
   const [pending, startAdd] = useTransition()
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     startAdd(async () => {
       setError(null)
+      setAdded(null)
       try {
-        await addEnvironment({ name: name.trim(), pairingUrl: pairingUrl.trim() })
-        onNameChange("")
+        setAdded(await addEnvironment({ name: name.trim(), pairingUrl: pairingUrl.trim() }))
+        setName("")
         setPairingUrl("")
       } catch (cause) {
         setError(errorMessage(cause))
@@ -255,7 +342,7 @@ function AddEnvironmentForm({ name, onNameChange, pairingUrlRef }: AddEnvironmen
           <Input
             id="environment-name"
             value={name}
-            onChange={(event) => onNameChange(event.target.value)}
+            onChange={(event) => setName(event.target.value)}
             placeholder="home-server"
             spellCheck={false}
             autoComplete="off"
@@ -266,7 +353,6 @@ function AddEnvironmentForm({ name, onNameChange, pairingUrlRef }: AddEnvironmen
         <Field>
           <FieldLabel htmlFor="environment-pairing-url">{m.environment_pairing_url_label()}</FieldLabel>
           <Input
-            ref={pairingUrlRef}
             id="environment-pairing-url"
             required
             value={pairingUrl}
@@ -281,10 +367,20 @@ function AddEnvironmentForm({ name, onNameChange, pairingUrlRef }: AddEnvironmen
           {error && <FieldError>{error}</FieldError>}
         </Field>
       </FieldGroup>
-      <div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Button type="submit" disabled={pending || pairingUrl.trim() === ""}>
           {pending ? m.environment_adding() : m.environment_add_submit()}
         </Button>
+        <output className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          {added && (
+            <>
+              <span>{m.environment_added({ name: added.name })}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setAddProjectOpen(true, added.id)}>
+                {m.environment_add_project_on({ name: added.name })}
+              </Button>
+            </>
+          )}
+        </output>
       </div>
     </form>
   )

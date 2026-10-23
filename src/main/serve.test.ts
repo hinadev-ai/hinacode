@@ -1,5 +1,31 @@
 import { describe, expect, test } from "@effect/vitest"
-import { autoUpdate, serveConfig } from "./serve.ts"
+import { autoUpdate, parseCommand, serveConfig } from "./serve.ts"
+
+describe("parseCommand", () => {
+  test("asks for help instead of starting a daemon", () => {
+    expect(parseCommand(["serve", "--help"])).toBe("help")
+    expect(parseCommand(["serve", "--port", "1", "-h"])).toBe("help")
+    expect(parseCommand(["--help"])).toBe("help")
+  })
+
+  test("reads serve and pair with their options", () => {
+    expect(parseCommand(["serve", "--port", "49000", "--host=0.0.0.0", "--rotate-token"])).toBe("serve")
+    expect(parseCommand(["pair"])).toBe("pair")
+    expect(parseCommand(["--version"])).toBe("version")
+  })
+
+  test("refuses an unknown option instead of ignoring it", () => {
+    expect(() => parseCommand(["serve", "--prot", "1"])).toThrow("unknown option --prot")
+    expect(() => parseCommand(["serve", "--prot=1"])).toThrow("unknown option --prot")
+    expect(() => parseCommand(["pair", "--port", "1"])).toThrow("unknown option --port")
+    expect(() => parseCommand(["serve", "extra"])).toThrow("unexpected argument extra")
+  })
+
+  test("refuses a missing or unknown command", () => {
+    expect(() => parseCommand([])).toThrow("missing command")
+    expect(() => parseCommand(["start"])).toThrow("unknown command start")
+  })
+})
 
 describe("serveConfig", () => {
   test("reads the serve command with no overrides", () => {

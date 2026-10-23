@@ -27,17 +27,25 @@ export const CLOSE_SLOW_CONSUMER = 4006
 
 const isTailscale = (address: string) => address.startsWith("100.")
 
+/** Bridges into containers and VMs on this machine, which no phone or other desktop can route to. */
+const isVirtualBridge = (name: string) => /^(docker|br-|veth|virbr|cni|flannel|podman|vboxnet|vmnet)/.test(name)
+
 /**
  * Addresses a phone could reach this machine on, Tailscale first, then LAN, then the hostname.
  * Nothing on loopback, since a phone is never on it.
  */
-export const reachableHosts = (bindHost: string): NonEmptyReadonlyArray<string> => {
+export const reachableHosts = (
+  bindHost: string,
+  interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+  host: string = hostname(),
+): NonEmptyReadonlyArray<string> => {
   if (bindHost !== "0.0.0.0" && bindHost !== "::") return [bindHost]
-  const addresses = Object.values(networkInterfaces())
-    .flatMap((nets) => nets ?? [])
+  const addresses = Object.entries(interfaces)
+    .filter(([name]) => !isVirtualBridge(name))
+    .flatMap(([, nets]) => nets ?? [])
     .filter((net) => net.family === "IPv4" && !net.internal)
     .map((net) => net.address)
-  return Arr.append([...addresses.filter(isTailscale), ...addresses.filter((a) => !isTailscale(a))], hostname())
+  return Arr.append([...addresses.filter(isTailscale), ...addresses.filter((a) => !isTailscale(a))], host)
 }
 
 /** What the listener reports; `RemoteAccess` keeps it so the settings page can read it without the listener. */

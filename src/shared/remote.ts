@@ -79,11 +79,13 @@ const isAuthorityOnlyHost = (host: string) =>
   host !== "" && !/[\s/?#@[\]\\]/.test(host) && URL.parse(remoteWebSocketUrl({ host, port: 1 })) !== null
 
 /**
- * Reads a pairing URL back, keeping the order of repeated `host`s. Null for anything that is not a
- * complete `hinacode://connect` URL.
+ * Reads a pairing URL back, keeping the order of repeated `host`s. Accepts it inside other text, such as the
+ * lines `hinacode serve` prints around it, by reading the first `hinacode://connect?` word. Null when that
+ * word is missing or is not a complete `hinacode://connect` URL.
  */
 export const parsePairingUrl = (text: string): PairingTarget | null => {
-  const url = URL.parse(text.trim())
+  const word = text.split(/\s+/).find((part) => /^hinacode:\/\/connect\?/i.test(part))
+  const url = word === undefined ? null : URL.parse(word)
   if (!url || url.protocol !== "hinacode:" || url.host !== "connect") return null
   const hosts = url.searchParams.getAll("host")
   const port = Number(url.searchParams.get("port"))
@@ -92,3 +94,6 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
   return { hosts, port, token }
 }
+
+/** Whether a listener's `listenError` means another program holds the port. Node puts the code in the message. */
+export const isPortInUse = (listenError: string) => listenError.includes("EADDRINUSE")

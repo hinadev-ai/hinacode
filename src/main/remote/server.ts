@@ -238,11 +238,12 @@ const make = Effect.gen(function* () {
       yield* FiberHandle.run(
         listener,
         listen(remote).pipe(
-          Effect.catchCause((cause) =>
-            access
-              .report({ listenError: describeCause(cause) })
-              .pipe(Effect.andThen(Effect.logWarning("remote listener failed", cause))),
-          ),
+          Effect.catchCause((cause) => {
+            const listenError = describeCause(cause)
+            return access
+              .report({ listenError })
+              .pipe(Effect.andThen(Effect.logWarning("remote listener failed", listenError)))
+          }),
         ),
       )
     })

@@ -79,7 +79,7 @@ Rules that came out of real runs:
 - `find` does not wait, and menus, select popups (`[role=option]`), inline inputs and dialogs render a beat after the click. After opening wait for `[role=menu]`, `[role=option]`, `[role=dialog]`, `[role=alertdialog]` or the input; after closing a dialog wait with `$AB wait --fn '!document.querySelector("[role=dialog]")'`. A closed select keeps its options in the page, so wait on the combobox's `aria-expanded="false"` instead of on `[role=option]` disappearing. `snapshot` can lag an animation, so trust the wait, not one snapshot.
 - After `stop.sh` and a relaunch the agent-browser session loses its CDP attachment and opens a blank browser. Pass `--cdp $PORT` on every command after a relaunch (or on every command, which is simplest).
 - `find` supports `click`, `fill`, `check`, `hover`, `text`. For focus or keyboard work use `$AB focus '<css>'` and `$AB press <Key>`.
-- Routing uses memory history, so there is no URL to open. Navigate by clicking sidebar links. `$AB reload` returns to the home route.
+- Routing uses memory history, so there is no URL to open. Navigate by clicking sidebar links. `$AB reload` and a relaunch reopen the last route, which `localStorage["hinacode.location"]` holds.
 
 ### Seeding and inspecting through rpc
 
