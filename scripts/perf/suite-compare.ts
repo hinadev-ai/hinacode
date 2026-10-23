@@ -4,23 +4,38 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+type Renders = { commits: number; renders: number; byComponent: Record<string, number> }
+type Run = {
+  cpuThrottle: number
+  rounds: { round: number; ms: number; work: { scriptMs: number }; renders: Renders; longTaskMs: number }[]
+  heapEnd: { jsHeapUsedMB: number }
+  keyToPaint: { p50: number; p95: number; max: number }
+  work: { scriptMs: number }
+  workload: { chars: number }
+  rendersPerKey: number
+  renders: Renders
+  frames: { p95: number; max: number; over33: number }
+  over50: number
+}
+
 const resultsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".context", "perf")
 const [before, after] = process.argv.slice(2)
-if (!before || !after) throw new Error("usage: suite-compare.mjs <before-label> <after-label>")
+if (!before || !after) throw new Error("usage: suite-compare.ts <before-label> <after-label>")
 
-const median = (values) => {
+const median = (values: number[]) => {
   const sorted = values.toSorted((a, b) => a - b)
-  return +((sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2).toFixed(1)
+  return +((sorted[Math.floor((sorted.length - 1) / 2)]! + sorted[Math.floor(sorted.length / 2)]!) / 2).toFixed(1)
 }
-const runs = (label, scenario) => {
+const runs = (label: string, scenario: string): Run[] => {
   const pattern = new RegExp(`^${label}-\\d+-${scenario}\\.json$`)
   const files = readdirSync(resultsDir).filter((file) => pattern.test(file))
   assert(files.length > 0, `no ${scenario} runs for ${label}`)
   return files.map((file) => JSON.parse(readFileSync(join(resultsDir, file), "utf8")))
 }
-const rendersOf = (renders, name) => (renders.byComponent[name] ?? 0) + (renders.byComponent[`${name} (mount)`] ?? 0)
+const rendersOf = (renders: Renders, name: string) =>
+  (renders.byComponent[name] ?? 0) + (renders.byComponent[`${name} (mount)`] ?? 0)
 
-const metrics = (label) => {
+const metrics = (label: string): Record<string, unknown> => {
   const typing = runs(label, "typing")
   const switches = runs(label, "switch")
   const replies = runs(label, "reply")
@@ -62,14 +77,12 @@ const metrics = (label) => {
 const a = metrics(before)
 const b = metrics(after)
 assert.equal(a.cpuThrottle, b.cpuThrottle, "labels use different CPU throttle rates")
-const rows = Object.keys(a)
-  .filter((key) => typeof a[key] === "number" && key !== "cpuThrottle")
-  .map((metric) => ({
-    metric,
-    before: a[metric],
-    after: b[metric],
-    change: a[metric] === 0 ? null : +((100 * (b[metric] - a[metric])) / a[metric]).toFixed(0),
-  }))
+const rows = Object.keys(a).flatMap((metric) => {
+  const x = a[metric]
+  const y = b[metric]
+  if (typeof x !== "number" || typeof y !== "number" || metric === "cpuThrottle") return []
+  return [{ metric, before: x, after: y, change: x === 0 ? null : +((100 * (y - x)) / x).toFixed(0) }]
+})
 console.log(`CPU throttle ${a.cpuThrottle}x, runs ${JSON.stringify(a.runs)} vs ${JSON.stringify(b.runs)}`)
 console.log(`${"metric".padEnd(36)} ${before.padStart(10)} ${after.padStart(10)}  change`)
 for (const row of rows) {

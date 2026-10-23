@@ -4,24 +4,24 @@ Measures the renderer and main process of a running hinacode instance over CDP. 
 instance first (see `.agents/skills/verify-hinacode`), then:
 
 ```sh
-node scripts/perf/seed.mjs <user-data-dir> <repo>            # project + threads of 5 to 200 turns
-node scripts/perf/seed.mjs <user-data-dir> <repo> <projectId> # one 150-turn thread with 100 KB tool outputs
-node scripts/perf/fatfill.mjs <worktree> 60000               # fake node_modules to time worktree removal
-node scripts/perf/measure.mjs <port> <label> switch <threadId...>
-node scripts/perf/measure.mjs <port> <label> scroll <threadId> [pxPerFrame]   # PROFILE=1 writes a .cpuprofile
-node scripts/perf/measure.mjs <port> <label> archive <threadId>  # turns on worktree removal first
-node scripts/perf/measure.mjs <port> <label> typing <threadId>   # composer key-to-paint latency
-node scripts/perf/measure.mjs <port> <label> reply <threadId>    # needs HINACODE_MOCK_CLAUDE=stream
-node scripts/perf/measure.mjs <port> <label> typing-reply <threadId>  # typing while that reply streams
-node scripts/perf/analyze-profile.mjs .context/perf/<label>-scroll.cpuprofile
-node scripts/perf/compare.mjs <before-label> <after-label>
+node scripts/perf/seed.ts <user-data-dir> <repo>            # project + threads of 5 to 200 turns
+node scripts/perf/seed.ts <user-data-dir> <repo> <projectId> # one 150-turn thread with 100 KB tool outputs
+node scripts/perf/fatfill.ts <worktree> 60000               # fake node_modules to time worktree removal
+node scripts/perf/measure.ts <port> <label> switch <threadId...>
+node scripts/perf/measure.ts <port> <label> scroll <threadId> [pxPerFrame]   # PROFILE=1 writes a .cpuprofile
+node scripts/perf/measure.ts <port> <label> archive <threadId>  # turns on worktree removal first
+node scripts/perf/measure.ts <port> <label> typing <threadId>   # composer key-to-paint latency
+node scripts/perf/measure.ts <port> <label> reply <threadId>    # needs HINACODE_MOCK_CLAUDE=stream
+node scripts/perf/measure.ts <port> <label> typing-reply <threadId>  # typing while that reply streams
+node scripts/perf/analyze-profile.ts .context/perf/<label>-scroll.cpuprofile
+node scripts/perf/compare.ts <before-label> <after-label>
 ```
 
 Results land in `.context/perf/`. Reload the renderer after seeding: the sidebar only reads threads at boot.
 
 ## Profile typing, streaming and thread switching
 
-`measure.mjs` reloads the renderer with `react-commits.js` installed where React DevTools would hook in, so
+`measure.ts` reloads the renderer with `react-commits.js` installed where React DevTools would hook in, so
 `typing`, `switch`, `reply` and `typing-reply` report which components rendered in every commit, next to the
 renderer's script, style and layout time from `Performance.getMetrics`. The renderer bundle is not minified, so
 component names survive the production build.
@@ -44,20 +44,20 @@ this machine closer to a low-end laptop.
 ```sh
 S=.agents/skills/verify-hinacode/scripts
 HINACODE_MOCK_CLAUDE=stream $S/launch.sh 9473 /tmp/kk-perf-ab
-$S/seed-repo.sh /tmp/kk-perf-ab/repo && node scripts/perf/seed.mjs /tmp/kk-perf-ab /tmp/kk-perf-ab/repo
+$S/seed-repo.sh /tmp/kk-perf-ab/repo && node scripts/perf/seed.ts /tmp/kk-perf-ab /tmp/kk-perf-ab/repo
 pnpm build && cp -r out .context/perf/before-out   # on the base commit
 pnpm build && cp -r out .context/perf/after-out    # on the change
 scripts/perf/suite.sh 9473 /tmp/kk-perf-ab 5 before=.context/perf/before-out after=.context/perf/after-out
-node scripts/perf/suite-compare.mjs before after
+node scripts/perf/suite-compare.ts before after
 ```
 
 `suite.sh` swaps only `out/renderer`, so a main-process change needs an instance per build. It refuses a label
-that already has results, because `suite-compare.mjs` takes the median over every run of a label. Judge latency by
+that already has results, because `suite-compare.ts` takes the median over every run of a label. Judge latency by
 p50 and p95; a single slow key or frame moves the max from run to run.
 
-Every capture also writes `<label>-<name>.commits.json`. `commits.mjs` groups its commits by which components
+Every capture also writes `<label>-<name>.commits.json`. `commits.ts` groups its commits by which components
 rendered, so a commit that repeats with more components than it needs stands out. `PROFILE=1` adds a CPU profile
-for `analyze-profile.mjs`. `TRACE=1` adds a trace that the DevTools Performance panel opens, and `trace-summary.mjs`
+for `analyze-profile.ts`. `TRACE=1` adds a trace that the DevTools Performance panel opens, and `trace-summary.ts`
 totals its style, layout and paint work. Both add overhead, so compare only runs captured the same way.
 
 ### 2026-10-22 capture
@@ -111,7 +111,7 @@ setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env HINACODE_USER_DAT
   --no-sandbox --disable-gpu --remote-debugging-port="$3" --inspect="127.0.0.1:$4" out/main/index.js' \
   _ "$DATA" "$REPO" "$PORT" "$MAIN_PORT" >"$DATA/electron.log" 2>&1 </dev/null &
 
-node "$S/rpc.mjs" "$PORT" settings.get
+node "$S/rpc.ts" "$PORT" settings.get
 $S/doctor.sh "$PORT" "$DATA"
 ```
 
@@ -123,11 +123,11 @@ webhook port assigned by the original skill launch.
 Use an empty benchmark thread, or one with a short final user message visible at the bottom. Do not
 run an agent in that thread. Persisted assistant messages must be complete and approvals resolved.
 Create an empty thread in the isolated app if needed, then copy its ID from the sidebar link or
-`node "$S/rpc.mjs" "$PORT" threads.list`. Do not send a prompt to an agent.
+`node "$S/rpc.ts" "$PORT" threads.list`. Do not send a prompt to an agent.
 
 ```sh
-HINACODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" baseline "$THREAD_ID"
-HINACODE_USER_DATA="$DATA" PARSE=1 PROFILE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" baseline-profile "$THREAD_ID"
+HINACODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.ts "$PORT" "$MAIN_PORT" baseline "$THREAD_ID"
+HINACODE_USER_DATA="$DATA" PARSE=1 PROFILE=1 node scripts/perf/stream.ts "$PORT" "$MAIN_PORT" baseline-profile "$THREAD_ID"
 ```
 
 Omit `PARSE=1` and the instrumentation step for frame measurements alone. `PROFILE=1` saves a
@@ -161,9 +161,9 @@ For a candidate build, stop the owned instance, run `pnpm build`, instrument aga
 restart using the same command and profile. Run the doctor and use a new label:
 
 ```sh
-HINACODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.mjs "$PORT" "$MAIN_PORT" candidate "$THREAD_ID"
-node scripts/perf/compare.mjs baseline candidate
-node scripts/perf/analyze-profile.mjs .context/perf/baseline-profile-stream.cpuprofile
+HINACODE_USER_DATA="$DATA" PARSE=1 node scripts/perf/stream.ts "$PORT" "$MAIN_PORT" candidate "$THREAD_ID"
+node scripts/perf/compare.ts baseline candidate
+node scripts/perf/analyze-profile.ts .context/perf/baseline-profile-stream.cpuprofile
 $S/stop.sh "$DATA"
 pnpm build
 ```
@@ -180,13 +180,13 @@ Build first, then run from the checkout root:
 
 ```sh
 pnpm build
-node scripts/perf/memory.mjs baseline history
-node scripts/perf/memory.mjs baseline claude
+node scripts/perf/memory.ts baseline history
+node scripts/perf/memory.ts baseline claude
 # Rebuild the candidate before repeating either workload.
-node scripts/perf/memory.mjs candidate history --check
-node scripts/perf/memory.mjs candidate claude --check
-node scripts/perf/compare-memory.mjs baseline candidate history
-node scripts/perf/compare-memory.mjs baseline candidate claude
+node scripts/perf/memory.ts candidate history --check
+node scripts/perf/memory.ts candidate claude --check
+node scripts/perf/compare-memory.ts baseline candidate history
+node scripts/perf/compare-memory.ts baseline candidate claude
 ```
 
 Each run launches its own built Electron app through the repository's Playwright Electron driver.
@@ -246,11 +246,11 @@ leaves GPU behavior enabled, and closes only its own app through CDP.
 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm dist --mac -c.mac.notarize=false
 ditto dist/mac-arm64/hinacode.app .context/perf/baseline.app
 HINACODE_PERF_APP="$PWD/.context/perf/baseline.app/Contents/MacOS/hinacode" \
-  PERF_SNAPSHOT=1 node scripts/perf/memory.mjs baseline footprint
+  PERF_SNAPSHOT=1 node scripts/perf/memory.ts baseline footprint
 # Build the candidate package before repeating with another preserved app and label.
 HINACODE_PERF_APP="$PWD/.context/perf/candidate.app/Contents/MacOS/hinacode" \
-  PERF_SNAPSHOT=1 node scripts/perf/memory.mjs candidate footprint
-node scripts/perf/compare-memory.mjs baseline candidate footprint
+  PERF_SNAPSHOT=1 node scripts/perf/memory.ts candidate footprint
+node scripts/perf/compare-memory.ts baseline candidate footprint
 ```
 
 `footprint` seeds three projects and thirty threads. Five transcripts each have
@@ -318,4 +318,4 @@ main heap 39.522 to 22.149 MiB (-43.96%), app RSS 704.89 to 685.81 MiB (-2.71%),
 renderer heap 24.377 to 24.417 MiB. Older RSS captures were substantially lower in
 both unchanged and changed processes. Preserve all captures and use the adjacent
 pair for this long-idle RSS comparison; the repeatable heap reduction is stronger
-evidence. Run `compare-memory.mjs alpha-final-control bundled-full-2 footprint`.
+evidence. Run `compare-memory.ts alpha-final-control bundled-full-2 footprint`.

@@ -16,7 +16,7 @@ We are building a harness, not a chat app. Our features help a developer manage 
 ```sh
 pnpm dev          # electron-vite dev
 pnpm build        # main, preload and renderer into out/
-pnpm typecheck    # node, web and web-test tsconfigs
+pnpm typecheck    # tsrs over the node, web, web-test, e2e and scripts tsconfigs
 pnpm lint         # oxlint
 pnpm format       # oxfmt (no semicolons, width 120)
 pnpm test         # node --test, *.test.ts next to source
@@ -49,6 +49,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 ## Conventions
 
 - The renderer lints with the React Compiler rules (`react/purity`, `react/refs` and the rest) and the React Doctor rules listed in `.oxlintrc.json`. Code the compiler cannot optimize fails `pnpm lint`.
+- Internal scripts are TypeScript that Node runs directly (`node scripts/tlc.ts`), so they use erasable syntax only and `.ts` import paths. `tsconfig.scripts.json` type-checks them. `bin/hinacode.mjs` stays JavaScript because it ships in the npm package, and Node does not strip types under `node_modules`.
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
 - Icons come from `react-icons/ri` (Remix). shadcn has no react-icons option, so `components.json` says `remixicon` and `shadcn add` writes `@remixicon/react` imports. Change them to `react-icons/ri`; the icon names are the same.

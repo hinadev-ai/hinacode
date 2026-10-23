@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
 
+type Commit = { at: number; rendered: string[] }
+
 const [file, minSize = "1"] = process.argv.slice(2)
-if (!file) throw new Error("usage: commits.mjs <label-name.commits.json> [min-size]")
-const commits = JSON.parse(readFileSync(file, "utf8"))
+if (!file) throw new Error("usage: commits.ts <label-name.commits.json> [min-size]")
+const commits: Commit[] = JSON.parse(readFileSync(file, "utf8"))
 const start = commits[0]?.at ?? 0
 
-const groups = new Map()
+const groups = new Map<string, { size: number; at: number[] }>()
 for (const commit of commits) {
   if (commit.rendered.length < Number(minSize)) continue
-  const counts = new Map()
+  const counts = new Map<string, number>()
   for (const name of commit.rendered) counts.set(name, (counts.get(name) ?? 0) + 1)
   const key = [...counts]
     .toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Usage: measure.mjs <cdp-port> <label> <scenario> [args...]
+// Usage: measure.ts <cdp-port> <label> <scenario> [args...]
 //   switch <threadId...>        click each sidebar thread link in turn, 3 rounds; time to painted transcript + heap
 //   scroll <threadId>           open the thread, scroll bottom->top->bottom one step per frame; frame times + heap
 //   archive <threadId>          turn on worktree removal, time the threads.archive rpc, and the latency of a cheap rpc while it runs
@@ -8,15 +8,32 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+type Target = { type: string; url: string; webSocketDebuggerUrl: string }
+type Reply = { id?: number; error?: unknown; result?: unknown }
+type Metric = { name: string; value: number }
+type Counter =
+  | "TaskDuration"
+  | "ScriptDuration"
+  | "RecalcStyleDuration"
+  | "LayoutDuration"
+  | "RecalcStyleCount"
+  | "LayoutCount"
+type Counters = Record<Counter, number>
+type Commit = { rendered: string[] }
+type LongTask = { start: number; duration: number }
+type Key = { start: number; streaming: boolean; toFrame: number; toPaint: number }
+type OpenThread = { ms: number; articles: number; longTasks: LongTask[] }
+type ScrollRun = Record<string, unknown> & { longTasks: LongTask[] }
+
 const resultsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".context", "perf")
 
 const [port, label, scenario, ...args] = process.argv.slice(2)
 if (!port || !label || !scenario) {
-  console.error("usage: measure.mjs <cdp-port> <label> <scenario> [args...]")
+  console.error("usage: measure.ts <cdp-port> <label> <scenario> [args...]")
   process.exit(2)
 }
 
-const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
+const targets = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as Target[]
 const page = targets.find((t) => t.type === "page" && t.url.includes("/renderer/index.html"))
 if (!page) throw new Error("no hinacode renderer page")
 const ws = new WebSocket(page.webSocketDebuggerUrl)
@@ -25,28 +42,32 @@ await new Promise((resolve, reject) => {
   ws.addEventListener("error", reject, { once: true })
 })
 let nextId = 1
-const pending = new Map()
+const pending = new Map<number, (msg: Reply) => void>()
 ws.addEventListener("message", (e) => {
-  const msg = JSON.parse(e.data)
+  const msg: Reply = JSON.parse(e.data)
   if (msg.id && pending.has(msg.id)) {
-    pending.get(msg.id)(msg)
+    pending.get(msg.id)!(msg)
     pending.delete(msg.id)
   }
 })
-const send = (method, params = {}) =>
-  new Promise((resolve, reject) => {
+const send = <T = unknown>(method: string, params = {}) =>
+  new Promise<T>((resolve, reject) => {
     const id = nextId++
-    pending.set(id, (msg) => (msg.error ? reject(new Error(JSON.stringify(msg.error))) : resolve(msg.result)))
+    pending.set(id, (msg) => (msg.error ? reject(new Error(JSON.stringify(msg.error))) : resolve(msg.result as T)))
     ws.send(JSON.stringify({ id, method, params }))
   })
-const evaluate = async (expression) => {
-  const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })
+const evaluate = async <T = unknown>(expression: string): Promise<T> => {
+  const r = await send<{ exceptionDetails?: unknown; result: { value: T } }>("Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  })
   if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails))
   return r.result.value
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-const waitFor = async (expression, timeoutMs = 20000) => {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const waitFor = async (expression: string, timeoutMs = 20000) => {
   const deadline = Date.now() + timeoutMs
   while (!(await evaluate(expression).catch(() => false))) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${expression}`)
@@ -66,11 +87,11 @@ await send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle })
 await waitFor(`"__reactCommits" in window && document.querySelector('a[href^="/thread/"]') !== null`)
 
 const counters = async () => {
-  const { metrics } = await send("Performance.getMetrics")
-  return Object.fromEntries(metrics.map((metric) => [metric.name, metric.value]))
+  const { metrics } = await send<{ metrics: Metric[] }>("Performance.getMetrics")
+  return Object.fromEntries(metrics.map((metric) => [metric.name, metric.value])) as Counters
 }
-const seconds = (before, after, name) => +((after[name] - before[name]) * 1000).toFixed(1)
-const workBetween = (before, after) => ({
+const seconds = (before: Counters, after: Counters, name: Counter) => +((after[name] - before[name]) * 1000).toFixed(1)
+const workBetween = (before: Counters, after: Counters) => ({
   taskMs: seconds(before, after, "TaskDuration"),
   scriptMs: seconds(before, after, "ScriptDuration"),
   styleMs: seconds(before, after, "RecalcStyleDuration"),
@@ -78,8 +99,8 @@ const workBetween = (before, after) => ({
   styleRecalcs: after.RecalcStyleCount - before.RecalcStyleCount,
   layouts: after.LayoutCount - before.LayoutCount,
 })
-const summarizeCommits = (commits) => {
-  const counts = new Map()
+const summarizeCommits = (commits: Commit[]) => {
+  const counts = new Map<string, number>()
   for (const { rendered } of commits) for (const name of rendered) counts.set(name, (counts.get(name) ?? 0) + 1)
   return {
     commits: commits.length,
@@ -92,9 +113,9 @@ const summarizeCommits = (commits) => {
   }
 }
 const startTrace = async () => {
-  const events = []
-  const collect = (e) => {
-    const msg = JSON.parse(e.data)
+  const events: unknown[] = []
+  const collect = (e: MessageEvent) => {
+    const msg: { method?: string; params: { value: unknown[] } } = JSON.parse(e.data)
     if (msg.method === "Tracing.dataCollected") events.push(...msg.params.value)
   }
   ws.addEventListener("message", collect)
@@ -110,9 +131,9 @@ const startTrace = async () => {
     ].join(","),
     transferMode: "ReportEvents",
   })
-  return async (file) => {
-    const complete = new Promise((resolve) => {
-      const done = (e) => {
+  return async (file: string) => {
+    const complete = new Promise<void>((resolve) => {
+      const done = (e: MessageEvent) => {
         if (JSON.parse(e.data).method !== "Tracing.tracingComplete") return
         ws.removeEventListener("message", done)
         resolve()
@@ -125,7 +146,7 @@ const startTrace = async () => {
     writeFileSync(file, JSON.stringify({ traceEvents: events }))
   }
 }
-const record = async (name, action) => {
+const record = async <T>(name: string, action: () => Promise<T>) => {
   const before = await counters()
   const saveTrace = process.env.TRACE === "1" ? await startTrace() : null
   if (process.env.PROFILE === "1") {
@@ -135,31 +156,31 @@ const record = async (name, action) => {
   }
   await evaluate("window.__reactCommits.start()")
   const result = await action()
-  const commits = await evaluate("window.__reactCommits.stop()")
+  const commits = await evaluate<Commit[]>("window.__reactCommits.stop()")
   const after = await counters()
   mkdirSync(resultsDir, { recursive: true })
   if (process.env.PROFILE === "1") {
-    const { profile } = await send("Profiler.stop")
+    const { profile } = await send<{ profile: unknown }>("Profiler.stop")
     writeFileSync(join(resultsDir, `${label}-${name}.cpuprofile`), JSON.stringify(profile))
   }
   if (saveTrace) await saveTrace(join(resultsDir, `${label}-${name}.trace.json`))
   writeFileSync(join(resultsDir, `${label}-${name}.commits.json`), JSON.stringify(commits))
   return { result, work: workBetween(before, after), renders: summarizeCommits(commits) }
 }
-const press = async (key, code, keyCode, modifiers = 0) => {
+const press = async (key: string, code: string, keyCode: number, modifiers = 0) => {
   for (const type of ["keyDown", "keyUp"]) {
     await send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: keyCode, modifiers })
   }
 }
-const longTaskMs = async (since) => {
-  const tasks = await evaluate(`window.__perf.takeLongTasks(${since})`)
+const longTaskMs = async (since: number) => {
+  const tasks = await evaluate<LongTask[]>(`window.__perf.takeLongTasks(${since})`)
   return Math.round(tasks.reduce((total, task) => total + task.duration, 0))
 }
 const TYPED_TEXT = "Profile the composer so that every keystroke paints within one frame, even on long threads."
 const KEY_INTERVAL_MS = 50
 const COMPOSER = `document.querySelector('main textarea[role="combobox"]')`
 const STATUS = `document.querySelector("main header [data-status]").dataset.status`
-const typeText = async (text) => {
+const typeText = async (text: string) => {
   for (const char of text) {
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: char, text: char, unmodifiedText: char })
     await send("Input.dispatchKeyEvent", { type: "keyUp", key: char })
@@ -194,18 +215,18 @@ const assertReplied = async () => {
   })()`)
   if (!replied) throw new Error("the reply did not finish with the stream fixture")
 }
-const percentiles = (values) => {
+const percentiles = (values: number[]) => {
   const sorted = values.toSorted((a, b) => a - b)
-  const at = (q) => +(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0).toFixed(1)
+  const at = (q: number) => +(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0).toFixed(1)
   return { count: sorted.length, p50: at(0.5), p95: at(0.95), max: at(1) }
 }
 const heap = async () => {
   await send("HeapProfiler.collectGarbage")
   await new Promise((r) => setTimeout(r, 300))
-  const { metrics } = await send("Performance.getMetrics")
-  const get = (name) => metrics.find((m) => m.name === name)?.value
+  const { metrics } = await send<{ metrics: Metric[] }>("Performance.getMetrics")
+  const get = (name: string) => metrics.find((m) => m.name === name)?.value
   return {
-    jsHeapUsedMB: +(get("JSHeapUsedSize") / 1048576).toFixed(1),
+    jsHeapUsedMB: +(get("JSHeapUsedSize")! / 1048576).toFixed(1),
     nodes: get("Nodes"),
     listeners: get("JSEventListeners"),
   }
@@ -298,10 +319,11 @@ await evaluate(`(() => {
   }
 })()`)
 
-const results = { label, scenario, args, cpuThrottle, at: new Date().toISOString() }
+const results: Record<string, unknown> = { label, scenario, args, cpuThrottle, at: new Date().toISOString() }
 if (scenario === "switch") {
   results.heapStart = await heap()
-  results.rounds = []
+  const rounds: unknown[] = []
+  results.rounds = rounds
   for (let round = 0; round < 3; round++) {
     for (const id of args) {
       const {
@@ -309,9 +331,9 @@ if (scenario === "switch") {
         work,
         renders,
       } = await record(`switch-${round}-${id.slice(0, 8)}`, () =>
-        evaluate(`window.__perf.openThread(${JSON.stringify(id)})`),
+        evaluate<OpenThread>(`window.__perf.openThread(${JSON.stringify(id)})`),
       )
-      results.rounds.push({
+      rounds.push({
         round,
         id,
         ms: +r.ms.toFixed(1),
@@ -334,9 +356,9 @@ if (scenario === "switch") {
     await send("Profiler.setSamplingInterval", { interval: 200 })
     await send("Profiler.start")
   }
-  const run = await evaluate(`window.__perf.scrollRun(${args[1] ?? 600})`)
+  const run = await evaluate<ScrollRun>(`window.__perf.scrollRun(${args[1] ?? 600})`)
   if (profile) {
-    const { profile: data } = await send("Profiler.stop")
+    const { profile: data } = await send<{ profile: unknown }>("Profiler.stop")
     mkdirSync(resultsDir, { recursive: true })
     writeFileSync(join(resultsDir, `${label}-scroll.cpuprofile`), JSON.stringify(data))
   }
@@ -347,7 +369,7 @@ if (scenario === "switch") {
   }
   results.heapAfter = await heap()
 } else if (scenario === "archive") {
-  const r = await evaluate(`(async () => {
+  const r = await evaluate<{ ms: number; probes: number[]; envelope: unknown }>(`(async () => {
     const probes = []
     const t0 = performance.now()
     await window.hinacode.rpc("settings.set", { archive: { whenMerged: false, removeWorktree: true } })
@@ -371,7 +393,7 @@ if (scenario === "switch") {
   await evaluate(`window.__perf.openThread(${JSON.stringify(args[0])})`)
   await sleep(500)
   await evaluate(`${COMPOSER}.focus()`)
-  const since = await evaluate("performance.now()")
+  const since = await evaluate<number>("performance.now()")
   const {
     result: keys,
     work,
@@ -379,7 +401,7 @@ if (scenario === "switch") {
   } = await record("typing", async () => {
     await typeText(TYPED_TEXT)
     await sleep(300)
-    return evaluate(`window.__perf.takeKeys(${since})`)
+    return evaluate<Key[]>(`window.__perf.takeKeys(${since})`)
   })
   await clearComposer()
   results.workload = { chars: TYPED_TEXT.length, keyIntervalMs: KEY_INTERVAL_MS }
@@ -394,15 +416,15 @@ if (scenario === "switch") {
   await settleTranscript()
   await evaluate(`${COMPOSER}.focus()`)
   await send("Input.insertText", { text: "go" })
-  const since = await evaluate("performance.now()")
+  const since = await evaluate<number>("performance.now()")
   const { result: keys, work } = await record("typing-reply", async () => {
     await press("Enter", "Enter", 13)
     await waitFor(`${STATUS} === "running"`)
-    const typingSince = await evaluate("performance.now()")
+    const typingSince = await evaluate<number>("performance.now()")
     await typeText(TYPED_TEXT)
     await waitFor(`${STATUS} === "idle"`, 60000)
     await sleep(300)
-    return evaluate(`window.__perf.takeKeys(${typingSince})`)
+    return evaluate<Key[]>(`window.__perf.takeKeys(${typingSince})`)
   })
   await assertReplied()
   await clearComposer()
@@ -419,7 +441,7 @@ if (scenario === "switch") {
   const articlesBefore = await evaluate(`document.querySelectorAll("main article").length`)
   await evaluate(`${COMPOSER}.focus()`)
   await send("Input.insertText", { text: "go" })
-  const since = await evaluate("performance.now()")
+  const since = await evaluate<number>("performance.now()")
   const {
     result: gaps,
     work,
@@ -430,7 +452,7 @@ if (scenario === "switch") {
     await waitFor(`${STATUS} === "running"`)
     await waitFor(`${STATUS} === "idle"`, 60000)
     await sleep(500)
-    return evaluate("window.__perf.stopFrames()")
+    return evaluate<number[]>("window.__perf.stopFrames()")
   })
   await assertReplied()
   const frames = percentiles(gaps)

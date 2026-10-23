@@ -1,4 +1,4 @@
-// Usage: fatfill.mjs <dir> <files>  Writes <files> small files in a pnpm-like nested layout under <dir>/node_modules.
+// Usage: fatfill.ts <dir> <files>  Writes <files> small files in a pnpm-like nested layout under <dir>/node_modules.
 import { mkdirSync, writeFileSync } from "node:fs"
 const [dir, count] = process.argv.slice(2)
 const n = Number(count)

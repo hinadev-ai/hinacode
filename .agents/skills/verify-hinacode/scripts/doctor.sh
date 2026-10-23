@@ -30,7 +30,7 @@ fi
 page_url=$(curl -fs "http://127.0.0.1:$port/json" 2>/dev/null | grep -o '"url": *"file://[^"]*renderer/index.html"' | head -1)
 [[ "$page_url" == *"$repo/out/renderer/index.html"* ]] && ok "renderer from $repo/out" || bad "renderer page is '${page_url:-missing}', expected this checkout's out/renderer"
 
-if settings=$(node "$here/rpc.mjs" "$port" settings.get 2>&1); then
+if settings=$(node "$here/rpc.ts" "$port" settings.get 2>&1); then
   ok "rpc answers: $(echo "$settings" | tr -d ' \n' | cut -c1-160)"
   hook_port=$(echo "$settings" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).automations.port))')
   hook_owner=$(ss -ltnpH "sport = :$hook_port" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)

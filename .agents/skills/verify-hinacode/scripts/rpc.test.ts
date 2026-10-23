@@ -2,15 +2,16 @@ import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { createServer } from "node:http"
+import type { AddressInfo, Socket } from "node:net"
 import { test } from "node:test"
 import { fileURLToPath } from "node:url"
 
-const helper = fileURLToPath(new URL("./rpc.mjs", import.meta.url))
+const helper = fileURLToPath(new URL("./rpc.ts", import.meta.url))
 
 test("rpc exits after printing its response without waiting for CDP to close", async () => {
-  const sockets = new Set()
+  const sockets = new Set<Socket>()
   const server = createServer((_, response) => {
-    const address = server.address()
+    const address = server.address() as AddressInfo
     response.setHeader("Content-Type", "application/json")
     response.end(
       JSON.stringify([
@@ -36,14 +37,19 @@ test("rpc exits after printing its response without waiting for CDP to close", a
       socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload]))
     })
   })
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
-  const child = spawn(process.execPath, [helper, String(server.address().port), "threads.create", "{}"])
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const child = spawn(process.execPath, [
+    helper,
+    String((server.address() as AddressInfo).port),
+    "threads.create",
+    "{}",
+  ])
   let stdout = ""
   child.stdout.setEncoding("utf8").on("data", (chunk) => {
     stdout += chunk
   })
   const exited = new Promise((resolve) => child.once("exit", (code) => resolve(code)))
-  let timeout
+  let timeout: NodeJS.Timeout | undefined
   try {
     const code = await Promise.race([
       exited,

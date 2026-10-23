@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// Usage: rpc.mjs <cdp-port> <method> ['<json payload>']
+// Usage: rpc.ts <cdp-port> <method> ['<json payload>']
 // Calls window.hinacode.rpc(method, payload) in the hinacode renderer over CDP and prints the result as JSON.
 // Methods and payload shapes: src/shared/contract.ts (RpcMethods). Exits 1 on an rpc error envelope.
 const [port, method, payload = "undefined"] = process.argv.slice(2)
 if (!port || !method) {
-  console.error("usage: rpc.mjs <cdp-port> <method> ['<json payload>']")
+  console.error("usage: rpc.ts <cdp-port> <method> ['<json payload>']")
   process.exit(2)
 }
-const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
+type Target = { type: string; url: string; webSocketDebuggerUrl: string }
+type Reply = { result?: { result?: { value?: { result?: unknown; error?: unknown } }; exceptionDetails?: unknown } }
+
+const targets = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as Target[]
 const page = targets.find((t) => t.type === "page" && t.url.includes("/renderer/index.html"))
 if (!page) throw new Error(`no hinacode renderer page on CDP port ${port}`)
 const ws = new WebSocket(page.webSocketDebuggerUrl)
@@ -26,7 +29,7 @@ ws.send(
     },
   }),
 )
-const reply = await new Promise((resolve) =>
+const reply = await new Promise<Reply>((resolve) =>
   ws.addEventListener("message", (e) => resolve(JSON.parse(e.data)), { once: true }),
 )
 ws.close()

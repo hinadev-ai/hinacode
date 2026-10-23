@@ -46,7 +46,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:terminal": "node ./scripts/build-terminal-html.mjs",
+    "build:terminal": "node ./scripts/build-terminal-html.mts",
     "build:icons": "./scripts/build-app-icons.sh"
   },
   "private": true

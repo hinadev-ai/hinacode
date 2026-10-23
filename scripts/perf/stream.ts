@@ -1,33 +1,52 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { createHash, randomUUID } from "node:crypto"
+import { createHash, randomUUID, type BinaryLike } from "node:crypto"
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import type { RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../../src/shared/contract.ts"
+
+type Target = { type: string; url: string; webSocketDebuggerUrl: string }
+type Reply = { id: number; error?: unknown; result?: { exceptionDetails?: unknown } }
+type Push = { seq: number; message: { id: string }; event: { type: string; text: string } }
+type Timing = { done: boolean; error?: string; emitMs?: number }
+type Instrumentation = { originalSha256: string; bundle: string; instrumentedSha256: string }
+type Marker = { version: number; originalSha256: string; bundle: string }
+type Raw = {
+  frames: number[]
+  longTasks: { ms: number }[]
+  events: Push[]
+  hidden: boolean
+  visibility: string
+  parses: { chars: number; ms: number }[]
+  dom: { text: string; busy: string; headings: number; tables: number; codeBlocks: number }
+}
 
 const root = realpathSync(join(dirname(fileURLToPath(import.meta.url)), "../.."))
 const resultsDir = join(root, ".context/perf")
 const [rendererPort, inspectorPort, label, threadId] = process.argv.slice(2)
 const data = process.env.HINACODE_USER_DATA
 if (
-  ![rendererPort, inspectorPort].every((port) => /^\d+$/.test(port ?? "") && +port > 0 && +port < 65536) ||
+  !rendererPort ||
+  !inspectorPort ||
+  ![rendererPort, inspectorPort].every((port) => /^\d+$/.test(port) && +port > 0 && +port < 65536) ||
   !/^[\w-]+$/.test(label ?? "") ||
   !threadId ||
   !data?.startsWith("/tmp/kk-")
 ) {
   throw new Error(
     "usage: HINACODE_USER_DATA=/tmp/kk-<isolated-profile> [PARSE=1] [PROFILE=1] " +
-      "node scripts/perf/stream.mjs <rendererCDP> <mainInspectorPort> <label> <threadId>",
+      "node scripts/perf/stream.ts <rendererCDP> <mainInspectorPort> <label> <threadId>",
   )
 }
 const profileEnabled = process.env.PROFILE === "1"
 const parseEnabled = process.env.PARSE === "1"
-const hash = (value) => createHash("sha256").update(value).digest("hex")
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-const stats = (values) => {
+const hash = (value: BinaryLike) => createHash("sha256").update(value).digest("hex")
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const stats = (values: number[]) => {
   const sorted = values.toSorted((a, b) => a - b)
-  const q = (fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]
+  const q = (fraction: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]
   return {
     samples: values.length,
     avg: values.reduce((sum, value) => sum + value, 0) / values.length,
@@ -44,16 +63,16 @@ const doctor = execFileSync(join(root, ".agents/skills/verify-hinacode/scripts/d
   encoding: "utf8",
 })
 
-async function connect(port, type) {
+async function connect(port: string, type: string) {
   const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) })
   assert(response.ok, `cannot list targets on ${port}`)
-  const targets = (await response.json()).filter((target) => target.type === type)
+  const targets = ((await response.json()) as Target[]).filter((target) => target.type === type)
   const expectedUrl = pathToFileURL(join(root, "out/renderer/index.html")).href
   const candidates = type === "page" ? targets.filter((target) => target.url === expectedUrl) : targets
   assert.equal(candidates.length, 1, `expected one ${type} target from this checkout on ${port}`)
-  const target = candidates[0]
+  const target = candidates[0]!
   const ws = new WebSocket(target.webSocketDebuggerUrl)
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       ws.close()
       reject(new Error(`CDP connection timeout on ${port}`))
@@ -76,13 +95,13 @@ async function connect(port, type) {
     )
   })
   let id = 0
-  const pending = new Map()
+  const pending = new Map<number, (reply: Reply) => void>()
   ws.addEventListener("message", ({ data: message }) => {
-    const reply = JSON.parse(message)
+    const reply: Reply = JSON.parse(message)
     pending.get(reply.id)?.(reply)
   })
-  const call = (method, params = {}) =>
-    new Promise((resolve, reject) => {
+  const call = <T = unknown>(method: string, params = {}) =>
+    new Promise<T>((resolve, reject) => {
       const key = ++id
       const timer = setTimeout(() => {
         pending.delete(key)
@@ -92,7 +111,7 @@ async function connect(port, type) {
         clearTimeout(timer)
         pending.delete(key)
         if (reply.error || reply.result?.exceptionDetails) reject(new Error(JSON.stringify(reply)))
-        else resolve(reply.result)
+        else resolve(reply.result as T)
       })
       ws.send(JSON.stringify({ id: key, method, params }))
     })
@@ -100,7 +119,7 @@ async function connect(port, type) {
     target,
     call,
     close: () =>
-      new Promise((resolve, reject) => {
+      new Promise<void>((resolve, reject) => {
         if (ws.readyState === WebSocket.CLOSED) return resolve()
         const timer = setTimeout(() => reject(new Error(`CDP close timeout on ${port}`)), 5000)
         ws.addEventListener(
@@ -113,9 +132,9 @@ async function connect(port, type) {
         )
         ws.close()
       }),
-    eval: async (expression) =>
+    eval: async <T = unknown>(expression: string) =>
       (
-        await call("Runtime.evaluate", {
+        await call<{ result: { value: T } }>("Runtime.evaluate", {
           expression,
           awaitPromise: true,
           returnByValue: true,
@@ -125,13 +144,13 @@ async function connect(port, type) {
 }
 
 const renderer = await connect(rendererPort, "page")
-let main
+let main: Awaited<ReturnType<typeof connect>> | undefined
 let profiling = false
 const runId = randomUUID()
 try {
   main = await connect(inspectorPort, "node")
   const windowExpression = `process.getBuiltinModule('node:module').createRequire(process.cwd() + '/package.json')('electron').BrowserWindow.getAllWindows().filter(w => w.webContents.getURL() === ${JSON.stringify(renderer.target.url)})`
-  const mainInfo = await main.eval(`(() => {
+  const mainInfo = await main.eval<{ cwd: string; data: string; windows: unknown[] }>(`(() => {
     const windows = ${windowExpression};
     return { cwd: process.cwd(), data: process.env.HINACODE_USER_DATA, pid: process.pid,
       windows: windows.map(w => ({ id: w.id, url: w.webContents.getURL() })) };
@@ -145,7 +164,7 @@ try {
   await renderer.call("Page.enable")
   await renderer.eval("globalThis.__hinacodePerfReload = true")
   await renderer.call("Page.reload", { ignoreCache: true })
-  const waitFor = async (expression, description) => {
+  const waitFor = async (expression: string, description: string) => {
     const deadline = Date.now() + 20000
     while (Date.now() < deadline) {
       try {
@@ -161,8 +180,10 @@ try {
     "!globalThis.__hinacodePerfReload && Boolean(window.hinacode && document.querySelector('main'))",
     "renderer reload",
   )
-  const rpc = async (method, payload) => {
-    const envelope = await renderer.eval(`window.hinacode.rpc(${JSON.stringify(method)}, ${JSON.stringify(payload)})`)
+  const rpc = async <M extends RpcMethod>(method: M, payload?: RpcRequestEncoded<M>) => {
+    const envelope = await renderer.eval<{ error?: unknown; result: RpcResponseEncoded<M> }>(
+      `window.hinacode.rpc(${JSON.stringify(method)}, ${JSON.stringify(payload)})`,
+    )
     assert(!envelope.error, JSON.stringify(envelope.error))
     return envelope.result
   }
@@ -194,24 +215,24 @@ try {
     const loaded = ${
       history.messages.length === 0
         ? "document.querySelector('main h2') && !document.querySelector('main article')"
-        : `[...document.querySelectorAll('main article[aria-label]')].some(el => el.textContent.trim() === ${JSON.stringify(witness.trim())})`
+        : `[...document.querySelectorAll('main article[aria-label]')].some(el => el.textContent.trim() === ${JSON.stringify(witness!.trim())})`
     };
     return active && title && loaded;
   })()`,
     "selected thread and loaded persisted transcript",
   )
 
-  const marker = await renderer.eval(
+  const marker = await renderer.eval<Marker | undefined>(
     "globalThis.__hinacodePerfMarkdown && { ...globalThis.__hinacodePerfMarkdown, samples: null }",
   )
-  let instrumentation = null
+  let instrumentation: Instrumentation | null = null
   if (parseEnabled) {
     assert.equal(
       marker?.version,
       1,
       "parse instrumentation absent; run python3 scripts/perf/instrument-bundle.py after pnpm build, then reload; pnpm build restores it",
     )
-    instrumentation = JSON.parse(readFileSync(join(resultsDir, "instrumentation.json"), "utf8"))
+    instrumentation = JSON.parse(readFileSync(join(resultsDir, "instrumentation.json"), "utf8")) as Instrumentation
     assert.equal(
       marker.originalSha256,
       instrumentation.originalSha256,
@@ -256,7 +277,12 @@ try {
     state.raf = requestAnimationFrame(tick);
   })()`)
   await pause(1000)
-  const idle = await renderer.eval(`({ frames: __hinacodePerfFrames.gaps, hidden: __hinacodePerfFrames.hidden,
+  const idle = await renderer.eval<{
+    frames: number[]
+    hidden: boolean
+    visibility: string
+    viewport: unknown
+  }>(`({ frames: __hinacodePerfFrames.gaps, hidden: __hinacodePerfFrames.hidden,
     visibility: document.visibilityState, viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio } })`)
   assert.equal(idle.visibility, "visible", "renderer must be visible")
   assert.equal(idle.hidden, false, "renderer was hidden during idle sampling")
@@ -308,10 +334,10 @@ try {
       } catch (error) { clearInterval(state.timer); state.timer = null; state.error = String(error); state.done = true; }
     }, 20);
   })()`)
-  let timing
+  let timing: Timing | undefined
   const deadline = Date.now() + 20000
   while (Date.now() < deadline) {
-    timing = await main.eval("({ ...globalThis.__hinacodePerfStream, timer: undefined })")
+    timing = await main.eval<Timing>("({ ...globalThis.__hinacodePerfStream, timer: undefined })")
     if (timing.done) break
     await pause(100)
   }
@@ -324,7 +350,7 @@ try {
   })()`,
     "completed message and final Markdown headings",
   )
-  const raw = await renderer.eval(`(() => {
+  const raw = await renderer.eval<Raw>(`(() => {
     const state = __hinacodePerfFrames;
     state.active = false; cancelAnimationFrame(state.raf); state.observer.disconnect(); state.off(); document.removeEventListener('visibilitychange', state.visibilityListener);
     const el = [...document.querySelectorAll('main article')].at(-1);
@@ -337,8 +363,8 @@ try {
   assert.equal(raw.hidden, false, "renderer was hidden during streaming")
   assert(raw.frames.length >= 30, "insufficient streaming frames")
   assert.equal(raw.events.length, 162, "expected message.created, 160 deltas and turn_completed only")
-  assert.equal(raw.events[0].message?.id, message.id)
-  assert.equal(raw.events.at(-1).event?.type, "turn_completed")
+  assert.equal(raw.events[0]!.message?.id, message.id)
+  assert.equal(raw.events.at(-1)!.event?.type, "turn_completed")
   raw.events.forEach((event, index) => assert.equal(event.seq, currentHistory.seq + index + 1))
   assert(
     raw.events.slice(1, -1).every((event) => event.event?.type === "text_delta" && event.event.text.length === 125),
@@ -404,7 +430,7 @@ try {
   }
   mkdirSync(resultsDir, { recursive: true })
   if (profiling) {
-    const { profile } = await renderer.call("Profiler.stop")
+    const { profile } = await renderer.call<{ profile: unknown }>("Profiler.stop")
     profiling = false
     writeFileSync(join(resultsDir, `${label}-stream.cpuprofile`), JSON.stringify(profile))
   }

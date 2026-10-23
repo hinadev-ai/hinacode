@@ -19,7 +19,7 @@ This directory is the maintained source for verifying what a hinacode user can d
 - Start every recipe from a fresh profile unless its preconditions say otherwise. A second recipe in the same run may reuse the instance if its preconditions hold.
 - Prefer roles and accessible names (`$AB find role button click --name "..." --exact`). Use CSS on ids or `aria-label` only when names are ambiguous, as the feature files note.
 - Wait on UI state (`$AB wait '<css>'`, `$AB wait --text`, `$AB wait --fn`), not on fixed sleeps.
-- Seed and read back with `$S/rpc.mjs`; perform the behavior under test through the window, the MCP endpoint, or the webhook endpoint.
+- Seed and read back with `$S/rpc.ts`; perform the behavior under test through the window, the MCP endpoint, or the webhook endpoint.
 - Agent turns cost money: `Sonnet 5.5` for Claude, the first listed model for Codex, `Low` effort for Muse Code, one-sentence prompts.
 - Run `$S/cleanup.sh $PORT $DATA <ab-session>` after every attempt. It never touches `$SHOTS`.
 

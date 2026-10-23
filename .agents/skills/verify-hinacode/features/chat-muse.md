@@ -29,14 +29,14 @@ No e2e scenario drives Muse. `src/main/agents/muse/index.integration.test.ts` ru
 Preconditions:
 
 - Instance launched and doctor passes; project `demo` on `$DATA/repo`.
-- `muse --version` works and `muse login` has been done for this user. `$S/rpc.mjs $PORT agents.account '{"provider":"muse","accountId":null}'` answers `subscription`.
+- `muse --version` works and `muse login` has been done for this user. `$S/rpc.ts $PORT agents.account '{"provider":"muse","accountId":null}'` answers `subscription`.
 - `AB="agent-browser --session kkv-$PORT-chat-muse"`, connected.
 
 - **Create.** Click `New thread in demo` (`--exact`). `$AB focus 'button[aria-label="Agent"]'`, `$AB press Enter`, then `ArrowDown` twice and `Enter`. `Agent` reads `Muse Code` and the header shows `Muse Code`. Screenshot `chat-muse-01-new-thread.png`.
 - **Model and effort.** Click the `Model` combobox; the list shows every model name in full. Pick `Muse Wonder Full 1.0`, then `Effort` `Low`. Screenshot `chat-muse-02-model-picker.png`.
 - **Send and stream.** Fill `Message` with `Reply with the single word: pong`, press `Enter`, `$AB wait --text "pong"`, then wait until the header leaves `Running`. Screenshot `chat-muse-03-reply.png`.
 - **Usage.** Hover `button[aria-label$="tokens spent by this thread"]`; the breakdown names the model and "Main session and N sub-agents". Screenshot `chat-muse-04-tokens.png`.
-- **Limits.** Within two minutes of the first turn, `meter[aria-label="Muse Code plan limits"]` appears; hover it for the 5-hour and weekly rows. Screenshot `chat-muse-05-limits.png`. `$S/rpc.mjs $PORT limits.list` shows the `muse` entry.
+- **Limits.** Within two minutes of the first turn, `meter[aria-label="Muse Code plan limits"]` appears; hover it for the 5-hour and weekly rows. Screenshot `chat-muse-05-limits.png`. `$S/rpc.ts $PORT limits.list` shows the `muse` entry.
 - **Approval.** Open `Access` and pick the option named `Supervised Asks before commands and edits` (`--exact`). Send `Run this exact shell command and nothing else: echo stage-one && echo stage-two`. `$AB wait --text "needs your approval"`; screenshot `chat-muse-06-approval.png`. Click `Allow` once. The Bash row prints both lines. Screenshot `chat-muse-07-approved.png`.
 - **Deny.** Still Supervised, send `Run this exact shell command and nothing else: touch denied.txt`. Click `Deny`. The row ends in error, and `ls $DATA/repo/denied.txt` fails.
 - **Interrupt.** In Full access, send `Run this exact shell command and nothing else: sleep 120`, wait for the `Bash` row, click `Stop`. Screenshot `chat-muse-08-interrupted.png`.

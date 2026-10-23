@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Usage: tlc.mjs [specs/Name.cfg ...]   Model-checks every config in specs/ (or the ones given) with TLC.
+// Usage: tlc.ts [specs/Name.cfg ...]   Model-checks every config in specs/ (or the ones given) with TLC.
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { jar, java, specsDir } from "./tla-tools.mjs"
+import { jar, java, specsDir } from "./tla-tools.ts"
 
 const configs =
   process.argv.length > 2 ? process.argv.slice(2) : readdirSync(specsDir).filter((f) => f.endsWith(".cfg"))

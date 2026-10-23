@@ -124,7 +124,7 @@ Each slice is one PR with its own check:
 ## Verification
 
 - Tests as listed per slice. Tests never wait on wall-clock time: the server's schedules run under `TestClock`, and the phone's connection logic runs under Vitest fake timers.
-- `scripts/flaky-proxy.mjs`: a TCP proxy between a client and the remote listener, controlled over HTTP (`pass`, `blackhole` that keeps sockets open but forwards nothing, `reset` that destroys them, `delay <ms>`). It is the fault injector for the runs below and for future debugging.
+- `scripts/flaky-proxy.ts`: a TCP proxy between a client and the remote listener, controlled over HTTP (`pass`, `blackhole` that keeps sockets open but forwards nothing, `reset` that destroys them, `delay <ms>`). It is the fault injector for the runs below and for future debugging.
 - With the phone web export (`npx expo export --platform web`) in agent-browser at 390x844, paired through the proxy to an isolated hinacode:
   1. Blackhole for 30 s while idle. The banner appears within 25 s, the transcript stays, and after `pass` the phone is connected again within 2 s.
   2. Send a prompt, then `reset` before the result arrives. After the reconnect the transcript has exactly one copy of the prompt, and the composer is empty.
@@ -134,6 +134,6 @@ Each slice is one PR with its own check:
 
 ### Fault injector
 
-Run `node scripts/flaky-proxy.mjs <proxy-port> <listener-port> <control-port>` on the same machine as the listener. Pair the client with the proxy port. The proxy binds both listeners to `127.0.0.1`.
+Run `node scripts/flaky-proxy.ts <proxy-port> <listener-port> <control-port>` on the same machine as the listener. Pair the client with the proxy port. The proxy binds both listeners to `127.0.0.1`.
 
 Send `POST /pass`, `/blackhole`, `/reset`, or `/delay?ms=250` to the control port. `reset` destroys existing connections and refuses new ones until the next mode. `blackhole` pauses reads in both directions while keeping TCP connections open. TCP retains queued bytes until forwarding resumes, so a handshake started during the outage can complete when the link returns. `GET /` reports the current mode and connection count.

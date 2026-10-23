@@ -2,15 +2,33 @@ import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
+type Sample = {
+  name: string
+  rendererHeapBytes: number
+  rssBytes: number
+  appRssBytes: number
+  cliRssBytes: number
+  main: { heapUsed: number }
+}
+type Capture = {
+  error?: unknown
+  scenario: string
+  workload: { idleSeconds: number }
+  samples: Sample[]
+  switches: { ms: number }[]
+  startup: { firstRpcMs: number }
+}
+
 const [beforeLabel, afterLabel, scenario = "history"] = process.argv.slice(2)
 if (!beforeLabel || !afterLabel)
-  throw new Error("usage: compare-memory.mjs <before-label> <after-label> [history|claude|footprint]")
+  throw new Error("usage: compare-memory.ts <before-label> <after-label> [history|claude|footprint]")
 const directory = join(process.cwd(), ".context/perf")
-const median = (values) => {
+const median = (values: number[]) => {
   const sorted = values.toSorted((a, b) => a - b)
-  return (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2
+  return (sorted[Math.floor((sorted.length - 1) / 2)]! + sorted[Math.floor(sorted.length / 2)]!) / 2
 }
-const read = (label) => JSON.parse(readFileSync(join(directory, `${label}-${scenario}-memory.json`), "utf8"))
+const read = (label: string): Capture =>
+  JSON.parse(readFileSync(join(directory, `${label}-${scenario}-memory.json`), "utf8"))
 const before = read(beforeLabel)
 const after = read(afterLabel)
 assert.equal(before.error, undefined, "baseline capture failed")
@@ -27,7 +45,7 @@ const comparison = stages.map((name) => {
   const a = before.samples.find((sample) => sample.name === name)
   const b = after.samples.find((sample) => sample.name === name)
   assert.ok(a && b, `missing ${name}`)
-  const delta = (key) => ({
+  const delta = (key: "rendererHeapBytes" | "rssBytes" | "appRssBytes" | "cliRssBytes") => ({
     beforeMiB: a[key] / 1048576,
     afterMiB: b[key] / 1048576,
     deltaMiB: (b[key] - a[key]) / 1048576,
@@ -51,7 +69,13 @@ const comparison = stages.map((name) => {
       : {}),
   }
 })
-const result = { before: beforeLabel, after: afterLabel, scenario, workload: before.workload, comparison }
+const result: Record<string, unknown> = {
+  before: beforeLabel,
+  after: afterLabel,
+  scenario,
+  workload: before.workload,
+  comparison,
+}
 if (scenario === "footprint") {
   const a = median(before.switches.map((s) => s.ms))
   const b = median(after.switches.map((s) => s.ms))
