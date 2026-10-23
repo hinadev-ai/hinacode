@@ -1,7 +1,7 @@
-import { Effect, Layer, Stream } from "effect"
+import { Deferred, Effect, Layer, Queue, Stream } from "effect"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { type AgentCommand, type AgentEvent, unlistedModel } from "../../../shared/agent.ts"
-import { AgentError } from "../provider.ts"
+import { type AgentCommand, type AgentEvent, type BackgroundTask, unlistedModel } from "../../../shared/agent.ts"
+import { AgentError, type BackgroundTasksChange } from "../provider.ts"
 import {
   usageLimitAssistant,
   usageLimitResult,
@@ -13,7 +13,7 @@ import markdownFixture from "./fixtures/markdown.md?raw"
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
-export const mockScenarios = ["usage-limit", "org-spend-limit", "todos", "markdown", "stream"] as const
+export const mockScenarios = ["usage-limit", "org-spend-limit", "todos", "markdown", "stream", "activity"] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
 /** A skill and one of Claude Code's own commands, which the composer shows differently. */
@@ -103,11 +103,58 @@ const todoTurn = (first: boolean): Array<AgentEvent> =>
         { type: "turn_completed" },
       ]
 
+/**
+ * A turn that keeps running with every kind of activity at once: a plan, a sub-agent, and two shells started with
+ * `run_in_background` that outlive the turn until they are stopped.
+ */
+const activityTurn = (): Array<AgentEvent> => [
+  ...todoTurn(true).filter((event) => event.type !== "turn_completed" && event.type !== "text_delta"),
+  {
+    type: "subagent_updated",
+    subagent: {
+      id: "agent-1",
+      label: "Audit the composer",
+      callId: null,
+      status: "running",
+      summary: "Reading Composer.tsx",
+      lastTool: "Read",
+      toolUses: 3,
+      tokens: 1200,
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+    },
+  },
+  ...toolCall(
+    "activity-shell-1",
+    "Bash",
+    { command: "pnpm dev", description: "Start the dev server", run_in_background: true },
+    "Command running in background with ID: shell-1",
+  ),
+  ...toolCall(
+    "activity-shell-2",
+    "Bash",
+    { command: "pnpm test --watch", description: "Watch the unit tests", run_in_background: true },
+    "Command running in background with ID: shell-2",
+  ),
+]
+
+const activityShells = (): Array<BackgroundTask> => [
+  { id: "shell-1", kind: "shell", label: "Start the dev server", startedAt: new Date().toISOString() },
+  { id: "shell-2", kind: "shell", label: "Watch the unit tests", startedAt: new Date().toISOString() },
+]
+
 export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAfterMs = 60000) =>
   Layer.effect(
     ClaudeProvider,
-    Effect.sync(() => {
+    Effect.gen(function* () {
       const attempted = new Set<string>()
+      const shells = new Map<string, ReadonlyArray<BackgroundTask>>()
+      const shellChanges = yield* Queue.unbounded<BackgroundTasksChange>()
+      const heldTurns = new Map<string, Deferred.Deferred<void>>()
+      const setShells = (threadId: string, tasks: ReadonlyArray<BackgroundTask>) => {
+        shells.set(threadId, tasks)
+        Queue.offerUnsafe(shellChanges, { threadId, tasks })
+      }
       return ClaudeProvider.of({
         id: "claude",
         listModels: Effect.succeed([unlistedModel("claude-sonnet-5-5", "claude")]),
@@ -139,6 +186,16 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
         listCommands: () => Effect.succeed(commands),
         runTurn: (input) =>
           Stream.suspend(() => {
+            if (scenario === "activity") {
+              setShells(input.threadId, activityShells())
+              const interrupted = Deferred.makeUnsafe<void>()
+              heldTurns.set(input.threadId, interrupted)
+              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
+              return Stream.concat(
+                Stream.fromIterable(activityTurn()),
+                Stream.fromEffect(Deferred.await(interrupted).pipe(Effect.as(ended))),
+              )
+            }
             if (scenario === "markdown") return Stream.fromIterable(markdownTurn())
             if (scenario === "stream")
               return Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))
@@ -196,8 +253,21 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
             ]
             return Stream.fromIterable(events)
           }),
+        backgroundTasks: {
+          changes: Stream.fromQueue(shellChanges),
+          stop: (threadId, taskId) =>
+            Effect.sync(() =>
+              setShells(
+                threadId,
+                (shells.get(threadId) ?? []).filter((task) => task.id !== taskId),
+              ),
+            ),
+        },
         steer: () => Effect.fail(new AgentError({ provider: "claude", message: "No turn is running on this thread" })),
-        interrupt: () => Effect.void,
+        interrupt: (threadId) => {
+          const held = heldTurns.get(threadId)
+          return held === undefined ? Effect.void : Deferred.succeed(held, undefined).pipe(Effect.asVoid)
+        },
         respondApproval: () => Effect.void,
         respondQuestion: () => Effect.void,
         setAccessMode: () => Effect.void,

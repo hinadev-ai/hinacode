@@ -62,7 +62,7 @@ const waitForRenderer = (page: Page) =>
   page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)
 
 interface SpawnAppOptions {
-  readonly mockClaude?: "usage-limit" | "org-spend-limit" | "todos"
+  readonly mockClaude?: "usage-limit" | "org-spend-limit" | "todos" | "activity"
   readonly mockResetMs?: number
 }
 

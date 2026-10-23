@@ -12,6 +12,7 @@ import { latestTodos, type Todo, type TodoStatus } from "../lib/todos.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
+import { ActivityRow } from "./ActivityRow.tsx"
 
 const NO_MESSAGES: ReadonlyArray<Message> = []
 
@@ -22,11 +23,15 @@ const statusIcon: Record<TodoStatus, { readonly icon: IconType; readonly classNa
   cancelled: { icon: RiCloseCircleLine, className: "text-muted-foreground" },
 }
 
+function TodoIcon({ status, className }: { status: TodoStatus; className?: string }) {
+  const { icon: Icon, className: statusClassName } = statusIcon[status]
+  return <Icon aria-hidden className={cn("size-3.5 shrink-0", statusClassName, className)} />
+}
+
 function TodoRow({ todo }: { todo: Todo }) {
-  const { icon: Icon, className } = statusIcon[todo.status]
   return (
     <li className="flex min-w-0 items-start gap-1.5">
-      <Icon aria-hidden className={cn("mt-px size-3.5 shrink-0", className)} />
+      <TodoIcon status={todo.status} className="mt-px" />
       <span
         className={cn(
           "min-w-0",
@@ -41,10 +46,10 @@ function TodoRow({ todo }: { todo: Todo }) {
 }
 
 /**
- * The agent's own task list (Claude tasks, Codex plan, Muse todos), above the composer while any of
- * it is unfinished. Collapsed it shows progress and what is running now; expanding lists every task.
+ * The agent's own task list (Claude tasks, Codex plan, Muse todos) while any of it is unfinished. Collapsed it
+ * shows progress and what is running now; expanding lists every task.
  */
-export function TodoBar({ thread }: { thread: Thread }) {
+export function TodoActivity({ thread }: { thread: Thread }) {
   const messages = useMessages((state) => {
     const history = state.byThread[thread.id]
     return history?.status === "ready" ? history.messages : NO_MESSAGES
@@ -60,24 +65,14 @@ export function TodoBar({ thread }: { thread: Thread }) {
   const current = todos.find((todo) => todo.status === "in_progress") ?? todos.find((todo) => todo.status === "pending")
 
   return (
-    <div className="animate-fade-in px-1 pb-1.5 text-xs">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={m.composer_todos_label()}
-        onClick={() => setExpanded((open) => !open)}
-        // Recedes like a tool row until the user reaches for it.
-        className="pressable flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:text-foreground"
-      >
+    <div>
+      <ActivityRow label={m.composer_todos_label()} expanded={expanded} onClick={() => setExpanded((open) => !open)}>
         <span className="shrink-0 text-muted-foreground tabular-nums">
           {m.composer_todos_progress({ done: String(done), total: String(todos.length) })}
         </span>
         {!expanded && current && (
           <span className="flex min-w-0 items-center gap-1.5">
-            {(() => {
-              const { icon: Icon, className } = statusIcon[current.status]
-              return <Icon aria-hidden className={cn("size-3.5 shrink-0", className)} />
-            })()}
+            <TodoIcon status={current.status} />
             <span className="truncate">{current.text}</span>
           </span>
         )}
@@ -88,9 +83,13 @@ export function TodoBar({ thread }: { thread: Thread }) {
             expanded && "rotate-180",
           )}
         />
-      </button>
+      </ActivityRow>
       {expanded && (
-        <ul aria-label={m.composer_todos_label()} className="flex flex-col gap-1 px-1 pt-1.5">
+        // Its own bound, so a long plan scrolls instead of pushing the other sections out of view.
+        <ul
+          aria-label={m.composer_todos_label()}
+          className="flex max-h-[20cqh] flex-col gap-1 overflow-y-auto px-1 pt-1 pb-1.5 text-xs"
+        >
           {todos.map((todo, index) => (
             <TodoRow key={`${index}-${todo.text}`} todo={todo} />
           ))}

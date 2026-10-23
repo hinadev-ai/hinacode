@@ -38,9 +38,8 @@ import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
+import { ActivityIndicator } from "./ActivityIndicator.tsx"
 import { QueueBar } from "./QueueBar.tsx"
-import { SubagentBar } from "./SubagentBar.tsx"
-import { TodoBar } from "./TodoBar.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
@@ -220,8 +219,7 @@ export function Composer({ thread }: { thread: Thread }) {
     <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col px-3 pb-3">
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
         <div className="flex min-h-0 flex-col bg-background">
-          <TodoBar thread={thread} />
-          <SubagentBar thread={thread} />
+          <ActivityIndicator thread={thread} />
           <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
         </div>
         <ComposerBar className="min-h-0 focus-within:border-ring">
