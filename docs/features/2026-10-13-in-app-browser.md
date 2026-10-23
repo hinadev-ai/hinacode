@@ -36,6 +36,7 @@ The view is an Electron `<webview>` (see `docs/adr/0014-webview-for-the-in-app-b
 - Each thread's tabs live in `stores/browserTabs.ts` (memory): a never-empty list of `{ id, url, title }` and the shown tab's id. A thread that has not touched the browser shares the `NO_TABS` constant, so selectors stay stable.
 - Every tab keeps its own `<webview>` mounted. Hidden tabs are `invisible` and `inert` rather than unmounted, so they do not reload. A pick in flight is cancelled when its tab is hidden.
 - A side panel view can supply a `header` component in `views.ts`. The Browser view uses it for the tab strip, a horizontal tablist with automatic activation.
+- The viewport button next to Select element sizes the page: Fit panel (default), or a phone or tablet from `DEVICES` in `BrowserView.tsx` (iPhone SE to iPhone 17 Pro Max, Galaxy S25, iPad mini to iPad Pro 13"), at its CSS viewport. A preset only sizes the webview element, which is enough for media queries and `innerWidth`. The frame is centered, its height is clamped to the panel so the page scrolls inside itself, and a frame wider than the panel scrolls sideways. Each tab keeps its own size until the view unmounts.
 - Switching views unmounts every webview, and coming back loads each tab's last URL again.
 
 ### Picking
@@ -51,8 +52,8 @@ The renderer crops with `webview.capturePage(rect)`, scaling the rect by the pag
 ## Out of scope
 
 - Drawing on the page (pen, arrows, boxes), which Claude's app has. Picking covers the precise case; drawing is the next slice if people ask.
-- Devtools, device-size presets, console capture and favicons. The renderer CSP refuses remote images, so tabs show a globe.
-- Persisting tabs across restarts, and dragging tabs to reorder them.
+- Devtools, console capture and favicons. The renderer CSP refuses remote images, so tabs show a globe.
+- Persisting tabs (and their viewport) across restarts, touch and user-agent emulation for the device presets, scaling a preset down to fit the panel, and dragging tabs to reorder them.
 - Keeping the page alive while another view shows. It reloads when the Browser view returns.
 - Vue, Svelte and other component names. React is read from the fiber the dev build attaches to DOM nodes.
 

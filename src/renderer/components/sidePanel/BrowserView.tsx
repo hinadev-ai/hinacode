@@ -7,10 +7,13 @@ import {
   RiArrowLeftLine,
   RiArrowRightLine,
   RiCloseLine,
+  RiComputerLine,
   RiCursorLine,
   RiErrorWarningLine,
   RiGlobalLine,
   RiRefreshLine,
+  RiSmartphoneLine,
+  RiTabletLine,
 } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
@@ -28,6 +31,16 @@ import { m } from "../../paraglide/messages.js"
 import { selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { useUi } from "../../stores/ui.ts"
 import { Button } from "../ui/button.tsx"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu.tsx"
 import { Input } from "../ui/input.tsx"
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 
@@ -43,6 +56,30 @@ const ERR_ABORTED = -3
 type NavigationEvent = Event & { url: string; isMainFrame?: boolean; isInPlace?: boolean }
 type TitleEvent = Event & { title: string }
 type FailLoadEvent = Event & { errorCode: number; errorDescription: string; validatedURL: string; isMainFrame: boolean }
+
+interface Device {
+  readonly name: string
+  readonly width: number
+  readonly height: number
+}
+
+/** CSS viewports at the default display zoom, the sizes a page's media queries see. */
+const DEVICES = {
+  phone: [
+    { name: "iPhone SE", width: 375, height: 667 },
+    { name: "iPhone 17", width: 402, height: 874 },
+    { name: "iPhone Air", width: 420, height: 912 },
+    { name: "iPhone 17 Pro Max", width: 440, height: 956 },
+    { name: "Galaxy S25", width: 360, height: 780 },
+  ],
+  tablet: [
+    { name: "iPad mini", width: 744, height: 1133 },
+    { name: 'iPad Air 11"', width: 820, height: 1180 },
+    { name: 'iPad Pro 13"', width: 1032, height: 1376 },
+  ],
+} satisfies Record<string, ReadonlyArray<Device>>
+
+const FIT_PANEL = "fit"
 
 interface Failure {
   readonly url: string
@@ -93,6 +130,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
   const [picking, setPicking] = useState(false)
   const [announcement, setAnnouncement] = useState("")
   const [pickError, setPickError] = useState<string | null>(null)
+  const [device, setDevice] = useState<Device | null>(null)
   const viewRef = useRef<WebviewElement | null>(null)
   const addressRef = useRef<HTMLInputElement | null>(null)
   const pick = useRef<AbortController | null>(null)
@@ -269,6 +307,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
             className="h-7 font-mono text-xs md:text-xs"
           />
         </form>
+        <ViewportMenu device={device} onChange={setDevice} />
         <Button
           variant={picking ? "secondary" : "ghost"}
           size="icon-sm"
@@ -287,13 +326,20 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
         {src === null ? (
           <BrowserStart threadId={threadId} onOpen={open} />
         ) : (
-          <webview
-            ref={attachView}
-            {...ALLOW_POPUPS}
-            src={src}
-            title={m.browser_page()}
-            className={cn("absolute inset-0 flex", failure && "invisible")}
-          />
+          <div className={cn("absolute inset-0 flex", device && "overflow-auto bg-muted p-3")}>
+            <webview
+              ref={attachView}
+              {...ALLOW_POPUPS}
+              src={src}
+              title={m.browser_page()}
+              style={device ? { width: device.width, height: device.height } : undefined}
+              className={cn(
+                "flex",
+                device ? "m-auto max-h-full shrink-0 bg-background shadow-md" : "flex-1",
+                failure && "invisible",
+              )}
+            />
+          </div>
         )}
         {loading && (
           <div
@@ -320,6 +366,59 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
         {announcement}
       </p>
     </div>
+  )
+}
+
+function ViewportMenu({ device, onChange }: { device: Device | null; onChange: (device: Device | null) => void }) {
+  const devices = [...DEVICES.phone, ...DEVICES.tablet]
+  const Icon = device === null ? RiComputerLine : DEVICES.phone.includes(device) ? RiSmartphoneLine : RiTabletLine
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.browser_viewport()}
+            title={device?.name ?? m.browser_viewport()}
+            className={cn(device && "text-primary")}
+          />
+        }
+      >
+        <Icon aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto min-w-56">
+        <DropdownMenuRadioGroup
+          value={device?.name ?? FIT_PANEL}
+          onValueChange={(name: string) => onChange(devices.find((each) => each.name === name) ?? null)}
+        >
+          <DropdownMenuRadioItem value={FIT_PANEL} closeOnClick>
+            {m.browser_viewport_responsive()}
+          </DropdownMenuRadioItem>
+          <DeviceGroup label={m.browser_viewport_mobile()} devices={DEVICES.phone} />
+          <DeviceGroup label={m.browser_viewport_tablet()} devices={DEVICES.tablet} />
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function DeviceGroup({ label, devices }: { label: string; devices: ReadonlyArray<Device> }) {
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        {devices.map((device) => (
+          <DropdownMenuRadioItem key={device.name} value={device.name} closeOnClick>
+            {device.name}
+            <span className="ml-auto pl-4 font-mono text-xs text-muted-foreground tabular-nums">
+              {device.width}×{device.height}
+            </span>
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuGroup>
+    </>
   )
 }
 
