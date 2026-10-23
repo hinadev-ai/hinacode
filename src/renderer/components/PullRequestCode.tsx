@@ -39,11 +39,11 @@ import {
   type ResolvedGroup,
   resolveGuide,
 } from "../lib/pullRequestGuide.ts"
-import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestDiffAtom } from "../lib/rpc.ts"
+import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestFilesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestGuideAtom, usePullRequestGuides } from "../stores/pullRequestGuides.ts"
-import { type CodeView, useUi } from "../stores/ui.ts"
+import { type PullRequestCodeView, useUi } from "../stores/ui.ts"
 import { FileDiffRow, pullRequestFileMark } from "./FilePatch.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
@@ -90,16 +90,14 @@ const categoryLabel = {
 
 const shortCommit = (head: string) => head.slice(0, 7)
 
-/** Notes have no id of their own; their line and text tell them apart within a file. */
 const noteKey = (note: GuideFileNote | GuideLineNote) =>
   "line" in note ? `${note.side}:${note.line}:${note.text}` : note.text
 
-/** The PR tab's Code view: the pull request's changed files, in path order or grouped by its guide. */
 export function PullRequestCode({ url }: { url: string }) {
   const environment = useOpenThreadEnvironment()
   const detail = useAtomValue(pullRequestDetailAtom(environment, url))
-  const view = useUi((state) => state.codeView)
-  const setView = useUi((state) => state.setCodeView)
+  const view = useUi((state) => state.pullRequestCodeView)
+  const setView = useUi((state) => state.setPullRequestCodeView)
 
   useEffect(() => {
     useUi.getState().setSidePanelWide(true)
@@ -108,7 +106,7 @@ export function PullRequestCode({ url }: { url: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <Tabs value={view} onValueChange={(value: CodeView) => setView(value)}>
+      <Tabs value={view} onValueChange={(value: PullRequestCodeView) => setView(value)}>
         <TabsList aria-label={m.pr_code_view_label()} className="w-full">
           <TabsTrigger value="files">{m.pr_code_view_files()}</TabsTrigger>
           <TabsTrigger value="guide">
@@ -144,11 +142,11 @@ interface ChangedFilesProps {
   readonly url: string
   readonly head: string
   readonly status: PullRequestStatus
-  readonly view: CodeView
+  readonly view: PullRequestCodeView
 }
 
 function ChangedFiles({ environment, url, head, status, view }: ChangedFilesProps) {
-  const diff = useAtomValue(pullRequestDiffAtom(environment, url, head))
+  const diff = useAtomValue(pullRequestFilesAtom(environment, url, head))
 
   return AsyncResult.builder(diff)
     .onSuccess((files) => {
@@ -161,12 +159,12 @@ function ChangedFiles({ environment, url, head, status, view }: ChangedFilesProp
               {files.map((file) => (
                 <PullRequestFileRow
                   key={file.path}
-                  entry={{ file, fileNotes: [], lineNotes: [], strayLineNotes: [] }}
+                  entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }}
                 />
               ))}
             </ul>
           ) : (
-            <GuideView environment={environment} url={url} head={head} status={status} files={files} />
+            <GuideView environment={environment} url={url} currentHead={head} status={status} files={files} />
           )}
         </>
       )
@@ -206,8 +204,8 @@ function LineCounts({ added, removed }: { added: number; removed: number }) {
 function PullRequestFileRow({ entry }: { entry: GuideFile }) {
   const [open, setOpen] = useState(false)
   const { file } = entry
-  const notes = [...entry.fileNotes, ...entry.strayLineNotes]
-  const critical = [...notes, ...entry.lineNotes].some((note) => note.critical === true)
+  const notes = [...entry.fileNotes, ...entry.lineNotesOutsideHunks]
+  const critical = [...notes, ...entry.lineNotesInHunks].some((note) => note.critical === true)
 
   return (
     <FileDiffRow<ReadonlyArray<GuideLineNote>>
@@ -225,18 +223,18 @@ function PullRequestFileRow({ entry }: { entry: GuideFile }) {
           <ul className="flex flex-col gap-1 pl-6">
             {notes.map((note) => (
               <li key={noteKey(note)}>
-                <NoteCard note={note} />
+                <NoteCard note={note} showLine />
               </li>
             ))}
           </ul>
         )
       }
-      lineAnnotations={noteAnnotations(entry.lineNotes)}
+      lineAnnotations={noteAnnotations(entry.lineNotesInHunks)}
       renderAnnotation={({ metadata }) => (
         <ul className="flex flex-col gap-1 px-2 py-1.5 font-sans">
           {metadata.map((note) => (
             <li key={noteKey(note)}>
-              <NoteCard note={note} inline />
+              <NoteCard note={note} />
             </li>
           ))}
         </ul>
@@ -254,8 +252,7 @@ function CriticalMark({ className }: { className?: string }) {
   )
 }
 
-/** `inline` is a note on the line it sits under, so it needs no line number. */
-function NoteCard({ note, inline = false }: { note: GuideFileNote | GuideLineNote; inline?: boolean }) {
+function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineNote; showLine?: boolean }) {
   return (
     <div
       className={cn(
@@ -269,7 +266,7 @@ function NoteCard({ note, inline = false }: { note: GuideFileNote | GuideLineNot
         <RiSparkling2Line aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       )}
       <div className="min-w-0 flex-1">
-        {!inline && "line" in note && (
+        {showLine && "line" in note && (
           <p className="font-mono text-muted-foreground">{m.guide_line({ line: note.line })}</p>
         )}
         <Markdown text={note.text} />
@@ -281,12 +278,12 @@ function NoteCard({ note, inline = false }: { note: GuideFileNote | GuideLineNot
 interface GuideViewProps {
   readonly environment: EnvironmentId
   readonly url: string
-  readonly head: string
+  readonly currentHead: string
   readonly status: PullRequestStatus
   readonly files: ReadonlyArray<PullRequestFile>
 }
 
-function GuideView({ environment, url, head, status, files }: GuideViewProps) {
+function GuideView({ environment, url, currentHead, status, files }: GuideViewProps) {
   const load = useAtomValue(loadPullRequestGuideAtom(environment, url))
   const state = usePullRequestGuides((guides) => guides.byUrl[url])
 
@@ -302,22 +299,24 @@ function GuideView({ environment, url, head, status, files }: GuideViewProps) {
 
   const { guide } = state
   if (guide === null)
-    return <GuideJobNotice environment={environment} url={url} head={head} status={status} state={state} />
+    return (
+      <GuideJobNotice environment={environment} url={url} currentHead={currentHead} status={status} state={state} />
+    )
   const { groups, others } = resolveGuide(guide, files)
   const other: ResolvedGroup = {
     key: "other",
     label: m.guide_other(),
     summary: m.guide_other_hint(),
     category: "other",
-    critical: false,
+    containsCritical: false,
     files: others,
     children: [],
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {guide.head !== head && (
-        <GuideJobNotice environment={environment} url={url} head={head} status={status} state={state} />
+      {guide.head !== currentHead && (
+        <GuideJobNotice environment={environment} url={url} currentHead={currentHead} status={status} state={state} />
       )}
       <div className="text-sm">
         <Markdown text={guide.summary} />
@@ -358,7 +357,7 @@ function GuideGroupView({ group }: { group: ResolvedGroup }) {
           <h4 id={headingId} className="min-w-0 flex-1 text-sm font-medium text-pretty">
             {group.label}
           </h4>
-          {group.critical && <CriticalMark className="size-4" />}
+          {group.containsCritical && <CriticalMark className="size-4" />}
         </div>
         <p className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
           <span>{m.guide_group_files({ count: files.length })}</span>
@@ -396,16 +395,14 @@ function GuideGroupView({ group }: { group: ResolvedGroup }) {
 interface GuideJobNoticeProps {
   readonly environment: EnvironmentId
   readonly url: string
-  /** The pull request's head now. */
-  readonly head: string
+  readonly currentHead: string
   readonly status: PullRequestStatus
   readonly state: PullRequestGuideState
 }
 
-/** What is happening to the guide for the current head, shown instead of the guide or above an older one. */
-function GuideJobNotice({ environment, url, head, status, state }: GuideJobNoticeProps) {
-  const job = state.job?.head === head ? state.job : null
-  const outdated = state.guide !== null && state.guide.head !== head
+function GuideJobNotice({ environment, url, currentHead, status, state }: GuideJobNoticeProps) {
+  const job = state.job?.head === currentHead ? state.job : null
+  const outdated = state.guide !== null && state.guide.head !== currentHead
 
   if (job?.status === "failed") {
     return (
@@ -432,7 +429,7 @@ function GuideJobNotice({ environment, url, head, status, state }: GuideJobNotic
   if (job?.status === "running") {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-shimmer">{m.guide_writing({ commit: shortCommit(head) })}</p>
+        <p className="text-xs text-shimmer">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
         <p className="text-xs text-muted-foreground">{m.guide_writing_hint()}</p>
       </div>
     )
@@ -448,7 +445,6 @@ function RetryButton({ environment, url }: { environment: EnvironmentId; url: st
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
-  // The new job arrives as a `pullRequest.guide` push, so success needs no handling here.
   const retry = () =>
     startTransition(async () => {
       try {

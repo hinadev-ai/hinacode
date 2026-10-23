@@ -2,7 +2,13 @@ import { Cause, Effect, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
 import { compactMessage } from "../shared/compactTranscript.ts"
-import type { NotificationPermission, Opener, OpenerId, PermissionRequestOutcome } from "../shared/domain.ts"
+import type {
+  NotificationPermission,
+  Opener,
+  OpenerId,
+  PermissionRequestOutcome,
+  PullRequestDetail,
+} from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
@@ -115,6 +121,8 @@ const knownRoot = (root: string) =>
 
 /** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
+
+const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
 
 const handlers: Handlers = {
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
@@ -289,12 +297,9 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
-  // Opening a pull request is one of the moments main learns its head, so its guide starts right then.
   "github.pullRequestDetail": ({ url }) =>
-    GitHub.use((github) => github.pullRequestDetail(url)).pipe(
-      Effect.tap((detail) => PullRequestGuides.use((guides) => guides.ensure(detail))),
-    ),
-  "github.pullRequestDiff": ({ url }) =>
+    GitHub.use((github) => github.pullRequestDetail(url)).pipe(Effect.tap(startGuideForHead)),
+  "github.pullRequestFiles": ({ url }) =>
     GitHub.use((github) => github.pullRequestDiff(url)).pipe(Effect.flatMap(pullRequestFiles)),
   "pullRequestGuides.get": ({ url }) => PullRequestGuides.use((guides) => guides.get(url)),
   "pullRequestGuides.retry": ({ url }) => PullRequestGuides.use((guides) => guides.retry(url)),

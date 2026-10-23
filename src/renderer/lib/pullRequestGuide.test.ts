@@ -70,8 +70,8 @@ describe("resolveGuide", () => {
     )
     const [resolved] = groups[0]?.files ?? []
     expect(resolved?.fileNotes.map((note) => note.text)).toStrictEqual(["f"])
-    expect(resolved?.lineNotes.map((note) => note.text)).toStrictEqual(["shown", "removed line"])
-    expect(resolved?.strayLineNotes.map((note) => note.text)).toStrictEqual(["not in a hunk"])
+    expect(resolved?.lineNotesInHunks.map((note) => note.text)).toStrictEqual(["shown", "removed line"])
+    expect(resolved?.lineNotesOutsideHunks.map((note) => note.text)).toStrictEqual(["not in a hunk"])
   })
 
   test("a note on a file of another group is dropped", () => {
@@ -102,7 +102,7 @@ describe("resolveGuide", () => {
       ]),
       [file("a.ts"), file("b.ts"), file("c.ts"), file("d.ts")],
     )
-    expect(groups.map((resolved) => [resolved.key, resolved.critical])).toStrictEqual([
+    expect(groups.map((resolved) => [resolved.key, resolved.containsCritical])).toStrictEqual([
       ["flag", true],
       ["note", true],
       ["parent", true],

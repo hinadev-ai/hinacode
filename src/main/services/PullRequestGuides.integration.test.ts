@@ -29,7 +29,6 @@ interface Query {
 }
 
 const queries: Array<Query> = []
-/** What the faked model does with each query. Replaced per test. */
 let answer: (query: Query) => Promise<unknown> = async () => ANSWER
 
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
@@ -40,7 +39,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   },
 }))
 
-// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
 vi.mock("../agents/binary.ts", async () => {
   const { succeed } = await import("effect/Effect")
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
@@ -111,7 +109,6 @@ const testLayer = guidesLayer.pipe(
 
 const get = (url: string) => PullRequestGuides.use((guides) => guides.get(url))
 
-/** Polls until the guide state of `url` passes `done`, since guides are written in the background. */
 const until = (url: string, done: (state: PullRequestGuideState) => boolean) =>
   Effect.gen(function* () {
     for (let attempt = 0; attempt < 200; attempt++) {
@@ -127,7 +124,6 @@ const ensure = (url: string, head: string, options?: { retry?: boolean }) =>
 
 const queriesFor = (url: string) => queries.filter((query) => query.prompt.includes(url))
 
-/** Links `url` to a new thread in its own project. */
 const linkToNewThread = (name: string, url: string) =>
   Effect.gen(function* () {
     const rootPath = join(base, name)

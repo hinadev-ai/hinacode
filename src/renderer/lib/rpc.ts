@@ -298,9 +298,8 @@ export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, u
   call("github.pullRequestDetail", { url }, { environment }),
 )
 
-/** The changed files at `head`, which only keys the cache: a new head asks again, and the same head never does. */
-export const pullRequestDiffAtom = familyOf((environment: EnvironmentId, url: string, _head: string) =>
-  Atom.make(call("github.pullRequestDiff", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
+export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: string, _forHead: string) =>
+  Atom.make(call("github.pullRequestFiles", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
 )
 
 /**

@@ -208,7 +208,6 @@ describe("pull request actions", () => {
   )
 })
 
-// `git diff` of a modify, an add, a delete, a binary change and a rename, the format `gh pr diff` prints.
 const DIFF = `diff --git a/a.txt b/a.txt
 index 4cb29ea..ea14db2 100644
 --- a/a.txt

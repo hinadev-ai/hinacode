@@ -30,15 +30,10 @@ const SWEEP_INTERVAL = "3 minutes"
 const ANALYSIS_TIMEOUT = Duration.minutes(10)
 const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
 
-/** The answer pulls.review's schema asks the model for. */
 const Answer = Schema.Struct({ overallSummary: Schema.String, groups: Schema.Array(GuideGroup) })
 
 const GuideRow = Schema.Struct({ url: Schema.String, guide: Schema.fromJsonString(PullRequestGuide) })
 
-/**
- * Guides that group a pull request's files by intent and explain them, written by Claude in the background so
- * one is ready before the developer opens it. Every change is pushed as `pullRequest.guide`.
- */
 export class PullRequestGuides extends Context.Service<
   PullRequestGuides,
   {
@@ -59,11 +54,6 @@ const pullRequestRef = (url: string): DiffsPayload["ref"] => {
   return { kind: "github-pr", owner, repo, number }
 }
 
-/**
- * Runs pulls.review's prompt through Claude Code with structured output. The patch is also written to the
- * query's working directory, because pulls.review inlines only diffs under 200k characters and the model reads
- * the rest with its file tools.
- */
 const analyze = (
   detail: PullRequestDetail,
   diff: string,
@@ -93,8 +83,6 @@ const analyze = (
         const stream = query({
           prompt: buildAnalysisPrompt(payload, options.locale),
           options: {
-            // The SDK replaces the child env instead of merging it.
-            env: { ...process.env },
             pathToClaudeCodeExecutable,
             cwd: dir,
             model: options.model,
@@ -138,15 +126,11 @@ const make = Effect.gen(function* () {
   const events = yield* Events
   const encodeRow = Schema.encodeEffect(GuideRow)
 
-  /** The guide being written or the last failure, per url. Both end with the process, like the work itself. */
   const jobs = new Map<string, PullRequestGuideJob>()
-  /** A url's writer replaces the one before it, so a push stops the analysis of the commit it superseded. */
-  const writers = yield* FiberMap.make<string>()
-  const oneAtATime = Semaphore.makeUnsafe(1)
-  /** Makes checking for a guide and starting one a single step, so two callers never start the same head twice. */
-  const claiming = Semaphore.makeUnsafe(1)
-  /** Merged and closed pull requests never get a new head, so the sweep stops asking about them. */
-  const finished = new Set<string>()
+  const latestWriterPerUrl = yield* FiberMap.make<string>()
+  const oneAnalysisAtATime = Semaphore.makeUnsafe(1)
+  const oneStartAtATime = Semaphore.makeUnsafe(1)
+  const mergedOrClosed = new Set<string>()
 
   const findGuide = SqlSchema.findOneOption({
     Request: Schema.String,
@@ -168,8 +152,7 @@ const make = Effect.gen(function* () {
       Effect.catchCause((cause) => Effect.logWarning("pull request guide push failed", url, cause)),
     )
 
-  /** Ends the job for `head`, unless a newer head took the url over meanwhile. */
-  const settle = (url: string, head: string, next: PullRequestGuideJob | null) =>
+  const endJobUnlessSuperseded = (url: string, head: string, next: PullRequestGuideJob | null) =>
     Effect.sync(() => {
       if (jobs.get(url)?.head !== head) return
       if (next === null) jobs.delete(url)
@@ -189,13 +172,13 @@ const make = Effect.gen(function* () {
       const { locale } = yield* clientSettings.get
       const guide = yield* analyze(detail, diff, { ...pullRequestGuide, locale })
       yield* save(detail.url, guide)
-      yield* settle(detail.url, detail.head, null)
+      yield* endJobUnlessSuperseded(detail.url, detail.head, null)
     }).pipe(
-      oneAtATime.withPermits(1),
+      oneAnalysisAtATime.withPermits(1),
       Effect.catchCause((cause) =>
         Effect.logWarning("pull request guide failed", detail.url, cause).pipe(
           Effect.andThen(
-            settle(detail.url, detail.head, {
+            endJobUnlessSuperseded(detail.url, detail.head, {
               status: "failed",
               head: detail.head,
               message: failureMessage(cause),
@@ -209,17 +192,17 @@ const make = Effect.gen(function* () {
   const ensure = (detail: PullRequestDetail, { retry = false }: { readonly retry?: boolean } = {}) =>
     Effect.gen(function* () {
       if (detail.status === "merged" || detail.status === "closed") {
-        finished.add(detail.url)
+        mergedOrClosed.add(detail.url)
         return
       }
       const job = jobs.get(detail.url)
       if (job?.head === detail.head && (job.status === "running" || !retry)) return
       if ((yield* stored(detail.url))?.head === detail.head) return
       jobs.set(detail.url, { status: "running", head: detail.head })
-      yield* FiberMap.run(writers, detail.url, write(detail))
+      yield* FiberMap.run(latestWriterPerUrl, detail.url, write(detail))
       yield* publish(detail.url)
     }).pipe(
-      claiming.withPermits(1),
+      oneStartAtATime.withPermits(1),
       Effect.catchCause((cause) => Effect.logWarning("pull request guide not started", detail.url, cause)),
     )
 
@@ -232,7 +215,7 @@ const make = Effect.gen(function* () {
     )
     const urls = new Set(
       (yield* pullRequests.listAll)
-        .filter((link) => live.has(link.threadId) && !finished.has(link.url))
+        .filter((link) => live.has(link.threadId) && !mergedOrClosed.has(link.url))
         .map((link) => link.url),
     )
     yield* Effect.forEach(
@@ -264,7 +247,6 @@ const failureMessage = (cause: Cause.Cause<unknown>) => {
 
 export const layer = Layer.effect(PullRequestGuides, make)
 
-/** For simulated Claude runs, which must never reach the real model: no guide is ever written. */
 export const idleLayer = Layer.succeed(
   PullRequestGuides,
   PullRequestGuides.of({

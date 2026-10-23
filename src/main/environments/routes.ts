@@ -69,7 +69,7 @@ export const routes: Record<RpcMethod, Route> = {
   "github.auth": named,
   "github.pullRequest": named,
   "github.pullRequestDetail": named,
-  "github.pullRequestDiff": named,
+  "github.pullRequestFiles": named,
   "pullRequestGuides.get": named,
   "pullRequestGuides.retry": named,
   "github.merge": named,

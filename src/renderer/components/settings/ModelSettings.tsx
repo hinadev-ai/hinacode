@@ -300,7 +300,6 @@ function TextGenerationModelField() {
 
 const GUIDE_EFFORTS = new Set(CLAUDE_EFFORT_LEVELS)
 
-/** Guides are written through the Claude Agent SDK, like thread names, so only Claude models are offered. */
 function PullRequestGuideField() {
   const environment = useSettingsEnvironment()
   const models = useAtomValue(modelsAtom(environment, "claude"))
@@ -330,16 +329,17 @@ function PullRequestGuideField() {
     }
   }
 
-  // A model without the current effort falls back to its own default, so the guide never asks for one it lacks.
+  const effortKeptOrDefaultFor = (model: string) => {
+    const available = effortsOf(model)
+    if (available.length === 0 || available.includes(pullRequestGuide.effort)) return pullRequestGuide.effort
+    return (
+      items.find((candidate) => candidate.id === model)?.defaultEffort ?? available.at(-1) ?? pullRequestGuide.effort
+    )
+  }
+
   const saveModel = async (model: string | null) => {
     if (model === null) return
-    const available = effortsOf(model)
-    const fallback = items.find((candidate) => candidate.id === model)?.defaultEffort ?? available.at(-1)
-    const effort =
-      available.length === 0 || available.includes(pullRequestGuide.effort)
-        ? pullRequestGuide.effort
-        : (fallback ?? pullRequestGuide.effort)
-    await save({ model, effort })
+    await save({ model, effort: effortKeptOrDefaultFor(model) })
   }
 
   return (

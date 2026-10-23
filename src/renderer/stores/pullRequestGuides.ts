@@ -5,12 +5,10 @@ import type { PullRequestGuideState } from "../../shared/domain.ts"
 import { call, type EnvironmentId, familyOf } from "../lib/rpc.ts"
 
 interface PullRequestGuidesState {
-  /** Guide state per pull request url. A url is absent until its state is loaded or pushed. */
   readonly byUrl: Readonly<Record<string, PullRequestGuideState>>
   readonly replace: (url: string, state: PullRequestGuideState) => void
 }
 
-/** Pull request guides, kept current by `pullRequest.guide` pushes. */
 export const usePullRequestGuides = create<PullRequestGuidesState>()((set) => ({
   byUrl: {},
   replace: (url, state) => set((current) => ({ byUrl: { ...current.byUrl, [url]: state } })),

@@ -36,16 +36,13 @@ const LARGE_DIFF_LINES = 1000
 
 interface FileDiffRowProps<A> {
   readonly path: string
-  /** Shown on hover, such as where a renamed file came from. Defaults to the path. */
   readonly title?: string
   readonly mark: FileMark
   readonly added: number
   readonly removed: number
-  /** Undefined when there is no diff to show, such as for a binary file. */
   readonly patch: string | undefined
   readonly open: boolean
   readonly onToggle: () => void
-  /** Shown after the path. */
   readonly badge?: ReactNode
   /** Shown below the row, open or not. */
   readonly notes?: ReactNode
@@ -53,7 +50,6 @@ interface FileDiffRowProps<A> {
   readonly renderAnnotation?: (annotation: DiffLineAnnotation<A>) => ReactNode
 }
 
-/** A changed file as one row that expands into its diff. */
 export function FileDiffRow<A>({
   path,
   title = path,

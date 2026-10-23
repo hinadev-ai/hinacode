@@ -17,9 +17,8 @@ export type SidePanelSize = "normal" | "wide"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 
-/** How the PR tab's Code view lists the changed files: in path order, or grouped by the guide. */
-export const codeViews = ["files", "guide"] as const
-export type CodeView = (typeof codeViews)[number]
+export const pullRequestCodeViews = ["files", "guide"] as const
+export type PullRequestCodeView = (typeof pullRequestCodeViews)[number]
 /** Where a thread's tiny VM screen shows: its side panel view, or floating over the conversation. */
 export type VmPlacement = "panel" | "floating"
 /** Composer pickers a shortcut can open. */
@@ -33,7 +32,7 @@ let findRevealRequests = 0
 const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
 const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
-const CODE_VIEW_KEY = "hinacode.pullRequestCodeView"
+const PULL_REQUEST_CODE_VIEW_KEY = "hinacode.pullRequestCodeView"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "hinacode.collapsedPullRequestSections"
 const VM_FLOATING_WIDTH_KEY = "hinacode.vmFloatingWidth"
 export const VM_FLOATING_BOUNDS: WidthBounds = { min: 240, max: 960 }
@@ -51,7 +50,8 @@ function loadStrings(key: string): ReadonlyArray<string> {
 const loadSidebarTab = (): SidebarTab =>
   sidebarTabs.find((tab) => tab === localStorage.getItem(SIDEBAR_TAB_KEY)) ?? "threads"
 
-const loadCodeView = (): CodeView => codeViews.find((view) => view === localStorage.getItem(CODE_VIEW_KEY)) ?? "files"
+const loadPullRequestCodeView = (): PullRequestCodeView =>
+  pullRequestCodeViews.find((view) => view === localStorage.getItem(PULL_REQUEST_CODE_VIEW_KEY)) ?? "files"
 
 const isPullRequestSection = (value: string): value is PullRequestSection =>
   pullRequestSections.some((section) => section === value)
@@ -68,7 +68,7 @@ interface UiState {
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
   readonly sidebarTab: SidebarTab
-  readonly codeView: CodeView
+  readonly pullRequestCodeView: PullRequestCodeView
   /** Narrows the sidebar to threads whose title, or whose project's name, contains it. */
   readonly sidebarQuery: string
   /** The projects the sidebar shows. Empty shows every project. */
@@ -116,8 +116,7 @@ interface UiState {
   readonly setSidePanelOverlayOpen: (open: boolean) => void
   /** Persists the tab, so the sidebar reopens on it. */
   readonly setSidebarTab: (tab: SidebarTab) => void
-  /** Persists the PR tab's Code view. */
-  readonly setCodeView: (view: CodeView) => void
+  readonly setPullRequestCodeView: (view: PullRequestCodeView) => void
   readonly setSidebarQuery: (query: string) => void
   /** Persists the sidebar's project filter. */
   readonly setSidebarProjectIds: (ids: ReadonlyArray<string>) => void
@@ -166,7 +165,7 @@ export const useUi = create<UiState>()((set, get) => ({
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
   sidebarTab: loadSidebarTab(),
-  codeView: loadCodeView(),
+  pullRequestCodeView: loadPullRequestCodeView(),
   sidebarQuery: "",
   sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),
   collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
@@ -218,9 +217,9 @@ export const useUi = create<UiState>()((set, get) => ({
     localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab)
     set({ sidebarTab })
   },
-  setCodeView: (codeView) => {
-    localStorage.setItem(CODE_VIEW_KEY, codeView)
-    set({ codeView })
+  setPullRequestCodeView: (pullRequestCodeView) => {
+    localStorage.setItem(PULL_REQUEST_CODE_VIEW_KEY, pullRequestCodeView)
+    set({ pullRequestCodeView })
   },
   setSidebarQuery: (sidebarQuery) => set({ sidebarQuery }),
   setSidebarProjectIds: (sidebarProjectIds) => {

@@ -10,28 +10,23 @@ import type {
 export interface GuideFile {
   readonly file: PullRequestFile
   readonly fileNotes: ReadonlyArray<GuideFileNote>
-  /** Notes on lines the diff shows. */
-  readonly lineNotes: ReadonlyArray<GuideLineNote>
-  /** Notes on lines outside every hunk, which the diff cannot show. */
-  readonly strayLineNotes: ReadonlyArray<GuideLineNote>
+  readonly lineNotesInHunks: ReadonlyArray<GuideLineNote>
+  readonly lineNotesOutsideHunks: ReadonlyArray<GuideLineNote>
 }
 
 export interface ResolvedGroup {
-  /** The model's key, suffixed when it repeats one, so it is unique within the guide. */
   readonly key: string
   readonly label: string
   readonly summary: string | undefined
   readonly category: GuideCategory
-  /** The group, one of its notes or one of its children asks for extra care. */
-  readonly critical: boolean
+  readonly containsCritical: boolean
   readonly files: ReadonlyArray<GuideFile>
   readonly children: ReadonlyArray<ResolvedGroup>
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm
 
-/** Whether a hunk of `patch` shows the line, numbered in the new file for additions and the old one for deletions. */
-const shows = (patch: string, { side, line }: GuideLineNote) =>
+const hunkShowsLine = (patch: string, { side, line }: GuideLineNote) =>
   [...patch.matchAll(HUNK_HEADER)].some(([, oldStart, oldLines, newStart, newLines]) => {
     const [start, count] = side === "additions" ? [newStart, newLines] : [oldStart, oldLines]
     const first = Number(start)
@@ -69,8 +64,8 @@ export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullR
         {
           file,
           fileNotes: (group.fileNotes ?? []).filter(owns),
-          lineNotes: lineNotes.filter((note) => shows(file.patch, note)),
-          strayLineNotes: lineNotes.filter((note) => !shows(file.patch, note)),
+          lineNotesInHunks: lineNotes.filter((note) => hunkShowsLine(file.patch, note)),
+          lineNotesOutsideHunks: lineNotes.filter((note) => !hunkShowsLine(file.patch, note)),
         },
       ]
     })
@@ -83,16 +78,20 @@ export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullR
       return resolved === null ? [] : [resolved]
     })
     if (own.length === 0 && children.length === 0) return null
-    const notes = own.flatMap((entry) => [...entry.fileNotes, ...entry.lineNotes, ...entry.strayLineNotes])
+    const notes = own.flatMap((entry) => [
+      ...entry.fileNotes,
+      ...entry.lineNotesInHunks,
+      ...entry.lineNotesOutsideHunks,
+    ])
     return {
       key,
       label: group.label,
       summary: group.summary,
       category: group.category,
-      critical:
+      containsCritical:
         group.critical === true ||
         notes.some((note) => note.critical === true) ||
-        children.some((child) => child.critical),
+        children.some((child) => child.containsCritical),
       files: own,
       children,
     }
@@ -104,17 +103,15 @@ export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullR
   })
   const others = files
     .filter((file) => !placed.has(file.path))
-    .map((file): GuideFile => ({ file, fileNotes: [], lineNotes: [], strayLineNotes: [] }))
+    .map((file): GuideFile => ({ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }))
   return { groups, others }
 }
 
-/** Every file of the group and of its children. */
 export const groupFiles = (group: ResolvedGroup): ReadonlyArray<GuideFile> => [
   ...group.files,
   ...group.children.flatMap(groupFiles),
 ]
 
-/** One annotation per line, holding every note on it: the diff renders a single slot per annotated line. */
 export const noteAnnotations = (notes: ReadonlyArray<GuideLineNote>) => {
   const byLine = new Map<string, Array<GuideLineNote>>()
   for (const note of notes) {

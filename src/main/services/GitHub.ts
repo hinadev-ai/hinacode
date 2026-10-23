@@ -189,7 +189,6 @@ export const toPullRequestDetail = (json: typeof PullRequestDetailJson.Type): Pu
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
 })
 
-/** Splits a unified diff, as `gh pr diff` prints it, into its files. */
 export const pullRequestFiles = (diff: string): Effect.Effect<ReadonlyArray<PullRequestFile>> =>
   Effect.forEach(
     diff.split(/^(?=diff --git )/m).filter((section) => section.startsWith("diff --git ")),
@@ -271,7 +270,6 @@ export class GitHub extends Context.Service<
     readonly pullRequestDetail: (
       url: string,
     ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
-    /** The pull request's unified diff as GitHub computes it now. */
     readonly pullRequestDiff: (url: string) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError>
     /** Never deletes the branch: it is usually checked out in a local worktree. */
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>

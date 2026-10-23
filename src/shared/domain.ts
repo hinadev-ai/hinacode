@@ -190,10 +190,8 @@ export type PullRequestDetail = typeof PullRequestDetail.Type
 export const PullRequestFileStatus = Schema.Literals(["added", "removed", "modified", "renamed", "copied"])
 export type PullRequestFileStatus = typeof PullRequestFileStatus.Type
 
-/** One file of `gh pr diff`. */
 export const PullRequestFile = Schema.Struct({
   path: Schema.String,
-  /** The path before a rename or copy. */
   previousPath: Schema.NullOr(Schema.String),
   status: PullRequestFileStatus,
   additions: Schema.Int,
@@ -204,7 +202,6 @@ export const PullRequestFile = Schema.Struct({
 })
 export type PullRequestFile = typeof PullRequestFile.Type
 
-/** The part of the system a guide group touches. These are pulls.review's categories, which its prompt explains. */
 export const GuideCategory = Schema.Literals([
   "ui",
   "api",
@@ -256,16 +253,13 @@ const GuideGroupFields = {
   lineNotes: Schema.optional(Schema.Array(GuideLineNote)),
 }
 
-/** Groups nest one level at most: a child has no children. */
 export const GuideGroup = Schema.Struct({
   ...GuideGroupFields,
   children: Schema.optional(Schema.Array(Schema.Struct(GuideGroupFields))),
 })
 export type GuideGroup = typeof GuideGroup.Type
 
-/** A pull request's changed files grouped by intent and explained, in review order. */
 export const PullRequestGuide = Schema.Struct({
-  /** The head commit the guide was written for. */
   head: Schema.String,
   model: Schema.String,
   generatedAt: Timestamp,
@@ -275,7 +269,6 @@ export const PullRequestGuide = Schema.Struct({
 })
 export type PullRequestGuide = typeof PullRequestGuide.Type
 
-/** A guide being written for `head`, or the reason the last attempt for `head` failed. */
 export const PullRequestGuideJob = Schema.Union([
   Schema.Struct({ status: Schema.Literal("running"), head: Schema.String }),
   Schema.Struct({ status: Schema.Literal("failed"), head: Schema.String, message: Schema.String }),
