@@ -223,6 +223,14 @@ export const OpenPullRequest = Schema.Struct({
 })
 export type OpenPullRequest = typeof OpenPullRequest.Type
 
+export const PullRequestMatch = Schema.Struct({
+  number: Schema.Int,
+  title: Schema.String,
+  status: PullRequestStatus,
+  author: Schema.String,
+})
+export type PullRequestMatch = typeof PullRequestMatch.Type
+
 export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 

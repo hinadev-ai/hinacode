@@ -17,6 +17,7 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import {
   completionAt,
+  type CompletionQuery,
   type Fence,
   fenceCode,
   highlight,
@@ -25,11 +26,13 @@ import {
   suggestionsFor,
   type SyntaxKind,
 } from "../../shared/composerSyntax.ts"
+import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
+import { StatusIcon } from "./ThreadPullRequests.tsx"
 
 /** Colors only, never font or spacing: the highlighted copy must wrap exactly like the textarea above it. */
 const syntaxClass: Record<SyntaxKind, string> = {
@@ -59,11 +62,12 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
   readonly files: ReadonlyArray<string>
   /** Other threads offered after `@`, before the files. */
   readonly threads: ReadonlyArray<Thread>
+  readonly projectId: string
 }
 
 /**
- * The composer's textarea with Markdown-ish highlighting and completion of `/commands`, `$skills` and
- * `@` mentions of threads and files. The textarea's own text is transparent and sits over a highlighted copy of the same text.
+ * The composer's textarea with Markdown-ish highlighting and completion of `/commands`, `$skills`,
+ * `@` mentions of threads and files, and `#` pull requests. The textarea's own text is transparent and sits over a highlighted copy of the same text.
  * A skill that starts the message shows as a chip before the text, and the textarea holds only the text after it.
  * The suggestion list is positioned against the nearest positioned ancestor, the composer box.
  */
@@ -74,6 +78,7 @@ export function ComposerInput({
   commands,
   files,
   threads,
+  projectId,
   onKeyDown,
   placeholder,
   className,
@@ -105,8 +110,9 @@ export function ComposerInput({
   const segments = useMemo(() => highlight(text, known), [text, known])
 
   const completion = completionAt(text, caret)
-  const suggestions =
-    completion && completion.start !== dismissedAt ? suggestionsFor(completion, commands, files, threads) : []
+  const active = completion && completion.start !== dismissedAt ? completion : null
+  const pullRequests = usePullRequestSearch(projectId, active?.trigger === "#" ? active.query : null)
+  const suggestions = active ? suggestionsFor(active, commands, files, threads, pullRequests) : []
   const open = completion !== null && suggestions.length > 0
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
@@ -259,7 +265,7 @@ export function ComposerInput({
         <div
           id={listId}
           role="listbox"
-          aria-label={completion.trigger === "@" ? m.composer_mentions_label() : m.composer_commands_label()}
+          aria-label={listLabel[completion.trigger]()}
           className="absolute inset-x-0 bottom-full mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {suggestions.map((suggestion, index) => (
@@ -305,6 +311,13 @@ function FenceCard({ fence, firstLine, last }: { fence: Fence; firstLine: boolea
   )
 }
 
+const listLabel = {
+  "@": m.composer_mentions_label,
+  "#": m.composer_pull_requests_label,
+  "/": m.composer_commands_label,
+  $: m.composer_commands_label,
+} satisfies Record<CompletionQuery["trigger"], () => string>
+
 /** Names what a completion is, for a developer who does not know the icons yet. */
 function commandKind(command: AgentCommand) {
   if (command.builtin === true) return m.composer_kind_command()
@@ -323,6 +336,17 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         </span>
         <span className="min-w-0 truncate">{thread.title}</span>
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{thread.model}</span>
+      </>
+    )
+  }
+  if (suggestion.type === "pullRequest") {
+    const { pullRequest } = suggestion
+    return (
+      <>
+        <StatusIcon status={pullRequest.status} colored className="size-3.5 shrink-0 self-center" />
+        <span className="shrink-0 font-mono text-muted-foreground">{suggestion.insert}</span>
+        <span className="min-w-0 truncate">{pullRequest.title}</span>
+        <span className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground">{pullRequest.author}</span>
       </>
     )
   }

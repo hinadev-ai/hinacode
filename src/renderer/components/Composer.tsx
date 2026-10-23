@@ -268,6 +268,7 @@ export function Composer({ thread }: { thread: Thread }) {
             commands={commands}
             files={files}
             threads={otherThreads}
+            projectId={thread.projectId}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             onDragOver={onDragOver}

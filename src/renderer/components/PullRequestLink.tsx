@@ -6,7 +6,7 @@ import type { PullRequest } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import type { PullRequestRef } from "../lib/pullRequestRefs.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
-import { pullRequestStatusAtom } from "../lib/rpc.ts"
+import { type EnvironmentId, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import {
@@ -32,6 +32,7 @@ export function PullRequestLink({
   pullRequest: PullRequestRef
   children: ReactNode
 }) {
+  const environment = useOpenThreadEnvironment()
   return (
     <HoverCard>
       {/* target=_blank routes the click through the main process, which opens it in the system browser. */}
@@ -46,15 +47,20 @@ export function PullRequestLink({
         {children}
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-80">
-        <PullRequestCard pullRequest={pullRequest} />
+        <PullRequestCard pullRequest={pullRequest} environment={environment} />
       </HoverCardContent>
     </HoverCard>
   )
 }
 
-function PullRequestCard({ pullRequest: { owner, name, number } }: { pullRequest: PullRequestRef }) {
+export function PullRequestCard({
+  pullRequest: { owner, name, number },
+  environment,
+}: {
+  pullRequest: PullRequestRef
+  environment: EnvironmentId
+}) {
   // The canonical url, so links to a pull request's files or comments share one lookup.
-  const environment = useOpenThreadEnvironment()
   const status = useAtomValue(pullRequestStatusAtom(environment, `https://github.com/${owner}/${name}/pull/${number}`))
   return (
     <div className="flex flex-col gap-1.5 text-xs">

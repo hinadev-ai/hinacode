@@ -616,6 +616,7 @@
   "thread_option_value": "{name}: {value}",
   "composer_commands_label": "Commands",
   "composer_mentions_label": "Mentions",
+  "composer_pull_requests_label": "Pull requests",
   "composer_commands_failed": "Could not load commands and skills: {message}",
   "composer_skill": "Skill: {name}",
   "composer_kind_command": "Command",

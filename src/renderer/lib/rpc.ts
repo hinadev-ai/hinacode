@@ -199,6 +199,12 @@ export const pullRequestsAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.pullRequests", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+export const pullRequestSearchAtom = familyOf((projectId: string, query: string | null) =>
+  Atom.make(query === null ? Effect.succeed([]) : call("projects.searchPullRequests", { id: projectId, query })).pipe(
+    Atom.setIdleTTL("1 minute"),
+  ),
+)
+
 export const defaultBranchAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
     get(remoteFetchAtom(projectId))
