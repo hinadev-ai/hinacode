@@ -4,7 +4,7 @@ A cloud is `hinacode serve`: the app's services as a plain Node program, with no
 
 ## Start it
 
-Node 24 or newer:
+Node 24.22.1 or newer (26.12.1 or newer on Node 26):
 
 ```sh
 npx hinacode serve
