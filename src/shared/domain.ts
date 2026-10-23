@@ -216,7 +216,6 @@ export const OpenPullRequest = Schema.Struct({
 })
 export type OpenPullRequest = typeof OpenPullRequest.Type
 
-/** A pull request offered after `#` in the composer. */
 export const PullRequestMatch = Schema.Struct({
   number: Schema.Int,
   title: Schema.String,

@@ -387,7 +387,6 @@ const make = Effect.gen(function* () {
         "all",
         "--limit",
         "20",
-        // The = form, so a query starting with a dash is never read as a flag.
         ...(query === "" ? [] : [`--search=${query}`]),
         "--json",
         "number,title,state,isDraft,author",

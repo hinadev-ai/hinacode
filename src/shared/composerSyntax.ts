@@ -123,17 +123,16 @@ export interface CompletionQuery {
 
 const isSpace = (char: string | undefined) => char !== undefined && /\s/.test(char)
 
-/**
- * The `/command`, `$skill`, `@mention` or `#pull-request` token the caret is in, if it starts the line or follows
- * whitespace. `##` starts a Markdown heading, not a pull request.
- */
+const isMarkdownHeading = (trigger: string, query: string) => trigger === "#" && query.startsWith("#")
+
+/** The `/command`, `$skill`, `@mention` or `#pull-request` token the caret is in, if it starts the line or follows whitespace. */
 export function completionAt(text: string, caret: number): CompletionQuery | null {
   let start = caret
   while (start > 0 && !isSpace(text[start - 1])) start--
   const trigger = text[start]
   if (start === caret || (trigger !== "/" && trigger !== "$" && trigger !== "@" && trigger !== "#")) return null
   const query = text.slice(start + 1, caret)
-  if (trigger === "#" && query.startsWith("#")) return null
+  if (isMarkdownHeading(trigger, query)) return null
   let end = caret
   while (end < text.length && !isSpace(text[end])) end++
   return { trigger, query, start, end }
@@ -190,7 +189,6 @@ export function matchThreads<T extends Pick<Thread, "title">>(threads: ReadonlyA
   return [...titleStarts, ...titleContains]
 }
 
-/** Pull requests whose number starts with `query` or whose title contains it, in the given order. */
 export function matchPullRequests<T extends Pick<PullRequestMatch, "number" | "title">>(
   pullRequests: ReadonlyArray<T>,
   query: string,
@@ -210,20 +208,17 @@ export type Suggestion =
   | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
   | { readonly type: "pullRequest"; readonly insert: string; readonly pullRequest: PullRequestMatch }
 
-/**
- * Threads then files for `@`, `pullRequests` for `#`, else the commands of the typed trigger, at most
- * `MAX_SUGGESTIONS`. `pullRequests` are already matched to the query, by GitHub's search.
- */
+/** Threads then files for `@`, pull requests for `#`, else the commands of the typed trigger, at most `MAX_SUGGESTIONS`. */
 export const suggestionsFor = (
   completion: CompletionQuery,
   commands: ReadonlyArray<AgentCommand>,
   files: ReadonlyArray<string>,
   threads: ReadonlyArray<Thread>,
-  pullRequests: ReadonlyArray<PullRequestMatch>,
+  matchedPullRequests: ReadonlyArray<PullRequestMatch>,
 ): ReadonlyArray<Suggestion> => {
   const { trigger } = completion
   if (trigger === "#")
-    return pullRequests
+    return matchedPullRequests
       .slice(0, MAX_SUGGESTIONS)
       .map((pullRequest) => ({ type: "pullRequest", insert: `#${pullRequest.number}`, pullRequest }))
   const suggestions: ReadonlyArray<Suggestion> =

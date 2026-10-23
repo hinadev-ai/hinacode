@@ -53,7 +53,6 @@ export function PullRequestLink({
   )
 }
 
-/** A pull request at a glance, asked through `gh` in `environment`. For a hover card's content. */
 export function PullRequestCard({
   pullRequest: { owner, name, number },
   environment,

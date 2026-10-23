@@ -189,7 +189,6 @@ export const pullRequestsAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.pullRequests", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
-/** Pull requests matching a `#` query in the composer, none for a null query. Kept a minute, so retyping asks once. */
 export const pullRequestSearchAtom = familyOf((projectId: string, query: string | null) =>
   Atom.make(query === null ? Effect.succeed([]) : call("projects.searchPullRequests", { id: projectId, query })).pipe(
     Atom.setIdleTTL("1 minute"),

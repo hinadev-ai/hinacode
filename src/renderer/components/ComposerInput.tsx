@@ -62,7 +62,6 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
   readonly files: ReadonlyArray<string>
   /** Other threads offered after `@`, before the files. */
   readonly threads: ReadonlyArray<Thread>
-  /** The project whose GitHub pull requests are offered after `#`. */
   readonly projectId: string
 }
 
