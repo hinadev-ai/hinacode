@@ -1527,5 +1527,63 @@
   "mobile_row_pull_request": "合併請求 #{number}",
   "mobile_row_pull_request_stack": "合併請求 #{number}，{count} 個連結中最新的一個",
   "mobile_row_watching": "正在監看合併請求",
-  "mobile_home_toggle_project": "顯示或隱藏 {project} 的對話串"
+  "mobile_home_toggle_project": "顯示或隱藏 {project} 的對話串",
+  "pr_view_label": "合併請求檢視",
+  "pr_tab_info": "資訊",
+  "pr_tab_code": "程式碼",
+  "pr_code_view_label": "變更的列出方式",
+  "pr_code_view_files": "檔案",
+  "pr_code_view_guide": "導覽",
+  "pr_code_summary": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個檔案有變更",
+        "countPlural=other": "{count} 個檔案有變更"
+      }
+    }
+  ],
+  "file_status_renamed": "重新命名",
+  "file_status_copied": "複製",
+  "guide_writing": "正在為 {commit} 撰寫導覽…",
+  "guide_writing_hint": "Claude 會依意圖將變更的檔案分組，並說明每一組。約需一兩分鐘。",
+  "guide_failed": "無法撰寫導覽：{message}",
+  "guide_outdated": "此導覽是針對 {commit} 撰寫的，合併請求之後還有新的提交。",
+  "guide_outdated_writing": "正在為最新的提交撰寫導覽。",
+  "guide_closed": "只會為開啟中的合併請求撰寫導覽。",
+  "guide_not_started": "導覽尚未開始撰寫。",
+  "guide_other": "其他變更",
+  "guide_other_hint": "導覽未涵蓋的檔案。",
+  "guide_critical": "需要特別留意",
+  "guide_written_by": "由 {model} 針對 {commit} 撰寫",
+  "guide_group_files": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個檔案",
+        "countPlural=other": "{count} 個檔案"
+      }
+    }
+  ],
+  "guide_line": "第 {line} 行",
+  "guide_category_ui": "介面",
+  "guide_category_api": "API",
+  "guide_category_core": "核心邏輯",
+  "guide_category_data": "資料",
+  "guide_category_cli": "命令列",
+  "guide_category_security": "安全性",
+  "guide_category_tests": "測試",
+  "guide_category_docs": "文件",
+  "guide_category_examples": "範例",
+  "guide_category_deps": "相依套件",
+  "guide_category_build": "建置",
+  "guide_category_scripts": "指令碼",
+  "guide_category_config": "設定",
+  "guide_category_i18n": "翻譯",
+  "guide_category_assets": "素材",
+  "guide_category_other": "其他",
+  "settings_guide_model": "合併請求導覽",
+  "settings_guide_model_hint": "在背景為每個連結到對話串、且仍開啟的合併請求撰寫導覽。"
 }

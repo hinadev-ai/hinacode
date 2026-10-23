@@ -1,7 +1,7 @@
 import type { DiffLineAnnotation } from "@pierre/diffs"
 import { PatchDiff } from "@pierre/diffs/react"
 import { type ReactNode, useId, useState } from "react"
-import type { ChangedFileStatus } from "../../shared/domain.ts"
+import type { ChangedFileStatus, PullRequestFileStatus } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
@@ -21,6 +21,14 @@ export const fileStatusMark = {
   untracked: { letter: "U", className: "text-vcs-added", label: m.file_status_untracked },
   conflict: { letter: "C", className: "text-destructive", label: m.file_status_conflict },
 } satisfies Record<ChangedFileStatus, FileMark>
+
+export const pullRequestFileMark = {
+  added: fileStatusMark.added,
+  modified: fileStatusMark.modified,
+  removed: fileStatusMark.deleted,
+  renamed: { letter: "R", className: "text-vcs-modified", label: m.file_status_renamed },
+  copied: { letter: "C", className: "text-vcs-added", label: m.file_status_copied },
+} satisfies Record<PullRequestFileStatus, FileMark>
 
 // PatchDiff renders a whole file in one frame, about 0.07 ms per line: a 12k-line lockfile blocked for 860 ms.
 // Past this many changed lines the file is almost always generated, so it waits until the user asks for it.
