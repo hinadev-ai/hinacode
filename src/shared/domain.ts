@@ -41,6 +41,13 @@ export const Worktree = Schema.Struct({
 })
 export type Worktree = typeof Worktree.Type
 
+/** What is on disk at a live worktree's path: no uncommitted changes, some, or no directory at all. */
+export const CheckoutState = Schema.Literals(["clean", "dirty", "missing"])
+export type CheckoutState = typeof CheckoutState.Type
+
+export const WorktreeCheckout = Schema.Struct({ id: Schema.String, state: CheckoutState })
+export type WorktreeCheckout = typeof WorktreeCheckout.Type
+
 export const ChangedFileStatus = Schema.Literals(["added", "modified", "deleted", "untracked", "conflict"])
 export type ChangedFileStatus = typeof ChangedFileStatus.Type
 

@@ -640,6 +640,70 @@ describe("removal", () => {
   )
 })
 
+describe("force removal", () => {
+  const cases: ReadonlyArray<readonly [string, (root: string, path: string) => void]> = [
+    ["has uncommitted changes", (_root, path) => writeFileSync(join(path, "draft.txt"), "unsaved")],
+    ["is locked", (root, path) => void git(root, "worktree", "lock", path)],
+    ["is already gone from disk", (_root, path) => rmSync(path, { recursive: true, force: true })],
+    [
+      "is locked and already gone from disk",
+      (root, path) => {
+        git(root, "worktree", "lock", path)
+        rmSync(path, { recursive: true, force: true })
+      },
+    ],
+  ]
+  for (const [state, arrange] of cases) {
+    it.live(`deletes a checkout that ${state}`, () =>
+      withRepo(({ root, projectId }) =>
+        Effect.gen(function* () {
+          const thread = yield* createThread(projectId, "old", "kk/old")
+          yield* waitUntilSetUp(thread.worktreeId)
+          const worktree = yield* worktreeOf(thread.worktreeId)
+          arrange(root, worktree.path)
+
+          yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "keep"))
+          // A create of the same branch waits for the deletion to finish.
+          yield* Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/old", baseRef: "main" }))
+
+          expect((yield* worktreeOf(worktree.id)).status).toBe("removed")
+          expect(existsSync(worktree.path)).toBe(false)
+          expect(git(root, "worktree", "list", "--porcelain")).not.toContain(`worktree ${worktree.path}\n`)
+        }),
+      ),
+    )
+  }
+})
+
+describe("checkout states", () => {
+  it.live("reports clean, dirty and missing checkouts, and leaves removed worktrees out", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const ids: Record<string, string> = {}
+        for (const name of ["clean", "dirty", "missing", "removed"]) {
+          const thread = yield* createThread(projectId, name, `kk/${name}`)
+          yield* waitUntilSetUp(thread.worktreeId)
+          ids[name] = thread.worktreeId!
+        }
+        writeFileSync(join((yield* worktreeOf(ids["dirty"]!)).path, "draft.txt"), "unsaved")
+        rmSync((yield* worktreeOf(ids["missing"]!)).path, { recursive: true, force: true })
+        yield* Worktrees.use((worktrees) => worktrees.remove(ids["removed"]!, "keep"))
+
+        const checkouts = yield* Worktrees.use((worktrees) => worktrees.checkouts)
+
+        expect(checkouts).toHaveLength(3)
+        expect(checkouts).toEqual(
+          expect.arrayContaining([
+            { id: ids["clean"], state: "clean" },
+            { id: ids["dirty"], state: "dirty" },
+            { id: ids["missing"], state: "missing" },
+          ]),
+        )
+      }),
+    ),
+  )
+})
+
 describe("startup", () => {
   it.live("fails setup a quit or crash interrupted, the same way on every start", () =>
     withRepo(({ projectId, restart }) =>
