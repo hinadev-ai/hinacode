@@ -11,7 +11,7 @@ import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
-import { autoUpdate, parseCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
+import { autoUpdate, parseCommand, restartCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
 import { layer as SecretsLayer, noKeyring } from "./services/Secrets.ts"
 import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
 import { hydratePath } from "./shellPath.ts"
@@ -126,9 +126,10 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
         registry: process.env["npm_config_registry"] || "https://registry.npmjs.org",
         autoInstall: autoUpdate(process.env),
         restart: () =>
-          stop(() =>
-            process.execve!(process.execPath, [process.execPath, ...process.execArgv, ...process.argv.slice(1)]),
-          ),
+          stop(() => {
+            const { file, args, env } = restartCommand(process)
+            process.execve!(file, args, env)
+          }),
       }),
       toWindows: () => {},
       serve: config,

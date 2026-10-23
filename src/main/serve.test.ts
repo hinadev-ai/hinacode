@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { autoUpdate, parseCommand, serveConfig } from "./serve.ts"
+import { autoUpdate, parseCommand, restartCommand, serveConfig } from "./serve.ts"
 
 describe("parseCommand", () => {
   test("asks for help instead of starting a daemon", () => {
@@ -72,5 +72,27 @@ describe("autoUpdate", () => {
 
   test("refuses a value it does not understand", () => {
     expect(() => autoUpdate({ HINACODE_SERVE_AUTO_UPDATE: "yes" })).toThrow("HINACODE_SERVE_AUTO_UPDATE must be 1 or 0")
+  })
+})
+
+describe("restartCommand", () => {
+  const running = {
+    execPath: "/usr/bin/node",
+    execArgv: ["--enable-source-maps"],
+    argv: ["/usr/bin/node", "/opt/hinacode/bin/hinacode", "serve", "--rotate-token", "--port", "47441"],
+    env: { PATH: "/usr/bin", HINACODE_SERVE_ROTATE_TOKEN: "1", HINACODE_USER_DATA: "/srv/cloud" },
+  }
+
+  test("boots the same command with the same node flags", () => {
+    expect(restartCommand(running)).toMatchObject({
+      file: "/usr/bin/node",
+      args: ["/usr/bin/node", "--enable-source-maps", "/opt/hinacode/bin/hinacode", "serve", "--port", "47441"],
+    })
+  })
+
+  test("does not rotate the token again, so paired clients stay paired", () => {
+    const { args, env } = restartCommand(running)
+    expect(args).not.toContain("--rotate-token")
+    expect(env).toStrictEqual({ PATH: "/usr/bin", HINACODE_USER_DATA: "/srv/cloud" })
   })
 })
