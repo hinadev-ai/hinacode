@@ -4,7 +4,7 @@ import { AsyncResult } from "effect/reactivity"
 import QRCode from "qrcode"
 import { type FormEvent, useEffect, useId, useState, useTransition } from "react"
 import type { RemotePairing } from "../../../shared/domain.ts"
-import { pairingUrl } from "../../../shared/remote.ts"
+import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -93,7 +93,9 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
         return (
           <span className="flex items-center gap-2 text-destructive">
             <StatusDot className="bg-destructive" />
-            {m.remote_status_error({ message: listenError })}
+            {isPortInUse(listenError)
+              ? m.remote_status_port_in_use({ port: remote.port })
+              : m.remote_status_error({ message: listenError })}
           </span>
         )
       if (!listening) return <span className="text-muted-foreground">{m.remote_status_starting()}</span>
@@ -178,7 +180,13 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
   )
 }
 
+/** Only while the listener is up, so a failed or starting one never shows a pairing that cannot connect. */
 function PairPhone() {
+  const status = useAtomValue(remoteStatusAtom)
+  return AsyncResult.isSuccess(status) && status.value.listening ? <PairingSection /> : null
+}
+
+function PairingSection() {
   const pairing = useAtomValue(remotePairingAtom)
   const refresh = useAtomRefresh(remotePairingAtom)
   const headingId = useId()

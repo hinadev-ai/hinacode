@@ -775,6 +775,7 @@
     }
   ],
   "remote_status_error": "Could not listen: {message}",
+  "remote_status_port_in_use": "Port {port} is in use by another program. Pick another port below.",
   "mobile_reconnecting_banner": "Reconnecting. Actions send when the desktop is back.",
   "mobile_composer_sending": "Sending",
   "mobile_composer_sends_when_back": "Sends when the desktop is back",

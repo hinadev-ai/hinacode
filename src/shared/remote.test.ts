@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { ClientFrame, pairingUrl, parsePairingUrl, remoteWebSocketUrl, ServerFrame } from "./remote.ts"
+import { ClientFrame, isPortInUse, pairingUrl, parsePairingUrl, remoteWebSocketUrl, ServerFrame } from "./remote.ts"
 
 describe("remote frames", () => {
   it("keeps known capabilities when ready advertises a future feature", () => {
@@ -23,6 +23,13 @@ describe("remote frames", () => {
     const ready = { type: "ready", version: 1, features: ["heartbeat", "call-keys"] }
     expect(Schema.decodeUnknownSync(ServerFrame)(ready)).toEqual(ready)
     expect(Schema.decodeUnknownSync(ServerFrame)({ type: "ready", version: 1 })).toEqual({ type: "ready", version: 1 })
+  })
+})
+
+describe("isPortInUse", () => {
+  it("recognizes the error Node gives for a taken port", () => {
+    expect(isPortInUse("listen EADDRINUSE: address already in use 0.0.0.0:48081")).toBe(true)
+    expect(isPortInUse("listen EACCES: permission denied 0.0.0.0:80")).toBe(false)
   })
 })
 

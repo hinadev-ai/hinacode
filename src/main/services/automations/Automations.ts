@@ -404,7 +404,7 @@ const make = Effect.gen(function* () {
         Layer.launch(server).pipe(
           Effect.catchCause((cause) => {
             listenError = describeCause(cause)
-            return Effect.logWarning("automation webhook listener failed", cause)
+            return Effect.logWarning("automation webhook listener failed", listenError)
           }),
         ),
       )

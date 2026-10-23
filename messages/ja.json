@@ -775,6 +775,7 @@
     }
   ],
   "remote_status_error": "リスナーを起動できませんでした：{message}",
+  "remote_status_port_in_use": "ポート {port} は別のプログラムが使用中です。下で別のポートを選んでください。",
   "mobile_reconnecting_banner": "再接続しています。デスクトップに戻り次第、操作を送信します。",
   "mobile_composer_sending": "送信中",
   "mobile_composer_sends_when_back": "デスクトップに戻り次第送信",
