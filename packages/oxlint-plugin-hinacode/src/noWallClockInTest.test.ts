@@ -23,7 +23,10 @@ ruleTester.run("no-wall-clock-in-test", noWallClockInTest, {
     { code: `import timers from "timers"`, errors: 1 },
     { code: `await page.waitForTimeout(100)`, errors: 1 },
     { code: `const now = Date.now()`, errors: [{ messageId: "wallClock", data: { call: "Date.now" } }] },
-    { code: `const now = new Date().toISOString()`, errors: [{ messageId: "wallClock", data: { call: "new Date()" } }] },
+    {
+      code: `const now = new Date().toISOString()`,
+      errors: [{ messageId: "wallClock", data: { call: "new Date()" } }],
+    },
     { code: `const started = performance.now()`, errors: 1 },
     { code: `const started = process.hrtime.bigint()`, errors: 1 },
     { code: `const started = process.hrtime()`, errors: 1 },

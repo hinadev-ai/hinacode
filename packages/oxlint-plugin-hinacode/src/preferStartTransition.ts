@@ -29,7 +29,8 @@ export const preferStartTransition = defineRule({
           const second = secondBinding(context.sourceCode, node.parent)
           if (!second) continue
           if (STATE_HOOKS.has(api)) setters.push(second)
-          if (api === "useTransition") for (const { identifier } of second.references) transitionStarters.add(identifier)
+          if (api === "useTransition")
+            for (const { identifier } of second.references) transitionStarters.add(identifier)
         }
       },
       "Program:exit"() {
@@ -69,7 +70,11 @@ function enclosingHandler(
   if (!isCallee(setter)) return handlerName(propOf(setter))
   let node: ESTree.Node = setter.parent
   for (let parent = node.parent; parent; node = parent, parent = parent.parent) {
-    if (parent.type === "CallExpression" && transitionStarters.has(parent.callee) && parent.arguments.some((argument) => argument === node)) {
+    if (
+      parent.type === "CallExpression" &&
+      transitionStarters.has(parent.callee) &&
+      parent.arguments.some((argument) => argument === node)
+    ) {
       return null
     }
     if (!isFunction(parent)) continue

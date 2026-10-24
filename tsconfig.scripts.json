@@ -5,5 +5,11 @@
     "types": ["node"],
     "moduleDetection": "force"
   },
-  "include": ["scripts/**/*.ts", "packages/*/src/**/*.ts", ".agents/skills/*/scripts/*.ts", "apps/mobile/scripts/*.mts", "src/preload/index.d.ts"]
+  "include": [
+    "scripts/**/*.ts",
+    "packages/*/src/**/*.ts",
+    ".agents/skills/*/scripts/*.ts",
+    "apps/mobile/scripts/*.mts",
+    "src/preload/index.d.ts"
+  ]
 }

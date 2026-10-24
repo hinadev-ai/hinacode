@@ -12,10 +12,16 @@ export function Panel() {
 ruleTester.run("prefer-start-transition", preferStartTransition, {
   valid: [
     component("", `<button onClick={() => startTransition(() => setOpen(true))} />`),
-    component("const [pending, startOpening] = useTransition()", `<button onClick={() => startOpening(() => setOpen(true))} />`),
+    component(
+      "const [pending, startOpening] = useTransition()",
+      `<button onClick={() => startOpening(() => setOpen(true))} />`,
+    ),
     component("", `<Button action={() => setOpen(true)} />`),
     component("", `<Tabs changeAction={() => setOpen(true)} />`),
-    component("const [query, setQuery] = useState('')", `<input value={query} onChange={(event) => setQuery(event.target.value)} />`),
+    component(
+      "const [query, setQuery] = useState('')",
+      `<input value={query} onChange={(event) => setQuery(event.target.value)} />`,
+    ),
     component("", `<div onPointerMove={() => setOpen(true)} onKeyDown={() => setOpen(false)} />`),
     component("", `<Popover onOpenChange={setOpen} onOpenChangeComplete={() => setOpen(false)} />`),
     component("", `<Checkbox onCheckedChange={setOpen} />`),
@@ -32,7 +38,10 @@ ruleTester.run("prefer-start-transition", preferStartTransition, {
     { code: component("", `<Form onSave={setOpen} />`), errors: 1 },
     { code: component("const toggle = () => setOpen((value) => !value)", `<button onClick={toggle} />`), errors: 1 },
     { code: component("function close() { setOpen(false) }", `<button onClick={close} />`), errors: 1 },
-    { code: component("const [count, dispatch] = useReducer(reduce, 0)", `<button onClick={() => dispatch(1)} />`), errors: 1 },
+    {
+      code: component("const [count, dispatch] = useReducer(reduce, 0)", `<button onClick={() => dispatch(1)} />`),
+      errors: 1,
+    },
     { code: component("const [error, run] = useActionState(save, null)", `<button onClick={run} />`), errors: 1 },
     {
       code: component("", `<button onClick={() => void copy().then(() => setOpen(true))} />`),
