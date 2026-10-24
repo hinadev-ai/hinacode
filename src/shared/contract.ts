@@ -543,10 +543,11 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 })) }),
     Schema.Array(AutomationRun),
   ),
+  /** IPv4 addresses the remote and webhook listeners can bind to, Tailscale first. */
+  "network.addresses": rpc(Schema.Void, Schema.Array(NetworkAddress)),
   /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
-  "remote.addresses": rpc(Schema.Void, Schema.Array(NetworkAddress)),
   /** Replaces the access token and disconnects every phone. */
   "remote.rotateToken": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
@@ -692,9 +693,9 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "automations.delete": "mutation",
   "automations.runNow": "mutation",
   "automations.runs": "read",
+  "network.addresses": "read",
   "remote.status": "read",
   "remote.pairing": "read",
-  "remote.addresses": "read",
   "remote.rotateToken": "mutation",
   "automations.webhookUrl": "read",
 }
@@ -724,7 +725,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.files.drop",
   "vm.passkey.prepare",
   "remote.pairing",
-  "remote.addresses",
   "remote.rotateToken",
   "clientSettings.get",
   "clientSettings.set",
