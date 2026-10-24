@@ -38,8 +38,3 @@ export const linkPullRequestNumbers = (text: string, repository: GitHubRepositor
   if (last < text.length) segments.push({ type: "text", text: text.slice(last) })
   return segments
 }
-
-const GITHUB_PULL_REQUEST = /^https:\/\/github\.com\/(?=[^/]+\/[^/]+\/pull\/\d+)/i
-
-/** A GitHub pull request url on linear.review, which serves the same paths. Any other url is returned as is. */
-export const linearReviewUrl = (url: string) => url.replace(GITHUB_PULL_REQUEST, "https://linear.review/")

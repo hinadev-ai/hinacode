@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import type { GuideGroup, PullRequestFile, PullRequestGuide } from "../../shared/domain.ts"
+import type { GuideGroup, PullRequestFile, PullRequestGuide } from "./domain.ts"
 import { noteAnnotations, resolveGuide } from "./pullRequestGuide.ts"
 
 const file = (path: string, patch = "@@ -10,3 +10,4 @@\n a\n-b\n+c\n+d\n e", previousPath: string | null = null) =>

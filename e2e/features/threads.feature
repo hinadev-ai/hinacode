@@ -107,5 +107,5 @@ Feature: Threads
 
   Scenario: A thread is deleted after confirmation
     Given the project "demo" has a thread "Gone"
-    When I delete the thread "Gone" from its menu
+    When I delete the thread "Gone" from its row
     Then the thread "Gone" no longer exists

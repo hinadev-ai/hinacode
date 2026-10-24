@@ -12,9 +12,8 @@ import {
   reviewLabel,
   reviewTone,
   statusGlyph,
-  statusLabel,
-  statusTone,
 } from "@/lib/pull-request-labels"
+import { PullRequestState } from "@/components/pull-request-state"
 import { Button, EmptyState, Notice, Pill } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -223,7 +222,7 @@ function PullRequestCard({
             </Text>
           </View>
           <View style={styles.pills}>
-            <Pill label={statusLabel(pr.status)} tone={statusTone[pr.status]} />
+            <PullRequestState status={pr.status} />
             {pr.checks !== null && (
               <Pill label={checksLabel(pr.checks)} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
             )}
@@ -245,7 +244,8 @@ function PullRequestCard({
 }
 
 const styles = StyleSheet.create({
-  list: { padding: 16, gap: 12, flexGrow: 1 },
+  // Capped and centered like the pull request screen, so cards keep a readable width on an iPad.
+  list: { padding: 16, gap: 12, flexGrow: 1, width: "100%", maxWidth: 792, alignSelf: "center" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
   card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: 14, gap: 8 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },

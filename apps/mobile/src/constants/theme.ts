@@ -20,6 +20,9 @@ export const Colors = {
     dangerBg: "#fee2e2",
     neutralBg: "#f4f4f5",
     link: "#6d28d9",
+    /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
+    token: "#7c3aed",
+    tokenBg: "rgba(124, 58, 237, 0.12)",
   },
   dark: {
     text: "#fafafa",
@@ -39,6 +42,8 @@ export const Colors = {
     dangerBg: "#3b1111",
     neutralBg: "#27272a",
     link: "#a78bfa",
+    token: "#a78bfa",
+    tokenBg: "rgba(167, 139, 250, 0.16)",
   },
 } as const
 
@@ -83,6 +88,9 @@ export const mono = Platform.select({ ios: "Menlo", android: "monospace", defaul
 
 /** Minimum touch target. */
 export const HIT = 44
+
+/** The widest a column of prose gets on a tablet, so lines stay readable. Every phone is narrower. */
+export const READABLE_WIDTH = 720
 
 /** Outer radius = inner radius + padding, so nested corners stay concentric. */
 export const radius = { sm: 6, md: 10, lg: 14, xl: 24, full: 999 } as const

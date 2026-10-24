@@ -1,10 +1,11 @@
-import { router, usePathname } from "expo-router"
+import { usePathname } from "expo-router"
 import type { AgentEvent } from "@shared/agent.ts"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AppState, Platform } from "react-native"
 import { Banner, type BannerNotice } from "@/components/banner"
 import { onEvent, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { openThread } from "@/lib/navigation"
 import {
   getNotificationPermission,
   onNotificationOpened,
@@ -21,8 +22,6 @@ const isViewing = (pathname: string, threadId: string) =>
   pathname === `/thread/${threadId}` || pathname.startsWith(`/thread/${threadId}/`)
 
 let noticeCount = 0
-
-const openThread = (id: string) => router.push({ pathname: "/thread/[id]", params: { id } })
 
 /** Raises a banner or a system notification when a thread the developer is not looking at needs them. */
 export function Notifier() {
