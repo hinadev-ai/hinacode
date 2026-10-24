@@ -134,9 +134,13 @@
   --primary-foreground: oklch(0.985 0 0);
   /* Brand violet, reserved for "an agent is working". */
   --working: oklch(0.541 0.247 293.009);
-  /* The send button's gradient derives from this seed. The default primary is gray, so it seeds from the brand violet. */
-  --send-seed: var(--working);
-  --send-ink: var(--primary-foreground);
+  /* The send button's holographic pearl. The default primary is gray, so these themes get their own stops. */
+  --send-a: #5ee7ff;
+  --send-b: #ff7ae0;
+  --send-c: #ffd84d;
+  --send-d: #8f7bff;
+  --send-core: #e8ddff;
+  --send-ink: #14121c;
   /* Changed files: amber modified, emerald added. Conflicts and deletions use --destructive. */
   --vcs-modified: oklch(0.555 0.163 48.998);
   --vcs-added: oklch(0.508 0.118 165.612);
@@ -179,9 +183,12 @@
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
   --working: oklch(0.702 0.183 293.541);
-  /* Darker than --working so the white arrow keeps its contrast. */
-  --send-seed: oklch(0.62 0.22 293);
-  --send-ink: #fff;
+  /* Softer than the light theme's pearl, so it does not glare on near-black. */
+  --send-a: #aef3ff;
+  --send-b: #ffc6f5;
+  --send-c: #fff3b0;
+  --send-d: #c4b5ff;
+  --send-core: #f2eaff;
   --vcs-modified: oklch(0.828 0.189 84.429);
   --vcs-added: oklch(0.765 0.177 163.223);
   --graph-lane-0: oklch(0.6 0 0);
@@ -259,7 +266,12 @@
 
 [data-theme]:not([data-theme="light"]) {
   --syntax-token: var(--primary);
-  --send-seed: var(--primary);
+  /* The send button turns the primary's hue by +45° and -35°. */
+  --send-a: var(--primary);
+  --send-b: oklch(from var(--primary) calc(l + 0.08) calc(c * 1.1) calc(h + 45));
+  --send-c: oklch(from var(--primary) calc(l - 0.12) c calc(h - 35));
+  --send-d: var(--primary);
+  --send-core: var(--primary);
   --send-ink: var(--primary-foreground);
   --popover: var(--surface);
   --secondary: var(--muted);
@@ -464,7 +476,7 @@
 }
 
 /*
- * The send button: a conic gradient of three hues around --send-seed, under a layer of Perlin grain
+ * The send button: a conic gradient of the theme's --send-a to --send-d, under a layer of Perlin grain
  * (feTurbulence fractalNoise). The gradient turns while the pointer is over it.
  */
 @property --send-spin {
@@ -480,13 +492,17 @@
 }
 
 @utility send-halo {
-  --send-a: var(--send-seed);
-  --send-b: oklch(from var(--send-seed) calc(l + 0.08) calc(c * 1.1) calc(h + 45));
-  --send-c: oklch(from var(--send-seed) calc(l - 0.12) c calc(h - 35));
   isolation: isolate;
   overflow: hidden;
   color: var(--send-ink);
-  background: conic-gradient(from var(--send-spin), var(--send-a), var(--send-b), var(--send-c), var(--send-a));
+  background: conic-gradient(
+    from var(--send-spin),
+    var(--send-a),
+    var(--send-b),
+    var(--send-c),
+    var(--send-d),
+    var(--send-a)
+  );
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
   animation: send-spin 6s linear infinite paused;
   &:hover {
@@ -501,7 +517,7 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: radial-gradient(circle, color-mix(in oklab, var(--send-a) 70%, transparent) 0 35%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in oklab, var(--send-core) 70%, transparent) 0 35%, transparent 70%);
   }
   &::after {
     content: "";

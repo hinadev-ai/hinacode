@@ -354,6 +354,7 @@ function SendButton({
   const action = stopping ? "stop" : busy ? "steer" : "send"
   const label = stopping ? "Stop" : busy ? "Steer" : "Send"
   const disabled = !stopping && !hasDraft
+  const halo = action === "send" && hasDraft
   const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
 
   return (
@@ -370,10 +371,10 @@ function SendButton({
       transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
       style={styles.send}
     >
-      {action === "send" && hasDraft && <SendHalo />}
+      {halo && <SendHalo />}
       <IconSwap
         showSecond={stopping}
-        first={<Icon name="RiArrowUpLine" size={18} color={disabled ? theme.textMuted : theme.onPrimary} />}
+        first={<Icon name="RiArrowUpLine" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
         second={<Icon name="RiStopFill" size={14} color={theme.danger} />}
       />
     </motion.Pressable>
@@ -383,7 +384,7 @@ function SendButton({
 const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ rotate: "360deg" }] } }
 
 /**
- * The desktop's `send-halo`: three hues around the primary under Perlin grain. React Native has no conic gradient,
+ * The desktop's `send-halo`: a holographic pearl under Perlin grain. React Native has no conic gradient,
  * so a linear one turns instead, and it turns while there is a draft because a phone has no hover.
  */
 function SendHalo() {
@@ -395,7 +396,7 @@ function SendHalo() {
         style={[
           styles.haloSweep,
           {
-            experimental_backgroundImage: `linear-gradient(135deg, ${theme.haloC}, ${theme.haloA} 45%, ${theme.haloB})`,
+            experimental_backgroundImage: `linear-gradient(135deg, ${theme.haloA}, ${theme.haloB} 35%, ${theme.haloC} 65%, ${theme.haloD})`,
           },
           !reduced && {
             animationName: spin,
@@ -408,7 +409,7 @@ function SendHalo() {
       <View
         style={[
           StyleSheet.absoluteFill,
-          { experimental_backgroundImage: `radial-gradient(circle, ${theme.haloA}b3 0%, transparent 70%)` },
+          { experimental_backgroundImage: `radial-gradient(circle, ${theme.haloCore}b3 0%, transparent 70%)` },
         ]}
       />
       <Image source={require("../../assets/images/send-grain.png")} style={styles.haloGrain} />
