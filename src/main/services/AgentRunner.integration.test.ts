@@ -541,10 +541,12 @@ it("tells the agent the branch and paths it works in", async () => {
     const worktree = await Effect.runPromise(probe.worktrees.get(probe.thread.worktreeId!))
 
     expect(probe.turns[0]?.input.instructions).toContain(`<environment>
+  is a git repository: true
   git branch: \`fix/pending\`
   current project path: \`${worktree.path}\`
   root project path: \`${probe.root}\`
   remote: \`(none)\`
+  platform: ${process.platform}
 </environment>`)
   })
 })

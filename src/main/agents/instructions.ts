@@ -43,22 +43,33 @@ This thread has a tiny VM: a disposable Debian desktop (1280×800) on the user's
 
 /** Where the thread works, read at the start of each turn. */
 export interface AgentEnvironment {
+  readonly gitRepository: boolean
   /** Null on a detached HEAD or outside a git repository. */
   readonly branch: string | null
   readonly cwd: string
   readonly rootPath: string
   /** The `origin` URL, null when there is none. */
   readonly remote: string | null
+  readonly platform: NodeJS.Platform
 }
 
 // An https remote can carry a token, as in `https://x-access-token:TOKEN@github.com/...`.
 const withoutCredentials = (url: string) => url.replace(/^(https?:\/\/)[^/@]*@/, "$1")
 
-const environmentInstructions = ({ branch, cwd, rootPath, remote }: AgentEnvironment) => `<environment>
+const environmentInstructions = ({
+  gitRepository,
+  branch,
+  cwd,
+  rootPath,
+  remote,
+  platform,
+}: AgentEnvironment) => `<environment>
+  is a git repository: ${gitRepository}
   git branch: \`${branch ?? "(none)"}\`
   current project path: \`${cwd}\`
   root project path: \`${rootPath}\`
   remote: \`${remote === null ? "(none)" : withoutCredentials(remote)}\`
+  platform: ${platform}
 </environment>`
 
 export const agentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment): string =>

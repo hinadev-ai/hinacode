@@ -2,14 +2,23 @@ import { expect, test } from "@effect/vitest"
 import { agentInstructions } from "./instructions.ts"
 
 const experimental = { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false }
-const environment = { branch: "feat/x", cwd: "/wt", rootPath: "/repo", remote: "git@github.com:o/r.git" }
+const environment = {
+  gitRepository: true,
+  branch: "feat/x",
+  cwd: "/wt",
+  rootPath: "/repo",
+  remote: "git@github.com:o/r.git",
+  platform: "darwin",
+} as const
 
-test("names the thread's branch, paths and remote", () => {
+test("names the thread's repository, branch, paths, remote and platform", () => {
   expect(agentInstructions(experimental, environment)).toContain(`<environment>
+  is a git repository: true
   git branch: \`feat/x\`
   current project path: \`/wt\`
   root project path: \`/repo\`
   remote: \`git@github.com:o/r.git\`
+  platform: darwin
 </environment>`)
 })
 

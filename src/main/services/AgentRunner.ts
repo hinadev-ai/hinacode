@@ -366,9 +366,23 @@ const make = Effect.gen(function* () {
     )
 
   const readEnvironment = ({ cwd, rootPath }: ActiveWorkspace) =>
-    Effect.all([gitOutput(cwd, ["branch", "--show-current"]), gitOutput(cwd, ["remote", "get-url", "origin"])], {
-      concurrency: "unbounded",
-    }).pipe(Effect.map(([branch, remote]): AgentEnvironment => ({ branch, cwd, rootPath, remote })))
+    Effect.all(
+      [
+        gitOutput(cwd, ["rev-parse", "--is-inside-work-tree"]),
+        gitOutput(cwd, ["branch", "--show-current"]),
+        gitOutput(cwd, ["remote", "get-url", "origin"]),
+      ],
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.map(([insideWorkTree, branch, remote]): AgentEnvironment => ({
+        gitRepository: insideWorkTree === "true",
+        branch,
+        cwd,
+        rootPath,
+        remote,
+        platform: process.platform,
+      })),
+    )
 
   const insertMessage = (message: Message) =>
     messages.insert(message).pipe(Effect.andThen(publishTranscript({ type: "message.created", message })))
