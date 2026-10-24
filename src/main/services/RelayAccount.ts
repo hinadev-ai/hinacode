@@ -11,6 +11,8 @@ import { Secrets } from "./Secrets.ts"
 export const OWNER_TOKEN_SECRET = "relay.ownerToken"
 
 const SYNC_INTERVAL = "5 minutes"
+const PUBLISH_POLL = "1 second"
+const PUBLISH_WAIT = "1 minute"
 
 /**
  * This desktop's sign-in to the relay with the owner token. While signed in, every machine the owner shows on
@@ -39,7 +41,11 @@ export class RelayAccount extends Context.Service<
     }) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
     /** The machine waiting on a link code. */
     readonly pendingLink: (userCode: string) => Effect.Effect<PendingLink, RelayError | PersistenceError>
-    readonly approveLink: (userCode: string) => Effect.Effect<void, RelayError | PersistenceError>
+    /**
+     * Approves a link code, waits up to a minute for that machine to publish its pairing, syncs, and answers the
+     * fresh list. A machine that has not published by then still shows, as not published yet.
+     */
+    readonly approveLink: (userCode: string) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
     /** Approves this desktop's own link with the owner token. False when signed out or the approval failed. */
     readonly approveOwnLink: (userCode: string) => Effect.Effect<boolean>
   }
@@ -148,7 +154,21 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
       Effect.flatMap(ownerToken, (token) => service.pendingLink(token, userCode))
 
     const approveLink = (userCode: string) =>
-      Effect.flatMap(ownerToken, (token) => service.approveLink(token, userCode))
+      Effect.gen(function* () {
+        const token = yield* ownerToken
+        const { environmentId } = yield* service.pendingLink(token, userCode)
+        yield* service.approveLink(token, userCode)
+        // The machine claims its credential every five seconds, then routes its tunnel and publishes its pairing.
+        yield* service.hosts(token).pipe(
+          Effect.repeat({
+            schedule: Schedule.spaced(PUBLISH_POLL),
+            until: (hosts) => hosts.some((host) => host.environmentId === environmentId && host.published),
+          }),
+          Effect.timeoutOption(PUBLISH_WAIT),
+        )
+        yield* sync
+        return yield* service.hosts(token)
+      })
 
     const approveOwnLink = (userCode: string) =>
       secrets.get(OWNER_TOKEN_SECRET).pipe(

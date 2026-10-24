@@ -269,7 +269,8 @@ export const RpcMethods = {
   "relayAccount.removeMachine": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(RelayHost)),
   /** The machine waiting on a link code that `hinacode serve --relay on` printed. */
   "relayAccount.pendingLink": rpc(Schema.Struct({ userCode: Schema.String }), PendingLink),
-  "relayAccount.approveLink": rpc(Schema.Struct({ userCode: Schema.String }), Schema.Void),
+  /** Waits for the machine to publish its pairing and syncs, then answers the fresh list. */
+  "relayAccount.approveLink": rpc(Schema.Struct({ userCode: Schema.String }), Schema.Array(RelayHost)),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */

@@ -38,6 +38,10 @@ interface StandInRelay {
   /** Link codes waiting for approval, by user code. */
   readonly links: Map<string, PendingLink>
   readonly approved: Array<string>
+  /** Runs when a link code is approved, standing in for the machine that waits on it. */
+  onApprove: () => void
+  /** Runs before each answer to `GET /v1/hosts`. */
+  onHostsListed: () => void
   /** Every call as "METHOD /path". */
   readonly calls: Array<string>
   readonly fetch: Fetch
@@ -55,7 +59,10 @@ const standInRelay = () => {
         relay.hosts.find((host) => host.environmentId === machine.environmentId)?.enabled !== false
       return Response.json({ machines: relay.machines.filter(shown) })
     }
-    if (method === "GET" && path === "/v1/hosts") return Response.json({ hosts: relay.hosts })
+    if (method === "GET" && path === "/v1/hosts") {
+      relay.onHostsListed()
+      return Response.json({ hosts: relay.hosts })
+    }
     const hostId = path.match(/^\/v1\/hosts\/([^/]+)$/)?.[1]
     if (hostId !== undefined) {
       const host = hostById(hostId)
@@ -79,6 +86,7 @@ const standInRelay = () => {
       if (method === "POST") {
         relay.links.delete(userCode)
         relay.approved.push(userCode)
+        relay.onApprove()
         return new Response(null, { status: 204 })
       }
     }
@@ -90,6 +98,8 @@ const standInRelay = () => {
     hosts: [homeServerHost],
     links: new Map(),
     approved: [],
+    onApprove: () => {},
+    onHostsListed: () => {},
     calls: [],
     fetch: async (url, init) => {
       const method = init.method ?? "GET"
@@ -283,9 +293,19 @@ describe("RelayAccount", () => {
     )
   })
 
-  it.live("approves a link code after naming the machine waiting on it", () => {
+  it.live("approves a link code, waits for the machine to publish, and adds it at once", () => {
     const relay = standInRelay()
     relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
+    const agentVm: RelayMachine = { ...homeServer, environmentId: "agent-vm", name: "agent-vm" }
+    // The machine claims its credential and publishes its pairing a little after the owner approves it.
+    relay.onApprove = () => {
+      let polls = 0
+      relay.onHostsListed = () => {
+        if (++polls !== 2) return
+        relay.hosts.push({ ...homeServerHost, id: "host-2", environmentId: "agent-vm", name: "agent-vm" })
+        relay.machines = [...relay.machines, agentVm]
+      }
+    }
     return withAccount(
       relay,
       Effect.gen(function* () {
@@ -295,9 +315,11 @@ describe("RelayAccount", () => {
           name: "agent-vm",
           environmentId: "agent-vm",
         })
-        yield* account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH"))
+        const hosts = yield* account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH"))
 
         expect(relay.approved).toStrictEqual(["ABCD-EFGH"])
+        expect(hosts.map((host) => host.environmentId)).toStrictEqual(["home-server", "agent-vm"])
+        expect((yield* listed).map((environment) => environment.id)).toContain("agent-vm")
       }),
     )
   })
@@ -337,7 +359,7 @@ describe("RelayAccount", () => {
         yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
         relay.ownerToken = "rotated"
 
-        const calls = [
+        const calls: Array<Effect.Effect<unknown, { readonly message: string }, RelayAccount.RelayAccount>> = [
           account.use((relayAccount) => relayAccount.machines),
           account.use((relayAccount) => relayAccount.setShown({ id: "host-1", enabled: false })),
           account.use((relayAccount) => relayAccount.removeMachine({ id: "host-1" })),
