@@ -77,8 +77,10 @@ const linearLayer = (env: NodeJS.ProcessEnv) => {
 /** Every main-process service, for the desktop app (`index.ts`) and for `hinacode serve` (`daemon.ts`). */
 export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
   const mockClaude = simulatedClaude(process.env)
+  const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(chats),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
