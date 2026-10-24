@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { Thread } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { BackgroundTaskActivity } from "./BackgroundTaskActivity.tsx"
@@ -7,9 +8,10 @@ import { TodoActivity } from "./TodoActivity.tsx"
 /**
  * Long-running work of the thread's agent, docked on top of the composer. The plan comes first, then the
  * sub-agents in flight, then background tasks, which outlive the turn and sit nearest the input with their stop
- * buttons. A section with nothing to show renders nothing, and the tray hides once every section does.
+ * buttons. `children`, the queued messages, come last because they are sent next. A section with nothing to show
+ * renders nothing, and the tray hides once every section does.
  */
-export function ActivityIndicator({ thread }: { thread: Thread }) {
+export function ActivityIndicator({ thread, children }: { thread: Thread; children?: ReactNode }) {
   return (
     <section
       aria-label={m.activity_label()}
@@ -18,6 +20,7 @@ export function ActivityIndicator({ thread }: { thread: Thread }) {
       <TodoActivity thread={thread} />
       <SubagentActivity thread={thread} />
       <BackgroundTaskActivity threadId={thread.id} />
+      {children}
     </section>
   )
 }
