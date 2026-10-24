@@ -11,7 +11,7 @@ A developer with a home server, an agent VM and two workstations links each one 
 
 1. Each machine is linked to the relay once, as in `2026-10-24-relay.md`. From then on it publishes its own pairing (direct addresses, port, token) to the relay, and again whenever one of them changes.
 2. On the relay page, under **Your machines**, each machine has **Show on my devices**, on by default.
-3. On a device, sign in to the relay with the owner token once: Settings > Environments on the desktop, Settings > Relay on the phone. Every machine shown appears, named, and connects through its relay hostname or its direct addresses.
+3. On a device, sign in to the relay with the owner token once: Settings > Environments on the desktop; on the phone, the connect screen or Settings > Relay. Every machine shown appears, named, and connects through its relay hostname or its direct addresses.
 4. Turning **Show on my devices** off, or removing the machine, drops it from every signed-in device at its next sync. A machine paired by QR code stays, whatever the relay says.
 5. A machine that rotates its token publishes the new one, and signed-in devices pick it up at their next sync.
 
@@ -68,7 +68,7 @@ A hidden machine's pairing never leaves the relay. Its tunnel keeps running, so 
 `planRelaySync(entries, machines, selfId)` in `src/shared/relayMachines.ts` decides for both clients: every listed machine except this one, with a usable pairing, is added or refreshed, and a `relay` entry the list no longer has is dropped. A `pairing` entry for a listed machine gets the fresher address, port, relay and token, and keeps its name and its source.
 
 - **Desktop.** `RelayAccount` service (`src/main/services/RelayAccount.ts`) with `relayAccount.status`, `relayAccount.signIn({ ownerToken })`, `relayAccount.signOut` and `relayAccount.sync`, all routed to the client and desktop-only, each answering `RelayAccountStatus`. It hands the list to `Environments.syncRelay`, which writes rows without probing, since the relay already named the machine. Signing out drops the `relay` rows.
-- **Phone.** `apps/mobile/src/lib/relay-account.ts` fetches the list and applies the plan to the stored servers. Settings gets a Relay section.
+- **Phone.** `apps/mobile/src/lib/relay-account.ts` fetches the list and applies the plan to the stored servers. The Relay section (`components/relay-account.tsx`) shows on the connect screen and in Settings, because a phone that never paired cannot open Settings, and one whose relay lists no machines is back on the connect screen.
 
 A 401 from `GET /v1/machines` (the owner token was rotated) keeps every entry and asks the developer to sign in again.
 
@@ -85,4 +85,4 @@ A 401 from `GET /v1/machines` (the owner token was rotated) keeps every entry an
 - `src/main/remote/relay.integration.test.ts`: the host publishes after linking, again after `rotateToken`, and not again when nothing changed.
 - `src/shared/relayMachines.test.ts`: the plan skips this machine and unusable pairings, never drops a `pairing` entry, and drops a `relay` entry the list lost.
 - `src/main/services/Environments.integration.test.ts`: `syncRelay` adds rows without a probe, refreshes a hand-paired row's token, and drops a hidden machine's row.
-- By hand against the deployed relay: link a throwaway `hinacode serve`, sign a desktop instance in, see it under Environments and open its projects; hide it on the relay page, sync, and see it gone. The phone does the same on the emulator.
+- By hand, with `wrangler dev` holding the real Cloudflare token: link a throwaway `hinacode serve`, sign a desktop instance in, see it connect through the tunnel, hide it on the relay page, sync, and see it gone. A fresh phone on the emulator signs in from the connect screen, connects through the tunnel, loses the machine when it is hidden and gets it back on Sync now.
