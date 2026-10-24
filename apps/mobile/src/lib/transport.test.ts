@@ -3,6 +3,7 @@ import { DIRECT_CHECK_INTERVAL_MS, DIRECT_CHECK_TIMEOUT_MS, type Dial, RELAY_DEL
 import {
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
+  CONNECT_TIMEOUT_MS,
   LOST_REPLY_MESSAGE,
   MAY_HAVE_RUN_MESSAGE,
   NOT_SENT_MESSAGE,
@@ -628,6 +629,50 @@ describe("Transport", () => {
       expect(latest().url).toBe(LAN)
       latest().open()
       expect(latest().sent).toEqual([{ type: "auth", token: "secret" }])
+    })
+
+    it("races the relay alone when a direct address refuses the token, until the network changes", async () => {
+      const transport = setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).open()
+      socketAt(LAN).drop(CLOSE_UNAUTHORIZED)
+      expect(urls()).toEqual([LAN, RELAY])
+      handshake(["call-keys"])
+      expect(statuses).not.toContain("unauthorized")
+      expect(statuses.at(-1)).toBe("connected")
+
+      await vi.advanceTimersByTimeAsync(3 * DIRECT_CHECK_INTERVAL_MS)
+      expect(urls()).toEqual([LAN, RELAY])
+
+      transport.networkChanged()
+      expect(urls()).toEqual([LAN, RELAY, LAN])
+    })
+
+    it("stops when the relay refuses the token", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).drop(CLOSE_UNAUTHORIZED)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(urls()).toEqual([LAN, RELAY])
+      expect(statuses.at(-1)).toBe("unauthorized")
+    })
+
+    it("dials only the direct addresses in the round after a direct check answers", async () => {
+      await connectOverRelay()
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
+      latest().open()
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS - 1)
+      expect(urls()).toEqual([LAN, RELAY, LAN, LAN])
+    })
+
+    it("races both routes at once when no direct address opens in the direct round", async () => {
+      await connectOverRelay()
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
+      latest().open()
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS)
+      expect(urls()).toEqual([LAN, RELAY, LAN, LAN, LAN])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      expect(urls()).toEqual([LAN, RELAY, LAN, LAN, LAN, RELAY])
     })
 
     it("keeps the open socket when the dials change and uses them from the next round", async () => {
