@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react"
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native"
-import Animated, { Keyframe, useReducedMotion } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { Button, IconButton } from "@/components/ui"
-import { duration, ease } from "@/constants/motion"
+import { duration } from "@/constants/motion"
 import { HIT, type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
+import { motion } from "@/lib/motion"
 import type { AlertKind } from "@/lib/thread-alerts"
 
 export interface BannerNotice {
@@ -29,17 +29,6 @@ const icons: Record<AlertKind, { name: IconName; color: keyof Palette }> = {
 }
 
 const RISE = 16
-
-const enter = new Keyframe({
-  0: { opacity: 0, transform: [{ translateY: -RISE }] },
-  100: { opacity: 1, transform: [{ translateY: 0 }], easing: ease.out },
-}).duration(duration.base)
-const leave = new Keyframe({
-  0: { opacity: 1, transform: [{ translateY: 0 }] },
-  100: { opacity: 0, transform: [{ translateY: -RISE / 2 }], easing: ease.out },
-}).duration(duration.fast)
-const fadeIn = new Keyframe({ 0: { opacity: 0 }, 100: { opacity: 1, easing: ease.out } }).duration(duration.base)
-const fadeOut = new Keyframe({ 0: { opacity: 1 }, 100: { opacity: 0, easing: ease.out } }).duration(duration.fast)
 
 /** One alert at a time, floating at the top of every screen until it times out, is opened or is dismissed. */
 export function Banner({
@@ -69,7 +58,6 @@ function Card({
   onDismiss: () => void
 }) {
   const theme = useTheme()
-  const reduced = useReducedMotion()
   const [held, setHeld] = useState(false)
   const { kind, title, body, threadId } = notice
   const icon = icons[kind]
@@ -90,9 +78,10 @@ function Card({
   }
 
   return (
-    <Animated.View
-      entering={reduced ? fadeIn : enter}
-      exiting={reduced ? fadeOut : leave}
+    <motion.View
+      initial={{ opacity: 0, y: -RISE }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -RISE / 2, transition: { duration: duration.fast } }}
       style={[styles.card, { backgroundColor: theme.background, borderColor: theme.border }]}
     >
       <Pressable
@@ -115,7 +104,7 @@ function Card({
       </Pressable>
       <Button label={copy("mobile_notify_open")} onPress={open} hitSlop={4} style={styles.open} />
       <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_notify_dismiss")} onPress={onDismiss} />
-    </Animated.View>
+    </motion.View>
   )
 }
 
