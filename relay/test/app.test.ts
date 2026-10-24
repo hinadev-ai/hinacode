@@ -280,6 +280,8 @@ describe("the account's machines", () => {
         name: "home-mac",
         hostname: `${(await hostRow("env-a"))?.id}.tunnels.test`,
         createdAt: clock,
+        enabled: true,
+        published: false,
       },
     ])
     expect((await call("GET", "/v1/hosts")).status).toBe(401)
@@ -293,6 +295,129 @@ describe("the account's machines", () => {
 
     expect((await call("DELETE", `/v1/hosts/${bobs?.id}`, { bearer: "bob-session" })).status).toBe(204)
     expect(await hostRow("env-b")).toBeNull()
+  })
+})
+
+const PAIRING = { hosts: ["192.168.1.20", "home-mac.local"], port: 48081, token: "pairing-token" }
+
+const publish = (credential: string, pairing: unknown = PAIRING) =>
+  call("PUT", "/v1/host/pairing", { bearer: credential, body: pairing })
+
+const machines = async (session = "alice-session") => {
+  const response = await call("GET", "/v1/machines", { bearer: session })
+  expect(response.status).toBe(200)
+  return ((await response.json()) as { machines: unknown[] }).machines
+}
+
+const setEnabled = (id: string | undefined, enabled: boolean, session = "alice-session") =>
+  call("PATCH", `/v1/hosts/${id}`, { bearer: session, body: { enabled } })
+
+describe("the machines the owner's devices see", () => {
+  it("lists a published machine with its relay hostname, uncached", async () => {
+    expect((await publish(await linkMachine())).status).toBe(204)
+    const response = await call("GET", "/v1/machines", { bearer: "alice-session" })
+    expect(response.headers.get("Cache-Control")).toBe("no-store")
+    const id = (await hostRow())?.id
+    expect(await response.json()).toEqual({
+      machines: [{ environmentId: "env-1", name: "home-mac", pairing: { ...PAIRING, relay: `${id}.tunnels.test` } }],
+    })
+    expect((await call("GET", "/v1/machines")).status).toBe(401)
+  })
+
+  it("leaves out an unpublished machine, a hidden one and another account's", async () => {
+    await linkMachine("env-unpublished")
+    await publish(await linkMachine("env-hidden"))
+    expect((await setEnabled((await hostRow("env-hidden"))?.id, false)).status).toBe(204)
+    await publish(await linkMachine("env-bob", "bob-session"))
+    await publish(await linkMachine("env-shown"))
+    expect((await machines()).map((machine) => (machine as { environmentId: string }).environmentId)).toEqual([
+      "env-shown",
+    ])
+
+    expect((await setEnabled((await hostRow("env-hidden"))?.id, true)).status).toBe(204)
+    expect(await machines()).toHaveLength(2)
+  })
+
+  it("skips a row whose stored pairing no longer decodes", async () => {
+    await publish(await linkMachine())
+    await env.DB.prepare("UPDATE host SET pairing = ?").bind('{"hosts":[]}').run()
+    expect(await machines()).toEqual([])
+  })
+
+  it("replaces the pairing when the machine publishes again", async () => {
+    const credential = await linkMachine()
+    await publish(credential)
+    expect((await publish(credential, { ...PAIRING, hosts: ["10.0.0.5"], token: "rotated" })).status).toBe(204)
+    expect(await machines()).toMatchObject([{ pairing: { hosts: ["10.0.0.5"], port: 48081, token: "rotated" } }])
+  })
+
+  it("takes a pairing only from a linked machine", async () => {
+    const unlinked = await call("PUT", "/v1/host/pairing", { body: PAIRING })
+    expect(unlinked.status).toBe(401)
+    expect(await unlinked.json()).toEqual({ error: "This machine is not linked. Link it again." })
+    expect((await publish("alice-session")).status).toBe(401)
+    expect((await publish("not-a-credential")).status).toBe(401)
+  })
+
+  it("refuses a malformed pairing", async () => {
+    const credential = await linkMachine()
+    for (const pairing of [
+      { ...PAIRING, hosts: [] },
+      { ...PAIRING, hosts: Array.from({ length: 17 }, (_, index) => `10.0.0.${index}`) },
+      { ...PAIRING, hosts: [""] },
+      { ...PAIRING, hosts: ["h".repeat(256)] },
+      { ...PAIRING, hosts: ["home mac"] },
+      { ...PAIRING, hosts: ["evil.test/path"] },
+      { ...PAIRING, hosts: ["user@evil.test"] },
+      { ...PAIRING, hosts: ["[::1]"] },
+      { ...PAIRING, hosts: ["a?b"] },
+      { ...PAIRING, hosts: ["a#b"] },
+      { ...PAIRING, hosts: ["a\\b"] },
+      { ...PAIRING, port: 0 },
+      { ...PAIRING, port: 65536 },
+      { ...PAIRING, port: 80.5 },
+      { ...PAIRING, token: "" },
+      { ...PAIRING, token: "t".repeat(257) },
+      { hosts: PAIRING.hosts, port: PAIRING.port },
+      "not an object",
+    ]) {
+      const response = await publish(credential, pairing)
+      expect(response.status, JSON.stringify(pairing)).toBe(400)
+      expect(await response.json()).toHaveProperty("error")
+    }
+    expect((await publish(credential, { ...PAIRING, hosts: ["::1", "h".repeat(255)], port: 65535 })).status).toBe(204)
+  })
+
+  it("reports enabled and published in the host list", async () => {
+    await publish(await linkMachine())
+    await setEnabled((await hostRow())?.id, false)
+    const { hosts } = (await (await call("GET", "/v1/hosts", { bearer: "alice-session" })).json()) as {
+      hosts: { enabled: boolean; published: boolean }[]
+    }
+    expect(hosts).toMatchObject([{ enabled: false, published: true }])
+  })
+
+  it("toggles only the caller's own host", async () => {
+    await linkMachine("env-b", "bob-session")
+    const bobs = (await hostRow("env-b"))?.id
+    expect((await setEnabled(bobs, false)).status).toBe(404)
+    expect((await setEnabled("missing", false)).status).toBe(404)
+    expect((await call("PATCH", `/v1/hosts/${bobs}`, { body: { enabled: false } })).status).toBe(401)
+    for (const body of [{}, { enabled: "no" }, { enabled: 0 }]) {
+      expect((await call("PATCH", `/v1/hosts/${bobs}`, { bearer: "bob-session", body })).status).toBe(400)
+    }
+    expect((await setEnabled(bobs, false, "bob-session")).status).toBe(204)
+    expect(await env.DB.prepare("SELECT enabled FROM host").first("enabled")).toBe(0)
+  })
+
+  it("keeps the pairing and the hidden state across a re-link", async () => {
+    await publish(await linkMachine())
+    await setEnabled((await hostRow())?.id, false)
+    const second = await linkMachine()
+    const row = await env.DB.prepare("SELECT pairing, enabled FROM host").first<{ pairing: string; enabled: number }>()
+    expect(JSON.parse(row!.pairing)).toEqual(PAIRING)
+    expect(row?.enabled).toBe(0)
+    expect((await publish(second)).status).toBe(204)
   })
 })
 

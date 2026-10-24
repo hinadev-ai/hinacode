@@ -7,13 +7,15 @@ const say = (id, text) => { $(id).textContent = text }
 
 const TOKEN_KEY = "hinacode-relay-owner-token"
 
-async function api(method, path) {
+async function api(method, path, body) {
   const token = localStorage.getItem(TOKEN_KEY)
-  const response = await fetch(path, { method, headers: { Authorization: "Bearer " + token } })
-  const body = response.status === 204 ? null : await response.json().catch(() => null)
+  const headers = { Authorization: "Bearer " + token }
+  if (body !== undefined) headers["Content-Type"] = "application/json"
+  const response = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+  const answer = response.status === 204 ? null : await response.json().catch(() => null)
   if (response.status === 401) localStorage.removeItem(TOKEN_KEY)
-  if (!response.ok) throw new Error(body && body.error ? body.error : "The relay answered HTTP " + response.status + ".")
-  return body
+  if (!response.ok) throw new Error(answer && answer.error ? answer.error : "The relay answered HTTP " + response.status + ".")
+  return answer
 }
 
 async function renderLink() {
@@ -60,6 +62,29 @@ async function renderHosts() {
     const hostname = document.createElement("span")
     hostname.textContent = host.hostname
     label.append(name, hostname)
+    if (!host.published) {
+      const unpublished = document.createElement("span")
+      unpublished.textContent = "Not published yet. Update HinaCode on this machine."
+      label.append(unpublished)
+    }
+    const toggle = document.createElement("label")
+    const enabled = document.createElement("input")
+    enabled.type = "checkbox"
+    enabled.checked = host.enabled
+    enabled.onchange = async () => {
+      enabled.disabled = true
+      try {
+        await api("PATCH", "/v1/hosts/" + encodeURIComponent(host.id), { enabled: enabled.checked })
+        say("hosts-status", "")
+      } catch (error) {
+        enabled.checked = !enabled.checked
+        say("hosts-status", error.message)
+      } finally {
+        enabled.disabled = false
+      }
+    }
+    toggle.append(enabled, "Show on my devices")
+    label.append(toggle)
     const remove = document.createElement("button")
     remove.textContent = "Remove"
     remove.className = "secondary"
@@ -136,6 +161,7 @@ input, button { font: inherit; }
 input { padding: 7px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }
 button { padding: 8px 16px; border-radius: 8px; border: 0; background: #e8618c; color: white; cursor: pointer; }
 button.secondary { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding: 4px 12px; }
+[hidden] { display: none !important; }
 button:disabled { opacity: 0.5; cursor: default; }
 .row { display: flex; gap: 8px; margin: 8px 0; }
 .row input { flex: 1; min-width: 0; font-family: ui-monospace, monospace; }
@@ -143,6 +169,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 li div { display: grid; min-width: 0; }
+li label { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; margin-top: 4px; }
+li label input { margin: 0; padding: 0; accent-color: #e8618c; }
 li span { font-size: 0.875rem; color: color-mix(in srgb, currentColor 60%, transparent); overflow-wrap: anywhere; }
 a { color: inherit; font-size: 0.875rem; }
 `

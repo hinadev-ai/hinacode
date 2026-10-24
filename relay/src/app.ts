@@ -28,6 +28,15 @@ const NewLink = Schema.Struct({
 })
 const Claim = Schema.Struct({ deviceCode: Schema.String.check(Schema.isMaxLength(128)) })
 const Tunnel = Schema.Struct({ origin: Schema.String.check(Schema.isPattern(/^http:\/\/[^/?#\s]+:\d{1,5}$/)) })
+const Pairing = Schema.Struct({
+  hosts: Schema.NonEmptyArray(
+    Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(255), Schema.isPattern(/^[^\s/?#@[\]\\]+$/)),
+  ).check(Schema.isMaxLength(16)),
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  token: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
+})
+const StoredPairing = Schema.fromJsonString(Pairing)
+const HostChange = Schema.Struct({ enabled: Schema.Boolean })
 
 interface LinkRow {
   device_code_hash: string
@@ -46,6 +55,8 @@ interface HostRow {
   tunnel_id: string | null
   dns_record_id: string | null
   created_at: number
+  pairing: string | null
+  enabled: number
 }
 
 export const bearer = (request: Request) => /^Bearer (\S+)$/.exec(request.headers.get("Authorization") ?? "")?.[1]
@@ -229,6 +240,45 @@ export const makeApp = (deps: Deps) => {
     return c.body(null, 204)
   })
 
+  app.put("/v1/host/pairing", async (c) => {
+    const host = await machine(c)
+    if (!host) return fail(c, 401, "This machine is not linked. Link it again.")
+    const input = await body(c, Pairing)
+    if (Option.isNone(input)) {
+      return fail(
+        c,
+        400,
+        "Send hosts (1 to 16 addresses without spaces, slashes, brackets or @), port (1 to 65535) and token (1 to 256 characters).",
+      )
+    }
+    await c.env.DB.prepare("UPDATE host SET pairing = ? WHERE id = ?").bind(JSON.stringify(input.value), host.id).run()
+    return c.body(null, 204)
+  })
+
+  app.get("/v1/machines", async (c) => {
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const { results } = await c.env.DB.prepare(
+      "SELECT * FROM host WHERE user_id = ? AND enabled = 1 AND pairing IS NOT NULL ORDER BY created_at, id",
+    )
+      .bind(userId)
+      .all<HostRow>()
+    const machines = results.flatMap((host) =>
+      Option.match(Schema.decodeUnknownOption(StoredPairing)(host.pairing), {
+        onNone: () => [],
+        onSome: (pairing) => [
+          {
+            environmentId: host.environment_id,
+            name: host.name,
+            pairing: { ...pairing, relay: hostnameOf(c.env, host) },
+          },
+        ],
+      }),
+    )
+    c.header("Cache-Control", "no-store")
+    return c.json({ machines })
+  })
+
   app.get("/v1/hosts", async (c) => {
     const userId = await deps.verifyUser(c.req.raw, c.env)
     if (!userId) return fail(c, 401, "Enter the owner token first.")
@@ -241,8 +291,22 @@ export const makeApp = (deps: Deps) => {
         name: host.name,
         hostname: hostnameOf(c.env, host),
         createdAt: host.created_at,
+        enabled: host.enabled === 1,
+        published: host.pairing !== null,
       })),
     })
+  })
+
+  app.patch("/v1/hosts/:id", async (c) => {
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const input = await body(c, HostChange)
+    if (Option.isNone(input)) return fail(c, 400, "Send enabled as true or false.")
+    const changed = await c.env.DB.prepare("UPDATE host SET enabled = ? WHERE id = ? AND user_id = ?")
+      .bind(input.value.enabled ? 1 : 0, c.req.param("id"), userId)
+      .run()
+    if (changed.meta.changes === 0) return fail(c, 404, "No machine with this id is linked to your account.")
+    return c.body(null, 204)
   })
 
   app.delete("/v1/hosts/:id", async (c) => {
