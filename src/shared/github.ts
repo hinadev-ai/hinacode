@@ -59,3 +59,8 @@ export function parsePullRequestSelector(input: string): string | undefined {
 export const PullRequestSelector = Schema.String.check(
   Schema.makeFilter((text) => parsePullRequestSelector(text) === text || "a pull request number or URL"),
 )
+
+const GITHUB_PULL_REQUEST = /^https:\/\/github\.com\/(?=[^/]+\/[^/]+\/pull\/\d+)/i
+
+/** A GitHub pull request url on linear.review, which serves the same paths. Any other url is returned as is. */
+export const linearReviewUrl = (url: string) => url.replace(GITHUB_PULL_REQUEST, "https://linear.review/")

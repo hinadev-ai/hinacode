@@ -38,7 +38,7 @@ import {
   noteAnnotations,
   type ResolvedGroup,
   resolveGuide,
-} from "../lib/pullRequestGuide.ts"
+} from "../../shared/pullRequestGuide.ts"
 import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestFilesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"

@@ -5,7 +5,7 @@ import type {
   GuideLineNote,
   PullRequestFile,
   PullRequestGuide,
-} from "../../shared/domain.ts"
+} from "./domain.ts"
 
 export interface GuideFile {
   readonly file: PullRequestFile

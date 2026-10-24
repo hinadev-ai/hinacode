@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { parseGitHubRepository } from "./github.ts"
+import { linearReviewUrl, parseGitHubRepository } from "./github.ts"
 
 const repo = { owner: "kjj6198", name: "myprofile" }
 
@@ -45,5 +45,21 @@ describe("parseGitHubRepository", () => {
     ]) {
       expect(parseGitHubRepository(input), input).toBeNull()
     }
+  })
+})
+
+describe("linearReviewUrl", () => {
+  test("moves a pull request and its subpages to linear.review", () => {
+    expect(linearReviewUrl("https://github.com/linear/linear/pull/1311")).toBe(
+      "https://linear.review/linear/linear/pull/1311",
+    )
+    expect(linearReviewUrl("https://github.com/linear/linear/pull/1311/files")).toBe(
+      "https://linear.review/linear/linear/pull/1311/files",
+    )
+  })
+
+  test("leaves other urls alone", () => {
+    for (const url of ["https://github.com/linear/linear/issues/4", "https://example.com/a/b/pull/1"])
+      expect(linearReviewUrl(url)).toBe(url)
   })
 })
