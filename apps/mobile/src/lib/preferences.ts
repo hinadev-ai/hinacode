@@ -20,12 +20,15 @@ export interface Preferences {
   readonly appearance: Appearance
   readonly notifications: typeof NotificationPreferences.Type
   readonly homeTab: HomeTab
+  /** Whether the thread list beside the open thread is hidden, in a landscape split. */
+  readonly sidebarHidden: boolean
 }
 
 export const defaultPreferences: Preferences = {
   appearance: "system",
   notifications: { completed: true, needsInput: true, failed: true },
   homeTab: "inbox",
+  sidebarHidden: false,
 }
 
 const withDefault = <S extends Schema.Top>(schema: S, value: S["Encoded"]) =>
@@ -36,6 +39,7 @@ const Stored = Schema.Struct({
   appearance: withDefault(AppearanceSchema, defaultPreferences.appearance),
   notifications: withDefault(NotificationPreferences, defaultPreferences.notifications),
   homeTab: withDefault(HomeTabSchema, defaultPreferences.homeTab),
+  sidebarHidden: withDefault(Schema.Boolean, defaultPreferences.sidebarHidden),
 })
 
 const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Stored))
