@@ -1340,6 +1340,7 @@
   "mobile_home_retry": "重試",
   "mobile_home_no_projects": "還沒有專案",
   "mobile_home_no_projects_hint": "加入桌面上的資料夾或 GitHub 儲存庫，就能開始對話串。",
+  "mobile_home_no_selection": "從列表中選一個對話串",
   "mobile_home_add_project": "加入專案",
   "mobile_home_add_project_hint": "桌面上的資料夾或 GitHub 儲存庫",
   "mobile_home_pinned": "已釘選",

@@ -42,8 +42,9 @@ export function Sheet({
         accessibilityRole="button"
         accessibilityLabel={copy("mobile_sheet_close")}
         onPress={onClose}
-        style={[styles.backdrop, fit ? styles.fill : { height: insets.top + 12 }]}
+        style={[StyleSheet.absoluteFill, styles.backdrop]}
       />
+      <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />
       <Animated.View
         entering={rise}
         accessibilityViewIsModal
@@ -159,7 +160,11 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   fitSheet: { maxHeight: "85%" },
   fitScroll: { flexGrow: 0 },
+  // A tablet keeps the sheet to a column, with the scrim on both sides; every phone is narrower.
   sheet: {
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderTopWidth: StyleSheet.hairlineWidth,

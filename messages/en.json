@@ -1367,6 +1367,7 @@
   "mobile_home_retry": "Try again",
   "mobile_home_no_projects": "No projects yet",
   "mobile_home_no_projects_hint": "Add a folder on the desktop or a GitHub repository to start a thread.",
+  "mobile_home_no_selection": "Pick a thread from the list",
   "mobile_home_add_project": "Add project",
   "mobile_home_add_project_hint": "A folder on the desktop or a GitHub repository",
   "mobile_home_pinned": "Pinned",
