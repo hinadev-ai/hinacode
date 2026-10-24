@@ -28,6 +28,10 @@ export const Colors = {
     /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
     token: "#7c3aed",
     tokenBg: "rgba(124, 58, 237, 0.12)",
+    /** The send button's gradient, the desktop's `send-halo`: primary, then its hue turned +45° and -35° in OKLCH. */
+    haloA: "#7c3aed",
+    haloB: "#e204bd",
+    haloC: "#0034cf",
   },
   dark: {
     text: "#fafafa",
@@ -51,6 +55,9 @@ export const Colors = {
     prMerged: "#a371f7",
     token: "#a78bfa",
     tokenBg: "rgba(167, 139, 250, 0.16)",
+    haloA: "#7c3aed",
+    haloB: "#e204bd",
+    haloC: "#0034cf",
   },
 } as const
 
