@@ -390,6 +390,7 @@
   "pr_links_unlink": "取消連結 {name}",
   "sidebar_thread_actions": "「{title}」的操作",
   "sidebar_thread_rename": "重新命名",
+  "sidebar_thread_copy_id": "複製對話串 ID",
   "sidebar_thread_rename_label": "「{title}」的新名稱",
   "sidebar_thread_delete": "刪除…",
   "sidebar_thread_reorder": "調整「{title}」的順序",

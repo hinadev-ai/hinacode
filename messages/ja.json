@@ -390,6 +390,7 @@
   "pr_links_unlink": "{name} のリンクを解除",
   "sidebar_thread_actions": "「{title}」の操作メニュー",
   "sidebar_thread_rename": "名前を変更",
+  "sidebar_thread_copy_id": "スレッド ID をコピー",
   "sidebar_thread_rename_label": "「{title}」の新しい名前",
   "sidebar_thread_delete": "削除…",
   "sidebar_thread_reorder": "「{title}」を並べ替え",

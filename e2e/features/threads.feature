@@ -79,6 +79,12 @@ Feature: Threads
     Then no thread is pinned
     And the open tab lists the threads "Keep, Other" in that order
 
+  @desktop
+  Scenario: A thread's ID is copied from its row menu, to point another agent at it
+    Given the project "demo" has a thread "Handoff"
+    When I copy the ID of the thread "Handoff" from its menu
+    Then the clipboard holds the ID of the thread "Handoff"
+
   Scenario: The sidebar filter matches thread titles and project names
     Given the project "demo" has a thread "Fix login"
     And the project "demo" has a thread "Write docs"

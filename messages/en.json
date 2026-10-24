@@ -390,6 +390,7 @@
   "pr_links_unlink": "Unlink {name}",
   "sidebar_thread_actions": "Actions for {title}",
   "sidebar_thread_rename": "Rename",
+  "sidebar_thread_copy_id": "Copy thread ID",
   "sidebar_thread_rename_label": "New name for {title}",
   "sidebar_thread_delete": "Delete…",
   "sidebar_thread_reorder": "Reorder {title}",
