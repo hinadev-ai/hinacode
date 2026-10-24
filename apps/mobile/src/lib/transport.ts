@@ -86,6 +86,12 @@ interface PendingCall {
 
 const decodeFrame = Schema.decodeUnknownOption(ServerFrame)
 
+/**
+ * What a round dials: the whole plan, or one route alone. A relay round follows a direct address that refused the
+ * token, and its link checks no direct address. A direct round follows a direct check that answered.
+ */
+type Round = "both" | Dial["route"]
+
 const randomKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
 /**
@@ -142,6 +148,7 @@ export class Transport {
   private foreground = true
   private stopped = false
   private route: Dial["route"] | null = null
+  private round: Round = "both"
   private cancelRace: (() => void) | undefined
   private cancelCheck: (() => void) | undefined
   private readonly pending = new Map<number, PendingCall>()
@@ -215,7 +222,7 @@ export class Transport {
     }
     if (this.stopped || this.status === "unauthorized") return
     if (this.status === "connected") {
-      if (this.route === "relay") {
+      if (this.checksDirect()) {
         this.checkDirect()
         this.startDirectChecks()
       }
@@ -241,17 +248,30 @@ export class Transport {
     this.open()
   }
 
-  private open() {
+  private open(round: Round = "both") {
     if (this.stopped) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
-    this.connectTimer = setTimeout(() => this.onLinkLost(), CONNECT_TIMEOUT_MS)
+    this.round = round
+    this.connectTimer = setTimeout(
+      () => (this.socket === null ? this.noneOpened() : this.onLinkLost()),
+      CONNECT_TIMEOUT_MS,
+    )
     this.cancelRace = race(
-      this.dials,
+      round === "both"
+        ? this.dials
+        : this.dials.filter((dial) => dial.route === round).map((dial) => ({ ...dial, delayMs: 0 })),
       this.createSocket,
       (ws, dial) => this.adopt(ws, dial.route),
-      () => this.onLinkLost(),
+      () => this.noneOpened(),
     )
+  }
+
+  /** The direct address a check found is gone again, so the relay may answer instead, without waiting. */
+  private noneOpened() {
+    if (this.round !== "direct") return this.onLinkLost()
+    this.dropSocket()
+    this.open("both")
   }
 
   private readonly createSocket = (url: string) =>
@@ -267,6 +287,18 @@ export class Transport {
     }
     ws.onclose = (event) => {
       if (this.socket !== ws) return
+      // Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine
+      // still accepts, so only the relay, whose hostname is the machine's own, gets the last word.
+      if (
+        event.code === CLOSE_UNAUTHORIZED &&
+        route === "direct" &&
+        this.status === "connecting" &&
+        this.dials.some((dial) => dial.route === "relay")
+      ) {
+        this.dropSocket()
+        this.open("relay")
+        return
+      }
       if (event.code === CLOSE_UNAUTHORIZED || event.code === CLOSE_TOKEN_ROTATED) {
         this.dropSocket()
         this.unauthorized(
@@ -337,7 +369,7 @@ export class Transport {
       this.startPings()
       this.closeIfSilentFor(IDLE_TIMEOUT_MS)
     }
-    if (this.route === "relay" && this.foreground) this.startDirectChecks()
+    if (this.checksDirect() && this.foreground) this.startDirectChecks()
     this.options.onReady(this.features, environment, relay)
   }
 
@@ -384,6 +416,10 @@ export class Transport {
     this.idleTimer = undefined
   }
 
+  private checksDirect() {
+    return this.route === "relay" && this.round === "both"
+  }
+
   private startDirectChecks() {
     clearInterval(this.checkTimer)
     this.checkTimer = setInterval(() => this.checkDirect(), DIRECT_CHECK_INTERVAL_MS)
@@ -395,7 +431,7 @@ export class Transport {
     this.cancelCheck?.()
   }
 
-  /** Opens the direct addresses without the token. When one answers, the relay link gives way to a new race. */
+  /** Opens the direct addresses without the token. When one answers, the relay link gives way to a direct round. */
   private checkDirect() {
     const direct = this.dials.filter((dial) => dial.route === "direct")
     if (direct.length === 0) return
@@ -405,7 +441,7 @@ export class Transport {
       this.createSocket,
       (ws) => {
         ws.close()
-        this.redial()
+        this.redial("direct")
       },
       () => this.cancelCheck?.(),
     )
@@ -417,11 +453,11 @@ export class Transport {
     }
   }
 
-  private redial() {
+  private redial(round: Round = "both") {
     this.onLinkLost()
     this.attempt = 0
     clearTimeout(this.retryTimer)
-    this.open()
+    this.open(round)
   }
 
   private onLinkLost() {

@@ -328,6 +328,8 @@ interface Cloud {
 
 interface SessionEnd {
   readonly code: number
+  /** Whether the cloud accepted the token before the socket closed. */
+  readonly ready: boolean
   /** The cloud's protocol version when it is not this desktop's. */
   readonly otherProtocol: number | null
   readonly connectedMs: number
@@ -528,6 +530,7 @@ const make = Effect.gen(function* () {
       const code = yield* Deferred.await(closed)
       return {
         code,
+        ready: connectedAt !== null,
         otherProtocol,
         connectedMs: connectedAt === null ? 0 : now() - connectedAt,
       } satisfies SessionEnd
@@ -537,7 +540,7 @@ const make = Effect.gen(function* () {
    * Keeps `cloud` connected until interrupted or refused. A cloud on another protocol version keeps being retried,
    * so it reconnects on its own once updated. Each round races the cloud's dial plan and runs a session on the
    * first URL that opens, and a round where none opens waits out the backoff. A session over the relay ends as soon
-   * as a direct address answers, and the next round starts at once to move there.
+   * as a direct address answers, and the next round dials the direct addresses alone to move there.
    */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
@@ -549,19 +552,35 @@ const make = Effect.gen(function* () {
       }
       yield* setStatus(cloud, "connecting")
       let attempt = 0
+      // Which routes this round dials. Every round after a backoff dials both.
+      let round: "both" | "direct" | "relay" = "both"
       for (;;) {
         const plan = environmentDialPlan(cloud.environment)
-        const won = yield* firstToOpen(plan, READY_TIMEOUT_MS)
+        const dials = round === "both" ? plan : plan.filter((planned) => planned.route === round)
+        const won = yield* firstToOpen(dials, READY_TIMEOUT_MS)
         if (won === null) {
+          if (round === "direct") {
+            round = "both"
+            continue
+          }
           yield* setStatus(cloud, "offline")
         } else {
           const direct = plan.filter((planned) => planned.route === "direct")
           const end =
-            won.route === "relay" && direct.length > 0
+            won.route === "relay" && round === "both" && direct.length > 0
               ? yield* Effect.raceFirst(session(cloud, token, won.url), directAnswers(direct).pipe(Effect.as(null)))
               : yield* session(cloud, token, won.url)
-          if (end === null) continue
+          if (end === null) {
+            round = "direct"
+            continue
+          }
           if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
+            // Away from home, someone else's HinaCode can answer at the direct address and refuse the token. Only the
+            // relay surely reaches this cloud, so the rest of this link dials it alone and takes its verdict.
+            if (!end.ready && won.route === "direct" && plan.some((planned) => planned.route === "relay")) {
+              round = "relay"
+              continue
+            }
             failAll(cloud, unauthorized(name))
             return yield* setStatus(cloud, "unauthorized")
           }
@@ -574,6 +593,7 @@ const make = Effect.gen(function* () {
           }
           if (end.connectedMs >= STABLE_MS) attempt = 0
         }
+        round = "both"
         const wake = yield* Deferred.make<void>()
         cloud.wake = wake
         const woken = yield* Effect.race(
