@@ -1,6 +1,6 @@
-import type { AgentEvent } from "@shared/agent.ts"
 import { expect, it } from "vitest"
-import { outcomeOf, rowEmphasis, rowState } from "./row-state"
+import type { AgentEvent } from "./agent.ts"
+import { openChecks, outcomeOf, rowState } from "./threadStatus.ts"
 
 it("shows an unopened result only on an idle thread", () => {
   expect(rowState("idle", "completed")).toBe("unseen_completed")
@@ -9,16 +9,16 @@ it("shows an unopened result only on an idle thread", () => {
   expect(rowState("running", "completed")).toBe("running")
 })
 
-it("reads threads that need the developer loudest and working ones quietest", () => {
-  expect(rowEmphasis[rowState("awaiting_approval", undefined)]).toBe("attention")
-  expect(rowEmphasis[rowState("idle", "failed")]).toBe("attention")
-  expect(rowEmphasis[rowState("idle", undefined)]).toBe("resting")
-  expect(rowEmphasis[rowState("running", undefined)]).toBe("working")
-})
-
 it("marks a finished or failed turn, not a limited one", () => {
   expect(outcomeOf({ type: "turn_completed" } as AgentEvent)).toBe("completed")
   expect(outcomeOf({ type: "turn_failed", message: "boom" } as AgentEvent)).toBe("failed")
   expect(outcomeOf({ type: "turn_limited" } as AgentEvent)).toBeUndefined()
   expect(outcomeOf({ type: "text_delta", text: "hi" } as AgentEvent)).toBeUndefined()
+})
+
+it("shows checks only while the pull request is open or a draft", () => {
+  expect(openChecks({ status: "open", checks: "failing" })).toBe("failing")
+  expect(openChecks({ status: "draft", checks: "pending" })).toBe("pending")
+  expect(openChecks({ status: "merged", checks: "failing" })).toBeNull()
+  expect(openChecks(undefined)).toBeNull()
 })

@@ -1,4 +1,6 @@
+import type { IndicatorTone } from "@shared/threadStatus.ts"
 import { Platform } from "react-native"
+import type { IconName } from "@/components/icon"
 
 export const Colors = {
   light: {
@@ -20,6 +22,9 @@ export const Colors = {
     dangerBg: "#fee2e2",
     neutralBg: "#f4f4f5",
     link: "#6d28d9",
+    /** GitHub's open and merged pull request colors, the desktop's `--pr-open` and `--pr-merged`. */
+    prOpen: "#1a7f37",
+    prMerged: "#8250df",
     /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
     token: "#7c3aed",
     tokenBg: "rgba(124, 58, 237, 0.12)",
@@ -42,12 +47,30 @@ export const Colors = {
     dangerBg: "#3b1111",
     neutralBg: "#27272a",
     link: "#a78bfa",
+    prOpen: "#3fb950",
+    prMerged: "#a371f7",
     token: "#a78bfa",
     tokenBg: "rgba(167, 139, 250, 0.16)",
   },
 } as const
 
 export type Palette = { readonly [K in keyof typeof Colors.light]: string }
+
+const toneColor = (theme: Palette): Record<IndicatorTone, string> => ({
+  muted: theme.textMuted,
+  attention: theme.attention,
+  // The desktop's `--success` is the phone's `running`.
+  success: theme.running,
+  danger: theme.danger,
+  prOpen: theme.prOpen,
+  prMerged: theme.prMerged,
+})
+
+/** An indicator from `@shared/threadStatus.ts` as an icon in this theme's color. */
+export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName; tone: IndicatorTone }) => ({
+  name: icon,
+  color: toneColor(theme)[tone],
+})
 
 /** Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex takes the text color. */
 export const ProviderColors = {

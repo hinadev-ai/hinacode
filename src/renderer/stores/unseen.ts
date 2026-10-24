@@ -1,8 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-
-/** How a thread's latest turn ended. */
-export type Outcome = "completed" | "failed"
+import type { Outcome } from "../../shared/threadStatus.ts"
 
 interface UnseenState {
   /** Threads whose latest turn ended while the user was not looking, until they open the thread. */
