@@ -277,6 +277,7 @@ describe("the account's machines", () => {
     expect(hosts).toEqual([
       {
         id: (await hostRow("env-a"))?.id,
+        environmentId: "env-a",
         name: "home-mac",
         hostname: `${(await hostRow("env-a"))?.id}.tunnels.test`,
         createdAt: clock,

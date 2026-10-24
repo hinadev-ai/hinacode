@@ -288,6 +288,7 @@ export const makeApp = (deps: Deps) => {
     return c.json({
       hosts: results.map((host) => ({
         id: host.id,
+        environmentId: host.environment_id,
         name: host.name,
         hostname: hostnameOf(c.env, host),
         createdAt: host.created_at,

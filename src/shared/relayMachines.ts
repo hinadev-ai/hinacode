@@ -45,3 +45,25 @@ export const planRelaySync = <E extends SyncedEntry>(
   )
   return { upsert, drop }
 }
+
+/**
+ * A machine linked to the relay, as its owner manages it. `enabled` is Show on my devices, and `published` says
+ * whether the machine has sent its pairing yet.
+ */
+export const RelayHost = Schema.Struct({
+  id: Schema.String,
+  environmentId: Schema.String,
+  name: Schema.String,
+  hostname: Schema.String,
+  createdAt: Schema.Number,
+  enabled: Schema.Boolean,
+  published: Schema.Boolean,
+})
+export type RelayHost = typeof RelayHost.Type
+
+/** The answer to the relay service's `GET /v1/hosts`. */
+export const RelayHostList = Schema.Struct({ hosts: Schema.Array(RelayHost) })
+
+/** A machine waiting for the owner to approve its link code, as `GET /v1/links/:userCode` answers. */
+export const PendingLink = Schema.Struct({ name: Schema.String, environmentId: Schema.String })
+export type PendingLink = typeof PendingLink.Type
