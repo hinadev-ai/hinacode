@@ -244,6 +244,11 @@ const handlers: Handlers = {
   "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),
   "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
   "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
+  "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
+  "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
+  "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "relayAccount.pendingLink": ({ userCode }) => RelayAccount.use((account) => account.pendingLink(userCode)),
+  "relayAccount.approveLink": ({ userCode }) => RelayAccount.use((account) => account.approveLink(userCode)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
@@ -381,9 +386,19 @@ const handlers: Handlers = {
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
   "remote.setupRelay": (_, desktop) =>
-    Relay.use((relay) => relay.setup({ onLink: (link) => desktop?.openExternal(link.url) ?? Effect.void })).pipe(
-      Effect.andThen(RemoteAccess.use((remote) => remote.pairing)),
-    ),
+    Effect.gen(function* () {
+      const account = yield* RelayAccount
+      const relay = yield* Relay
+      yield* relay.setup({
+        // Signed in to the relay account, this desktop approves its own link without a browser.
+        onLink: (link) =>
+          account
+            .approveOwnLink(link.userCode)
+            .pipe(
+              Effect.flatMap((approved) => (approved ? Effect.void : (desktop?.openExternal(link.url) ?? Effect.void))),
+            ),
+      })
+    }).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
   "remote.removeRelay": () =>
     Relay.use((relay) => relay.remove).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
 }

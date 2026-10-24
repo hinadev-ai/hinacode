@@ -1,4 +1,5 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
   type FormEvent,
@@ -12,16 +13,22 @@ import {
   useTransition,
 } from "react"
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
+import type { PendingLink, RelayHost } from "../../../shared/relayMachines.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
   addEnvironmentAtom,
+  approveRelayLinkAtom,
   callPromise,
   cloudUpdatesAtom,
   installUpdatesAtom,
+  pendingRelayLinkAtom,
   relayAccountAtom,
+  relayMachinesAtom,
   removeEnvironmentAtom,
+  removeRelayMachineAtom,
+  setRelayMachineShownAtom,
   signInRelayAtom,
   signOutRelayAtom,
   syncRelayAtom,
@@ -46,6 +53,7 @@ import {
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
+import { Switch } from "../ui/switch.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 
 export function EnvironmentSettings() {
@@ -175,7 +183,212 @@ function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state
         </div>
       </div>
       {status.error !== null && <FieldError>{status.error}</FieldError>}
+      <RelayMachines selfId={status.environmentId} />
+      <ApproveRelayLinkForm />
     </section>
+  )
+}
+
+function RelayMachines({ selfId }: { selfId: string }) {
+  const result = useAtomValue(relayMachinesAtom)
+  const refresh = useAtomRefresh(relayMachinesAtom)
+  const hosts = AsyncResult.getOrElse(result, (): ReadonlyArray<RelayHost> => [])
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 id="environment-relay-machines-title" className="text-xs font-medium text-muted-foreground">
+          {m.environment_relay_your_machines()}
+        </h4>
+        <Button variant="ghost" size="sm" disabled={result.waiting} onClick={refresh}>
+          {m.environment_relay_refresh()}
+        </Button>
+      </div>
+      {AsyncResult.isFailure(result) && <FieldError>{errorMessage(Cause.squash(result.cause))}</FieldError>}
+      {AsyncResult.isSuccess(result) && hosts.length === 0 && (
+        <p className="text-sm text-muted-foreground">{m.environment_relay_no_machines()}</p>
+      )}
+      {hosts.length > 0 && (
+        <ul
+          aria-labelledby="environment-relay-machines-title"
+          className="flex flex-col divide-y divide-border rounded-md border"
+        >
+          {hosts.map((host) => (
+            <RelayMachineRow key={host.id} host={host} self={host.environmentId === selfId} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
+  const setShown = useAtomSet(setRelayMachineShownAtom, { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startToggle] = useTransition()
+  const switchId = useId()
+
+  const toggle = (enabled: boolean) =>
+    startToggle(async () => {
+      setError(null)
+      try {
+        await setShown({ id: host.id, enabled })
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  return (
+    <li className="flex flex-col gap-1 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-48 flex-1 flex-col gap-0.5">
+          <span className="truncate text-sm font-medium">{host.name}</span>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate font-mono">{host.hostname}</span>
+            {self && <span className="whitespace-nowrap">{m.environment_relay_this_machine()}</span>}
+          </span>
+        </div>
+        <div className="flex max-w-full flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch id={switchId} size="sm" checked={host.enabled} disabled={pending} onCheckedChange={toggle} />
+            <label htmlFor={switchId} className="text-xs whitespace-nowrap">
+              {m.environment_relay_show()}
+            </label>
+          </div>
+          {!self && <RemoveRelayMachineButton host={host} />}
+        </div>
+      </div>
+      {!host.published && <FieldDescription>{m.environment_relay_not_published()}</FieldDescription>}
+      {self && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
+      {error && <FieldError>{error}</FieldError>}
+    </li>
+  )
+}
+
+function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
+  const removeMachine = useAtomSet(removeRelayMachineAtom, { mode: "promise" })
+  const [open, setOpen] = useState(false)
+  const [error, run, isPending] = useActionState<string | null>(async () => {
+    try {
+      await removeMachine(host.id)
+    } catch (cause) {
+      return errorMessage(cause)
+    }
+    setOpen(false)
+    return null
+  }, null)
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        {m.environment_relay_remove()}
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{m.environment_relay_remove_title({ name: host.name })}</AlertDialogTitle>
+            <AlertDialogDescription>{m.environment_relay_remove_body()}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(run)}>
+              {m.environment_relay_remove()}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+/** Approves a link code another machine printed: the code, then the machine's name to confirm, then Approve. */
+function ApproveRelayLinkForm() {
+  const findLink = useAtomSet(pendingRelayLinkAtom, { mode: "promise" })
+  const approveLink = useAtomSet(approveRelayLinkAtom, { mode: "promise" })
+  const [userCode, setUserCode] = useState("")
+  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null)
+  const [approved, setApproved] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, startBusy] = useTransition()
+  const inputId = useId()
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    startBusy(async () => {
+      setError(null)
+      setApproved(null)
+      try {
+        if (pendingLink === null) {
+          setPendingLink(await findLink(userCode.trim()))
+          return
+        }
+        await approveLink(userCode.trim())
+        setApproved(pendingLink.name)
+        setPendingLink(null)
+        setUserCode("")
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+  }
+
+  const cancel = () => {
+    setPendingLink(null)
+    setError(null)
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mt-3">
+      <Field>
+        <FieldLabel htmlFor={inputId}>{m.environment_relay_link_code_label()}</FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            id={inputId}
+            required
+            value={userCode}
+            onChange={(event) => {
+              setUserCode(event.target.value)
+              setPendingLink(null)
+            }}
+            placeholder="ABCD-EFGH"
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={error !== null}
+            className="min-w-48 flex-1 font-mono uppercase"
+          />
+          {pendingLink === null && (
+            <Button type="submit" variant="outline" className="shrink-0" disabled={busy || userCode.trim() === ""}>
+              {busy ? m.environment_relay_link_checking() : m.environment_relay_link_continue()}
+            </Button>
+          )}
+        </div>
+        {pendingLink === null && <FieldDescription>{m.environment_relay_link_code_hint()}</FieldDescription>}
+        {pendingLink !== null && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="min-w-48 flex-1 text-sm">{m.environment_relay_link_confirm({ name: pendingLink.name })}</p>
+            <div className="flex shrink-0 gap-2">
+              <Button type="submit" disabled={busy}>
+                {busy ? m.environment_relay_approving() : m.environment_relay_approve()}
+              </Button>
+              <Button type="button" variant="ghost" onClick={cancel}>
+                {m.common_cancel()}
+              </Button>
+            </div>
+          </div>
+        )}
+        {approved !== null && (
+          <output className="text-sm text-muted-foreground">
+            {m.environment_relay_link_approved({ name: approved })}
+          </output>
+        )}
+        {error && <FieldError>{error}</FieldError>}
+      </Field>
+    </form>
   )
 }
 

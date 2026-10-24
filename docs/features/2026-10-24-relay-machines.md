@@ -9,8 +9,8 @@ A developer with a home server, an agent VM and two workstations links each one 
 
 ## User flow
 
-1. Each machine is linked to the relay once, as in `2026-10-24-relay.md`. From then on it publishes its own pairing (direct addresses, port, token) to the relay, and again whenever one of them changes.
-2. On the relay page, under **Your machines**, each machine has **Show on my devices**, on by default.
+1. Each machine is linked to the relay once, as in `2026-10-24-relay.md`. A desktop signed in to the relay approves its own Turn on relay without a browser, and approves the code `hinacode serve --relay on` prints on another machine from Settings > Environments, after naming the machine. The web page still approves links for a machine when no desktop is signed in. From then on each machine publishes its own pairing (direct addresses, port, token) to the relay, and again whenever one of them changes.
+2. Settings > Environments on a signed-in desktop lists every linked machine with **Show on my devices**, on by default, and **Remove**, which deletes its tunnel. This desktop's own row has no Remove; Remove relay in Settings > Remote unlinks it. The web page keeps only link approval and owner token rotation.
 3. On a device, sign in to the relay with the owner token once: Settings > Environments on the desktop; on the phone, the connect screen or Settings > Relay. Every machine shown appears, named, and connects through its relay hostname or its direct addresses.
 4. Turning **Show on my devices** off, or removing the machine, drops it from every signed-in device at its next sync. A machine paired by QR code stays, whatever the relay says.
 5. A machine that rotates its token publishes the new one, and signed-in devices pick it up at their next sync.
@@ -50,12 +50,12 @@ Phone: `StoredServer.source`, absent in older entries and read as `pairing`. The
 
 ### Relay service
 
-| Method and path         | Caller         | Does                                                                                  |
-| ----------------------- | -------------- | ------------------------------------------------------------------------------------- |
-| `PUT /v1/host/pairing`  | machine bearer | `{ hosts, port, token }`, stored on the machine's row                                 |
-| `GET /v1/machines`      | owner          | `{ machines: RelayMachine[] }`, shown machines that published a pairing, `no-store`   |
-| `GET /v1/hosts`         | owner          | Adds `enabled` and `published` to each machine, for the page                          |
-| `PATCH /v1/hosts/:id`   | owner          | `{ enabled }`                                                                         |
+| Method and path        | Caller         | Does                                                                                |
+| ---------------------- | -------------- | ----------------------------------------------------------------------------------- |
+| `PUT /v1/host/pairing` | machine bearer | `{ hosts, port, token }`, stored on the machine's row                               |
+| `GET /v1/machines`     | owner          | `{ machines: RelayMachine[] }`, shown machines that published a pairing, `no-store` |
+| `GET /v1/hosts`        | owner          | Adds `environmentId`, `enabled` and `published` to each machine, for the desktop    |
+| `PATCH /v1/hosts/:id`  | owner          | `{ enabled }`                                                                       |
 
 A hidden machine's pairing never leaves the relay. Its tunnel keeps running, so a device that paired with it by QR code still reaches it.
 
@@ -67,7 +67,7 @@ A hidden machine's pairing never leaves the relay. Its tunnel keeps running, so 
 
 `planRelaySync(entries, machines, selfId)` in `src/shared/relayMachines.ts` decides for both clients: every listed machine except this one, with a usable pairing, is added or refreshed, and a `relay` entry the list no longer has is dropped. A `pairing` entry for a listed machine gets the fresher address, port, relay and token, and keeps its name and its source.
 
-- **Desktop.** `RelayAccount` service (`src/main/services/RelayAccount.ts`) with `relayAccount.status`, `relayAccount.signIn({ ownerToken })`, `relayAccount.signOut` and `relayAccount.sync`, all routed to the client and desktop-only, each answering `RelayAccountStatus`. It hands the list to `Environments.syncRelay`, which writes rows without probing, since the relay already named the machine. Signing out drops the `relay` rows.
+- **Desktop.** `RelayAccount` service (`src/main/services/RelayAccount.ts`) with `relayAccount.status`, `relayAccount.signIn({ ownerToken })`, `relayAccount.signOut` and `relayAccount.sync`, all routed to the client and desktop-only, each answering `RelayAccountStatus`. It hands the list to `Environments.syncRelay`, which writes rows without probing, since the relay already named the machine. Signing out drops the `relay` rows. `relayAccount.machines`, `setShown`, `removeMachine`, `pendingLink` and `approveLink` manage the linked machines, and `remote.setupRelay` approves this desktop's own link with the owner token before it falls back to opening the browser.
 - **Phone.** `apps/mobile/src/lib/relay-account.ts` fetches the list and applies the plan to the stored servers. The Relay section (`components/relay-account.tsx`) shows on the connect screen and in Settings, because a phone that never paired cannot open Settings, and one whose relay lists no machines is back on the connect screen.
 
 A 401 from `GET /v1/machines` (the owner token was rotated) keeps every entry and asks the developer to sign in again.

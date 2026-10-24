@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
-import type { EntrySource } from "./relayMachines.ts"
+import { EntrySource } from "./relayMachines.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -672,8 +672,7 @@ export const Environment = Schema.Struct({
   host: Schema.String,
   port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   relay: Schema.NullOr(Schema.String),
-  // relayMachines.ts imports this module through remote.ts, so its `EntrySource` schema is not defined yet here.
-  source: Schema.Literals(["pairing", "relay"] satisfies ReadonlyArray<EntrySource>),
+  source: EntrySource,
   createdAt: Timestamp,
 })
 export type Environment = typeof Environment.Type
@@ -684,6 +683,8 @@ export const RelayAccountStatus = Schema.Union([
   Schema.Struct({
     state: Schema.Literal("signedIn"),
     serviceUrl: Schema.String,
+    /** This desktop's own environment id, to tell its row among the relay's machines. */
+    environmentId: Schema.String,
     /** How many machines the last successful sync listed for this desktop. */
     machines: Schema.Int,
     /** Null until the first sync since start. */

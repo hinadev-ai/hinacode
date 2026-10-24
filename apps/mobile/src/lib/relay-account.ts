@@ -1,5 +1,6 @@
 import { Option, Schema } from "effect"
-import { planRelaySync, type RelayMachine, RelayMachineList } from "@shared/relayMachines.ts"
+import { type RelayMachine, RelayMachineList } from "@shared/relayMachines.ts"
+import { planRelaySync } from "@shared/relaySync.ts"
 import { copy } from "@/lib/copy"
 import type { StoredServer } from "./stored-target"
 

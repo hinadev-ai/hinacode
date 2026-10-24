@@ -14,7 +14,8 @@ import {
   remoteWebSocketUrl,
   ServerFrame,
 } from "../../shared/remote.ts"
-import { planRelaySync, type RelayMachine } from "../../shared/relayMachines.ts"
+import type { RelayMachine } from "../../shared/relayMachines.ts"
+import { planRelaySync } from "../../shared/relaySync.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
 import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"

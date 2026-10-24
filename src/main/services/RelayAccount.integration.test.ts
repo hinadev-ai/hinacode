@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Option } from "effect"
-import type { RelayMachine } from "../../shared/relayMachines.ts"
+import type { PendingLink, RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import * as Db from "../db/client.ts"
 import * as RemoteAccess from "../remote/access.ts"
 import type { Fetch } from "../remote/relayService.ts"
@@ -21,23 +21,84 @@ const homeServer: RelayMachine = {
   pairing: { hosts: ["192.0.2.1"], port: 48081, token: "machine-token", relay: "home-server.relay.invalid" },
 }
 
+const homeServerHost: RelayHost = {
+  id: "host-1",
+  environmentId: "home-server",
+  name: "home-server",
+  hostname: "home-server.relay.invalid",
+  createdAt: 0,
+  enabled: true,
+  published: true,
+}
+
 interface StandInRelay {
   ownerToken: string
   machines: ReadonlyArray<RelayMachine>
+  hosts: Array<RelayHost>
+  /** Link codes waiting for approval, by user code. */
+  readonly links: Map<string, PendingLink>
+  readonly approved: Array<string>
+  /** Every call as "METHOD /path". */
+  readonly calls: Array<string>
   readonly fetch: Fetch
 }
 
-/** A stand-in relay service that lists `machines` to whoever holds `ownerToken`. */
+/**
+ * A stand-in relay service for whoever holds `ownerToken`. `/v1/machines` lists the `machines` whose host is
+ * shown, and `/v1/hosts` manages `hosts`.
+ */
 const standInRelay = () => {
+  const hostById = (id: string) => relay.hosts.find((host) => host.id === id)
+  const route = async (method: string, path: string, init: RequestInit): Promise<Response> => {
+    if (method === "GET" && path === "/v1/machines") {
+      const shown = (machine: RelayMachine) =>
+        relay.hosts.find((host) => host.environmentId === machine.environmentId)?.enabled !== false
+      return Response.json({ machines: relay.machines.filter(shown) })
+    }
+    if (method === "GET" && path === "/v1/hosts") return Response.json({ hosts: relay.hosts })
+    const hostId = path.match(/^\/v1\/hosts\/([^/]+)$/)?.[1]
+    if (hostId !== undefined) {
+      const host = hostById(hostId)
+      if (host === undefined) return Response.json({ error: "No such machine." }, { status: 404 })
+      if (method === "PATCH") {
+        const { enabled } = JSON.parse(String(init.body)) as { enabled: boolean }
+        relay.hosts = relay.hosts.map((each) => (each.id === hostId ? { ...each, enabled } : each))
+        return new Response(null, { status: 204 })
+      }
+      if (method === "DELETE") {
+        relay.hosts = relay.hosts.filter((each) => each.id !== hostId)
+        relay.machines = relay.machines.filter((machine) => machine.environmentId !== host.environmentId)
+        return new Response(null, { status: 204 })
+      }
+    }
+    const userCode = path.match(/^\/v1\/links\/([^/]+)$/)?.[1]
+    if (userCode !== undefined) {
+      const link = relay.links.get(userCode)
+      if (link === undefined) return Response.json({ error: "That code expired." }, { status: 404 })
+      if (method === "GET") return Response.json(link)
+      if (method === "POST") {
+        relay.links.delete(userCode)
+        relay.approved.push(userCode)
+        return new Response(null, { status: 204 })
+      }
+    }
+    return new Response(null, { status: 404 })
+  }
   const relay: StandInRelay = {
     ownerToken: OWNER_TOKEN,
     machines: [homeServer],
+    hosts: [homeServerHost],
+    links: new Map(),
+    approved: [],
+    calls: [],
     fetch: async (url, init) => {
-      if (url.href !== `${SERVICE_URL}/v1/machines` || init.method !== "GET") return new Response(null, { status: 404 })
+      const method = init.method ?? "GET"
+      relay.calls.push(`${method} ${url.pathname}`)
+      if (url.origin !== SERVICE_URL) return new Response(null, { status: 404 })
       if (new Headers(init.headers).get("Authorization") !== `Bearer ${relay.ownerToken}`) {
         return Response.json({ error: "unauthorized" }, { status: 401 })
       }
-      return Response.json({ machines: relay.machines })
+      return route(method, url.pathname, init)
     },
   }
   return relay
@@ -48,7 +109,11 @@ const withAccount = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    RelayAccount.RelayAccount | Environments.Environments | Secrets.Secrets | Effect.Services<typeof Settings.layer>
+    | RelayAccount.RelayAccount
+    | Environments.Environments
+    | RemoteAccess.RemoteAccess
+    | Secrets.Secrets
+    | Effect.Services<typeof Settings.layer>
   >,
 ) =>
   effect.pipe(
@@ -84,6 +149,7 @@ describe("RelayAccount", () => {
         expect(status).toStrictEqual({
           state: "signedIn",
           serviceUrl: SERVICE_URL,
+          environmentId: (yield* RemoteAccess.RemoteAccess).identity.id,
           machines: 1,
           syncedAt: expect.any(String),
           error: null,
@@ -136,6 +202,153 @@ describe("RelayAccount", () => {
         expect(yield* account.use((relayAccount) => relayAccount.signOut)).toStrictEqual({ state: "signedOut" })
         expect(yield* storedOwnerToken).toBeNull()
         expect(yield* listed).toStrictEqual([])
+      }),
+    )
+  })
+
+  it.live("lists every machine linked to the relay", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+
+        expect(yield* account.use((relayAccount) => relayAccount.machines)).toStrictEqual([homeServerHost])
+      }),
+    )
+  })
+
+  it.live("listing the machines while signed out asks to sign in", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const error = yield* account.use((relayAccount) => relayAccount.machines).pipe(Effect.flip)
+
+        expect(error.message).toMatch(/[Ss]ign in/)
+        expect(relay.calls).toStrictEqual([])
+      }),
+    )
+  })
+
+  it.live("hiding a machine drops its environment at once and answers the fresh list", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+
+        const hosts = yield* account.use((relayAccount) => relayAccount.setShown({ id: "host-1", enabled: false }))
+
+        expect(relay.calls).toContain("PATCH /v1/hosts/host-1")
+        expect(hosts).toStrictEqual([{ ...homeServerHost, enabled: false }])
+        expect(yield* listed).toStrictEqual([])
+      }),
+    )
+  })
+
+  it.live("removing another machine deletes it on the relay and drops its environment", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+
+        const hosts = yield* account.use((relayAccount) => relayAccount.removeMachine({ id: "host-1" }))
+
+        expect(relay.calls).toContain("DELETE /v1/hosts/host-1")
+        expect(hosts).toStrictEqual([])
+        expect(yield* listed).toStrictEqual([])
+      }),
+    )
+  })
+
+  it.live("removing this desktop from here is refused and points to Settings > Remote", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const self = (yield* RemoteAccess.RemoteAccess).identity
+        relay.hosts = [...relay.hosts, { ...homeServerHost, id: "host-self", environmentId: self.id, name: self.name }]
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+
+        const error = yield* account
+          .use((relayAccount) => relayAccount.removeMachine({ id: "host-self" }))
+          .pipe(Effect.flip)
+
+        expect(error.message).toMatch(/Remove relay.*Settings > Remote/)
+        expect(relay.calls).not.toContain("DELETE /v1/hosts/host-self")
+        expect(relay.hosts.map((host) => host.id)).toStrictEqual(["host-1", "host-self"])
+      }),
+    )
+  })
+
+  it.live("approves a link code after naming the machine waiting on it", () => {
+    const relay = standInRelay()
+    relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+
+        expect(yield* account.use((relayAccount) => relayAccount.pendingLink("ABCD-EFGH"))).toStrictEqual({
+          name: "agent-vm",
+          environmentId: "agent-vm",
+        })
+        yield* account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH"))
+
+        expect(relay.approved).toStrictEqual(["ABCD-EFGH"])
+      }),
+    )
+  })
+
+  it.live("approves this desktop's own link while signed in", () => {
+    const relay = standInRelay()
+    relay.links.set("SELF-CODE", { name: "this-desktop", environmentId: "this-desktop" })
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+
+        expect(yield* account.use((relayAccount) => relayAccount.approveOwnLink("SELF-CODE"))).toBe(true)
+        expect(relay.approved).toStrictEqual(["SELF-CODE"])
+      }),
+    )
+  })
+
+  it.live("does not approve its own link while signed out, and never calls the relay", () => {
+    const relay = standInRelay()
+    relay.links.set("SELF-CODE", { name: "this-desktop", environmentId: "this-desktop" })
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        expect(yield* account.use((relayAccount) => relayAccount.approveOwnLink("SELF-CODE"))).toBe(false)
+        expect(relay.calls).toStrictEqual([])
+      }),
+    )
+  })
+
+  it.live("a refused owner token on any machine call says to sign in again", () => {
+    const relay = standInRelay()
+    relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        relay.ownerToken = "rotated"
+
+        const calls = [
+          account.use((relayAccount) => relayAccount.machines),
+          account.use((relayAccount) => relayAccount.setShown({ id: "host-1", enabled: false })),
+          account.use((relayAccount) => relayAccount.removeMachine({ id: "host-1" })),
+          account.use((relayAccount) => relayAccount.pendingLink("ABCD-EFGH")),
+          account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH")),
+        ]
+        for (const call of calls) {
+          expect((yield* Effect.flip(call)).message).toMatch(/refused the owner token/)
+        }
+        expect(yield* account.use((relayAccount) => relayAccount.approveOwnLink("ABCD-EFGH"))).toBe(false)
+        expect(relay.approved).toStrictEqual([])
       }),
     )
   })

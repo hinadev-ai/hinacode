@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { planRelaySync, type RelayMachine, type SyncedEntry } from "./relayMachines.ts"
+import type { RelayMachine } from "./relayMachines.ts"
+import { planRelaySync, type SyncedEntry } from "./relaySync.ts"
 
 const machine = (environmentId: string, hosts: [string, ...string[]] = ["192.168.1.20"]): RelayMachine => ({
   environmentId,

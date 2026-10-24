@@ -136,6 +136,26 @@ export const signOutRelayAtom = Atom.fn(() => relayAccountAction(call("relayAcco
 
 export const syncRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.sync", undefined)))
 
+/** Every machine linked to the relay. Read on each visit; a machine that claims its link sends no push. */
+export const relayMachinesAtom = Atom.make(call("relayAccount.machines", undefined))
+
+const relayMachinesAction = <A>(effect: Effect.Effect<A, RpcError>) =>
+  relayAccountAction(effect).pipe(Effect.tap(() => Atom.refresh(relayMachinesAtom)))
+
+export const setRelayMachineShownAtom = Atom.fn((input: RpcRequest<"relayAccount.setShown">) =>
+  relayMachinesAction(call("relayAccount.setShown", input)),
+)
+
+export const removeRelayMachineAtom = Atom.fn((id: string) =>
+  relayMachinesAction(call("relayAccount.removeMachine", { id })),
+)
+
+export const pendingRelayLinkAtom = Atom.fn((userCode: string) => call("relayAccount.pendingLink", { userCode }))
+
+export const approveRelayLinkAtom = Atom.fn((userCode: string) =>
+  relayMachinesAction(call("relayAccount.approveLink", { userCode })),
+)
+
 export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
 )

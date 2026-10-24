@@ -77,6 +77,7 @@ import {
   PullRequestMatch,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
+import { PendingLink, RelayHost } from "./relayMachines.ts"
 
 const AutomationInput = Schema.Struct({
   projectId: Schema.String,
@@ -260,6 +261,15 @@ export const RpcMethods = {
   "relayAccount.signOut": rpc(Schema.Void, RelayAccountStatus),
   /** Never fails: why a sync failed is the status's `error`. */
   "relayAccount.sync": rpc(Schema.Void, RelayAccountStatus),
+  /** Every machine linked to the relay, for the owner to manage. */
+  "relayAccount.machines": rpc(Schema.Void, Schema.Array(RelayHost)),
+  /** Show on my devices. Syncs, then answers the fresh list. */
+  "relayAccount.setShown": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Schema.Array(RelayHost)),
+  /** Deletes another machine's tunnel and hostname. Refuses this desktop's own. Syncs, then answers the fresh list. */
+  "relayAccount.removeMachine": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(RelayHost)),
+  /** The machine waiting on a link code that `hinacode serve --relay on` printed. */
+  "relayAccount.pendingLink": rpc(Schema.Struct({ userCode: Schema.String }), PendingLink),
+  "relayAccount.approveLink": rpc(Schema.Struct({ userCode: Schema.String }), Schema.Void),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
@@ -621,6 +631,11 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "relayAccount.signIn": "mutation",
   "relayAccount.signOut": "mutation",
   "relayAccount.sync": "mutation",
+  "relayAccount.machines": "read",
+  "relayAccount.setShown": "mutation",
+  "relayAccount.removeMachine": "mutation",
+  "relayAccount.pendingLink": "read",
+  "relayAccount.approveLink": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -755,6 +770,11 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "relayAccount.signIn",
   "relayAccount.signOut",
   "relayAccount.sync",
+  "relayAccount.machines",
+  "relayAccount.setShown",
+  "relayAccount.removeMachine",
+  "relayAccount.pendingLink",
+  "relayAccount.approveLink",
   "agents.update",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
