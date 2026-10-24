@@ -23,7 +23,7 @@ import {
   requestNotificationPermission,
 } from "@/lib/notifications"
 import type { Appearance, Preferences } from "@/lib/preferences"
-import { useModels } from "@/stores/models"
+import { modelsOn, useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
 
 export default function SettingsScreen() {
@@ -263,7 +263,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
 
   if (settings === null) {
     return (
-      <SettingsGroup title={copy("mobile_settings_desktop")}>
+      <SettingsGroup title={server === undefined ? copy("mobile_settings_servers") : serverName(server)}>
         {loadError !== null ? (
           <LoadFailed text={copy("mobile_settings_load_failed", { message: loadError })} onRetry={retry} />
         ) : (
@@ -292,7 +292,9 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
       )}
       <SettingsGroup
         title={copy("mobile_settings_access")}
-        footnote={copy(offline ? "mobile_settings_offline" : "mobile_settings_desktop_footnote")}
+        footnote={copy(offline ? "mobile_settings_server_offline" : "mobile_settings_server_footnote", {
+          server: server === undefined ? "" : serverName(server),
+        })}
       >
         {AccessMode.literals.map((mode) => (
           <OptionRow
@@ -316,6 +318,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
             label={label}
             icon={icon}
             model={settings.defaultModel[provider]}
+            server={server?.id}
             disabled={offline}
             onPress={() => setPicking(provider)}
           />
@@ -341,6 +344,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
         <ModelSheet
           provider={picking}
           current={settings.defaultModel[picking]}
+          server={server?.id}
           onPick={(id) => pickModel(picking, id)}
           onClose={() => setPicking(null)}
         />
@@ -366,6 +370,7 @@ function DefaultModelRow({
   label,
   icon,
   model,
+  server,
   disabled,
   onPress,
 }: {
@@ -373,15 +378,16 @@ function DefaultModelRow({
   label: string
   icon: IconName
   model: string | null
+  server: string | undefined
   disabled: boolean
   onPress: () => void
 }) {
-  const models = useModels((state) => state.byProvider[provider])
+  const models = useModels((state) => modelsOn(state, server, provider))
   const load = useModels((state) => state.load)
   // Only to turn a stored id into its label; the id stays readable if the agent cannot list its models.
   useEffect(() => {
-    if (model !== null) load(provider).catch(() => undefined)
-  }, [model, provider, load])
+    if (model !== null) load(server, provider).catch(() => undefined)
+  }, [model, server, provider, load])
   return (
     <SettingsRow icon={icon} label={label} value={modelLabel(models, model)} disabled={disabled} onPress={onPress} />
   )
@@ -390,24 +396,26 @@ function DefaultModelRow({
 function ModelSheet({
   provider,
   current,
+  server,
   onPick,
   onClose,
 }: {
   provider: ProviderId
   current: string | null
+  server: string | undefined
   onPick: (id: string | null) => void
   onClose: () => void
 }) {
   const theme = useTheme()
-  const models = useModels((state) => state.byProvider[provider])
+  const models = useModels((state) => modelsOn(state, server, provider))
   const load = useModels((state) => state.load)
   const [attempt, setAttempt] = useState(0)
   const [error, setError] = useState<{ attempt: number; message: string } | null>(null)
   const agent = agents.find((entry) => entry.provider === provider)?.label ?? provider
 
   useEffect(() => {
-    load(provider).catch((cause) => setError({ attempt, message: errorText(cause) }))
-  }, [load, provider, attempt])
+    load(server, provider).catch((cause) => setError({ attempt, message: errorText(cause) }))
+  }, [load, server, provider, attempt])
 
   const failure = error?.attempt === attempt ? error.message : null
   return (

@@ -9,13 +9,14 @@ import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
 import { HIT, mono, radius } from "@/constants/theme"
+import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
-import { useModels } from "@/stores/models"
+import { modelsOn, useModels } from "@/stores/models"
 import { useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
@@ -110,14 +111,15 @@ export function Composer({ thread }: { thread: Thread }) {
   const inputRef = useRef<TextInput>(null)
   const [error, setError] = useState<string | null>(null)
   const unstarted = useUnstarted(thread)
+  const server = useThreadServer(thread.id)?.id
   const busy = isThreadBusy(thread.status)
   const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
   const completions = useCompletions(thread, busy, wantsFiles, setError)
   const hasDraft = text.trim() !== ""
 
   useEffect(() => {
-    if (connected) useModels.getState().load(thread.provider).catch((cause: unknown) => setError(errorText(cause)))
-  }, [connected, thread.provider])
+    if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
+  }, [connected, server, thread.provider])
 
   const send = async () => {
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
@@ -359,7 +361,8 @@ function SendButton({
 
 /** The agent's listed models, plus the thread's own model when the agent no longer lists it. */
 function useThreadModels(thread: Thread) {
-  const listed = useModels((state) => state.byProvider[thread.provider])
+  const server = useThreadServer(thread.id)?.id
+  const listed = useModels((state) => modelsOn(state, server, thread.provider))
   const current = listed?.find((model) => model.id === thread.model)
   return current
     ? { models: listed ?? [], current }
