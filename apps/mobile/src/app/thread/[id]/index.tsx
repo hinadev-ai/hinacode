@@ -79,18 +79,21 @@ export default function ThreadScreen() {
           </View>
         )}
       </View>
-      <SegmentedControl
-        accessibilityLabel={copy("mobile_thread_tabs")}
-        segments={tabs}
-        value={tab}
-        onChange={select}
-        style={styles.tabs}
-      />
-      {status !== "connected" && (
-        <View style={styles.banner}>
-          <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
-        </View>
-      )}
+      {/* Lined up with the chat column below it. */}
+      <View style={styles.readable}>
+        <SegmentedControl
+          accessibilityLabel={copy("mobile_thread_tabs")}
+          segments={tabs}
+          value={tab}
+          onChange={select}
+          style={styles.tabs}
+        />
+        {status !== "connected" && (
+          <View style={styles.banner}>
+            <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
+          </View>
+        )}
+      </View>
       {thread === undefined ? (
         <View style={styles.missing}>
           <Text style={{ color: theme.textMuted, fontSize: 15 }}>
