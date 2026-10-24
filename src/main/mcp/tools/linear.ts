@@ -1,24 +1,8 @@
-import type { Issue, LinearDocument } from "@linear/sdk"
+import type { Issue, LinearClient, LinearDocument } from "@linear/sdk"
 import { Effect, Option, Schema } from "effect"
 import { Toolkit } from "effect/ai"
-import { Secrets } from "../../services/Secrets.ts"
+import { Linear, linearRequest as request, LinearRequestError } from "../../services/Linear.ts"
 import * as McpTool from "./tool.ts"
-
-export const LINEAR_API_KEY_SECRET = "linear.apiKey"
-
-export class LinearRequestError extends Schema.TaggedError<LinearRequestError>()("LinearRequestError", {
-  reason: Schema.String,
-}) {
-  override get message(): string {
-    return `Linear request failed: ${this.reason}`
-  }
-}
-
-const request = <A>(run: () => Promise<A>) =>
-  Effect.tryPromise({
-    try: run,
-    catch: (cause) => new LinearRequestError({ reason: cause instanceof Error ? cause.message : String(cause) }),
-  })
 
 const fail = (reason: string) => Effect.fail(new LinearRequestError({ reason }))
 
@@ -60,19 +44,10 @@ const issueFilter = ({ assignee, state }: IssueSearch): LinearDocument.IssueFilt
   ...(state && { state: { name: { eqIgnoreCase: state } } }),
 })
 
-type Linear = Effect.Success<ReturnType<typeof makeLinear>>
+type IssueOperations = ReturnType<typeof makeTools>
 
-/**
- * Linear operations behind the tools. Each returns markdown for the agent.
- * The SDK is loaded on the first call: it costs ~30 MB of main-process memory that most sessions never need.
- */
-const makeLinear = (apiKey: string) =>
-  Effect.map(
-    Effect.promise(() => import("@linear/sdk")),
-    ({ LinearClient }) => makeTools(new LinearClient({ apiKey })),
-  )
-
-const makeTools = (client: InstanceType<typeof import("@linear/sdk").LinearClient>) => {
+/** Linear operations behind the tools. Each returns markdown for the agent. */
+const makeTools = (client: LinearClient) => {
   const getIssue = (key: string) => request(() => client.issue(key))
 
   return {
@@ -177,26 +152,26 @@ export const LinearTools = Toolkit.make(
 
 export const linearToolsLayer = LinearTools.toLayer(
   Effect.gen(function* () {
-    const secrets = yield* Secrets
-    const withLinear = <A>(use: (linear: Linear) => Effect.Effect<A, LinearRequestError>) =>
+    const linear = yield* Linear
+    const withLinear = <A>(use: (operations: IssueOperations) => Effect.Effect<A, LinearRequestError>) =>
       Effect.flatMap(
-        secrets.get(LINEAR_API_KEY_SECRET),
+        linear.client,
         Option.match({
           onNone: () =>
             Effect.fail({
               message:
                 "No Linear API key is configured. Ask the user to add one in HinaCode Settings > Integrations, then retry.",
             }),
-          onSome: (apiKey) => Effect.flatMap(makeLinear(apiKey), use),
+          onSome: (client) => use(makeTools(client)),
         }),
       )
     return LinearTools.of({
-      linear_get_issue: ({ key }) => withLinear((linear) => linear.getIssues(key)),
+      linear_get_issue: ({ key }) => withLinear((issues) => issues.getIssues(key)),
       linear_search_issues: ({ limit, ...search }) =>
-        withLinear((linear) => linear.searchIssues({ ...search, limit: limit ?? 10 })),
-      linear_create_comment: ({ key, body }) => withLinear((linear) => linear.createComment(key, body)),
+        withLinear((issues) => issues.searchIssues({ ...search, limit: limit ?? 10 })),
+      linear_create_comment: ({ key, body }) => withLinear((issues) => issues.createComment(key, body)),
       linear_update_issue_state: ({ key, stateName }) =>
-        withLinear((linear) => linear.updateIssueState(key, stateName)),
+        withLinear((issues) => issues.updateIssueState(key, stateName)),
     })
   }),
 )

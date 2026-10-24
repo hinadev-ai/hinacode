@@ -21,6 +21,7 @@ import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
+import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
@@ -74,7 +75,8 @@ export const makeTestAppLayer = (
     join(dirname(dbPath), "tiny-vm"),
   )
   const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm, passkeys).pipe(
+  const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
+  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm, passkeys, linear).pipe(
     Layer.provide(domain),
   )
   const agents = AgentRunner.layer.pipe(

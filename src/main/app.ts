@@ -24,6 +24,7 @@ import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
+import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
@@ -66,6 +67,13 @@ const simulatedClaude = (env: NodeJS.ProcessEnv) => {
   return usageLimitLayer(scenario, resetMs)
 }
 
+/** Demo Linear tickets for screenshots and manual testing, chosen by `HINACODE_MOCK_LINEAR=1`. */
+const linearLayer = (env: NodeJS.ProcessEnv) => {
+  if (env["HINACODE_MOCK_LINEAR"] === undefined) return Linear.layer.pipe(Layer.provide(Secrets.layer))
+  if (!env["HINACODE_USER_DATA"]) throw new Error("Linear simulation requires HINACODE_USER_DATA")
+  return Linear.mockLayer
+}
+
 /** Every main-process service, for the desktop app (`index.ts`) and for `hinacode serve` (`daemon.ts`). */
 export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
   const mockClaude = simulatedClaude(process.env)
@@ -91,9 +99,15 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess, tinyVm, passkeys).pipe(
-    Layer.provide(domain),
-  )
+  const features = Layer.mergeAll(
+    Mcp.credentialsLayer,
+    Ports.layer,
+    naming,
+    remoteAccess,
+    tinyVm,
+    passkeys,
+    linearLayer(process.env),
+  ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(

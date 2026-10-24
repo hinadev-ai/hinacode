@@ -832,6 +832,21 @@ export const PullRequestLink = Schema.Struct({
   watch: Schema.NullOr(PullRequestWatch),
 })
 export type PullRequestLink = typeof PullRequestLink.Type
+
+/** An open Linear issue assigned to the owner of a machine's Linear API key. */
+export const LinearIssue = Schema.Struct({
+  id: Schema.String,
+  /** For example `ENG-123`. */
+  identifier: Schema.String,
+  title: Schema.String,
+  url: Schema.String,
+  /** `type` is Linear's workflow state type: `triage`, `backlog`, `unstarted` or `started` for an open issue. */
+  state: Schema.Struct({ name: Schema.String, type: Schema.String }),
+  /** 0 is no priority, then 1 urgent to 4 low. */
+  priority: Schema.Number,
+  updatedAt: Timestamp,
+})
+export type LinearIssue = typeof LinearIssue.Type
 /** A listening TCP port and the process that owns it. */
 export const OpenPort = Schema.Struct({
   port: Schema.Number,

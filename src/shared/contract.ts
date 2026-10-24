@@ -54,6 +54,7 @@ import {
   PullRequestFile,
   PullRequestGuideState,
   PullRequestLink,
+  LinearIssue,
   RemotePairing,
   RemoteStatus,
   Settings,
@@ -395,6 +396,8 @@ export const RpcMethods = {
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "pullRequestGuides.get": rpc(Schema.Struct({ url: Schema.String }), PullRequestGuideState),
   "pullRequestGuides.retry": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
+  /** Open Linear issues assigned to the owner of this machine's Linear key. Empty when it has none. */
+  "linear.issues": rpc(Schema.Void, Schema.Array(LinearIssue)),
   /** The GitHub repository the project's `origin` points at, or null. */
   "github.repository": rpc(Schema.Struct({ projectId: Schema.String }), Schema.NullOr(GitHubRepository)),
   /** The icon of the url's site as a data URL, or null. Main only ever GETs the origin root and the icon. */
@@ -652,6 +655,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "pullRequestGuides.get": "read",
   "pullRequestGuides.retry": "mutation",
   "github.repository": "read",
+  "linear.issues": "read",
   "links.favicon": "read",
   "mcp.connection": "read",
   "ports.list": "read",
