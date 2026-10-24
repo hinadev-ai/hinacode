@@ -87,13 +87,35 @@ export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; read
 /** Cloudflare's edge serves a tunnel on 443 only. */
 export const relayWebSocketUrl = (relay: string) => `wss://${relay}${REMOTE_PATH}`
 
+/** One socket URL a client dials in a round, and how long after the round starts. */
+export interface Dial {
+  readonly url: string
+  readonly route: "direct" | "relay"
+  readonly delayMs: number
+}
+
+/** How long the relay waits behind the direct addresses, so one on this network wins whenever it answers. */
+export const RELAY_DELAY_MS = 500
+
+/** While connected through the relay, how often a client checks whether a direct address answers again. */
+export const DIRECT_CHECK_INTERVAL_MS = 60_000
+
+/** How long that check waits for a direct address to open. */
+export const DIRECT_CHECK_TIMEOUT_MS = 2_000
+
 /**
- * Every socket URL a pairing reaches, the relay first. The relay answers from any network, while a direct address
- * off its network costs a whole connect timeout before the next URL is tried.
+ * What a client dials to reach a pairing: every direct address at once, then the relay after `RELAY_DELAY_MS`. The
+ * first socket to open wins and the others close, so the pairing token goes to that socket only.
  */
-export const remoteSocketUrls = (target: Omit<PairingTarget, "token">): NonEmptyReadonlyArray<string> => {
-  const direct = Arr.map(target.hosts, (host) => remoteWebSocketUrl({ host, port: target.port }))
-  return target.relay === null ? direct : Arr.prepend(direct, relayWebSocketUrl(target.relay))
+export const dialPlan = (target: Omit<PairingTarget, "token">): NonEmptyReadonlyArray<Dial> => {
+  const direct = Arr.map(target.hosts, (host): Dial => ({
+    url: remoteWebSocketUrl({ host, port: target.port }),
+    route: "direct",
+    delayMs: 0,
+  }))
+  return target.relay === null
+    ? direct
+    : Arr.append(direct, { url: relayWebSocketUrl(target.relay), route: "relay", delayMs: RELAY_DELAY_MS })
 }
 
 const isAuthorityOnlyHost = (host: string) =>

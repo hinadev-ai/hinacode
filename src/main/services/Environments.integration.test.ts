@@ -1,8 +1,12 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { createServer as createHttpServer } from "node:http"
+import { createServer as createHttpsServer } from "node:https"
 import { tmpdir } from "node:os"
 import { type AddressInfo, createServer, type Socket } from "node:net"
 import { join } from "node:path"
+import type { Duplex } from "node:stream"
+import { getCACertificates, setDefaultCACertificates } from "node:tls"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { Clock, type Duration, Effect, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
@@ -21,6 +25,7 @@ import {
 } from "../../shared/contract.ts"
 import {
   type ClientFrame,
+  DIRECT_CHECK_INTERVAL_MS,
   pairingUrl,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
@@ -377,43 +382,65 @@ interface ScriptedOptions {
   readonly host?: string
   readonly port?: number
   readonly relay?: string
+  /** Serves wss, as a relay does. Its `ready` names `127.0.0.1:<port>` as the relay, unless `relay` says otherwise. */
+  readonly tls?: { readonly key: string; readonly cert: string }
+  /** Accepts the connection but never answers the WebSocket upgrade, like an address that hangs. */
+  readonly holdUpgrades?: boolean
 }
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   let version = options.version ?? REMOTE_PROTOCOL_VERSION
-  const server = new WebSocketServer({
-    host: options.host ?? "127.0.0.1",
-    port: options.port ?? 0,
-    path: REMOTE_PATH,
-    autoPong: options.autoPong ?? true,
+  const http = options.tls === undefined ? createHttpServer() : createHttpsServer(options.tls)
+  const server = new WebSocketServer({ noServer: true, autoPong: options.autoPong ?? true })
+  const held: Array<Duplex> = []
+  http.on("upgrade", (request, socket, head) => {
+    if (options.holdUpgrades) {
+      held.push(socket)
+      // An upgraded socket has left the HTTP parser, so a client hanging up only ends its half.
+      return void socket.on("end", () => socket.destroy())
+    }
+    if (request.url !== REMOTE_PATH) return void socket.destroy()
+    server.handleUpgrade(request, socket, head, (ws) => server.emit("connection", ws, request))
   })
   const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
+  const auths: Array<string> = []
+  let connections = 0
   let current: WebSocket | undefined
   let holdReady = false
   let heldReady: ServerFrame | undefined
   server.on("connection", (socket) => {
+    connections++
     socket.on("message", (raw) => {
       const frame = JSON.parse(String(raw)) as ClientFrame
       if (frame.type === "call") calls.push(frame)
       if (frame.type !== "auth") return
+      auths.push(frame.token)
       current = socket
+      const relay = options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`)
       const ready: ServerFrame = {
         type: "ready",
         version,
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
-        ...(options.relay === undefined ? {} : { relay: options.relay }),
+        ...(relay === undefined ? {} : { relay }),
       }
       if (holdReady) heldReady = ready
       else socket.send(JSON.stringify(ready))
     })
   })
-  await new Promise((resolve) => server.once("listening", resolve))
-  const { port } = server.address() as AddressInfo
+  await new Promise<void>((resolve) =>
+    http.listen({ host: options.host ?? "127.0.0.1", port: options.port ?? 0 }, resolve),
+  )
+  const { port } = http.address() as AddressInfo
   return {
     port,
+    /** This cloud's address as a relay hostname, for one served with `tls`. */
+    relay: `127.0.0.1:${port}`,
     pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token", relay: null }),
     calls,
+    auths,
+    connections: () => connections,
+    held,
     holdReady: () => {
       holdReady = true
     },
@@ -428,14 +455,48 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     socket: () => current!,
     send: (frame: ServerFrame) => current!.send(JSON.stringify(frame)),
     stop: () => {
-      server.close()
+      http.close()
       for (const socket of server.clients) socket.terminate()
+      for (const socket of held) socket.destroy()
     },
   }
 }
 
+/** A certificate for 127.0.0.1 that this process trusts, so a scripted cloud can stand in for a wss relay. */
+const trustedLoopbackCertificate = () => {
+  const key = join(dir, "relay-key.pem")
+  const cert = join(dir, "relay-cert.pem")
+  execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "ec",
+      "-pkeyopt",
+      "ec_paramgen_curve:prime256v1",
+      "-nodes",
+      "-days",
+      "1",
+      "-subj",
+      "/CN=127.0.0.1",
+      "-addext",
+      "subjectAltName=IP:127.0.0.1",
+      "-keyout",
+      key,
+      "-out",
+      cert,
+    ],
+    { stdio: "ignore" },
+  )
+  const tls = { key: readFileSync(key, "utf8"), cert: readFileSync(cert, "utf8") }
+  setDefaultCACertificates([...getCACertificates("default"), tls.cert])
+  return tls
+}
+
 describe("desktop environments over a flaky link", () => {
   let clocked: ManagedRuntime.ManagedRuntime<Environments | TestClock.TestClock, unknown>
+  let tls: { readonly key: string; readonly cert: string }
 
   const forward = (environmentId: string, call: ForwardedCall) =>
     clocked.runPromise(Environments.use((environments) => environments.forward(environmentId, call)))
@@ -463,6 +524,7 @@ describe("desktop environments over a flaky link", () => {
     })
 
   beforeAll(() => {
+    tls = trustedLoopbackCertificate()
     mkdirSync(join(dir, "clocked"))
     clocked = ManagedRuntime.make(
       makeDesktop(join(dir, "clocked", "hinacode.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
@@ -728,6 +790,93 @@ describe("desktop environments over a flaky link", () => {
     expect(scripted.calls).toHaveLength(1)
     await remove("old")
     scripted.stop()
+  })
+
+  test("connects to the direct address when it and the relay both answer, and the relay never gets the token", async () => {
+    const relay = await scriptedCloud("both-routes", { tls })
+    const direct = await pair("both-routes", { relay: relay.relay })
+    await vi.waitFor(async () => expect(await listed("both-routes")).toMatchObject({ relay: relay.relay }))
+
+    direct.socket().terminate()
+    await pushedEventually(statusOf("both-routes", "offline"))
+    await clocked.runPromise(Environments.use((environments) => environments.reconnectAll))
+    await vi.waitFor(() => expect(electron.pushes.filter(statusOf("both-routes", "connected"))).toHaveLength(2))
+    await adjust("1 second")
+    expect(direct.socket().readyState).toBe(WebSocket.OPEN)
+    expect(relay.auths).toStrictEqual([])
+    await remove("both-routes")
+    relay.stop()
+    direct.stop()
+  })
+
+  /** Pairs over the direct address, which names `relay` in its `ready`, then stops answering there. */
+  const pairThenLoseDirect = async (id: string, relay: string) => {
+    const direct = await pair(id, { relay })
+    await vi.waitFor(async () => expect(await listed(id)).toMatchObject({ relay }))
+    direct.stop()
+    await pushedEventually(statusOf(id, "offline"))
+    return direct.port
+  }
+
+  const connectedTwice = (id: string) =>
+    vi.waitFor(async () => {
+      await adjust("500 millis")
+      expect(electron.pushes.filter(statusOf(id, "connected"))).toHaveLength(2)
+    })
+
+  test("connects through the relay while the direct address hangs, and closes that socket unsent", async () => {
+    const relay = await scriptedCloud("hung-direct", { tls })
+    const port = await pairThenLoseDirect("hung-direct", relay.relay)
+    const hung = await scriptedCloud("hung-direct", { port, holdUpgrades: true })
+    try {
+      await connectedTwice("hung-direct")
+      expect(relay.auths).toStrictEqual(["token"])
+      expect(hung.held.length).toBeGreaterThan(0)
+      await vi.waitFor(() => expect(hung.held.every((socket) => socket.destroyed)).toBe(true))
+
+      const read = forward("hung-direct", { method: "settings.get", payload: undefined })
+      await vi.waitFor(() => expect(relay.calls).toHaveLength(1))
+      relay.send({ type: "result", id: relay.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
+      expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+    } finally {
+      await remove("hung-direct")
+      relay.stop()
+      hung.stop()
+    }
+  })
+
+  test("moves from the relay to the direct address within a minute of it answering", async () => {
+    const relay = await scriptedCloud("to-direct", { tls })
+    const port = await pairThenLoseDirect("to-direct", relay.relay)
+    await connectedTwice("to-direct")
+    const relaySession = relay.socket()
+    const direct = await scriptedCloud("to-direct", { port, relay: relay.relay })
+    try {
+      for (let step = 1; step < DIRECT_CHECK_INTERVAL_MS / 10_000; step++) {
+        const before = await testTime()
+        await adjust("10 seconds")
+        await vi.waitFor(async () =>
+          expect(Date.parse((await listed("to-direct"))?.lastSeenAt ?? "")).toBeGreaterThan(before),
+        )
+      }
+      expect(direct.connections()).toBe(0)
+      expect(relaySession.readyState).toBe(WebSocket.OPEN)
+
+      await adjust("10 seconds")
+      await vi.waitFor(() => expect(direct.auths).toStrictEqual(["token"]))
+      // The check, the race and the session each opened one, and only the session sent the token.
+      expect(direct.connections()).toBe(3)
+      await vi.waitFor(() => expect(relaySession.readyState).toBe(WebSocket.CLOSED))
+      const read = forward("to-direct", { method: "settings.get", payload: undefined })
+      await vi.waitFor(() => expect(direct.calls).toHaveLength(1))
+      direct.send({ type: "result", id: direct.calls[0]!.id, envelope: { result: { textGenerationModel: "m" } } })
+      expect(await read).toStrictEqual({ result: { textGenerationModel: "m" } })
+      expect(relay.calls).toStrictEqual([])
+    } finally {
+      await remove("to-direct")
+      relay.stop()
+      direct.stop()
+    }
   })
 
   test("closing the desktop fails the calls still waiting, timers included", async () => {

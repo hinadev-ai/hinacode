@@ -6,11 +6,14 @@ import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contr
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
 import {
   type ClientFrame,
+  type Dial,
+  DIRECT_CHECK_INTERVAL_MS,
+  DIRECT_CHECK_TIMEOUT_MS,
+  dialPlan,
   type PairingTarget,
   parsePairingUrl,
   REMOTE_PROTOCOL_VERSION,
   relayWebSocketUrl,
-  remoteSocketUrls,
   remoteWebSocketUrl,
   ServerFrame,
 } from "../../shared/remote.ts"
@@ -116,7 +119,7 @@ const parseFrame = (raw: RawData, isBinary: boolean): ServerFrame | undefined =>
 
 type Ready = Extract<ServerFrame, { type: "ready" }>
 
-interface Dial {
+interface DialHandlers {
   readonly onFrame: (frame: ServerFrame) => void
   readonly onUndecodable?: () => void
   readonly onPong?: () => void
@@ -125,7 +128,7 @@ interface Dial {
 }
 
 /** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
-const dial = (url: string, token: string, handlers: Dial) => {
+const dial = (url: string, token: string, handlers: DialHandlers) => {
   const socket = new WebSocket(url)
   socket.on("open", () => socket.send(JSON.stringify({ type: "auth", token } satisfies ClientFrame)))
   socket.on("message", (raw, isBinary) => {
@@ -138,6 +141,54 @@ const dial = (url: string, token: string, handlers: Dial) => {
   socket.on("close", handlers.onClose)
   return socket
 }
+
+/** Whether a socket to `url` opens. It closes again without a frame, so it never carries the token. */
+const opens = (url: string) =>
+  Effect.callback<boolean>((resume) => {
+    const socket = new WebSocket(url)
+    socket.on("open", () => {
+      resume(Effect.succeed(true))
+      socket.close()
+    })
+    socket.on("error", () => {})
+    socket.on("close", () => resume(Effect.succeed(false)))
+    return Effect.sync(() => socket.terminate())
+  })
+
+/**
+ * Opens a socket to each of `dials` after its `delayMs` and answers the first one that opened, or null once every
+ * socket failed or none opened within `timeoutMs`. Every socket closes again, the winner's too.
+ */
+const firstToOpen = (dials: ReadonlyArray<Dial>, timeoutMs: number) =>
+  Effect.gen(function* () {
+    const won = yield* Deferred.make<Dial | null>()
+    let failed = 0
+    yield* Effect.forEach(
+      dials,
+      (planned) =>
+        Effect.forkScoped(
+          Effect.sleep(planned.delayMs).pipe(
+            Effect.andThen(opens(planned.url)),
+            Effect.flatMap((opened) => {
+              if (opened) return Deferred.succeed(won, planned)
+              failed++
+              return failed === dials.length ? Deferred.succeed(won, null) : Effect.void
+            }),
+          ),
+        ),
+      { discard: true },
+    )
+    return yield* Deferred.await(won).pipe(
+      Effect.timeoutOrElse({ duration: timeoutMs, orElse: () => Effect.succeed(null) }),
+    )
+  }).pipe(Effect.scoped)
+
+/** Completes once one of `direct` opens, checking every `DIRECT_CHECK_INTERVAL_MS`. */
+const directAnswers = (direct: ReadonlyArray<Dial>): Effect.Effect<void> =>
+  Effect.sleep(DIRECT_CHECK_INTERVAL_MS).pipe(
+    Effect.andThen(firstToOpen(direct, DIRECT_CHECK_TIMEOUT_MS)),
+    Effect.flatMap((opened) => (opened === null ? directAnswers(direct) : Effect.void)),
+  )
 
 /** Succeeds with the cloud's `ready` frame once it accepts `token`. */
 const probe = (target: DialTarget, token: string) => {
@@ -277,8 +328,6 @@ interface Cloud {
 
 interface SessionEnd {
   readonly code: number
-  /** Whether the cloud sent `ready`, so the URL reached it. */
-  readonly answered: boolean
   /** The cloud's protocol version when it is not this desktop's. */
   readonly otherProtocol: number | null
   readonly connectedMs: number
@@ -292,7 +341,7 @@ const send = (live: Live, call: Pending) => {
   live.socket.send(JSON.stringify(key === undefined ? frame : { ...frame, key }))
 }
 
-const socketUrls = ({ host, port, relay }: Environment) => remoteSocketUrls({ hosts: [host], port, relay })
+const environmentDialPlan = ({ host, port, relay }: Environment) => dialPlan({ hosts: [host], port, relay })
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -396,7 +445,6 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
-      let answered = false
       let connectedAt: number | null = null
       let otherProtocol: number | null = null
       let heardAt = now()
@@ -411,7 +459,6 @@ const make = Effect.gen(function* () {
               heard()
               switch (frame.type) {
                 case "ready": {
-                  answered = true
                   if (frame.version !== REMOTE_PROTOCOL_VERSION) {
                     otherProtocol = frame.version
                     return socket.close()
@@ -481,7 +528,6 @@ const make = Effect.gen(function* () {
       const code = yield* Deferred.await(closed)
       return {
         code,
-        answered,
         otherProtocol,
         connectedMs: connectedAt === null ? 0 : now() - connectedAt,
       } satisfies SessionEnd
@@ -489,9 +535,9 @@ const make = Effect.gen(function* () {
 
   /**
    * Keeps `cloud` connected until interrupted or refused. A cloud on another protocol version keeps being retried,
-   * so it reconnects on its own once updated. A dial that gets no `ready` moves on to the next of `socketUrls` at
-   * once, and only a whole round without one waits out the backoff. A dial that got `ready` starts the next round
-   * from the same URL.
+   * so it reconnects on its own once updated. Each round races the cloud's dial plan and runs a session on the
+   * first URL that opens, and a round where none opens waits out the backoff. A session over the relay ends as soon
+   * as a direct address answers, and the next round starts at once to move there.
    */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
@@ -503,33 +549,31 @@ const make = Effect.gen(function* () {
       }
       yield* setStatus(cloud, "connecting")
       let attempt = 0
-      let index = 0
-      let unanswered = 0
       for (;;) {
-        const url = socketUrls(cloud.environment)[index]!
-        const end = yield* session(cloud, token, url)
-        if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
-          failAll(cloud, unauthorized(name))
-          return yield* setStatus(cloud, "unauthorized")
-        }
-        const urls = socketUrls(cloud.environment)
-        if (end.answered) {
-          index = Math.max(0, urls.indexOf(url))
-          unanswered = 0
-        } else {
-          index = (index + 1) % urls.length
-          unanswered++
-          if (unanswered < urls.length) continue
-          unanswered = 0
-        }
-        if (end.otherProtocol === null) {
+        const plan = environmentDialPlan(cloud.environment)
+        const won = yield* firstToOpen(plan, READY_TIMEOUT_MS)
+        if (won === null) {
           yield* setStatus(cloud, "offline")
         } else {
-          cloud.protocol = end.otherProtocol
-          failAll(cloud, incompatible(name))
-          yield* setStatus(cloud, "incompatible")
+          const direct = plan.filter((planned) => planned.route === "direct")
+          const end =
+            won.route === "relay" && direct.length > 0
+              ? yield* Effect.raceFirst(session(cloud, token, won.url), directAnswers(direct).pipe(Effect.as(null)))
+              : yield* session(cloud, token, won.url)
+          if (end === null) continue
+          if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
+            failAll(cloud, unauthorized(name))
+            return yield* setStatus(cloud, "unauthorized")
+          }
+          if (end.otherProtocol === null) {
+            yield* setStatus(cloud, "offline")
+          } else {
+            cloud.protocol = end.otherProtocol
+            failAll(cloud, incompatible(name))
+            yield* setStatus(cloud, "incompatible")
+          }
+          if (end.connectedMs >= STABLE_MS) attempt = 0
         }
-        if (end.connectedMs >= STABLE_MS) attempt = 0
         const wake = yield* Deferred.make<void>()
         cloud.wake = wake
         const woken = yield* Effect.race(
