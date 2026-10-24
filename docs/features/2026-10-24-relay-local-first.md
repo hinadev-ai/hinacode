@@ -43,16 +43,15 @@ stateDiagram-v2
 
 ### Trust
 
-A direct address can belong to someone else on another network: `192.168.1.20` at a café is not your home server. Dialing local first makes it likelier that such an address answers before the relay, and the winner receives the pairing token. Racing on `open` keeps the token to one socket, as the sequential walk did. Closing the gap needs the server to prove itself before the client sends the token, for example a challenge the client answers with an HMAC of the token instead of the token. That is a protocol change for both sides and is the next step, not part of this one.
+A direct address can belong to someone else on another network: `192.168.1.20` at a café is not your home server. A client never sends the pairing token to it: it answers the server's challenge with a proof of the token and checks the server's proof in `ready` ([ADR 0022](../adr/0022-clients-prove-the-pairing-token.md)). A stranger gets a proof it cannot reuse, and the link moves on to the relay.
 
 ## Out of scope
 
 - Showing which route a connection uses.
-- Challenge-response authentication, above.
 
 ## Verification
 
 - `src/shared/remote.test.ts`: the plan lists direct addresses at once and the relay after the delay.
-- `specs/RelayRouting.tla`: the client gives up only on a stale token, recovers after moves and rotations, and settles on the direct address at home, on the desktop (`RelayRouting.cfg`) and the phone (`RelayRouting.Phone.cfg`). `RelayRouting.TokenStaysWithMachine.cfg` pins the token reaching a stranger, which the protocol change fixes.
+- `specs/RelayRouting.tla`: the client gives up only on a stale token, recovers after moves and rotations, and settles on the direct address at home, on the desktop (`RelayRouting.cfg`) and the phone (`RelayRouting.Phone.cfg`). Both also check that the token reaches the machine only (`TokenStaysWithMachine`).
 - `src/main/services/Environments.integration.test.ts` and `apps/mobile/src/lib/transport.test.ts`: the direct address wins when both answer, the relay wins when the direct address does not, the loser never receives `auth`, a relay connection moves to the direct address once it answers, a stranger's refusal leaves the link on the relay, and a direct address slower than the relay does not make the link drop every minute. `apps/mobile/src/stores/relay-account.test.ts`: a refused relay server syncs until its token changes.
 - By hand: a desktop instance and a `hinacode serve` instance linked to a local relay with real tunnels. The desktop connects direct. With the direct address unreachable it connects through the relay, and once the address answers again it moves back.
