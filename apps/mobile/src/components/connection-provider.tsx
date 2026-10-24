@@ -43,8 +43,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const url = useURL()
 
   useEffect(() => {
+    let cancelled = false
     let unsubscribe = () => {}
     void Promise.all([loadServers(), usePreferences.getState().restore()]).then(([servers]) => {
+      if (cancelled) return
       if (useConnection.getState().servers.length === 0) setServers(servers)
       let saved = JSON.stringify(storedServers())
       unsubscribe = useConnection.subscribe(() => {
@@ -55,7 +57,10 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       })
       setRestored(true)
     })
-    return () => unsubscribe()
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
