@@ -4,18 +4,19 @@ import { AccessMode, type Settings } from "@shared/domain.ts"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import { router } from "expo-router"
-import { Alert, AppState, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
 import { forgetServer } from "@/components/connection-provider"
 import type { IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
+import { RelayAccountSection } from "@/components/relay-account"
 import { Footnote, SettingsGroup, SettingsRow, SwitchRow } from "@/components/settings-rows"
 import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from "@/components/ui"
 import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { mono, radius } from "@/constants/theme"
-import { useNow } from "@/hooks/use-now"
+import { mono } from "@/constants/theme"
 import { call, reconnectNow, type Server, useConnection } from "@/lib/connection"
+import { confirmDestructive } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import {
@@ -24,11 +25,8 @@ import {
   requestNotificationPermission,
 } from "@/lib/notifications"
 import type { Appearance, Preferences } from "@/lib/preferences"
-import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
-import { relativeTime } from "@/lib/relative-time"
 import { modelsOn, useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
-import { useRelayAccount } from "@/stores/relay-account"
 
 export default function SettingsScreen() {
   const theme = useTheme()
@@ -41,7 +39,7 @@ export default function SettingsScreen() {
       <PhoneSettings />
       <DesktopSettings />
       <ServerSettings />
-      <RelaySettings />
+      <RelayAccountSection />
       <SettingsGroup title={copy("mobile_settings_about")}>
         <SettingsRow
           icon="RiSmartphoneLine"
@@ -548,145 +546,6 @@ const confirmForget = (name: string, forget: () => void) =>
     forget,
   )
 
-// react-native-web's Alert shows no buttons, so the browser's own confirm stands in.
-function confirmDestructive(title: string, message: string, action: string, onConfirm: () => void) {
-  if (Platform.OS === "web") {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm()
-    return
-  }
-  Alert.alert(title, message, [
-    { text: copy("mobile_settings_cancel"), style: "cancel" },
-    { text: action, style: "destructive", onPress: onConfirm },
-  ])
-}
-
-/** Signs in to the relay with the owner token, so every machine shown on the relay page appears here. */
-function RelaySettings() {
-  const serviceUrl = useRelayAccount((state) => state.serviceUrl)
-  const unauthorized = useRelayAccount((state) => state.unauthorized)
-  if (serviceUrl === null) {
-    return (
-      <SettingsGroup title={copy("mobile_relay_title")} footnote={copy("mobile_relay_footnote")}>
-        <RelaySignIn initialUrl={DEFAULT_RELAY_URL} />
-      </SettingsGroup>
-    )
-  }
-  return (
-    <>
-      <RelayStatus serviceUrl={serviceUrl} />
-      {unauthorized && (
-        <SettingsGroup title={copy("mobile_relay_sign_in")}>
-          <RelaySignIn initialUrl={serviceUrl} />
-        </SettingsGroup>
-      )}
-    </>
-  )
-}
-
-const hostOf = (url: string) => URL.parse(url)?.host ?? url
-
-function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
-  const theme = useTheme()
-  const now = useNow()
-  const syncedAt = useRelayAccount((state) => state.syncedAt)
-  const machines = useRelayAccount((state) => state.machines)
-  const error = useRelayAccount((state) => state.error)
-  const syncing = useRelayAccount((state) => state.syncing)
-  const sync = useRelayAccount((state) => state.sync)
-  const signOut = useRelayAccount((state) => state.signOut)
-  return (
-    <>
-      {error !== null && <Notice tone="danger" text={error} />}
-      <SettingsGroup title={copy("mobile_relay_title")} footnote={copy("mobile_relay_signed_in_footnote")}>
-        <SettingsRow icon="RiPlugLine" label={copy("mobile_relay_service")} value={hostOf(serviceUrl)} />
-        <SettingsRow
-          icon="RiComputerLine"
-          label={copy("mobile_relay_machines")}
-          value={machines === null ? undefined : String(machines)}
-        />
-        <SettingsRow
-          icon="RiTimeLine"
-          label={copy("mobile_relay_last_sync")}
-          value={syncedAt === null ? copy("mobile_relay_never") : relativeTime(syncedAt, now)}
-        />
-        <SettingsRow
-          icon="RiRefreshLine"
-          label={copy("mobile_relay_sync_now")}
-          disabled={syncing}
-          onPress={() => void sync()}
-        >
-          {syncing && <Spinner color={theme.textMuted} />}
-        </SettingsRow>
-        <SettingsRow
-          icon="RiLogoutBoxRLine"
-          label={copy("mobile_relay_sign_out")}
-          onPress={() =>
-            confirmDestructive(
-              copy("mobile_relay_sign_out_title"),
-              copy("mobile_relay_sign_out_message"),
-              copy("mobile_relay_sign_out"),
-              () => void signOut(),
-            )
-          }
-        />
-      </SettingsGroup>
-    </>
-  )
-}
-
-/** Saves the account only once the relay accepts the owner token. */
-function RelaySignIn({ initialUrl }: { initialUrl: string }) {
-  const theme = useTheme()
-  const signIn = useRelayAccount((state) => state.signIn)
-  const [serviceUrl, setServiceUrl] = useState(initialUrl)
-  const [ownerToken, setOwnerToken] = useState("")
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const submit = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      setError(await signIn({ serviceUrl: serviceUrl.trim(), ownerToken: ownerToken.trim() }))
-    } finally {
-      setBusy(false)
-    }
-  }
-  const inputStyle = [styles.input, { color: theme.text, backgroundColor: theme.background, borderColor: theme.border }]
-  return (
-    <View style={styles.permission}>
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>{copy("mobile_relay_service_url")}</Text>
-      <TextInput
-        accessibilityLabel={copy("mobile_relay_service_url")}
-        value={serviceUrl}
-        onChangeText={setServiceUrl}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-        style={inputStyle}
-      />
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>{copy("mobile_relay_owner_token")}</Text>
-      <TextInput
-        accessibilityLabel={copy("mobile_relay_owner_token")}
-        value={ownerToken}
-        onChangeText={setOwnerToken}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        style={inputStyle}
-      />
-      {error !== null && <Notice tone="danger" text={error} />}
-      <Button
-        icon="RiShieldKeyholeLine"
-        variant="primary"
-        label={copy("mobile_relay_sign_in")}
-        busy={busy}
-        disabled={serviceUrl.trim() === "" || ownerToken.trim() === ""}
-        onPress={() => void submit()}
-      />
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   content: { gap: 24, padding: 16, paddingBottom: 40 },
   segmentRow: { padding: 8 },
@@ -694,15 +553,6 @@ const styles = StyleSheet.create({
   loading: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
   serverStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
   source: { fontSize: 13 },
-  fieldLabel: { fontSize: 14, fontWeight: "600" },
-  input: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    fontFamily: mono,
-    fontSize: 14,
-  },
   address: { fontFamily: mono, fontSize: 13 },
   serverPicker: { padding: 8 },
 })
