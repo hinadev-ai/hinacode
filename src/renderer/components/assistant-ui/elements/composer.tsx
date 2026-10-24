@@ -574,7 +574,7 @@ export function ComposerSend({
       className={cn(
         "grid size-8 place-items-center rounded-full",
         streaming || !idle
-          ? inkButton
+          ? "relative send-halo transition-[scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] motion-reduce:transition-none forced-colors:border"
           : "bg-foreground/[0.06] text-muted-foreground inset-ring-border dark:bg-foreground/[0.09] inset-ring transition-colors forced-colors:border forced-colors:border-[GrayText] forced-colors:text-[GrayText]",
         className,
       )}

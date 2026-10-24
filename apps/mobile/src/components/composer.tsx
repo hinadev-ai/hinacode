@@ -3,7 +3,8 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { useEffect, useRef, useState } from "react"
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
 import { Icon, type IconName } from "@/components/icon"
 import { IconSwap } from "@/components/motion"
@@ -353,6 +354,7 @@ function SendButton({
   const action = stopping ? "stop" : busy ? "steer" : "send"
   const label = stopping ? "Stop" : busy ? "Steer" : "Send"
   const disabled = !stopping && !hasDraft
+  const halo = action === "send" && hasDraft
   const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
 
   return (
@@ -369,12 +371,49 @@ function SendButton({
       transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
       style={styles.send}
     >
+      {halo && <SendHalo />}
       <IconSwap
         showSecond={stopping}
-        first={<Icon name="RiArrowUpLine" size={18} color={disabled ? theme.textMuted : theme.onPrimary} />}
+        first={<Icon name="RiArrowUpLine" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
         second={<Icon name="RiStopFill" size={14} color={theme.danger} />}
       />
     </motion.Pressable>
+  )
+}
+
+const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ rotate: "360deg" }] } }
+
+/**
+ * The desktop's `send-halo`: a holographic pearl under Perlin grain. React Native has no conic gradient,
+ * so a linear one turns instead, and it turns while there is a draft because a phone has no hover.
+ */
+function SendHalo() {
+  const theme = useTheme()
+  const reduced = useReducedMotion()
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Animated.View
+        style={[
+          styles.haloSweep,
+          {
+            experimental_backgroundImage: `linear-gradient(135deg, ${theme.haloA}, ${theme.haloB} 35%, ${theme.haloC} 65%, ${theme.haloD})`,
+          },
+          !reduced && {
+            animationName: spin,
+            animationDuration: 6000,
+            animationIterationCount: "infinite",
+            animationTimingFunction: "linear",
+          },
+        ]}
+      />
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          { experimental_backgroundImage: `radial-gradient(circle, ${theme.haloCore}b3 0%, transparent 70%)` },
+        ]}
+      />
+      <Image source={require("../../assets/images/send-grain.png")} style={styles.haloGrain} />
+    </View>
   )
 }
 
@@ -629,7 +668,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  // Wider than the button by √2, so its corners stay covered while it turns.
+  haloSweep: {
+    position: "absolute",
+    width: SEND_SIZE * Math.SQRT2,
+    height: SEND_SIZE * Math.SQRT2,
+    left: (SEND_SIZE - SEND_SIZE * Math.SQRT2) / 2,
+    top: (SEND_SIZE - SEND_SIZE * Math.SQRT2) / 2,
+  },
+  haloGrain: { ...StyleSheet.absoluteFill, width: SEND_SIZE, height: SEND_SIZE, mixBlendMode: "overlay", opacity: 0.55 },
   error: { fontSize: 13, paddingHorizontal: 4 },
   sending: { gap: 2, paddingHorizontal: 4 },
   sendingLabel: { fontSize: 12, fontWeight: "500" },
