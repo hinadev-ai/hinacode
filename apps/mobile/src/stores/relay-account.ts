@@ -1,4 +1,5 @@
 import type { RelayMachine } from "@shared/relayMachines.ts"
+import { AppState } from "react-native"
 import { create } from "zustand"
 import { setServers, storedServers, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -28,11 +29,14 @@ interface RelayAccountState {
   readonly signOut: () => Promise<void>
 }
 
+const REFUSED_SYNC_INTERVAL_MS = 15_000
+
 const signedOut = { serviceUrl: null, syncedAt: null, machines: null, error: null, unauthorized: false }
 
 // Outside the store, so no screen ever renders the owner token.
 let account: RelayAccount | null = null
 let inFlight: Promise<void> | null = null
+let refusedSyncTimer: ReturnType<typeof setInterval> | undefined
 
 function applyMachines(machines: readonly RelayMachine[]) {
   const before = storedServers()
@@ -114,3 +118,28 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
     },
   }
 })
+
+/**
+ * A machine that rotates its token closes the phone's sockets with 4002 and publishes the new token to the relay a
+ * moment later. So while a relay server refuses its token, sync now and every 15 seconds in the foreground; a
+ * changed token makes `setServers` redial it.
+ */
+function syncWhileRefused() {
+  const refused =
+    account !== null &&
+    !useRelayAccount.getState().unauthorized &&
+    useConnection.getState().servers.some((server) => server.source === "relay" && server.status === "unauthorized")
+  if (!refused) {
+    clearInterval(refusedSyncTimer)
+    refusedSyncTimer = undefined
+    return
+  }
+  if (refusedSyncTimer !== undefined) return
+  refusedSyncTimer = setInterval(() => {
+    if (AppState.currentState === "active") void useRelayAccount.getState().sync()
+  }, REFUSED_SYNC_INTERVAL_MS)
+  void useRelayAccount.getState().sync()
+}
+
+useConnection.subscribe(syncWhileRefused)
+useRelayAccount.subscribe(syncWhileRefused)
