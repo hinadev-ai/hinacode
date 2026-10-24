@@ -63,6 +63,7 @@ function Routes() {
             <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
             <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
+            <Stack.Screen name="overview" options={{ title: copy("mobile_overview_title") }} />
             <Stack.Screen name="settings" options={{ title: copy("mobile_settings_title") }} />
             <Stack.Screen
               name="project/new"

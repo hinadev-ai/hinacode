@@ -1,6 +1,6 @@
 import type { Project } from "@shared/domain.ts"
 import { router } from "expo-router"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { Spinner } from "@/components/motion"
@@ -13,13 +13,27 @@ import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { groupByRepository, projectsByActivity } from "@/lib/projects"
+import { useDrafts } from "@/stores/drafts"
 import { useThreads } from "@/stores/threads"
 
 /**
  * Starts a thread in a project, the most recently active first, or goes on to add a project. A repository checked
- * out on several servers is one row, which asks which server the thread runs on.
+ * out on several servers is one row, which asks which server the thread runs on. `draft` starts the new thread's
+ * composer with that text; `title` and `header` say what the thread is for.
  */
-export function NewThreadSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewThreadSheet({
+  open,
+  onClose,
+  title = copy("mobile_home_new_thread_title"),
+  header,
+  draft,
+}: {
+  open: boolean
+  onClose: () => void
+  title?: string
+  header?: ReactNode
+  draft?: string
+}) {
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const servers = useConnection((state) => state.servers)
@@ -48,6 +62,7 @@ export function NewThreadSheet({ open, onClose }: { open: boolean; onClose: () =
     try {
       const thread = await call("threads.create", { projectId: project.id })
       useThreads.getState().upsert(thread)
+      if (draft !== undefined) useDrafts.getState().setText(thread.id, draft)
       close()
       openThread(thread.id)
     } catch (cause) {
@@ -104,7 +119,7 @@ export function NewThreadSheet({ open, onClose }: { open: boolean; onClose: () =
   }
 
   return (
-    <Sheet title={copy("mobile_home_new_thread_title")} open={open} onClose={close} fit>
+    <Sheet title={title} open={open} onClose={close} header={header} fit>
       {error !== null && <Notice text={error} tone="danger" />}
       <View>
         {groups.map((group) => {

@@ -23,6 +23,7 @@ import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
 import { Automations } from "./services/automations/Automations.ts"
+import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { RemoteAccess } from "./remote/access.ts"
@@ -60,6 +61,7 @@ export type AppServices =
   | Automations
   | Git
   | GitHub
+  | Linear
   | Files
   | Favicons
   | Updates
@@ -308,6 +310,7 @@ const handlers: Handlers = {
   "pullRequestGuides.retry": ({ url }) => PullRequestGuides.use((guides) => guides.retry(url)),
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
+  "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(
       Effect.flatMap(({ rootPath }) => GitHub.use((github) => github.repository(rootPath))),

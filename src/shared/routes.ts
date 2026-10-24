@@ -52,6 +52,7 @@ export const routes: Record<RpcMethod, Route> = {
   "worktrees.list": all,
   "worktrees.checkouts": all,
   "pullRequests.all": all,
+  "linear.issues": all,
   "limits.list": named,
   "search.threads": all,
 

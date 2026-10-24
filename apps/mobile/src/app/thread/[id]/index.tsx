@@ -7,9 +7,10 @@ import { FilesPanel } from "@/components/files"
 import { ThreadPullRequestChip } from "@/components/pull-request-badge"
 import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
+import { SidebarButton } from "@/components/thread-sidebar"
 import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
-import { HIT, READABLE_WIDTH } from "@/constants/theme"
+import { READABLE_WIDTH } from "@/constants/theme"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
@@ -57,9 +58,11 @@ export default function ThreadScreen() {
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.screen, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.header, split && styles.splitHeader, { borderColor: theme.border }]}>
-        {/* The list is on screen beside the thread, so there is nothing to go back to. */}
-        {!split && (
+      <View style={[styles.header, { borderColor: theme.border }]}>
+        {/* In a split the list replaces the back stack, so this corner shows or hides it instead. */}
+        {split ? (
+          <SidebarButton />
+        ) : (
           <IconButton
             testID="back-button"
             icon="RiArrowLeftSLine"
@@ -136,7 +139,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  splitHeader: { minHeight: HIT + 8, paddingLeft: 16 },
   readable: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center" },
   titleColumn: { flex: 1, gap: 2 },
   title: { fontSize: 16, fontWeight: "600" },

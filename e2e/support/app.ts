@@ -41,6 +41,8 @@ export interface HinacodeApp {
   readonly minimize: () => Promise<void>
   readonly windowState: () => Promise<{ readonly minimized: boolean; readonly focused: boolean }>
   readonly setWindow: (size: { width: number; height: number; zoom: number }) => Promise<void>
+  /** The system clipboard is shared by every instance, so only `@desktop` scenarios may read it. */
+  readonly clipboardText: () => Promise<string>
   readonly pushEvents: (events: ReadonlyArray<PushEvent>, intervalMs?: number) => Promise<void>
   /** Starts a second process on the same user data and resolves with its exit code, or null if it keeps running. */
   readonly launchAgain: (timeoutMs: number) => Promise<number | null>
@@ -155,6 +157,7 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeA
         window.webContents.setZoomFactor(zoom)
       }, size)
     },
+    clipboardText: () => current.app.evaluate(({ clipboard }) => clipboard.readText()),
     pushEvents: async (events, intervalMs = 0) => {
       await current.app.evaluate(
         async ({ BrowserWindow }, input) => {

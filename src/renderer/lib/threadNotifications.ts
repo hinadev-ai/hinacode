@@ -3,7 +3,8 @@ import type { NotificationSettings, ThreadAlert } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { router } from "../router.tsx"
 import { useThreads } from "../stores/threads.ts"
-import { type Outcome, useUnseen } from "../stores/unseen.ts"
+import { outcomeOf } from "../../shared/threadStatus.ts"
+import { useUnseen } from "../stores/unseen.ts"
 import { notify, type Surface } from "./notify.ts"
 
 const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly body: string } | undefined => {
@@ -31,12 +32,6 @@ const isOpen = (threadId: string) => router.matchRoute({ to: "/thread/$threadId"
 const surfaceFor = (threadId: string): Surface | null => {
   if (!document.hasFocus()) return "desktop"
   return isOpen(threadId) ? null : "toast"
-}
-
-const outcomeOf = (event: AgentEvent): Outcome | undefined => {
-  if (event.type === "turn_completed") return "completed"
-  if (event.type === "turn_failed") return "failed"
-  return undefined
 }
 
 /** A completed turn with messages queued behind it is not the end of the thread's work. */

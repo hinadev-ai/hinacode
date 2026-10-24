@@ -5,18 +5,12 @@ import type { IconType } from "react-icons"
 import {
   RiArrowDownSLine,
   RiArrowRightSLine,
-  RiCheckboxCircleFill,
-  RiCloseCircleFill,
   RiExternalLinkLine,
   RiEyeFill,
   RiEyeLine,
-  RiGitClosePullRequestLine,
-  RiGitMergeLine,
-  RiGitPrDraftLine,
   RiGitPullRequestLine,
   RiIndeterminateCircleLine,
   RiLinkUnlinkM,
-  RiTimeLine,
 } from "react-icons/ri"
 import type {
   CheckRunStatus,
@@ -30,6 +24,8 @@ import type {
   Thread,
 } from "../../shared/domain.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
+import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
+import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
   branchPullRequestAtom,
@@ -82,10 +78,10 @@ export const pullRequestStatusLabel = {
 } satisfies Record<PullRequestStatus, () => string>
 
 export const statusIndicator = {
-  draft: { Icon: RiGitPrDraftLine, className: "text-muted-foreground" },
-  open: { Icon: RiGitPullRequestLine, className: "text-pr-open" },
-  merged: { Icon: RiGitMergeLine, className: "text-pr-merged" },
-  closed: { Icon: RiGitClosePullRequestLine, className: "text-destructive" },
+  draft: toIcon(pullRequestIndicator.draft),
+  open: toIcon(pullRequestIndicator.open),
+  merged: toIcon(pullRequestIndicator.merged),
+  closed: toIcon(pullRequestIndicator.closed),
 } satisfies Record<PullRequestStatus, { Icon: IconType; className: string }>
 
 export const reviewLabel = {
@@ -94,11 +90,10 @@ export const reviewLabel = {
   reviewRequired: m.pr_review_required,
 } satisfies Record<ReviewStatus, () => string>
 
-/** Only failing checks need the user, so only they get a color. Amber would claim pending checks need them. */
 export const checksIndicator = {
-  passing: { Icon: RiCheckboxCircleFill, className: "text-muted-foreground", label: m.pr_checks_passing },
-  failing: { Icon: RiCloseCircleFill, className: "text-destructive", label: m.pr_checks_failing },
-  pending: { Icon: RiTimeLine, className: "text-muted-foreground", label: m.pr_checks_pending },
+  passing: { ...toIcon(sharedChecksIndicator.passing), label: m.pr_checks_passing },
+  failing: { ...toIcon(sharedChecksIndicator.failing), label: m.pr_checks_failing },
+  pending: { ...toIcon(sharedChecksIndicator.pending), label: m.pr_checks_pending },
 } satisfies Record<ChecksStatus, { Icon: IconType; className: string; label: () => string }>
 
 const checkRunIndicator = {
@@ -131,8 +126,6 @@ export function StatusIcon({
     />
   )
 }
-
-export const isOpen = (status: PullRequestStatus) => status === "open" || status === "draft"
 
 type PullRequestTab = "info" | "code"
 

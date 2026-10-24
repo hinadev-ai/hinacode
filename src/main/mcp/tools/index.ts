@@ -9,8 +9,6 @@ import { ThreadTools, threadToolsLayer } from "./threads.ts"
 import { VmTools, vmToolsLayer } from "./tinyVm.ts"
 import * as McpTool from "./tool.ts"
 
-export { LINEAR_API_KEY_SECRET } from "./linear.ts"
-
 /** Every tool of the built-in MCP server. The tiny VM tools exist only while its experimental toggle is on. */
 export const layer = Layer.effectDiscard(
   Effect.gen(function* () {

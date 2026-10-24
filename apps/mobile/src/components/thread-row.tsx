@@ -1,21 +1,23 @@
 import type { PullRequestLink, Thread } from "@shared/domain.ts"
+import { openChecks, type RowState, rowEmphasis, rowState, rowStatusIndicator } from "@shared/threadStatus.ts"
 import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
-import { StatusDot } from "@/components/motion"
+import { AttentionRing } from "@/components/motion"
 import { ServerMark, serverLabel } from "@/components/server-mark"
+import { PullRequestMark, usePullRequestSummary } from "@/components/pull-request-badge"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
-import { mono, type Palette, radius } from "@/constants/theme"
+import { indicatorGlyph, mono, type Palette, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useProjectServer, useSeveralServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { openThread } from "@/lib/navigation"
+import { checksLabel, statusLabel as pullRequestStatusLabel } from "@/lib/pull-request-labels"
 import { relativeTime } from "@/lib/relative-time"
-import { type RowState, rowEmphasis, rowState } from "@/lib/row-state"
 import type { ThreadActionName } from "@/lib/thread-actions"
 import { pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
 import { threadBranch, useThreads } from "@/stores/threads"
@@ -23,6 +25,9 @@ import { useUnseen } from "@/stores/unseen"
 
 const MARK_SIZE = 16
 const MARK_GAP = 10
+const STATUS_SIZE = 16
+/** A running row recedes, as on the desktop, until the developer reaches for it. */
+const WORKING_OPACITY = 0.6
 const noLinks: readonly PullRequestLink[] = []
 
 const titleColor = (theme: Palette, state: RowState) => {
@@ -36,18 +41,21 @@ const titleColor = (theme: Palette, state: RowState) => {
   }
 }
 
-const stateLabel: Partial<Record<RowState, string>> = {
+type IndicatedState = keyof typeof rowStatusIndicator
+
+const statusLabel: Record<IndicatedState, string> = {
   running: copy("mobile_status_running"),
   awaiting_approval: copy("mobile_status_awaiting"),
   limited: copy("mobile_status_limited"),
-  archived: copy("mobile_status_archived"),
   unseen_completed: copy("mobile_status_unseen_completed"),
   unseen_failed: copy("mobile_status_unseen_failed"),
 }
 
+const isIndicated = (state: RowState): state is IndicatedState => state in rowStatusIndicator
+
 /**
- * A thread in a list, laid out like a desktop sidebar row: the agent's mark, the title and its status, then the
- * project, branch, pull request and last activity. Tap opens it, long press offers pin and archive.
+ * A thread in a list, laid out like a desktop sidebar row: the agent's mark, the title and its status icon, then
+ * the project, branch, pull request and last activity. Tap opens it, long press offers pin and archive.
  */
 export function ThreadRow({ thread, showProject }: { thread: Thread; showProject: boolean }) {
   const theme = useTheme()
@@ -67,6 +75,8 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   const links = usePullRequests((pullRequests) => pullRequests.linksByThread[thread.id]) ?? noLinks
   const latest = links.at(-1)
   const number = latest === undefined ? null : pullRequestNumber(latest.url)
+  const summary = usePullRequestSummary(latest?.url ?? null)
+  const checks = openChecks(summary ?? undefined)
   const watching = links.some((link) => link.watch !== null)
   const actions = useThreadActions(thread)
   const server = useProjectServer(thread.projectId)
@@ -87,8 +97,10 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
     several && server !== undefined && serverLabel(server),
     project,
     branch && copy("mobile_row_branch", { branch: branch.name }),
-    stateLabel[state],
+    isIndicated(state) && statusLabel[state],
     pullRequest,
+    pullRequest !== undefined && summary !== null && pullRequestStatusLabel(summary.status),
+    pullRequest !== undefined && checks !== null && checksLabel(checks),
     watching && copy("mobile_row_watching"),
     time,
   ]
@@ -111,14 +123,19 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
         onAccessibilityAction={(event) => void runFromAccessibility(event.nativeEvent.actionName)}
         onPress={() => openThread(thread.id)}
         onLongPress={() => setActionsOpen(true)}
-        style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }, away && styles.away]}
+        style={({ pressed }) => [
+          styles.row,
+          pressed && { backgroundColor: theme.surface },
+          rowEmphasis[state] === "working" && !pressed && !actionsOpen && { opacity: WORKING_OPACITY },
+          away && styles.away,
+        ]}
       >
         <View style={styles.titleLine}>
           <ProviderMark provider={thread.provider} size={MARK_SIZE} />
           <Text numberOfLines={1} style={[styles.title, { color: titleColor(theme, state) }]}>
             {title}
           </Text>
-          <StatusIndicator state={state} />
+          {isIndicated(state) && <StatusIndicator state={state} />}
         </View>
         <View style={styles.metaLine}>
           <ServerMark server={showProject ? server : undefined} />
@@ -140,8 +157,13 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           )}
           {number !== null && (
             <View style={styles.pullRequest}>
-              {links.length > 1 && <Icon name="RiStackLine" size={12} color={theme.textMuted} />}
-              <Text style={[styles.meta, styles.mono, { color: theme.textMuted }]}>#{number}</Text>
+              <PullRequestMark
+                number={number}
+                summary={summary}
+                stacked={links.length > 1}
+                size={12}
+                textStyle={[styles.meta, styles.mono]}
+              />
             </View>
           )}
           {watching && <Icon name="RiEyeLine" size={12} color={theme.textMuted} />}
@@ -153,28 +175,16 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   )
 }
 
-/** A running dot pulses, a request rings, a usage limit names itself, and an unopened result waits as a dot. */
-function StatusIndicator({ state }: { state: RowState }) {
+/** The desktop sidebar's status icon. A thread that starts waiting for approval rings a few times, then rests. */
+function StatusIndicator({ state }: { state: IndicatedState }) {
   const theme = useTheme()
-  switch (state) {
-    case "running":
-      return <StatusDot state="running" color={theme.running} />
-    case "awaiting_approval":
-      return <StatusDot state="attention" color={theme.attention} />
-    case "limited":
-      return (
-        <View style={[styles.limited, { backgroundColor: theme.attentionBg }]}>
-          <Icon name="RiErrorWarningLine" size={12} color={theme.attention} />
-          <Text style={[styles.limitedLabel, { color: theme.attention }]}>{copy("mobile_status_limited")}</Text>
-        </View>
-      )
-    case "unseen_completed":
-      return <View style={[styles.dot, { backgroundColor: theme.text }]} />
-    case "unseen_failed":
-      return <Icon name="RiErrorWarningFill" size={14} color={theme.danger} />
-    default:
-      return null
-  }
+  const glyph = indicatorGlyph(theme, rowStatusIndicator[state])
+  return (
+    <View style={styles.status}>
+      <Icon {...glyph} size={STATUS_SIZE} />
+      {state === "awaiting_approval" && <AttentionRing color={glyph.color} />}
+    </View>
+  )
 }
 
 export function SectionLabel({ label }: { label: string }) {
@@ -197,10 +207,8 @@ const styles = StyleSheet.create({
   project: { flexShrink: 0, maxWidth: "50%" },
   branch: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1, minWidth: 0 },
   removed: { textDecorationLine: "line-through" },
-  pullRequest: { flexDirection: "row", alignItems: "center", gap: 2, flexShrink: 0 },
+  pullRequest: { flexShrink: 0 },
   time: { marginLeft: "auto", paddingLeft: 4, flexShrink: 0, fontVariant: ["tabular-nums"] },
   away: { opacity: 0.5 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  limited: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  limitedLabel: { fontSize: 12, fontWeight: "500" },
+  status: { width: STATUS_SIZE, height: STATUS_SIZE },
 })
