@@ -27,6 +27,34 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Cross-fading one icon into another. */
   --ease-swap: cubic-bezier(0.2, 0, 0, 1);
+  /* A spring with stiffness 500 and damping 30, sampled. It overshoots about 6% and settles in 430ms. */
+  --ease-spring: linear(
+    0,
+    0.068,
+    0.223,
+    0.409,
+    0.591,
+    0.748,
+    0.87,
+    0.957,
+    1.014,
+    1.045,
+    1.057,
+    1.057,
+    1.05,
+    1.04,
+    1.029,
+    1.019,
+    1.011,
+    1.005,
+    1.001,
+    0.998,
+    0.997,
+    0.997,
+    0.997,
+    0.997,
+    1
+  );
   --spacing-titlebar: 2.5rem;
   /* Badges and dense labels such as git refs. In rem, so it follows the font size setting. */
   --text-2xs: 0.6875rem;
