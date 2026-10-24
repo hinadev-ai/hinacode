@@ -8,6 +8,8 @@ import { ThreadPullRequestChip } from "@/components/pull-request-badge"
 import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
 import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
+import { HIT, READABLE_WIDTH } from "@/constants/theme"
+import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -25,6 +27,7 @@ const tabs: readonly Segment<Tab>[] = [
 
 export default function ThreadScreen() {
   const theme = useTheme()
+  const split = useSplitLayout()
   const { id } = useLocalSearchParams<{ id: string }>()
   const thread = useThreads((state) => state.byId[id])
   const loaded = useThreads((state) => state.status === "ready")
@@ -53,13 +56,16 @@ export default function ThreadScreen() {
   return (
     <SafeAreaView edges={["top", "bottom"]} style={[styles.screen, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.header, { borderColor: theme.border }]}>
-        <IconButton
-          testID="back-button"
-          icon="RiArrowLeftSLine"
-          accessibilityLabel={copy("mobile_thread_back")}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-        />
+      <View style={[styles.header, split && styles.splitHeader, { borderColor: theme.border }]}>
+        {/* The list is on screen beside the thread, so there is nothing to go back to. */}
+        {!split && (
+          <IconButton
+            testID="back-button"
+            icon="RiArrowLeftSLine"
+            accessibilityLabel={copy("mobile_thread_back")}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+          />
+        )}
         <View style={styles.titleColumn}>
           <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
             {thread?.title || copy("mobile_notify_untitled")}
@@ -94,7 +100,7 @@ export default function ThreadScreen() {
       ) : (
         // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
         <KeyboardAvoidingView style={styles.flex} behavior="padding">
-          <View style={[styles.flex, tab !== "chat" && styles.hidden]}>
+          <View style={[styles.flex, styles.readable, tab !== "chat" && styles.hidden]}>
             <Chat thread={thread} />
           </View>
           {opened.has("files") && (
@@ -126,6 +132,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  splitHeader: { minHeight: HIT + 8, paddingLeft: 16 },
+  readable: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center" },
   titleColumn: { flex: 1, gap: 2 },
   title: { fontSize: 16, fontWeight: "600" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 },

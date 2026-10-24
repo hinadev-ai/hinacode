@@ -1320,6 +1320,7 @@
   "mobile_home_retry": "再試行",
   "mobile_home_no_projects": "プロジェクトはまだありません",
   "mobile_home_no_projects_hint": "デスクトップのフォルダか GitHub リポジトリを追加すると、スレッドを始められます。",
+  "mobile_home_no_selection": "リストからスレッドを選んでください",
   "mobile_home_add_project": "プロジェクトを追加",
   "mobile_home_add_project_hint": "デスクトップのフォルダか GitHub リポジトリ",
   "mobile_home_pinned": "ピン留め",
