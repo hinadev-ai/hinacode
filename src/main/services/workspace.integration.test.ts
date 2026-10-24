@@ -23,6 +23,7 @@ describe("activeWorkspace", () => {
       const result = yield* resolve({ rootPath: "/repo" })
       expect(result._tag === "Success" && result.success).toStrictEqual({
         cwd: "/repo",
+        rootPath: "/repo",
         worktreeId: null,
         baseRef: null,
       })
@@ -34,6 +35,7 @@ describe("activeWorkspace", () => {
       const result = yield* resolve({ rootPath: "/repo", worktree: { path: "/wt", baseRef: "main", status: "ready" } })
       expect(result._tag === "Success" && result.success).toStrictEqual({
         cwd: "/wt",
+        rootPath: "/repo",
         worktreeId: expect.any(String),
         baseRef: "main",
       })
@@ -48,6 +50,7 @@ describe("activeWorkspace", () => {
       })
       expect(result._tag === "Success" && result.success).toStrictEqual({
         cwd: "/repo",
+        rootPath: "/repo",
         worktreeId: null,
         baseRef: null,
       })
@@ -62,6 +65,7 @@ describe("activeWorkspace", () => {
       )
       expect(result._tag === "Success" && result.success).toStrictEqual({
         cwd: "/repo",
+        rootPath: "/repo",
         worktreeId: null,
         baseRef: null,
       })
