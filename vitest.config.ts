@@ -12,7 +12,7 @@ export default defineConfig({
         resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "packages/*/src/**/*.test.ts"],
           exclude: ["src/**/*.integration.test.ts"],
         },
       },
