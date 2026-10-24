@@ -22,6 +22,7 @@ import { threadStatus } from "@/constants/thread-status"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { motion } from "@/lib/motion"
 
 type Variant = "primary" | "secondary" | "danger" | "ghost"
 
@@ -153,6 +154,8 @@ const connectionLabel: Record<ConnectionStatus, Status> = {
   unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "RiLinkUnlinkM" },
 }
 
+const fadeIn = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: duration.fast } }
+
 export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const badge = connectionLabel[status]
   return (
@@ -200,10 +203,10 @@ export function Notice({ text, tone = "neutral" }: { text: string; tone?: Tone }
   const [fg, bg] = toneColors(theme)[tone]
   const icon = noticeIcon[tone]
   return (
-    <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: bg }]}>
+    <motion.View {...fadeIn} accessibilityRole="alert" style={[styles.notice, { backgroundColor: bg }]}>
       {icon !== undefined && <Icon name={icon} size={16} color={fg} />}
       <Text style={[styles.noticeText, { color: fg }]}>{text}</Text>
-    </View>
+    </motion.View>
   )
 }
 

@@ -5,14 +5,17 @@ import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared
 import { useEffect, useRef, useState } from "react"
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
+import { IconSwap } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
+import { ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { motion } from "@/lib/motion"
 import { useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { useModels } from "@/stores/models"
@@ -335,14 +338,10 @@ function SendButton({
   const action = stopping ? "stop" : busy ? "steer" : "send"
   const label = stopping ? "Stop" : busy ? "Steer" : "Send"
   const disabled = !stopping && !hasDraft
-  const [background, foreground] = stopping
-    ? [theme.dangerBg, theme.danger]
-    : disabled
-      ? [theme.surfaceStrong, theme.textMuted]
-      : [theme.primary, theme.onPrimary]
+  const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
 
   return (
-    <Pressable
+    <motion.Pressable
       testID={`composer-${action}`}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -350,10 +349,17 @@ function SendButton({
       disabled={disabled}
       onPress={stopping ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
-      style={({ pressed }) => [styles.send, { backgroundColor: background }, pressed && styles.pressed]}
+      animate={{ backgroundColor: background }}
+      whileTap={{ scale: PRESSED_SCALE }}
+      transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
+      style={styles.send}
     >
-      <Icon name={stopping ? "RiStopFill" : "RiArrowUpLine"} size={stopping ? 14 : 18} color={foreground} />
-    </Pressable>
+      <IconSwap
+        showSecond={stopping}
+        first={<Icon name="RiArrowUpLine" size={18} color={disabled ? theme.textMuted : theme.onPrimary} />}
+        second={<Icon name="RiStopFill" size={14} color={theme.danger} />}
+      />
+    </motion.Pressable>
   )
 }
 
