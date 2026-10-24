@@ -20,10 +20,16 @@ import type { HomeTab } from "@/lib/preferences"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
-/** New thread and Settings, in the home screen's header or the sidebar's. */
+/** Overview, New thread and Settings, in the home screen's header or the sidebar's. */
 export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
   return (
     <View style={styles.actions}>
+      <IconButton
+        testID="overview-button"
+        icon="RiDashboardLine"
+        accessibilityLabel={copy("mobile_home_overview")}
+        onPress={() => router.push("/overview")}
+      />
       <IconButton
         testID="new-thread-button"
         icon="RiAddLine"

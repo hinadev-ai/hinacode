@@ -1,12 +1,19 @@
 import type { LinearIssue } from "@shared/domain.ts"
 import { create } from "zustand"
-import { call } from "@/lib/connection"
+import { call, RpcError } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { sortIssues } from "@/lib/overview"
 import type { Remote } from "@/stores/pull-requests"
 
 /** Each read is a Linear API call on the server, so the list is read at most this often unless forced. */
 const ISSUES_MAX_AGE = 60_000
+
+/** A desktop from before Linear tickets answers the method as unknown, which its schema check reports. */
+const failureText = (cause: unknown) =>
+  cause instanceof RpcError && cause.tag === "SchemaError"
+    ? copy("mobile_overview_linear_update_desktop")
+    : copy("mobile_overview_linear_failed", { message: errorText(cause) })
 
 interface LinearState {
   /** Undefined until the first read. */
@@ -30,7 +37,7 @@ export const useLinear = create<LinearState>()((set, get) => {
       issues:
         issues.status === "fulfilled"
           ? { status: "ready", value: sortIssues(issues.value), at }
-          : { status: "error", message: errorText(issues.reason), at },
+          : { status: "error", message: failureText(issues.reason), at },
       configured: configured.status === "fulfilled" ? configured.value : null,
     })
   }
