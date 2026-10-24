@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { serverProof } from "@shared/proof.ts"
 import { RELAY_DELAY_MS } from "@shared/remote.ts"
 import type { StoredServer } from "./stored-target"
 
@@ -8,7 +9,7 @@ class FakeSocket {
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
-  readonly sent: { type: string; id?: number; method?: string; payload?: unknown }[] = []
+  readonly sent: { type: string; id?: number; method?: string; payload?: unknown; nonce?: string }[] = []
 
   constructor(readonly url: string) {
     FakeSocket.all.push(this)
@@ -18,9 +19,19 @@ class FakeSocket {
   }
   close() {}
 
+  /** Opens, challenges, and proves the token `server()` pairs with back to the client's answer. */
   ready(environment?: { id: string; name: string }, relay?: string) {
     this.onopen?.()
-    this.receive({ type: "ready", version: 1, features: ["call-keys"], ...(environment && { environment }), relay })
+    this.receive({ type: "challenge", nonce: "server-nonce" })
+    const proof = serverProof("t", this.sent.find((frame) => frame.type === "auth")!.nonce!, "server-nonce")
+    this.receive({
+      type: "ready",
+      version: 1,
+      features: ["call-keys"],
+      ...(environment && { environment }),
+      relay,
+      proof,
+    })
   }
   receive(frame: unknown) {
     this.onmessage?.({ data: JSON.stringify(frame) })
