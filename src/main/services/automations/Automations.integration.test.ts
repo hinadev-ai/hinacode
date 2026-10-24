@@ -14,7 +14,7 @@ import type { AgentProvider } from "../../agents/provider.ts"
 import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
 import { McpCredentials, layer as credentialsLayer } from "../../mcp/credentials.ts"
-import { LINEAR_API_KEY_SECRET } from "../../mcp/index.ts"
+import * as Linear from "../Linear.ts"
 import * as AgentAccounts from "../AgentAccounts.ts"
 import * as AgentRunner from "../AgentRunner.ts"
 import { Events } from "../Events.ts"
@@ -75,6 +75,7 @@ const unusedPort = Effect.promise(async () => {
 })
 
 const makeLayer = (pushes: Array<PushEvent>, port: number) => {
+  const secrets = Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provide(Terminals.layer),
@@ -84,7 +85,8 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provideMerge(Settings.layer),
     ),
     Messages.layer,
-    Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
+    secrets,
+    Linear.layer.pipe(Layer.provide(secrets)),
     credentialsLayer,
   )
   const agents = AgentRunner.layer.pipe(
@@ -132,7 +134,7 @@ const addIssue = (createdAt = issueAt, number = 32) => {
 
 const initialize = Effect.gen(function* () {
   const { projectId } = yield* seedThread({ rootPath: "/repo" })
-  yield* Secrets.Secrets.use((secrets) => secrets.set(LINEAR_API_KEY_SECRET, "test-api-key"))
+  yield* Secrets.Secrets.use((secrets) => secrets.set(Linear.LINEAR_API_KEY_SECRET, "test-api-key"))
   yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
   return projectId
 })

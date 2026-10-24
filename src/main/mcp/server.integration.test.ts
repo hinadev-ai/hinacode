@@ -27,6 +27,7 @@ import * as GitHub from "../services/GitHub.ts"
 import * as Messages from "../services/Messages.ts"
 import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
+import { layer as linearLayer } from "../services/Linear.ts"
 import { noKeyring, Secrets, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
@@ -111,7 +112,12 @@ const tinyVm = Layer.unwrap(
     return tinyVmLayer({ configPath: fake.configPath, env: {} }, vmProfileDir)
   }),
 ).pipe(Layer.provideMerge(fakeSbxLayer))
-const domain = Layer.mergeAll(core, PullRequests.layer.pipe(Layer.provide(core)), tinyVm.pipe(Layer.provide(core)))
+const domain = Layer.mergeAll(
+  core,
+  PullRequests.layer.pipe(Layer.provide(core)),
+  tinyVm.pipe(Layer.provide(core)),
+  linearLayer.pipe(Layer.provide(core)),
+)
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(agents)), agents, seeded).pipe(
   Layer.provide(Layer.mergeAll(stubs, Git.layer)),

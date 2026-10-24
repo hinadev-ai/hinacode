@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto"
+import type { LinearDocument } from "@linear/sdk"
 import { hostname } from "node:os"
 import { Cause, Context, Effect, FiberHandle, FiberMap, Layer, Option, Random, Schema, Stream } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
@@ -12,12 +13,12 @@ import {
   type Settings as SettingsValue,
   Timestamp,
 } from "../../../shared/domain.ts"
-import { LINEAR_API_KEY_SECRET } from "../../mcp/index.ts"
 import { AgentRunner } from "../AgentRunner.ts"
 import { nowIso } from "../clock.ts"
 import { NotFoundError, type PersistenceError, persistence } from "../errors.ts"
 import { Events } from "../Events.ts"
 import { GitHub } from "../GitHub.ts"
+import { Linear } from "../Linear.ts"
 import { Projects } from "../Projects.ts"
 import { Secrets } from "../Secrets.ts"
 import { Settings } from "../Settings.ts"
@@ -33,6 +34,9 @@ import {
 } from "./pollers.ts"
 import { renderTemplate, slugifyBranch, titleFromPrompt } from "./template.ts"
 import { hookPath, webhookServer } from "./webhook.ts"
+
+// `PaginationOrderBy.CreatedAt`, without importing the SDK before a Linear automation polls.
+const CREATED_AT = "createdAt" as LinearDocument.PaginationOrderBy
 
 export const SLACK_TOKEN_SECRET = "slack.token"
 const webhookSecretName = (automationId: string) => `automation.${automationId}.webhookSecret`
@@ -132,6 +136,7 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects
   const settings = yield* Settings
   const secrets = yield* Secrets
+  const linear = yield* Linear
   const runner = yield* AgentRunner
   const events = yield* Events
   const github = yield* GitHub
@@ -297,17 +302,12 @@ const make = Effect.gen(function* () {
         )
       case "linear.issue":
         return Effect.gen(function* () {
-          const apiKey = yield* secrets.get(LINEAR_API_KEY_SECRET)
-          if (Option.isNone(apiKey)) {
+          const client = yield* linear.client.pipe(Effect.mapError((error) => new PollError({ reason: error.message })))
+          if (Option.isNone(client)) {
             return yield* new PollError({ reason: "No Linear API key. Add one in Settings > Integrations." })
           }
-          const { LinearClient, PaginationOrderBy } = yield* Effect.tryPromise({
-            try: () => import("@linear/sdk"),
-            catch: (cause) => new PollError({ reason: `Could not load Linear SDK: ${String(cause)}` }),
-          })
-          const client = new LinearClient({ apiKey: apiKey.value })
           return yield* pollLinearIssues(
-            async (filter) => (await client.issues({ filter, first: 50, orderBy: PaginationOrderBy.CreatedAt })).nodes,
+            async (filter) => (await client.value.issues({ filter, first: 50, orderBy: CREATED_AT })).nodes,
             trigger,
             cursor,
           )

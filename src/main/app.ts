@@ -24,6 +24,7 @@ import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
+import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
@@ -91,9 +92,15 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, naming, remoteAccess, tinyVm, passkeys).pipe(
-    Layer.provide(domain),
-  )
+  const features = Layer.mergeAll(
+    Mcp.credentialsLayer,
+    Ports.layer,
+    naming,
+    remoteAccess,
+    tinyVm,
+    passkeys,
+    Linear.layer.pipe(Layer.provide(Secrets.layer)),
+  ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(
