@@ -8,15 +8,14 @@
     {
       "binding": "DB",
       "database_name": "hinacode-relay",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "56f446fb-8323-4671-9008-ef8a05acdac3",
       "migrations_dir": "migrations",
     },
   ],
   "vars": {
-    "CLOUDFLARE_ACCOUNT_ID": "replace-with-account-id",
-    "TUNNEL_ZONE_ID": "replace-with-zone-id",
-    "TUNNEL_ZONE_NAME": "replace-with-tunnel-zone-name",
-    "CLERK_PUBLISHABLE_KEY": "pk_live_replace",
+    "CLOUDFLARE_ACCOUNT_ID": "e71bb8465534552f8ddc37c7962f98ae",
+    "TUNNEL_ZONE_ID": "ef8f9d3e89546eb63bfda9d19191f642",
+    "TUNNEL_ZONE_NAME": "hinacode.app",
   },
-  "secrets": { "required": ["CLOUDFLARE_API_TOKEN", "CLERK_SECRET_KEY"] },
+  "secrets": { "required": ["CLOUDFLARE_API_TOKEN", "OWNER_TOKEN"] },
 }

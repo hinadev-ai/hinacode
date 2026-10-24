@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers"
 import { beforeEach, describe, expect, it } from "vitest"
 import { makeApp } from "../src/app"
+import { verifyOwner } from "../src/owner"
 import { FakeCloudflare } from "./fake-cloudflare"
 
 const SESSIONS: Record<string, string> = { "alice-session": "user_alice", "bob-session": "user_bob" }
@@ -11,7 +12,11 @@ let cloudflare: FakeCloudflare
 let app: ReturnType<typeof makeApp>
 
 beforeEach(async () => {
-  await env.DB.batch([env.DB.prepare("DELETE FROM link"), env.DB.prepare("DELETE FROM host")])
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM link"),
+    env.DB.prepare("DELETE FROM host"),
+    env.DB.prepare("DELETE FROM owner"),
+  ])
   clock = Date.UTC(2026, 9, 24)
   cloudflare = new FakeCloudflare()
   app = makeApp({
@@ -109,7 +114,7 @@ describe("linking", () => {
     expect((await claim("never-issued")).status).toBe(410)
   })
 
-  it("needs a Clerk session to read or approve a link", async () => {
+  it("needs the owner's bearer to read or approve a link", async () => {
     const link = await startLink()
     expect((await call("GET", `/v1/links/${link.userCode}`)).status).toBe(401)
     expect((await approve(link.userCode, "forged")).status).toBe(401)
@@ -292,17 +297,44 @@ describe("the account's machines", () => {
 })
 
 describe("GET /link", () => {
-  it("serves the page with Clerk loaded from the key's Frontend API", async () => {
-    const response = await call("GET", "/link?code=ABCD-EFGH")
-    expect(response.headers.get("Content-Type")).toContain("text/html")
-    const html = await response.text()
-    expect(html).toContain('src="https://example.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js"')
-    expect(html).toContain("Return to HinaCode. It connects on its own.")
-  })
-
   it("refuses to be framed, so Approve cannot be clicked through an overlay", async () => {
     const response = await call("GET", "/link?code=ABCD-EFGH")
     expect(response.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'none'")
     expect(response.headers.get("X-Frame-Options")).toBe("DENY")
+  })
+})
+
+describe("POST /v1/owner/token", () => {
+  beforeEach(() => {
+    app = makeApp({
+      verifyUser: verifyOwner,
+      cloudflare: cloudflare.fetch,
+      now: () => clock,
+      random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
+    })
+  })
+
+  it("replaces the owner token, so the old one stops working", async () => {
+    expect((await call("GET", "/v1/hosts", { bearer: env.OWNER_TOKEN })).status).toBe(200)
+
+    const rotated = await call("POST", "/v1/owner/token", { bearer: env.OWNER_TOKEN })
+    expect(rotated.status).toBe(200)
+    const { token } = (await rotated.json()) as { token: string }
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+
+    expect((await call("GET", "/v1/hosts", { bearer: env.OWNER_TOKEN })).status).toBe(401)
+    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(200)
+    const stored = await env.DB.prepare("SELECT token_hash FROM owner").first<string>("token_hash")
+    expect(stored).not.toBe(token)
+
+    const again = await call("POST", "/v1/owner/token", { bearer: token })
+    const { token: next } = (await again.json()) as { token: string }
+    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(401)
+    expect((await call("GET", "/v1/hosts", { bearer: next })).status).toBe(200)
+  })
+
+  it("needs the current owner token", async () => {
+    expect((await call("POST", "/v1/owner/token")).status).toBe(401)
+    expect((await call("POST", "/v1/owner/token", { bearer: "guess" })).status).toBe(401)
   })
 })

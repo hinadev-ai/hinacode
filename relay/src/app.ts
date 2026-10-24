@@ -1,13 +1,13 @@
 import { Option, Schema } from "effect"
 import { Hono, type Context } from "hono"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
-import { frontendApiHost, linkPage } from "./page"
+import { linkPage } from "./page"
 
 export type { Fetch } from "./cloudflare"
 
 export interface Deps {
-  /** The Clerk user id behind the request's bearer, or null when it has none or an invalid one. */
-  verifyUser(request: Request): Promise<string | null>
+  /** The user id behind the request's bearer, or null when it has none or an invalid one. */
+  verifyUser(request: Request, env: Env): Promise<string | null>
   /** Reaches the Cloudflare API. */
   cloudflare: Fetch
   now(): number
@@ -58,7 +58,7 @@ const toBase64Url = (bytes: Uint8Array) =>
     .replace(/\//g, "_")
     .replace(/=+$/, "")
 
-const sha256 = async (value: string) =>
+export const sha256 = async (value: string) =>
   toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
 
 /** Accepts a code as typed, in any case and with or without the dash. */
@@ -135,12 +135,10 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/link", (c) => {
-    const frontendApi = frontendApiHost(c.env.CLERK_PUBLISHABLE_KEY)
-    if (!frontendApi) return c.text("CLERK_PUBLISHABLE_KEY is not a Clerk publishable key.", 500)
     // A framed Approve button could be clicked through an overlay, linking someone else's machine.
     c.header("Content-Security-Policy", "frame-ancestors 'none'")
     c.header("X-Frame-Options", "DENY")
-    return c.html(linkPage(c.env.CLERK_PUBLISHABLE_KEY, frontendApi))
+    return c.html(linkPage)
   })
 
   app.post("/v1/links/claim", async (c) => {
@@ -173,15 +171,15 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/links/:userCode", async (c) => {
-    if (!(await deps.verifyUser(c.req.raw))) return fail(c, 401, "Sign in to HinaCode first.")
+    if (!(await deps.verifyUser(c.req.raw, c.env))) return fail(c, 401, "Enter the owner token first.")
     const link = await pendingLink(c.env, c.req.param("userCode"))
     if (!link) return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
     return c.json({ name: link.name, environmentId: link.environment_id })
   })
 
   app.post("/v1/links/:userCode", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw)
-    if (!userId) return fail(c, 401, "Sign in to HinaCode first.")
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
     const link = await pendingLink(c.env, c.req.param("userCode"))
     if (!link) return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
     if (link.user_id && link.user_id !== userId) return fail(c, 409, "Another account already approved this machine.")
@@ -232,8 +230,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/hosts", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw)
-    if (!userId) return fail(c, 401, "Sign in to HinaCode first.")
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
     const { results } = await c.env.DB.prepare("SELECT * FROM host WHERE user_id = ? ORDER BY created_at, id")
       .bind(userId)
       .all<HostRow>()
@@ -248,14 +246,25 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.delete("/v1/hosts/:id", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw)
-    if (!userId) return fail(c, 401, "Sign in to HinaCode first.")
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
     const host = await c.env.DB.prepare("SELECT * FROM host WHERE id = ? AND user_id = ?")
       .bind(c.req.param("id"), userId)
       .first<HostRow>()
     if (!host) return fail(c, 404, "No machine with this id is linked to your account.")
     await removeHost(c.env, host)
     return c.body(null, 204)
+  })
+
+  app.post("/v1/owner/token", async (c) => {
+    if (!(await deps.verifyUser(c.req.raw, c.env))) return fail(c, 401, "Enter the owner token first.")
+    const token = toBase64Url(deps.random(32))
+    await c.env.DB.prepare(
+      "INSERT INTO owner (id, token_hash) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET token_hash = excluded.token_hash",
+    )
+      .bind(await sha256(token))
+      .run()
+    return c.json({ token })
   })
 
   return app

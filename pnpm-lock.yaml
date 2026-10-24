@@ -409,9 +409,6 @@ importers:
 
   relay:
     dependencies:
-      '@clerk/backend':
-        specifier: 3.26.0
-        version: 3.26.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       effect:
         specifier: 4.0.3
         version: 4.0.3
@@ -1052,22 +1049,6 @@ packages:
   '@clack/prompts@1.8.1':
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
-
-  '@clerk/backend@3.26.0':
-    resolution: {integrity: sha512-YSrWNakOSPzY03/vkwm21RoGjTH/ejSKJLTixOQjOQu6N51MgHI/Weo3j1RYqicR4YJqj/5qGKFR6ixJbqFaWQ==}
-    engines: {node: '>=20.9.0'}
-
-  '@clerk/shared@4.41.0':
-    resolution: {integrity: sha512-zLdeVxfPBOwmiDqHh3Z2y3ub/4u84zOSlEUKPDpFAibMdW1OyboPw+DIU/seH9UXDpCQCNHl6lfKUE9LLIBvfw==}
-    engines: {node: '>=20.9.0'}
-    peerDependencies:
-      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
-      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
-    peerDependenciesMeta:
-      react:
-        optional: true
-      react-dom:
-        optional: true
 
   '@cloudflare/kv-asset-handler@0.5.0':
     resolution: {integrity: sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg==}
@@ -3078,9 +3059,6 @@ packages:
     resolution: {integrity: sha512-uFKTuknj3sNp5ERoxsI0ISMMOVw3KmSkgy2iIcp19QR/zheYm7bkwzNndMv5NDAqhXpavOn6h4A6HPVJFCBXPg==}
     engines: {node: '>=20'}
 
-  '@tanstack/query-core@5.104.5':
-    resolution: {integrity: sha512-Q94gI8Opd+CbdVNOdj8ZCyV8WqLYitrDq1t96Xc8WZT6lY0r5iRnJLXYDxMex7EEf2v+mXvn4FcjaBKSxXZQ9A==}
-
   '@tanstack/react-hotkeys@0.13.0':
     resolution: {integrity: sha512-+iF7bQe1YegbMa/mL7Zl490OXjSuGLlu2IPYd2YcvdeI8OcTHfdENPrRNk7PklWQ2WAIJjCVxMXiQ/Uiq8fzIQ==}
     engines: {node: '>=20'}
@@ -4712,9 +4690,6 @@ packages:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
 
-  glob-to-regexp@0.4.1:
-    resolution: {integrity: sha512-lkX1HJXwyMcprw/5YUZc2s7DrpAiHB21/V+E1rHUrVNokkvB6bqMzT0VfV6/86ZNabt1k14YOIaT7nDvOX3Iiw==}
-
   glob@13.0.6:
     resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
     engines: {node: 18 || 20 || >=22}
@@ -5019,9 +4994,6 @@ packages:
 
   jose@6.2.12:
     resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
-
-  js-cookie@3.0.8:
-    resolution: {integrity: sha512-yeJd4aNAdYZQjaon2bpD/Gb0B/omw7HQOsynXXcOiWVCacbBcPlgn8S/d1X6blFSaHao7ozqtW7NZW19xpCtIw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -8117,25 +8089,6 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
-  '@clerk/backend@3.26.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
-    dependencies:
-      '@clerk/shared': 4.41.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      standardwebhooks: 1.1.1
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - react
-      - react-dom
-
-  '@clerk/shared@4.41.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
-    dependencies:
-      '@tanstack/query-core': 5.104.5
-      dequal: 2.0.3
-      glob-to-regexp: 0.4.1
-      js-cookie: 3.0.8
-    optionalDependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-
   '@cloudflare/kv-asset-handler@0.5.0': {}
 
   '@cloudflare/unenv-preset@2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261012.1)':
@@ -9745,8 +9698,6 @@ snapshots:
   '@tanstack/hotkeys@0.11.0':
     dependencies:
       '@tanstack/store': 0.11.2
-
-  '@tanstack/query-core@5.104.5': {}
 
   '@tanstack/react-hotkeys@0.13.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
@@ -11638,8 +11589,6 @@ snapshots:
     dependencies:
       is-glob: 4.0.3
 
-  glob-to-regexp@0.4.1: {}
-
   glob@13.0.6:
     dependencies:
       minimatch: 10.2.6
@@ -11951,8 +11900,6 @@ snapshots:
   jiti@2.7.0: {}
 
   jose@6.2.12: {}
-
-  js-cookie@3.0.8: {}
 
   js-tokens@4.0.0: {}
 
