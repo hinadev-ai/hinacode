@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { type RpcMethod, RpcMethods } from "../../shared/contract.ts"
+import { type RpcMethod, RpcMethods } from "./contract.ts"
 import { routes } from "./routes.ts"
 
 describe("routes", () => {

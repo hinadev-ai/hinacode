@@ -50,7 +50,7 @@ Project           = { ...today, environmentId?: string,      // set by this desk
 
 ### Routing
 
-`src/main/environments/routes.ts` holds `routes: Record<RpcMethod, Route>`. [ADR 0017](../adr/0017-route-desktop-calls-by-owner.md) records why routing is by owner and not by an active environment. The `Record` type makes every new rpc method choose a route before it compiles.
+`src/shared/routes.ts` holds `routes: Record<RpcMethod, Route>`. [ADR 0017](../adr/0017-route-desktop-calls-by-owner.md) records why routing is by owner and not by an active environment. The `Record` type makes every new rpc method choose a route before it compiles.
 
 ```ts
 type Route =
@@ -98,6 +98,6 @@ The pairing URL crosses from the renderer to main once, in `environments.add`, d
 ## Verification
 
 - `src/main/services/Environments.integration.test.ts` runs against a real SQLite file and a real remote listener on a loopback port. It covers pairing, re-pairing converging on one row, a wrong token as `unauthorized`, forwarding by owner and by name, the merged `threads.list`, a cloud's push reaching the window and not the phone sinks, and pending calls surviving a cloud reconnect.
-- `src/main/environments/routes.test.ts` checks that every route's `key` is a field of that method's request.
+- `src/shared/routes.test.ts` checks that every route's `key` is a field of that method's request.
 - `src/renderer/lib/projectGroups.test.ts` covers grouping: one group across machines, one project per machine per group, and no grouping without a repository. `Projects.integration.test.ts` reads `repository` from real temp repositories with an SSH and an HTTPS `origin`, a subfolder project and no `origin`.
 - By hand, the desktop on macOS (its own `HINACODE_USER_DATA`) pairs with the VM's cloud. It lists the cloud's project and threads with a cloud icon among this machine's, adds a project on the cloud, sends a message there, and the turn runs on the VM. It also edits that cloud's default model, and crosses out the cloud icon after the daemon stops. Screenshots in light and dark.

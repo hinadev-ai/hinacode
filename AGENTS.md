@@ -36,7 +36,7 @@ src/main      Main process. One Effect layer graph (app.ts), run by Electron (in
   ipc.ts      rpc handlers; security.ts for navigation, external links and sender checks
 src/preload   contextBridge exposing window.hinacode { rpc, onEvent, pathForFile }
 src/renderer  React 19, TanStack Router, zustand stores, Tailwind 4, shadcn on Base UI
-src/shared    Effect Schema contracts only: contract.ts (rpc method map), domain.ts, agent.ts
+src/shared    Effect Schema contracts (contract.ts rpc method map, domain.ts, agent.ts) and pure code both apps run, such as routes.ts
 messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 ```
 

@@ -12,8 +12,8 @@ import {
   remoteWebSocketUrl,
   ServerFrame,
 } from "../../shared/remote.ts"
-import { learnFromAnswer, learnFromPush, makeOwners } from "../environments/owners.ts"
-import type { Entity } from "../environments/routes.ts"
+import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "../../shared/owners.ts"
+import type { Entity } from "../../shared/routes.ts"
 import { unreachableMessage } from "../environments/unreachable.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
@@ -93,21 +93,6 @@ const incompatible = (name: string): RpcEnvelope<never> => ({
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
-
-/** Answers that carry projects, which this desktop stamps with the cloud they came from. */
-const projectAnswers: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
-  "projects.list",
-  "projects.create",
-  "projects.clone",
-  "projects.update",
-])
-
-const stamp = (result: unknown, environmentId: string): unknown =>
-  Array.isArray(result)
-    ? result.map((project) => stamp(project, environmentId))
-    : typeof result === "object" && result !== null
-      ? { ...result, environmentId }
-      : result
 
 const decodeServerFrame = Schema.decodeUnknownOption(ServerFrame)
 
@@ -630,7 +615,7 @@ const make = Effect.gen(function* () {
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
           learnFromAnswer(owners, environmentId, method, payload, envelope.result)
-          const result = projectAnswers.has(method) ? stamp(envelope.result, environmentId) : envelope.result
+          const result = stampProjects(method, envelope.result, environmentId)
           cloud.remembered.set(method, { payload: JSON.stringify(payload ?? null), result })
           return { result }
         }),

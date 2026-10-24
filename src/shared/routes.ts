@@ -1,4 +1,4 @@
-import type { RpcMethod } from "../../shared/contract.ts"
+import type { RpcMethod } from "./contract.ts"
 
 /** What an id in a payload names, for finding which environment owns it. */
 export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
