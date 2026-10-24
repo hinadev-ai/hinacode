@@ -5,6 +5,7 @@ import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "reac
 import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
+import { useIsChat } from "../lib/useIsChat.ts"
 import { repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
@@ -98,6 +99,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const load = useMessages((state) => state.load)
   const unload = useMessages((state) => state.unload)
   const label = providerLabel[thread.provider]()
+  const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const findQuery = useDebouncedValue(
     useUi((state) => state.findQuery),
@@ -146,7 +148,9 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           {worktree?.status === "preparing" ? (
             <WorktreePreparation worktree={worktree} />
           ) : (
-            <EmptyThread providerLabel={label} />
+            <EmptyThread
+              hint={isChat ? m.thread_empty_chat_hint({ provider: label }) : m.thread_empty_hint({ provider: label })}
+            />
           )}
           <div className="h-(--dock-height) shrink-0" />
         </>

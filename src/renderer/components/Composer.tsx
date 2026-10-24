@@ -19,6 +19,7 @@ import { type Thread, toCheckoutTarget } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
+import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
@@ -101,6 +102,7 @@ export function Composer({ thread }: { thread: Thread }) {
     const history = state.byThread[thread.id]
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
   })
+  const isChat = useIsChat(thread.projectId)
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
@@ -286,7 +288,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>
-      {unstarted && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
+      {unstarted && !isChat && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
       {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )
