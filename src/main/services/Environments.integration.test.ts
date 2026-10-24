@@ -27,6 +27,7 @@ import {
   type ClientFrame,
   DIRECT_CHECK_INTERVAL_MS,
   pairingUrl,
+  RELAY_DELAY_MS,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
   type ServerFrame,
@@ -36,7 +37,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
-import { CLOSE_TOKEN_ROTATED, RemoteAccess } from "../remote/access.ts"
+import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { ClientSettings } from "./ClientSettings.ts"
 import { Environments, type ForwardedCall } from "./Environments.ts"
@@ -384,8 +385,12 @@ interface ScriptedOptions {
   readonly relay?: string
   /** Serves wss, as a relay does. Its `ready` names `127.0.0.1:<port>` as the relay, unless `relay` says otherwise. */
   readonly tls?: { readonly key: string; readonly cert: string }
-  /** Accepts the connection but never answers the WebSocket upgrade, like an address that hangs. */
+  /** Accepts the connection but answers the WebSocket upgrade only on `answerHeld`, like an address that hangs. */
   readonly holdUpgrades?: boolean
+  /** Answers this many WebSocket upgrades and drops the rest, like an address that stopped answering. */
+  readonly answeredUpgrades?: number
+  /** Closes with `CLOSE_UNAUTHORIZED` instead of answering `auth`, like someone else's HinaCode. */
+  readonly refuse?: boolean
 }
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
@@ -393,14 +398,23 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   const http = options.tls === undefined ? createHttpServer() : createHttpsServer(options.tls)
   const server = new WebSocketServer({ noServer: true, autoPong: options.autoPong ?? true })
   const held: Array<Duplex> = []
+  const waiting: Array<() => void> = []
+  let upgrades = 0
+  let dials = 0
+  http.on("connection", () => dials++)
   http.on("upgrade", (request, socket, head) => {
-    if (options.holdUpgrades) {
-      held.push(socket)
-      // An upgraded socket has left the HTTP parser, so a client hanging up only ends its half.
-      return void socket.on("end", () => socket.destroy())
-    }
+    upgrades++
     if (request.url !== REMOTE_PATH) return void socket.destroy()
-    server.handleUpgrade(request, socket, head, (ws) => server.emit("connection", ws, request))
+    if (upgrades > (options.answeredUpgrades ?? Infinity)) return void socket.destroy()
+    const answer = () => {
+      if (socket.destroyed) return
+      server.handleUpgrade(request, socket, head, (ws) => server.emit("connection", ws, request))
+    }
+    if (!options.holdUpgrades) return answer()
+    held.push(socket)
+    waiting.push(answer)
+    // An upgraded socket has left the HTTP parser, so a client hanging up only ends its half.
+    socket.on("end", () => socket.destroy())
   })
   const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
   const auths: Array<string> = []
@@ -415,6 +429,7 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
       if (frame.type === "call") calls.push(frame)
       if (frame.type !== "auth") return
       auths.push(frame.token)
+      if (options.refuse) return socket.close(CLOSE_UNAUTHORIZED)
       current = socket
       const relay = options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`)
       const ready: ServerFrame = {
@@ -440,7 +455,14 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     calls,
     auths,
     connections: () => connections,
+    upgrades: () => upgrades,
+    /** Sockets that reached this cloud, counted before TLS or the WebSocket upgrade. */
+    dials: () => dials,
     held,
+    /** Answers every held upgrade whose client still waits. */
+    answerHeld: () => {
+      for (const answer of waiting.splice(0)) answer()
+    },
     holdReady: () => {
       holdReady = true
     },
@@ -818,18 +840,27 @@ describe("desktop environments over a flaky link", () => {
     return direct.port
   }
 
-  const connectedTwice = (id: string) =>
+  const connectedTimes = (id: string, times: number) =>
     vi.waitFor(async () => {
       await adjust("500 millis")
-      expect(electron.pushes.filter(statusOf(id, "connected"))).toHaveLength(2)
+      expect(electron.pushes.filter(statusOf(id, "connected"))).toHaveLength(times)
     })
+
+  /** Advances the clock in 10-second steps, waiting for the cloud's pong each time so the link never goes silent. */
+  const passHeard = async (id: string, ms: number) => {
+    for (let passed = 0; passed < ms; passed += 10_000) {
+      const before = await testTime()
+      await adjust("10 seconds")
+      await vi.waitFor(async () => expect(Date.parse((await listed(id))?.lastSeenAt ?? "")).toBeGreaterThan(before))
+    }
+  }
 
   test("connects through the relay while the direct address hangs, and closes that socket unsent", async () => {
     const relay = await scriptedCloud("hung-direct", { tls })
     const port = await pairThenLoseDirect("hung-direct", relay.relay)
     const hung = await scriptedCloud("hung-direct", { port, holdUpgrades: true })
     try {
-      await connectedTwice("hung-direct")
+      await connectedTimes("hung-direct", 2)
       expect(relay.auths).toStrictEqual(["token"])
       expect(hung.held.length).toBeGreaterThan(0)
       await vi.waitFor(() => expect(hung.held.every((socket) => socket.destroyed)).toBe(true))
@@ -848,17 +879,11 @@ describe("desktop environments over a flaky link", () => {
   test("moves from the relay to the direct address within a minute of it answering", async () => {
     const relay = await scriptedCloud("to-direct", { tls })
     const port = await pairThenLoseDirect("to-direct", relay.relay)
-    await connectedTwice("to-direct")
+    await connectedTimes("to-direct", 2)
     const relaySession = relay.socket()
     const direct = await scriptedCloud("to-direct", { port, relay: relay.relay })
     try {
-      for (let step = 1; step < DIRECT_CHECK_INTERVAL_MS / 10_000; step++) {
-        const before = await testTime()
-        await adjust("10 seconds")
-        await vi.waitFor(async () =>
-          expect(Date.parse((await listed("to-direct"))?.lastSeenAt ?? "")).toBeGreaterThan(before),
-        )
-      }
+      await passHeard("to-direct", DIRECT_CHECK_INTERVAL_MS - 10_000)
       expect(direct.connections()).toBe(0)
       expect(relaySession.readyState).toBe(WebSocket.OPEN)
 
@@ -874,6 +899,98 @@ describe("desktop environments over a flaky link", () => {
       expect(relay.calls).toStrictEqual([])
     } finally {
       await remove("to-direct")
+      relay.stop()
+      direct.stop()
+    }
+  })
+
+  test("a stranger refusing the token at the direct address leaves the link on the relay until it drops", async () => {
+    const relay = await scriptedCloud("stranger", { tls })
+    const port = await pairThenLoseDirect("stranger", relay.relay)
+    const stranger = await scriptedCloud("someone-else", { port, refuse: true })
+    try {
+      await connectedTimes("stranger", 2)
+      expect(relay.auths).toStrictEqual(["token"])
+      // The race and the refused session each opened one.
+      expect(stranger.connections()).toBe(2)
+      await passHeard("stranger", 2 * DIRECT_CHECK_INTERVAL_MS)
+      expect(stranger.connections()).toBe(2)
+
+      relay.socket().terminate()
+      await pushedEventually(statusOf("stranger", "offline"))
+      await connectedTimes("stranger", 3)
+      expect(stranger.connections()).toBe(4)
+      expect(relay.auths).toStrictEqual(["token", "token"])
+      expect(electron.pushes.some(statusOf("stranger", "unauthorized"))).toBe(false)
+    } finally {
+      await remove("stranger")
+      relay.stop()
+      stranger.stop()
+    }
+  })
+
+  test("a refusal over the relay still stops the link as unauthorized", async () => {
+    const relay = await scriptedCloud("relay-refuses", { tls, refuse: true })
+    await pairThenLoseDirect("relay-refuses", relay.relay)
+    try {
+      await vi.waitFor(async () => {
+        await adjust("500 millis")
+        expect(electron.pushes.some(statusOf("relay-refuses", "unauthorized"))).toBe(true)
+      })
+      await adjust("2 minutes")
+      expect(relay.auths).toStrictEqual(["token"])
+    } finally {
+      await remove("relay-refuses")
+      relay.stop()
+    }
+  })
+
+  test("once the minute check finds a direct address slower than the relay, the next round dials it alone", async () => {
+    const relay = await scriptedCloud("slow-direct", { tls })
+    const port = await pairThenLoseDirect("slow-direct", relay.relay)
+    const direct = await scriptedCloud("slow-direct", { port, relay: relay.relay, holdUpgrades: true })
+    try {
+      await connectedTimes("slow-direct", 2)
+      expect(relay.auths).toStrictEqual(["token"])
+      const relaySession = relay.socket()
+      const relayDials = relay.dials()
+
+      await passHeard("slow-direct", DIRECT_CHECK_INTERVAL_MS - 10_000)
+      const raced = direct.upgrades()
+      await adjust("10 seconds")
+      await vi.waitFor(() => expect(direct.upgrades()).toBe(raced + 1))
+      direct.answerHeld()
+      await vi.waitFor(() => expect(relaySession.readyState).toBe(WebSocket.CLOSED))
+      await vi.waitFor(() => expect(direct.upgrades()).toBe(raced + 2))
+      // Long enough for a relay in this round to win, and short of the round's timeout.
+      await adjust("1 second")
+      await vi.waitFor(() => {
+        direct.answerHeld()
+        expect(direct.auths).toStrictEqual(["token"])
+      })
+      expect(relay.dials()).toBe(relayDials)
+      expect(relay.auths).toStrictEqual(["token"])
+    } finally {
+      await remove("slow-direct")
+      relay.stop()
+      direct.stop()
+    }
+  })
+
+  test("a direct address gone between the minute check and its round falls back to the relay without a backoff", async () => {
+    const relay = await scriptedCloud("gone-direct", { tls })
+    const port = await pairThenLoseDirect("gone-direct", relay.relay)
+    await connectedTimes("gone-direct", 2)
+    const direct = await scriptedCloud("gone-direct", { port, answeredUpgrades: 1 })
+    try {
+      await passHeard("gone-direct", DIRECT_CHECK_INTERVAL_MS - 10_000)
+      await adjust("10 seconds")
+      // The check, the direct round and the race after it, with no time passing for a backoff.
+      await vi.waitFor(() => expect(direct.upgrades()).toBe(3))
+      await adjust(RELAY_DELAY_MS)
+      await vi.waitFor(() => expect(relay.auths).toStrictEqual(["token", "token"]))
+    } finally {
+      await remove("gone-direct")
       relay.stop()
       direct.stop()
     }
