@@ -286,11 +286,11 @@ function ReplyText({ text, done }: { text: string; done: boolean }) {
   )
 }
 
-export function EmptyThread({ providerLabel }: { providerLabel: string }) {
+export function EmptyThread({ hint }: { hint: string }) {
   return (
     <div className="m-auto flex max-w-sm flex-col items-center gap-1 px-4 text-center">
       <h2 className="text-sm font-semibold">{m.thread_empty_title()}</h2>
-      <p className="text-sm text-muted-foreground">{m.thread_empty_hint({ provider: providerLabel })}</p>
+      <p className="text-sm text-muted-foreground">{hint}</p>
     </div>
   )
 }

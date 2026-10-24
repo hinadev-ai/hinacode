@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
@@ -51,6 +54,19 @@ describe("Threads", () => {
       yield* sql`PRAGMA ignore_check_constraints = OFF`
       const listed = yield* threads.list
       expect(listed.map((thread) => thread.id)).toStrictEqual([threadId])
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("starts chats in conversation mode", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const chats = yield* Projects.Projects.use((projects) =>
+        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
+      )
+      const { projectId } = yield* seedThread({ rootPath: "/repo" })
+      const create = (id: string) => threads.create({ projectId: id, title: "t", provider: "claude", model: "m" })
+      expect((yield* create(chats.id)).userSkills).toBe(false)
+      expect((yield* create(projectId)).userSkills).toBe(true)
     }).pipe(Effect.provide(threadsLayer)),
   )
 })

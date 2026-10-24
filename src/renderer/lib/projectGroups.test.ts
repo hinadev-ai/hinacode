@@ -8,6 +8,7 @@ const project = (id: string, extra: Partial<Project> = {}): Project => ({
   rootPath: `/code/${id}`,
   setupScript: null,
   linearReview: false,
+  kind: "folder",
   createdAt: "2026-10-15T00:00:00.000Z",
   updatedAt: "2026-10-15T00:00:00.000Z",
   ...extra,

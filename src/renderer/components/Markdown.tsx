@@ -1,11 +1,9 @@
-import type { Mermaid, MermaidConfig } from "mermaid"
 import { cn } from "cn"
-import { isValidElement, type ReactNode, use, useEffect, useId, useState } from "react"
+import { isValidElement, type ReactNode, use, useEffect, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
-import { resolveColor, useTheme } from "../lib/appearance.ts"
 import type { EnvironmentId } from "../lib/rpc.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
@@ -205,36 +203,11 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
   )
 }
 
-let mermaidLoader: Promise<Mermaid> | undefined
-
-/** Mermaid is large, so it loads on the first diagram rather than with the app. */
-const loadMermaid = () => (mermaidLoader ??= import("mermaid").then(({ default: mermaid }) => mermaid))
-
-/** Mermaid derives shades from these with its own color math, so they are passed as resolved hex. */
-const mermaidConfig = (appearance: Appearance, scheme: "dark" | "light"): MermaidConfig => ({
-  startOnLoad: false,
-  theme: "base",
-  securityLevel: "strict",
-  fontFamily:
-    appearance.uiFont === null
-      ? getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans")
-      : JSON.stringify(appearance.uiFont),
-  themeVariables: {
-    darkMode: scheme === "dark",
-    fontSize: "12px",
-    primaryColor: resolveColor("--muted"),
-    primaryTextColor: resolveColor("--foreground"),
-    // Not --border: flattened over the dark background it is darker than the node fill, so a flat stroke vanishes.
-    primaryBorderColor: resolveColor("--muted-foreground"),
-    lineColor: resolveColor("--muted-foreground"),
-    secondaryColor: resolveColor("--muted"),
-    tertiaryColor: resolveColor("--card"),
-    edgeLabelBackground: resolveColor("--card"),
-    // Mermaid 12's base theme draws a gray drop shadow and gradient borders around nodes; the transcript stays flat.
-    dropShadow: "none",
-    useGradient: false,
-  },
-})
+/** Pele measures labels in this font to size nodes, so the UI font has to be known before rendering. */
+const diagramFont = (uiFont: Appearance["uiFont"]) =>
+  uiFont === null
+    ? getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans")
+    : JSON.stringify(uiFont)
 
 type Diagram =
   | { readonly status: "rendering" }
@@ -245,23 +218,18 @@ type Diagram =
 const RENDER_DELAY_MS = 250
 
 function MermaidDiagram({ code }: { code: string }) {
-  const id = `mermaid-${useId().replace(/[^a-zA-Z0-9]/g, "")}`
   const [diagram, setDiagram] = useState<Diagram>({ status: "rendering" })
-  const { appearance } = useClientSettings()
-  const theme = useTheme(appearance.theme)
+  const { uiFont } = useClientSettings().appearance
 
   useEffect(() => {
     let cancelled = false
-    const render = async (): Promise<Diagram> => {
-      const mermaid = await loadMermaid()
-      mermaid.initialize(mermaidConfig(appearance, theme.scheme))
-      // Checking first keeps an invalid source from leaving mermaid's error graphic in the document.
-      if (!(await mermaid.parse(code, { suppressErrors: true }))) return { status: "failed" }
-      const { svg } = await mermaid.render(id, code)
-      return { status: "done", svg }
-    }
     const timer = setTimeout(() => {
-      void render()
+      // Links and images are off so a diagram an agent wrote cannot make network requests.
+      void import("pele/lazy")
+        .then(({ renderAsync }) =>
+          renderAsync(code, { fontFamily: diagramFont(uiFont), fontSize: 12, links: false, images: false }),
+        )
+        .then(({ svg }): Diagram => ({ status: "done", svg }))
         .catch((): Diagram => ({ status: "failed" }))
         .then((next) => !cancelled && setDiagram(next))
     }, RENDER_DELAY_MS)
@@ -269,7 +237,7 @@ function MermaidDiagram({ code }: { code: string }) {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [code, id, appearance, theme.scheme])
+  }, [code, uiFont])
 
   return (
     <CodeFigure label="mermaid" code={code}>
@@ -280,7 +248,7 @@ function MermaidDiagram({ code }: { code: string }) {
         />
       )}
       {diagram.status === "done" && (
-        // Mermaid sanitizes its own output under securityLevel "strict".
+        // Pele escapes diagram text and emits no scripts or event handlers, so its SVG is safe to inject.
         <div
           className="overflow-x-auto p-3 transition-opacity duration-200 ease-out starting:opacity-0 [&_svg]:mx-auto"
           dangerouslySetInnerHTML={{ __html: diagram.svg }}
