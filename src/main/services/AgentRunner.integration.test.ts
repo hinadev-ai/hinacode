@@ -533,6 +533,22 @@ const acceptedTurnWithEdits = async (probe: Probe) => {
   return { baseline, changes, messages }
 }
 
+it("tells the agent the branch and paths it works in", async () => {
+  await withPreparingThread(async (probe) => {
+    probe.release()
+    await Effect.runPromise(probe.runner.send(probe.thread.id, "accepted input", []))
+    await probe.idle
+    const worktree = await Effect.runPromise(probe.worktrees.get(probe.thread.worktreeId!))
+
+    expect(probe.turns[0]?.input.instructions).toContain(`<environment>
+  git branch: \`fix/pending\`
+  current project path: \`${worktree.path}\`
+  root project path: \`${probe.root}\`
+  remote: \`(none)\`
+</environment>`)
+  })
+})
+
 it("preserves the accepted turn baseline when a watch stops during snapshot capture", async () => {
   await withPreparingThread(async (probe) => {
     const before = await acceptedTurnWithEdits(probe)

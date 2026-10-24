@@ -43,7 +43,7 @@ import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
-import { agentInstructions } from "../agents/instructions.ts"
+import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
@@ -57,7 +57,7 @@ import {
   ThreadStartedError,
   type WorktreeTakenError,
 } from "./errors.ts"
-import type { CommandError } from "./Git.ts"
+import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
@@ -67,7 +67,7 @@ import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
-import { makeActiveWorkspace } from "./workspace.ts"
+import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
 /** Streaming persists wait this many times as long as the last one took, capping them near a tenth of the main thread. */
@@ -260,6 +260,7 @@ const make = Effect.gen(function* () {
   const scope = yield* Effect.scope
   const threads = yield* Threads
   const worktrees = yield* Worktrees
+  const git = yield* Git
   const pullRequests = yield* PullRequests
   const messages = yield* Messages
   const push = yield* Events
@@ -356,6 +357,18 @@ const make = Effect.gen(function* () {
   }
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
+
+  /** Trimmed stdout, or null when git fails or prints nothing, such as on a detached HEAD or without an origin. */
+  const gitOutput = (cwd: string, args: ReadonlyArray<string>) =>
+    git.run(cwd, args).pipe(
+      Effect.map((out) => out.trim() || null),
+      Effect.orElseSucceed(() => null),
+    )
+
+  const readEnvironment = ({ cwd, rootPath }: ActiveWorkspace) =>
+    Effect.all([gitOutput(cwd, ["branch", "--show-current"]), gitOutput(cwd, ["remote", "get-url", "origin"])], {
+      concurrency: "unbounded",
+    }).pipe(Effect.map(([branch, remote]): AgentEnvironment => ({ branch, cwd, rootPath, remote })))
 
   const insertMessage = (message: Message) =>
     messages.insert(message).pipe(Effect.andThen(publishTranscript({ type: "message.created", message })))
@@ -491,7 +504,7 @@ const make = Effect.gen(function* () {
         Effect.ensuring(finish),
       )
 
-    const run = (prompt: string, attachments: ReadonlyArray<Attachment>) =>
+    const run = (prompt: string, attachments: ReadonlyArray<Attachment>, environment: AgentEnvironment) =>
       follow(
         Stream.unwrap(
           Effect.gen(function* () {
@@ -516,7 +529,7 @@ const make = Effect.gen(function* () {
               resumeSessionId: thread.providerSessionId,
               home,
               mcpServer,
-              instructions: agentInstructions(experimental),
+              instructions: agentInstructions(experimental, environment),
             })
           }),
         ),
@@ -582,14 +595,17 @@ const make = Effect.gen(function* () {
             }
             const provider = yield* providerFor(thread.provider)
             const home = yield* accounts.home(thread.accountId)
-            const { cwd, worktreeId } = yield* activeWorkspace(threadId)
+            const workspace = yield* activeWorkspace(threadId)
+            const { cwd, worktreeId } = workspace
             if (sentToWorktreeId !== null && worktreeId !== sentToWorktreeId) {
               return yield* new AgentError({
                 provider: "hinacode",
                 message: "This thread's worktree was removed before the turn started",
               })
             }
-            const tree = yield* threads.captureTurnBase(cwd)
+            const [tree, environment] = yield* Effect.all([threads.captureTurnBase(cwd), readEnvironment(workspace)], {
+              concurrency: "unbounded",
+            })
             yield* checkStopped
             if (!(yield* when)) return null
             yield* threads.recordTurnBase({ threadId, tree })
@@ -598,14 +614,14 @@ const make = Effect.gen(function* () {
             yield* insertMessage(userMessage(threadId, prompt, attachments, now))
             yield* insertMessage(assistant)
             yield* updateThread({ id: threadId, status: "running" })
-            return { thread, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
+            return { thread, environment, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
           }),
         )
         if (admitted === null) return false
-        const { thread: currentThread, turn } = admitted
+        const { thread: currentThread, environment, turn } = admitted
         activeTurns.set(threadId, turn)
         pendingSends.delete(threadId)
-        yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments))
+        yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments, environment))
         if (pending.first && currentThread.createdBy === "user" && prompt.trim() !== "")
           yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
         return true

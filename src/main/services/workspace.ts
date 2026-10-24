@@ -4,6 +4,7 @@ import { NotFoundError, persistence } from "./errors.ts"
 
 export const ActiveWorkspace = Schema.Struct({
   cwd: Schema.String,
+  rootPath: Schema.String,
   /** The live worktree the thread works in, null when it works in the project root. */
   worktreeId: Schema.NullOr(Schema.String),
   /** The ref the worktree branched from, null when the thread works in the project root. */
@@ -22,7 +23,7 @@ export const makeActiveWorkspace = Effect.gen(function* () {
     Request: Schema.String,
     Result: ActiveWorkspace,
     execute: (threadId) => sql`
-      SELECT COALESCE(worktree.path, project.root_path) AS cwd, worktree.id AS worktree_id, worktree.base_ref
+      SELECT COALESCE(worktree.path, project.root_path) AS cwd, project.root_path, worktree.id AS worktree_id, worktree.base_ref
       FROM thread
       JOIN project ON project.id = thread.project_id
       LEFT JOIN worktree ON worktree.id = thread.worktree_id AND worktree.status != 'removed'
