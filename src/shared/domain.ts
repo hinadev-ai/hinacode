@@ -983,6 +983,13 @@ export const RemoteStatus = Schema.Struct({
 })
 export type RemoteStatus = typeof RemoteStatus.Type
 
+/** An address the remote listener can bind to, such as `{ name: "tailscale0", address: "100.64.0.2" }`. */
+export const NetworkAddress = Schema.Struct({
+  name: Schema.String,
+  address: Schema.String,
+})
+export type NetworkAddress = typeof NetworkAddress.Type
+
 /** Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first. */
 export const RemotePairing = Schema.Struct({
   hosts: Schema.NonEmptyArray(Schema.String),

@@ -26,7 +26,7 @@ import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
-import { RemoteAccess } from "./remote/access.ts"
+import { networkAddresses, RemoteAccess } from "./remote/access.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
@@ -369,6 +369,7 @@ const handlers: Handlers = {
 
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
+  "remote.addresses": () => Effect.sync(() => networkAddresses()),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
 }
 
