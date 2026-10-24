@@ -1,38 +1,13 @@
 import type { ReactNode } from "react"
-import { Pressable, type PressableProps, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native"
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated"
+import { type PressableProps, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native"
+import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon } from "@/components/icon"
-import { cssEase, duration, ease, PRESSED_SCALE } from "@/constants/motion"
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+import { cssEase, duration, ease, PRESSED_SCALE, pressSpring, rise } from "@/constants/motion"
+import { motion } from "@/lib/motion"
 
 /** Shrinks a little while pressed, like the desktop's `pressable` utility. Reduce motion keeps it still. */
-export function PressableScale({
-  style,
-  onPressIn,
-  onPressOut,
-  ...props
-}: Omit<PressableProps, "style"> & { style?: StyleProp<ViewStyle> }) {
-  const reduced = useReducedMotion()
-  const scale = useSharedValue(1)
-  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }))
-  const scaleTo = (value: number) => {
-    if (!reduced) scale.set(withTiming(value, { duration: duration.press, easing: ease.out }))
-  }
-  return (
-    <AnimatedPressable
-      {...props}
-      onPressIn={(event) => {
-        scaleTo(PRESSED_SCALE)
-        onPressIn?.(event)
-      }}
-      onPressOut={(event) => {
-        scaleTo(1)
-        onPressOut?.(event)
-      }}
-      style={[style, animated]}
-    />
-  )
+export function PressableScale(props: Omit<PressableProps, "style"> & { style?: StyleProp<ViewStyle> }) {
+  return <motion.Pressable {...props} whileTap={{ scale: PRESSED_SCALE }} transition={pressSpring} />
 }
 
 const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ rotate: "360deg" }] } }
@@ -110,25 +85,17 @@ export function StatusDot({ state, color, size = 8 }: { state: DotState; color: 
   )
 }
 
-const fadeIn = { from: { opacity: 0 }, to: { opacity: 1 } }
-
 /** Loading indicators wait before they fade in, so a fast load never flashes one. */
 export function Reveal({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
-    <Animated.View
-      style={[
-        style,
-        {
-          animationName: fadeIn,
-          animationDuration: duration.base,
-          animationDelay: duration.revealDelay,
-          animationFillMode: "both",
-          animationTimingFunction: cssEase.out,
-        },
-      ]}
+    <motion.View
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: duration.revealDelay }}
+      style={style}
     >
       {children}
-    </Animated.View>
+    </motion.View>
   )
 }
 
@@ -143,35 +110,23 @@ export function FadeIn({
   enabled?: boolean
 }) {
   return (
-    <Animated.View
-      style={[
-        style,
-        enabled && { animationName: fadeIn, animationDuration: duration.fast, animationTimingFunction: cssEase.out },
-      ]}
+    <motion.View
+      initial={enabled && { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: duration.fast }}
+      style={style}
     >
       {children}
-    </Animated.View>
+    </motion.View>
   )
 }
 
-const rise = { from: { opacity: 0, transform: [{ translateY: 4 }] } }
-
 /** A card that appears while on screen rises 4 px as it fades in. Reduce motion keeps the fade. */
 export function RiseIn({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  const reduced = useReducedMotion()
   return (
-    <Animated.View
-      style={[
-        style,
-        {
-          animationName: reduced ? fadeIn : rise,
-          animationDuration: duration.base,
-          animationTimingFunction: cssEase.out,
-        },
-      ]}
-    >
+    <motion.View {...rise} style={style}>
       {children}
-    </Animated.View>
+    </motion.View>
   )
 }
 
@@ -181,35 +136,26 @@ export function RiseIn({ children, style }: { children: ReactNode; style?: Style
  */
 export function IconSwap({ showSecond, first, second }: { showSecond: boolean; first: ReactNode; second: ReactNode }) {
   const reduced = useReducedMotion()
-  const layer = (visible: boolean) => ({
-    opacity: visible ? 1 : 0,
-    transform: [{ scale: visible || reduced ? 1 : 0.25 }],
-    transitionProperty: ["opacity", "transform"] as ["opacity", "transform"],
-    transitionDuration: duration.base,
-    transitionTimingFunction: cssEase.swap,
-  })
+  const layer = (visible: boolean) => ({ opacity: visible ? 1 : 0, scale: visible || reduced ? 1 : 0.25 })
+  const transition = { ease: ease.swap }
   return (
     <View>
-      <Animated.View style={layer(!showSecond)}>{first}</Animated.View>
-      <Animated.View style={[styles.overlay, layer(showSecond)]}>{second}</Animated.View>
+      <motion.View animate={layer(!showSecond)} transition={transition}>
+        {first}
+      </motion.View>
+      <motion.View animate={layer(showSecond)} transition={transition} style={styles.overlay}>
+        {second}
+      </motion.View>
     </View>
   )
 }
 
 /** Turns a disclosure chevron a quarter turn when it opens. */
 export function Rotate({ turned, children }: { turned: boolean; children: ReactNode }) {
-  const reduced = useReducedMotion()
   return (
-    <Animated.View
-      style={{
-        transform: [{ rotate: turned ? "90deg" : "0deg" }],
-        transitionProperty: "transform",
-        transitionDuration: reduced ? 0 : duration.fast,
-        transitionTimingFunction: cssEase.out,
-      }}
-    >
+    <motion.View animate={{ rotate: turned ? 90 : 0 }} transition={{ duration: duration.fast }}>
       {children}
-    </Animated.View>
+    </motion.View>
   )
 }
 

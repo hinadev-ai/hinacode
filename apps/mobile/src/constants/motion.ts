@@ -1,4 +1,5 @@
 import { cubicBezier, Easing, FadeIn, FadeOut } from "react-native-reanimated"
+import type { Spring } from "@/lib/motion"
 
 /** The desktop's curves from `src/renderer/index.css`, for worklet animations. */
 export const ease = {
@@ -30,6 +31,12 @@ export const duration = {
 } as const
 
 export const PRESSED_SCALE = 0.97
+
+/** Press feedback is a spring, so a quick tap that lifts mid-shrink turns back without a jolt. */
+export const pressSpring: Spring = { type: "spring", visualDuration: duration.press }
+
+/** Something that appears while on screen rises 4 px as it fades in. */
+export const rise = { initial: { opacity: 0, y: 4 }, animate: { opacity: 1, y: 0 } } as const
 
 /** Rows fade as they join or leave a list, and the rest slide into place with a layout transition. */
 export const listEntering = FadeIn.duration(duration.fast)
