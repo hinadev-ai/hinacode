@@ -120,9 +120,19 @@ function Card({
 }
 
 const styles = StyleSheet.create({
-  layer: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 1000, pointerEvents: "box-none" },
+  layer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    alignItems: "center",
+    paddingHorizontal: 12,
+    pointerEvents: "box-none",
+  },
   card: {
-    marginHorizontal: 12,
+    width: "100%",
+    maxWidth: 560,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
