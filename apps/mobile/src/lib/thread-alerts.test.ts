@@ -24,7 +24,7 @@ describe("threadAlert", () => {
     ["a failure", { type: "turn_failed", message: "Network error" }, { kind: "failed", body: "Failed: Network error" }],
     [
       "a usage limit",
-      { type: "turn_limited", limit: { kind: "org_spend", message: "Spend limit reached" } },
+      { type: "turn_limited", limit: { kind: "org_spend", message: "Spend limit reached", reset: null } },
       { kind: "failed", body: "Stopped at the usage limit" },
     ],
   ])("raises a notice for %s", (_, event, expected) => {
