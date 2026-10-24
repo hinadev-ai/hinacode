@@ -10,7 +10,7 @@ import {
   type RpcResponse,
 } from "@shared/contract.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "@shared/owners.ts"
-import { remoteSocketUrls } from "@shared/remote.ts"
+import { dialPlan } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import type { StoredServer } from "./stored-target"
 import { CONNECT_TIMEOUT_MS, PROBE_TIMEOUT_MS, RpcError, Transport, type TransportStatus } from "./transport"
@@ -87,7 +87,7 @@ const sameTarget = (a: StoredServer, b: StoredServer) =>
 
 function open(server: StoredServer) {
   const transport = new Transport({
-    urls: remoteSocketUrls(server),
+    dials: dialPlan(server),
     token: server.token,
     isMutation: (method) => mutations.has(method),
     onStatus: (status, error) => {
@@ -146,7 +146,7 @@ export const storedServers = () => useConnection.getState().servers.map(toStored
 
 /**
  * Keeps one socket open to each of `servers`: opens the new ones, closes the ones no longer listed, redials a
- * server whose addresses or token changed, and points one whose relay changed at the new URLs without dropping
+ * server whose addresses or token changed, and points one whose relay changed at the new dial plan without dropping
  * its socket. Callers persist the list from `useConnection` themselves.
  */
 export function setServers(servers: readonly StoredServer[]) {
@@ -157,7 +157,7 @@ export function setServers(servers: readonly StoredServer[]) {
     const stored = toStored(server)
     if (existing !== undefined && sameTarget(existing, server)) {
       // Only the relay changed: the open socket and the calls waiting on it stay.
-      if (existing.relay !== server.relay) transports.get(server.id)?.setUrls(remoteSocketUrls(server))
+      if (existing.relay !== server.relay) transports.get(server.id)?.setDials(dialPlan(server))
       return { ...existing, ...stored }
     }
     if (existing !== undefined) close(server.id)
