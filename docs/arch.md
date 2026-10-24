@@ -18,8 +18,10 @@ flowchart LR
     mcp["MCP server<br/>127.0.0.1:random/mcp"]
     autos["Automations<br/>webhook + pollers"]
     remote["Remote listener<br/>ws://bindHost:port/remote"]
+    relay["Relay<br/>cloudflared child"]
   end
   phone["Phone app<br/>apps/mobile (Expo)"]
+  edge["Cloudflare edge<br/>wss://relay hostname/remote"]
   db[("hinacode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
   codex["codex app-server<br/>JSON-RPC over stdio"]
@@ -31,6 +33,9 @@ flowchart LR
   stores -- "rpc (request/response)" --> preload --> ipc
   ipc -- "event (push)" --> preload --> stores
   phone -- "auth, then the same calls and pushes" <--> remote --> ipc
+  phone -. "from any network" .-> edge
+  relay -- "dials out" --> edge
+  relay --> remote
   ipc --> services & runner
   runner --> claude & codex & muse
   claude & codex & muse -- "Bearer threadId.secret" --> mcp
@@ -91,6 +96,8 @@ flowchart LR
 - `src/shared/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, automation, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
 - A cloud that is not connected answers `EnvironmentOffline`; for `all` routes it contributes its last answer to the same call. Close code 4001 (`unauthorized`) stops reconnecting. A `ready` with another `REMOTE_PROTOCOL_VERSION` (`incompatible`) fails waiting calls and keeps retrying, like anything else, with jittered backoff from 0.5 s to 60 s. `environments.reconnect` and waking from sleep skip the wait. A ping every 10 s drops a socket silent for 25 s.
 - Every data directory has an id (setting row `environment.id`, read by `RemoteAccess`), sent in the `ready` frame. The desktop keys its `environment` rows by it, so pairing the same cloud again updates one row. Tokens are the secrets `environment.<id>.token`.
+
+Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel in the developer's own account, created through the Cloudflare API and served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients build their socket URLs with `remoteSocketUrls`, relay first, then the direct hosts. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
 
 The visible thread owns its renderer history. Leaving it unloads the transcript even while its agent runs; the main process owns ongoing turns and pending approvals. Reopening reads a fresh sequence-numbered snapshot. Each load has an identity so a response from an earlier visit cannot replace a newer snapshot.
 
