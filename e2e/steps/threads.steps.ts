@@ -87,9 +87,11 @@ When("I show only the project {string} in the sidebar", async ({ app, names }, p
   await app.page.keyboard.press("Escape")
 })
 
-When("I delete the thread {string} from its menu", async ({ app, names }, title: string) => {
-  await threadMenu(app.page, names.of(title), "Delete…")
-  const dialog = app.page.getByRole("alertdialog")
+When("I delete the thread {string} from its row", async ({ app, names }, title: string) => {
+  const remove = sidebar(app.page).getByRole("button", { name: `Delete ${names.of(title)}`, exact: true })
+  await remove.locator("xpath=ancestor::li[1]").hover()
+  await remove.click()
+  const dialog = app.page.getByRole("dialog")
   await expect(dialog).toContainText(`"${names.of(title)}"`)
   await dialog.getByRole("button", { name: "Delete thread", exact: true }).click()
   await expect(dialog).toBeHidden()

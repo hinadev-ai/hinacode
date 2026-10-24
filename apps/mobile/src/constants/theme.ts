@@ -25,6 +25,9 @@ export const Colors = {
     /** GitHub's open and merged pull request colors, the desktop's `--pr-open` and `--pr-merged`. */
     prOpen: "#1a7f37",
     prMerged: "#8250df",
+    /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
+    token: "#7c3aed",
+    tokenBg: "rgba(124, 58, 237, 0.12)",
   },
   dark: {
     text: "#fafafa",
@@ -46,6 +49,8 @@ export const Colors = {
     link: "#a78bfa",
     prOpen: "#3fb950",
     prMerged: "#a371f7",
+    token: "#a78bfa",
+    tokenBg: "rgba(167, 139, 250, 0.16)",
   },
 } as const
 
@@ -106,6 +111,9 @@ export const mono = Platform.select({ ios: "Menlo", android: "monospace", defaul
 
 /** Minimum touch target. */
 export const HIT = 44
+
+/** The widest a column of prose gets on a tablet, so lines stay readable. Every phone is narrower. */
+export const READABLE_WIDTH = 720
 
 /** Outer radius = inner radius + padding, so nested corners stay concentric. */
 export const radius = { sm: 6, md: 10, lg: 14, xl: 24, full: 999 } as const

@@ -10,7 +10,7 @@ import { Failure, Loading } from "@/components/files"
 import { Markdown } from "@/components/markdown"
 import { EmptyState, Notice, type Segment, SegmentedControl } from "@/components/ui"
 import { cssEase } from "@/constants/motion"
-import { mono, SyntaxColors } from "@/constants/theme"
+import { mono, READABLE_WIDTH, SyntaxColors } from "@/constants/theme"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { type CodeLine, codeLines } from "@/lib/code-lines"
 import { call } from "@/lib/connection"
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   titleFolder: { fontSize: 12, fontFamily: mono },
   notice: { paddingHorizontal: 12, paddingVertical: 8 },
   segments: { margin: 12 },
-  markdown: { padding: 16, gap: 12 },
+  markdown: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: 16, gap: 12 },
   code: { paddingVertical: 8 },
   codeRow: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 12 },
   flash: { ...StyleSheet.absoluteFill, pointerEvents: "none" },

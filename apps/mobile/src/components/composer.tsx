@@ -4,15 +4,20 @@ import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { useEffect, useRef, useState } from "react"
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { ComposerInput } from "@/components/composer-input"
 import { Icon, type IconName } from "@/components/icon"
+import { IconSwap } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
+import { ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { keepSkillWhole } from "@/lib/composer-text"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { motion } from "@/lib/motion"
 import { useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { useModels } from "@/stores/models"
@@ -113,6 +118,12 @@ export function Composer({ thread }: { thread: Thread }) {
   const busy = isThreadBusy(thread.status)
   const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
   const completions = useCompletions(thread, busy, wantsFiles, setError)
+  const { commands, files, threads } = completions
+  const known = {
+    commands: new Set(commands.map((command) => command.trigger + command.name)),
+    files: new Set(files),
+    threads: new Set(threads.map((other) => other.id)),
+  }
   const hasDraft = text.trim() !== ""
 
   useEffect(() => {
@@ -173,15 +184,20 @@ export function Composer({ thread }: { thread: Thread }) {
       <View
         style={[styles.bar, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : theme.border }]}
       >
-        <TextInput
+        <ComposerInput
           ref={inputRef}
           testID="composer-input"
           accessibilityLabel="Message"
           value={text}
+          commands={commands}
+          known={known}
           selection={placedCaret && { start: placedCaret.start, end: placedCaret.start }}
-          onChangeText={(next) => {
-            setPlacedCaret(undefined)
-            setCaret(caretAfterEdit(text, next))
+          onChangeText={(typed) => {
+            const next = keepSkillWhole(text, typed, commands)
+            const position = caretAfterEdit(text, next)
+            // A skill removed whole leaves the input's caret where the deletion was, so put it back at the start.
+            setPlacedCaret(next === typed ? undefined : { start: position })
+            setCaret(position)
             useDrafts.getState().setText(thread.id, next)
           }}
           onSelectionChange={(event) => {
@@ -230,7 +246,7 @@ function Suggestions({
   // The selection can arrive before the text it belongs to.
   const completion = completionAt(text, Math.min(caret, text.length))
   if (completion === null) return null
-  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads)
+  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads, [])
   if (suggestions.length === 0) return null
 
   const pick = (suggestion: Suggestion) => {
@@ -335,14 +351,10 @@ function SendButton({
   const action = stopping ? "stop" : busy ? "steer" : "send"
   const label = stopping ? "Stop" : busy ? "Steer" : "Send"
   const disabled = !stopping && !hasDraft
-  const [background, foreground] = stopping
-    ? [theme.dangerBg, theme.danger]
-    : disabled
-      ? [theme.surfaceStrong, theme.textMuted]
-      : [theme.primary, theme.onPrimary]
+  const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
 
   return (
-    <Pressable
+    <motion.Pressable
       testID={`composer-${action}`}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -350,10 +362,17 @@ function SendButton({
       disabled={disabled}
       onPress={stopping ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
-      style={({ pressed }) => [styles.send, { backgroundColor: background }, pressed && styles.pressed]}
+      animate={{ backgroundColor: background }}
+      whileTap={{ scale: PRESSED_SCALE }}
+      transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
+      style={styles.send}
     >
-      <Icon name={stopping ? "RiStopFill" : "RiArrowUpLine"} size={stopping ? 14 : 18} color={foreground} />
-    </Pressable>
+      <IconSwap
+        showSecond={stopping}
+        first={<Icon name="RiArrowUpLine" size={18} color={disabled ? theme.textMuted : theme.onPrimary} />}
+        second={<Icon name="RiStopFill" size={14} color={theme.danger} />}
+      />
+    </motion.Pressable>
   )
 }
 

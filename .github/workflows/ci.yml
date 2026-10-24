@@ -91,6 +91,30 @@ jobs:
       - if: needs.changes.outputs.app == 'true'
         run: pnpm test
 
+  mobile:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            apps/mobile/pnpm-lock.yaml
+      # tsc resolves effect types for src/shared from the root, so the root install is needed too.
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm install --frozen-lockfile
+      - run: npx tsc --noEmit
+      - run: npx expo lint
+
   e2e-linux:
     name: e2e (linux)
     needs: changes

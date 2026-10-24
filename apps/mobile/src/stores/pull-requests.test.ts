@@ -3,7 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { flush, type PendingCall } from "./testing"
 
 const calls = vi.hoisted((): PendingCall[] => [])
-vi.mock("@/lib/connection", async () => ({ call: (await import("./testing")).fakeCall(calls) }))
+vi.mock("@/lib/connection", async () => ({
+  call: (await import("./testing")).fakeCall(calls),
+  onEvent: () => () => {},
+  RpcError: Error,
+}))
 
 const { DETAIL_MAX_AGE, SUMMARY_MAX_AGE, usePullRequests } = await import("./pull-requests")
 

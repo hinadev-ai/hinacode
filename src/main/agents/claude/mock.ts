@@ -13,7 +13,15 @@ import markdownFixture from "./fixtures/markdown.md?raw"
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
-export const mockScenarios = ["usage-limit", "org-spend-limit", "todos", "markdown", "stream", "activity"] as const
+export const mockScenarios = [
+  "usage-limit",
+  "org-spend-limit",
+  "todos",
+  "markdown",
+  "stream",
+  "activity",
+  "approvals",
+] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
 /** A skill and one of Claude Code's own commands, which the composer shows differently. */
@@ -151,6 +159,22 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
       const shells = new Map<string, ReadonlyArray<BackgroundTask>>()
       const shellChanges = yield* Queue.unbounded<BackgroundTasksChange>()
       const heldTurns = new Map<string, Deferred.Deferred<void>>()
+      const requests = new Map<string, Deferred.Deferred<void>>()
+      let requestCount = 0
+      /** Emits `requested` now, and `resolved` once the user answers it. */
+      const awaitAnswer = (requested: AgentEvent, resolved: AgentEvent, id: string) => {
+        const answered = Deferred.makeUnsafe<void>()
+        requests.set(id, answered)
+        return Stream.concat(
+          Stream.make(requested),
+          Stream.fromEffect(Deferred.await(answered).pipe(Effect.as(resolved))),
+        )
+      }
+      const answer = (id: string) => {
+        const answered = requests.get(id)
+        requests.delete(id)
+        return answered === undefined ? Effect.void : Deferred.succeed(answered, undefined).pipe(Effect.asVoid)
+      }
       const setShells = (threadId: string, tasks: ReadonlyArray<BackgroundTask>) => {
         shells.set(threadId, tasks)
         Queue.offerUnsafe(shellChanges, { threadId, tasks })
@@ -194,6 +218,61 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
               return Stream.concat(
                 Stream.fromIterable(activityTurn()),
                 Stream.fromEffect(Deferred.await(interrupted).pipe(Effect.as(ended))),
+              )
+            }
+            if (scenario === "approvals") {
+              const approval = (title: string, command: string) => {
+                const id = `mock-approval-${++requestCount}`
+                return awaitAnswer(
+                  {
+                    type: "approval_requested",
+                    request: {
+                      id,
+                      threadId: input.threadId,
+                      provider: "claude",
+                      kind: "command",
+                      title,
+                      detail: command,
+                    },
+                  },
+                  { type: "approval_resolved", requestId: id },
+                  id,
+                )
+              }
+              const questionId = `mock-question-${++requestCount}`
+              const question = awaitAnswer(
+                {
+                  type: "question_requested",
+                  request: {
+                    id: questionId,
+                    threadId: input.threadId,
+                    provider: "claude",
+                    questions: [
+                      {
+                        id: "port",
+                        header: "Dev server",
+                        question: "Which port should the dev server use?",
+                        options: [
+                          { label: "3000", description: "The project default" },
+                          { label: "5173", description: "Vite's default" },
+                        ],
+                        multiSelect: false,
+                        allowsText: false,
+                        secret: false,
+                      },
+                    ],
+                  },
+                },
+                { type: "question_resolved", requestId: questionId },
+                questionId,
+              )
+              // Two approvals wait side by side, then a question, then a streamed reply.
+              return Stream.merge(
+                approval("Run pnpm install", "pnpm install"),
+                approval("Run pnpm test", "pnpm test"),
+              ).pipe(
+                Stream.concat(question),
+                Stream.concat(Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))),
               )
             }
             if (scenario === "markdown") return Stream.fromIterable(markdownTurn())
@@ -268,8 +347,8 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
           const held = heldTurns.get(threadId)
           return held === undefined ? Effect.void : Deferred.succeed(held, undefined).pipe(Effect.asVoid)
         },
-        respondApproval: () => Effect.void,
-        respondQuestion: () => Effect.void,
+        respondApproval: answer,
+        respondQuestion: answer,
         setAccessMode: () => Effect.void,
       })
     }),

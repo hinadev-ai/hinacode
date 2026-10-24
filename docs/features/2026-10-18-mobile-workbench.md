@@ -36,7 +36,7 @@ Highlighting produces the nine span classes of `gpu-lexer` with no language argu
 
 ### Motion
 
-Reanimated 4 with the desktop's curves from `src/renderer/index.css`: `ease.out` for entrances and press feedback, `ease.drawer` for sheets, `ease.swap` for icon swaps. Buttons shrink while pressed, rows fade in and slide to their new place, cards rise 4 px, sheets rise over a fading scrim, the segmented control's thumb slides, an awaiting approval icon rings three times, spinners turn, the banner drops in and lifts out, and loading text waits 150 ms before it shows. Under reduce motion, fades stay and movement goes.
+Reanimated 4 with the desktop's curves from `src/renderer/index.css`: `ease.out` for entrances, `ease.drawer` for sheets, `ease.swap` for icon swaps. Buttons shrink on a spring while pressed, rows fade in and slide to their new place, new messages and cards rise 4 px, an answered card fades out, the send button cross-fades into Stop, sheets rise over a fading scrim, the segmented control's thumb slides, an awaiting approval icon rings three times, spinners turn, the banner drops in and lifts out, and loading text waits 150 ms before it shows. Most of it goes through `lib/motion.tsx`, a small `motion/react` for Reanimated (`2026-10-24-mobile-motion.md`). Under reduce motion, fades stay and movement goes.
 
 ### Notifications
 

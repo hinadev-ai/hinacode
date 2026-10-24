@@ -70,22 +70,21 @@ import { PullRequestCard } from "./PullRequestLink.tsx"
 import { ChecksIndicator, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "./ui/alert-dialog.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Input } from "./ui/input.tsx"
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "./ui/popover.tsx"
+import { ProjectIcon } from "./ProjectIcon.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -330,9 +329,19 @@ const ThreadRow = memo(function ThreadRow({
       data-emphasis={rowEmphasis[state]}
       data-archived={archived}
       data-stale={isStale(cloud)}
-      // Room the title and meta leave for the action buttons: the menu, plus unarchive or a focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(8)] data-[archived=true]:[--row-actions:--spacing(14)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(14)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      data-show-project={meta.project !== null}
+      // Room the title and meta leave for the action buttons: archive or unarchive, delete and the menu, plus a
+      // focused reorder handle.
+      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
+      {meta.project !== null && (
+        <div className="flex min-w-0 items-center gap-2 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
+          <ProjectIcon projectId={thread.projectId} className="size-3.5" />
+          <span className="truncate" title={meta.project}>
+            {meta.project}
+          </span>
+        </div>
+      )}
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
       ) : (
@@ -347,7 +356,7 @@ const ThreadRow = memo(function ThreadRow({
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
           <ProviderIcon provider={thread.provider} />
           <span dir="auto" className="min-w-0 flex-1 truncate text-left text-[0.9375rem]" title={thread.title}>
@@ -359,7 +368,7 @@ const ThreadRow = memo(function ThreadRow({
       <ThreadMeta {...meta} cloud={cloud} environment={environment} />
 
       {mode !== "renaming" && (
-        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100">
+        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100">
           {archived ? (
             <Button
               variant="ghost"
@@ -371,21 +380,41 @@ const ThreadRow = memo(function ThreadRow({
               <RiInboxUnarchiveLine aria-hidden />
             </Button>
           ) : (
-            reorderable && (
+            <>
+              {reorderable && (
+                <Button
+                  ref={handleRef}
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={m.sidebar_thread_reorder({ title: thread.title })}
+                  aria-roledescription={m.sidebar_thread_reorder_role()}
+                  // Rows drag by the whole row with the mouse, so the handle only shows for keyboard reordering.
+                  data-reorder-handle
+                  className="sr-only cursor-grab focus-visible:not-sr-only"
+                >
+                  <RiDraggable aria-hidden />
+                </Button>
+              )}
               <Button
-                ref={handleRef}
                 variant="ghost"
                 size="icon-xs"
-                aria-label={m.sidebar_thread_reorder({ title: thread.title })}
-                aria-roledescription={m.sidebar_thread_reorder_role()}
-                // Rows drag by the whole row with the mouse, so the handle only shows for keyboard reordering.
-                data-reorder-handle
-                className="sr-only cursor-grab focus-visible:not-sr-only"
+                aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
+                title={m.sidebar_thread_archive()}
+                disabled={busy}
+                onClick={archiveDeletes ? () => setMode("archive") : () => void archive()}
               >
-                <RiDraggable aria-hidden />
+                <RiArchiveLine aria-hidden />
               </Button>
-            )
+            </>
           )}
+          <DeleteThreadPopover
+            thread={thread}
+            cloud={cloud}
+            disabled={busy || isStale(cloud)}
+            open={mode === "delete"}
+            onOpenChange={(open) => setMode(open ? "delete" : "idle")}
+            focusAfterDelete={focusAfterRemoval}
+          />
           <DropdownMenu
             open={menuOpen}
             onOpenChange={setMenuOpen}
@@ -458,13 +487,6 @@ const ThreadRow = memo(function ThreadRow({
           onArchived={moveOut}
         />
       )}
-      <DeleteThreadDialog
-        thread={thread}
-        cloud={cloud}
-        open={mode === "delete"}
-        onOpenChange={closeDialog}
-        focusAfterDelete={focusAfterRemoval}
-      />
     </li>
   )
 })
@@ -502,7 +524,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
   // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5">
+      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5 group-data-[show-project=true]/thread:pt-0.5">
         <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
@@ -528,16 +550,25 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
   )
 }
 
-interface DeleteThreadDialogProps {
+interface DeleteThreadPopoverProps {
   readonly thread: Thread
   readonly cloud: Cloud | undefined
+  readonly disabled: boolean
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** Where focus goes once the thread is gone, since the row that opened the dialog is gone too. */
+  /** Where focus goes once the thread is gone, since the row that opened the confirmation is gone too. */
   readonly focusAfterDelete: () => HTMLElement | null
 }
 
-function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelete }: DeleteThreadDialogProps) {
+/** The row's delete button. It confirms right below itself, so the pointer barely moves to finish a delete. */
+function DeleteThreadPopover({
+  thread,
+  cloud,
+  disabled,
+  open,
+  onOpenChange,
+  focusAfterDelete,
+}: DeleteThreadPopoverProps) {
   const worktree = useActiveWorktree(thread)
   const router = useRouter()
   const [removeWorktree, setRemoveWorktree] = useState(true)
@@ -560,41 +591,63 @@ function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelet
   }, null)
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent finalFocus={() => (useThreads.getState().byId[thread.id] ? true : focusAfterDelete())}>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{m.delete_dialog_title()}</AlertDialogTitle>
-          <AlertDialogDescription>{m.delete_dialog_body({ title: thread.title })}</AlertDialogDescription>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger
+        disabled={disabled}
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m.sidebar_thread_delete_label({ title: thread.title })}
+            title={m.sidebar_thread_delete()}
+          />
+        }
+      >
+        <RiDeleteBinLine aria-hidden />
+      </PopoverTrigger>
+      <PopoverContent
+        side="right"
+        align="start"
+        className="w-64"
+        finalFocus={() => (useThreads.getState().byId[thread.id] ? true : focusAfterDelete())}
+      >
+        <PopoverHeader>
+          <PopoverTitle>{m.delete_dialog_title()}</PopoverTitle>
+          <PopoverDescription>{m.delete_dialog_body({ title: thread.title })}</PopoverDescription>
           {worktree && (
-            <AlertDialogDescription>{m.delete_dialog_worktree({ path: worktree.path })}</AlertDialogDescription>
+            <PopoverDescription className="break-all">
+              {m.delete_dialog_worktree({ path: worktree.path })}
+            </PopoverDescription>
           )}
-        </AlertDialogHeader>
+        </PopoverHeader>
         {worktree && (
           <Field orientation="horizontal">
             <Checkbox id={removeWorktreeId} checked={removeWorktree} onCheckedChange={setRemoveWorktree} />
             <FieldLabel htmlFor={removeWorktreeId}>{m.delete_dialog_remove_worktree()}</FieldLabel>
           </Field>
         )}
-        {offline && cloud && (
-          <p className="text-sm text-muted-foreground">{m.delete_dialog_offline({ name: cloud.name })}</p>
-        )}
+        {offline && cloud && <p className="text-muted-foreground">{m.delete_dialog_offline({ name: cloud.name })}</p>}
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-destructive">
             {error}
           </p>
         )}
-        <AlertDialogFooter>
-          <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction
+        {/* Confirm comes first, the nearest button to the trash icon the pointer just clicked. */}
+        <div className="flex gap-2">
+          <Button
             variant="destructive"
+            size="sm"
             disabled={isPending || offline}
             onClick={() => startTransition(remove)}
           >
             {m.delete_dialog_confirm()}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            {m.common_cancel()}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -646,7 +699,6 @@ const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({
-  project,
   branch,
   removed,
   links,
@@ -662,11 +714,6 @@ function ThreadMeta({
   return (
     <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
-      {project !== null && (
-        <span className="max-w-1/2 min-w-0 truncate" title={project}>
-          {project}
-        </span>
-      )}
       {branch !== null && (
         <span
           className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"

@@ -1,4 +1,5 @@
 import type { CheckRun, CheckRunStatus, MergeMethod, PullRequestDetail, PullRequestLink } from "@shared/domain.ts"
+import { linearReviewUrl } from "@shared/github.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useState } from "react"
@@ -6,16 +7,37 @@ import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } f
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { PressableScale, Reveal, Spinner } from "@/components/motion"
-import { reviewLabel, reviewTone, statusLabel, statusTone } from "@/lib/pull-request-labels"
+import { PullRequestCode } from "@/components/pull-request-code"
+import { PullRequestState } from "@/components/pull-request-state"
+import { reviewLabel, reviewTone } from "@/lib/pull-request-labels"
 import { OptionRow, Section, Sheet } from "@/components/sheet"
-import { Button, Notice, Pill } from "@/components/ui"
+import { Button, Notice, Pill, UnderlineTabs } from "@/components/ui"
 import { HIT, mono } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { openWebUrl } from "@/lib/open-url"
 import { errorText } from "@/lib/error-text"
-import { pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { filesKey, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { useThreads } from "@/stores/threads"
+
+type Tab = "info" | "code"
+
+const tabs = [
+  { value: "info", label: copy("mobile_pr_tab_info") },
+  { value: "code", label: copy("mobile_pr_tab_code") },
+] as const
+
+/** Where the thread's pull request links open: GitHub, or linear.review when its project turned that on. */
+function useWebLink(threadId: string, url: string) {
+  const linearReview = useThreads((state) => {
+    const projectId = state.byId[threadId]?.projectId
+    return state.projects.find((project) => project.id === projectId)?.linearReview ?? false
+  })
+  return linearReview
+    ? { href: linearReviewUrl(url), label: copy("mobile_pr_open_linear_review") }
+    : { href: url, label: copy("mobile_pr_open_github") }
+}
 
 export default function PullRequestScreen() {
   const theme = useTheme()
@@ -24,6 +46,8 @@ export default function PullRequestScreen() {
   const remote = usePullRequests((state) => state.details[url])
   const link = usePullRequests((state) => state.linksByThread[id]?.find((existing) => existing.url === url) ?? null)
   const [refreshing, setRefreshing] = useState(false)
+  const [tab, setTab] = useState<Tab>("info")
+  const web = useWebLink(id, url)
 
   useEffect(() => {
     if (connected) void usePullRequests.getState().loadDetail(url)
@@ -34,6 +58,15 @@ export default function PullRequestScreen() {
     setRefreshing(true)
     try {
       await reload()
+      const { details, files, guides, loadFiles, loadGuide } = usePullRequests.getState()
+      const detail = details[url]
+      if (tab === "code" && detail?.status === "ready") {
+        const { head } = detail.value
+        await Promise.all([
+          files[filesKey(url, head)] === undefined ? null : loadFiles(url, head, { force: true }),
+          guides[url] === undefined ? null : loadGuide(url, { force: true }),
+        ])
+      }
     } finally {
       setRefreshing(false)
     }
@@ -50,26 +83,31 @@ export default function PullRequestScreen() {
       }
     >
       <Stack.Screen options={{ title: number === null ? "" : `#${number}` }} />
-      {remote === undefined || remote.status === "loading" ? (
-        <Reveal style={styles.loading}>
-          <Spinner color={theme.textMuted} />
-          <Text style={{ color: theme.textMuted }}>{copy("mobile_pr_detail_loading")}</Text>
-        </Reveal>
-      ) : remote.status === "error" ? (
-        <View style={styles.section}>
-          <Notice tone="danger" text={copy("mobile_pr_detail_failed", { message: remote.message })} />
-          <View style={styles.actions}>
-            <Button label={copy("mobile_pr_retry")} icon="RiRefreshLine" onPress={() => void reload()} />
-            <Button
-              label={copy("mobile_pr_open_github")}
-              icon="RiExternalLinkLine"
-              onPress={() => openWebUrl(url)}
-            />
+      <View style={styles.column}>
+        {remote === undefined || remote.status === "loading" ? (
+          <Reveal style={styles.loading}>
+            <Spinner color={theme.textMuted} />
+            <Text style={{ color: theme.textMuted }}>{copy("mobile_pr_detail_loading")}</Text>
+          </Reveal>
+        ) : remote.status === "error" ? (
+          <View style={styles.section}>
+            <Notice tone="danger" text={copy("mobile_pr_detail_failed", { message: remote.message })} />
+            <View style={styles.actions}>
+              <Button label={copy("mobile_pr_retry")} icon="RiRefreshLine" onPress={() => void reload()} />
+              <Button label={web.label} icon="RiExternalLinkLine" onPress={() => openWebUrl(web.href)} />
+            </View>
           </View>
-        </View>
-      ) : (
-        <PullRequestView detail={remote.value} threadId={id} link={link} onChanged={reload} />
-      )}
+        ) : (
+          <PullRequestView
+            detail={remote.value}
+            threadId={id}
+            link={link}
+            tab={tab}
+            onTabChange={setTab}
+            onChanged={reload}
+          />
+        )}
+      </View>
     </ScrollView>
   )
 }
@@ -80,11 +118,15 @@ function PullRequestView({
   detail,
   threadId,
   link,
+  tab,
+  onTabChange,
   onChanged,
 }: {
   detail: PullRequestDetail
   threadId: string
   link: PullRequestLink | null
+  tab: Tab
+  onTabChange: (tab: Tab) => void
   onChanged: () => Promise<void>
 }) {
   const theme = useTheme()
@@ -115,7 +157,7 @@ function PullRequestView({
           </Text>
         </View>
         <View style={styles.pills}>
-          <Pill label={statusLabel(detail.status)} tone={statusTone[detail.status]} />
+          <PullRequestState status={detail.status} />
           {detail.review !== null && <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />}
           {isOpen(detail) && detail.mergeable === "mergeable" && (
             <Pill label={copy("mobile_pr_mergeable")} tone="neutral" icon="RiCheckLine" />
@@ -124,6 +166,37 @@ function PullRequestView({
           {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="RiEyeLine" />}
         </View>
       </View>
+      <UnderlineTabs<Tab>
+        tabs={tabs}
+        value={tab}
+        onChange={onTabChange}
+        accessibilityLabel={copy("mobile_pr_view_label")}
+        style={[styles.tabs, { borderBottomColor: theme.border }]}
+      />
+      {tab === "code" ? (
+        <PullRequestCode detail={detail} />
+      ) : (
+        <Info detail={detail} threadId={threadId} watching={watching} onChanged={onChanged} />
+      )}
+    </>
+  )
+}
+
+function Info({
+  detail,
+  threadId,
+  watching,
+  onChanged,
+}: {
+  detail: PullRequestDetail
+  threadId: string
+  watching: boolean
+  onChanged: () => Promise<void>
+}) {
+  const theme = useTheme()
+  const conflicting = isOpen(detail) && detail.mergeable === "conflicting"
+  return (
+    <>
       {conflicting && (
         <View style={styles.section}>
           <Notice tone="attention" text={copy("mobile_pr_conflicts", { base: detail.baseRef })} />
@@ -202,8 +275,8 @@ function Checks({ detail, threadId }: { detail: PullRequestDetail; threadId: str
         <Text style={{ color: theme.textMuted, fontSize: 14 }}>{copy("mobile_pr_no_checks")}</Text>
       ) : (
         <View>
-          {runs.map((run) => (
-            <CheckRow key={run.url ?? run.name} run={run} />
+          {runs.map((run, index) => (
+            <CheckRow key={`${index}:${run.name}`} run={run} />
           ))}
         </View>
       )}
@@ -222,14 +295,14 @@ const runLabel = (status: CheckRunStatus) => copy(`mobile_pr_check_${status}`)
 function CheckRow({ run }: { run: CheckRun }) {
   const theme = useTheme()
   const glyphs: Record<Exclude<CheckRunStatus, "pending">, { name: IconName; color: string }> = {
-    passing: { name: "RiCheckboxCircleFill", color: theme.running },
+    passing: { name: "RiCheckboxCircleFill", color: theme.textMuted },
     failing: { name: "RiCloseCircleLine", color: theme.danger },
     skipped: { name: "RiIndeterminateCircleLine", color: theme.textMuted },
   }
   const content = (
     <>
       {run.status === "pending" ? (
-        <Spinner size={16} color={theme.attention} />
+        <Spinner size={16} color={theme.textMuted} />
       ) : (
         <Icon {...glyphs[run.status]} size={16} />
       )}
@@ -291,6 +364,7 @@ function Actions({
   onChanged: () => Promise<void>
 }) {
   const theme = useTheme()
+  const web = useWebLink(threadId, detail.url)
   const [picking, setPicking] = useState(false)
   const [method, setMethod] = useState<MergeMethod>("squash")
   const [busy, setBusy] = useState<"merge" | "close" | "watch" | null>(null)
@@ -368,11 +442,7 @@ function Actions({
             onPress={close}
           />
         )}
-        <Button
-          label={copy("mobile_pr_open_github")}
-          icon="RiExternalLinkLine"
-          onPress={() => openWebUrl(detail.url)}
-        />
+        <Button label={web.label} icon="RiExternalLinkLine" onPress={() => openWebUrl(web.href)} />
       </View>
       {detail.status === "draft" && (
         <Text style={[styles.hint, { color: theme.textMuted }]}>{copy("mobile_pr_merge_blocked_draft")}</Text>
@@ -410,7 +480,10 @@ function Actions({
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 16, gap: 20, flexGrow: 1 },
+  page: { padding: 16, flexGrow: 1 },
+  /** A readable measure when the screen is wide, as in an iPad pane. */
+  column: { width: "100%", maxWidth: 760, alignSelf: "center", gap: 20 },
+  tabs: { borderBottomWidth: StyleSheet.hairlineWidth, marginTop: -8 },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 32 },
   header: { gap: 8 },
   title: { fontSize: 18, fontWeight: "600", lineHeight: 24 },

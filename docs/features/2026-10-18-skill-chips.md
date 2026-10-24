@@ -23,6 +23,7 @@ Skills and the agent's own commands share one completion list and one look. A de
 - Caret positions are offsets into the textarea's text. When a chip appears or goes away, the composer renders synchronously and puts the caret back, as picking a suggestion already did.
 - The chip is at most half the line wide. A text indent leaves no break opportunity before the first word, so a word wider than the room beside the chip would break mid-word.
 - Screen readers hear the skill in the textarea's description, "Skill: kalan-mode".
+- The phone has no chip element. `composerSpans` in `apps/mobile/src/lib/composer-text.ts` tints the leading skill and colors the same tokens as `highlight`, rendered as `Text` nested in the native `TextInput` and, on the web build, as a copy under a transparent textarea. A deletion that cuts into the skill removes it whole, the phone's version of Backspace after the chip.
 
 ## Out of scope
 

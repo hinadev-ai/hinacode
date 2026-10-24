@@ -7,20 +7,21 @@ import type {
   QuestionRequest,
 } from "@shared/agent.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
-import { useEffect, useMemo, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
-import { FadeIn, RiseIn, Rotate, Spinner } from "@/components/motion"
+import { FadeIn, Rotate, Spinner } from "@/components/motion"
 import { Button, Notice, Pill } from "@/components/ui"
-import { cssEase } from "@/constants/motion"
+import { cssEase, duration, rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
+import { motion } from "@/lib/motion"
 import { useMessages } from "@/stores/messages"
 import { useThreadRoot } from "@/stores/threads"
 
@@ -28,6 +29,9 @@ import { useThreadRoot } from "@/stores/threads"
 const CARD_PADDING = 12
 
 type CopyKey = Parameters<typeof copy>[0]
+
+// An inverted list flips each cell with `scaleY: -1`, so a message rises from a negative `y`.
+const risesInFlippedCell = { ...rise.initial, y: -rise.initial.y }
 
 export function Chat({ thread }: { thread: Thread }) {
   const theme = useTheme()
@@ -40,6 +44,9 @@ export function Chat({ thread }: { thread: Thread }) {
   }, [connected, history, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
+  // Messages that arrive after the transcript loads rise in; the ones it opened with stay put.
+  const [loadedIds, setLoadedIds] = useState<ReadonlySet<string>>()
+  if (messages !== undefined && loadedIds === undefined) setLoadedIds(new Set(messages.map((message) => message.id)))
   const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
 
   return (
@@ -60,7 +67,11 @@ export function Chat({ thread }: { thread: Thread }) {
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
-          renderItem={({ item }) => <MessageView message={item} root={root} />}
+          renderItem={({ item }) => (
+            <motion.View initial={loadedIds?.has(item.id) === false && risesInFlippedCell} animate={rise.animate}>
+              <MessageView message={item} root={root} />
+            </motion.View>
+          )}
           // A rendered reply can hold hundreds of views, so the list mounts a screenful first and the rest in small
           // batches instead of ten whole messages in one frame.
           initialNumToRender={4}
@@ -380,13 +391,22 @@ function useAction() {
   return { busy, error, run }
 }
 
+/** A request rises in, fades out once answered, and the cards still waiting slide into its place. */
+function ResolvableCard({ children }: { children: ReactNode }) {
+  return (
+    <motion.View {...rise} exit={{ opacity: 0, transition: { duration: duration.fast } }} layout>
+      {children}
+    </motion.View>
+  )
+}
+
 function ApprovalCard({ request }: { request: ApprovalRequest }) {
   const theme = useTheme()
   const { busy, error, run } = useAction()
   const respond = (decision: ApprovalDecision) => () =>
     void run(() => call("approvals.respond", { requestId: request.id, decision }))
   return (
-    <RiseIn>
+    <ResolvableCard>
       <View
         testID="approval-card"
         accessibilityLabel={copy("mobile_chat_approval", { title: request.title })}
@@ -426,7 +446,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
         </View>
         {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
       </View>
-    </RiseIn>
+    </ResolvableCard>
   )
 }
 
@@ -460,7 +480,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
     })
 
   return (
-    <RiseIn>
+    <ResolvableCard>
       <View
         testID="question-card"
         style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
@@ -524,7 +544,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
         </View>
         {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
       </View>
-    </RiseIn>
+    </ResolvableCard>
   )
 }
 
