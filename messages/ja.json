@@ -826,7 +826,7 @@
   "remote_pair_loading": "ペアリングコードを生成中…",
   "remote_pair_failed": "ペアリングコードを生成できませんでした：{message}",
   "remote_pair_host_label": "ホストアドレス",
-  "remote_pair_host_hint": "QR コードにはすべてのアドレスが含まれます。スマホはこの順に試し、前回つながったアドレスから接続するため、外出先でも Tailscale 経由で接続できます。",
+  "remote_pair_host_hint": "QR コードにはすべてのアドレスが含まれます。スマホはすべてを同時に試し、どれもつながらないときだけリレーを使うため、外出先でも接続できます。",
   "remote_pair_qr_label": "ペアリング用 QR コード",
   "remote_pair_url_label": "ペアリング用 URL",
   "remote_pair_url_copy": "ペアリング URL をコピー",

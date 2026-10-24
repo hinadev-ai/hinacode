@@ -663,7 +663,7 @@ export const defaultSettings: Settings = {
 
 /**
  * A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret
- * `environment.<id>.token`. `relay` is its tunnel hostname, dialed before `host`. `source` says whether it was
+ * `environment.<id>.token`. `relay` is its tunnel hostname, dialed when `host` does not answer. `source` says whether it was
  * paired by URL or listed by the relay the desktop signed in to.
  */
 export const Environment = Schema.Struct({

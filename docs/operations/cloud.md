@@ -38,7 +38,7 @@ Without Tailscale, a cloud is reachable only on its LAN. The HinaCode relay give
 
 2. It prints `Open <url> to link this cloud to your HinaCode account. The code is <code>.` Open the URL on any device, sign in, and approve the machine with that code. The link expires after 10 minutes.
 
-The cloud then prints the pairing block with its relay hostname in every URL, and clients dial it before the direct addresses. Later boots keep the relay running without the flag and without calling the relay service. `HINACODE_RELAY_URL` points the cloud at another relay service, such as a local `wrangler dev`.
+The cloud then prints the pairing block with its relay hostname in every URL, and clients use it when none of the direct addresses answers. Later boots keep the relay running without the flag and without calling the relay service. `HINACODE_RELAY_URL` points the cloud at another relay service, such as a local `wrangler dev`.
 
 `hinacode serve --relay off` unlinks the machine and deletes its tunnel. HinaCode uses the `cloudflared` on `PATH` when there is one. Otherwise it downloads the pinned release from Cloudflare's GitHub into `<data dir>/cloudflared/<version>/`, checks its SHA-256, and keeps it for later boots.
 
