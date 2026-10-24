@@ -86,6 +86,113 @@ Deferring transcript updates with `useDeferredValue` was measured and left out. 
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
 
+## Profile the phone app
+
+`mobile.ts` measures `apps/mobile` on the iOS simulator against an isolated desktop, in a Release build. It times
+cold start to the thread list, opening a long thread, scrolling the thread list and that transcript, typing in the
+composer, and a streamed reply. For each one it records JS frame gaps, long tasks, React commits with the
+components each rendered, and React's own render time.
+
+The harness ships only in a perf bundle. Setting `EXPO_PUBLIC_PERF_URL` at build time makes `metro.config.js` swap
+React's production renderer for its profiling build, behind `apps/mobile/src/lib/perf.ts`, and keep function names.
+Everything else is the Release build users get: Hermes bytecode, minified, `__DEV__` false. A normal build never
+references the harness. A Debug build loads React's development renderer, so it has no harness and `mobile.ts`
+times out waiting for the app.
+
+```sh
+S=.agents/skills/verify-hinacode/scripts
+PORT=9305 DATA=/tmp/kk-perf-mobile UDID=<simulator udid> PERF=8105
+HINACODE_MOCK_CLAUDE=stream $S/launch.sh $PORT $DATA
+$S/seed-repo.sh $DATA/repo && node scripts/perf/seed.ts $DATA $DATA/repo --list
+node $S/rpc.ts $PORT settings.set '{"remote":{"enabled":true,"bindHost":"127.0.0.1","port":48105}}'
+
+cd apps/mobile && npx expo prebuild --platform ios   # once; keep app.json out of the commit
+EXPO_PUBLIC_PERF_URL=http://127.0.0.1:$PERF xcodebuild -workspace ios/HinaCode.xcworkspace -scheme HinaCode \
+  -configuration Release -sdk iphonesimulator -destination id=$UDID -derivedDataPath ../../.context/perf/dd build
+cp -R ../../.context/perf/dd/Build/Products/Release-iphonesimulator/HinaCode.app ../../.context/perf/base.app
+cd ../..
+
+export PERF_UDID=$UDID PERF_PORT=$PERF PERF_CDP=$PORT PERF_LONG=<"long 200 turns" id> PERF_REPLY=<"small a" id>
+PERF_APP=.context/perf/base.app node scripts/perf/mobile.ts run base-1
+PERF_APP=.context/perf/after.app node scripts/perf/mobile.ts run after-1
+# ...alternate base-2, after-2, and so on
+node scripts/perf/mobile.ts compare base after
+```
+
+`seed.ts` prints the thread ids. `run` installs the app, pairs it with the desktop on first launch, then does three
+cold starts and three rounds of the other workloads (`PERF_ROUNDS` changes that). It writes
+`.context/perf/<label>-mobile.json` with the raw recordings, the bundle's hash and the load average.
+`compare` pools every `<label>-<n>` run and prints medians with their spread.
+
+| Measurement      | How it is taken                                                                                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cold start       | `simctl launch` to the first React commit, and to the frame after the thread list has projects. Includes launching the process, with a warm file cache      |
+| Open long thread | Clears the transcript cache, pushes the route, then times the fetch, the first paint after it, and the last commit that mounted a component                 |
+| Scroll           | Moves the list by a fixed offset every frame from JS (`scrollToOffset`). It measures the JS and React cost of new rows, not native scrolling                |
+| Typing           | Calls the composer's `onChangeText` once per character, 50 ms apart, and times each key to its commit and to the next frame. Native text input is not in it |
+| Reply            | Sends "go" to the desktop's paced mock reply and records until the reply completes and paints                                                               |
+
+Read these as relative numbers. The simulator runs on the Mac's CPU, and other simulators on the same Mac slow it
+down, so alternate the two builds, compare medians, and write the load average down with them. `top` in the JSON
+lists which components rendered most in each recording. For where JS time goes inside one workload, add
+`react-native-release-profiler` to a throwaway build; it is not a dependency here.
+
+Why this and not a ready-made tool: React Native DevTools' Performance panel records React tracks and JS samples,
+but only in builds with the inspector, which a stock Release build leaves out. `<Profiler>` and React's commit
+timings need the profiling renderer, which React Native ships in `Libraries/Renderer/implementations` but offers no
+switch for. Expo's EAS Observe reports startup from Release builds, but only to a cloud dashboard. Flashlight is
+Android only. So the harness uses what the Release runtime already has, `performance.now()`, the `longtask`
+observer and `performance.rnStartupTiming`, plus the profiling renderer and a stand-in for the DevTools hook.
+
+### 2026-10-24 phone capture
+
+Release build of `8ef8ec4` with the perf harness, on an iPhone 17 Pro Max simulator (iOS 26) on an Apple silicon
+Mac. Five runs, so 15 samples per number, alternated with two throwaway candidates. Other agents' simulators and
+builds shared the Mac: the one-minute load average ran from 5 to 295. The thread list held 90 threads. The long
+thread has 200 turns.
+
+| Measurement                       |  Median | Spread       |
+| --------------------------------- | ------: | ------------ |
+| Cold start, launch to JS runtime  | 1636 ms | 1479 to 2344 |
+| Cold start, bundle evaluation     |   45 ms | 37 to 114    |
+| Cold start, launch to thread list | 1858 ms | 1686 to 2676 |
+| Open long thread, first paint     |   44 ms | 31 to 61     |
+| Open long thread, last mount      |  263 ms | 240 to 541   |
+| Transcript scroll, longest commit |   10 ms | 8 to 16      |
+| Typing, key to commit p50         |  3.8 ms | 2.9 to 4.5   |
+| Typing, renders per key           |     7.1 | 7.1 to 28.4  |
+| Reply, longest commit             |   16 ms | 13 to 21     |
+| Reply, completion to paint        |   35 ms | 29 to 44     |
+
+JS frame p95 stayed at 16.7 to 17.2 ms in every workload, with at most two frames over 33 ms. The simulator runs on
+the Mac's CPU, so read commit times as a ranking. A phone is several times slower, so the largest commits are the
+ones that turn into dropped frames there.
+
+Top costs, largest first:
+
+1. **Native startup before JS.** 1.64 s of the 1.86 s from launch to the thread list passes before React Native
+   starts loading the bundle. `simctl launch` itself takes 0.2 to 0.5 s of that. Evaluating the bundle takes 45 ms,
+   the first commit about 85 ms more, and loading the thread list about 140 ms more. Nothing in this capture
+   attributes the native part. An `xctrace` App Launch recording on a device is the next step.
+2. **A finished reply mounts its whole Markdown in one commit.** The longest commit in every reply run, 14 to 18 ms,
+   mounts about 1,000 components (196 `Text`, 166 `Inline`, 120 `Block`) when the reply completes. While it
+   streams, each delta re-renders only `ReplyText`, `MessageView` and `Chat`, about 0.9 ms. Cause: by design,
+   `ReplyText` in `src/components/chat.tsx` shows nothing until a text part finishes, then mounts its whole
+   `Markdown` tree in one commit and fades it in. Splitting that mount by block would spread it over frames.
+3. **The hidden thread list re-renders every row.** With a thread open, each thread status change re-renders all
+   91 `HomeRow` cells behind it, 7 to 9 ms per commit, twice per turn. A commit that is most likely the 30-second
+   `useNow` tick re-renders all 90 `ThreadRow`s, each with its closed `ThreadActionsSheet` and two `Modal`s, in one
+   16 ms commit. Suspected cause:
+   `HomeList` in `src/app/index.tsx` subscribes to the whole `byId` map, and every row reads `useNow()` and mounts
+   its own actions sheet (`src/components/thread-row.tsx`). Adding `freezeOnBlur` to the stack did not change the
+   count. A smaller `windowSize` cut reply renders by 17% but cost 30 times the render time while scrolling the
+   list, because rows then mount as they scroll in.
+4. **Transcript batches.** Scrolling the long transcript mounts a batch of Markdown messages in commits of up to
+   10 ms (`initialNumToRender={4}`, `maxToRenderPerBatch={2}` in `chat.tsx`). Opening the thread takes 13 commits
+   and 263 ms to mount the visible messages, after a 44 ms first paint.
+5. **Typing** costs two commits per key. One re-renders `InternalTextInput`, the other `Composer` and `Suggestions`
+   (`src/components/composer.tsx`). That is about 1 ms per key, the smallest cost here.
+
 ## Measure streaming Markdown
 
 Use an instance you launched through `verify-hinacode`, with a main inspector as well as renderer CDP.

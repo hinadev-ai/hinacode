@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Usage: seed.ts <user-data-dir> <repo-path>
+// Usage: seed.ts <user-data-dir> <repo-path> [--list | --footprint | <project-id>]
 // Inserts one project and several threads with synthetic transcripts straight into hinacode.sqlite.
 // Deterministic (seeded PRNG) so before/after runs render the same bytes. Reload the renderer afterwards.
 import { DatabaseSync } from "node:sqlite"
@@ -12,7 +12,9 @@ if (!data || !repo) {
 }
 // Heavy mode: one thread with transcripts ten times larger (long Read/Bash outputs), under an existing project.
 const footprint = heavyProjectId === "--footprint"
-const heavy = heavyProjectId !== undefined && !footprint
+// List mode: the default threads plus 80 short ones, so the phone's thread list has something to scroll.
+const longList = heavyProjectId === "--list"
+const heavy = heavyProjectId !== undefined && !footprint && !longList
 let nextId = 0
 const id = () => (footprint ? `perf-${nextId++}` : randomUUID())
 const scale = heavy ? 10 : 1
@@ -132,6 +134,7 @@ const plan: [string, number][] = footprint
         ["small a", 5],
         ["small b", 5],
         ["small c", 5],
+        ...(longList ? Array.from({ length: 80 }, (_, i): [string, number] => [`short ${i}`, 2]) : []),
       ]
 const threads: Record<string, string> = {}
 db.exec("BEGIN")
