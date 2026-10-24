@@ -13,7 +13,7 @@ flowchart LR
   preload["Preload<br/>window.hinacode"]
   subgraph main["Main process: one Effect ManagedRuntime"]
     ipc["ipc.ts + rpc.ts<br/>rpc handlers"]
-    services["Services<br/>Threads, Worktrees, Projects,<br/>Messages, Settings, Secrets"]
+    services["Services<br/>Threads, Worktrees, Projects,<br/>Messages, Settings, Secrets, Linear"]
     runner["AgentRunner"]
     mcp["MCP server<br/>127.0.0.1:random/mcp"]
     autos["Automations<br/>webhook + pollers"]
@@ -37,6 +37,7 @@ flowchart LR
   mcp --> services
   services --> db
   services --> git
+  services <--> ext
   autos --> runner
   autos <--> ext
 ```
@@ -44,6 +45,7 @@ flowchart LR
 - **The renderer is a view.** It never touches the file system, git, or the agents. Everything goes through `rpc`.
 - **Agents call back over MCP.** Both agents get the built-in MCP server, and the bearer credential alone decides which thread a call acts as.
 - **Git and GitHub go through the CLIs** (`git`, `gh`), so hinacode uses the user's existing auth and config.
+- **Linear goes through one service.** `services/Linear.ts` reads the machine's `linear.apiKey` from `Secrets` and loads the SDK on first use. The MCP tools, the `linear.issue` poller and the `linear.issues` rpc all use it, and the key never leaves the main process. `HINACODE_MOCK_LINEAR=1` answers demo tickets.
 
 ## IPC contract
 
@@ -540,7 +542,7 @@ flowchart LR
   end
   review --> ws["makeActiveWorkspace → git diff"]
   prs --> db[("pull_request_link")] --> push["push thread.pullRequests"]
-  linear --> apikey["Secrets: linear.apiKey"]
+  linear --> apikey["Linear service<br/>Secrets: linear.apiKey"]
   secret --> runner["AgentRunner.requestSecret<br/>card in the thread, value stored by Secrets"]
   create --> threads["Threads.create (created_by = thread:caller)<br/>+ AgentRunner.send"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
