@@ -1,16 +1,16 @@
 import type { ChecksStatus, PullRequestStatus, ReviewStatus } from "@shared/domain.ts"
+import { pullRequestIndicator } from "@shared/threadStatus.ts"
 import type { IconName } from "@/components/icon"
 import type { Tone } from "@/components/ui"
-import type { Palette } from "@/constants/theme"
+import { indicatorGlyph, type Palette } from "@/constants/theme"
 import { copy } from "@/lib/copy"
 import type { PullRequestSummary } from "@/stores/pull-requests"
 
 export const statusGlyph = (theme: Palette): Record<PullRequestStatus, { name: IconName; color: string }> => ({
-  open: { name: "RiGitPullRequestLine", color: theme.running },
-  draft: { name: "RiGitPrDraftLine", color: theme.textMuted },
-  // `link` is the violet that reads in both themes, where `primary` is too dark on black.
-  merged: { name: "RiGitMergeLine", color: theme.link },
-  closed: { name: "RiGitClosePullRequestLine", color: theme.danger },
+  open: indicatorGlyph(theme, pullRequestIndicator.open),
+  draft: indicatorGlyph(theme, pullRequestIndicator.draft),
+  merged: indicatorGlyph(theme, pullRequestIndicator.merged),
+  closed: indicatorGlyph(theme, pullRequestIndicator.closed),
 })
 
 export const statusLabel = (status: PullRequestStatus) => copy(`mobile_pr_state_${status}`)
@@ -40,9 +40,6 @@ export const reviewTone: Record<ReviewStatus, Tone> = {
   changesRequested: "attention",
   reviewRequired: "neutral",
 }
-
-export const checksDot = (theme: Palette, checks: ChecksStatus | null) =>
-  checks === "failing" ? theme.danger : checks === "pending" ? theme.attention : null
 
 /** "Pull request #123, Open, Checks failing" for screen readers. */
 export function pullRequestLabel(number: string, summary: PullRequestSummary | null, more = 0) {

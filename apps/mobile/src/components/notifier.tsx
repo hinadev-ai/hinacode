@@ -1,5 +1,6 @@
 import { router, usePathname } from "expo-router"
 import type { AgentEvent } from "@shared/agent.ts"
+import { outcomeOf } from "@shared/threadStatus.ts"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AppState, Platform } from "react-native"
 import { Banner, type BannerNotice } from "@/components/banner"
@@ -11,7 +12,6 @@ import {
   presentNotification,
   requestNotificationPermission,
 } from "@/lib/notifications"
-import { outcomeOf } from "@/lib/row-state"
 import { threadAlert } from "@/lib/thread-alerts"
 import { usePreferences } from "@/stores/preferences"
 import { useThreads } from "@/stores/threads"

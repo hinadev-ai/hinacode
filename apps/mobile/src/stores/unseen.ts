@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Outcome } from "@/lib/row-state"
+import type { Outcome } from "@shared/threadStatus.ts"
 
 interface UnseenState {
   /** Threads whose latest turn ended while the developer was not looking, until they open the thread. */

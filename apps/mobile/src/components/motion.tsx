@@ -58,55 +58,34 @@ export function Spinner({ size = 16, color }: { size?: number; color: string }) 
   )
 }
 
-const pulse = { "50%": { opacity: 0.5 } }
 const ring = {
-  from: { transform: [{ scale: 1 }], opacity: 0.6 },
+  from: { transform: [{ scale: 1 }], opacity: 1 },
   "75%": { transform: [{ scale: 2.5 }], opacity: 0 },
   to: { transform: [{ scale: 2.5 }], opacity: 0 },
 }
 
-export type DotState = "running" | "attention"
-
 /**
- * A thread's state at a glance: a running thread's dot pulses, and one that needs the developer rings
- * three times and then rests. Reduce motion leaves both dots still.
+ * Rings out from its parent three times and then rests, like the desktop's `animate-attention`, so a thread
+ * that starts waiting catches the eye of someone looking at another one. Reduce motion leaves it out.
  */
-export function StatusDot({ state, color, size = 8 }: { state: DotState; color: string; size?: number }) {
+export function AttentionRing({ color }: { color: string }) {
   const reduced = useReducedMotion()
-  const dot = { width: size, height: size, borderRadius: size / 2, backgroundColor: color }
-  if (reduced) return <View style={dot} />
-  if (state === "running") {
-    return (
-      <Animated.View
-        style={[
-          dot,
-          {
-            animationName: pulse,
-            animationDuration: 2000,
-            animationIterationCount: "infinite",
-            animationTimingFunction: cssEase.pulse,
-          },
-        ]}
-      />
-    )
-  }
+  if (reduced) return null
   return (
-    <View style={dot}>
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            borderRadius: size / 2,
-            backgroundColor: color,
-            opacity: 0,
-            animationName: ring,
-            animationDuration: 1000,
-            animationIterationCount: 3,
-            animationTimingFunction: cssEase.out,
-          },
-        ]}
-      />
-    </View>
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.ring,
+        {
+          borderColor: color,
+          animationName: ring,
+          animationDuration: 1000,
+          animationIterationCount: 3,
+          animationTimingFunction: cssEase.out,
+          animationFillMode: "forwards",
+        },
+      ]}
+    />
   )
 }
 
@@ -215,4 +194,5 @@ export function Rotate({ turned, children }: { turned: boolean; children: ReactN
 
 const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
+  ring: { ...StyleSheet.absoluteFill, margin: 2, borderRadius: 999, borderWidth: 1 },
 })
