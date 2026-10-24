@@ -526,6 +526,19 @@
   --term-color-15: oklch(0.985 0 0);
 }
 
+/* Pele reads its colors from these, so diagrams follow theme and contrast changes without re-rendering. */
+.pele {
+  --pele-bg: var(--muted);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--muted-foreground);
+  --pele-surface: var(--background);
+  --pele-surface-alt: var(--muted);
+  --pele-border: var(--muted-foreground);
+  --pele-accent: var(--primary);
+  --pele-critical: var(--destructive);
+}
+
 /* Base UI popups enter and exit by scale and opacity. Reduced motion keeps the fade and drops the scale. */
 @media (prefers-reduced-motion: reduce) {
   [data-starting-style],

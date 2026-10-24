@@ -74,21 +74,6 @@ export function applyContrast(contrast: number) {
   document.documentElement.style.setProperty("--contrast", String(contrast / 100))
 }
 
-/** Resolves a color custom property on the root to hex, for libraries that cannot read CSS variables or oklch. */
-export function resolveColor(variable: string): string {
-  const canvas = new OffscreenCanvas(1, 1)
-  const context = canvas.getContext("2d", { willReadFrequently: true })
-  if (!context) throw new Error("2D canvas is unavailable")
-  const style = getComputedStyle(document.documentElement)
-  // Painting over the background flattens translucent tokens such as the default dark border.
-  context.fillStyle = style.getPropertyValue("--background")
-  context.fillRect(0, 0, 1, 1)
-  context.fillStyle = style.getPropertyValue(variable)
-  context.fillRect(0, 0, 1, 1)
-  const [r = 0, g = 0, b = 0] = context.getImageData(0, 0, 1, 1).data
-  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`
-}
-
 declare global {
   interface Window {
     /** Local Font Access API. Electron grants its permission because hinacode installs no permission handler. */
