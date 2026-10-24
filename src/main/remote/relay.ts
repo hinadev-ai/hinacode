@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { createInterface } from "node:readline"
 import {
   Clock,
@@ -36,6 +37,7 @@ const FIRST_RETRY_MS = 1000
 const LAST_RETRY_MS = 60_000
 /** A `cloudflared` that stayed up this long restarts after the first delay again. */
 const HEALTHY_MS = 60_000
+const PUBLISH_EVERY = Duration.minutes(10)
 
 const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "run"]
 
@@ -54,8 +56,15 @@ export const parseCloudflaredLine = (line: string): CloudflaredLine | null => {
   return at === -1 ? null : { type: "error", message: line.slice(at + 5).trim() }
 }
 
-/** The tunnel the relay service made for this machine. `origin` is the listener address last sent to it. */
-export const RelayTunnel = Schema.Struct({ hostname: Schema.String, origin: Schema.String })
+/**
+ * The tunnel the relay service made for this machine. `origin` is the listener address last sent to it, and
+ * `published` the SHA-256 of the pairing it last accepted, missing until it accepted one.
+ */
+export const RelayTunnel = Schema.Struct({
+  hostname: Schema.String,
+  origin: Schema.String,
+  published: Schema.optionalKey(Schema.String),
+})
 export type RelayTunnel = typeof RelayTunnel.Type
 
 export interface RelayOptions {
@@ -125,6 +134,7 @@ const make = ({
     const access = yield* RemoteAccess
     const lock = yield* Semaphore.make(1)
     const connector = yield* FiberHandle.make()
+    const publisher = yield* FiberHandle.make<void, never>()
     const linking = yield* FiberHandle.make<void, RelayError | PersistenceError>()
     const status = yield* SubscriptionRef.make<RelayStatus>({ state: "off" })
 
@@ -160,7 +170,7 @@ const make = ({
         const origin = relayOrigin(remote)
         const { hostname, connectorToken } = yield* service.putTunnel(credential, origin)
         yield* secrets.set(CONNECTOR_TOKEN_SECRET, connectorToken)
-        yield* save({ hostname, origin })
+        yield* save({ ...tunnel, hostname, origin })
       })
 
     /** Sends the listener's current address to the relay service when the tunnel points elsewhere. */
@@ -174,6 +184,25 @@ const make = ({
           ),
         )
       })
+
+    /** Sends the pairing to the relay service unless it already has it. A failure waits for the next trigger. */
+    const publishPairing = Effect.gen(function* () {
+      if (tunnel === null) return
+      const { hosts, port, token } = yield* access.pairing
+      const pairing = { hosts, port, token }
+      const published = createHash("sha256").update(JSON.stringify(pairing)).digest("hex")
+      if (published === tunnel.published) return
+      const credential = yield* requireSecret(
+        CREDENTIAL_SECRET,
+        "This machine's relay sign-in is gone, so its pairing cannot be published. Turn on the relay again.",
+      )
+      yield* service.publishPairing(credential, pairing)
+      // `tunnel` is read again because `routed` may have saved a new origin meanwhile.
+      yield* save({ ...tunnel, published })
+    }).pipe(Effect.catch((failure) => Effect.logWarning("Cannot publish this machine's pairing", failure.message)))
+
+    /** Publishes in the background. A newer trigger replaces one still in flight, since its pairing is fresher. */
+    const republish = Effect.asVoid(FiberHandle.run(publisher, publishPairing))
 
     /** Runs `cloudflared` once, until it exits. Interruption kills it. */
     const runOnce = (binary: string, hostname: string, token: string) =>
@@ -249,6 +278,7 @@ const make = ({
     const apply = Effect.gen(function* () {
       yield* FiberHandle.clear(connector)
       if (tunnel === null) return yield* publish({ state: "off" })
+      yield* republish
       if (!remote.enabled) return yield* publish({ state: "paused", hostname: tunnel.hostname })
       yield* publish({ state: "connecting", hostname: tunnel.hostname, error: null })
       yield* FiberHandle.run(connector, keepConnected(tunnel))
@@ -295,6 +325,8 @@ const make = ({
       Effect.gen(function* () {
         yield* FiberHandle.clear(linking)
         yield* FiberHandle.clear(connector)
+        // After `linking`, whose exit may start a publish, and before the row goes, so no publish writes it back.
+        yield* FiberHandle.clear(publisher)
         const credential = yield* secrets.get(CREDENTIAL_SECRET)
         if (Option.isSome(credential)) yield* service.deleteHost(credential.value).pipe(Effect.tapError(() => apply))
         yield* sql`DELETE FROM setting WHERE key = ${TUNNEL_KEY}`.pipe(Effect.mapError(persistence("relay.remove")))
@@ -313,6 +345,11 @@ const make = ({
         remote = next.remote
         return lock.withPermit(apply)
       }),
+      Effect.forkScoped,
+    )
+    // Under the lock, so no publish starts while `remove` is deleting the tunnel.
+    yield* Stream.merge(access.rotations, Stream.drop(Stream.tick(PUBLISH_EVERY), 1)).pipe(
+      Stream.runForEach(() => lock.withPermit(republish)),
       Effect.forkScoped,
     )
 

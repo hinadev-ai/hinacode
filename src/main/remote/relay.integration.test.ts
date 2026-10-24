@@ -127,9 +127,15 @@ const fakeService = (
       return json({ hostname: HOSTNAME, connectorToken: "connector-secret" })
     }
     if (call === "DELETE /v1/host") return new Response(null, { status: options.deleteStatus ?? 204 })
+    if (call === "PUT /v1/host/pairing") return new Response(null, { status: 204 })
     return json({ error: `No route for ${call}` }, 404)
   }
-  return { fetch, calls, claims: () => calls.filter(({ call }) => call === "POST /v1/links/claim").length }
+  return {
+    fetch,
+    calls,
+    claims: () => calls.filter(({ call }) => call === "POST /v1/links/claim").length,
+    pairings: () => calls.filter(({ call }) => call === "PUT /v1/host/pairing"),
+  }
 }
 
 /** Moves the test clock until `done` holds, letting real I/O such as the fake service's promises run in between. */
@@ -164,14 +170,30 @@ const remoteOn = Settings.use((settings) =>
 
 const linkedBefore = Secrets.use((secrets) => secrets.set(CREDENTIAL_SECRET, "credential-1"))
 
-/** A machine that set up its relay before, with remote control on. */
-const seed = (stored: RelayTunnel = tunnel) =>
+/** What the relay service gets in `PUT /v1/host/pairing` right now, and the fingerprint the tunnel row keeps of it. */
+const currentPairing = Effect.gen(function* () {
+  const { hosts, port, token } = yield* RemoteAccess.use((access) => access.pairing)
+  const body = { hosts, port, token }
+  return { body, fingerprint: sha256(Buffer.from(JSON.stringify(body))) }
+})
+
+/** A machine that set up its relay and published its current pairing before, with remote control on. */
+const seed = (stored: Partial<RelayTunnel> = {}) =>
   Effect.gen(function* () {
+    yield* remoteOn
+    const row = { ...tunnel, published: (yield* currentPairing).fingerprint, ...stored }
     const sql = yield* SqlClient.SqlClient
-    yield* sql`INSERT INTO setting (key, value) VALUES ('relay.tunnel', ${JSON.stringify(stored)})`
+    yield* sql`INSERT INTO setting (key, value) VALUES ('relay.tunnel', ${JSON.stringify(row)})`
     yield* Secrets.use((secrets) => secrets.set(CONNECTOR_TOKEN_SECRET, "connector-secret"))
     yield* linkedBefore
-    yield* remoteOn
+  })
+
+/** Waits until the tunnel row keeps `fingerprint` as its published pairing. */
+const published = (fingerprint: string) =>
+  Effect.gen(function* () {
+    const services = yield* Effect.context<SqlClient.SqlClient>()
+    const stored = () => Effect.runPromise(Effect.provide(storedTunnel, services))
+    yield* Effect.promise(() => vi.waitFor(async () => expect((await stored())?.published).toBe(fingerprint)))
   })
 
 const noLink = () => Effect.void
@@ -330,16 +352,20 @@ describe("Relay", () => {
           yield* Fiber.join(setup)
           expect(links).toStrictEqual([{ url: LINK_URL, userCode: "WXYZ-2345" }])
           yield* until((status) => status.state === "connected")
+          yield* advanceUntil(() => service.pairings().length === 1)
           expect(service.calls.map(({ call }) => call)).toStrictEqual([
             "POST /v1/links",
             "POST /v1/links/claim",
             "POST /v1/links/claim",
             "POST /v1/links/claim",
             "PUT /v1/tunnel",
+            "PUT /v1/host/pairing",
           ])
-          expect(service.calls.at(-1)).toMatchObject({ body: { origin: ORIGIN }, credential: "credential-1" })
+          expect(service.calls[4]).toMatchObject({ body: { origin: ORIGIN }, credential: "credential-1" })
           expect((yield* RemoteAccess.use((access) => access.pairing)).relay).toBe(HOSTNAME)
-          expect(yield* storedTunnel).toStrictEqual(tunnel)
+          const { fingerprint } = yield* currentPairing
+          yield* published(fingerprint)
+          expect(yield* storedTunnel).toStrictEqual({ ...tunnel, published: fingerprint })
         }),
       )
     }).pipe(Effect.provide(base)),
@@ -422,7 +448,7 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 
-  it.live("a linked machine only routes its tunnel", () =>
+  it.live("a linked machine routes its tunnel and publishes its pairing without signing in", () =>
     Effect.gen(function* () {
       yield* remoteOn
       yield* linkedBefore
@@ -432,10 +458,12 @@ describe("Relay", () => {
         Effect.gen(function* () {
           yield* Relay.use((relay) => relay.setup({ onLink: () => Effect.die("no link expected") }))
           yield* until((status) => status.state === "connected")
+          const { body, fingerprint } = yield* currentPairing
+          yield* published(fingerprint)
           expect(service.calls).toStrictEqual([
             { call: "PUT /v1/tunnel", body: { origin: ORIGIN }, credential: "credential-1" },
+            { call: "PUT /v1/host/pairing", body, credential: "credential-1" },
           ])
-          expect(yield* storedTunnel).toStrictEqual(tunnel)
         }),
       )
     }).pipe(Effect.provide(base)),
@@ -443,7 +471,7 @@ describe("Relay", () => {
 
   it.live("routes the tunnel to the listener's new address before starting cloudflared", () =>
     Effect.gen(function* () {
-      yield* seed({ ...tunnel, origin: "http://127.0.0.1:1" })
+      yield* seed({ origin: "http://127.0.0.1:1" })
       const service = fakeService()
       yield* withRelay(
         { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
@@ -452,7 +480,7 @@ describe("Relay", () => {
           expect(service.calls).toStrictEqual([
             { call: "PUT /v1/tunnel", body: { origin: ORIGIN }, credential: "credential-1" },
           ])
-          expect(yield* storedTunnel).toStrictEqual(tunnel)
+          expect(yield* storedTunnel).toStrictEqual({ ...tunnel, published: (yield* currentPairing).fingerprint })
         }),
       )
     }).pipe(Effect.provide(base)),
@@ -474,6 +502,63 @@ describe("Relay", () => {
           expect(yield* Secrets.use((secrets) => secrets.has(CONNECTOR_TOKEN_SECRET))).toBe(false)
           expect(yield* Secrets.use((secrets) => secrets.has(CREDENTIAL_SECRET))).toBe(false)
           expect((yield* RemoteAccess.use((access) => access.pairing)).relay).toBeNull()
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("publishes the pairing once linked through the browser, and again after the token rotates", () =>
+    Effect.gen(function* () {
+      yield* remoteOn
+      const service = fakeService()
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          const setup = yield* Relay.use((relay) => relay.setup({ onLink: noLink })).pipe(Effect.forkChild)
+          yield* advanceUntil(() => service.pairings().length === 1)
+          yield* Fiber.join(setup)
+          const linked = yield* currentPairing
+          expect(service.pairings()).toStrictEqual([
+            { call: "PUT /v1/host/pairing", body: linked.body, credential: "credential-1" },
+          ])
+          yield* published(linked.fingerprint)
+
+          const { token } = yield* RemoteAccess.use((access) => access.rotateToken)
+          yield* advanceUntil(() => service.pairings().length === 2)
+          expect(service.pairings()[1]).toStrictEqual({
+            call: "PUT /v1/host/pairing",
+            body: { ...linked.body, token },
+            credential: "credential-1",
+          })
+          yield* published((yield* currentPairing).fingerprint)
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.live("a booting machine whose pairing is already published makes no service call", () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const service = fakeService()
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        until((status) => status.state === "connected"),
+      )
+      expect(service.calls).toStrictEqual([])
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.live("a booting machine whose published pairing is stale publishes it once and connects", () =>
+    Effect.gen(function* () {
+      yield* seed({ published: "stale" })
+      const service = fakeService()
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          yield* until((status) => status.state === "connected")
+          const { body, fingerprint } = yield* currentPairing
+          yield* published(fingerprint)
+          expect(service.calls).toStrictEqual([{ call: "PUT /v1/host/pairing", body, credential: "credential-1" }])
         }),
       )
     }).pipe(Effect.provide(base)),

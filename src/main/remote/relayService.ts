@@ -26,6 +26,9 @@ const Claimed = Schema.Struct({ credential: Schema.String })
 const Tunnel = Schema.Struct({ hostname: Schema.String, connectorToken: Schema.String })
 const ServiceFailure = Schema.Struct({ error: Schema.String })
 
+const forgotten = () =>
+  new RelayError({ message: "The relay service no longer knows this machine. Remove the relay and turn it on again." })
+
 const describe = (cause: unknown) =>
   Predicate.hasProperty(cause, "message") && typeof cause.message === "string" ? cause.message : String(cause)
 
@@ -101,14 +104,17 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
     putTunnel: (credential: string, origin: string) =>
       call("route the tunnel", "PUT", "/v1/tunnel", { body: { origin }, credential }).pipe(
         Effect.flatMap((answer) =>
-          answer.status === 401
-            ? Effect.fail(
-                new RelayError({
-                  message: "The relay service no longer knows this machine. Remove the relay and turn it on again.",
-                }),
-              )
-            : decode("route the tunnel", Tunnel, answer),
+          answer.status === 401 ? Effect.fail(forgotten()) : decode("route the tunnel", Tunnel, answer),
         ),
+      ),
+    /** Hands the owner's devices what they need to connect to this machine. */
+    publishPairing: (credential: string, pairing: { hosts: ReadonlyArray<string>; port: number; token: string }) =>
+      call("publish this machine's pairing", "PUT", "/v1/host/pairing", { body: pairing, credential }).pipe(
+        Effect.flatMap((answer) => {
+          if (answer.status === 401) return Effect.fail(forgotten())
+          if (answer.status >= 300) return Effect.fail(failed("publish this machine's pairing", answer))
+          return Effect.void
+        }),
       ),
     /** A 401 or 404 means the service already forgot this machine. */
     deleteHost: (credential: string) =>
