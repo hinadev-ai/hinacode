@@ -11,6 +11,7 @@ describe("parsePreferences", () => {
       appearance: "dark",
       notifications: { completed: false, needsInput: true, failed: true },
       homeTab: "threads",
+      sidebarHidden: true,
     }
     expect(parsePreferences(JSON.stringify(stored))).toEqual(stored)
   })
