@@ -3,14 +3,18 @@ import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, type Settings } from "@shared/domain.ts"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
-import { Alert, AppState, Linking, Platform, ScrollView, StyleSheet, View } from "react-native"
+import { router } from "expo-router"
+import { Alert, AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
+import { forgetServer } from "@/components/connection-provider"
 import type { IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
 import { Footnote, SettingsGroup, SettingsRow, SwitchRow } from "@/components/settings-rows"
 import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from "@/components/ui"
+import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call, disconnect, useConnection } from "@/lib/connection"
+import { mono } from "@/constants/theme"
+import { call, reconnectNow, type Server, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import {
@@ -19,7 +23,6 @@ import {
   requestNotificationPermission,
 } from "@/lib/notifications"
 import type { Appearance, Preferences } from "@/lib/preferences"
-import { clearTarget } from "@/lib/storage"
 import { useModels } from "@/stores/models"
 import { usePreferences } from "@/stores/preferences"
 
@@ -33,7 +36,7 @@ export default function SettingsScreen() {
     >
       <PhoneSettings />
       <DesktopSettings />
-      <ConnectionSettings />
+      <ServerSettings />
       <SettingsGroup title={copy("mobile_settings_about")}>
         <SettingsRow
           icon="RiSmartphoneLine"
@@ -184,19 +187,20 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
 ]
 
 /**
- * The desktop's settings, loaded once per handshake. Writes show at once and roll back when the desktop
+ * One server's settings, loaded once per handshake with it. Writes show at once and roll back when the server
  * refuses them.
  */
-function useDesktopSettings() {
-  const generation = useConnection((state) => state.generation)
+function useDesktopSettings(server: string | undefined) {
+  const generation = useConnection((state) => state.servers.find((entry) => entry.id === server)?.generation ?? 0)
   const [attempt, setAttempt] = useState(0)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [writeError, setWriteError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (server === undefined) return
     let current = true
-    call("settings.get", undefined).then(
+    call("settings.get", undefined, { server }).then(
       (loaded) => {
         if (!current) return
         setSettings(loaded)
@@ -207,7 +211,7 @@ function useDesktopSettings() {
     return () => {
       current = false
     }
-  }, [generation, attempt])
+  }, [server, generation, attempt])
 
   const retry = () => {
     setLoadError(null)
@@ -217,7 +221,7 @@ function useDesktopSettings() {
   const write = (previous: Settings, patch: SettingsPatch) => {
     setSettings({ ...previous, ...patch })
     setWriteError(null)
-    call("settings.set", patch).then(setSettings, (cause) => {
+    call("settings.set", patch, { server }).then(setSettings, (cause) => {
       setSettings(previous)
       setWriteError(errorText(cause))
     })
@@ -227,9 +231,34 @@ function useDesktopSettings() {
 }
 
 function DesktopSettings() {
+  const servers = useConnection((state) => state.servers)
+  const [chosen, setChosen] = useState<string | null>(null)
+  const server =
+    servers.find((entry) => entry.id === chosen) ?? servers.find((entry) => entry.status === "connected") ?? servers[0]
+  return (
+    <>
+      {servers.length > 1 && server !== undefined && (
+        <SettingsGroup title={copy("mobile_settings_server_settings")}>
+          <View style={styles.serverPicker}>
+            <SegmentedControl
+              segments={servers.map((entry) => ({ value: entry.id, label: serverName(entry) }))}
+              value={server.id}
+              onChange={setChosen}
+              accessibilityLabel={copy("mobile_settings_server_settings")}
+            />
+          </View>
+        </SettingsGroup>
+      )}
+      <ServerPreferences key={server?.id} server={server} />
+    </>
+  )
+}
+
+/** The settings saved on one server: access mode, default models and archiving. */
+function ServerPreferences({ server }: { server: Server | undefined }) {
   const theme = useTheme()
-  const offline = useConnection((state) => state.status !== "connected")
-  const { settings, loadError, writeError, retry, write } = useDesktopSettings()
+  const offline = server?.status !== "connected"
+  const { settings, loadError, writeError, retry, write } = useDesktopSettings(server?.id)
   const [picking, setPicking] = useState<ProviderId | null>(null)
 
   if (settings === null) {
@@ -416,56 +445,91 @@ function ModelSheet({
   )
 }
 
-function ConnectionSettings() {
-  const status = useConnection((state) => state.status)
-  const target = useConnection((state) => state.target)
-  const extraHosts = target?.hosts.slice(1) ?? []
+/** Every paired server with its status. Tap one to reconnect, pair it again or forget it. */
+function ServerSettings() {
+  const servers = useConnection((state) => state.servers)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const open = servers.find((server) => server.id === openId)
   return (
-    <SettingsGroup
-      title={copy("mobile_settings_connection")}
-      footnote={
-        <>
-          {extraHosts.length > 0 && `${copy("mobile_settings_more_hosts", { hosts: extraHosts.join(", ") })}\n`}
-          {copy("mobile_settings_connection_footnote")}
-        </>
-      }
-    >
-      <SettingsRow icon="RiWifiLine" label={copy("mobile_settings_status")}>
-        <ConnectionBadge status={status} />
-      </SettingsRow>
-      {target !== null && (
+    <>
+      <SettingsGroup title={copy("mobile_settings_servers")} footnote={copy("mobile_settings_connection_footnote")}>
+        {servers.map((server) => (
+          <SettingsRow
+            key={server.id}
+            icon="RiComputerLine"
+            label={serverName(server)}
+            onPress={() => setOpenId(server.id)}
+          >
+            <ConnectionBadge status={server.status} />
+          </SettingsRow>
+        ))}
         <SettingsRow
-          icon="RiComputerLine"
-          label={copy("mobile_settings_address")}
-          value={`${target.hosts[0]}:${target.port}`}
-          monospace
+          icon="RiAddLine"
+          label={copy("mobile_settings_add_server")}
+          onPress={() => router.push("/server/new")}
         />
-      )}
-      <View style={styles.permission}>
-        <Button
-          icon="RiLinkUnlinkM"
-          variant="danger"
-          label={copy("mobile_settings_disconnect")}
-          onPress={confirmDisconnect}
-        />
-      </View>
-    </SettingsGroup>
+      </SettingsGroup>
+      {open !== undefined && <ServerSheet server={open} onClose={() => setOpenId(null)} />}
+    </>
   )
 }
 
-const forget = () => void clearTarget().then(disconnect)
+function ServerSheet({ server, onClose }: { server: Server; onClose: () => void }) {
+  const theme = useTheme()
+  const forget = () => {
+    onClose()
+    forgetServer(server.id)
+  }
+  return (
+    <Sheet title={serverName(server)} open onClose={onClose} fit>
+      <View style={styles.permission}>
+        <View style={styles.serverStatus}>
+          <ConnectionBadge status={server.status} />
+        </View>
+        {server.error !== null && <Notice tone="danger" text={server.error} />}
+        {server.hosts.map((host) => (
+          <Text key={host} style={[styles.address, { color: theme.textMuted }]}>{`${host}:${server.port}`}</Text>
+        ))}
+        {server.status === "offline" && (
+          <Button
+            icon="RiRefreshLine"
+            label={copy("mobile_settings_server_reconnect")}
+            onPress={() => reconnectNow(server.id)}
+          />
+        )}
+        {server.status === "unauthorized" && (
+          <Button
+            icon="RiQrScanLine"
+            variant="primary"
+            label={copy("mobile_settings_server_pair_again")}
+            onPress={() => {
+              onClose()
+              router.push("/server/new")
+            }}
+          />
+        )}
+        <Button
+          icon="RiLinkUnlinkM"
+          variant="danger"
+          label={copy("mobile_settings_server_forget")}
+          onPress={() => confirmForget(serverName(server), forget)}
+        />
+      </View>
+    </Sheet>
+  )
+}
 
 // react-native-web's Alert shows no buttons, so the browser's own confirm stands in.
-function confirmDisconnect() {
-  const title = copy("mobile_settings_disconnect_title")
-  const message = copy("mobile_settings_disconnect_message")
+function confirmForget(name: string, forget: () => void) {
+  const title = copy("mobile_settings_server_forget_title", { server: name })
+  const message = copy("mobile_settings_server_forget_message")
   if (Platform.OS === "web") {
     if (window.confirm(`${title}\n\n${message}`)) forget()
     return
   }
   Alert.alert(title, message, [
     { text: copy("mobile_settings_cancel"), style: "cancel" },
-    { text: copy("mobile_settings_disconnect"), style: "destructive", onPress: forget },
+    { text: copy("mobile_settings_server_forget"), style: "destructive", onPress: forget },
   ])
 }
 
@@ -474,4 +538,7 @@ const styles = StyleSheet.create({
   segmentRow: { padding: 8 },
   permission: { gap: 8, padding: 12 },
   loading: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
+  serverStatus: { flexDirection: "row" },
+  address: { fontFamily: mono, fontSize: 13 },
+  serverPicker: { padding: 8 },
 })

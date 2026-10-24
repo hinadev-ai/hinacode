@@ -79,6 +79,8 @@ Verified: `npx --package <tarball> hinacode serve` on the Linux home server inst
 
 ### Slice 4: multi-cloud clients
 
+Shipped for the desktop in `2026-10-15-desktop-environments.md` and for the phone in `2026-10-24-mobile-servers.md`. Both merge every machine's projects into one list instead of grouping by cloud.
+
 - Both clients store a list of clouds (name, how to reach it, token) instead of one connection. The mobile connection provider and the desktop gain one socket per cloud, each folding pushes with the reducers they already have.
 - The sidebar and the phone list group by cloud and project. New-thread picks a project, and the project names its cloud, so there is no separate cloud picker to learn.
 - Project setup becomes per cloud: `projects.clone` and folder import run on the target cloud, which they already do once the call is routed there. A project that exists on two clouds is two project rows in two databases; nothing tries to sync them, because git is the sync.

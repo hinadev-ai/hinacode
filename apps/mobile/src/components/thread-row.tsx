@@ -4,11 +4,13 @@ import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
 import { StatusDot } from "@/components/motion"
+import { ServerMark } from "@/components/server-mark"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
 import { mono, type Palette, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
+import { useProjectServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { openThread } from "@/lib/navigation"
@@ -67,6 +69,8 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   const number = latest === undefined ? null : pullRequestNumber(latest.url)
   const watching = links.some((link) => link.watch !== null)
   const actions = useThreadActions(thread)
+  const server = useProjectServer(thread.projectId)
+  const away = server !== undefined && server.status !== "connected"
   const [actionsOpen, setActionsOpen] = useState(false)
 
   const title = thread.title || copy("mobile_home_untitled")
@@ -105,7 +109,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
         onAccessibilityAction={(event) => void runFromAccessibility(event.nativeEvent.actionName)}
         onPress={() => openThread(thread.id)}
         onLongPress={() => setActionsOpen(true)}
-        style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
+        style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }, away && styles.away]}
       >
         <View style={styles.titleLine}>
           <ProviderMark provider={thread.provider} size={MARK_SIZE} />
@@ -115,6 +119,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           <StatusIndicator state={state} />
         </View>
         <View style={styles.metaLine}>
+          <ServerMark server={showProject ? server : undefined} />
           {project !== undefined && (
             <Text numberOfLines={1} style={[styles.meta, styles.project, { color: theme.textMuted }]}>
               {project}
@@ -192,6 +197,7 @@ const styles = StyleSheet.create({
   removed: { textDecorationLine: "line-through" },
   pullRequest: { flexDirection: "row", alignItems: "center", gap: 2, flexShrink: 0 },
   time: { marginLeft: "auto", paddingLeft: 4, flexShrink: 0, fontVariant: ["tabular-nums"] },
+  away: { opacity: 0.5 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   limited: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   limitedLabel: { fontSize: 12, fontWeight: "500" },

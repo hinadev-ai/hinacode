@@ -44,7 +44,7 @@ export default function RootLayout() {
 }
 
 function Routes() {
-  const paired = useConnection((state) => state.target !== null && state.status !== "unauthorized")
+  const paired = useConnection((state) => state.paired)
   return (
     <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Protected guard={paired}>

@@ -6,6 +6,11 @@ import { type ClientFrame, REMOTE_PROTOCOL_VERSION, ServerFrame } from "@shared/
 
 export type TransportStatus = "connecting" | "connected" | "offline" | "unauthorized"
 
+export interface ServerIdentity {
+  readonly id: string
+  readonly name: string
+}
+
 export class RpcError extends Error {
   constructor(
     readonly tag: string,
@@ -45,8 +50,8 @@ export interface TransportOptions {
   /** Whether `method` changes state on the desktop, so a retry must carry a call key. */
   readonly isMutation: (method: string) => boolean
   readonly onStatus: (status: TransportStatus, error: string | null) => void
-  /** Called on every handshake with the features this desktop understands. */
-  readonly onReady: (features: ReadonlySet<string>) => void
+  /** Called on every handshake with the features this desktop understands, and which HinaCode it is when it says. */
+  readonly onReady: (features: ReadonlySet<string>, environment: ServerIdentity | undefined) => void
   readonly onEvent: (event: PushEvent) => void
   readonly createSocket?: (url: string) => SocketLike
   readonly random?: () => number
@@ -209,7 +214,7 @@ export class Transport {
     if (frame === null) return
     switch (frame.type) {
       case "ready":
-        return this.ready(frame.version, frame.features ?? [])
+        return this.ready(frame.version, frame.features ?? [], frame.environment)
       case "result": {
         const call = this.pending.get(frame.id)
         this.pending.delete(frame.id)
@@ -224,7 +229,7 @@ export class Transport {
     }
   }
 
-  private ready(version: number, features: readonly string[]) {
+  private ready(version: number, features: readonly string[], environment: ServerIdentity | undefined) {
     clearTimeout(this.connectTimer)
     if (version !== REMOTE_PROTOCOL_VERSION) {
       this.dropSocket()
@@ -249,7 +254,7 @@ export class Transport {
       this.startPings()
       this.closeIfSilentFor(IDLE_TIMEOUT_MS)
     }
-    this.options.onReady(this.features)
+    this.options.onReady(this.features, environment)
   }
 
   private sendCall(call: PendingCall) {
