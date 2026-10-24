@@ -21,7 +21,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  startTransition,
   useActionState,
   useId,
   useRef,
@@ -625,12 +624,7 @@ function DeleteThreadPopover({
         )}
         {/* Confirm comes first, the nearest button to the trash icon the pointer just clicked. */}
         <div className="flex gap-2">
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={isPending || offline}
-            onClick={() => startTransition(remove)}
-          >
+          <Button variant="destructive" size="sm" disabled={isPending || offline} action={remove}>
             {m.delete_dialog_confirm()}
           </Button>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>

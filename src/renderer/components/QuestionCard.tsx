@@ -130,13 +130,7 @@ function QuestionCard({
           <Button type="submit" size="sm" disabled={isPending || answeredCount === 0}>
             {m.question_submit()}
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={isPending}
-            onClick={() => startTransition(() => respond({}))}
-          >
+          <Button type="button" size="sm" variant="outline" disabled={isPending} action={() => respond({})}>
             {single ? m.question_skip() : m.question_skip_all()}
           </Button>
           {!single && <p className="text-xs text-muted-foreground">{m.question_blank_skipped()}</p>}

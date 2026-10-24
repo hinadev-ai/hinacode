@@ -51,7 +51,7 @@ export function ThreadDiff({ thread }: { thread: Thread }) {
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <Tabs value={scope} onValueChange={(value: ChangesScope) => setScope(value)}>
+      <Tabs value={scope} changeAction={(value: ChangesScope) => setScope(value)}>
         <TabsList aria-label={m.diff_scope_label()} className="w-full">
           <TabsTrigger value="worktree">{m.diff_scope_worktree()}</TabsTrigger>
           <TabsTrigger value="turn">{m.diff_scope_turn()}</TabsTrigger>

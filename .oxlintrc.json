@@ -58,7 +58,8 @@
         "react-doctor/no-direct-mutation-state": "error",
         "react-doctor/no-controlled-input-value-without-state-update": "error",
         "react-doctor/no-collapse-request-error-to-empty-state": "error",
-        "hinacode/no-manual-memo": "error"
+        "hinacode/no-manual-memo": "error",
+        "hinacode/prefer-start-transition": "warn"
       }
     },
     {
