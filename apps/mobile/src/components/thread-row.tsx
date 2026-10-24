@@ -4,13 +4,13 @@ import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
 import { StatusDot } from "@/components/motion"
-import { ServerMark } from "@/components/server-mark"
+import { ServerMark, serverLabel } from "@/components/server-mark"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
 import { mono, type Palette, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
-import { useProjectServer } from "@/hooks/use-server"
+import { useProjectServer, useSeveralServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { openThread } from "@/lib/navigation"
@@ -71,6 +71,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   const actions = useThreadActions(thread)
   const server = useProjectServer(thread.projectId)
   const away = server !== undefined && server.status !== "connected"
+  const several = useSeveralServers()
   const [actionsOpen, setActionsOpen] = useState(false)
 
   const title = thread.title || copy("mobile_home_untitled")
@@ -83,6 +84,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
         : copy("mobile_row_pull_request", { number })
   const label = [
     title,
+    several && server !== undefined && serverLabel(server),
     project,
     branch && copy("mobile_row_branch", { branch: branch.name }),
     stateLabel[state],
