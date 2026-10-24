@@ -59,7 +59,8 @@ export function applyRelayMachines(
   newId: () => string,
 ): StoredServer[] {
   const { upsert, drop } = planRelaySync(servers, machines, null)
-  let next = servers.filter((server) => !drop.includes(server))
+  const dropped = new Set(drop)
+  let next = servers.filter((server) => !dropped.has(server))
   for (const machine of upsert) {
     const same =
       next.find((server) => server.environmentId === machine.environmentId) ??

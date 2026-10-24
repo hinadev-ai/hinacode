@@ -642,11 +642,12 @@ const make = Effect.gen(function* () {
         machines,
         self.id,
       )
+      const rowById = new Map(rows.map((row) => [row.id, row]))
       let changed = drop.length > 0
       for (const { environmentId: id, name, pairing } of upsert) {
         const { port, token, relay } = pairing
         const host = pairing.hosts[0]
-        const existing = rows.find((row) => row.id === id)
+        const existing = rowById.get(id)
         if (existing === undefined) {
           const environment: Environment = {
             id,
