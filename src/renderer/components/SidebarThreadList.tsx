@@ -33,27 +33,24 @@ import {
 import { flushSync } from "react-dom"
 import {
   RiArchiveLine,
-  RiCheckboxCircleFill,
   RiDeleteBinLine,
   RiDraggable,
-  RiErrorWarningFill,
   RiEyeLine,
   RiEyeOffLine,
   RiGitBranchLine,
-  RiHourglassFill,
   RiInboxUnarchiveLine,
   RiMoreFill,
   RiPencilLine,
-  RiPulseLine,
   RiPushpinLine,
-  RiQuestionFill,
   RiStackLine,
   RiUnpinLine,
 } from "react-icons/ri"
 import type { IconType } from "react-icons"
 import { toast } from "sonner"
-import { isThreadBusy, type PullRequestLink, type Thread, type ThreadStatus } from "../../shared/domain.ts"
+import { isThreadBusy, type PullRequestLink, type Thread } from "../../shared/domain.ts"
+import { openChecks, type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { toIcon } from "../lib/indicators.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
@@ -66,11 +63,11 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { useThreads } from "../stores/threads.ts"
-import { type Outcome, useUnseen } from "../stores/unseen.ts"
+import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { PullRequestCard } from "./PullRequestLink.tsx"
-import { ChecksIndicator, isOpen, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
+import { ChecksIndicator, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import {
@@ -601,42 +598,19 @@ function DeleteThreadDialog({ thread, cloud, open, onOpenChange, focusAfterDelet
   )
 }
 
-/** What a row shows: the thread's status, or for an idle thread, a result the user has not opened yet. */
-type RowState = ThreadStatus | `unseen_${Outcome}`
-
-const rowState = (status: ThreadStatus, unseen: Outcome | undefined): RowState =>
-  status === "idle" && unseen !== undefined ? `unseen_${unseen}` : status
-
-/**
- * How loudly a row reads. A thread that needs the user is at full contrast and a working one recedes to
- * muted and faded, until it is hovered, focused or open.
- */
-const rowEmphasis = {
-  awaiting_approval: "attention",
-  limited: "attention",
-  unseen_completed: "attention",
-  unseen_failed: "attention",
-  idle: "resting",
-  archived: "resting",
-  running: "working",
-} satisfies Record<RowState, "attention" | "resting" | "working">
+const awaiting = toIcon(rowStatusIndicator.awaiting_approval)
 
 const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconType; className: string }>> = {
-  running: {
-    label: m.thread_status_running,
-    Icon: RiPulseLine,
-    className: "text-muted-foreground",
-  },
+  running: { label: m.thread_status_running, ...toIcon(rowStatusIndicator.running) },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
-    Icon: RiQuestionFill,
-    className:
-      "text-attention after:absolute after:inset-0.5 after:animate-attention after:rounded-full after:border after:border-current after:[animation-fill-mode:forwards] motion-reduce:after:hidden",
+    Icon: awaiting.Icon,
+    className: `${awaiting.className} after:absolute after:inset-0.5 after:animate-attention after:rounded-full after:border after:border-current after:[animation-fill-mode:forwards] motion-reduce:after:hidden`,
   },
-  limited: { label: m.thread_status_limited, Icon: RiHourglassFill, className: "text-attention" },
-  unseen_completed: { label: m.thread_status_unseen_completed, Icon: RiCheckboxCircleFill, className: "text-success" },
-  unseen_failed: { label: m.thread_status_unseen_failed, Icon: RiErrorWarningFill, className: "text-destructive" },
+  limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited) },
+  unseen_completed: { label: m.thread_status_unseen_completed, ...toIcon(rowStatusIndicator.unseen_completed) },
+  unseen_failed: { label: m.thread_status_unseen_failed, ...toIcon(rowStatusIndicator.unseen_failed) },
 }
 
 function StatusIndicator({ state }: { state: RowState }): ReactNode {
@@ -750,7 +724,7 @@ function PullRequestNumber({
   const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
   const pullRequest = AsyncResult.isSuccess(lookup) ? lookup.value : undefined
   const status = pullRequest?.status
-  const openChecks = pullRequest && isOpen(pullRequest.status) ? pullRequest.checks : null
+  const checks = openChecks(pullRequest)
   return (
     <HoverCard>
       <HoverCardTrigger
@@ -772,7 +746,7 @@ function PullRequestNumber({
         {count > 1 && <RiStackLine aria-hidden className="size-3" />}
         <StatusIcon status={status} className="size-3" />#{number}
       </HoverCardTrigger>
-      {openChecks && <ChecksIndicator checks={openChecks} className="-ml-1 size-3" />}
+      {checks && <ChecksIndicator checks={checks} className="-ml-1 size-3" />}
       {pullRequestRef && (
         <HoverCardContent align="start" className="w-80">
           <PullRequestCard pullRequest={pullRequestRef} environment={environment} />
