@@ -1,8 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { describe, expect, it } from "@effect/vitest"
+import { afterAll, describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
 import { Cause, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { SqlClient } from "effect/sql"
@@ -31,9 +31,12 @@ const tunnel: RelayTunnel = { hostname: HOSTNAME, origin: ORIGIN }
 const REGISTERED = 'echo "2026-10-24T00:00:00Z INF Registered tunnel connection connIndex=0" >&2'
 const FAILED = 'echo "2026-10-24T00:00:00Z ERR Unauthorized: Invalid tunnel secret" >&2; exit 1'
 
+const standIns = mkdtempSync(join(tmpdir(), "hinacode-cloudflared-"))
+afterAll(() => rmSync(standIns, { recursive: true, force: true }))
+
 /** A stand-in `cloudflared` that records how it was started, then runs `body`. Returns its path and directory. */
 const standIn = (body: string) => {
-  const dir = mkdtempSync(join(tmpdir(), "hinacode-cloudflared-"))
+  const dir = mkdtempSync(join(standIns, "run-"))
   const path = join(dir, "cloudflared")
   writeFileSync(
     path,
