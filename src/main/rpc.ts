@@ -390,7 +390,6 @@ const handlers: Handlers = {
       const account = yield* RelayAccount
       const relay = yield* Relay
       yield* relay.setup({
-        // Signed in to the relay account, this desktop approves its own link without a browser.
         onLink: (link) =>
           account
             .approveOwnLink(link.userCode)
