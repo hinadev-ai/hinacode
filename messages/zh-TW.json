@@ -803,7 +803,7 @@
   "remote_pair_loading": "正在載入配對碼…",
   "remote_pair_failed": "無法載入配對碼：{message}",
   "remote_pair_host_label": "位址",
-  "remote_pair_host_hint": "QR 碼包含所有位址。手機依此順序嘗試，並從上次成功的位址開始，因此離開家中網路後仍可透過 Tailscale 連線。",
+  "remote_pair_host_hint": "QR 碼包含所有位址。手機會同時嘗試全部位址，只有都連不上時才改用中繼，因此離開家中網路後仍可連線。",
   "remote_pair_qr_label": "配對 QR 碼",
   "remote_pair_url_label": "配對網址",
   "remote_pair_url_copy": "複製配對網址",
