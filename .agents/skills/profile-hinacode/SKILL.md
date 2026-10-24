@@ -1,6 +1,6 @@
 ---
 name: profile-hinacode
-description: Measure and compare HinaCode renderer performance in a real isolated instance - composer typing latency, React re-renders while a reply streams, thread switch time, paint and layout work, and renderer memory. Use when a change claims to make the UI faster, when the UI feels slow or janky, or when a PR needs before/after performance numbers.
+description: Measure and compare HinaCode performance in a real isolated instance - the desktop renderer (composer typing latency, React re-renders while a reply streams, thread switch time, paint and layout work, memory) and the phone app on the iOS simulator (cold start, opening a long thread, scrolling, typing, a streaming reply). Use when a change claims to make the UI or the phone app faster, when either feels slow or janky, or when a PR needs before/after performance numbers.
 ---
 
 # Profile hinacode
@@ -20,3 +20,12 @@ Measure first, read source second. Every claim compares two captures of the same
 6. Put the comparison table in the PR, with the throttle rate and run count, and say what each number measures.
 
 Stop the instance with `verify-hinacode`'s `cleanup.sh` when done.
+
+## Phone app
+
+The same loop works for `apps/mobile`, with `scripts/perf/mobile.ts` in place of `suite.sh`. Follow "Profile the phone app" in `scripts/perf/README.md`.
+
+1. Launch an isolated desktop with `HINACODE_MOCK_CLAUDE=stream`, seed it with `seed.ts --list`, and turn on its remote listener on `127.0.0.1`.
+2. Build each version as a Release app with `EXPO_PUBLIC_PERF_URL` set, and save it as `.context/perf/<label>.app`. Only that bundle carries the harness. A Debug build or Expo Go runs React's development build, which says nothing about what users get.
+3. Run the two builds in turn with `mobile.ts run`, a few runs each, then `mobile.ts compare`. Other simulators slow this Mac down, so report the run count, the spread and the load average with the medians.
+4. Read `top` in the JSON for the components behind a cost. The phone's usual suspects: a Markdown tree mounted in one commit, a hidden screen that keeps re-rendering behind the open one, a list row that re-renders with its whole list, and a store subscription that changes on every streamed delta.
