@@ -1,6 +1,6 @@
 import type { Thread } from "@shared/domain.ts"
 import { setStringAsync } from "expo-clipboard"
-import { useEffect, useState } from "react"
+import { useEffect, useEffectEvent, useState } from "react"
 import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -64,14 +64,15 @@ export function ThreadActionsSheet({
   }
   const [copied, setCopied] = useState(false)
 
+  const finishCopy = useEffectEvent(() => {
+    setCopied(false)
+    onClose()
+  })
   useEffect(() => {
     if (!copied) return
-    const timer = setTimeout(() => {
-      setCopied(false)
-      onClose()
-    }, COPIED_MS)
+    const timer = setTimeout(finishCopy, COPIED_MS)
     return () => clearTimeout(timer)
-  }, [copied, onClose])
+  }, [copied])
 
   const run = async (name: ThreadActionName) => {
     if (!(await state.run(name))) return
