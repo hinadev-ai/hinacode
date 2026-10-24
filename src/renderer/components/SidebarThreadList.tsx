@@ -39,6 +39,7 @@ import {
   RiErrorWarningFill,
   RiEyeLine,
   RiEyeOffLine,
+  RiFileCopyLine,
   RiGitBranchLine,
   RiHourglassFill,
   RiInboxUnarchiveLine,
@@ -461,6 +462,10 @@ const ThreadRow = memo(function ThreadRow({
                   </DropdownMenuItem>
                 ))
               )}
+              <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
+                <RiFileCopyLine aria-hidden />
+                {m.sidebar_thread_copy_id()}
+              </DropdownMenuItem>
               {archived ? (
                 <DropdownMenuItem onClick={() => void unarchive()}>
                   <RiInboxUnarchiveLine aria-hidden />

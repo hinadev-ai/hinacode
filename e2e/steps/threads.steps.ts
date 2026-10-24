@@ -129,6 +129,14 @@ When("I unpin the thread {string} from its menu", async ({ app, names }, title: 
   await threadMenu(app.page, names.of(title), "Unpin")
 })
 
+When("I copy the ID of the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Copy thread ID")
+})
+
+Then("the clipboard holds the ID of the thread {string}", async ({ app, threadIds }, title: string) => {
+  await expect.poll(() => app.clipboardText()).toBe(threadIds.get(title))
+})
+
 const pinned = (page: Page) => sidebar(page).getByRole("region", { name: "Pinned", exact: true })
 
 Then("the pinned threads are {string}", async ({ app, names }, titles: string) => {
