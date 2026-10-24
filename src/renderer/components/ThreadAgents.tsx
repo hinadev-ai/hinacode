@@ -162,15 +162,11 @@ export function StopSubagentButton({
   subagent: Subagent
   className?: string
 }) {
-  const [stopping, setStopping] = useState(false)
   const stop = async () => {
-    setStopping(true)
     try {
       await callPromise("subagents.stop", { threadId, subagentId: subagent.id })
     } catch (cause) {
       toast.error(m.agents_stop_failed({ message: errorMessage(cause) }))
-    } finally {
-      setStopping(false)
     }
   }
   const label = m.agents_stop({ label: subagent.label })
@@ -178,8 +174,7 @@ export function StopSubagentButton({
     <Button
       variant="ghost"
       size="icon-xs"
-      disabled={stopping}
-      onClick={stop}
+      action={stop}
       aria-label={label}
       title={label}
       className={cn("text-muted-foreground hover:text-foreground", className)}

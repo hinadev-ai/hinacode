@@ -5,9 +5,7 @@ import {
   type ComponentProps,
   type ComponentPropsWithoutRef,
   type RefObject,
-  useCallback,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -85,22 +83,18 @@ function barHeight(bar: number, tick: number): number {
 
 /** Commands whose name starts with the slash query, or none when not typing one. */
 export function useSlashMatches(value: string, commands: readonly ComposerCommand[] | undefined): ComposerCommand[] {
-  return useMemo(() => {
-    if (!commands || !value.startsWith("/")) return []
-    const query = value.slice(1).toLowerCase()
-    return commands.filter((command) => command.name.startsWith(query))
-  }, [commands, value])
+  if (!commands || !value.startsWith("/")) return []
+  const query = value.slice(1).toLowerCase()
+  return commands.filter((command) => command.name.startsWith(query))
 }
 
 /** People matching a trailing @mention, or none when the caret is not in one. */
 export function useMentionMatches(value: string, people: readonly ComposerPerson[] | undefined): ComposerPerson[] {
-  return useMemo(() => {
-    if (!people) return []
-    const match = /@([\w]*)$/.exec(value)
-    if (!match) return []
-    const query = match[1]?.toLowerCase() ?? ""
-    return people.filter((person) => person.name.toLowerCase().startsWith(query))
-  }, [people, value])
+  if (!people) return []
+  const match = /@([\w]*)$/.exec(value)
+  if (!match) return []
+  const query = match[1]?.toLowerCase() ?? ""
+  return people.filter((person) => person.name.toLowerCase().startsWith(query))
 }
 
 /** Replaces the trailing @mention with the chosen name. */
@@ -168,15 +162,12 @@ export const ComposerMenu = forwardRef<
 >(function ComposerMenu({ open, align = "start", className, style, ...props }, ref) {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const fit = useFitInComposer(menuRef, align)
-  const composedRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      menuRef.current = node
-      if (typeof ref === "function") return ref(node)
-      if (ref) ref.current = node
-      return undefined
-    },
-    [ref],
-  )
+  const composedRef = (node: HTMLDivElement | null) => {
+    menuRef.current = node
+    if (typeof ref === "function") return ref(node)
+    if (ref) ref.current = node
+    return undefined
+  }
 
   return (
     <div

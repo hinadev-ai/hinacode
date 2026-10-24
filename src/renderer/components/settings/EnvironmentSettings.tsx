@@ -3,7 +3,6 @@ import { AsyncResult } from "effect/reactivity"
 import {
   type FormEvent,
   type KeyboardEvent,
-  startTransition,
   useActionState,
   useEffect,
   useId,
@@ -293,7 +292,7 @@ function RemoveEnvironmentButton({ cloud }: { cloud: Cloud }) {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(remove)}>
+            <AlertDialogAction variant="destructive" disabled={isPending} action={remove}>
               {m.environment_remove()}
             </AlertDialogAction>
           </AlertDialogFooter>

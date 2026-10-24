@@ -1,6 +1,6 @@
 import type { Mermaid, MermaidConfig } from "mermaid"
 import { cn } from "cn"
-import { isValidElement, memo, type ReactNode, use, useEffect, useId, useMemo, useState } from "react"
+import { isValidElement, type ReactNode, use, useEffect, useId, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
@@ -148,22 +148,19 @@ const components: Components = {
   ),
 }
 
-/** Agent markdown with GFM. Memoized because streaming re-renders the message on every delta. */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/** Agent markdown with GFM. */
+export function Markdown({ text }: { text: string }) {
   const pattern = useFindPattern()
   const part = use(FindPartContext)
-  const rehypePlugins = useMemo(() => (pattern === null ? [] : [rehypeFindMarks(pattern, part)]), [pattern, part])
+  const rehypePlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
   const repository = useThreadRepository()
-  const remarkPlugins = useMemo(
-    () => (repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]),
-    [repository],
-  )
+  const remarkPlugins = repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]
   return (
     <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
       {text}
     </ReactMarkdown>
   )
-})
+}
 
 /** GitHub embeds bare attachment links as video, which is what they usually are; an image falls back to <img>. */
 function GitHubAttachment({ src }: { src: string }) {

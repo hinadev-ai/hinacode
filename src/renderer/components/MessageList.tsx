@@ -1,7 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
-import { createContext, memo, type ReactElement, use, type Ref, useMemo, useState } from "react"
+import { createContext, type ReactElement, use, type Ref, useState } from "react"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
@@ -63,7 +63,7 @@ export function MessageList({
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
 }) {
-  const transcript = useMemo(() => ({ providerLabel, showElapsedTime }), [providerLabel, showElapsedTime])
+  const transcript = { providerLabel, showElapsedTime }
   return (
     <TranscriptContext value={transcript}>
       <LastMessageContext value={messages.at(-1)?.id}>
@@ -87,17 +87,14 @@ export function MessageList({
   )
 }
 
-const MessageItem = memo(function MessageItem({ message }: { message: Message }) {
-  const faviconSites = useMemo(
-    () => faviconOrigins(message.parts.flatMap((part) => (part.type === "text" ? [part.text] : []))),
-    [message.parts],
-  )
+function MessageItem({ message }: { message: Message }) {
+  const faviconSites = faviconOrigins(message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
   return (
     <FaviconOrigins value={faviconSites}>
       <MessageBody message={message} />
     </FaviconOrigins>
   )
-})
+}
 
 /** Plain text with each `@thread:<id>` of a known thread shown as a link titled `@<title>`. */
 function WithThreadMentions({ text }: { text: string }) {

@@ -96,6 +96,7 @@ When("the agent starts streaming in {string}", async ({ app, names }, title: str
     threadId: thread.id,
     role: "assistant",
     parts: [],
+    // oxlint-disable-next-line hinacode/no-wall-clock-in-test -- the app times "Worked for" from this against its own clock.
     createdAt: new Date().toISOString(),
     completedAt: null,
     usage: null,
@@ -160,6 +161,7 @@ Then("the completed Markdown exactly matches its full snapshot", async ({ app })
   const html = await renderedHtml(app.page)
   const snapshot: Message = {
     ...stream.message,
+    // oxlint-disable-next-line hinacode/no-wall-clock-in-test -- the app times "Worked for" from this against its own clock.
     completedAt: new Date().toISOString(),
     parts: [{ type: "text", text: stream.text }],
   }
