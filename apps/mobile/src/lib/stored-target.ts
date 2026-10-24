@@ -22,6 +22,8 @@ const Entry = Schema.Struct({
   hosts: Schema.NonEmptyArray(Schema.String),
   port: Schema.Int,
   token: Schema.String,
+  /** Absent in entries saved before the relay existed. */
+  relay: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 
 const Legacy = Schema.Union([
@@ -38,7 +40,7 @@ const validTarget = (target: PairingTarget) => parsePairingUrl(pairingUrl(target
 
 const validEntry = (raw: unknown): StoredServer[] => {
   const entry = Option.getOrNull(decodeEntry(raw))
-  const target = entry === null ? null : validTarget(entry)
+  const target = entry === null ? null : validTarget({ ...entry, relay: entry.relay ?? null })
   return entry === null || target === null ? [] : [{ ...entry, ...target }]
 }
 
@@ -46,7 +48,9 @@ const migrate = (legacy: string | null, newId: () => string): StoredServer[] => 
   const stored = legacy === null ? null : Option.getOrNull(decodeLegacy(legacy))
   if (stored === null) return []
   const target = validTarget(
-    "host" in stored ? { hosts: [stored.host], port: stored.port, token: stored.token } : stored,
+    "host" in stored
+      ? { hosts: [stored.host], port: stored.port, token: stored.token, relay: null }
+      : { ...stored, relay: null },
   )
   return target === null ? [] : [{ id: newId(), name: null, environmentId: null, ...target }]
 }
@@ -60,21 +64,21 @@ export function parseStoredServers(raw: string | null, legacy: string | null, ne
 }
 
 /**
- * Adds a pairing, or updates the server it pairs with again: the same port and an address in common, as after
- * the token was rotated. Returns the list and the id of the server it reaches.
+ * Adds a pairing, or updates the server it pairs with again: the same relay, or the same port and an address in
+ * common, as after the token was rotated. Returns the list and the id of the server it reaches.
  */
 export function addPairing(servers: readonly StoredServer[], target: PairingTarget, newId: () => string) {
   const same = servers.find(
-    (server) => server.port === target.port && server.hosts.some((host) => target.hosts.includes(host)),
+    (server) =>
+      (target.relay !== null && server.relay === target.relay) ||
+      (server.port === target.port && server.hosts.some((host) => target.hosts.includes(host))),
   )
   if (same === undefined) {
     const id = newId()
     return { servers: [...servers, { id, name: null, environmentId: null, ...target }], id }
   }
   return {
-    servers: servers.map((server) =>
-      server === same ? { ...server, hosts: target.hosts, token: target.token } : server,
-    ),
+    servers: servers.map((server) => (server === same ? { ...server, ...target } : server)),
     id: same.id,
   }
 }

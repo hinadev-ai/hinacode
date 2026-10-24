@@ -8,6 +8,7 @@ import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
@@ -70,15 +71,22 @@ export const makeTestAppLayer = (
     Files.layer,
   )
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const relay = Relay.layer().pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const tinyVm = TinyVm.layer(
     { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
     join(dirname(dbPath), "tiny-vm"),
   )
   const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm, passkeys, linear).pipe(
-    Layer.provide(domain),
-  )
+  const features = Layer.mergeAll(
+    Mcp.credentialsLayer,
+    Ports.layer,
+    remoteAccess,
+    relay,
+    tinyVm,
+    passkeys,
+    linear,
+  ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),

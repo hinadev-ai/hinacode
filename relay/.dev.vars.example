@@ -1,0 +1,6 @@
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+TUNNEL_ZONE_ID=your-tunnel-zone-id
+TUNNEL_ZONE_NAME=your-tunnel-zone.example
+CLERK_PUBLISHABLE_KEY=pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
+CLERK_SECRET_KEY=sk_test_replace
+CLOUDFLARE_API_TOKEN=replace

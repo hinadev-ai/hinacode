@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hinacode-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-12",
+  "routes": [{ "pattern": "relay.hinacode.app", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hinacode-relay",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "replace-with-account-id",
+    "TUNNEL_ZONE_ID": "replace-with-zone-id",
+    "TUNNEL_ZONE_NAME": "replace-with-tunnel-zone-name",
+    "CLERK_PUBLISHABLE_KEY": "pk_live_replace",
+  },
+  "secrets": { "required": ["CLOUDFLARE_API_TOKEN", "CLERK_SECRET_KEY"] },
+}

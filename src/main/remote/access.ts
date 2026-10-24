@@ -3,7 +3,7 @@ import { hostname, networkInterfaces } from "node:os"
 import { Array as Arr, Context, Effect, Layer, Option, PubSub, Stream } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import { SqlClient } from "effect/sql"
-import type { RemotePairing, RemoteStatus } from "../../shared/domain.ts"
+import type { RelayStatus, RemotePairing, RemoteStatus } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
@@ -48,15 +48,11 @@ export const reachableHosts = (
   return Arr.append([...addresses.filter(isTailscale), ...addresses.filter((a) => !isTailscale(a))], host)
 }
 
-/** What the listener reports; `RemoteAccess` keeps it so the settings page can read it without the listener. */
-export interface ListenerReport {
-  readonly listening: boolean
-  readonly listenError: string | null
-  readonly connected: number
-}
+/** The tunnel hostname clients should dial first, kept while the relay is paused or failing so pairings keep it. */
+export const relayHostname = (relay: RelayStatus) => ("hostname" in relay ? relay.hostname : null)
 
 /**
- * The token phones hold and the state the listener reports. The listener itself lives in `server.ts`,
+ * The token phones hold and the state the listener and the relay report. The listener itself lives in `server.ts`,
  * above every service, because it dispatches rpc calls.
  */
 export class RemoteAccess extends Context.Service<
@@ -69,7 +65,8 @@ export class RemoteAccess extends Context.Service<
     readonly authenticate: (token: string) => boolean
     /** Fires after each rotation, so the listener can drop every socket. */
     readonly rotations: Stream.Stream<void>
-    readonly report: (patch: Partial<ListenerReport>) => Effect.Effect<void>
+    /** The listener reports `listening`, `listenError` and `connected`; the relay reports `relay`. */
+    readonly report: (patch: Partial<RemoteStatus>) => Effect.Effect<void>
     readonly identity: EnvironmentIdentity
   }
 >()("hinacode/RemoteAccess") {}
@@ -87,13 +84,14 @@ const make = Effect.gen(function* () {
   const settings = yield* Settings
   const rotated = yield* PubSub.unbounded<void>()
   let token = Option.getOrNull(yield* secrets.get(REMOTE_TOKEN_SECRET))
-  let report: ListenerReport = { listening: false, listenError: null, connected: 0 }
+  let report: RemoteStatus = { listening: false, listenError: null, connected: 0, relay: { state: "off" } }
 
   const pairingFor = (current: string) =>
     Effect.map(settings.get, ({ remote }) => ({
       hosts: reachableHosts(remote.bindHost),
       port: remote.port,
       token: current,
+      relay: relayHostname(report.relay),
     }))
 
   const rotateToken = Effect.gen(function* () {
