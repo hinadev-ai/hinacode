@@ -1,4 +1,6 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -16,6 +18,7 @@ import { Settings } from "../services/Settings.ts"
 import * as RemoteAccessModule from "./access.ts"
 import { RemoteAccess } from "./access.ts"
 import { applyServeRelay } from "../serve.ts"
+import { CLOUDFLARED_VERSION } from "./cloudflared.ts"
 import * as RelayModule from "./relay.ts"
 import { CONNECTOR_TOKEN_SECRET, CREDENTIAL_SECRET, Relay, type RelayTunnel, storedTunnel } from "./relay.ts"
 import type { Fetch, RelayLink } from "./relayService.ts"
@@ -54,6 +57,23 @@ const standIn = (body: string) => {
 }
 
 const connects = () => standIn(`${REGISTERED}\nexec sleep 3600`)
+
+const ASSET_URL = "https://downloads.test/cloudflared-darwin-arm64.tgz"
+
+const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+
+/** A gzipped tarball holding a stand-in `cloudflared` that runs `body`, the way Cloudflare ships it for macOS. */
+const tarball = (body: string) => {
+  const dir = standIn(body).path.replace(/\/cloudflared$/, "")
+  execFileSync("tar", ["-czf", join(dir, "release.tgz"), "-C", dir, "cloudflared"])
+  return readFileSync(join(dir, "release.tgz"))
+}
+
+/** Serves `archive` at `ASSET_URL`, standing in for the GitHub release. */
+const serves =
+  (archive: Uint8Array): Fetch =>
+  async (url) =>
+    url.href === ASSET_URL ? new Response(archive) : new Response(null, { status: 404 })
 
 const unexpected: Fetch = () => Promise.reject(new Error("no relay service call expected"))
 
@@ -240,14 +260,46 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 
-  it.live("reports missing when cloudflared is not installed", () =>
+  it.live("downloads cloudflared when it is not installed, checks it and connects through it", () =>
     Effect.gen(function* () {
       yield* seed()
+      const archive = tarball(`${REGISTERED}\nexec sleep 3600`)
+      const dir = mkdtempSync(join(standIns, "bin-"))
       yield* withRelay(
-        { cloudflared: join(tmpdir(), "no-such-dir", "cloudflared") },
+        {
+          cloudflared: join(tmpdir(), "no-such-dir", "cloudflared"),
+          fetch: serves(archive),
+          cloudflaredDir: dir,
+          cloudflaredAsset: { url: ASSET_URL, sha256: sha256(archive), archive: "tgz" },
+        },
         Effect.gen(function* () {
-          const missing = yield* until((status) => status.state === "missing")
-          expect(missing).toStrictEqual({ state: "missing", hostname: HOSTNAME })
+          yield* until((status) => status.state === "connected")
+          expect(readdirSync(dir)).toStrictEqual([CLOUDFLARED_VERSION])
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.live("refuses a downloaded cloudflared whose checksum does not match", () =>
+    Effect.gen(function* () {
+      yield* seed()
+      const archive = tarball(`${REGISTERED}\nexec sleep 3600`)
+      const dir = mkdtempSync(join(standIns, "bin-"))
+      yield* withRelay(
+        {
+          cloudflared: join(tmpdir(), "no-such-dir", "cloudflared"),
+          fetch: serves(archive),
+          cloudflaredDir: dir,
+          cloudflaredAsset: { url: ASSET_URL, sha256: "0".repeat(64), archive: "tgz" },
+        },
+        Effect.gen(function* () {
+          const failed = yield* until((status) => status.state === "connecting" && status.error !== null)
+          expect(failed).toStrictEqual({
+            state: "connecting",
+            hostname: HOSTNAME,
+            error: "Cannot install cloudflared: the download does not match its checksum.",
+          })
+          expect(readdirSync(dir)).toStrictEqual([])
         }),
       )
     }).pipe(Effect.provide(base)),

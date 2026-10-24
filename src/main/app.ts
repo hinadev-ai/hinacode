@@ -98,9 +98,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude ?? ClaudeProvider.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const relay = Relay.layer({ serviceUrl: process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
-    Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
-  )
+  const relay = Relay.layer({
+    serviceUrl: process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL,
+    cloudflaredDir: join(userData, "cloudflared"),
+  }).pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const features = Layer.mergeAll(

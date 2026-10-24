@@ -976,13 +976,13 @@ export type FileSearchHit = typeof FileSearchHit.Type
 
 /**
  * This machine's relay. `off` is not linked to an account. `linking` waits for the owner to approve `userCode` at
- * `url`. `paused` keeps the tunnel while the remote listener is off, and `missing` waits for `cloudflared` on PATH.
- * `error` is why the last `cloudflared` stopped or failed to register.
+ * `url`. `paused` keeps the tunnel while the remote listener is off.
+ * `error` is why the last `cloudflared` stopped, failed to register or could not be downloaded.
  */
 export const RelayStatus = Schema.Union([
   Schema.Struct({ state: Schema.Literal("off") }),
   Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String, userCode: Schema.String }),
-  Schema.Struct({ state: Schema.Literals(["paused", "missing", "connected"]), hostname: Schema.String }),
+  Schema.Struct({ state: Schema.Literals(["paused", "connected"]), hostname: Schema.String }),
   Schema.Struct({ state: Schema.Literal("connecting"), hostname: Schema.String, error: Schema.NullOr(Schema.String) }),
 ])
 export type RelayStatus = typeof RelayStatus.Type

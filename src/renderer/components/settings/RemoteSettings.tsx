@@ -191,10 +191,6 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
   )
 }
 
-const CLOUDFLARED_DOWNLOADS_URL =
-  "https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/"
-const CLOUDFLARED_INSTALL_COMMAND = "brew install cloudflared"
-
 function ExternalLink({ href, children }: { href: string; children: string }) {
   return (
     <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
@@ -259,7 +255,6 @@ function Relay() {
       {relay.state !== "off" && relay.state !== "linking" && (
         <>
           <RelayStatusLine relay={relay} />
-          {relay.state === "missing" && <InstallCloudflared />}
           <RemoveRelayButton onRemoved={onChanged} />
         </>
       )}
@@ -323,12 +318,6 @@ function RelayStatusLine({ relay }: { relay: Exclude<RelayStatus, { state: "off"
             {m.relay_status_connecting({ hostname: relay.hostname })}
           </span>
         )}
-        {relay.state === "missing" && (
-          <span className="flex items-center gap-2 text-attention">
-            <StatusDot className="bg-attention" />
-            {m.relay_status_missing()}
-          </span>
-        )}
         {relay.state === "paused" && (
           <>
             <span className="flex items-center gap-2 text-muted-foreground">
@@ -341,19 +330,6 @@ function RelayStatusLine({ relay }: { relay: Exclude<RelayStatus, { state: "off"
       </p>
       {relay.state === "connecting" && relay.error !== null && <FieldError>{relay.error}</FieldError>}
     </div>
-  )
-}
-
-function InstallCloudflared() {
-  return (
-    <Field className="min-w-0">
-      <FieldLabel htmlFor="relay-install">{m.relay_install_label()}</FieldLabel>
-      <CopyField id="relay-install" value={CLOUDFLARED_INSTALL_COMMAND} copyLabel={m.relay_install_copy()} />
-      <FieldDescription>
-        <ExternalLink href={CLOUDFLARED_DOWNLOADS_URL}>{m.relay_install_linux()}</ExternalLink>
-      </FieldDescription>
-      <FieldDescription>{m.relay_install_retry()}</FieldDescription>
-    </Field>
   )
 }
 

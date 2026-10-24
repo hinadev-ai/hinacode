@@ -23,6 +23,7 @@ import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
 import { RemoteAccess } from "./access.ts"
+import { type CloudflaredAsset, installCloudflared, platformAsset } from "./cloudflared.ts"
 import { EXPIRED, type Fetch, type Link, RelayError, type RelayLink, relayService } from "./relayService.ts"
 
 const TUNNEL_KEY = "relay.tunnel"
@@ -63,6 +64,10 @@ export interface RelayOptions {
   readonly fetch?: Fetch
   /** The `cloudflared` executable, found on PATH by default. */
   readonly cloudflared?: string
+  /** Where a downloaded `cloudflared` goes when `cloudflared` cannot be started. */
+  readonly cloudflaredDir?: string
+  /** The release to download, this machine's by default. */
+  readonly cloudflaredAsset?: CloudflaredAsset
 }
 
 /**
@@ -109,6 +114,8 @@ const make = ({
   serviceUrl = DEFAULT_RELAY_SERVICE_URL,
   fetch = globalThis.fetch,
   cloudflared = "cloudflared",
+  cloudflaredDir,
+  cloudflaredAsset = platformAsset(),
 }: RelayOptions) =>
   Effect.gen(function* () {
     const service = relayService(fetch, serviceUrl)
@@ -169,12 +176,12 @@ const make = ({
       })
 
     /** Runs `cloudflared` once, until it exits. Interruption kills it. */
-    const runOnce = (hostname: string, token: string) =>
+    const runOnce = (binary: string, hostname: string, token: string) =>
       Effect.gen(function* () {
         const events = yield* Queue.unbounded<ChildEvent>()
         yield* Effect.acquireRelease(
           Effect.sync(() => {
-            const child = spawn(cloudflared, CLOUDFLARED_ARGS, {
+            const child = spawn(binary, CLOUDFLARED_ARGS, {
               env: { ...process.env, TUNNEL_TOKEN: token },
               stdio: ["ignore", "ignore", "pipe"],
             })
@@ -210,7 +217,7 @@ const make = ({
     const keepConnected = (stored: RelayTunnel) =>
       Effect.gen(function* () {
         const { hostname } = stored
-        let error: string | null = null
+        let binary = cloudflared
         let retryMs = FIRST_RETRY_MS
         for (;;) {
           const outcome: Outcome = yield* Effect.gen(function* () {
@@ -219,20 +226,21 @@ const make = ({
               CONNECTOR_TOKEN_SECRET,
               "The tunnel's connector token is gone. Turn on the relay again.",
             )
-            return yield* runOnce(hostname, token)
+            const first = yield* runOnce(binary, hostname, token)
+            if (first.type !== "missing" || binary !== cloudflared || cloudflaredDir === undefined) return first
+            binary = yield* installCloudflared(cloudflaredDir, cloudflaredAsset, (url) => fetch(url, {})).pipe(
+              Effect.mapError(
+                (failure) => new RelayError({ message: `Cannot install cloudflared: ${failure.message}.` }),
+              ),
+            )
+            return yield* runOnce(binary, hostname, token)
           }).pipe(
             Effect.catch((failure) => Effect.succeed<Outcome>({ type: "exited", error: failure.message, upMs: 0 })),
           )
-          if (outcome.type === "missing") {
-            error = null
-            yield* publish({ state: "missing", hostname })
-            yield* Effect.sleep(Duration.millis(LAST_RETRY_MS))
-            continue
-          }
-          error = outcome.error
+          const error = outcome.type === "missing" ? `cloudflared is not installed at ${binary}.` : outcome.error
           yield* Effect.logWarning("cloudflared stopped", error)
           yield* publish({ state: "connecting", hostname, error })
-          if (outcome.upMs >= HEALTHY_MS) retryMs = FIRST_RETRY_MS
+          if (outcome.type === "exited" && outcome.upMs >= HEALTHY_MS) retryMs = FIRST_RETRY_MS
           yield* Effect.sleep(Duration.millis(retryMs))
           retryMs = Math.min(retryMs * 2, LAST_RETRY_MS)
         }
