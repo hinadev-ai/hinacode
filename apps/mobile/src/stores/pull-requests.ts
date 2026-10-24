@@ -1,6 +1,13 @@
 import { create } from "zustand"
-import type { PullRequest, PullRequestDetail, PullRequestLink } from "@shared/domain.ts"
-import { call } from "@/lib/connection"
+import type {
+  PullRequest,
+  PullRequestDetail,
+  PullRequestFile,
+  PullRequestGuideState,
+  PullRequestLink,
+} from "@shared/domain.ts"
+import { call, onEvent, RpcError } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 
 /** A value read from GitHub through the desktop. A refresh keeps the last value until the new one lands. */
@@ -16,12 +23,20 @@ export type PullRequestSummary = Pick<PullRequest, "status" | "checks" | "review
 export const SUMMARY_MAX_AGE = 60_000
 export const DETAIL_MAX_AGE = 30_000
 
+export type CodeView = "files" | "guide"
+
 interface PullRequestsState {
   /** Links per thread, oldest first, so the newest is last. A thread is absent until its links have loaded. */
   readonly linksByThread: Readonly<Record<string, readonly PullRequestLink[]>>
   readonly summaries: Readonly<Record<string, Remote<PullRequestSummary>>>
   readonly pullRequests: Readonly<Record<string, Remote<PullRequest>>>
   readonly details: Readonly<Record<string, Remote<PullRequestDetail>>>
+  /** Changed files per pull request head, see `filesKey`. A push changes the head, so it reads anew. */
+  readonly files: Readonly<Record<string, Remote<readonly PullRequestFile[]>>>
+  /** Guide state per pull request, kept current by `pullRequest.guide` pushes once read. */
+  readonly guides: Readonly<Record<string, Remote<PullRequestGuideState>>>
+  /** Whether the Code tab lists files or the guide, kept while the app runs. */
+  readonly codeView: CodeView
   /**
    * Reads every thread's links again on each handshake, since pushes were missed while offline. A failure keeps
    * the links already shown; the PRs tab loads and reports its own thread.
@@ -35,7 +50,16 @@ interface PullRequestsState {
   readonly ensureSummary: (url: string) => void
   readonly loadPullRequest: (url: string, options?: { readonly force?: boolean }) => Promise<void>
   readonly loadDetail: (url: string, options?: { readonly force?: boolean }) => Promise<void>
+  readonly loadFiles: (url: string, head: string, options?: { readonly force?: boolean }) => Promise<void>
+  readonly loadGuide: (url: string, options?: { readonly force?: boolean }) => Promise<void>
+  readonly setCodeView: (view: CodeView) => void
 }
+
+export const filesKey = (url: string, head: string) => `${url}@${head}`
+
+/** A desktop from before the Code tab answers its methods as unknown, which its schema check reports. */
+const codeErrorText = (cause: unknown) =>
+  cause instanceof RpcError && cause.tag === "SchemaError" ? copy("mobile_pr_code_update_desktop") : errorText(cause)
 
 const isFresh = (entry: Remote<unknown> | undefined, maxAge: number) =>
   entry !== undefined && (entry.status === "loading" || Date.now() - entry.at < maxAge)
@@ -63,6 +87,42 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
   /** Bumped by every list a thread receives, so a slower read cannot replace a newer push. */
   const versions = new Map<string, number>()
   const inflight = { pullRequests: new Map<string, Promise<void>>(), details: new Map<string, Promise<void>>() }
+  const codeReads = new Map<string, Promise<void>>()
+
+  /** Reads one entry of `files` or `guides` once at a time. A failure keeps a value already shown. */
+  function readCode<K extends "files" | "guides", T>(
+    slot: K,
+    key: string,
+    force: boolean,
+    read: () => Promise<T>,
+  ): Promise<void> {
+    const readKey = `${slot}:${key}`
+    const pending = codeReads.get(readKey)
+    if (pending !== undefined) return pending
+    const current = get()[slot][key]
+    if (!force && current?.status === "ready") return Promise.resolve()
+    const write = (remote: Remote<T>) => set((state) => ({ [slot]: { ...state[slot], [key]: remote } }))
+    if (current === undefined) write({ status: "loading" })
+    const request = read()
+      .then(
+        (value) => write({ status: "ready", value, at: Date.now() }),
+        (cause: unknown) => {
+          if (get()[slot][key]?.status === "ready") return
+          write({ status: "error", message: codeErrorText(cause), at: Date.now() })
+        },
+      )
+      .finally(() => codeReads.delete(readKey))
+    codeReads.set(readKey, request)
+    return request
+  }
+
+  // The connection provider routes the other pushes. Only this store reads guides, so it listens itself.
+  onEvent((event) => {
+    if (event.type !== "pullRequest.guide") return
+    set((state) => ({
+      guides: { ...state.guides, [event.url]: { status: "ready", value: event.state, at: Date.now() } },
+    }))
+  })
 
   const writeSummary = (url: string, summary: Remote<PullRequestSummary>) =>
     set((state) => {
@@ -109,6 +169,9 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
     summaries: {},
     pullRequests: {},
     details: {},
+    files: {},
+    guides: {},
+    codeView: "files",
     load: async () => {
       const ownPushed = new Set<string>()
       pushedDuringLoad = ownPushed
@@ -166,6 +229,11 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
       }
       return fetchInto("details", url, () => call("github.pullRequestDetail", { url }))
     },
+    loadFiles: (url, head, options) =>
+      readCode("files", filesKey(url, head), options?.force === true, () => call("github.pullRequestFiles", { url })),
+    loadGuide: (url, options) =>
+      readCode("guides", url, options?.force === true, () => call("pullRequestGuides.get", { url })),
+    setCodeView: (codeView) => set({ codeView }),
   }
 })
 
