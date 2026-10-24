@@ -4,6 +4,7 @@ import { Array as Arr, Context, Effect, Layer, Option, PubSub, Stream } from "ef
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import { SqlClient } from "effect/sql"
 import type { RelayStatus, RemotePairing, RemoteStatus } from "../../shared/domain.ts"
+import { clientProof, serverProof } from "../../shared/proof.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
@@ -61,8 +62,15 @@ export class RemoteAccess extends Context.Service<
     readonly status: Effect.Effect<RemoteStatus>
     readonly pairing: Effect.Effect<RemotePairing, PersistenceError>
     readonly rotateToken: Effect.Effect<RemotePairing, PersistenceError>
-    /** Constant-time comparison against the current token. */
+    /** Constant-time comparison against the current token, for clients that predate the challenge. */
     readonly authenticate: (token: string) => boolean
+    /**
+     * Checks a client's `clientProof` for this socket's nonces against the current token in constant time, and
+     * answers the `serverProof` its `ready` carries, or null when the proof is wrong.
+     */
+    readonly answerChallenge: (serverNonce: string, clientNonce: string, proof: string) => string | null
+    /** Counts rotations, so a socket can tell whether the token it authenticated with is still current. */
+    readonly generation: () => number
     /** Fires after each rotation, so the listener can drop every socket. */
     readonly rotations: Stream.Stream<void>
     /** The listener reports `listening`, `listenError` and `connected`; the relay reports `relay`. */
@@ -78,12 +86,19 @@ const loadIdentity = Effect.gen(function* () {
   return { id: row!.value, name: hostname() }
 }).pipe(Effect.mapError(persistence("remote.identity")))
 
+const sameSecret = (expected: string, candidate: string) => {
+  const a = Buffer.from(expected)
+  const b = Buffer.from(candidate)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 const make = Effect.gen(function* () {
   const secrets = yield* Secrets
   const identity = yield* loadIdentity
   const settings = yield* Settings
   const rotated = yield* PubSub.unbounded<void>()
   let token = Option.getOrNull(yield* secrets.get(REMOTE_TOKEN_SECRET))
+  let generation = 0
   let report: RemoteStatus = { listening: false, listenError: null, connected: 0, relay: { state: "off" } }
 
   const pairingFor = (current: string) =>
@@ -98,6 +113,7 @@ const make = Effect.gen(function* () {
     const next = randomBytes(32).toString("base64url")
     yield* secrets.set(REMOTE_TOKEN_SECRET, next)
     token = next
+    generation++
     yield* PubSub.publish(rotated, undefined)
     return yield* pairingFor(next)
   })
@@ -106,12 +122,12 @@ const make = Effect.gen(function* () {
     status: Effect.sync(() => report),
     pairing: Effect.suspend(() => (token === null ? rotateToken : pairingFor(token))),
     rotateToken,
-    authenticate: (candidate) => {
-      if (token === null) return false
-      const expected = Buffer.from(token)
-      const given = Buffer.from(candidate)
-      return expected.length === given.length && timingSafeEqual(expected, given)
-    },
+    authenticate: (candidate) => token !== null && sameSecret(token, candidate),
+    answerChallenge: (serverNonce, clientNonce, proof) =>
+      token !== null && sameSecret(clientProof(token, serverNonce, clientNonce), proof)
+        ? serverProof(token, clientNonce, serverNonce)
+        : null,
+    generation: () => generation,
     rotations: Stream.fromPubSub(rotated),
     report: (patch) => Effect.sync(() => void (report = { ...report, ...patch })),
     identity,

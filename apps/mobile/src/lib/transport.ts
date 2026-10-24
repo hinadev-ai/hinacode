@@ -1,7 +1,9 @@
 import { Option, Schema } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import type { PushEvent, RpcEnvelope } from "@shared/contract.ts"
+import { clientProof, newNonce, serverProof } from "@shared/proof.ts"
 import {
+  CHALLENGE_WAIT_MS,
   type ClientFrame,
   type Dial,
   DIRECT_CHECK_INTERVAL_MS,
@@ -92,6 +94,9 @@ const decodeFrame = Schema.decodeUnknownOption(ServerFrame)
  */
 type Round = "both" | Dial["route"]
 
+/** What the current socket was sent: nothing yet, the token itself, or a proof the server's `ready` must answer. */
+type SentAuth = null | "token" | { readonly expectedProof: string }
+
 const randomKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
 /**
@@ -148,12 +153,14 @@ export class Transport {
   private foreground = true
   private stopped = false
   private route: Dial["route"] | null = null
+  private sentAuth: SentAuth = null
   private round: Round = "both"
   private cancelRace: (() => void) | undefined
   private cancelCheck: (() => void) | undefined
   private readonly pending = new Map<number, PendingCall>()
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private connectTimer: ReturnType<typeof setTimeout> | undefined
+  private challengeTimer: ReturnType<typeof setTimeout> | undefined
   private idleTimer: ReturnType<typeof setTimeout> | undefined
   private pingTimer: ReturnType<typeof setInterval> | undefined
   private offlineTimer: ReturnType<typeof setTimeout> | undefined
@@ -281,38 +288,61 @@ export class Transport {
     this.cancelRace = undefined
     this.socket = ws
     this.route = route
-    this.sendFrame({ type: "auth", token: this.options.token })
+    // A server that predates the challenge only gets the token where a stranger cannot be listening: over the relay,
+    // or on a pairing without one. A direct address of a pairing with a relay always runs a server that challenges.
+    this.challengeTimer = setTimeout(() => {
+      if (route === "relay" || !this.hasRelay()) {
+        this.sentAuth = "token"
+        this.sendFrame({ type: "auth", token: this.options.token })
+      } else this.closed(CLOSE_UNAUTHORIZED, route)
+    }, CHALLENGE_WAIT_MS)
     ws.onmessage = (message) => {
-      if (this.socket === ws) this.receive(message.data)
+      if (this.socket === ws) this.receive(message.data, route)
     }
     ws.onclose = (event) => {
-      if (this.socket !== ws) return
-      // Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine
-      // still accepts, so only the relay, whose hostname is the machine's own, gets the last word.
-      if (
-        event.code === CLOSE_UNAUTHORIZED &&
-        route === "direct" &&
-        this.status === "connecting" &&
-        this.dials.some((dial) => dial.route === "relay")
-      ) {
-        this.dropSocket()
-        this.open("relay")
-        return
-      }
-      if (event.code === CLOSE_UNAUTHORIZED || event.code === CLOSE_TOKEN_ROTATED) {
-        this.dropSocket()
-        this.unauthorized(
-          event.code === CLOSE_TOKEN_ROTATED
-            ? "The token was rotated on the desktop. Pair again with the new QR code."
-            : "The desktop refused this token. Pair again from Settings > Remote.",
-        )
-        return
-      }
-      this.onLinkLost()
+      if (this.socket === ws) this.closed(event.code, route)
     }
   }
 
-  private receive(data: unknown) {
+  private closed(code: number, route: Dial["route"]) {
+    // Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine
+    // still accepts, so only the relay, whose hostname is the machine's own, gets the last word.
+    if (code === CLOSE_UNAUTHORIZED && route === "direct" && this.status === "connecting" && this.hasRelay()) {
+      this.dropSocket()
+      this.open("relay")
+      return
+    }
+    if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
+      this.dropSocket()
+      this.unauthorized(
+        code === CLOSE_TOKEN_ROTATED
+          ? "The token was rotated on the desktop. Pair again with the new QR code."
+          : "The desktop refused this token. Pair again from Settings > Remote.",
+      )
+      return
+    }
+    this.onLinkLost()
+  }
+
+  private hasRelay() {
+    return this.dials.some((dial) => dial.route === "relay")
+  }
+
+  private answerChallenge(serverNonce: string) {
+    if (this.sentAuth !== null) return
+    clearTimeout(this.challengeTimer)
+    const { token } = this.options
+    const clientNonce = newNonce()
+    this.sentAuth = { expectedProof: serverProof(token, clientNonce, serverNonce) }
+    this.sendFrame({ type: "auth", nonce: clientNonce, proof: clientProof(token, serverNonce, clientNonce) })
+  }
+
+  /** Whether a `ready` came from a server that holds the token. One that only received the token itself cannot say. */
+  private provesToken(proof: string | undefined) {
+    return this.sentAuth === "token" || (this.sentAuth !== null && proof === this.sentAuth.expectedProof)
+  }
+
+  private receive(data: unknown, route: Dial["route"]) {
     if (typeof data !== "string") return
     let json: unknown
     try {
@@ -324,7 +354,10 @@ export class Transport {
     const frame = Option.getOrNull(decodeFrame(json))
     if (frame === null) return
     switch (frame.type) {
+      case "challenge":
+        return this.answerChallenge(frame.nonce)
       case "ready":
+        if (!this.provesToken(frame.proof)) return this.closed(CLOSE_UNAUTHORIZED, route)
         return this.ready(frame.version, frame.features ?? [], frame.environment, frame.relay ?? null)
       case "result": {
         const call = this.pending.get(frame.id)
@@ -480,6 +513,8 @@ export class Transport {
 
   private dropSocket() {
     clearTimeout(this.connectTimer)
+    clearTimeout(this.challengeTimer)
+    this.sentAuth = null
     this.stopHeartbeat()
     this.stopDirectChecks()
     this.cancelRace?.()

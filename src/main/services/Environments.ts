@@ -4,7 +4,9 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
 import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
+import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import {
+  CHALLENGE_WAIT_MS,
   type ClientFrame,
   type Dial,
   DIRECT_CHECK_INTERVAL_MS,
@@ -127,20 +129,63 @@ interface DialHandlers {
   readonly onClose: (code: number) => void
 }
 
-/** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
-const dial = (url: string, token: string, handlers: DialHandlers) => {
-  const socket = new WebSocket(url)
-  socket.on("open", () => socket.send(JSON.stringify({ type: "auth", token } satisfies ClientFrame)))
-  socket.on("message", (raw, isBinary) => {
-    const frame = parseFrame(raw, isBinary)
-    if (frame === undefined) handlers.onUndecodable?.()
-    else handlers.onFrame(frame)
+/**
+ * Opens a socket to a cloud's remote listener and answers its `challenge` with a proof of `token`. Without a challenge
+ * within `CHALLENGE_WAIT_MS`, it sends the token itself only when `plainToken` allows it, which is over the relay or
+ * for a pairing without one. Frames reach `handlers` only from a `ready` that proved the token back, or that answered
+ * the token itself. A socket this side refuses closes as `CLOSE_UNAUTHORIZED`, like a cloud that refused the token.
+ */
+const dial = (url: string, token: string, plainToken: boolean, handlers: DialHandlers) =>
+  Effect.map(Effect.context<never>(), (services) => {
+    const socket = new WebSocket(url)
+    // The proof `ready` must carry: undefined until this side sent `auth`, null after it sent the token itself.
+    let expected: string | null | undefined
+    let authenticated = false
+    let refused = false
+    let waiting: Fiber.Fiber<void> | undefined
+    const authenticate = (frame: Extract<ClientFrame, { type: "auth" }>) => socket.send(JSON.stringify(frame))
+    const refuse = () => {
+      refused = true
+      socket.terminate()
+    }
+    socket.on("open", () => {
+      waiting = Effect.runForkWith(services)(
+        Effect.sleep(CHALLENGE_WAIT_MS).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (expected !== undefined) return
+              if (!plainToken) return refuse()
+              expected = null
+              authenticate({ type: "auth", token })
+            }),
+          ),
+        ),
+      )
+    })
+    socket.on("message", (raw, isBinary) => {
+      const frame = parseFrame(raw, isBinary)
+      if (frame === undefined) return handlers.onUndecodable?.()
+      if (authenticated) return handlers.onFrame(frame)
+      if (frame.type === "challenge") {
+        if (expected !== undefined) return
+        waiting?.interruptUnsafe()
+        const nonce = newNonce()
+        expected = serverProof(token, nonce, frame.nonce)
+        return authenticate({ type: "auth", nonce, proof: clientProof(token, frame.nonce, nonce) })
+      }
+      if (frame.type !== "ready") return
+      if (expected === undefined || (expected !== null && frame.proof !== expected)) return refuse()
+      authenticated = true
+      handlers.onFrame(frame)
+    })
+    socket.on("pong", () => handlers.onPong?.())
+    socket.on("error", (error) => handlers.onError?.(error))
+    socket.on("close", (code) => {
+      waiting?.interruptUnsafe()
+      handlers.onClose(refused ? CLOSE_UNAUTHORIZED : code)
+    })
+    return socket
   })
-  socket.on("pong", () => handlers.onPong?.())
-  socket.on("error", (error) => handlers.onError?.(error))
-  socket.on("close", handlers.onClose)
-  return socket
-}
 
 /** Whether a socket to `url` opens. It closes again without a frame, so it never carries the token. */
 const opens = (url: string) =>
@@ -190,39 +235,51 @@ const directAnswers = (direct: ReadonlyArray<Dial>): Effect.Effect<void> =>
     Effect.flatMap((opened) => (opened === null ? directAnswers(direct) : Effect.void)),
   )
 
-/** Succeeds with the cloud's `ready` frame once it accepts `token`. */
-const probe = (target: DialTarget, token: string) => {
+/**
+ * Succeeds with the cloud's `ready` frame once it accepts `token`. `plainToken` is `dial`'s: a host of a pairing with a
+ * relay gets a proof of the token, never the token.
+ */
+const probe = (target: DialTarget, token: string, plainToken: boolean) => {
   const where = "relay" in target ? target.relay : `${target.host}:${target.port}`
   const url = "relay" in target ? relayWebSocketUrl(target.relay) : remoteWebSocketUrl(target)
-  return Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
+  return Effect.gen(function* () {
+    const answered = yield* Deferred.make<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>()
     let reason = "the connection closed"
     let errorCode: string | undefined
-    const socket = dial(url, token, {
-      onFrame: (frame) => {
-        if (frame.type !== "ready") return
-        resume(Effect.succeed(frame))
-        socket.close()
-      },
-      onError: (error) => {
-        // A host with several addresses fails with an AggregateError, whose message is empty.
-        reason = error.message || reason
-        errorCode = "code" in error && typeof error.code === "string" ? error.code : undefined
-      },
-      onClose: (code) => {
-        if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
-          return resume(
-            Effect.fail(
-              new EnvironmentUnauthorized({
-                message: `${where} refused the token. Copy a new pairing URL from hinacode serve.`,
-              }),
-            ),
+    const socket: WebSocket = yield* Effect.acquireRelease(
+      dial(url, token, plainToken, {
+        onFrame: (frame) => {
+          if (frame.type !== "ready") return
+          Deferred.doneUnsafe(answered, Effect.succeed(frame))
+          socket.close()
+        },
+        onError: (error) => {
+          // A host with several addresses fails with an AggregateError, whose message is empty.
+          reason = error.message || reason
+          errorCode = "code" in error && typeof error.code === "string" ? error.code : undefined
+        },
+        onClose: (code) => {
+          if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
+            return Deferred.doneUnsafe(
+              answered,
+              Effect.fail(
+                new EnvironmentUnauthorized({
+                  message: `${where} refused the token. Copy a new pairing URL from hinacode serve.`,
+                }),
+              ),
+            )
+          }
+          Deferred.doneUnsafe(
+            answered,
+            Effect.fail(new EnvironmentUnreachable({ message: unreachableMessage(target, errorCode, reason) })),
           )
-        }
-        resume(Effect.fail(new EnvironmentUnreachable({ message: unreachableMessage(target, errorCode, reason) })))
-      },
-    })
-    return Effect.sync(() => socket.terminate())
+        },
+      }),
+      (opened) => Effect.sync(() => opened.terminate()),
+    )
+    return yield* Deferred.await(answered)
   }).pipe(
+    Effect.scoped,
     Effect.timeoutOrElse({
       duration: READY_TIMEOUT_MS,
       orElse: () =>
@@ -258,7 +315,7 @@ const probeHosts = (pairing: PairingTarget) =>
       pairing.relay === null
         ? null
         : yield* Effect.forkScoped(
-            probe({ relay: pairing.relay }, pairing.token).pipe(
+            probe({ relay: pairing.relay }, pairing.token, true).pipe(
               Effect.tap((ready) => {
                 relayReady = ready
                 return startGrace
@@ -268,7 +325,7 @@ const probeHosts = (pairing: PairingTarget) =>
           )
     const probes = yield* Effect.forEach(pairing.hosts, (host, index) =>
       Effect.forkScoped(
-        probe({ host, port: pairing.port }, pairing.token).pipe(
+        probe({ host, port: pairing.port }, pairing.token, pairing.relay === null).pipe(
           Effect.tap((ready) => {
             answers[index] = ready
             return startGrace
@@ -442,8 +499,8 @@ const make = Effect.gen(function* () {
     )
   }
 
-  /** Resolves once the socket closes. Interrupting it drops the socket. */
-  const session = (cloud: Cloud, token: string, url: string) =>
+  /** Resolves once the socket closes. Interrupting it drops the socket. `plainToken` is `dial`'s. */
+  const session = (cloud: Cloud, token: string, url: string, plainToken: boolean) =>
     Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
@@ -454,53 +511,51 @@ const make = Effect.gen(function* () {
         heardAt = now()
         cloud.lastSeenAt = new Date(heardAt).toISOString()
       }
-      const socket = yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          dial(url, token, {
-            onFrame: (frame) => {
-              heard()
-              switch (frame.type) {
-                case "ready": {
-                  if (frame.version !== REMOTE_PROTOCOL_VERSION) {
-                    otherProtocol = frame.version
-                    return socket.close()
-                  }
-                  connectedAt = now()
-                  cloud.protocol = null
-                  learnRelay(cloud, frame.relay ?? null)
-                  const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
-                  cloud.live = live
-                  for (const call of cloud.outbox.values()) {
-                    pauseOfflineTimer(call)
-                    if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
-                    else send(live, call)
-                  }
-                  return runFork(setStatus(cloud, "connected"))
+      const socket: WebSocket = yield* Effect.acquireRelease(
+        dial(url, token, plainToken, {
+          onFrame: (frame) => {
+            heard()
+            switch (frame.type) {
+              case "ready": {
+                if (frame.version !== REMOTE_PROTOCOL_VERSION) {
+                  otherProtocol = frame.version
+                  return socket.close()
                 }
-                case "result": {
-                  const call = cloud.outbox.get(frame.id)
-                  if (call === undefined) return
-                  return settle(
-                    cloud,
-                    call,
-                    "error" in frame.envelope ? frame.envelope : { result: frame.envelope.result },
-                  )
+                connectedAt = now()
+                cloud.protocol = null
+                learnRelay(cloud, frame.relay ?? null)
+                const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
+                cloud.live = live
+                for (const call of cloud.outbox.values()) {
+                  pauseOfflineTimer(call)
+                  if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
+                  else send(live, call)
                 }
-                case "event":
-                  learnFromPush(owners, id, frame.event)
-                  return runFork(windows.send(frame.event))
-                case "pong":
-                  return
+                return runFork(setStatus(cloud, "connected"))
               }
-            },
-            onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
-            onPong: heard,
-            onClose: (code) => {
-              disconnect(cloud, socket)
-              Deferred.doneUnsafe(closed, Effect.succeed(code))
-            },
-          }),
-        ),
+              case "result": {
+                const call = cloud.outbox.get(frame.id)
+                if (call === undefined) return
+                return settle(
+                  cloud,
+                  call,
+                  "error" in frame.envelope ? frame.envelope : { result: frame.envelope.result },
+                )
+              }
+              case "event":
+                learnFromPush(owners, id, frame.event)
+                return runFork(windows.send(frame.event))
+              case "pong":
+                return
+            }
+          },
+          onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
+          onPong: heard,
+          onClose: (code) => {
+            disconnect(cloud, socket)
+            Deferred.doneUnsafe(closed, Effect.succeed(code))
+          },
+        }),
         (opened) =>
           Effect.sync(() => {
             disconnect(cloud, opened)
@@ -566,18 +621,21 @@ const make = Effect.gen(function* () {
           yield* setStatus(cloud, "offline")
         } else {
           const direct = plan.filter((planned) => planned.route === "direct")
+          const hasRelay = plan.some((planned) => planned.route === "relay")
+          const opened = session(cloud, token, won.url, won.route === "relay" || !hasRelay)
           const end =
             won.route === "relay" && round === "both" && direct.length > 0
-              ? yield* Effect.raceFirst(session(cloud, token, won.url), directAnswers(direct).pipe(Effect.as(null)))
-              : yield* session(cloud, token, won.url)
+              ? yield* Effect.raceFirst(opened, directAnswers(direct).pipe(Effect.as(null)))
+              : yield* opened
           if (end === null) {
             round = "direct"
             continue
           }
           if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
-            // Away from home, someone else's HinaCode can answer at the direct address and refuse the token. Only the
-            // relay surely reaches this cloud, so the rest of this link dials it alone and takes its verdict.
-            if (!end.ready && won.route === "direct" && plan.some((planned) => planned.route === "relay")) {
+            // Away from home, someone else's HinaCode can answer at the direct address, refuse the proof or fail to
+            // prove the token back. Only the relay surely reaches this cloud, so the rest of this link dials it alone
+            // and takes its verdict.
+            if (!end.ready && won.route === "direct" && hasRelay) {
               round = "relay"
               continue
             }
