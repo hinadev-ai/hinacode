@@ -1,4 +1,4 @@
-import type { PushEvent, RpcMethod } from "../../shared/contract.ts"
+import type { PushEvent, RpcMethod } from "./contract.ts"
 import type { Entity } from "./routes.ts"
 
 /**
@@ -110,3 +110,22 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
       }
   }
 }
+
+/** Answers that carry projects, which a client stamps with the environment they came from. */
+const projectAnswers: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "projects.list",
+  "projects.create",
+  "projects.clone",
+  "projects.update",
+])
+
+const stamp = (result: unknown, environmentId: string): unknown =>
+  Array.isArray(result)
+    ? result.map((project) => stamp(project, environmentId))
+    : typeof result === "object" && result !== null
+      ? { ...result, environmentId }
+      : result
+
+/** `result` with each project in an answer to `method` marked as `environmentId`'s, for the client to show where it lives. */
+export const stampProjects = (method: RpcMethod, result: unknown, environmentId: string) =>
+  projectAnswers.has(method) ? stamp(result, environmentId) : result

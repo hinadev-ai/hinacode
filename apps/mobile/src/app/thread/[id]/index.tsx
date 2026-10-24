@@ -9,6 +9,7 @@ import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
 import { SidebarButton } from "@/components/thread-sidebar"
 import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
+import { useThreadConnection } from "@/hooks/use-server"
 import { READABLE_WIDTH } from "@/constants/theme"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
@@ -32,7 +33,7 @@ export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const thread = useThreads((state) => state.byId[id])
   const loaded = useThreads((state) => state.status === "ready")
-  const status = useConnection((state) => state.status)
+  const status = useThreadConnection(id)
   const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
   // Files and the shell keep their state across tab switches once opened, and end with this screen.

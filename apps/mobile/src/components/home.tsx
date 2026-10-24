@@ -6,11 +6,13 @@ import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
+import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
 import { duration } from "@/constants/motion"
 import { radius } from "@/constants/theme"
+import { useProjectServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -264,6 +266,7 @@ const homeTabs: readonly Tab<HomeTab>[] = [
 /** A project's group in the Threads tab: tap to fold its threads away, or start a new one in it. */
 function ProjectHeader({ project, open, onToggle }: { project: Project; open: boolean; onToggle: () => void }) {
   const theme = useTheme()
+  const server = useProjectServer(project.id)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -298,6 +301,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
           <Text numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
             {project.name}
           </Text>
+          <ServerMark server={server} />
         </Pressable>
         <IconButton
           testID={`new-thread-in-${project.id}`}

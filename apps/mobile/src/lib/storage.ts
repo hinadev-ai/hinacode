@@ -1,13 +1,19 @@
 import * as SecureStore from "expo-secure-store"
-import type { PairingTarget } from "@shared/remote.ts"
 import { parsePreferences, PREFERENCES_KEY, type Preferences } from "./preferences"
-import { parseStoredTarget, STORAGE_KEY } from "./stored-target"
+import { LEGACY_KEY, newServerId, parseStoredServers, SERVERS_KEY, type StoredServer } from "./stored-target"
 
-export const loadTarget = async () => parseStoredTarget(await SecureStore.getItemAsync(STORAGE_KEY))
+export async function loadServers() {
+  const [raw, legacy] = await Promise.all([SecureStore.getItemAsync(SERVERS_KEY), SecureStore.getItemAsync(LEGACY_KEY)])
+  const servers = parseStoredServers(raw, legacy, newServerId)
+  if (legacy !== null) {
+    await saveServers(servers)
+    await SecureStore.deleteItemAsync(LEGACY_KEY)
+  }
+  return servers
+}
 
-export const saveTarget = (target: PairingTarget) => SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(target))
-
-export const clearTarget = () => SecureStore.deleteItemAsync(STORAGE_KEY)
+export const saveServers = (servers: readonly StoredServer[]) =>
+  SecureStore.setItemAsync(SERVERS_KEY, JSON.stringify(servers))
 
 export const loadPreferences = async () => parsePreferences(await SecureStore.getItemAsync(PREFERENCES_KEY))
 

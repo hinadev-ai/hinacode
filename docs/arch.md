@@ -73,7 +73,9 @@ Remote mode (`src/main/remote/`) is a second transport for the same contract. A 
 
 ### Environments: routing a window call
 
-A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call by `routes[method]` in `src/main/environments/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
+A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call by `routes[method]` in `src/shared/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
+
+The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
 
 ```mermaid
 flowchart LR
@@ -86,7 +88,7 @@ flowchart LR
   cloud -- "event: teaches owners" --> windows["WindowPush: windows only, never phone sinks"]
 ```
 
-- `environments/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, automation, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
+- `src/shared/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, automation, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
 - A cloud that is not connected answers `EnvironmentOffline`; for `all` routes it contributes its last answer to the same call. Close code 4001 (`unauthorized`) stops reconnecting. A `ready` with another `REMOTE_PROTOCOL_VERSION` (`incompatible`) fails waiting calls and keeps retrying, like anything else, with jittered backoff from 0.5 s to 60 s. `environments.reconnect` and waking from sleep skip the wait. A ping every 10 s drops a socket silent for 25 s.
 - Every data directory has an id (setting row `environment.id`, read by `RemoteAccess`), sent in the `ready` frame. The desktop keys its `environment` rows by it, so pairing the same cloud again updates one row. Tokens are the secrets `environment.<id>.token`.
 

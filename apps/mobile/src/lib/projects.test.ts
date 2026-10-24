@@ -1,6 +1,6 @@
 import type { Project, Thread } from "@shared/domain.ts"
 import { describe, expect, it } from "vitest"
-import { baseName, defaultCloneFolder, projectsByActivity } from "./projects"
+import { baseName, defaultCloneFolder, groupByRepository, projectsByActivity } from "./projects"
 
 const project = (id: string, rootPath: string, createdAt: string) => ({ id, rootPath, createdAt }) as unknown as Project
 const thread = (projectId: string, updatedAt: string) => ({ projectId, updatedAt }) as unknown as Thread
@@ -53,5 +53,24 @@ describe("projectsByActivity", () => {
       thread("quiet", "2026-01-02T00:00:00.000Z"),
     ]
     expect(projectsByActivity(projects, threads).map((each) => each.id)).toEqual(["busy", "fresh", "quiet"])
+  })
+})
+
+describe("groupByRepository", () => {
+  const on = (id: string, environmentId: string, repository?: string) =>
+    ({ id, environmentId, ...(repository && { repository }) }) as unknown as Project
+  const ids = (groups: readonly (readonly Project[])[]) => groups.map((group) => group.map((member) => member.id))
+
+  it("puts one repository on two servers in one group, where the first of them was", () => {
+    const groups = groupByRepository([on("web-a", "a", "acme/web"), on("api", "a", "acme/api"), on("web-b", "b", "acme/web")])
+    expect(ids(groups)).toEqual([["web-a", "web-b"], ["api"]])
+  })
+
+  it("keeps two clones on one server apart", () => {
+    expect(ids(groupByRepository([on("one", "a", "acme/web"), on("two", "a", "acme/web")]))).toEqual([["one"], ["two"]])
+  })
+
+  it("does not group projects without a repository", () => {
+    expect(ids(groupByRepository([on("x", "a"), on("y", "b")]))).toEqual([["x"], ["y"]])
   })
 })

@@ -3,40 +3,70 @@ import { useURL } from "expo-linking"
 import { type ReactNode, useEffect, useState } from "react"
 import { AppState } from "react-native"
 import { parsePairingUrl, type PairingTarget } from "@shared/remote.ts"
-import { connect, networkChanged, onEvent, setForeground, useConnection } from "@/lib/connection"
-import { loadTarget, saveTarget } from "@/lib/storage"
+import { networkChanged, onEvent, setForeground, setServers, useConnection } from "@/lib/connection"
+import { loadServers, saveServers } from "@/lib/storage"
+import { addPairing, newServerId, type StoredServer } from "@/lib/stored-target"
 import { isTranscriptPush, useMessages } from "@/stores/messages"
 import { usePreferences } from "@/stores/preferences"
 import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
-export async function pair(target: PairingTarget) {
-  await saveTarget(target)
-  connect(target)
+const storedServers = (): StoredServer[] =>
+  useConnection
+    .getState()
+    .servers.map(({ id, name, environmentId, hosts, port, token }) => ({ id, name, environmentId, hosts, port, token }))
+
+/** Adds a server, or updates the one this pairing reaches again. Returns its id. */
+export function pair(target: PairingTarget) {
+  const { servers, id } = addPairing(storedServers(), target, newServerId)
+  setServers(servers)
+  return id
+}
+
+/** Unpairs one server. Its projects and threads leave the lists. */
+export function forgetServer(id: string) {
+  setServers(storedServers().filter((server) => server.id !== id))
+  if (useConnection.getState().servers.length === 0) return
+  void useThreads.getState().load()
+  void usePullRequests.getState().load()
 }
 
 /**
- * Restores the stored pairing and preferences, accepts `hinacode://connect` links, and keeps the thread,
- * message and pull request stores in step with the one socket. Renders nothing until storage has been read.
+ * Restores the paired servers and preferences, saves the server list whenever it changes, accepts
+ * `hinacode://connect` links, and keeps the thread, message and pull request stores in step with every server's
+ * socket. Renders nothing until storage has been read.
  */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
   const generation = useConnection((state) => state.generation)
-  const target = useConnection((state) => state.target)
-  const paired = useConnection((state) => state.target !== null && state.status !== "unauthorized")
+  const paired = useConnection((state) => state.paired)
   const url = useURL()
 
   useEffect(() => {
-    void Promise.all([loadTarget(), usePreferences.getState().restore()]).then(([target]) => {
-      if (target !== null && useConnection.getState().target === null) connect(target)
+    let cancelled = false
+    let unsubscribe = () => {}
+    void Promise.all([loadServers(), usePreferences.getState().restore()]).then(([servers]) => {
+      if (cancelled) return
+      if (useConnection.getState().servers.length === 0) setServers(servers)
+      let saved = JSON.stringify(storedServers())
+      unsubscribe = useConnection.subscribe(() => {
+        const next = storedServers()
+        if (JSON.stringify(next) === saved) return
+        saved = JSON.stringify(next)
+        void saveServers(next)
+      })
       setRestored(true)
     })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
     const target = url === null ? null : parsePairingUrl(url)
-    if (target !== null) void pair(target)
-  }, [url])
+    if (target !== null && restored) pair(target)
+  }, [url, restored])
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -74,7 +104,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     useMessages.getState().reload()
   }, [generation])
 
-  useEffect(() => () => useMessages.getState().reset(), [paired, target])
+  useEffect(() => () => useMessages.getState().reset(), [paired])
 
   return restored ? children : null
 }

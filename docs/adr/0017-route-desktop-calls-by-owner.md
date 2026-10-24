@@ -17,7 +17,7 @@ There were three ways to get there:
 
 The window shows every environment at once and has no active environment. Thread, project, worktree, terminal and automation ids are UUIDs, so main routes each renderer call by which environment owns the id in its payload. It learns ownership from the answers and pushes each cloud sends.
 
-`src/main/environments/routes.ts` gives every rpc method one of four routes: `client`, `all`, `owner` or `named`. The table is a `Record<RpcMethod, Route>`, so a new method does not compile until it picks one. Only `named` methods take an `environment` from the renderer, and the UI already asks the user for one in exactly those places: settings, adding a project, models and accounts.
+`src/shared/routes.ts` (moved from `src/main/environments/` once the phone routed by it too) gives every rpc method one of four routes: `client`, `all`, `owner` or `named`. The table is a `Record<RpcMethod, Route>`, so a new method does not compile until it picks one. Only `named` methods take an `environment` from the renderer, and the UI already asks the user for one in exactly those places: settings, adding a project, models and accounts.
 
 ## Consequences
 

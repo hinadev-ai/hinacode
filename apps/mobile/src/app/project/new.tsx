@@ -5,10 +5,11 @@ import { useHeaderHeight } from "expo-router/react-navigation"
 import { useRef, useState } from "react"
 import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from "react-native"
 import { Icon } from "@/components/icon"
-import { Button, Notice } from "@/components/ui"
+import { Button, Notice, SegmentedControl } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
+import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
+import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { baseName, defaultCloneFolder } from "@/lib/projects"
@@ -18,7 +19,12 @@ export default function AddProjectScreen() {
   const theme = useTheme()
   // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
-  const projects = useThreads((state) => state.projects)
+  const servers = useConnection((state) => state.servers)
+  const [chosen, setChosen] = useState<string | null>(null)
+  const server =
+    servers.find((entry) => entry.id === chosen) ?? servers.find((entry) => entry.status === "connected") ?? servers[0]
+  const allProjects = useThreads((state) => state.projects)
+  const projects = allProjects.filter((project) => project.environmentId === server?.id)
   const [source, setSource] = useState("")
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [name, setName] = useState("")
@@ -40,17 +46,16 @@ export default function AddProjectScreen() {
       const project =
         added.current ??
         (repository === null
-          ? await call("projects.create", {
-              name: name.trim() || baseName(source),
-              rootPath: source.trim(),
-              setupScript: null,
-            })
-          : await call("projects.clone", {
-              repository,
-              rootPath: cloneFolder.trim(),
-              name: name.trim() || repository.name,
-              setupScript: null,
-            }))
+          ? await call(
+              "projects.create",
+              { name: name.trim() || baseName(source), rootPath: source.trim(), setupScript: null },
+              { server: server?.id },
+            )
+          : await call(
+              "projects.clone",
+              { repository, rootPath: cloneFolder.trim(), name: name.trim() || repository.name, setupScript: null },
+              { server: server?.id },
+            ))
       added.current = project
       useThreads.getState().addProject(project)
       const thread = await call("threads.create", { projectId: project.id })
@@ -70,6 +75,21 @@ export default function AddProjectScreen() {
       keyboardVerticalOffset={headerHeight}
     >
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+        {servers.length > 1 && server !== undefined && (
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: theme.text }]}>{copy("mobile_project_server")}</Text>
+            <SegmentedControl
+              segments={servers.map((entry) => ({ value: entry.id, label: serverName(entry) }))}
+              value={server.id}
+              onChange={(id) => {
+                setChosen(id)
+                setCloneTo(null)
+                added.current = null
+              }}
+              accessibilityLabel={copy("mobile_project_server")}
+            />
+          </View>
+        )}
         <Field
           id="project-source"
           label={copy("mobile_project_source_label")}

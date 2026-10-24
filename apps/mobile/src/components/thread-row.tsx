@@ -5,12 +5,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
 import { AttentionRing } from "@/components/motion"
+import { ServerMark, serverLabel } from "@/components/server-mark"
 import { PullRequestMark, usePullRequestSummary } from "@/components/pull-request-badge"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
 import { indicatorGlyph, mono, type Palette, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
+import { useProjectServer, useSeveralServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { openThread } from "@/lib/navigation"
@@ -77,6 +79,9 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   const checks = openChecks(summary ?? undefined)
   const watching = links.some((link) => link.watch !== null)
   const actions = useThreadActions(thread)
+  const server = useProjectServer(thread.projectId)
+  const away = server !== undefined && server.status !== "connected"
+  const several = useSeveralServers()
   const [actionsOpen, setActionsOpen] = useState(false)
 
   const title = thread.title || copy("mobile_home_untitled")
@@ -89,6 +94,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
         : copy("mobile_row_pull_request", { number })
   const label = [
     title,
+    several && server !== undefined && serverLabel(server),
     project,
     branch && copy("mobile_row_branch", { branch: branch.name }),
     isIndicated(state) && statusLabel[state],
@@ -121,6 +127,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           styles.row,
           pressed && { backgroundColor: theme.surface },
           rowEmphasis[state] === "working" && !pressed && !actionsOpen && { opacity: WORKING_OPACITY },
+          away && styles.away,
         ]}
       >
         <View style={styles.titleLine}>
@@ -131,6 +138,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           {isIndicated(state) && <StatusIndicator state={state} />}
         </View>
         <View style={styles.metaLine}>
+          <ServerMark server={showProject ? server : undefined} />
           {project !== undefined && (
             <Text numberOfLines={1} style={[styles.meta, styles.project, { color: theme.textMuted }]}>
               {project}
@@ -201,5 +209,6 @@ const styles = StyleSheet.create({
   removed: { textDecorationLine: "line-through" },
   pullRequest: { flexShrink: 0 },
   time: { marginLeft: "auto", paddingLeft: 4, flexShrink: 0, fontVariant: ["tabular-nums"] },
+  away: { opacity: 0.5 },
   status: { width: STATUS_SIZE, height: STATUS_SIZE },
 })

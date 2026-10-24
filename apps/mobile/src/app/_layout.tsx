@@ -49,7 +49,7 @@ export default function RootLayout() {
 }
 
 function Routes() {
-  const paired = useConnection((state) => state.target !== null && state.status !== "unauthorized")
+  const paired = useConnection((state) => state.paired)
   const split = useSplitLayout() && paired
   // The Stack keeps its place in the tree whether the sidebar shows or not, so a resize keeps the navigation state.
   return (

@@ -2,25 +2,37 @@ import { create } from "zustand"
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import { call } from "@/lib/connection"
 
+type ByProvider = Readonly<Partial<Record<ProviderId, readonly ModelInfo[]>>>
+
 interface ModelsState {
-  readonly byProvider: Readonly<Partial<Record<ProviderId, readonly ModelInfo[]>>>
-  /** Fetches a provider's models once; rejects when the desktop could not list them. */
-  readonly load: (provider: ProviderId) => Promise<void>
+  /** By server id, since each machine has its own agents and accounts. `""` is a call that named no server. */
+  readonly byServer: Readonly<Record<string, ByProvider>>
+  /** Fetches a provider's models on `server` once; rejects when the server could not list them. */
+  readonly load: (server: string | undefined, provider: ProviderId) => Promise<void>
 }
 
-const inFlight = new Map<ProviderId, Promise<void>>()
+const inFlight = new Map<string, Promise<void>>()
 
-/** The models each agent offers, cached for the life of the app like the desktop's `modelsAtom`. */
+/** The models each agent offers on each server, cached for the life of the app like the desktop's `modelsAtom`. */
 export const useModels = create<ModelsState>()((set, get) => ({
-  byProvider: {},
-  load: (provider) => {
-    if (get().byProvider[provider] !== undefined) return Promise.resolve()
+  byServer: {},
+  load: (server, provider) => {
+    const serverKey = server ?? ""
+    if (get().byServer[serverKey]?.[provider] !== undefined) return Promise.resolve()
+    const key = `${serverKey}:${provider}`
     const pending =
-      inFlight.get(provider) ??
-      call("models.list", { provider })
-        .then((models) => set((state) => ({ byProvider: { ...state.byProvider, [provider]: models } })))
-        .finally(() => inFlight.delete(provider))
-    inFlight.set(provider, pending)
+      inFlight.get(key) ??
+      call("models.list", { provider }, { server })
+        .then((models) =>
+          set((state) => ({
+            byServer: { ...state.byServer, [serverKey]: { ...state.byServer[serverKey], [provider]: models } },
+          })),
+        )
+        .finally(() => inFlight.delete(key))
+    inFlight.set(key, pending)
     return pending
   },
 }))
+
+export const modelsOn = (state: ModelsState, server: string | undefined, provider: ProviderId) =>
+  state.byServer[server ?? ""]?.[provider]

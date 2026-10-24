@@ -26,7 +26,7 @@ let noticeCount = 0
 /** Raises a banner or a system notification when a thread the developer is not looking at needs them. */
 export function Notifier() {
   const pathname = usePathname()
-  const paired = useConnection((state) => state.target !== null && state.status !== "unauthorized")
+  const paired = useConnection((state) => state.paired)
   const [notice, setNotice] = useState<BannerNotice | null>(null)
 
   const receive = useEffectEvent((threadId: string, alert: NonNullable<ReturnType<typeof threadAlert>>) => {

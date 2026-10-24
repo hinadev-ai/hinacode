@@ -39,7 +39,9 @@ The QR scanner (`expo-camera`) and the native terminal (`react-native-webview`) 
 
 The phone retains the thread while reconnecting and queues actions for up to a minute offline. Supported desktops deduplicate retried mutations and let the terminal attach to its existing shell and retained output.
 
-The pairing is stored in the secure store (`localStorage` on web). Rotating the token on the desktop sends the app back to the pairing screen. Disconnect on the thread list forgets the pairing.
+Pair with every machine you use, desktop or `hinacode serve`: Settings, Servers, Add server takes another URL. A desktop does not pass its clouds on to the phone. The thread list merges every server's projects and threads and names the server of each once two are paired; Add project asks which server to use. Tap a server in Settings to reconnect it, pair it again or forget it.
+
+The servers are stored in the secure store (`localStorage` on web) under `hinacode.servers`; a pairing saved by an older app under `hinacode.connection` becomes the first server. Pasting a new URL for a server already listed, after its token was rotated, updates that server. Forgetting the last server goes back to the pairing screen.
 
 ## Scripts
 

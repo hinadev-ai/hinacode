@@ -194,8 +194,8 @@ let threadList: Promise<{ readyAt: number; paintedAt: number }> | null = null
 /** Startup timings, and the thread list's first paint once the desktop has answered. */
 async function hello() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { loadTarget } = require("@/lib/storage") as typeof import("@/lib/storage")
-  const paired = (await loadTarget()) !== null
+  const { loadServers } = require("@/lib/storage") as typeof import("@/lib/storage")
+  const paired = (await loadServers()).length > 0
   const threadListPainted = paired ? ((await threadList)?.paintedAt ?? null) : null
   return {
     paired,
