@@ -21,12 +21,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  memo,
   startTransition,
   useActionState,
-  useCallback,
   useId,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -114,6 +111,11 @@ const accessibility = () =>
     },
   })
 
+const plugins: DragDropPlugins = (defaults) => [
+  ...defaults.filter((plugin) => plugin !== Accessibility),
+  accessibility(),
+]
+
 /**
  * Rows drag by the whole row with the mouse (after a few pixels, so clicks still navigate) and by
  * the grip handle from the keyboard, which is dnd-kit's default keyboard sensor.
@@ -161,15 +163,8 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
-  const focusAfterRemoval = useCallback(
-    () => firstRowRef.current ?? newThreadButtonRef?.current ?? null,
-    [newThreadButtonRef],
-  )
+  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
-  const plugins = useMemo<DragDropPlugins>(
-    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility()],
-    [],
-  )
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 
@@ -244,16 +239,7 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-// Memoized so a push for one thread re-renders only its row, and the rows whose index moved.
-const ThreadRow = memo(function ThreadRow({
-  thread,
-  index,
-  group,
-  reorderable,
-  showProject,
-  linkRef,
-  focusAfterRemoval,
-}: ThreadRowProps) {
+function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -494,7 +480,7 @@ const ThreadRow = memo(function ThreadRow({
       )}
     </li>
   )
-})
+}
 
 /** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()

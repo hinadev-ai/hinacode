@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-reac
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
 import { RiRefreshLine } from "react-icons/ri"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -124,7 +124,7 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
   }, [openPath])
 
   const loaded = AsyncResult.isSuccess(changes) ? changes.value : null
-  const diffs = useMemo(() => splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? []), [loaded])
+  const diffs = splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? [])
 
   if (AsyncResult.isFailure(changes)) {
     return (

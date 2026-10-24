@@ -57,7 +57,8 @@
         "react-doctor/no-cascading-set-state": "error",
         "react-doctor/no-direct-mutation-state": "error",
         "react-doctor/no-controlled-input-value-without-state-update": "error",
-        "react-doctor/no-collapse-request-error-to-empty-state": "error"
+        "react-doctor/no-collapse-request-error-to-empty-state": "error",
+        "hinacode/no-manual-memo": "error"
       }
     },
     {
