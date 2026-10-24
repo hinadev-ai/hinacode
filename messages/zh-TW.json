@@ -1277,6 +1277,26 @@
   "environment_pair_submit": "配對",
   "environment_added": "已連線到 {name}",
   "environment_add_project_on": "在 {name} 上新增專案",
+  "environment_relay_title": "中繼",
+  "environment_relay_description": "在中繼頁面設為顯示在裝置上的機器，不需配對 URL 就會出現在這裡。擁有者權杖可在中繼頁面複製。",
+  "environment_relay_owner_token_label": "擁有者權杖",
+  "environment_relay_sign_in": "登入",
+  "environment_relay_signing_in": "登入中…",
+  "environment_relay_machines": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} 台機器", "countPlural=other": "{count} 台機器" }
+    }
+  ],
+  "environment_relay_synced": "{time}同步",
+  "environment_relay_sync_now": "立即同步",
+  "environment_relay_syncing": "同步中…",
+  "environment_relay_sign_out": "登出",
+  "environment_relay_sign_out_title": "要登出中繼嗎？",
+  "environment_relay_sign_out_body": "中繼的機器會從這個清單移除。用配對 URL 新增的環境會保留。",
+  "environment_relay_source": "來自你的中繼",
+  "environment_relay_row_hint": "若要移除，請在中繼頁面將它隱藏。",
   "environments_empty": "尚未新增環境。在另一台機器執行 hinacode serve，並貼上它印出的 URL",
   "settings_editing_for": "正在編輯的設定",
   "settings_environment_loading": "正在載入 {name} 的設定…",

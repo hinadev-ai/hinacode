@@ -11,7 +11,7 @@ import {
   useState,
   useTransition,
 } from "react"
-import type { Environment } from "../../../shared/domain.ts"
+import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
@@ -20,7 +20,11 @@ import {
   callPromise,
   cloudUpdatesAtom,
   installUpdatesAtom,
+  relayAccountAtom,
   removeEnvironmentAtom,
+  signInRelayAtom,
+  signOutRelayAtom,
+  syncRelayAtom,
   updateStatusAtom,
 } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
@@ -53,6 +57,7 @@ export function EnvironmentSettings() {
       description={m.environments_description()}
       action={<UpdateAllButton />}
     >
+      <RelayAccountSection />
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>
       ) : (
@@ -67,6 +72,154 @@ export function EnvironmentSettings() {
   )
 }
 
+function RelayAccountSection() {
+  const status = AsyncResult.getOrElse(useAtomValue(relayAccountAtom), () => null)
+  if (status === null) return null
+  return status.state === "signedIn" ? <RelaySignedIn status={status} /> : <RelaySignInForm />
+}
+
+function RelaySignInForm() {
+  const signIn = useAtomSet(signInRelayAtom, { mode: "promise" })
+  const [ownerToken, setOwnerToken] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startSignIn] = useTransition()
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    startSignIn(async () => {
+      setError(null)
+      try {
+        await signIn(ownerToken.trim())
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      aria-labelledby="environment-relay-title"
+      className="flex flex-col gap-4 rounded-lg border border-border p-4"
+    >
+      <h3 id="environment-relay-title" className="text-sm font-medium">
+        {m.environment_relay_title()}
+      </h3>
+      <Field>
+        <FieldLabel htmlFor="environment-relay-owner-token">{m.environment_relay_owner_token_label()}</FieldLabel>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            id="environment-relay-owner-token"
+            type="password"
+            required
+            value={ownerToken}
+            onChange={(event) => setOwnerToken(event.target.value)}
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={error !== null}
+            className="min-w-48 flex-1 font-mono"
+          />
+          <Button type="submit" className="shrink-0" disabled={pending || ownerToken.trim() === ""}>
+            {pending ? m.environment_relay_signing_in() : m.environment_relay_sign_in()}
+          </Button>
+        </div>
+        <FieldDescription>{m.environment_relay_description()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </Field>
+    </form>
+  )
+}
+
+function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state: "signedIn" }> }) {
+  const now = useNow()
+  const locale = useLocale((state) => state.locale)
+  const sync = useAtomSet(syncRelayAtom, { mode: "promise" })
+  const [syncing, startSync] = useTransition()
+
+  return (
+    <section
+      aria-labelledby="environment-relay-title"
+      className="flex flex-col gap-1 rounded-lg border border-border px-4 py-3"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-48 flex-1 flex-col gap-0.5">
+          <h3 id="environment-relay-title" className="text-sm font-medium">
+            {m.environment_relay_title()}
+          </h3>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate font-mono">
+              {URL.parse(status.serviceUrl)?.host ?? status.serviceUrl}
+            </span>
+            <span className="whitespace-nowrap">{m.environment_relay_machines({ count: status.machines })}</span>
+            {status.syncedAt !== null && (
+              <span className="whitespace-nowrap">
+                {m.environment_relay_synced({ time: formatRelativeTime(status.syncedAt, now, locale) })}
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncing}
+            onClick={() =>
+              startSync(async () => {
+                await sync()
+              })
+            }
+          >
+            {syncing ? m.environment_relay_syncing() : m.environment_relay_sync_now()}
+          </Button>
+          <RelaySignOutButton />
+        </div>
+      </div>
+      {status.error !== null && <FieldError>{status.error}</FieldError>}
+    </section>
+  )
+}
+
+function RelaySignOutButton() {
+  const signOut = useAtomSet(signOutRelayAtom, { mode: "promise" })
+  const [open, setOpen] = useState(false)
+  const [error, run, isPending] = useActionState<string | null>(async () => {
+    try {
+      await signOut()
+    } catch (cause) {
+      return errorMessage(cause)
+    }
+    setOpen(false)
+    return null
+  }, null)
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        {m.environment_relay_sign_out()}
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{m.environment_relay_sign_out_title()}</AlertDialogTitle>
+            <AlertDialogDescription>{m.environment_relay_sign_out_body()}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(run)}>
+              {m.environment_relay_sign_out()}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
 function EnvironmentRow({ cloud }: { cloud: Cloud }) {
   const now = useNow()
   const locale = useLocale((state) => state.locale)
@@ -74,6 +227,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
   const pairAgainRef = useRef<HTMLButtonElement>(null)
   const pairFormId = useId()
   const unauthorized = cloud.status === "unauthorized"
+  const fromRelay = cloud.source === "relay"
 
   const cancelPairing = () => {
     setPairing(false)
@@ -88,6 +242,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {cloud.relay !== null && <span className="min-w-0 truncate font-mono">{cloud.relay}</span>}
             <span className="min-w-0 truncate font-mono">{cloudAddress(cloud)}</span>
+            {fromRelay && <span className="whitespace-nowrap">{m.environment_relay_source()}</span>}
             <EnvironmentStatusText status={cloud.status} />
             {cloud.status === "connected" && <CloudVersion cloud={cloud} />}
             {cloud.status !== "connected" && !unauthorized && cloud.lastSeenAt !== null && (
@@ -112,9 +267,10 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
             </Button>
           )}
           {(cloud.status === "offline" || cloud.status === "incompatible") && <ReconnectButton cloud={cloud} />}
-          <RemoveEnvironmentButton cloud={cloud} />
+          {!fromRelay && <RemoveEnvironmentButton cloud={cloud} />}
         </div>
       </div>
+      {fromRelay && <FieldDescription>{m.environment_relay_row_hint()}</FieldDescription>}
       {unauthorized && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
       {cloud.status === "connected" && <CloudUpdateHint cloud={cloud} />}
       {unauthorized && pairing && (

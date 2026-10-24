@@ -31,6 +31,7 @@ import { Relay } from "./remote/relay.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
+import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
@@ -68,6 +69,7 @@ export type AppServices =
   | Updates
   | RemoteAccess
   | Relay
+  | RelayAccount
   | Events
   | TinyVm
   | VmPasskeyRelay
@@ -238,6 +240,10 @@ const handlers: Handlers = {
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
+  "relayAccount.status": () => RelayAccount.use((account) => account.status),
+  "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),
+  "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
+  "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),

@@ -105,6 +105,10 @@ onPushEvent((event) => {
       reloadTranscripts(event.id)
       reattachTerminals(event.id)
       return void loadLists()
+    case "environments.changed":
+      // A cloud the relay dropped takes its projects and threads out of the sidebar.
+      registry.refresh(projectsAtom)
+      return void loadLists()
   }
 })
 

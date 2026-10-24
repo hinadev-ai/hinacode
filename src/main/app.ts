@@ -31,6 +31,7 @@ import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
+import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -98,10 +99,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude ?? ClaudeProvider.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
-  const relay = Relay.layer({
-    serviceUrl: process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL,
-    cloudflaredDir: join(userData, "cloudflared"),
-  }).pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
+  const relayServiceUrl = process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL
+  const relay = Relay.layer({ serviceUrl: relayServiceUrl, cloudflaredDir: join(userData, "cloudflared") }).pipe(
+    Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
+  )
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const features = Layer.mergeAll(
@@ -124,7 +125,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     updates,
     Mcp.serverLayer,
     AgentLogins.layer,
-    Environments.layer.pipe(Layer.provide(Secrets.layer)),
+    RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(
+      Layer.provideMerge(Environments.layer),
+      Layer.provide(Secrets.layer),
+    ),
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   // A cloud's address is written below it, so the listener's first read of its settings already has it.

@@ -28,6 +28,7 @@ import {
   Environment,
   Environments,
   EnvironmentStatus,
+  RelayAccountStatus,
   Attachment,
   QueuedMessage,
   Automation,
@@ -252,6 +253,13 @@ export const RpcMethods = {
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** Dials an offline or incompatible cloud now instead of after its backoff. Calls waiting for it keep waiting. */
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "relayAccount.status": rpc(Schema.Void, RelayAccountStatus),
+  /** Lists the relay's machines with the owner token, and keeps it only when the relay accepts it. */
+  "relayAccount.signIn": rpc(Schema.Struct({ ownerToken: Schema.String }), RelayAccountStatus),
+  /** Forgets the owner token and every environment the relay added. */
+  "relayAccount.signOut": rpc(Schema.Void, RelayAccountStatus),
+  /** Never fails: why a sync failed is the status's `error`. */
+  "relayAccount.sync": rpc(Schema.Void, RelayAccountStatus),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
@@ -609,6 +617,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "environments.add": "mutation",
   "environments.remove": "mutation",
   "environments.reconnect": "mutation",
+  "relayAccount.status": "read",
+  "relayAccount.signIn": "mutation",
+  "relayAccount.signOut": "mutation",
+  "relayAccount.sync": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -739,6 +751,10 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "environments.add",
   "environments.remove",
   "environments.reconnect",
+  "relayAccount.status",
+  "relayAccount.signIn",
+  "relayAccount.signOut",
+  "relayAccount.sync",
   "agents.update",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
@@ -746,6 +762,7 @@ export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEve
   "vm.screen.data",
   "vm.screen.closed",
   "fs.changed",
+  "environments.changed",
 ])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
@@ -823,6 +840,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   /** The desktop's link to a cloud changed state. */
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
+  /** A relay sync added, renamed or dropped clouds; ask environments.list again. */
+  Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */

@@ -14,6 +14,7 @@ import {
   remoteWebSocketUrl,
   ServerFrame,
 } from "../../shared/remote.ts"
+import { planRelaySync, type RelayMachine } from "../../shared/relayMachines.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
 import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"
@@ -51,6 +52,11 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    /**
+     * Makes the clouds match the relay's list without dialing them, since the relay already named each one. Answers
+     * how many listed machines this desktop now has. A cloud paired by URL is refreshed but never dropped or renamed.
+     */
+    readonly syncRelay: (machines: ReadonlyArray<RelayMachine>) => Effect.Effect<number, PersistenceError>
     /** Dials a cloud now instead of after its backoff. Does nothing while it is connected or refused its token. */
     readonly reconnect: (id: string) => Effect.Effect<void>
     /** `reconnect` for every cloud, for when the network may have come back, such as waking from sleep. */
@@ -303,12 +309,12 @@ const make = Effect.gen(function* () {
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: Environment,
-    execute: () => sql`SELECT id, name, host, port, relay, created_at FROM environment ORDER BY created_at`,
+    execute: () => sql`SELECT id, name, host, port, relay, source, created_at FROM environment ORDER BY created_at`,
   })
   const findOne = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: Environment,
-    execute: (id) => sql`SELECT id, name, host, port, relay, created_at FROM environment WHERE id = ${id}`,
+    execute: (id) => sql`SELECT id, name, host, port, relay, source, created_at FROM environment WHERE id = ${id}`,
   })
 
   const setStatus = (cloud: Cloud, status: EnvironmentStatus) =>
@@ -594,7 +600,15 @@ const make = Effect.gen(function* () {
       const existing = Option.getOrNull(yield* findOne(id).pipe(Effect.mapError(persistence("environments.add"))))
       const environment: Environment = existing
         ? { ...existing, name: typed || existing.name, host, port, relay }
-        : { id, name: typed || ready.environment?.name || host, host, port, relay, createdAt: new Date().toISOString() }
+        : {
+            id,
+            name: typed || ready.environment?.name || host,
+            host,
+            port,
+            relay,
+            source: "pairing",
+            createdAt: new Date().toISOString(),
+          }
       const write = existing
         ? sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`
         : sql`INSERT INTO environment ${sql.insert(environment)}`
@@ -616,6 +630,67 @@ const make = Effect.gen(function* () {
       yield* secrets.clear(tokenSecret(id))
       clouds.delete(id)
       owners.forget(id)
+    })
+
+  const syncRelay = (machines: ReadonlyArray<RelayMachine>) =>
+    Effect.gen(function* () {
+      const failed = persistence("environments.syncRelay")
+      const rows = yield* findAll(undefined).pipe(Effect.mapError(failed))
+      const { upsert, drop } = planRelaySync(
+        rows.map((row) => ({ ...row, environmentId: row.id })),
+        machines,
+        self.id,
+      )
+      let changed = drop.length > 0
+      for (const { environmentId: id, name, pairing } of upsert) {
+        const { port, token, relay } = pairing
+        const host = pairing.hosts[0]
+        const existing = rows.find((row) => row.id === id)
+        if (existing === undefined) {
+          const environment: Environment = {
+            id,
+            name,
+            host,
+            port,
+            relay,
+            source: "relay",
+            createdAt: new Date().toISOString(),
+          }
+          yield* sql`INSERT INTO environment ${sql.insert(environment)}`.pipe(
+            Effect.andThen(secrets.set(tokenSecret(id), token)),
+            sql.withTransaction,
+            Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
+          )
+          yield* start(environment)
+          changed = true
+          continue
+        }
+        const environment: Environment = {
+          ...existing,
+          name: existing.source === "relay" ? name : existing.name,
+          host,
+          port,
+          relay,
+        }
+        const redial =
+          host !== existing.host ||
+          port !== existing.port ||
+          relay !== existing.relay ||
+          token !== Option.getOrNull(yield* secrets.get(tokenSecret(id)))
+        if (!redial && environment.name === existing.name) continue
+        yield* sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
+          Effect.andThen(secrets.set(tokenSecret(id), token)),
+          sql.withTransaction,
+          Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
+        )
+        changed = true
+        const cloud = clouds.get(id)
+        if (redial || cloud === undefined) yield* start(environment)
+        else cloud.environment = environment
+      }
+      yield* Effect.forEach(drop, (row) => remove(row.id), { discard: true })
+      if (changed) yield* events.publish({ type: "environments.changed" })
+      return upsert.length
     })
 
   const reconnect = (id: string) =>
@@ -690,7 +765,17 @@ const make = Effect.gen(function* () {
 
   yield* Effect.forEach(yield* findAll(undefined).pipe(Effect.mapError(persistence("environments.load"))), start)
 
-  return Environments.of({ list, add, remove, reconnect, reconnectAll, forward, gather, owner: owners.owner })
+  return Environments.of({
+    list,
+    add,
+    remove,
+    syncRelay,
+    reconnect,
+    reconnectAll,
+    forward,
+    gather,
+    owner: owners.owner,
+  })
 })
 
 export const layer = Layer.effect(Environments, make)

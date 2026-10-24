@@ -1259,6 +1259,26 @@
   "environment_pair_submit": "ペアリング",
   "environment_added": "{name} に接続しました。",
   "environment_add_project_on": "{name} にプロジェクトを追加",
+  "environment_relay_title": "リレー",
+  "environment_relay_description": "リレーのページでデバイスに表示しているマシンが、ペアリング URL なしでここに表示されます。オーナートークンはリレーのページからコピーしてください。",
+  "environment_relay_owner_token_label": "オーナートークン",
+  "environment_relay_sign_in": "サインイン",
+  "environment_relay_signing_in": "サインイン中…",
+  "environment_relay_machines": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} 台のマシン", "countPlural=other": "{count} 台のマシン" }
+    }
+  ],
+  "environment_relay_synced": "{time}に同期",
+  "environment_relay_sync_now": "今すぐ同期",
+  "environment_relay_syncing": "同期中…",
+  "environment_relay_sign_out": "サインアウト",
+  "environment_relay_sign_out_title": "リレーからサインアウトしますか？",
+  "environment_relay_sign_out_body": "リレーのマシンはこの一覧から消えます。ペアリング URL で追加した環境は残ります。",
+  "environment_relay_source": "リレーから追加",
+  "environment_relay_row_hint": "削除するには、リレーのページで非表示にしてください。",
   "environments_empty": "環境はまだありません。別のマシンで hinacode serve を実行し、表示された URL を貼り付けてください。",
   "settings_editing_for": "設定の編集対象",
   "settings_environment_loading": "{name} の設定を読み込んでいます…",

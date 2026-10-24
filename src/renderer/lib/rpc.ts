@@ -96,7 +96,11 @@ export const worktreeCheckoutsAtom = Atom.make(
 
 /** Paired clouds with their link status. A status push lists them again. */
 export const environmentsAtom = Atom.make((get) => {
-  get.addFinalizer(onPushEvent((event) => event.type === "environment.status" && get.refreshSelf()))
+  get.addFinalizer(
+    onPushEvent(
+      (event) => (event.type === "environment.status" || event.type === "environments.changed") && get.refreshSelf(),
+    ),
+  )
   return call("environments.list", undefined)
 }).pipe(Atom.keepAlive)
 
@@ -114,6 +118,23 @@ export const removeEnvironmentAtom = Atom.fn((id: string) =>
 
 /** Answers at once. The cloud's status pushes tell how the new attempt went. */
 export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
+
+/** Read on each visit, since the background sync every five minutes sends no push of its own. */
+export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined))
+
+const relayAccountAction = <A>(effect: Effect.Effect<A, RpcError>) =>
+  effect.pipe(
+    Effect.tap(() => Atom.refresh(relayAccountAtom)),
+    Effect.tap(() => Atom.refresh(environmentsAtom)),
+  )
+
+export const signInRelayAtom = Atom.fn((ownerToken: string) =>
+  relayAccountAction(call("relayAccount.signIn", { ownerToken })),
+)
+
+export const signOutRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.signOut", undefined)))
+
+export const syncRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.sync", undefined)))
 
 export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),

@@ -1,4 +1,5 @@
 import { Duration, Effect, Option, Predicate, Schema } from "effect"
+import { RelayMachineList } from "../../shared/relayMachines.ts"
 
 export const EXPIRED = "The sign-in link expired. Turn on the relay again."
 
@@ -28,6 +29,11 @@ const ServiceFailure = Schema.Struct({ error: Schema.String })
 
 const forgotten = () =>
   new RelayError({ message: "The relay service no longer knows this machine. Remove the relay and turn it on again." })
+
+const refusedOwnerToken = () =>
+  new RelayError({
+    message: "The relay refused the owner token. Copy the current one from the relay page and sign in again.",
+  })
 
 const describe = (cause: unknown) =>
   Predicate.hasProperty(cause, "message") && typeof cause.message === "string" ? cause.message : String(cause)
@@ -115,6 +121,15 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           if (answer.status >= 300) return Effect.fail(failed("publish this machine's pairing", answer))
           return Effect.void
         }),
+      ),
+    /** The machines the owner shows on their devices, with the pairing each one published. */
+    machines: (ownerToken: string) =>
+      call("list your machines", "GET", "/v1/machines", { credential: ownerToken }).pipe(
+        Effect.flatMap((answer) =>
+          answer.status === 401
+            ? Effect.fail(refusedOwnerToken())
+            : decode("list your machines", RelayMachineList, answer),
+        ),
       ),
     /** A 401 or 404 means the service already forgot this machine. */
     deleteHost: (credential: string) =>
