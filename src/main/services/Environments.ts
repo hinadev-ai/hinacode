@@ -9,12 +9,14 @@ import {
   type PairingTarget,
   parsePairingUrl,
   REMOTE_PROTOCOL_VERSION,
+  relayWebSocketUrl,
+  remoteSocketUrls,
   remoteWebSocketUrl,
   ServerFrame,
 } from "../../shared/remote.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
-import { unreachableMessage } from "../environments/unreachable.ts"
+import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events, WindowPush } from "./Events.ts"
@@ -115,14 +117,9 @@ interface Dial {
   readonly onClose: (code: number) => void
 }
 
-interface Address {
-  readonly host: string
-  readonly port: number
-}
-
 /** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
-const dial = (target: Address, token: string, handlers: Dial) => {
-  const socket = new WebSocket(remoteWebSocketUrl(target))
+const dial = (url: string, token: string, handlers: Dial) => {
+  const socket = new WebSocket(url)
   socket.on("open", () => socket.send(JSON.stringify({ type: "auth", token } satisfies ClientFrame)))
   socket.on("message", (raw, isBinary) => {
     const frame = parseFrame(raw, isBinary)
@@ -136,12 +133,13 @@ const dial = (target: Address, token: string, handlers: Dial) => {
 }
 
 /** Succeeds with the cloud's `ready` frame once it accepts `token`. */
-const probe = (target: Address & { readonly token: string }) => {
-  const where = `${target.host}:${target.port}`
+const probe = (target: DialTarget, token: string) => {
+  const where = "relay" in target ? target.relay : `${target.host}:${target.port}`
+  const url = "relay" in target ? relayWebSocketUrl(target.relay) : remoteWebSocketUrl(target)
   return Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
     let reason = "the connection closed"
     let errorCode: string | undefined
-    const socket = dial(target, target.token, {
+    const socket = dial(url, token, {
       onFrame: (frame) => {
         if (frame.type !== "ready") return
         resume(Effect.succeed(frame))
@@ -180,10 +178,10 @@ const probe = (target: Address & { readonly token: string }) => {
 }
 
 /**
- * Probes every host of a pairing at once and keeps the first in URL order that answers. Once any host answered,
- * earlier hosts get `PREFER_EARLIER_HOST_MS` more, so an address this desktop cannot reach, such as a Tailscale
- * address off the tailnet, does not hold pairing for the whole probe timeout. When none answers, a refused token
- * outranks unreachable hosts.
+ * Probes every host of a pairing and its relay at once and keeps the first host in URL order that answers, or the
+ * first host when only the relay answered. Once anything answered, earlier hosts get `PREFER_EARLIER_HOST_MS` more,
+ * so an address this desktop cannot reach, such as a Tailscale address off the tailnet, does not hold pairing for
+ * the whole probe timeout. When nothing answers, a refused token outranks unreachable hosts.
  */
 const probeHosts = (pairing: PairingTarget) =>
   Effect.gen(function* () {
@@ -197,9 +195,22 @@ const probeHosts = (pairing: PairingTarget) =>
         Effect.sleep(PREFER_EARLIER_HOST_MS).pipe(Effect.andThen(Deferred.succeed(graceOver, undefined))),
       )
     })
+    let relayReady: Ready | undefined
+    const relayProbe =
+      pairing.relay === null
+        ? null
+        : yield* Effect.forkScoped(
+            probe({ relay: pairing.relay }, pairing.token).pipe(
+              Effect.tap((ready) => {
+                relayReady = ready
+                return startGrace
+              }),
+              Effect.result,
+            ),
+          )
     const probes = yield* Effect.forEach(pairing.hosts, (host, index) =>
       Effect.forkScoped(
-        probe({ host, port: pairing.port, token: pairing.token }).pipe(
+        probe({ host, port: pairing.port }, pairing.token).pipe(
           Effect.tap((ready) => {
             answers[index] = ready
             return startGrace
@@ -216,6 +227,11 @@ const probeHosts = (pairing: PairingTarget) =>
     }
     const won = answers.findIndex((ready) => ready !== undefined)
     if (won !== -1) return { host: pairing.hosts[won]!, ready: answers[won]! }
+    if (relayProbe !== null && relayReady === undefined) {
+      const outcome = yield* Fiber.join(relayProbe)
+      if (outcome._tag === "Failure") failures.push(outcome.failure)
+    }
+    if (relayReady !== undefined) return { host: pairing.hosts[0], ready: relayReady }
     return yield* Effect.fail(failures.find((error) => error._tag === "EnvironmentUnauthorized") ?? failures[0]!)
   }).pipe(Effect.scoped)
 
@@ -254,6 +270,8 @@ interface Cloud {
 
 interface SessionEnd {
   readonly code: number
+  /** Whether the cloud sent `ready`, so the URL reached it. */
+  readonly answered: boolean
   /** The cloud's protocol version when it is not this desktop's. */
   readonly otherProtocol: number | null
   readonly connectedMs: number
@@ -266,6 +284,8 @@ const send = (live: Live, call: Pending) => {
   const frame: ClientFrame = { type: "call", id: call.id, method: call.method, payload: call.payload }
   live.socket.send(JSON.stringify(key === undefined ? frame : { ...frame, key }))
 }
+
+const socketUrls = ({ host, port, relay }: Environment) => remoteSocketUrls({ hosts: [host], port, relay })
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -283,12 +303,12 @@ const make = Effect.gen(function* () {
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: Environment,
-    execute: () => sql`SELECT id, name, host, port, created_at FROM environment ORDER BY created_at`,
+    execute: () => sql`SELECT id, name, host, port, relay, created_at FROM environment ORDER BY created_at`,
   })
   const findOne = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: Environment,
-    execute: (id) => sql`SELECT id, name, host, port, created_at FROM environment WHERE id = ${id}`,
+    execute: (id) => sql`SELECT id, name, host, port, relay, created_at FROM environment WHERE id = ${id}`,
   })
 
   const setStatus = (cloud: Cloud, status: EnvironmentStatus) =>
@@ -352,11 +372,24 @@ const make = Effect.gen(function* () {
     }
   }
 
+  /** Keeps the relay the cloud reports, so the next dial reaches it from any network. */
+  const learnRelay = (cloud: Cloud, relay: string | null) => {
+    if (cloud.environment.relay === relay) return
+    cloud.environment = { ...cloud.environment, relay }
+    const { id } = cloud.environment
+    runFork(
+      sql`UPDATE environment SET relay = ${relay} WHERE id = ${id}`.pipe(
+        Effect.catchCause((cause) => Effect.logWarning("could not save the relay", cause)),
+      ),
+    )
+  }
+
   /** Resolves once the socket closes. Interrupting it drops the socket. */
-  const session = (cloud: Cloud, token: string) =>
+  const session = (cloud: Cloud, token: string, url: string) =>
     Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
+      let answered = false
       let connectedAt: number | null = null
       let otherProtocol: number | null = null
       let heardAt = now()
@@ -366,17 +399,19 @@ const make = Effect.gen(function* () {
       }
       const socket = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          dial(cloud.environment, token, {
+          dial(url, token, {
             onFrame: (frame) => {
               heard()
               switch (frame.type) {
                 case "ready": {
+                  answered = true
                   if (frame.version !== REMOTE_PROTOCOL_VERSION) {
                     otherProtocol = frame.version
                     return socket.close()
                   }
                   connectedAt = now()
                   cloud.protocol = null
+                  learnRelay(cloud, frame.relay ?? null)
                   const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                   cloud.live = live
                   for (const call of cloud.outbox.values()) {
@@ -439,6 +474,7 @@ const make = Effect.gen(function* () {
       const code = yield* Deferred.await(closed)
       return {
         code,
+        answered,
         otherProtocol,
         connectedMs: connectedAt === null ? 0 : now() - connectedAt,
       } satisfies SessionEnd
@@ -446,7 +482,9 @@ const make = Effect.gen(function* () {
 
   /**
    * Keeps `cloud` connected until interrupted or refused. A cloud on another protocol version keeps being retried,
-   * so it reconnects on its own once updated.
+   * so it reconnects on its own once updated. A dial that gets no `ready` moves on to the next of `socketUrls` at
+   * once, and only a whole round without one waits out the backoff. A dial that got `ready` starts the next round
+   * from the same URL.
    */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
@@ -458,11 +496,24 @@ const make = Effect.gen(function* () {
       }
       yield* setStatus(cloud, "connecting")
       let attempt = 0
+      let index = 0
+      let unanswered = 0
       for (;;) {
-        const end = yield* session(cloud, token)
+        const url = socketUrls(cloud.environment)[index]!
+        const end = yield* session(cloud, token, url)
         if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
           failAll(cloud, unauthorized(name))
           return yield* setStatus(cloud, "unauthorized")
+        }
+        const urls = socketUrls(cloud.environment)
+        if (end.answered) {
+          index = Math.max(0, urls.indexOf(url))
+          unanswered = 0
+        } else {
+          index = (index + 1) % urls.length
+          unanswered++
+          if (unanswered < urls.length) continue
+          unanswered = 0
         }
         if (end.otherProtocol === null) {
           yield* setStatus(cloud, "offline")
@@ -534,7 +585,7 @@ const make = Effect.gen(function* () {
         })
       }
       const { host, ready } = yield* probeHosts(pairing)
-      const target = { host, port: pairing.port, token: pairing.token }
+      const { port, token, relay } = pairing
       if (ready.environment?.id === self.id) {
         return yield* new InvalidPairingUrl({ message: "That pairing URL is for this desktop." })
       }
@@ -542,19 +593,13 @@ const make = Effect.gen(function* () {
       const id = ready.environment?.id ?? randomUUID()
       const existing = Option.getOrNull(yield* findOne(id).pipe(Effect.mapError(persistence("environments.add"))))
       const environment: Environment = existing
-        ? { ...existing, name: typed || existing.name, host: target.host, port: target.port }
-        : {
-            id,
-            name: typed || ready.environment?.name || target.host,
-            host: target.host,
-            port: target.port,
-            createdAt: new Date().toISOString(),
-          }
+        ? { ...existing, name: typed || existing.name, host, port, relay }
+        : { id, name: typed || ready.environment?.name || host, host, port, relay, createdAt: new Date().toISOString() }
       const write = existing
-        ? sql`UPDATE environment SET name = ${environment.name}, host = ${environment.host}, port = ${environment.port} WHERE id = ${id}`
+        ? sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`
         : sql`INSERT INTO environment ${sql.insert(environment)}`
       yield* write.pipe(
-        Effect.andThen(secrets.set(tokenSecret(id), target.token)),
+        Effect.andThen(secrets.set(tokenSecret(id), token)),
         sql.withTransaction,
         Effect.catchTag("SqlError", (error) => Effect.fail(persistence("environments.add")(error))),
       )

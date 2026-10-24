@@ -28,6 +28,7 @@ import {
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
   RemoteAccess,
+  relayHostname,
 } from "./access.ts"
 
 /** A socket that has not sent a valid `auth` frame by then is closed. */
@@ -109,11 +110,13 @@ const make = Effect.gen(function* () {
       countConnected()
       runFork(Fiber.interrupt(subscription))
     })
+    const relay = relayHostname(Effect.runSyncWith(services)(access.status).relay)
     send(socket, {
       type: "ready",
       version: REMOTE_PROTOCOL_VERSION,
       environment: access.identity,
       features: FEATURES,
+      ...(relay !== null && { relay }),
     })
   }
 

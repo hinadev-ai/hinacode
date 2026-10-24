@@ -495,6 +495,7 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
           <ConnectionBadge status={server.status} />
         </View>
         {server.error !== null && <Notice tone="danger" text={server.error} />}
+        {server.relay !== null && <Text style={[styles.address, { color: theme.textMuted }]}>{server.relay}</Text>}
         {server.hosts.map((host) => (
           <Text key={host} style={[styles.address, { color: theme.textMuted }]}>{`${host}:${server.port}`}</Text>
         ))}

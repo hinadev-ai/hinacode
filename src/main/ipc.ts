@@ -6,7 +6,7 @@ import { routes } from "../shared/routes.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import { type AppServices, type DesktopCalls, dispatch, type HandlerError, RpcCall } from "./rpc.ts"
 import { listOpeners, openWith } from "./openers.ts"
-import { isTrustedSender } from "./security.ts"
+import { externalUrl, isTrustedSender } from "./security.ts"
 import { inlineSource } from "./services/Attachments.ts"
 import { Environments } from "./services/Environments.ts"
 
@@ -28,6 +28,14 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
     if (window) bringToFront(window)
   }),
   reveal: (path) => Effect.sync(() => shell.showItemInFolder(path)),
+  openExternal: (url) => {
+    const allowed = externalUrl(url)
+    return allowed === null
+      ? Effect.void
+      : Effect.tryPromise(() => shell.openExternal(allowed)).pipe(
+          Effect.catch((error) => Effect.logWarning("could not open the browser", error)),
+        )
+  },
   openers: listOpeners,
   openWith,
   pickFolder: Effect.map(showOpenDialog(window, { properties: ["openDirectory", "createDirectory"] }), (result) =>

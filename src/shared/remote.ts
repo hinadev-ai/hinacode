@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Array as Arr, Schema } from "effect"
 import { isArrayNonEmpty, type NonEmptyReadonlyArray } from "effect/Array"
 import { PushEvent } from "./contract.ts"
 
@@ -36,12 +36,16 @@ const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
  * A method that returns nothing answers with `envelope: {}`, since JSON drops an undefined `result`.
  */
 export const ServerFrame = Schema.Union([
-  /** `environment` names the hinacode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it. */
+  /**
+   * `environment` names the hinacode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it.
+   * `relay` is its tunnel hostname, absent when it has none, so a client paired before the relay existed learns it.
+   */
   Schema.Struct({
     type: Schema.Literal("ready"),
     version: Schema.Int,
     environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
     features: Schema.optionalKey(Schema.Array(Schema.String)),
+    relay: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),
@@ -56,16 +60,21 @@ export const ServerFrame = Schema.Union([
 ])
 export type ServerFrame = typeof ServerFrame.Type
 
-/** A pairing reaches one desktop on any of `hosts`, tried in order. */
+/**
+ * A pairing reaches one desktop on any of `hosts`, tried in order, or from any network through `relay`, the
+ * hostname of its Cloudflare tunnel.
+ */
 export interface PairingTarget {
   readonly hosts: NonEmptyReadonlyArray<string>
   readonly port: number
   readonly token: string
+  readonly relay: string | null
 }
 
-/** The text the pairing QR code carries, as `hinacode://connect?host=a&host=b&port=&token=`. */
-export const pairingUrl = ({ hosts, port, token }: PairingTarget) => {
+/** The text the pairing QR code carries, as `hinacode://connect?relay=&host=a&host=b&port=&token=`. */
+export const pairingUrl = ({ hosts, port, token, relay }: PairingTarget) => {
   const url = new URL("hinacode://connect")
+  if (relay !== null) url.searchParams.set("relay", relay)
   for (const host of hosts) url.searchParams.append("host", host)
   url.searchParams.set("port", String(port))
   url.searchParams.set("token", token)
@@ -75,8 +84,22 @@ export const pairingUrl = ({ hosts, port, token }: PairingTarget) => {
 export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; readonly port: number }) =>
   `ws://${host.includes(":") ? `[${host}]` : host}:${port}${REMOTE_PATH}`
 
+/** Cloudflare's edge serves a tunnel on 443 only. */
+export const relayWebSocketUrl = (relay: string) => `wss://${relay}${REMOTE_PATH}`
+
+/**
+ * Every socket URL a pairing reaches, the relay first. The relay answers from any network, while a direct address
+ * off its network costs a whole connect timeout before the next URL is tried.
+ */
+export const remoteSocketUrls = (target: Omit<PairingTarget, "token">): NonEmptyReadonlyArray<string> => {
+  const direct = Arr.map(target.hosts, (host) => remoteWebSocketUrl({ host, port: target.port }))
+  return target.relay === null ? direct : Arr.prepend(direct, relayWebSocketUrl(target.relay))
+}
+
 const isAuthorityOnlyHost = (host: string) =>
   host !== "" && !/[\s/?#@[\]\\]/.test(host) && URL.parse(remoteWebSocketUrl({ host, port: 1 })) !== null
+
+const isRelayHostname = (relay: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(relay)
 
 /**
  * Reads a pairing URL back, keeping the order of repeated `host`s. Accepts it inside other text, such as the
@@ -90,9 +113,11 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
   const hosts = url.searchParams.getAll("host")
   const port = Number(url.searchParams.get("port"))
   const token = url.searchParams.get("token")
+  const relay = url.searchParams.get("relay")
   if (!isArrayNonEmpty(hosts) || !hosts.every(isAuthorityOnlyHost)) return null
   if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
-  return { hosts, port, token }
+  if (relay !== null && !isRelayHostname(relay)) return null
+  return { hosts, port, token, relay }
 }
 
 /** Whether a listener's `listenError` means another program holds the port. Node puts the code in the message. */
