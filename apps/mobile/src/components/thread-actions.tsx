@@ -1,10 +1,11 @@
 import type { Thread } from "@shared/domain.ts"
-import { useState } from "react"
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native"
+import { setStringAsync } from "expo-clipboard"
+import { useEffect, useState } from "react"
+import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "@/components/icon"
-import { Spinner } from "@/components/motion"
+import { IconSwap, Spinner } from "@/components/motion"
 import { Notice } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
 import { Colors, HIT, radius } from "@/constants/theme"
@@ -22,7 +23,12 @@ export function useThreadActions(thread: Thread) {
     setRunning(name)
     setError(null)
     try {
-      useThreads.getState().upsert(await requestThreadAction(thread, name))
+      if (name === "copy-id") {
+        await setStringAsync(thread.id)
+        AccessibilityInfo.announceForAccessibility(copy("mobile_thread_actions_copied"))
+      } else {
+        useThreads.getState().upsert(await requestThreadAction(thread, name))
+      }
       return true
     } catch (cause) {
       setError(errorText(cause))
@@ -35,6 +41,7 @@ export function useThreadActions(thread: Thread) {
 }
 
 const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
+const COPIED_MS = 800
 
 /** A short action list that rises from the bottom over a scrim, with the thread's title on top. */
 export function ThreadActionsSheet({
@@ -55,9 +62,23 @@ export function ThreadActionsSheet({
     state.clearError()
     onClose()
   }
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => {
+      setCopied(false)
+      onClose()
+    }, COPIED_MS)
+    return () => clearTimeout(timer)
+  }, [copied, onClose])
+
   const run = async (name: ThreadActionName) => {
-    if (await state.run(name)) onClose()
+    if (!(await state.run(name))) return
+    if (name === "copy-id") setCopied(true)
+    else onClose()
   }
+  const busy = state.running !== null || copied
   return (
     <Modal transparent animationType="fade" visible={open} onRequestClose={close}>
       <Pressable
@@ -75,29 +96,37 @@ export function ThreadActionsSheet({
           {title}
         </Text>
         <View style={[styles.group, { backgroundColor: theme.surface }]}>
-          {state.actions.map((action, index) => (
-            <Pressable
-              key={action.name}
-              testID={`thread-action-${action.name}`}
-              accessibilityRole="button"
-              accessibilityLabel={action.label}
-              accessibilityState={{ busy: state.running === action.name, disabled: state.running !== null }}
-              disabled={state.running !== null}
-              onPress={() => void run(action.name)}
-              style={({ pressed }) => [
-                styles.action,
-                index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
-                pressed && { backgroundColor: theme.surfaceStrong },
-              ]}
-            >
-              {state.running === action.name ? (
-                <Spinner size={18} color={theme.text} />
-              ) : (
-                <Icon name={action.icon} size={18} color={theme.text} />
-              )}
-              <Text style={[styles.actionLabel, { color: theme.text }]}>{action.label}</Text>
-            </Pressable>
-          ))}
+          {state.actions.map((action, index) => {
+            const done = copied && action.name === "copy-id"
+            const label = done ? copy("mobile_thread_actions_copied") : action.label
+            return (
+              <Pressable
+                key={action.name}
+                testID={`thread-action-${action.name}`}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityState={{ busy: state.running === action.name, disabled: busy }}
+                disabled={busy}
+                onPress={() => void run(action.name)}
+                style={({ pressed }) => [
+                  styles.action,
+                  index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+                  pressed && { backgroundColor: theme.surfaceStrong },
+                ]}
+              >
+                {state.running === action.name ? (
+                  <Spinner size={18} color={theme.text} />
+                ) : (
+                  <IconSwap
+                    showSecond={done}
+                    first={<Icon name={action.icon} size={18} color={theme.text} />}
+                    second={<Icon name="RiCheckLine" size={18} color={theme.running} />}
+                  />
+                )}
+                <Text style={[styles.actionLabel, { color: theme.text }]}>{label}</Text>
+              </Pressable>
+            )
+          })}
         </View>
         {state.error !== null && <Notice text={state.error} tone="danger" />}
         <Pressable

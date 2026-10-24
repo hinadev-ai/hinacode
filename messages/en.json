@@ -1390,6 +1390,8 @@
   "mobile_thread_actions_unpin": "Unpin",
   "mobile_thread_actions_archive": "Archive",
   "mobile_thread_actions_unarchive": "Unarchive",
+  "mobile_thread_actions_copy_id": "Copy thread ID",
+  "mobile_thread_actions_copied": "Copied",
   "mobile_thread_actions_cancel": "Cancel",
   "mobile_project_source_label": "Folder or GitHub repository",
   "mobile_project_source_placeholder": "~/code/app or owner/repo",

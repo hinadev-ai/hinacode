@@ -1345,6 +1345,8 @@
   "mobile_thread_actions_unpin": "ピン留めを外す",
   "mobile_thread_actions_archive": "アーカイブ",
   "mobile_thread_actions_unarchive": "アーカイブを解除",
+  "mobile_thread_actions_copy_id": "スレッド ID をコピー",
+  "mobile_thread_actions_copied": "コピーしました",
   "mobile_thread_actions_cancel": "キャンセル",
   "mobile_project_source_label": "フォルダまたは GitHub リポジトリ",
   "mobile_project_source_placeholder": "~/code/app または owner/repo",

@@ -1363,6 +1363,8 @@
   "mobile_thread_actions_unpin": "取消釘選",
   "mobile_thread_actions_archive": "歸檔",
   "mobile_thread_actions_unarchive": "取消歸檔",
+  "mobile_thread_actions_copy_id": "複製對話串 ID",
+  "mobile_thread_actions_copied": "已複製",
   "mobile_thread_actions_cancel": "取消",
   "mobile_project_source_label": "資料夾或 GitHub 儲存庫",
   "mobile_project_source_placeholder": "~/code/app 或 owner/repo",
