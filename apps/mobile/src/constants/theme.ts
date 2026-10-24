@@ -20,6 +20,9 @@ export const Colors = {
     dangerBg: "#fee2e2",
     neutralBg: "#f4f4f5",
     link: "#6d28d9",
+    /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
+    token: "#7c3aed",
+    tokenBg: "rgba(124, 58, 237, 0.12)",
   },
   dark: {
     text: "#fafafa",
@@ -39,6 +42,8 @@ export const Colors = {
     dangerBg: "#3b1111",
     neutralBg: "#27272a",
     link: "#a78bfa",
+    token: "#a78bfa",
+    tokenBg: "rgba(167, 139, 250, 0.16)",
   },
 } as const
 

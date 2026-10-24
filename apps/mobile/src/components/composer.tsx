@@ -4,6 +4,7 @@ import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { useEffect, useRef, useState } from "react"
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { ComposerInput } from "@/components/composer-input"
 import { Icon, type IconName } from "@/components/icon"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
@@ -11,6 +12,7 @@ import { WorkspaceChip } from "@/components/workspace-picker"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { keepSkillWhole } from "@/lib/composer-text"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { useDrafts } from "@/stores/drafts"
@@ -113,6 +115,12 @@ export function Composer({ thread }: { thread: Thread }) {
   const busy = isThreadBusy(thread.status)
   const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
   const completions = useCompletions(thread, busy, wantsFiles, setError)
+  const { commands, files, threads } = completions
+  const known = {
+    commands: new Set(commands.map((command) => command.trigger + command.name)),
+    files: new Set(files),
+    threads: new Set(threads.map((other) => other.id)),
+  }
   const hasDraft = text.trim() !== ""
 
   useEffect(() => {
@@ -173,15 +181,20 @@ export function Composer({ thread }: { thread: Thread }) {
       <View
         style={[styles.bar, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : theme.border }]}
       >
-        <TextInput
+        <ComposerInput
           ref={inputRef}
           testID="composer-input"
           accessibilityLabel="Message"
           value={text}
+          commands={commands}
+          known={known}
           selection={placedCaret && { start: placedCaret.start, end: placedCaret.start }}
-          onChangeText={(next) => {
-            setPlacedCaret(undefined)
-            setCaret(caretAfterEdit(text, next))
+          onChangeText={(typed) => {
+            const next = keepSkillWhole(text, typed, commands)
+            const position = caretAfterEdit(text, next)
+            // A skill removed whole leaves the input's caret where the deletion was, so put it back at the start.
+            setPlacedCaret(next === typed ? undefined : { start: position })
+            setCaret(position)
             useDrafts.getState().setText(thread.id, next)
           }}
           onSelectionChange={(event) => {

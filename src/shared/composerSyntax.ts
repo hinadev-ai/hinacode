@@ -176,7 +176,8 @@ export function matchFiles(files: ReadonlyArray<string>, query: string) {
     else if (name.includes(needle)) nameContains.push(file)
     else if (path.includes(needle)) pathContains.push(file)
   }
-  return [...nameStarts.toSorted(byLength), ...nameContains.toSorted(byLength), ...pathContains.toSorted(byLength)]
+  // oxlint-disable-next-line unicorn/no-array-sort -- the phone runs this on Hermes, which has no `toSorted`; the arrays are local.
+  return [...nameStarts.sort(byLength), ...nameContains.sort(byLength), ...pathContains.sort(byLength)]
 }
 
 /** Threads whose title starts with `query`, then whose title contains it, each in the given order. */
