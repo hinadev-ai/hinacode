@@ -7,6 +7,7 @@ import { type Message, Thread } from "../../src/shared/domain.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
+import { SEEDED_AT } from "../support/seed.ts"
 
 interface Stream {
   readonly thread: Thread
@@ -96,7 +97,7 @@ When("the agent starts streaming in {string}", async ({ app, names }, title: str
     threadId: thread.id,
     role: "assistant",
     parts: [],
-    createdAt: new Date().toISOString(),
+    createdAt: SEEDED_AT,
     completedAt: null,
     usage: null,
   }
@@ -160,7 +161,7 @@ Then("the completed Markdown exactly matches its full snapshot", async ({ app })
   const html = await renderedHtml(app.page)
   const snapshot: Message = {
     ...stream.message,
-    completedAt: new Date().toISOString(),
+    completedAt: SEEDED_AT,
     parts: [{ type: "text", text: stream.text }],
   }
   await app.pushEvents([

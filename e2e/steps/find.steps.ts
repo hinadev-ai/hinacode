@@ -7,6 +7,7 @@ import type { Message } from "../../src/shared/domain.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
+import { SEEDED_AT } from "../support/seed.ts"
 
 const transcript = (page: Page) => page.locator("article[aria-busy]")
 const findField = (page: Page) => page.getByRole("textbox", { name: "Find in thread", exact: true })
@@ -40,7 +41,7 @@ const finishTurn = async (
     threadId,
     role: "assistant",
     parts: [],
-    createdAt: new Date().toISOString(),
+    createdAt: SEEDED_AT,
     completedAt: null,
     usage: null,
   }

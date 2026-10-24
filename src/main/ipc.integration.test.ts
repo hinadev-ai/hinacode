@@ -211,7 +211,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                         limit: {
                           kind: "usage",
                           message: "Usage limit reached",
-                          reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                          reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
                         },
                       },
                     ]
