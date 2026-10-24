@@ -2,8 +2,10 @@
 (* One client's link to one machine that runs a relay, as both clients keep it: the desktop in
    src/main/services/Environments.ts (maintain) and the phone in apps/mobile/src/lib/transport.ts.
    Each round races the machine's direct address against the relay, and while on the relay the
-   client checks the direct address. A token the machine rotates reaches the client through the
-   relay service: the machine publishes it, and the client syncs it.
+   client checks the direct address. A refusal on the direct address sends the rest of the link to
+   the relay alone, and after the check finds the direct address, the next round dials it alone.
+   A token the machine rotates reaches the client through the relay service: the machine publishes
+   it, and the client syncs it, again and again while the relay refuses the old one.
 
    The client is on the machine's network or away. Away, someone else's HinaCode may answer at the
    machine's direct address: the same LAN address and default port on another network.
@@ -15,7 +17,8 @@ EXTENDS Naturals
 CONSTANTS
   MaxRotations, \* times the machine rotates its token
   MaxMoves,     \* times the client changes networks
-  PeriodicSync  \* TRUE for the desktop, which syncs every five minutes. FALSE for the phone, which syncs on launch and foreground
+  PeriodicSync, \* TRUE for the desktop, which syncs every five minutes. FALSE for the phone, which syncs on launch and foreground
+  ProvesToken   \* the client proves it holds the token instead of sending it
 
 VARIABLES
   link,         \* the client's state, one of Links
@@ -27,11 +30,14 @@ VARIABLES
   relayToken,   \* the one the relay service holds,
   clientToken,  \* and the client's
   leaked,       \* the client sent its token to a stranger
+  suspect,      \* the direct address refused this link, so its rounds race the relay alone
+  directOnly,   \* the direct check found the direct address, so this round dials it alone
   rotations, moves
 
 world == <<net, strangerHere, moves>>
 tokens == <<machineToken, relayToken, clientToken, rotations>>
-vars == <<link, route, peer, leaked, world, tokens>>
+dialing == <<suspect, directOnly>>
+vars == <<link, route, peer, leaked, dialing, world, tokens>>
 
 Links == {"offline", "racing", "authing", "connected", "unauthorized"}
 
@@ -42,6 +48,7 @@ TypeOK ==
   /\ net \in {"home", "away"}
   /\ strangerHere \in BOOLEAN
   /\ leaked \in BOOLEAN
+  /\ suspect \in BOOLEAN /\ directOnly \in BOOLEAN
 
 Trans(from, to) == link = from /\ link' = to
 
@@ -55,69 +62,95 @@ Init ==
   /\ net = "home" /\ strangerHere = FALSE
   /\ machineToken = 0 /\ relayToken = 0 /\ clientToken = 0
   /\ leaked = FALSE
+  /\ suspect = FALSE /\ directOnly = FALSE
   /\ rotations = 0 /\ moves = 0
 
-\* Environments.ts:548 maintain, transport.ts open: a round starts.
+\* Environments.ts:596 and transport.ts:456 redial: a new link races both routes and forgets the suspicion.
 Dial ==
   /\ Trans("offline", "racing")
+  /\ suspect' = FALSE /\ directOnly' = FALSE
   /\ UNCHANGED <<route, peer, leaked, world, tokens>>
 
-\* Environments.ts:162 firstToOpen, transport.ts:96 race: the first socket to open wins, and the auth
+\* Environments.ts:560 firstToOpen, transport.ts:102 race: the first socket to open wins, and the auth
 \* frame with the token goes to it. The relay always opens; the direct address opens when anyone answers.
+\* A relay-alone round leaves out the direct address, and a direct-only round leaves out the relay.
 Win(r) ==
   /\ Trans("racing", "authing")
-  /\ r = "direct" => DirectAnswers
+  /\ r = "direct" => DirectAnswers /\ ~suspect
+  /\ r = "relay" => ~directOnly
   /\ route' = r
   /\ peer' = IF r = "relay" THEN "machine" ELSE DirectPeer
-  /\ leaked' = (leaked \/ peer' = "stranger")
-  /\ UNCHANGED <<world, tokens>>
+  /\ leaked' = (leaked \/ (peer' = "stranger" /\ ~ProvesToken))
+  /\ directOnly' = FALSE
+  /\ UNCHANGED <<suspect, world, tokens>>
+
+\* Environments.ts:562, transport.ts:271 noneOpened: the direct-only round finds nobody at the direct
+\* address any more, and the next round races both routes without a backoff.
+DirectGone ==
+  /\ link = "racing" /\ directOnly /\ ~DirectAnswers
+  /\ directOnly' = FALSE
+  /\ UNCHANGED <<link, route, peer, leaked, suspect, world, tokens>>
 
 \* session: the machine accepts the token and answers ready.
 Accept ==
   /\ Trans("authing", "connected")
   /\ peer = "machine" /\ clientToken = machineToken
-  /\ UNCHANGED <<route, peer, leaked, world, tokens>>
+  /\ UNCHANGED <<route, peer, leaked, dialing, world, tokens>>
 
-\* Environments.ts:564, transport.ts:270: a 4001 from whoever answered stops the link until its token changes.
-Refuse ==
-  /\ Trans("authing", "unauthorized")
-  /\ peer = "stranger" \/ clientToken # machineToken
+Refused == peer = "stranger" \/ clientToken # machineToken
+
+\* Environments.ts:581, transport.ts:299: a refusal on the direct address before ready may come from a
+\* stranger, so the link stops dialing it and races the relay alone.
+RefuseDirect ==
+  /\ Trans("authing", "racing")
+  /\ route = "direct" /\ Refused
+  /\ suspect' = TRUE
   /\ Closed
-  /\ UNCHANGED <<leaked, world, tokens>>
+  /\ UNCHANGED <<leaked, directOnly, world, tokens>>
 
-\* Environments.ts:186 directAnswers, transport.ts checkDirect: on the relay, the direct address opens,
-\* so the relay session ends and a round starts at once.
+\* Environments.ts:585, transport.ts:304: the relay hostname is the machine's own, so its refusal means
+\* the token is stale.
+RefuseRelay ==
+  /\ Trans("authing", "unauthorized")
+  /\ route = "relay" /\ Refused
+  /\ Closed
+  /\ UNCHANGED <<leaked, dialing, world, tokens>>
+
+\* Environments.ts:187 directAnswers and 574, transport.ts:435 checkDirect and 444: on the relay, the
+\* direct address opens, so the relay session ends and the next round dials the direct address alone.
 MoveToDirect ==
   /\ Trans("connected", "racing")
-  /\ route = "relay" /\ DirectAnswers
+  /\ route = "relay" /\ DirectAnswers /\ ~suspect
+  /\ directOnly' = TRUE
   /\ Closed
-  /\ UNCHANGED <<leaked, world, tokens>>
+  /\ UNCHANGED <<leaked, suspect, world, tokens>>
 
-\* access.ts rotateToken, server.ts:269: every socket to the machine closes with 4002, which the client
-\* treats like a refusal.
+\* access.ts:97 rotateToken, server.ts:269: every socket to the machine closes with 4002, and the client
+\* stops as refused.
 Rotate ==
   /\ rotations < MaxRotations
   /\ machineToken' = machineToken + 1 /\ rotations' = rotations + 1
   /\ IF link \in {"authing", "connected"} /\ peer = "machine"
        THEN link' = "unauthorized" /\ Closed
        ELSE UNCHANGED <<link, route, peer>>
-  /\ UNCHANGED <<relayToken, clientToken, leaked, world>>
+  /\ UNCHANGED <<relayToken, clientToken, leaked, dialing, world>>
 
-\* relay.ts publishPairing: some time after a rotation, the relay service holds the new token.
+\* relay.ts:189 publishPairing: some time after a rotation, the relay service holds the new token.
 Publish ==
   /\ relayToken # machineToken
   /\ relayToken' = machineToken
-  /\ UNCHANGED <<link, route, peer, leaked, world, machineToken, clientToken, rotations>>
+  /\ UNCHANGED <<link, route, peer, leaked, dialing, world, machineToken, clientToken, rotations>>
 
-\* RelayAccount.ts sync with Environments.syncRelay, and the phone's relay-account store with
-\* connection.ts setServers: a changed token restarts the link.
+\* RelayAccount.ts:100 sync with Environments.ts:700 syncRelay, and the phone's relay-account store with
+\* connection.ts:152 setServers: a changed token restarts the link.
 Sync ==
   /\ clientToken # relayToken
   /\ clientToken' = relayToken
   /\ link' = "offline" /\ Closed
-  /\ UNCHANGED <<leaked, world, machineToken, relayToken, rotations>>
+  /\ UNCHANGED <<leaked, dialing, world, machineToken, relayToken, rotations>>
 
-\* The client changes networks. The phone redials at once (networkChanged); the desktop's socket dies.
+\* The client changes networks. The phone redials at once (connection.ts:176 networkChanged); the
+\* desktop's socket dies.
 Move ==
   /\ moves < MaxMoves
   /\ moves' = moves + 1
@@ -126,20 +159,28 @@ Move ==
   /\ IF link \in {"racing", "authing", "connected"}
        THEN link' = "offline" /\ Closed
        ELSE UNCHANGED <<link, route, peer>>
-  /\ UNCHANGED <<leaked, tokens>>
+  /\ UNCHANGED <<leaked, dialing, tokens>>
 
 Next ==
   \/ Dial
   \/ Win("relay") \/ Win("direct")
-  \/ Accept \/ Refuse
+  \/ DirectGone
+  \/ Accept \/ RefuseDirect \/ RefuseRelay
   \/ MoveToDirect
   \/ Rotate \/ Publish \/ Sync
   \/ Move
 
-\* The phone syncs only when the owner opens the app, which nothing forces.
+\* relay-account.ts:127 syncWhileRefused on the phone, and the desktop's five-minute sync: while the
+\* relay refuses its token, a client syncs again and again until the new token arrives.
+SyncAfterRefusal == link = "unauthorized" /\ Sync
+
+\* The phone syncs on its own only after a refusal. Otherwise it syncs when the owner opens the app,
+\* which nothing forces.
 Fairness ==
-  /\ WF_vars(Dial) /\ WF_vars(Win("relay")) /\ WF_vars(Accept) /\ WF_vars(Refuse)
+  /\ WF_vars(Dial) /\ WF_vars(Win("relay")) /\ WF_vars(Win("direct")) /\ WF_vars(DirectGone)
+  /\ WF_vars(Accept) /\ WF_vars(RefuseDirect) /\ WF_vars(RefuseRelay)
   /\ WF_vars(MoveToDirect) /\ WF_vars(Publish)
+  /\ WF_vars(SyncAfterRefusal)
   /\ PeriodicSync => WF_vars(Sync)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
