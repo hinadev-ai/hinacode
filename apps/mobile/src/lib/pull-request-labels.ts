@@ -14,15 +14,10 @@ export const statusGlyph = (theme: Palette): Record<PullRequestStatus, { name: I
 })
 
 export const statusLabel = (status: PullRequestStatus) => copy(`mobile_pr_state_${status}`)
-export const statusTone: Record<PullRequestStatus, Tone> = {
-  open: "running",
-  draft: "neutral",
-  merged: "neutral",
-  closed: "danger",
-}
 
 export const checksLabel = (checks: ChecksStatus) => copy(`mobile_pr_checks_${checks}`)
-export const checksTone: Record<ChecksStatus, Tone> = { passing: "running", failing: "danger", pending: "attention" }
+/** Only failing checks need the developer, so only they get a color, as on the desktop. */
+export const checksTone: Record<ChecksStatus, Tone> = { passing: "neutral", failing: "danger", pending: "neutral" }
 export const checksIcon: Record<ChecksStatus, IconName> = {
   passing: "RiCheckLine",
   failing: "RiErrorWarningLine",

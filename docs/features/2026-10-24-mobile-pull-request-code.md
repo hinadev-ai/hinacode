@@ -11,11 +11,11 @@ The desktop PR tab gained a Code tab with the changed files and a pulls.review g
 
 1. A pull request screen on the phone has two tabs under its title, Info and Code. Info is the screen as it was.
 2. Code shows how many files changed with their line counts, and a switch between Files and Guide. The switch stays where it was left while the app runs.
-3. Files lists each file with its change mark and line counts. Tapping one opens its diff under it, one column, scrolling sideways.
+3. Files lists each file with its change mark and line counts. Tapping one opens its diff under it in one column, long lines wrapping.
 4. Guide shows the summary, then the groups in review order with a category icon, label, summary and files. Notes sit on their file, or under the diff line they explain. Critical notes are marked.
 5. While the desktop writes a guide, Guide says so and fills in when the `pullRequest.guide` push arrives. A guide for an older commit stays readable and says it is out of date. A failed guide offers Retry.
-6. The state icon and label use GitHub's open and merged colors. Only failing checks get a color.
-7. When the project opens pull requests on linear.review, Open on GitHub opens linear.review instead.
+6. The state shows as its icon and label in the state's color, from the same table as the thread row badge. Only failing checks get a color.
+7. When the project opens pull requests on linear.review, the open button says so and goes there.
 
 ## Design
 
