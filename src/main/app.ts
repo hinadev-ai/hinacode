@@ -67,6 +67,13 @@ const simulatedClaude = (env: NodeJS.ProcessEnv) => {
   return usageLimitLayer(scenario, resetMs)
 }
 
+/** Demo Linear tickets for screenshots and manual testing, chosen by `HINACODE_MOCK_LINEAR=1`. */
+const linearLayer = (env: NodeJS.ProcessEnv) => {
+  if (env["HINACODE_MOCK_LINEAR"] === undefined) return Linear.layer.pipe(Layer.provide(Secrets.layer))
+  if (!env["HINACODE_USER_DATA"]) throw new Error("Linear simulation requires HINACODE_USER_DATA")
+  return Linear.mockLayer
+}
+
 /** Every main-process service, for the desktop app (`index.ts`) and for `hinacode serve` (`daemon.ts`). */
 export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
   const mockClaude = simulatedClaude(process.env)
@@ -99,7 +106,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     remoteAccess,
     tinyVm,
     passkeys,
-    Linear.layer.pipe(Layer.provide(Secrets.layer)),
+    linearLayer(process.env),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   // The MCP server's tools start turns and ask for secrets, so it sits above the runner.

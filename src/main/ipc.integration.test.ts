@@ -1321,6 +1321,15 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
+  test("a paired phone reads Linear issues, empty on a machine without a Linear key", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await paired.ready()
+    expect(result(await paired.call("secrets.has", { name: "linear.apiKey" }))).toBe(false)
+    expect(result(await paired.call("linear.issues", undefined))).toStrictEqual([])
+    paired.socket.close()
+  })
+
   test("closes a socket that sends a frame outside the protocol, before or after auth, without calling it unauthorized", async () => {
     const early = phone(port)
     await early.send("not json")
