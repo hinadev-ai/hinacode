@@ -78,6 +78,7 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.host": named,
   "remote.status": named,
   "remote.pairing": named,
+  "remote.addresses": named,
   "remote.rotateToken": named,
   "projects.create": named,
   "projects.clone": named,

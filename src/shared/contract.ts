@@ -55,6 +55,7 @@ import {
   PullRequestGuideState,
   PullRequestLink,
   LinearIssue,
+  NetworkAddress,
   RemotePairing,
   RemoteStatus,
   Settings,
@@ -545,6 +546,7 @@ export const RpcMethods = {
   /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
+  "remote.addresses": rpc(Schema.Void, Schema.Array(NetworkAddress)),
   /** Replaces the access token and disconnects every phone. */
   "remote.rotateToken": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
@@ -692,6 +694,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "automations.runs": "read",
   "remote.status": "read",
   "remote.pairing": "read",
+  "remote.addresses": "read",
   "remote.rotateToken": "mutation",
   "automations.webhookUrl": "read",
 }
@@ -721,6 +724,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.files.drop",
   "vm.passkey.prepare",
   "remote.pairing",
+  "remote.addresses",
   "remote.rotateToken",
   "clientSettings.get",
   "clientSettings.set",

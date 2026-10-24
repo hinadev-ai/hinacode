@@ -6,7 +6,13 @@ import { type FormEvent, useEffect, useId, useState, useTransition } from "react
 import type { RemotePairing } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import {
+  callPromise,
+  remoteAddressesAtom,
+  remotePairingAtom,
+  remoteStatusAtom,
+  updateSettingsAtom,
+} from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
@@ -121,10 +127,14 @@ interface ListenerSettingsProps {
 
 function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
   const [port, setPort] = useState(String(remote.port))
+  const addresses = AsyncResult.getOrElse(useAtomValue(remoteAddressesAtom), () => [])
   const hostItems = [
     { value: LOOPBACK, label: m.remote_bind_loopback() },
     { value: ALL_INTERFACES, label: m.remote_bind_all() },
+    ...addresses.map(({ name, address }) => ({ value: address, label: `${name} (${address})` })),
   ]
+  if (!hostItems.some((item) => item.value === remote.bindHost))
+    hostItems.push({ value: remote.bindHost, label: m.remote_bind_gone({ address: remote.bindHost }) })
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -173,7 +183,11 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
         </form>
       </div>
       <FieldDescription>
-        {remote.bindHost === ALL_INTERFACES ? m.remote_bind_all_hint() : m.remote_bind_loopback_hint()}
+        {remote.bindHost === ALL_INTERFACES
+          ? m.remote_bind_all_hint()
+          : remote.bindHost === LOOPBACK
+            ? m.remote_bind_loopback_hint()
+            : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
     </div>
@@ -245,7 +259,7 @@ function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
             <li key={host}>{host}</li>
           ))}
         </ul>
-        <FieldDescription>{m.remote_pair_host_hint()}</FieldDescription>
+        {pairing.hosts.length > 1 && <FieldDescription>{m.remote_pair_host_hint()}</FieldDescription>}
       </div>
       <PairingQrCode url={url} />
       <Field className="min-w-0">
