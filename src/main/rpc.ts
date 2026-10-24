@@ -367,9 +367,9 @@ const handlers: Handlers = {
   "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
   "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 
+  "network.addresses": () => Effect.sync(() => networkAddresses()),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
-  "remote.addresses": () => Effect.sync(() => networkAddresses()),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
 }
 
