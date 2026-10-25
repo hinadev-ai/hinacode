@@ -19,6 +19,7 @@ public enum RPC {
     public static let linearIssues = Method<NoPayload, [LinearIssue]>("linear.issues", mutation: false, route: .all)
     public static let modelsList = Method<ModelsListRequest, [ModelInfo]>("models.list", mutation: false, route: .named)
     public static let projectsBranches = Method<ProjectsBranchesRequest, [String]>("projects.branches", mutation: false, route: .owner(.project, key: "id"))
+    public static let projectsClone = Method<ProjectsCloneRequest, Project>("projects.clone", mutation: true, route: .named)
     public static let projectsCreate = Method<ProjectsCreateRequest, Project>("projects.create", mutation: true, route: .named)
     public static let projectsCurrentBranch = Method<ProjectsCurrentBranchRequest, String>("projects.currentBranch", mutation: false, route: .owner(.project, key: "id"))
     public static let projectsDefaultBranch = Method<ProjectsDefaultBranchRequest, String>("projects.defaultBranch", mutation: false, route: .owner(.project, key: "id"))
@@ -2054,6 +2055,33 @@ public struct GithubPullRequestRequest: Codable, Hashable, Sendable {
     }
 }
 
+public struct GitHubRepository: Codable, Hashable, Sendable {
+    public var owner: String
+    public var name: String
+
+    public init(owner: String, name: String) {
+        self.owner = owner
+        self.name = name
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case owner
+        case name
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        owner = try container.decode(String.self, forKey: .owner)
+        name = try container.decode(String.self, forKey: .name)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(owner, forKey: .owner)
+        try container.encode(name, forKey: .name)
+    }
+}
+
 public enum GuideCategory: RawRepresentable, Codable, Hashable, Sendable {
     case ui
     case api
@@ -3085,6 +3113,43 @@ public struct ProjectsBranchesRequest: Codable, Hashable, Sendable, Identifiable
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+    }
+}
+
+public struct ProjectsCloneRequest: Codable, Hashable, Sendable {
+    public var repository: GitHubRepository
+    public var rootPath: String
+    public var name: String
+    public var setupScript: String?
+
+    public init(repository: GitHubRepository, rootPath: String, name: String, setupScript: String? = nil) {
+        self.repository = repository
+        self.rootPath = rootPath
+        self.name = name
+        self.setupScript = setupScript
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case repository
+        case rootPath
+        case name
+        case setupScript
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        repository = try container.decode(GitHubRepository.self, forKey: .repository)
+        rootPath = try container.decode(String.self, forKey: .rootPath)
+        name = try container.decode(String.self, forKey: .name)
+        setupScript = try container.decodeIfPresent(String.self, forKey: .setupScript)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(repository, forKey: .repository)
+        try container.encode(rootPath, forKey: .rootPath)
+        try container.encode(name, forKey: .name)
+        try container.encode(setupScript, forKey: .setupScript)
     }
 }
 

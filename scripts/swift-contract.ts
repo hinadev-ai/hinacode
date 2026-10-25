@@ -33,6 +33,7 @@ const methods: readonly RpcMethod[] = [
   "linear.issues",
   "models.list",
   "projects.branches",
+  "projects.clone",
   "projects.create",
   "projects.currentBranch",
   "projects.defaultBranch",

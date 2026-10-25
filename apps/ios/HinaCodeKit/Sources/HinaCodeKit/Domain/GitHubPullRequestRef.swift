@@ -1,15 +1,7 @@
 import Foundation
 
-/// A GitHub repository, `owner/name`.
-public struct GitHubRepository: Hashable, Sendable {
-    public var owner: String
-    public var name: String
-
-    public init(owner: String, name: String) {
-        self.owner = owner
-        self.name = name
-    }
-
+/// A GitHub repository, `owner/name`. The type itself is generated with the wire contract.
+extension GitHubRepository {
     /// The repository `input` names, as `owner/repo`, a github.com URL (https, ssh, or a link into the repository),
     /// or a pasted `git clone` or `gh repo clone` command. Nil for local paths and anything else.
     public init?(parsing input: String) {
