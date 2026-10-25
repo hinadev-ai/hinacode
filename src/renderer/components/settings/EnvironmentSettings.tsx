@@ -459,7 +459,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
             <EnvironmentStatusText status={cloud.status} />
             {cloud.status === "connected" && <CloudVersion cloud={cloud} />}
             {cloud.status !== "connected" && !unauthorized && cloud.lastSeenAt !== null && (
-              <span className="whitespace-nowrap">
+              <span className="whitespace-nowrap tabular-nums">
                 {m.environment_last_seen({ time: formatRelativeTime(cloud.lastSeenAt, now, locale) })}
               </span>
             )}
