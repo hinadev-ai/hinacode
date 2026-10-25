@@ -1,8 +1,8 @@
 import XCTest
 
 final class ScreenshotTests: XCTestCase {
+    @MainActor
     func testLaunch() throws {
-        let app = XCUIApplication()
-        app.launch()
+        XCUIApplication().launch()
     }
 }
