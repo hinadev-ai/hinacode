@@ -226,7 +226,7 @@ function Relay() {
   }
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <section aria-labelledby={headingId} className={cn(settingsSurfaceClass, "flex flex-col gap-3 p-4")}>
       <h3 id={headingId} className="text-sm font-medium">
         {m.relay_title()}
       </h3>
