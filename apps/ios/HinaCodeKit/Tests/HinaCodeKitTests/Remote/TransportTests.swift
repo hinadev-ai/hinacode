@@ -4,7 +4,7 @@ import Testing
 @testable import HinaCodeKit
 
 private let token = "secret"
-private let allFeatures = ["heartbeat", "call-keys", "terminal-attach"]
+private let allFeatures = FakeSocket.allFeatures
 private let mutations: Set<String> = ["threads.send", "approvals.respond"]
 
 private let tailscale = "ws://100.64.0.2:47821/remote"
@@ -13,26 +13,6 @@ private let relayURL = "wss://mac.example.com/remote"
 
 private func direct(_ url: String) -> Dial { Dial(url: URL(string: url)!, route: .direct, delay: .zero) }
 private func relay(_ url: String) -> Dial { Dial(url: URL(string: url)!, route: .relay, delay: Remote.relayDelay) }
-
-/// A client frame as the desktop reads it.
-private struct SentFrame: Decodable, Equatable {
-    var type: String
-    var id: Int? = nil
-    var method: String? = nil
-    var payload: JSONValue? = nil
-    var key: String? = nil
-    var nonce: String? = nil
-    var proof: String? = nil
-    var token: String? = nil
-
-    static func call(_ id: Int, _ method: String, payload: JSONValue? = nil, key: String? = nil) -> Self {
-        SentFrame(type: "call", id: id, method: method, payload: payload, key: key)
-    }
-
-    static func auth(token: String) -> Self { SentFrame(type: "auth", token: token) }
-
-    var isProof: Bool { type == "auth" && nonce != nil && proof != nil && token == nil }
-}
 
 /// Fake timers whose wall clock can also jump without firing anything, like `vi.setSystemTime`.
 @MainActor
@@ -53,64 +33,6 @@ private final class TestClock: Timers {
     func advance(_ milliseconds: Int) { manual.advance(by: .milliseconds(milliseconds)) }
 
     func jump(_ milliseconds: Int) { skew += .milliseconds(milliseconds) }
-}
-
-/// A socket and the server behind it, which holds `token`.
-@MainActor
-private final class FakeSocket: SocketLike {
-    var onOpen: (() -> Void)?
-    var onMessage: ((IncomingFrame) -> Void)?
-    var onClose: ((Int) -> Void)?
-    let url: String
-    private(set) var texts: [String] = []
-    private(set) var closed = false
-    private var serverNonce: String?
-    /// Away from home a direct address may be a stranger's HinaCode, so only a pairing without a relay ever sends it
-    /// the token.
-    private let mustNotSeeToken: Bool
-
-    init(url: URL, mustNotSeeToken: Bool) {
-        self.url = url.absoluteString
-        self.mustNotSeeToken = mustNotSeeToken
-    }
-
-    var sent: [SentFrame] { texts.map { try! JSONDecoder().decode(SentFrame.self, from: Data($0.utf8)) } }
-
-    func send(_ text: String) {
-        if mustNotSeeToken { #expect(!text.contains(token), "sent the token to \(url)") }
-        texts.append(text)
-    }
-
-    func close() { closed = true }
-
-    func open() { onOpen?() }
-
-    func challenge(_ nonce: String = "server-nonce") {
-        serverNonce = nonce
-        receive(#"{"type":"challenge","nonce":"\#(nonce)"}"#)
-    }
-
-    /// Proves `token` back when the client proved it, as a current server does; an older one omits the proof.
-    func ready(_ features: [String] = allFeatures, version: Int = 1) {
-        let list = features.map { #""\#($0)""# }.joined(separator: ",")
-        var proof = ""
-        if let nonce = sent.first(where: { $0.type == "auth" })?.nonce, let serverNonce {
-            proof = #","proof":"\#(PairingProof.server(token: token, clientNonce: nonce, serverNonce: serverNonce))""#
-        }
-        receive(#"{"type":"ready","version":\#(version),"features":[\#(list)]\#(proof)}"#)
-    }
-
-    func receive(_ text: String) { onMessage?(IncomingFrame(text: text)) }
-
-    func result(_ id: Int, _ result: String = "null") {
-        receive(#"{"type":"result","id":\#(id),"envelope":{"result":\#(result)}}"#)
-    }
-
-    func drop(_ code: Int = 1006) { onClose?(code) }
-
-    func calls() -> [SentFrame] { sent.filter { $0.type == "call" } }
-
-    func pings() -> [SentFrame] { sent.filter { $0.type == "ping" } }
 }
 
 /// A call in flight, started at once so it is queued or sent before the next line runs.
@@ -175,7 +97,7 @@ private final class Harness {
             onReady: { [unowned self] _, _, _ in readyCount += 1 },
             onEvent: { _ in },
             createSocket: { [unowned self] url in
-                let socket = FakeSocket(url: url, mustNotSeeToken: hasRelay && directURLs.contains(url))
+                let socket = FakeSocket(url: url, token: token, mustNotSeeToken: hasRelay && directURLs.contains(url))
                 sockets.append(socket)
                 return socket
             },
