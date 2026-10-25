@@ -50,8 +50,15 @@ export interface TransportOptions {
   /** Whether `method` changes state on the desktop, so a retry must carry a call key. */
   readonly isMutation: (method: string) => boolean
   readonly onStatus: (status: TransportStatus, error: string | null) => void
-  /** Called on every handshake with the features this desktop understands, and which HinaCode it is when it says. */
-  readonly onReady: (features: ReadonlySet<string>, environment: ServerIdentity | undefined) => void
+  /**
+   * Called on every handshake with the features this desktop understands, which HinaCode it is when it says, and
+   * its relay hostname, null when it has none.
+   */
+  readonly onReady: (
+    features: ReadonlySet<string>,
+    environment: ServerIdentity | undefined,
+    relay: string | null,
+  ) => void
   readonly onEvent: (event: PushEvent) => void
   readonly createSocket?: (url: string) => SocketLike
   readonly random?: () => number
@@ -91,8 +98,11 @@ export class Transport {
   private idleTimer: ReturnType<typeof setTimeout> | undefined
   private pingTimer: ReturnType<typeof setInterval> | undefined
   private offlineTimer: ReturnType<typeof setTimeout> | undefined
+  private urls: NonEmptyReadonlyArray<string>
 
-  constructor(private readonly options: TransportOptions) {}
+  constructor(private readonly options: TransportOptions) {
+    this.urls = options.urls
+  }
 
   start() {
     this.open()
@@ -162,6 +172,17 @@ export class Transport {
     }
   }
 
+  /**
+   * Dials `urls` from the next attempt on, keeping the current socket and every pending call. A dial keeps
+   * starting from the URL that last worked when the new list still has it.
+   */
+  setUrls(urls: NonEmptyReadonlyArray<string>) {
+    const indexIn = (index: number) => Math.max(0, urls.indexOf(this.urls[index]!))
+    this.dialIndex = indexIn(this.dialIndex)
+    this.lastConnectedIndex = indexIn(this.lastConnectedIndex)
+    this.urls = urls
+  }
+
   /** Skips the remaining backoff. */
   reconnectNow() {
     if (this.status !== "offline" || this.retryTimer === undefined) return
@@ -174,7 +195,7 @@ export class Transport {
     if (this.stopped) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
-    const url = this.options.urls[this.dialIndex]!
+    const url = this.urls[this.dialIndex]!
     const ws = (this.options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike))(url)
     this.socket = ws
     this.connectTimer = setTimeout(() => {
@@ -214,7 +235,7 @@ export class Transport {
     if (frame === null) return
     switch (frame.type) {
       case "ready":
-        return this.ready(frame.version, frame.features ?? [], frame.environment)
+        return this.ready(frame.version, frame.features ?? [], frame.environment, frame.relay ?? null)
       case "result": {
         const call = this.pending.get(frame.id)
         this.pending.delete(frame.id)
@@ -229,7 +250,12 @@ export class Transport {
     }
   }
 
-  private ready(version: number, features: readonly string[], environment: ServerIdentity | undefined) {
+  private ready(
+    version: number,
+    features: readonly string[],
+    environment: ServerIdentity | undefined,
+    relay: string | null,
+  ) {
     clearTimeout(this.connectTimer)
     if (version !== REMOTE_PROTOCOL_VERSION) {
       this.dropSocket()
@@ -254,7 +280,7 @@ export class Transport {
       this.startPings()
       this.closeIfSilentFor(IDLE_TIMEOUT_MS)
     }
-    this.options.onReady(this.features, environment)
+    this.options.onReady(this.features, environment, relay)
   }
 
   private sendCall(call: PendingCall) {
@@ -303,7 +329,7 @@ export class Transport {
   
   private onLinkLost() {
     this.dialIndex =
-      this.status === "connected" ? this.lastConnectedIndex : (this.dialIndex + 1) % this.options.urls.length
+      this.status === "connected" ? this.lastConnectedIndex : (this.dialIndex + 1) % this.urls.length
     this.dropSocket()
     const now = Date.now()
     for (const call of [...this.pending.values()]) {

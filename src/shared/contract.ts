@@ -550,6 +550,13 @@ export const RpcMethods = {
   "remote.pairing": rpc(Schema.Void, RemotePairing),
   /** Replaces the access token and disconnects every phone. */
   "remote.rotateToken": rpc(Schema.Void, RemotePairing),
+  /**
+   * Links this machine to a HinaCode account, opening the approval page in the browser, and starts its tunnel.
+   * Answers once the tunnel exists, or fails when the link expires. A linked machine only refreshes its tunnel.
+   */
+  "remote.setupRelay": rpc(Schema.Void, RemotePairing),
+  /** Unlinks this machine, which deletes its tunnel and hostname. Also cancels a link waiting for approval. */
+  "remote.removeRelay": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
     Schema.Struct({ id: Schema.String }),
     Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
@@ -697,6 +704,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "remote.status": "read",
   "remote.pairing": "read",
   "remote.rotateToken": "mutation",
+  "remote.setupRelay": "mutation",
+  "remote.removeRelay": "mutation",
   "automations.webhookUrl": "read",
 }
 
@@ -726,6 +735,8 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.passkey.prepare",
   "remote.pairing",
   "remote.rotateToken",
+  "remote.setupRelay",
+  "remote.removeRelay",
   "clientSettings.get",
   "clientSettings.set",
   "environments.list",

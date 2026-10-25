@@ -14,7 +14,15 @@ import { useThreads } from "@/stores/threads"
 const storedServers = (): StoredServer[] =>
   useConnection
     .getState()
-    .servers.map(({ id, name, environmentId, hosts, port, token }) => ({ id, name, environmentId, hosts, port, token }))
+    .servers.map(({ id, name, environmentId, hosts, port, token, relay }) => ({
+      id,
+      name,
+      environmentId,
+      hosts,
+      port,
+      token,
+      relay,
+    }))
 
 /** Adds a server, or updates the one this pairing reaches again. Returns its id. */
 export function pair(target: PairingTarget) {

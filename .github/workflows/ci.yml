@@ -16,6 +16,7 @@ jobs:
       app: ${{ steps.app.outputs.app }}
       desktop: ${{ steps.app.outputs.desktop }}
       site: ${{ steps.site.outputs.site }}
+      relay: ${{ steps.relay.outputs.relay }}
       resource-monitor: ${{ steps.resource-monitor.outputs.resource-monitor }}
     steps:
       - uses: actions/checkout@v7
@@ -35,6 +36,7 @@ jobs:
               - '!.agents/**'
               - '!.claude/**'
               - '!site/**'
+              - '!relay/**'
             desktop:
               - *app
               - '!apps/mobile/**'
@@ -54,6 +56,16 @@ jobs:
             site:
               - 'site/**'
               - 'messages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/ci.yml'
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: relay
+        with:
+          filters: |
+            relay:
+              - 'relay/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -85,6 +97,12 @@ jobs:
         run: pnpm --dir site check
       - if: needs.changes.outputs.site == 'true'
         run: pnpm --dir site deploy:dry-run
+      - if: needs.changes.outputs.relay == 'true'
+        run: pnpm --dir relay check
+      - if: needs.changes.outputs.relay == 'true'
+        run: pnpm --dir relay test
+      - if: needs.changes.outputs.relay == 'true'
+        run: pnpm --dir relay deploy:dry-run
       - if: needs.changes.outputs.app == 'true'
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep

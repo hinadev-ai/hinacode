@@ -182,6 +182,7 @@ const cloudPairing = async (options: { token?: string; hosts?: [string, ...Array
     hosts: options.hosts ?? ["127.0.0.1", "192.0.2.1"],
     port: pairing.port,
     token: options.token ?? pairing.token,
+    relay: null,
   })
 }
 
@@ -374,6 +375,7 @@ interface ScriptedOptions {
   readonly version?: number
   readonly host?: string
   readonly port?: number
+  readonly relay?: string
 }
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
@@ -399,6 +401,7 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
         version,
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
+        ...(options.relay === undefined ? {} : { relay: options.relay }),
       }
       if (holdReady) heldReady = ready
       else socket.send(JSON.stringify(ready))
@@ -408,7 +411,7 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   const { port } = server.address() as AddressInfo
   return {
     port,
-    pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token" }),
+    pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token", relay: null }),
     calls,
     holdReady: () => {
       holdReady = true
@@ -615,7 +618,7 @@ describe("desktop environments over a flaky link", () => {
     try {
       let added: Awaited<ReturnType<typeof add>> | undefined
       const startedAt = await testTime()
-      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token", relay: null })).then(
         (environment) => (added = environment),
       )
       await vi.waitFor(() => expect(held).toHaveLength(1))
@@ -638,7 +641,7 @@ describe("desktop environments over a flaky link", () => {
     slow.holdReady()
     try {
       let added: Awaited<ReturnType<typeof add>> | undefined
-      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token" })).then(
+      void add(pairingUrl({ hosts: ["::1", "127.0.0.1"], port: scripted.port, token: "token", relay: null })).then(
         (environment) => (added = environment),
       )
       await vi.waitFor(() => expect(scripted.socket()).toBeDefined())
@@ -651,6 +654,47 @@ describe("desktop environments over a flaky link", () => {
     } finally {
       slow.stop()
       scripted.stop()
+    }
+  })
+
+  test("a pairing whose relay refuses still connects over its host and keeps the relay", async () => {
+    const scripted = await scriptedCloud("relay-down", { relay: "127.0.0.1" })
+    // Nothing listens on loopback 443, so the relay's wss URL is refused at once without leaving the machine.
+    const url = pairingUrl({ hosts: ["127.0.0.1"], port: scripted.port, token: "token", relay: "127.0.0.1" })
+    try {
+      expect(await add(url)).toMatchObject({ id: "relay-down", host: "127.0.0.1", relay: "127.0.0.1" })
+      await pushedEventually(statusOf("relay-down", "connected"))
+      expect(await listed("relay-down")).toMatchObject({ relay: "127.0.0.1", status: "connected" })
+
+      scripted.stop()
+      await expect(add(url)).rejects.toThrow(`Nothing is listening on 127.0.0.1:${scripted.port}`)
+    } finally {
+      await remove("relay-down")
+      scripted.stop()
+    }
+  })
+
+  test("a ready naming a relay updates the row, and a relay that fails falls back to the host", async () => {
+    const scripted = await pair("learns-relay", { relay: "127.0.0.1" })
+    await vi.waitFor(async () => expect(await listed("learns-relay")).toMatchObject({ relay: "127.0.0.1" }))
+    expect(scripted.socket().readyState).toBe(WebSocket.OPEN)
+
+    scripted.stop()
+    await pushedEventually(statusOf("learns-relay", "offline"))
+    const cut: Array<Socket> = []
+    const cutting = createServer((socket) => {
+      cut.push(socket)
+      socket.destroy()
+    })
+    await new Promise<void>((resolve) => cutting.listen({ host: "127.0.0.1", port: scripted.port }, resolve))
+    await reconnectUntil(() => expect(cut.length).toBeGreaterThan(0))
+    await new Promise((resolve) => cutting.close(resolve))
+    const back = await scriptedCloud("learns-relay", { port: scripted.port, relay: "127.0.0.1" })
+    try {
+      await reconnectUntil(() => expect(electron.pushes.filter(statusOf("learns-relay", "connected"))).toHaveLength(2))
+    } finally {
+      await remove("learns-relay")
+      back.stop()
     }
   })
 

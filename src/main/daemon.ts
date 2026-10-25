@@ -11,7 +11,9 @@ import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
-import { autoUpdate, parseCommand, restartCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
+import { storedTunnel } from "./remote/relay.ts"
+import type { RelayLink } from "./remote/relayService.ts"
+import { applyServeRelay, autoUpdate, parseCommand, restartCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
 import { layer as SecretsLayer, noKeyring } from "./services/Secrets.ts"
 import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
 import { hydratePath } from "./shellPath.ts"
@@ -83,6 +85,7 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
     "Pair a phone: scan this code in the HinaCode app, or paste the URL.",
     `  ${phoneUrl}`,
     qr,
+    ...(pairing.relay === null ? [] : [`Reachable from any network through ${pairing.relay}.`, ""]),
     "Pair a desktop: Settings > Environments > Add environment, with one of:",
     ...pairing.hosts.map((host) => `  ${pairingUrl({ ...pairing, hosts: [host] })}`),
     "Keep the token in these URLs private. Run `hinacode pair` to print them again.",
@@ -90,7 +93,13 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
   ].join("\n")
 }
 
-/** Waits until the listener is bound, then returns what pairs a client with it. */
+/** How `hinacode serve` shows the sign-in of a first relay link: on stdout, where its pairing block goes. */
+const printLink = ({ url, userCode }: RelayLink) =>
+  Effect.sync(() =>
+    process.stdout.write(`Open ${url} to link this cloud to your HinaCode account. The code is ${userCode}.\n`),
+  )
+
+/** Waits until the listener is bound. */
 const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | Settings, unknown>) => {
   const deadline = Date.now() + LISTEN_TIMEOUT_MS
   for (;;) {
@@ -106,7 +115,6 @@ const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | S
     if (Date.now() > deadline) throw new Error("remote listener did not start in time")
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  return runtime.runPromise(RemoteAccess.use((remote) => remote.pairing))
 }
 
 const serve = async (argv: ReadonlyArray<string>, userData: string) => {
@@ -149,7 +157,16 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
   process.on("SIGTERM", quit)
   // Build the layer (open the database, run migrations, bind the listener) before printing anything.
   await runtime.runPromise(Effect.void)
-  process.stdout.write(await pairingText(userData, await listening(runtime)))
+  await listening(runtime)
+  try {
+    await runtime.runPromise(applyServeRelay(config.relay, printLink))
+  } catch (error) {
+    // A cloudflared child must not outlive a cloud that refused to start.
+    await runtime.dispose()
+    throw error
+  }
+  const pairing = await runtime.runPromise(RemoteAccess.use((remote) => remote.pairing))
+  process.stdout.write(await pairingText(userData, pairing))
 }
 
 /**
@@ -166,7 +183,7 @@ const pair = async (userData: string) => {
   const runtime = ManagedRuntime.make(
     RemoteAccessLayer.pipe(
       Layer.provideMerge(Layer.mergeAll(SettingsLayer, SecretsLayer)),
-      Layer.provide(Layer.mergeAll(Db.layer(database), noKeyring)),
+      Layer.provideMerge(Layer.mergeAll(Db.layer(database), noKeyring)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, "Warn")),
     ),
   )
@@ -174,7 +191,9 @@ const pair = async (userData: string) => {
     const { remote } = await runtime.runPromise(Settings.use((settings) => settings.get))
     if (!remote.enabled) return noCloud()
     const pairing = await runtime.runPromise(RemoteAccess.use((access) => access.pairing))
-    process.stdout.write(await pairingText(userData, pairing))
+    // The relay itself is not started here, so its hostname comes from the stored tunnel.
+    const tunnel = await runtime.runPromise(storedTunnel)
+    process.stdout.write(await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null }))
   } finally {
     await runtime.dispose()
   }

@@ -8,6 +8,7 @@ import { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import { applyServeConfig, type ServeConfig } from "./serve.ts"
 import type { PushEvent } from "../shared/contract.ts"
@@ -99,6 +100,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude ?? ClaudeProvider.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const relay = Relay.layer({
+    serviceUrl: process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL,
+    cloudflaredDir: join(userData, "cloudflared"),
+  }).pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const features = Layer.mergeAll(
@@ -106,6 +111,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Ports.layer,
     naming,
     remoteAccess,
+    relay,
     tinyVm,
     passkeys,
     linearLayer(process.env),

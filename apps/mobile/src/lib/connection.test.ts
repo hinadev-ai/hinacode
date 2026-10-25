@@ -17,9 +17,9 @@ class FakeSocket {
   }
   close() {}
 
-  ready(environment?: { id: string; name: string }) {
+  ready(environment?: { id: string; name: string }, relay?: string) {
     this.onopen?.()
-    this.receive({ type: "ready", version: 1, features: ["call-keys"], ...(environment && { environment }) })
+    this.receive({ type: "ready", version: 1, features: ["call-keys"], ...(environment && { environment }), relay })
   }
   receive(frame: unknown) {
     this.onmessage?.({ data: JSON.stringify(frame) })
@@ -34,7 +34,7 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, setServers, useConnection } = await import("./connection")
+const { call, reconnectNow, setServers, useConnection } = await import("./connection")
 
 const server = (id: string, port: number): StoredServer => ({
   id,
@@ -43,6 +43,7 @@ const server = (id: string, port: number): StoredServer => ({
   hosts: ["127.0.0.1"],
   port,
   token: "t",
+  relay: null,
 })
 
 const socketOf = (port: number) => FakeSocket.all.findLast((socket) => socket.url.includes(`:${port}/`))!
@@ -163,5 +164,31 @@ describe("servers", () => {
     setServers([...useConnection.getState().servers, server("c", 1003)])
     socketOf(1003).ready({ id: "env-a", name: "studio" })
     expect(useConnection.getState().servers.map((entry) => entry.id)).toEqual(["b", "c"])
+  })
+
+  it("dials the relay before the hosts", () => {
+    setServers([...useConnection.getState().servers, { ...server("c", 1003), relay: "c.example.com" }])
+    expect(FakeSocket.all.at(-1)?.url).toBe("wss://c.example.com/remote")
+  })
+
+  it("learns a relay from the handshake without dropping the socket or its calls", async () => {
+    setServers([...useConnection.getState().servers, server("c", 1003)])
+    const creating = call("projects.create", { name: "api", rootPath: "/srv/api", setupScript: null }, { server: "c" })
+    const direct = socketOf(1003)
+    direct.ready({ id: "env-c", name: "laptop" }, "c.example.com")
+    expect(useConnection.getState().servers.find((entry) => entry.id === "c")?.relay).toBe("c.example.com")
+    expect(FakeSocket.all.at(-1)).toBe(direct)
+
+    direct.answer("projects.create", project("api"))
+    expect((await creating).name).toBe("api")
+
+    // The next dial starts from the host that worked, then moves on to the relay.
+    direct.onclose?.({ code: 1006 })
+    reconnectNow("c")
+    expect(FakeSocket.all.at(-1)).not.toBe(direct)
+    expect(FakeSocket.all.at(-1)?.url).toBe("ws://127.0.0.1:1003/remote")
+    FakeSocket.all.at(-1)?.onclose?.({ code: 1006 })
+    reconnectNow("c")
+    expect(FakeSocket.all.at(-1)?.url).toBe("wss://c.example.com/remote")
   })
 })

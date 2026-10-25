@@ -1,0 +1,23 @@
+{
+  "name": "hinacode-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local-upstream localhost:8787",
+    "check": "wrangler types --strict-vars=false && tsc",
+    "test": "vitest run",
+    "deploy": "wrangler deploy",
+    "deploy:dry-run": "wrangler deploy --dry-run",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
+  "dependencies": {
+    "effect": "4.0.3",
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.3",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3",
+    "wrangler": "4.151.0"
+  }
+}

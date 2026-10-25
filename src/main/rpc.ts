@@ -27,6 +27,7 @@ import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses, RemoteAccess } from "./remote/access.ts"
+import { Relay } from "./remote/relay.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
@@ -66,6 +67,7 @@ export type AppServices =
   | Favicons
   | Updates
   | RemoteAccess
+  | Relay
   | Events
   | TinyVm
   | VmPasskeyRelay
@@ -85,6 +87,8 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
+  /** Opens an http(s) URL in the default browser. Anything else is ignored. */
+  readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
@@ -371,6 +375,12 @@ const handlers: Handlers = {
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
+  "remote.setupRelay": (_, desktop) =>
+    Relay.use((relay) => relay.setup({ onLink: (link) => desktop?.openExternal(link.url) ?? Effect.void })).pipe(
+      Effect.andThen(RemoteAccess.use((remote) => remote.pairing)),
+    ),
+  "remote.removeRelay": () =>
+    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
 }
 
 export const RpcCall = Schema.Struct({

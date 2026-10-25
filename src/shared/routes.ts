@@ -80,6 +80,8 @@ export const routes: Record<RpcMethod, Route> = {
   "remote.status": named,
   "remote.pairing": named,
   "remote.rotateToken": named,
+  "remote.setupRelay": named,
+  "remote.removeRelay": named,
   "projects.create": named,
   "projects.clone": named,
   "ports.kill": named,
