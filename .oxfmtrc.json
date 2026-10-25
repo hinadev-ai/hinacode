@@ -2,5 +2,5 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "semi": false,
   "printWidth": 120,
-  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "pnpm-lock.yaml", "apps/mobile/**"]
+  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "pnpm-lock.yaml", "apps/mobile/**", "apps/ios/**"]
 }
