@@ -7,6 +7,9 @@ import { UsageLimit } from "./limits.ts"
 export const Timestamp = Schema.String
 export type Timestamp = typeof Timestamp.Type
 
+export const ProjectKind = Schema.Literals(["folder", "chats"])
+export type ProjectKind = typeof ProjectKind.Type
+
 export const Project = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -23,6 +26,8 @@ export const Project = Schema.Struct({
   repository: Schema.optionalKey(Schema.String),
   /** Experimental. Opens the project's GitHub pull request links on linear.review instead. */
   linearReview: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+  /** `chats` is the one built-in project per machine where threads just talk, in a folder of the app's own. */
+  kind: ProjectKind.pipe(Schema.withDecodingDefaultKey(Effect.succeed("folder" as const))),
 })
 export type Project = typeof Project.Type
 
@@ -995,6 +1000,13 @@ export const RemoteStatus = Schema.Struct({
   relay: RelayStatus,
 })
 export type RemoteStatus = typeof RemoteStatus.Type
+
+/** An address the remote listener can bind to, such as `{ name: "tailscale0", address: "100.64.0.2" }`. */
+export const NetworkAddress = Schema.Struct({
+  name: Schema.String,
+  address: Schema.String,
+})
+export type NetworkAddress = typeof NetworkAddress.Type
 
 /**
  * Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first, and

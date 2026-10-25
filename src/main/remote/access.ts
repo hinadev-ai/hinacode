@@ -3,7 +3,7 @@ import { hostname, networkInterfaces } from "node:os"
 import { Array as Arr, Context, Effect, Layer, Option, PubSub, Stream } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import { SqlClient } from "effect/sql"
-import type { RelayStatus, RemotePairing, RemoteStatus } from "../../shared/domain.ts"
+import type { NetworkAddress, RelayStatus, RemotePairing, RemoteStatus } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
@@ -30,22 +30,31 @@ const isTailscale = (address: string) => address.startsWith("100.")
 /** Bridges into containers and VMs on this machine, which no phone or other desktop can route to. */
 const isVirtualBridge = (name: string) => /^(docker|br-|veth|virbr|cni|flannel|podman|vboxnet|vmnet)/.test(name)
 
-/**
- * Addresses a phone could reach this machine on, Tailscale first, then LAN, then the hostname.
- * Nothing on loopback, since a phone is never on it.
- */
+/** IPv4 addresses on this machine a phone could reach, Tailscale first. Nothing on loopback, since a phone is never on it. */
+export const networkAddresses = (
+  interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+): ReadonlyArray<NetworkAddress> => {
+  const addresses = Object.entries(interfaces)
+    .filter(([name]) => !isVirtualBridge(name))
+    .flatMap(([name, nets]) =>
+      (nets ?? [])
+        .filter((net) => net.family === "IPv4" && !net.internal)
+        .map((net) => ({ name, address: net.address })),
+    )
+  return [...addresses.filter((a) => isTailscale(a.address)), ...addresses.filter((a) => !isTailscale(a.address))]
+}
+
+/** Where a phone should try to reach a listener bound to `bindHost`, in order. */
 export const reachableHosts = (
   bindHost: string,
   interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
   host: string = hostname(),
 ): NonEmptyReadonlyArray<string> => {
   if (bindHost !== "0.0.0.0" && bindHost !== "::") return [bindHost]
-  const addresses = Object.entries(interfaces)
-    .filter(([name]) => !isVirtualBridge(name))
-    .flatMap(([, nets]) => nets ?? [])
-    .filter((net) => net.family === "IPv4" && !net.internal)
-    .map((net) => net.address)
-  return Arr.append([...addresses.filter(isTailscale), ...addresses.filter((a) => !isTailscale(a))], host)
+  return Arr.append(
+    networkAddresses(interfaces).map((a) => a.address),
+    host,
+  )
 }
 
 /** The tunnel hostname clients should dial first, kept while the relay is paused or failing so pairings keep it. */

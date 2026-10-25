@@ -6,6 +6,7 @@ import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
 import { AttentionRing } from "@/components/motion"
 import { ServerMark, serverLabel } from "@/components/server-mark"
+import { ProjectIcon } from "@/components/project-icon"
 import { PullRequestMark, usePullRequestSummary } from "@/components/pull-request-badge"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
@@ -130,20 +131,23 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           away && styles.away,
         ]}
       >
+        {project !== undefined && (
+          <View style={styles.projectLine}>
+            <ProjectIcon projectId={thread.projectId} size={12} />
+            <Text numberOfLines={1} style={[styles.meta, styles.project, { color: theme.textMuted }]}>
+              {project}
+            </Text>
+          </View>
+        )}
         <View style={styles.titleLine}>
-          <ProviderMark provider={thread.provider} size={MARK_SIZE} />
           <Text numberOfLines={1} style={[styles.title, { color: titleColor(theme, state) }]}>
             {title}
           </Text>
+          <ProviderMark provider={thread.provider} size={MARK_SIZE} />
           {isIndicated(state) && <StatusIndicator state={state} />}
         </View>
         <View style={styles.metaLine}>
           <ServerMark server={showProject ? server : undefined} />
-          {project !== undefined && (
-            <Text numberOfLines={1} style={[styles.meta, styles.project, { color: theme.textMuted }]}>
-              {project}
-            </Text>
-          )}
           {branch !== null && (
             <View style={styles.branch}>
               <Icon name="RiGitBranchLine" size={12} color={theme.textMuted} />
@@ -201,10 +205,11 @@ const styles = StyleSheet.create({
   row: { borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: MARK_GAP, minHeight: 22 },
   title: { flex: 1, fontSize: 16, lineHeight: 22 },
-  metaLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18, paddingLeft: MARK_SIZE + MARK_GAP },
-  meta: { fontSize: 13, lineHeight: 18 },
+  metaLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18, opacity: 0.8 },
+  meta: { fontSize: 12, lineHeight: 18 },
   mono: { fontFamily: mono },
-  project: { flexShrink: 0, maxWidth: "50%" },
+  projectLine: { flexDirection: "row", alignItems: "center", gap: 4 },
+  project: { flexShrink: 1 },
   branch: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1, minWidth: 0 },
   removed: { textDecorationLine: "line-through" },
   pullRequest: { flexShrink: 0 },

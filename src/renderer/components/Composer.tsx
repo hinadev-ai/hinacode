@@ -19,6 +19,7 @@ import { type Thread, toCheckoutTarget } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
+import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
@@ -101,6 +102,7 @@ export function Composer({ thread }: { thread: Thread }) {
     const history = state.byThread[thread.id]
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
   })
+  const isChat = useIsChat(thread.projectId)
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
@@ -217,12 +219,13 @@ export function Composer({ thread }: { thread: Thread }) {
 
   return (
     <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col px-3 pb-3">
-      <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col">
+      <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
         <div className="flex min-h-0 flex-col bg-background">
-          <ActivityIndicator thread={thread} />
-          <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
+          <ActivityIndicator thread={thread}>
+            <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
+          </ActivityIndicator>
         </div>
-        <ComposerBar className="min-h-0 focus-within:border-ring">
+        <ComposerBar className="min-h-0 border-(color:--composer-edge)">
           {comments.length > 0 && (
             <ul
               aria-label={m.comment_pending_label()}
@@ -286,7 +289,7 @@ export function Composer({ thread }: { thread: Thread }) {
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>
-      {unstarted && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
+      {unstarted && !isChat && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
       {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )

@@ -19,7 +19,8 @@ import ftsOnCompletion from "./migrations/0017_fts_on_completion.ts"
 import threadUserSkills from "./migrations/0018_thread_user_skills.ts"
 import projectLinearReview from "./migrations/0019_project_linear_review.ts"
 import pullRequestGuide from "./migrations/0020_pull_request_guide.ts"
-import environmentRelay from "./migrations/0021_environment_relay.ts"
+import projectKind from "./migrations/0021_project_kind.ts"
+import environmentRelay from "./migrations/0022_environment_relay.ts"
 
 const run = Migrator.make({})
 
@@ -48,7 +49,8 @@ export const runMigrations = run({
     "18_thread_user_skills": threadUserSkills,
     "19_project_linear_review": projectLinearReview,
     "20_pull_request_guide": pullRequestGuide,
-    "21_environment_relay": environmentRelay,
+    "21_project_kind": projectKind,
+    "22_environment_relay": environmentRelay,
   }),
 }).pipe(
   Effect.tap((ran) =>

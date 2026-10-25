@@ -76,6 +76,7 @@ export const routes: Record<RpcMethod, Route> = {
   "github.merge": named,
   "github.close": named,
   "vm.host": named,
+  "network.addresses": named,
   "remote.status": named,
   "remote.pairing": named,
   "remote.rotateToken": named,

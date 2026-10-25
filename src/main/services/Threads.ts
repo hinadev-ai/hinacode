@@ -224,7 +224,7 @@ const make = Effect.gen(function* () {
 
   const create = ({ worktree: worktreeInput, createdBy = "user", ...input }: CreateThread) =>
     Effect.gen(function* () {
-      yield* projects.get(input.projectId)
+      const project = yield* projects.get(input.projectId)
       const worktree = worktreeInput
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
         : undefined
@@ -237,7 +237,7 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort: null,
         fastMode: false,
-        userSkills: true,
+        userSkills: project.kind === "folder",
         accessMode: defaultAccessMode,
         accountId: defaultAccount[input.provider],
         providerSessionId: null,

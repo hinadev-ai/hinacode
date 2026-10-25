@@ -78,7 +78,7 @@ function Placeholder() {
 const SVG_PREFIX = /^data:image\/svg\+xml(;[^,]*)?,/i
 
 /** The markup of an SVG data URL, or null for any other image. */
-function svgMarkup(uri: string): string | null {
+export function svgMarkup(uri: string): string | null {
   const match = SVG_PREFIX.exec(uri)
   if (match === null) return null
   const body = uri.slice(match[0].length)
