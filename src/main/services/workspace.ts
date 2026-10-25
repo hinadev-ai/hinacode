@@ -1,5 +1,7 @@
+import { join } from "node:path"
 import { Effect, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
+import { ProjectKind } from "../../shared/domain.ts"
 import { NotFoundError, persistence } from "./errors.ts"
 
 export const ActiveWorkspace = Schema.Struct({
@@ -12,8 +14,16 @@ export const ActiveWorkspace = Schema.Struct({
 })
 export type ActiveWorkspace = typeof ActiveWorkspace.Type
 
+/** A chat's own folder inside the chats project. It is derived, never stored, and exists while the chat is not archived. */
+export const chatFolder = (chatsRoot: string, threadId: string) => join(chatsRoot, threadId)
+
+const WorkspaceRow = Schema.Struct({
+  ...ActiveWorkspace.fields,
+  kind: ProjectKind,
+})
+
 /**
- * Resolves where a thread works now: its worktree, or the project root once the worktree is removed.
+ * Resolves where a thread works now: its worktree, the project root once the worktree is removed, or a chat's folder.
  * Removing a worktree keeps `thread.worktree_id` pointing at the removed row so the history still shows
  * where the thread ran, so agent runs, MCP tools and the ports panel must all resolve through here.
  */
@@ -21,9 +31,9 @@ export const makeActiveWorkspace = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const find = SqlSchema.findOneOption({
     Request: Schema.String,
-    Result: ActiveWorkspace,
+    Result: WorkspaceRow,
     execute: (threadId) => sql`
-      SELECT COALESCE(worktree.path, project.root_path) AS cwd, project.root_path, worktree.id AS worktree_id, worktree.base_ref
+      SELECT COALESCE(worktree.path, project.root_path) AS cwd, project.root_path, project.kind, worktree.id AS worktree_id, worktree.base_ref
       FROM thread
       JOIN project ON project.id = thread.project_id
       LEFT JOIN worktree ON worktree.id = thread.worktree_id AND worktree.status != 'removed'
@@ -36,7 +46,10 @@ export const makeActiveWorkspace = Effect.gen(function* () {
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.fail(new NotFoundError({ entity: "thread", id: threadId })),
-          onSome: Effect.succeed,
+          onSome: ({ kind, ...workspace }) => {
+            const folder = chatFolder(workspace.rootPath, threadId)
+            return Effect.succeed(kind === "chats" ? { ...workspace, cwd: folder, rootPath: folder } : workspace)
+          },
         }),
       ),
     )
