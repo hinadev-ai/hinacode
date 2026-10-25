@@ -1789,5 +1789,35 @@
   "guide_category_assets": "Assets",
   "guide_category_other": "Other",
   "settings_guide_model": "Pull request guide",
-  "settings_guide_model_hint": "Writes a guide in the background for each open pull request linked to a thread."
+  "settings_guide_model_hint": "Writes a guide in the background for each open pull request linked to a thread.",
+  "command_resources_show": "Show machine resources",
+  "resources_title": "Machine resources",
+  "resources_description": "Last 10 minutes, sampled every 5 seconds",
+  "resources_machine": "Machine",
+  "resources_cpu": "CPU",
+  "resources_memory": "Memory",
+  "resources_disk": "Disk",
+  "resources_working": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} agent working", "countPlural=other": "{count} agents working" }
+    }
+  ],
+  "resources_idle": "No agents working",
+  "resources_cores": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} core", "countPlural=other": "{count} cores" }
+    }
+  ],
+  "resources_memory_detail": "{used} of {total}",
+  "resources_cpu_detail": "Load {load} · {cores}",
+  "resources_disk_free": "{free} free",
+  "resources_disk_free_on": "{free} free on {path}",
+  "resources_sampling": "Sampling…",
+  "resources_loading": "Reading resources…",
+  "resources_update_cloud": "Update HinaCode on {name} to see its resources.",
+  "resources_failed": "Could not read resources: {message}"
 }

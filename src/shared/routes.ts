@@ -86,6 +86,7 @@ export const routes: Record<RpcMethod, Route> = {
   "github.close": named,
   "vm.host": named,
   "network.addresses": named,
+  "system.resources": named,
   "remote.status": named,
   "remote.pairing": named,
   "remote.rotateToken": named,

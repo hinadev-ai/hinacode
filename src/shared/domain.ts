@@ -1029,6 +1029,36 @@ export const NetworkAddress = Schema.Struct({
 })
 export type NetworkAddress = typeof NetworkAddress.Type
 
+/** One reading of a machine. `cpu` is the share of all cores busy since the reading before, from 0 to 1. */
+export const ResourceSample = Schema.Struct({
+  at: Schema.Number,
+  cpu: Schema.Number,
+  memoryUsed: Schema.Number,
+  /** The 1-minute load average. Windows has none. */
+  load: Schema.NullOr(Schema.Number),
+})
+export type ResourceSample = typeof ResourceSample.Type
+
+/** A disk HinaCode writes to, named by the shortest path on it that HinaCode uses. Bytes, as `df` counts them. */
+export const DiskUsage = Schema.Struct({
+  path: Schema.String,
+  used: Schema.Number,
+  free: Schema.Number,
+})
+export type DiskUsage = typeof DiskUsage.Type
+
+export const diskFullness = ({ used, free }: DiskUsage) => used / (used + free || 1)
+
+export const MachineResources = Schema.Struct({
+  cpuCount: Schema.Int,
+  memoryTotal: Schema.Number,
+  /** Oldest first, the last 10 minutes. Empty for the first 5 seconds after start. */
+  samples: Schema.Array(ResourceSample),
+  /** Fullest first. */
+  disks: Schema.Array(DiskUsage),
+})
+export type MachineResources = typeof MachineResources.Type
+
 /**
  * Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first, and
  * `relay` is the tunnel hostname that answers from any network.

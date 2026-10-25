@@ -25,6 +25,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
+import * as SystemResources from "./services/SystemResources.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
@@ -82,6 +83,7 @@ export const makeTestAppLayer = (
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
+    SystemResources.layer,
     remoteAccess,
     relay,
     tinyVm,

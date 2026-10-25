@@ -35,6 +35,7 @@ import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
+import * as SystemResources from "./services/SystemResources.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
@@ -110,6 +111,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
+    SystemResources.layer,
     naming,
     remoteAccess,
     relay,

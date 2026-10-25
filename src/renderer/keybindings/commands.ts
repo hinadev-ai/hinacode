@@ -89,6 +89,12 @@ export const commands = [
     run: (ctx) => void ctx.navigate({ to: "/settings" }),
   },
   {
+    id: "resources.show",
+    defaultKeys: "",
+    title: m.command_resources_show,
+    run: () => useUi.getState().setResourcesOpen(true),
+  },
+  {
     id: "thread.new",
     defaultKeys: "mod+n",
     title: m.command_thread_new,
