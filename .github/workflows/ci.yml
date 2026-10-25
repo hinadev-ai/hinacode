@@ -17,6 +17,7 @@ jobs:
       desktop: ${{ steps.app.outputs.desktop }}
       site: ${{ steps.site.outputs.site }}
       relay: ${{ steps.relay.outputs.relay }}
+      ios: ${{ steps.ios.outputs.ios }}
       resource-monitor: ${{ steps.resource-monitor.outputs.resource-monitor }}
     steps:
       - uses: actions/checkout@v7
@@ -40,6 +41,7 @@ jobs:
             desktop:
               - *app
               - '!apps/mobile/**'
+              - '!apps/ios/**'
               - '!tools/**'
               - '!scripts/**'
               - '!**/*.test.ts'
@@ -71,6 +73,17 @@ jobs:
               - 'pnpm-workspace.yaml'
               - '.github/workflows/ci.yml'
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: ios
+        with:
+          filters: |
+            ios:
+              - 'apps/ios/**'
+              - 'src/shared/**'
+              - 'messages/**'
+              - 'scripts/swift-contract.ts'
+              - 'scripts/ios-strings.ts'
+              - '.github/workflows/ci.yml'
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: resource-monitor
         with:
           filters: |
@@ -93,6 +106,9 @@ jobs:
       - run: pnpm format --check
       - if: needs.changes.outputs.app == 'true'
         run: pnpm typecheck
+      - if: needs.changes.outputs.ios == 'true'
+        name: Check the generated iOS contract and String Catalog
+        run: node scripts/swift-contract.ts --check && node scripts/ios-strings.ts --check
       - if: needs.changes.outputs.site == 'true'
         run: pnpm --dir site check
       - if: needs.changes.outputs.site == 'true'
@@ -132,6 +148,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: npx tsc --noEmit
       - run: npx expo lint
+
+  ios:
+    needs: changes
+    # The home runner must never run code from a fork's pull request.
+    if: needs.changes.outputs.ios == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, macOS, ARM64, home]
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift format lint --strict -r HinaCode HinaCodeUITests HinaCodeKit/Sources HinaCodeKit/Tests
+      - run: swift test --package-path HinaCodeKit
+      # SwiftTerm ships a build plugin, which xcodebuild refuses to run until it is trusted.
+      - run: >-
+          xcodebuild build -project HinaCode.xcodeproj -scheme HinaCode -destination 'generic/platform=iOS Simulator'
+          -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 
   e2e-linux:
     name: e2e (linux)

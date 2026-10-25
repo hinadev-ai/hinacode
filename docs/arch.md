@@ -20,7 +20,7 @@ flowchart LR
     remote["Remote listener<br/>ws://bindHost:port/remote"]
     relay["Relay<br/>cloudflared child"]
   end
-  phone["Phone app<br/>apps/mobile (Expo)"]
+  phone["Phone apps<br/>apps/ios (SwiftUI), apps/mobile (Expo, Android)"]
   edge["Cloudflare edge<br/>wss://relay hostname/remote"]
   db[("hinacode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
@@ -81,6 +81,8 @@ Remote mode (`src/main/remote/`) is a second transport for the same contract. A 
 A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call by `routes[method]` in `src/shared/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
+
+The iOS app (`apps/ios`) is a native port of the same client. `HinaCodeKit` holds `Transport`, `ServerHub` and the stores as `@MainActor` ports of `transport.ts`, `connection.ts` and `apps/mobile/src/stores`, so a protocol change is ported with its test. Its wire types are generated from `src/shared` by `scripts/swift-contract.ts` and its copy from `messages/*.json` by `scripts/ios-strings.ts`. See `features/2026-10-25-ios-native-app.md` and [ADR 0023](adr/0023-native-ios-app.md).
 
 ```mermaid
 flowchart LR
