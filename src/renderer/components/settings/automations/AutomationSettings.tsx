@@ -27,7 +27,7 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.
 import { Input } from "../../ui/input.tsx"
 import { Switch } from "../../ui/switch.tsx"
 import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
-import { SettingsSection } from "../SettingsSection.tsx"
+import { SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
 import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
@@ -97,7 +97,7 @@ function ListenerSettings() {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <div className={cn(settingsSurfaceClass, "flex flex-col gap-3 p-4")}>
       <div className="flex flex-wrap items-end gap-4">
         <Field className="w-64">
           <FieldLabel htmlFor="automation-bind-host">{m.automations_bind_label()}</FieldLabel>
@@ -155,7 +155,7 @@ function AutomationList({ projects, onEdit }: AutomationListProps) {
     ))
     .onSuccess((list) =>
       list.length === 0 ? (
-        <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border px-6 py-10 text-center">
+        <div className={cn(settingsSurfaceClass, "flex flex-col items-center gap-1 px-6 py-10 text-center")}>
           <p className="text-sm font-medium">{m.automations_empty_title()}</p>
           <p className="text-sm text-pretty text-muted-foreground">
             {projects.length === 0 ? m.automations_empty_no_project() : m.automations_empty_hint()}
@@ -212,7 +212,7 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
     })
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <li className={cn(settingsSurfaceClass, "flex flex-col gap-3 p-4")}>
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">

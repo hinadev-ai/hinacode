@@ -1,4 +1,5 @@
-import { type ReactNode, useId } from "react"
+import { cn } from "cn"
+import { type ComponentProps, type ReactNode, useId } from "react"
 
 interface SettingsSectionProps {
   readonly title: string
@@ -10,7 +11,7 @@ interface SettingsSectionProps {
 export function SettingsSection({ title, description, action, children }: SettingsSectionProps) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-6">
+    <section aria-labelledby={headingId} className="flex flex-col gap-4">
       <header className="flex items-start gap-4">
         <div className="flex flex-1 flex-col gap-1">
           <h2 id={headingId} className="text-base font-semibold">
@@ -22,5 +23,30 @@ export function SettingsSection({ title, description, action, children }: Settin
       </header>
       {children}
     </section>
+  )
+}
+
+/** The filled surface settings sit on. A fill groups them, so the page needs no bordered boxes. */
+export const settingsSurfaceClass = "rounded-xl bg-muted dark:bg-muted/50"
+
+/**
+ * Settings rows on one surface, split by inset hairlines. Every direct child is a row.
+ * Use the class on a `ul` when the rows are a list.
+ */
+export const settingsGroupClass = cn(
+  settingsSurfaceClass,
+  "flex flex-col px-4 *:py-3 [&>*+*]:border-t [&>*+*]:border-foreground/8",
+)
+
+export function SettingsGroup({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn(settingsGroupClass, className)} {...props} />
+}
+
+/** A small heading above a group, for pages with more than one. */
+export function SettingsGroupTitle({ className, children, ...props }: ComponentProps<"h3">) {
+  return (
+    <h3 className={cn("-mb-2 px-1 text-sm font-medium", className)} {...props}>
+      {children}
+    </h3>
   )
 }

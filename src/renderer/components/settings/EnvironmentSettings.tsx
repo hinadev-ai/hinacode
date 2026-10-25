@@ -1,4 +1,5 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import {
   type FormEvent,
@@ -42,7 +43,7 @@ import {
 import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
@@ -56,7 +57,7 @@ export function EnvironmentSettings() {
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>
       ) : (
-        <ul aria-label={m.settings_environments()} className="flex flex-col divide-y divide-border rounded-lg border">
+        <ul aria-label={m.settings_environments()} className={settingsGroupClass}>
           {clouds.map((cloud) => (
             <EnvironmentRow key={cloud.id} cloud={cloud} />
           ))}
@@ -81,7 +82,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
   }
 
   return (
-    <li className="flex flex-col gap-1 px-4 py-3">
+    <li className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-48 flex-1 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{cloud.name}</span>
@@ -331,7 +332,7 @@ function AddEnvironmentForm() {
     <form
       onSubmit={onSubmit}
       aria-labelledby="environment-add-title"
-      className="flex flex-col gap-4 rounded-lg border border-border p-4"
+      className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}
     >
       <h3 id="environment-add-title" className="text-sm font-medium">
         {m.environment_add_title()}
