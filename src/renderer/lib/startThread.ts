@@ -19,7 +19,7 @@ export async function startThread(projectId: string, navigate: ReturnType<typeof
 }
 
 /**
- * Moves a thread with no messages yet to `projectId`, the same repository on another machine. A thread lives on
+ * Moves a thread with no messages yet to `projectId`, the same repository or the chats on another machine. A thread lives on
  * the machine it was created on, so this creates one there, hands it the draft and agent, and deletes the old one.
  * Staged attachments stay behind with their files on the old machine.
  */
