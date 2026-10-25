@@ -27,6 +27,8 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[attachment ${part.attachment.name}]`
     case "compaction":
       return `[context compaction: ${part.compaction.status}]`
+    case "account_switch":
+      return `[moved to account ${part.to ?? "default"} after a usage limit]`
   }
 }
 

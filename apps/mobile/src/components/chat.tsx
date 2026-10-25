@@ -102,6 +102,9 @@ export function Chat({ thread }: { thread: Thread }) {
 function MessageView({ message, root }: { message: Message; root: string | null }) {
   const theme = useTheme()
   if (message.role !== "user") return <AssistantMessage message={message} root={root} />
+  if (message.parts.every((part) => part.type === "account_switch")) {
+    return message.parts.map((part, index) => <PartView key={index} part={part} />)
+  }
   return (
     <View style={[styles.message, styles.user, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_you")}</Text>
@@ -302,6 +305,12 @@ function PartView({ part }: { part: MessagePart }) {
       return (
         <Text style={{ color: part.compaction.status === "failed" ? theme.danger : theme.textMuted }}>
           {copy(compactionCopy[part.compaction.status])}
+        </Text>
+      )
+    case "account_switch":
+      return (
+        <Text style={{ color: theme.textMuted }}>
+          {copy("mobile_chat_account_switched", { account: part.to ?? copy("mobile_chat_default_account") })}
         </Text>
       )
   }

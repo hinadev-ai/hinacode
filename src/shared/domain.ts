@@ -439,6 +439,16 @@ export const MessagePart = Schema.Union([
   /** Questions the agent posted without waiting; `text` is how they read once answered. */
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
+  /**
+   * The thread moved to another account after a usage limit and continued there. Names are kept as they were then;
+   * null is the CLI's own login under its default name.
+   */
+  Schema.Struct({
+    type: Schema.Literal("account_switch"),
+    from: Schema.NullOr(Schema.String),
+    to: Schema.NullOr(Schema.String),
+    automatic: Schema.Boolean,
+  }),
 ])
 export type MessagePart = typeof MessagePart.Type
 
@@ -616,6 +626,12 @@ export const Settings = Schema.Struct({
     codex: Schema.NullOr(AgentProfileName),
     muse: Schema.NullOr(AgentProfileName),
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
+  /** Whether a thread that hits a usage limit moves to the agent's account with the most room left and continues. */
+  autoSwitchAccount: Schema.Struct({
+    claude: Schema.Boolean,
+    codex: Schema.Boolean,
+    muse: Schema.Boolean,
+  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: false, codex: false, muse: false }))),
   /**
    * How full each agent's context window gets, in tokens, before it compacts the conversation. Null keeps the
    * agent's own threshold. The range is Claude Code's, which ignores anything outside it.
@@ -654,6 +670,7 @@ export const defaultSettings: Settings = {
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   defaultAccountName: { claude: null, codex: null, muse: null },
+  autoSwitchAccount: { claude: false, codex: false, muse: false },
   autoCompactTokens: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },

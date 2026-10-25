@@ -63,7 +63,7 @@ export function UsageLimitCallout({
               key={suggestion.id}
               threadId={threadId}
               to={suggestion}
-              resend
+              continueTurn
               label={m.account_continue_on({ account: suggestion.name })}
             />
           )}

@@ -136,11 +136,18 @@ let heldTurn = Promise.withResolvers<void>()
 /** Each sub-agent the scripted providers were asked to stop. */
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
 
+/** An added Claude account named "Roomy" reports this, so it has room left when another account is limited. */
+const roomyLimits: PlanLimits = {
+  windows: [{ window: { kind: "session" }, usedPercent: 12, resetsAt: "2026-10-12T15:00:00.000Z" }],
+  readAt: "2026-10-12T10:00:00.000Z",
+}
+
 /** Turns the scripted Claude starts by itself. */
 const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
-/** The account home of each turn the scripted providers ran. */
+/** The account home and prompt of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
+const turnPrompts: Array<string> = []
 
 /** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
@@ -161,7 +168,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
     ),
   planLimits: (home) =>
     id === "claude"
-      ? Effect.succeed(home === null ? claudeLimits : null)
+      ? Effect.succeed(home === null ? claudeLimits : basename(home.dir) === "roomy" ? roomyLimits : null)
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
   copySession: (sessionId, from, to) => Effect.sync(() => void copiedSessions.push({ sessionId, from, to })),
@@ -169,6 +176,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      turnPrompts.push(input.prompt)
       if (input.prompt === "simulate a held sub-agent") {
         return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
           Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
@@ -857,7 +865,7 @@ describe("limited threads over rpc", () => {
     expect(failure(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true })).tag).toBe("AgentError")
   })
 
-  test("continues a limited thread on another account with its session and last prompt", async () => {
+  test("continues a limited thread's session on another account", async () => {
     const spare = result(await invoke("accounts.create", newAccount("claude", "Spare")))
     const codex = result(await invoke("accounts.create", newAccount("codex", "Elsewhere")))
     const project = result(await invoke("projects.list", undefined))[0]!
@@ -874,19 +882,46 @@ describe("limited threads over rpc", () => {
     )
     copiedSessions.length = 0
     turnHomes.length = 0
-    const switched = result(await invoke("threads.switchAccount", { id: thread.id, accountId: spare.id, resend: true }))
+    turnPrompts.length = 0
+    const switched = result(
+      await invoke("threads.switchAccount", { id: thread.id, accountId: spare.id, continueTurn: true }),
+    )
     expect(switched.accountId).toBe(spare.id)
     const spareHome = { dir: join(dir, "homes", "spare"), binary: "claude" }
     expect(copiedSessions).toStrictEqual([{ sessionId: boundSession, from: null, to: spareHome }])
     await expect.poll(() => turnHomes).toStrictEqual([spareHome])
+    expect(turnPrompts[0]).toContain("Continue the task from where it stopped")
     await expect.poll(statusOf).toBe("idle")
     const prompts = result(await invoke("threads.transcript", { threadId: thread.id }))
       .messages.filter((message) => message.role === "user")
       .map((message) => message.parts)
     expect(prompts.slice(-2)).toStrictEqual([
       [{ type: "text", text: "simulate usage limit" }],
-      [{ type: "text", text: "simulate usage limit" }],
+      [{ type: "account_switch", from: null, to: "Spare", automatic: false }],
     ])
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
+  test("moves a limited thread to the account with room left when the setting is on", async () => {
+    result(await invoke("accounts.create", newAccount("claude", "Roomy")))
+    result(await invoke("settings.set", { autoSwitchAccount: { claude: true, codex: false, muse: false } }))
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const current = async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await current())?.status).toBe("idle")
+    turnHomes.length = 0
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate usage limit" }))
+
+    const roomyHome = { dir: join(dir, "homes", "roomy"), binary: "claude" }
+    await expect.poll(() => turnHomes).toStrictEqual([null, roomyHome])
+    await expect.poll(async () => (await current())?.status).toBe("idle")
+    expect((await current())?.usageLimit).toBeNull()
+    const lastPrompt = result(await invoke("threads.transcript", { threadId: thread.id }))
+      .messages.filter((message) => message.role === "user")
+      .at(-1)?.parts
+    expect(lastPrompt).toStrictEqual([{ type: "account_switch", from: null, to: "Roomy", automatic: true }])
+    result(await invoke("settings.set", { autoSwitchAccount: { claude: false, codex: false, muse: false } }))
     result(await invoke("threads.delete", { id: thread.id }))
   })
 

@@ -61,26 +61,26 @@ export function useAccountHint() {
         : undefined
 }
 
-/** Moves the thread to `accountId`, carrying its conversation over. `resend` runs the last prompt again there. */
-export async function switchAccount(threadId: string, accountId: string | null, resend = false) {
-  useThreads.getState().upsert(await callPromise("threads.switchAccount", { id: threadId, accountId, resend }))
+/** Moves the thread to `accountId`, carrying its conversation over. `continueTurn` picks a limited turn up there. */
+export async function switchAccount(threadId: string, accountId: string | null, continueTurn = false) {
+  useThreads.getState().upsert(await callPromise("threads.switchAccount", { id: threadId, accountId, continueTurn }))
 }
 
 /** A button that switches the thread to `to`, showing the error beside it when the switch is refused. */
 export function SwitchAccountButton({
   threadId,
   to,
-  resend,
+  continueTurn,
   label,
 }: {
   threadId: string
   to: AccountOption
-  resend: boolean
+  continueTurn: boolean
   label: string
 }) {
   const [error, run, isPending] = useActionState(async () => {
     try {
-      await switchAccount(threadId, to.id, resend)
+      await switchAccount(threadId, to.id, continueTurn)
       return null
     } catch (cause) {
       return errorMessage(cause)
@@ -128,7 +128,7 @@ export function AccountLimitNotice({ thread }: { thread: AccountThread }) {
           key={suggestion.id}
           threadId={thread.id}
           to={suggestion}
-          resend={false}
+          continueTurn={false}
           label={m.account_switch_to({ account: suggestion.name })}
         />
       )}

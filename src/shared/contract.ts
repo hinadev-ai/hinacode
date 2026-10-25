@@ -157,13 +157,13 @@ export const RpcMethods = {
   "threads.resumeAtReset": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Thread),
   /**
    * Moves the thread to another account of its agent, copying its session there first. Refused while a turn
-   * runs. A limited thread goes back to idle. `resend` sends the last prompt again on the new account.
+   * runs. A limited thread goes back to idle. `continueTurn` picks the limited turn up on the new account.
    */
   "threads.switchAccount": rpc(
     Schema.Struct({
       id: Schema.String,
       accountId: Schema.NullOr(Schema.String),
-      resend: Schema.optional(Schema.Boolean),
+      continueTurn: Schema.optional(Schema.Boolean),
     }),
     Thread,
   ),

@@ -34,6 +34,7 @@ import type {
   AccessMode,
   Attachment,
   Message,
+  MessagePart,
   QueuedMessage,
   Thread,
   ThreadStatus,
@@ -41,6 +42,7 @@ import type {
 } from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
+import { accountRoom, roomiest } from "../../shared/limits.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
@@ -77,6 +79,8 @@ const interruptedSend = () => new AgentError({ provider: "hinacode", message: "M
 export interface SendOptions {
   /** Only with the first message: sets up where the thread runs first. */
   readonly workspace?: WorkspaceChoice | undefined
+  /** What the transcript shows for this prompt, when it differs from what the agent reads. */
+  readonly shown?: ReadonlyArray<MessagePart> | undefined
 }
 
 type SendError =
@@ -136,12 +140,12 @@ export class AgentRunner extends Context.Service<
     /**
      * Moves the thread to another account of its agent. A started session is copied into the new account's home
      * first, so the next turn keeps its history. A limited thread goes back to idle, because the limit was the
-     * old account's. `resend` sends the last prompt again. Refused while a turn runs.
+     * old account's. `continueTurn` picks the limited turn up on the new account. Refused while a turn runs.
      */
     readonly switchAccount: (
       threadId: string,
       accountId: string | null,
-      options: { readonly resend: boolean },
+      options: { readonly continueTurn: boolean },
     ) => Effect.Effect<Thread, SendError>
     /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
@@ -212,18 +216,24 @@ const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
   }
 }
 
-const userMessage = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, now: string): Message => ({
+const promptParts = (text: string, attachments: ReadonlyArray<Attachment>): ReadonlyArray<MessagePart> => [
+  ...(text === "" ? [] : [{ type: "text" as const, text }]),
+  ...attachments.map((attachment) => ({ type: "attachment" as const, attachment })),
+]
+
+const userMessage = (threadId: string, parts: ReadonlyArray<MessagePart>, now: string): Message => ({
   id: randomUUID(),
   threadId,
   role: "user",
-  parts: [
-    ...(text === "" ? [] : [{ type: "text" as const, text }]),
-    ...attachments.map((attachment) => ({ type: "attachment" as const, attachment })),
-  ],
+  parts,
   createdAt: now,
   completedAt: now,
   usage: null,
 })
+
+/** The session already holds the cut-off turn, so the new account is told to go on rather than sent it again. */
+const continueAfterLimit =
+  "The previous turn stopped because its account reached a usage limit. HinaCode moved this conversation to another account. Continue the task from where it stopped."
 
 const openAssistantMessage = (threadId: string, now: string): Message => ({
   id: randomUUID(),
@@ -278,7 +288,8 @@ const make = Effect.gen(function* () {
   }
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
-  // A Claude read spawns a CLI, so each account is asked at most once a minute. Keyed by a `LimitsKey` as JSON.
+  const limitsKey = (key: LimitsKey) => JSON.stringify(key)
+  // A Claude read spawns a CLI, so each account is asked at most once a minute. Keyed by `limitsKey`.
   const cachedLimits = yield* Cache.make({
     lookup: (key: string) => {
       const { provider, accountId } = JSON.parse(key) as LimitsKey
@@ -466,7 +477,7 @@ const make = Effect.gen(function* () {
         yield* publishTranscript({ type: "message.updated", message: closed })
 
         const next = openAssistantMessage(thread.id, now)
-        yield* insertMessage(userMessage(thread.id, text, attachments, now))
+        yield* insertMessage(userMessage(thread.id, promptParts(text, attachments), now))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
         return true
@@ -490,6 +501,7 @@ const make = Effect.gen(function* () {
       if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
       yield* persist
       if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
+      if (status !== "limited") leftForLimit.delete(thread.id)
       if (!completed || (yield* Deferred.isDone(stop))) return
       const [first, ...rest] = (yield* threads.get(thread.id)).queue
       if (first === undefined) return
@@ -506,7 +518,13 @@ const make = Effect.gen(function* () {
       exclusive(thread.id),
       // Forked: the next turn takes this thread's slot in `turns`, which would interrupt the fiber running this.
       Effect.andThen(
-        Effect.suspend(() => (next === undefined ? Effect.void : Effect.forkDetach(startQueued(thread.id, next)))),
+        Effect.suspend(() =>
+          next !== undefined
+            ? Effect.forkDetach(startQueued(thread.id, next))
+            : status === "limited"
+              ? Effect.forkDetach(switchOnLimit(thread.id))
+              : Effect.void,
+        ),
       ),
     )
 
@@ -625,7 +643,7 @@ const make = Effect.gen(function* () {
             yield* threads.recordTurnBase({ threadId, tree })
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
-            yield* insertMessage(userMessage(threadId, prompt, attachments, now))
+            yield* insertMessage(userMessage(threadId, options.shown ?? promptParts(prompt, attachments), now))
             yield* insertMessage(assistant)
             yield* updateThread({ id: threadId, status: "running" })
             return { thread, environment, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
@@ -757,11 +775,12 @@ const make = Effect.gen(function* () {
   const lastPrompt = (threadId: string) =>
     messages.list(threadId).pipe(Effect.map((list) => list.findLast((message) => message.role === "user")))
 
-  const resend = (threadId: string, prompt: Message) =>
+  const resend = (threadId: string, prompt: Message, shown?: ReadonlyArray<MessagePart>) =>
     send(
       threadId,
       prompt.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
       prompt.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : [])),
+      { shown },
     )
 
   const resumeDue = Effect.gen(function* () {
@@ -774,7 +793,16 @@ const make = Effect.gen(function* () {
     }
   })
 
-  const switchAccount: typeof AgentRunner.Service.switchAccount = (threadId, accountId, options) =>
+  const accountName = (provider: ProviderId, accountId: string | null) =>
+    accountId === null
+      ? settings.get.pipe(Effect.map(({ defaultAccountName }) => defaultAccountName[provider]))
+      : accounts.get(accountId).pipe(Effect.map(({ name }) => name))
+
+  const switchAccount = (
+    threadId: string,
+    accountId: string | null,
+    options: { readonly continueTurn: boolean; readonly automatic?: boolean },
+  ) =>
     Effect.gen(function* () {
       const switched = yield* Effect.gen(function* () {
         if (busyThreads.has(threadId)) {
@@ -799,11 +827,48 @@ const make = Effect.gen(function* () {
           accountId,
           ...(current.status === "limited" && { status: "idle" }),
         })
-        return { thread, prompt: options.resend ? yield* lastPrompt(threadId) : undefined }
+        if (!options.continueTurn) return { thread, next: undefined }
+        const note: MessagePart = {
+          type: "account_switch",
+          from: yield* accountName(current.provider, current.accountId),
+          to: yield* accountName(current.provider, accountId),
+          automatic: options.automatic ?? false,
+        }
+        if (current.providerSessionId !== null) return { thread, next: { note, prompt: undefined } }
+        const prompt = yield* lastPrompt(threadId)
+        return { thread, next: prompt === undefined ? undefined : { note, prompt } }
       }).pipe(exclusive(threadId))
-      if (switched.prompt !== undefined) yield* resend(threadId, switched.prompt)
-      return switched.thread
+      const { thread, next } = switched
+      if (next?.prompt !== undefined) yield* resend(threadId, next.prompt, [next.note, ...next.prompt.parts])
+      else if (next !== undefined) yield* send(threadId, continueAfterLimit, [], { shown: [next.note] })
+      return thread
     })
+
+  /** Accounts each thread left for a limit since its last turn that was not limited, so a chain of switches ends. */
+  const leftForLimit = new Map<string, Set<string | null>>()
+
+  const switchOnLimit = (threadId: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const { autoSwitchAccount } = yield* settings.get
+      if (thread.status !== "limited" || !autoSwitchAccount[thread.provider]) return
+      let left = leftForLimit.get(threadId)
+      if (left === undefined) leftForLimit.set(threadId, (left = new Set()))
+      left.add(thread.accountId)
+      const added = (yield* accounts.list).filter((account) => account.provider === thread.provider)
+      const candidates = [null, ...added.map((account) => account.id)].filter((id) => !left.has(id))
+      const rooms = yield* Effect.forEach(
+        candidates,
+        (accountId) =>
+          Cache.get(cachedLimits, limitsKey({ provider: thread.provider, accountId })).pipe(
+            Effect.map(({ limits }) => ({ accountId, ...accountRoom(limits?.windows ?? [], thread.model) })),
+          ),
+        { concurrency: "unbounded" },
+      )
+      const target = roomiest(rooms)
+      if (target === undefined) return
+      yield* switchAccount(threadId, target.accountId, { continueTurn: true, automatic: true })
+    }).pipe(Effect.catch((error) => Effect.logWarning("automatic account switch failed", error)))
 
   yield* resumeDue.pipe(
     Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
@@ -974,7 +1039,7 @@ const make = Effect.gen(function* () {
           .filter((account) => account.provider === id)
           .map((account) => ({ provider: id, accountId: account.id })),
       ])
-      return yield* Effect.forEach(keys, (key) => Cache.get(cachedLimits, JSON.stringify(key)), {
+      return yield* Effect.forEach(keys, (key) => Cache.get(cachedLimits, limitsKey(key)), {
         concurrency: "unbounded",
       })
     }),

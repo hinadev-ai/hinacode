@@ -2,6 +2,7 @@ import { useParams } from "@tanstack/react-router"
 import { type ReactNode, useState } from "react"
 import type { IconType } from "react-icons"
 import {
+  RiArrowLeftRightLine,
   RiArrowRightSLine,
   RiCheckLine,
   RiContractUpDownLine,
@@ -51,6 +52,8 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <AttachmentView attachment={part.attachment} />
     case "compaction":
       return <CompactionPart compaction={part.compaction} />
+    case "account_switch":
+      return <AccountSwitchPart part={part} />
   }
 }
 
@@ -438,6 +441,21 @@ function CompactionPart({ compaction }: { compaction: Compaction }) {
     <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
       <span aria-hidden className="h-px flex-1 bg-border" />
       <CompactionLabel compaction={compaction} />
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+/** A rule across the transcript: the turns below it bill a different account. */
+function AccountSwitchPart({ part }: { part: Extract<MessagePart, { type: "account_switch" }> }) {
+  const names = { from: part.from ?? m.account_default(), to: part.to ?? m.account_default() }
+  return (
+    <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+      <span aria-hidden className="h-px flex-1 bg-border" />
+      <span className="flex min-w-0 items-center gap-1.5">
+        <RiArrowLeftRightLine aria-hidden className="size-3.5 shrink-0 text-attention" />
+        {part.automatic ? m.account_switch_automatic(names) : m.account_switch_manual(names)}
+      </span>
       <span aria-hidden className="h-px flex-1 bg-border" />
     </div>
   )

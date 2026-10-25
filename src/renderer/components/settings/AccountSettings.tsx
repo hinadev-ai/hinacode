@@ -39,9 +39,10 @@ import {
   DialogTitle,
 } from "../ui/dialog.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
-import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
+import { Switch } from "../ui/switch.tsx"
 
 const signedOutHint = {
   claude: m.settings_account_signed_out_claude,
@@ -606,6 +607,37 @@ export function DefaultAccountField({ provider }: { provider: ProviderId }) {
       </div>
       <FieldDescription>{m.settings_default_account_hint()}</FieldDescription>
       {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
+/** Whether a limited thread of `provider` moves on by itself. Hidden until the provider has an added account. */
+export function AutoSwitchAccountField({ provider }: { provider: ProviderId }) {
+  const environment = useSettingsEnvironment()
+  const accounts = useProviderAccounts(environment, provider)
+  const { autoSwitchAccount } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const inputId = `auto-switch-account-${provider}`
+  if (accounts.length === 0) return null
+
+  const save = async (enabled: boolean) => {
+    setError(null)
+    try {
+      await updateSettings({ autoSwitchAccount: { ...autoSwitchAccount, [provider]: enabled } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_auto_switch_account()}</FieldLabel>
+        <FieldDescription>{m.settings_auto_switch_account_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
+      <Switch id={inputId} checked={autoSwitchAccount[provider]} onCheckedChange={(checked) => void save(checked)} />
     </Field>
   )
 }

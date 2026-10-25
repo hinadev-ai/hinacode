@@ -13,7 +13,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
-import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
+import { AccountList, AutoSwitchAccountField, DefaultAccountField } from "./AccountSettings.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
@@ -67,6 +67,7 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
       </FieldLegend>
       <AccountList provider={provider} />
       <DefaultAccountField provider={provider} />
+      <AutoSwitchAccountField provider={provider} />
       <Field>
         <FieldLabel htmlFor={inputId}>{m.settings_default_model()}</FieldLabel>
         {AsyncResult.builder(models)

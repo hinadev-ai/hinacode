@@ -170,12 +170,25 @@ function MessageBody({ message }: { message: Message }) {
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
+    const switched = message.parts.find((part) => part.type === "account_switch")
+    if (switched !== undefined && text === "" && attachments.length === 0) {
+      return (
+        <div data-message-id={message.id} className="mx-auto w-full max-w-3xl px-4">
+          <MessagePartView part={switched} />
+        </div>
+      )
+    }
     return (
       <article
         aria-label={m.message_you()}
         data-message-id={message.id}
         className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
       >
+        {switched !== undefined && (
+          <div className="self-stretch">
+            <MessagePartView part={switched} />
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
             {attachments.map((attachment) => (
