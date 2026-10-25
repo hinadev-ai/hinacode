@@ -79,4 +79,8 @@ export const accountRoom = (windows: ReadonlyArray<LimitWindow>, model: string):
 export const roomiest = <A extends AccountRoom>(accounts: ReadonlyArray<A>) =>
   accounts
     .filter((account) => account.mostUsed !== undefined && account.spent === undefined)
-    .toSorted((a, b) => (a.mostUsed?.usedPercent ?? 0) - (b.mostUsed?.usedPercent ?? 0))[0]
+    .reduce<A | undefined>(
+      (least, account) =>
+        least === undefined || account.mostUsed!.usedPercent < least.mostUsed!.usedPercent ? account : least,
+      undefined,
+    )
