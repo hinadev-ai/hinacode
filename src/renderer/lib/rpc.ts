@@ -422,6 +422,13 @@ export const remoteStatusAtom = Atom.make(
   Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
 )
 
+/** A machine's CPU, memory, load and disks, re-read every 5s while the resources popover shows it. */
+export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(
+    Stream.fromEffectSchedule(call("system.resources", undefined, { environment }), Schedule.spaced("5 seconds")),
+  ),
+)
+
 /**
  * Not kept alive, so reopening the page asks again and picks up a changed network. Recomputed when settings change,
  * since the pairing URL follows the listener's bind host and port.

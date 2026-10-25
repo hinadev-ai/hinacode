@@ -1672,5 +1672,38 @@
   "guide_category_assets": "アセット",
   "guide_category_other": "その他",
   "settings_guide_model": "プルリクエストガイド",
-  "settings_guide_model_hint": "スレッドにリンクされたオープン中のプルリクエストごとに、バックグラウンドでガイドを作成します。"
+  "settings_guide_model_hint": "スレッドにリンクされたオープン中のプルリクエストごとに、バックグラウンドでガイドを作成します。",
+  "command_resources_show": "マシンのリソースを表示",
+  "resources_title": "マシンのリソース",
+  "resources_description": "直近 10 分間、5 秒ごとに計測",
+  "resources_machine": "マシン",
+  "resources_cpu": "CPU",
+  "resources_memory": "メモリ",
+  "resources_disk": "ディスク",
+  "resources_working": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 件のエージェントが作業中",
+        "countPlural=other": "{count} 件のエージェントが作業中"
+      }
+    }
+  ],
+  "resources_idle": "作業中のエージェントなし",
+  "resources_cores": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} コア", "countPlural=other": "{count} コア" }
+    }
+  ],
+  "resources_memory_detail": "{used} / {total}",
+  "resources_cpu_detail": "負荷 {load} · {cores}",
+  "resources_disk_free": "空き {free}",
+  "resources_disk_free_on": "{path} の空き {free}",
+  "resources_sampling": "計測中…",
+  "resources_loading": "リソースを読み取り中…",
+  "resources_update_cloud": "{name} の HinaCode を更新するとリソースを表示できます。",
+  "resources_failed": "リソースを読み取れませんでした: {message}"
 }

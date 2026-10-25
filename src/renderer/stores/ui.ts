@@ -100,6 +100,7 @@ interface UiState {
   /** Replaced to ask the composer to open one of its pickers. */
   readonly pickerRequest: { readonly picker: ComposerPicker } | null
   readonly addProjectOpen: boolean
+  readonly resourcesOpen: boolean
   /** Where the Add project dialog starts, for opening it on a cloud that was just paired. */
   readonly addProjectEnvironment: EnvironmentId
   /** The thread whose find bar is open, or null. */
@@ -133,6 +134,7 @@ interface UiState {
   readonly requestInterrupt: () => void
   readonly requestPicker: (picker: ComposerPicker) => void
   readonly setAddProjectOpen: (open: boolean, environment?: EnvironmentId) => void
+  readonly setResourcesOpen: (open: boolean) => void
   /** Opens and focuses the thread's find bar, replacing its query when one is given. */
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
@@ -191,6 +193,7 @@ export const useUi = create<UiState>()((set, get) => ({
   interruptRequest: 0,
   pickerRequest: null,
   addProjectOpen: false,
+  resourcesOpen: false,
   addProjectEnvironment: null,
   findThreadId: null,
   findQuery: "",
@@ -252,6 +255,7 @@ export const useUi = create<UiState>()((set, get) => ({
   requestPicker: (picker) => set({ pickerRequest: { picker } }),
   setAddProjectOpen: (addProjectOpen, environment = null) =>
     set({ addProjectOpen, addProjectEnvironment: environment }),
+  setResourcesOpen: (resourcesOpen) => set({ resourcesOpen }),
   openFind: (threadId, query, messageId) =>
     set((state) => ({
       findThreadId: threadId,

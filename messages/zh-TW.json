@@ -1690,5 +1690,35 @@
   "guide_category_assets": "素材",
   "guide_category_other": "其他",
   "settings_guide_model": "合併請求導覽",
-  "settings_guide_model_hint": "在背景為每個連結到對話串、且仍開啟的合併請求撰寫導覽。"
+  "settings_guide_model_hint": "在背景為每個連結到對話串、且仍開啟的合併請求撰寫導覽。",
+  "command_resources_show": "顯示機器資源",
+  "resources_title": "機器資源",
+  "resources_description": "最近 10 分鐘，每 5 秒取樣一次",
+  "resources_machine": "機器",
+  "resources_cpu": "CPU",
+  "resources_memory": "記憶體",
+  "resources_disk": "磁碟",
+  "resources_working": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} 個代理工作中", "countPlural=other": "{count} 個代理工作中" }
+    }
+  ],
+  "resources_idle": "沒有代理在工作",
+  "resources_cores": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} 核心", "countPlural=other": "{count} 核心" }
+    }
+  ],
+  "resources_memory_detail": "{used} / {total}",
+  "resources_cpu_detail": "負載 {load} · {cores}",
+  "resources_disk_free": "剩餘 {free}",
+  "resources_disk_free_on": "{path} 剩餘 {free}",
+  "resources_sampling": "取樣中…",
+  "resources_loading": "正在讀取資源…",
+  "resources_update_cloud": "請更新 {name} 上的 HinaCode 才能查看它的資源。",
+  "resources_failed": "無法讀取資源：{message}"
 }
