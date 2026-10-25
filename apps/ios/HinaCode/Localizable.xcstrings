@@ -7706,6 +7706,29 @@
         }
       }
     },
+    "mobile_settings_done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
+          }
+        }
+      }
+    },
     "mobile_settings_load_failed" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8695,6 +8718,29 @@
         }
       }
     },
+    "mobile_thread_action_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Something went wrong"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "うまくいきませんでした"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出了點問題"
+          }
+        }
+      }
+    },
     "mobile_thread_actions_archive" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8944,6 +8990,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這個對話串已不存在。"
+          }
+        }
+      }
+    },
+    "mobile_thread_open_window" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in New Window"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいウィンドウで開く"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在新視窗中開啟"
           }
         }
       }

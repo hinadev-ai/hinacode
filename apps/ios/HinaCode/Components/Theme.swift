@@ -88,6 +88,42 @@ extension ProviderId {
     }
 }
 
+extension IndicatorTone {
+    var color: Color {
+        switch self {
+        case .muted: .secondary
+        case .attention: Tone.attention.color
+        case .success: Tone.running.color
+        case .danger: Tone.danger.color
+        case .prOpen: .green
+        case .prMerged: .purple
+        }
+    }
+}
+
+/// How long ago a timestamp was, in the sidebar's short form. Rows wrap it in a `TimelineView` to refresh.
+struct RelativeTimeText: View {
+    let iso: String
+    let now: Date
+
+    var body: some View {
+        Text(Self.label(RelativeTime(since: iso, now: now)))
+            .monospacedDigit()
+    }
+
+    static func label(_ time: RelativeTime) -> LocalizedStringResource {
+        switch time {
+        case .now: .mobileTimeNow
+        case .minutes(let count): .mobileTimeMinutes(String(count))
+        case .hours(let count): .mobileTimeHours(String(count))
+        case .days(let count): .mobileTimeDays(String(count))
+        case .weeks(let count): .mobileTimeWeeks(String(count))
+        case .months(let count): .mobileTimeMonths(String(count))
+        case .years(let count): .mobileTimeYears(String(count))
+        }
+    }
+}
+
 /// The logo of the agent a thread runs, in its brand color, sized with the text around it.
 struct ProviderMark: View {
     let provider: ProviderId

@@ -43,8 +43,13 @@ final class AppModel {
         hub.onEvent = { [weak self] push in self?.route(push) }
     }
 
-    /// Restores the paired servers, starts watching the network, and reloads after every handshake.
+    @ObservationIgnored private var started = false
+
+    /// Restores the paired servers, starts watching the network, and reloads after every handshake. A second window
+    /// asks again and is ignored.
     func start() {
+        guard !started else { return }
+        started = true
         hub.restore()
         networkMonitor = NetworkMonitor { [weak hub] in hub?.networkChanged() }
         watchers = [
