@@ -7,7 +7,7 @@ Feature: Switch accounts
     When I send a message to the account-limited thread
     Then the account-limited thread offers to continue on "Work"
     When I continue the account-limited thread on "Work"
-    Then the thread runs the original prompt again on "Work" and becomes idle
+    Then the thread marks the move from "Personal" to "Work", continues there and becomes idle
     And the account picker shows "Personal" spent and "Work" with room
 
     Examples:

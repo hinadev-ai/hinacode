@@ -87,10 +87,13 @@ When("I continue the account-limited thread on {string}", async ({ usageLimitApp
 })
 
 Then(
-  "the thread runs the original prompt again on {string} and becomes idle",
-  async ({ usageLimitApp: app }, added: string) => {
+  "the thread marks the move from {string} to {string}, continues there and becomes idle",
+  async ({ usageLimitApp: app }, cliLogin: string, added: string) => {
     const work = (await rpc(app.page, "accounts.list", undefined)).find((account) => account.name === added)
     if (!work) throw new Error(`Account ${added} is missing`)
+    await expect(
+      app.page.getByText(`${cliLogin} reached its usage limit. Continued on ${added}.`, { exact: true }),
+    ).toBeVisible()
     await expect(app.page.getByText("The retry completed successfully.", { exact: true })).toBeVisible()
     await expect.poll(async () => (await onlyThread(app)).status).toBe("idle")
     const thread = await onlyThread(app)
@@ -98,11 +101,10 @@ Then(
     expect(thread.usageLimit).toBeNull()
     await expect(accountPicker(app)).toContainText(added)
     const { messages } = await rpc(app.page, "threads.transcript", { threadId: thread.id })
-    expect(
-      messages
-        .filter((message) => message.role === "user")
-        .map((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")),
-    ).toEqual([originalPrompt, originalPrompt])
+    expect(messages.filter((message) => message.role === "user").map((message) => message.parts)).toEqual([
+      [{ type: "text", text: originalPrompt }],
+      [{ type: "account_switch", from: cliLogin, to: added, automatic: false }],
+    ])
     await expect(limitCallout(app)).toBeHidden()
     await expect(accountNotice(app)).toBeHidden()
   },
