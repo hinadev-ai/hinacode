@@ -990,6 +990,29 @@
         }
       }
     },
+    "mobile_files_copy_path" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy path"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスをコピー"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製路徑"
+          }
+        }
+      }
+    },
     "mobile_files_crumbs_label" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1059,6 +1082,29 @@
         }
       }
     },
+    "mobile_files_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not load files: %1$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを読み込めませんでした: %1$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入檔案: %1$@"
+          }
+        }
+      }
+    },
     "mobile_files_finding_workspace" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1124,6 +1170,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已被 git 忽略"
+          }
+        }
+      }
+    },
+    "mobile_files_image_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not show this image."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この画像を表示できませんでした。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法顯示這張圖片。"
           }
         }
       }
@@ -1262,6 +1331,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有符合「%1$@」的檔名"
+          }
+        }
+      }
+    },
+    "mobile_files_open_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not open the file: %1$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを開けませんでした: %1$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開啟檔案: %1$@"
           }
         }
       }
@@ -5816,6 +5908,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "停止監看"
+          }
+        }
+      }
+    },
+    "mobile_pr_update_desktop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update HinaCode on the desktop to see this pull request here."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このプルリクエストを見るには、デスクトップの HinaCode を更新してください。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新桌面版 HinaCode 以在此查看此拉取請求。"
           }
         }
       }
