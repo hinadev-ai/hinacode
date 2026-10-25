@@ -26,6 +26,7 @@ import { m } from "../paraglide/messages.js"
 import { emptyDraft, type LineComment, useDrafts } from "../stores/drafts.ts"
 import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
+import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
 
 interface FileViewerProps {
@@ -83,7 +84,13 @@ function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
             </Button>
           )}
         </ViewerHeader>
-        <FilePreviewPane preview={preview} root={root} path={path} />
+        {preview === "markdown" ? (
+          <Suspense fallback={<Note text={m.viewer_loading()} className="animate-reveal" />}>
+            <MarkdownPreview root={root} path={path} />
+          </Suspense>
+        ) : (
+          <FilePreviewPane preview={preview} root={root} path={path} />
+        )}
       </>
     )
   }
@@ -160,6 +167,37 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
   )
 }
 
+/** The file rendered as markdown, reloaded when its folder changes on disk. */
+function MarkdownPreview({ root, path }: { root: string; path: string }) {
+  const contentAtom = fileContentAtom(JSON.stringify([root, path]))
+  const content = useAtomSuspense(contentAtom, { includeFailure: true })
+  const reload = useAtomRefresh(contentAtom)
+
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type === "fs.changed" && event.root === root && event.path === parentOf(path)) reload()
+      }),
+    [reload, root, path],
+  )
+
+  if (AsyncResult.isFailure(content)) {
+    return (
+      <p role="alert" className="p-3 text-xs text-destructive">
+        {m.viewer_failed({ message: errorMessage(Cause.squash(content.cause)) })}
+      </p>
+    )
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-auto">
+      {content.value.truncated && <Note text={m.viewer_truncated()} />}
+      <article className="mx-auto max-w-3xl px-6 py-4 text-sm">
+        <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} />
+      </article>
+    </div>
+  )
+}
+
 function ViewerHeader({ path, onClose, children }: { path: string; onClose: () => void; children?: ReactNode }) {
   return (
     <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
@@ -189,6 +227,12 @@ type CommentForm =
   | { readonly kind: "edit"; readonly commentId: string }
 
 type Annotation = { readonly kind: "comment"; readonly comment: LineComment } | Extract<CommentForm, { kind: "new" }>
+
+/**
+ * A log captured from a terminal keeps its color codes, which Shiki's `ansi` language renders as colors. The editor
+ * hides the codes but still counts them, so the caret lands off by their length and such a log stays read-only.
+ */
+const isAnsiLog = (path: string, text: string) => path.endsWith(".log") && text.includes("\x1b[")
 
 const linesOf = (text: string, startLine: number, endLine: number) =>
   text
@@ -243,9 +287,10 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
     )
   }
 
-  const editable = !truncated
   // The editor replaces its document whenever this text changes, so unsaved edits pin it to where they started.
   const shown = base ?? (saved?.over === disk ? saved.text : disk)
+  const ansi = isAnsiLog(path, shown)
+  const editable = !truncated && !ansi
   const changedOnDisk = base !== undefined && base !== disk
   const currentText = () => editorRef.current?.getText() ?? shown
 
@@ -376,7 +421,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
       )}
       <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
         <File
-          file={{ name: path, contents: shown }}
+          file={{ name: path, contents: shown, lang: ansi ? "ansi" : undefined }}
           edit={editable}
           editStateKey={JSON.stringify([root, path])}
           editorOptions={{

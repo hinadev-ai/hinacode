@@ -6,13 +6,14 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
+import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
 const summaryOf = (message: QueuedMessage) =>
   message.text.trim() || m.queue_attachments({ count: String(message.attachments.length) })
 
-/** Messages waiting for the running turn, above the composer. Each one can jump the queue or go back to the draft. */
+/** Messages waiting for the running turn, in the activity tray. Each one can jump the queue or go back to the draft. */
 export function QueueBar({
   thread,
   onEdit,
@@ -63,18 +64,25 @@ export function QueueBar({
   const remove = (id: string) => take(id).catch((cause: unknown) => onError(errorMessage(cause)))
 
   return (
-    <ul
-      ref={listRef}
-      aria-label={m.queue_label()}
-      className="flex animate-fade-in flex-col gap-0.5 px-1 pb-1.5 text-xs"
-    >
+    <ul ref={listRef} aria-label={m.queue_label()}>
       {thread.queue.map((message) => (
-        <li key={message.id} className="flex min-w-0 items-center gap-1.5 rounded-md py-0.5 pl-1">
-          <RiTimeLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate">{summaryOf(message)}</span>
-          <QueueAction icon={RiCornerDownRightLine} label={m.queue_steer_now()} onClick={() => steerNow(message.id)} />
-          <QueueAction icon={RiPencilLine} label={m.queue_edit()} onClick={() => edit(message.id)} />
-          <QueueAction icon={RiCloseLine} label={m.queue_remove()} onClick={() => remove(message.id)} />
+        <li key={message.id}>
+          <ActivityRow
+            actions={
+              <>
+                <QueueAction
+                  icon={RiCornerDownRightLine}
+                  label={m.queue_steer_now()}
+                  onClick={() => steerNow(message.id)}
+                />
+                <QueueAction icon={RiPencilLine} label={m.queue_edit()} onClick={() => edit(message.id)} />
+                <QueueAction icon={RiCloseLine} label={m.queue_remove()} onClick={() => remove(message.id)} />
+              </>
+            }
+          >
+            <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate text-foreground">{summaryOf(message)}</span>
+          </ActivityRow>
         </li>
       ))}
     </ul>

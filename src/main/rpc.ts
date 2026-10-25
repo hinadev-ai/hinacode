@@ -26,7 +26,7 @@ import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
-import { RemoteAccess } from "./remote/access.ts"
+import { networkAddresses, RemoteAccess } from "./remote/access.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
@@ -367,6 +367,7 @@ const handlers: Handlers = {
   "automations.runs": ({ id, limit }) => Automations.use((automations) => automations.runs(id, limit)),
   "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 
+  "network.addresses": () => Effect.sync(() => networkAddresses()),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),

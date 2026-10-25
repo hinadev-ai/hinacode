@@ -431,6 +431,11 @@ export const remotePairingAtom = Atom.make((get) => {
   return call("remote.pairing", undefined)
 })
 
+/** Not kept alive, so reopening the page picks up an interface that came up since. */
+export const networkAddressesAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("network.addresses", undefined, { environment })),
+)
+
 /** A reconnect asks again, since a cloud comes back on a new version after it updates itself. */
 export const updateStatusAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make((get) => {

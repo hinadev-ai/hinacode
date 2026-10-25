@@ -12,13 +12,10 @@ import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { Switch } from "../ui/switch.tsx"
+import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./automations/shared.tsx"
 import { SettingsSection } from "./SettingsSection.tsx"
-
-const LOOPBACK = "127.0.0.1"
-const ALL_INTERFACES = "0.0.0.0"
 
 type RemoteSettingsValue = ReturnType<typeof useSettings>["remote"]
 
@@ -121,10 +118,6 @@ interface ListenerSettingsProps {
 
 function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
   const [port, setPort] = useState(String(remote.port))
-  const hostItems = [
-    { value: LOOPBACK, label: m.remote_bind_loopback() },
-    { value: ALL_INTERFACES, label: m.remote_bind_all() },
-  ]
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -136,22 +129,12 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
       <div className="flex flex-wrap items-end gap-4">
         <Field className="w-64">
           <FieldLabel htmlFor="remote-bind-host">{m.remote_bind_label()}</FieldLabel>
-          <Select
-            items={hostItems}
+          <BindHostSelect
+            id="remote-bind-host"
+            environment={null}
             value={remote.bindHost}
-            onValueChange={(next) => typeof next === "string" && onSave({ bindHost: next })}
-          >
-            <SelectTrigger id="remote-bind-host" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {hostItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(bindHost) => onSave({ bindHost })}
+          />
         </Field>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
           <Field className="w-28">
@@ -173,7 +156,11 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
         </form>
       </div>
       <FieldDescription>
-        {remote.bindHost === ALL_INTERFACES ? m.remote_bind_all_hint() : m.remote_bind_loopback_hint()}
+        {remote.bindHost === ALL_INTERFACES
+          ? m.remote_bind_all_hint()
+          : remote.bindHost === LOOPBACK
+            ? m.remote_bind_loopback_hint()
+            : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
     </div>
@@ -245,7 +232,7 @@ function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
             <li key={host}>{host}</li>
           ))}
         </ul>
-        <FieldDescription>{m.remote_pair_host_hint()}</FieldDescription>
+        {pairing.hosts.length > 1 && <FieldDescription>{m.remote_pair_host_hint()}</FieldDescription>}
       </div>
       <PairingQrCode url={url} />
       <Field className="min-w-0">
