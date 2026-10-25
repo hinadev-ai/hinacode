@@ -57,10 +57,10 @@ const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
   video: RiFileVideoLine,
   audio: RiFileMusicLine,
   html: RiFileCodeLine,
+  markdown: RiMarkdownLine,
 }
 
 const iconsByExtension: Readonly<Record<string, IconType>> = {
-  md: RiMarkdownLine,
   mdx: RiMarkdownLine,
   txt: RiFileTextLine,
   json: RiFileTextLine,
