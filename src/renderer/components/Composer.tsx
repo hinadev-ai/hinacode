@@ -220,11 +220,9 @@ export function Composer({ thread }: { thread: Thread }) {
   return (
     <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col px-3 pb-3">
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
-        <div className="flex min-h-0 flex-col bg-background">
-          <ActivityIndicator thread={thread}>
-            <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
-          </ActivityIndicator>
-        </div>
+        <ActivityIndicator thread={thread}>
+          <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
+        </ActivityIndicator>
         <ComposerBar className="min-h-0 border-(color:--composer-edge)">
           {comments.length > 0 && (
             <ul
