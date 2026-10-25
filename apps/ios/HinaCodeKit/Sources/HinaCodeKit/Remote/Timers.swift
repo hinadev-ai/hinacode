@@ -11,7 +11,7 @@ public final class TimerHandle {
         onCancel = nil
     }
 
-    init(onCancel: @escaping () -> Void) {
+    public init(onCancel: @escaping () -> Void) {
         task = nil
         self.onCancel = onCancel
     }
