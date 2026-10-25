@@ -1008,10 +1008,8 @@ export const DiskUsage = Schema.Struct({
 })
 export type DiskUsage = typeof DiskUsage.Type
 
-/** Used over used plus free, as `df` reports it, so blocks reserved for root do not count as free. */
 export const diskFullness = ({ used, free }: DiskUsage) => used / (used + free || 1)
 
-/** What the machine resources popover shows for one environment. */
 export const MachineResources = Schema.Struct({
   cpuCount: Schema.Int,
   memoryTotal: Schema.Number,

@@ -6,7 +6,6 @@ import { diskFullness, type DiskUsage, type MachineResources, type ResourceSampl
 const INTERVAL = "5 seconds"
 const KEPT_SAMPLES = 120
 
-/** This machine's CPU, memory and load over the last 10 minutes, and the disks under the paths HinaCode uses. */
 export class SystemResources extends Context.Service<
   SystemResources,
   { readonly read: (paths: ReadonlyArray<string>) => Effect.Effect<MachineResources> }

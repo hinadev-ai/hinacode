@@ -47,7 +47,6 @@ const gigabytes = (bytes: number) =>
     maximumFractionDigits: bytes >= 100 * GIB ? 0 : 1,
   }).format(bytes / GIB)
 
-/** The title bar's gauge. Opens a popover with every machine's CPU, memory and disks. */
 export function MachineResourcesButton() {
   const open = useUi((state) => state.resourcesOpen)
   const setOpen = useUi((state) => state.setResourcesOpen)
@@ -249,7 +248,6 @@ function ReadingCells({ resources }: { resources: MachineResources }) {
   )
 }
 
-/** A share from 0 to 1 with its trend. `reading` is undefined until the machine's first sample, 5s after it starts. */
 function Reading({
   reading,
   trend,
@@ -298,7 +296,6 @@ function DiskReading({ disk, named }: { disk: DiskUsage; named: boolean }) {
 const SPARK_WIDTH = 56
 const SPARK_HEIGHT = 18
 
-/** The last 10 minutes on a fixed 0 to 100% scale, placed by time so a gap or a fresh start reads as one. */
 function Sparkline({
   samples,
   value,
