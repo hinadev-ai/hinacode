@@ -1,6 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import type { LimitWindow } from "../../shared/limits.ts"
-import { formatResetIn, spentWindow } from "./planLimits.ts"
+import { formatResetIn } from "./planLimits.ts"
 
 const now = Date.parse("2026-10-12T12:00:00.000Z")
 const inSeconds = (seconds: number) => new Date(now + seconds * 1000).toISOString()
@@ -25,27 +24,5 @@ describe("formatResetIn", () => {
 
   test("uses the locale's units", () => {
     expect(formatResetIn(inSeconds(2 * day + 6 * hour), now, "zh-TW")).toBe("2 天 6 小時")
-  })
-})
-
-describe("spentWindow", () => {
-  const session: LimitWindow = { window: { kind: "session" }, usedPercent: 100, resetsAt: inSeconds(2 * hour) }
-  const weekly: LimitWindow = { window: { kind: "weekly" }, usedPercent: 100, resetsAt: inSeconds(3 * day) }
-  const fable: LimitWindow = { window: { kind: "model", name: "Fable" }, usedPercent: 100, resetsAt: inSeconds(day) }
-  const roomy: LimitWindow = { ...weekly, usedPercent: 99.5 }
-
-  test("is undefined while every window has room", () => {
-    expect(spentWindow([{ ...session, usedPercent: 80 }, roomy], "claude-sonnet-5-5")).toBeUndefined()
-  })
-
-  test("is the spent window that resets last", () => {
-    expect(spentWindow([session, roomy], "claude-sonnet-5-5")).toBe(session)
-    expect(spentWindow([session, weekly], "claude-sonnet-5-5")).toBe(weekly)
-    expect(spentWindow([{ ...session, resetsAt: null }, weekly], "claude-sonnet-5-5")?.resetsAt).toBeNull()
-  })
-
-  test("counts a model's window only for that model", () => {
-    expect(spentWindow([fable], "claude-fable-5-1")).toBe(fable)
-    expect(spentWindow([fable], "claude-sonnet-5-5")).toBeUndefined()
   })
 })

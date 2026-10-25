@@ -32,3 +32,51 @@ export type LimitWindow = typeof LimitWindow.Type
 
 export const PlanLimits = Schema.Struct({ windows: Schema.Array(LimitWindow), readAt: Schema.String })
 export type PlanLimits = typeof PlanLimits.Type
+
+/** A window is amber from 80% used and red once it is spent. */
+export const limitLevel = (usedPercent: number) =>
+  usedPercent >= 100 ? "exhausted" : usedPercent >= 80 ? "warning" : "normal"
+
+export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
+  windows.reduce<LimitWindow | undefined>(
+    (top, window) => (top === undefined || window.usedPercent > top.usedPercent ? window : top),
+    undefined,
+  )
+
+const blocks = (window: LimitWindow, model: string) =>
+  limitLevel(window.usedPercent) === "exhausted" &&
+  (window.window.kind !== "model" || model.toLowerCase().includes(window.window.name.toLowerCase()))
+
+/** An unknown reset sorts last, since nothing says the account recovers sooner. */
+const resetsLater = (a: LimitWindow, b: LimitWindow) =>
+  a.resetsAt === null || (b.resetsAt !== null && a.resetsAt > b.resetsAt)
+
+/**
+ * The spent window that keeps an account from running `model`, the one that resets last. A per-model window
+ * counts only for models whose id contains its name, such as "Fable" for `claude-fable-5-1`.
+ */
+export const spentWindow = (windows: ReadonlyArray<LimitWindow>, model: string) =>
+  windows
+    .filter((window) => blocks(window, model))
+    .reduce<LimitWindow | undefined>(
+      (last, window) => (last === undefined || resetsLater(window, last) ? window : last),
+      undefined,
+    )
+
+export interface AccountRoom {
+  /** Undefined when the plan limits are unknown, such as for an API key. */
+  readonly mostUsed: LimitWindow | undefined
+  /** The window that keeps the account from running the thread's model. */
+  readonly spent: LimitWindow | undefined
+}
+
+export const accountRoom = (windows: ReadonlyArray<LimitWindow>, model: string): AccountRoom => ({
+  mostUsed: mostUsed(windows),
+  spent: spentWindow(windows, model),
+})
+
+/** The account with known limits, nothing spent and the least used, or undefined when none has room. */
+export const roomiest = <A extends AccountRoom>(accounts: ReadonlyArray<A>) =>
+  accounts
+    .filter((account) => account.mostUsed !== undefined && account.spent === undefined)
+    .toSorted((a, b) => (a.mostUsed?.usedPercent ?? 0) - (b.mostUsed?.usedPercent ?? 0))[0]

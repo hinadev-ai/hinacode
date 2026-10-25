@@ -5,10 +5,10 @@ import { startTransition, useActionState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { AccountLimits } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import type { LimitWindow } from "../../shared/limits.ts"
+import { accountRoom, type AccountRoom, roomiest } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
-import { formatResetIn, mostUsed, spentWindow } from "../lib/planLimits.ts"
+import { formatResetIn } from "../lib/planLimits.ts"
 import { accountLimitsAtom, callPromise } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -21,14 +21,11 @@ import { FieldError } from "./ui/field.tsx"
 
 type AccountThread = Pick<Thread, "id" | "provider" | "accountId" | "model">
 
-export interface AccountOption {
+/** A remote environment's accounts have unknown limits, since `limits.list` only reads this machine. */
+export interface AccountOption extends AccountRoom {
   /** Null is the CLI's own login. */
   readonly id: string | null
   readonly name: string
-  /** Undefined when the plan limits are unknown, such as for an API key or a remote environment's account. */
-  readonly mostUsed: LimitWindow | undefined
-  /** The window that keeps the account from running the thread's model. */
-  readonly spent: LimitWindow | undefined
 }
 
 export function useAccountOptions(thread: AccountThread) {
@@ -40,14 +37,13 @@ export function useAccountOptions(thread: AccountThread) {
     environment === null
       ? (limits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? [])
       : []
-  const options = [{ id: null, name: defaultName }, ...added].map(({ id, name }): AccountOption => {
-    const windows = windowsOf(id)
-    return { id, name, mostUsed: mostUsed(windows), spent: spentWindow(windows, thread.model) }
-  })
+  const options = [{ id: null, name: defaultName }, ...added].map(({ id, name }): AccountOption => ({
+    id,
+    name,
+    ...accountRoom(windowsOf(id), thread.model),
+  }))
   const current = options.find((option) => option.id === thread.accountId)
-  const suggestion = options
-    .filter((option) => option !== current && option.mostUsed !== undefined && option.spent === undefined)
-    .toSorted((a, b) => (a.mostUsed?.usedPercent ?? 0) - (b.mostUsed?.usedPercent ?? 0))[0]
+  const suggestion = roomiest(options.filter((option) => option !== current))
   return { options, current, suggestion }
 }
 
