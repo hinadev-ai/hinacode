@@ -412,6 +412,9 @@ importers:
 
   relay:
     dependencies:
+      '@effect/sql-d1':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)
       effect:
         specifier: 4.0.3
         version: 4.0.3
@@ -421,7 +424,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: 1.4.3
-        version: 1.4.3(@types/node@24.19.2)(vitest@5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)))
+        version: 1.4.3(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)(vitest@5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)))
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -430,7 +433,7 @@ importers:
         version: 5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
       wrangler:
         specifier: 4.151.0
-        version: 4.151.0(@types/node@24.19.2)
+        version: 4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)
 
   site:
     devDependencies:
@@ -451,7 +454,7 @@ importers:
         version: 6.0.3
       wrangler:
         specifier: 4.151.0
-        version: 4.151.0(@types/node@24.19.2)
+        version: 4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)
 
 packages:
 
@@ -1080,6 +1083,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@cloudflare/workers-types@5.20261023.1':
+    resolution: {integrity: sha512-jRaMsWUF/08dd0dWnX3zPGPOjakkkA2JPnK5vLsCQFmYC40kbMPZ02fvOPO8kqjqgljoMZrKsRiXpR1u1Lp0Qg==}
+
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
@@ -1192,6 +1198,11 @@ packages:
     peerDependencies:
       effect: ^4.0.3
       redis: '>=5.0.0 <7.0.0'
+
+  '@effect/sql-d1@4.0.3':
+    resolution: {integrity: sha512-PPItxp9aAmJTRIfZtyJMuQCB7d1ExFvIRkGWnfQuWZlPxjtYfQT+V2kS9AUqf0OC1/nZnAFwLlFKCDgumLmy6A==}
+    peerDependencies:
+      effect: ^4.0.3
 
   '@effect/sql-sqlite-node@4.0.3':
     resolution: {integrity: sha512-u+b0X/yt8vATwUscXKHdWF75LRMQKBIkx9DsNw8tdgF9xxPOTfx+e30gdwBjd1kY1GmQYkzD7/cP+9mys2b0pg==}
@@ -7697,13 +7708,13 @@ snapshots:
     optionalDependencies:
       workerd: 1.20261012.1
 
-  '@cloudflare/vitest-plugin@1.4.3(@types/node@24.19.2)(vitest@5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)))':
+  '@cloudflare/vitest-plugin@1.4.3(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)(vitest@5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)))':
     dependencies:
       cjs-module-lexer: 1.2.3
       esbuild: 0.28.2
       miniflare: 5.20261012.0-beta(@types/node@24.19.2)
       vitest: 5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
-      wrangler: 4.151.0(@types/node@24.19.2)
+      wrangler: 4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)
       zod: 4.6.5
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -7725,6 +7736,8 @@ snapshots:
 
   '@cloudflare/workerd-windows-64@1.20261012.1':
     optional: true
+
+  '@cloudflare/workers-types@5.20261023.1': {}
 
   '@colors/colors@1.5.0':
     optional: true
@@ -7915,6 +7928,11 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@effect/sql-d1@4.0.3(effect@4.0.3)':
+    dependencies:
+      '@cloudflare/workers-types': 5.20261023.1
+      effect: 4.0.3
 
   '@effect/sql-sqlite-node@4.0.3(effect@4.0.3)':
     dependencies:
@@ -13429,7 +13447,7 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20261012.1
       '@cloudflare/workerd-windows-64': 1.20261012.1
 
-  wrangler@4.151.0(@types/node@24.19.2):
+  wrangler@4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.0
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261012.1)
@@ -13440,6 +13458,7 @@ snapshots:
       unenv: 2.0.0-rc.24
       workerd: 1.20261012.1
     optionalDependencies:
+      '@cloudflare/workers-types': 5.20261023.1
       fsevents: 2.3.3
     transitivePeerDependencies:
       - '@types/node'

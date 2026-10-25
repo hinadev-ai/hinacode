@@ -1,4 +1,6 @@
+import { Option } from "effect"
 import { bearer, sha256 } from "./app"
+import { runStore } from "./store"
 
 /** The user id of the relay's one account until it has real sign-in. */
 export const OWNER = "owner"
@@ -18,7 +20,9 @@ const equal = (a: string, b: string) => {
 export const verifyOwner = async (request: Request, env: Env): Promise<string | null> => {
   const token = bearer(request)
   if (!token) return null
-  const rotated = await env.DB.prepare("SELECT token_hash FROM owner WHERE id = 1").first<string>("token_hash")
-  const valid = rotated === null ? equal(token, env.OWNER_TOKEN) : equal(await sha256(token), rotated)
+  const rotated = await runStore(env.DB, (store) => store.ownerTokenHash(undefined))
+  const valid = Option.isNone(rotated)
+    ? equal(token, env.OWNER_TOKEN)
+    : equal(await sha256(token), rotated.value.tokenHash)
   return valid ? OWNER : null
 }
