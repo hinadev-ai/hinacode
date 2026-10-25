@@ -5,6 +5,9 @@ import SwiftUI
 /// `FolderView`, files push `FileView`.
 struct FilesPanel: View {
     let threadId: String
+    /// False while another tab is up. The panel stays mounted, but `.searchable` hoists to the navigation stack and
+    /// would float over the other tabs, so its presentation is forced off until the tab returns.
+    var isSelected: Bool = true
 
     @Environment(AppModel.self) private var model
     @State private var query = ""
@@ -33,7 +36,9 @@ struct FilesPanel: View {
                 ContentUnavailableView(.mobileFilesThreadMissing, systemImage: "questionmark.circle")
             }
         }
-        .searchable(text: $query, isPresented: $searchPresented, prompt: Text(.mobileFilesSearchPlaceholder))
+        .searchable(
+            text: $query, isPresented: isSelected ? $searchPresented : .constant(false),
+            prompt: Text(.mobileFilesSearchPlaceholder))
         .background {
             Button("Search") { searchPresented = true }
                 .keyboardShortcut("f", modifiers: .command)

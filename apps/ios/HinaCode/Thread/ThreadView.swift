@@ -74,7 +74,7 @@ struct ThreadView: View {
                 .allowsHitTesting(tab == .chat)
                 .accessibilityHidden(tab != .chat)
             if visitedFiles {
-                FilesPanel(threadId: threadId)
+                FilesPanel(threadId: threadId, isSelected: tab == .files)
                     .opacity(tab == .files ? 1 : 0)
                     .allowsHitTesting(tab == .files)
                     .accessibilityHidden(tab != .files)
