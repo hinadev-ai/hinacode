@@ -3,7 +3,7 @@
 
 import Foundation
 
-/** Every desktop method this app calls, with where it is routed when several servers are paired. */
+/// Every desktop method this app calls, with where it is routed when several servers are paired.
 public enum RPC {
     public static let approvalsRespond = Method<ApprovalsRespondRequest, NoPayload>("approvals.respond", mutation: true, route: .owner(.request, key: "requestId"))
     public static let commandsList = Method<CommandsListRequest, [AgentCommand]>("commands.list", mutation: false, route: .owner(.thread, key: "threadId"))
@@ -61,7 +61,7 @@ public enum AccessMode: RawRepresentable, Codable, Hashable, Sendable {
     case supervised
     case auto
     case full
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.supervised, .auto, .full]
@@ -136,7 +136,7 @@ extension AgentCommand {
     public enum Scope: RawRepresentable, Codable, Hashable, Sendable {
         case user
         case project
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.user, .project]
@@ -163,7 +163,7 @@ extension AgentCommand {
     public enum Trigger: RawRepresentable, Codable, Hashable, Sendable {
         case empty
         case empty_
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.empty, .empty_]
@@ -205,7 +205,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
     case turnCompleted(TurnCompleted)
     case turnFailed(TurnFailed)
     case turnLimited(TurnLimited)
-    /** A member this build does not know yet, by its tag. */
+    /// A member this build does not know yet, by its tag.
     case unknown(String)
 
     private enum TagKey: String, CodingKey {
@@ -771,7 +771,7 @@ extension AgentEvent.TurnLimited {
     public enum Limit: Codable, Hashable, Sendable {
         case usage(Usage)
         case orgSpend(OrgSpend)
-        /** A member this build does not know yet, by its tag. */
+        /// A member this build does not know yet, by its tag.
         case unknown(String)
 
         private enum TagKey: String, CodingKey {
@@ -1034,7 +1034,7 @@ public enum ApprovalKind: RawRepresentable, Codable, Hashable, Sendable {
     case tool
     case command
     case patch
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.tool, .command, .patch]
@@ -1225,7 +1225,7 @@ extension Attachment {
     public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
         case image
         case file
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.image, .file]
@@ -1254,7 +1254,7 @@ public enum ChangedFileStatus: RawRepresentable, Codable, Hashable, Sendable {
     case deleted
     case untracked
     case conflict
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.added, .modified, .deleted, .untracked, .conflict]
@@ -1397,7 +1397,7 @@ public enum CheckRunStatus: RawRepresentable, Codable, Hashable, Sendable {
     case failing
     case pending
     case skipped
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.passing, .failing, .pending, .skipped]
@@ -1427,7 +1427,7 @@ public enum ChecksStatus: RawRepresentable, Codable, Hashable, Sendable {
     case passing
     case failing
     case pending
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.passing, .failing, .pending]
@@ -1477,7 +1477,7 @@ public enum Compaction: Codable, Hashable, Sendable {
     case running(Running)
     case done(Done)
     case failed(Failed)
-    /** A member this build does not know yet, by its tag. */
+    /// A member this build does not know yet, by its tag.
     case unknown(String)
 
     private enum TagKey: String, CodingKey {
@@ -1550,7 +1550,7 @@ extension Compaction.Done {
     public enum Trigger: RawRepresentable, Codable, Hashable, Sendable {
         case manual
         case auto
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.manual, .auto]
@@ -1780,7 +1780,7 @@ public enum FsEntryKind: RawRepresentable, Codable, Hashable, Sendable {
     case file
     case dir
     case symlink
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.file, .dir, .symlink]
@@ -2071,7 +2071,7 @@ public enum GuideCategory: RawRepresentable, Codable, Hashable, Sendable {
     case i18n
     case assets
     case other
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.ui, .api, .core, .data, .cli, .security, .tests, .docs, .examples, .deps, .build, .scripts, .config, .i18n, .assets, .other]
@@ -2320,7 +2320,7 @@ extension GuideLineNote {
     public enum Side: RawRepresentable, Codable, Hashable, Sendable {
         case additions
         case deletions
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.additions, .deletions]
@@ -2428,7 +2428,7 @@ public enum Mergeable: RawRepresentable, Codable, Hashable, Sendable {
     case mergeable
     case conflicting
     case unknown_
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.mergeable, .conflicting, .unknown_]
@@ -2535,7 +2535,7 @@ public enum MessagePart: Codable, Hashable, Sendable {
     case attachment(Attachment)
     case questions(Questions)
     case compaction(Compaction)
-    /** A member this build does not know yet, by its tag. */
+    /// A member this build does not know yet, by its tag.
     case unknown(String)
 
     private enum TagKey: String, CodingKey {
@@ -2792,7 +2792,7 @@ extension MessagePart {
 public enum MessageRole: RawRepresentable, Codable, Hashable, Sendable {
     case user
     case assistant
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.user, .assistant]
@@ -3043,7 +3043,7 @@ extension Project {
     public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
         case folder
         case chats
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.folder, .chats]
@@ -3234,7 +3234,7 @@ public enum ProviderId: RawRepresentable, Codable, Hashable, Sendable {
     case claude
     case codex
     case muse
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.claude, .codex, .muse]
@@ -3490,7 +3490,7 @@ public enum PullRequestFileStatus: RawRepresentable, Codable, Hashable, Sendable
     case modified
     case renamed
     case copied
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.added, .removed, .modified, .renamed, .copied]
@@ -3563,7 +3563,7 @@ public struct PullRequestGuide: Codable, Hashable, Sendable {
 public enum PullRequestGuideJob: Codable, Hashable, Sendable {
     case running(Running)
     case failed(Failed)
-    /** A member this build does not know yet, by its tag. */
+    /// A member this build does not know yet, by its tag.
     case unknown(String)
 
     private enum TagKey: String, CodingKey {
@@ -3809,7 +3809,7 @@ public enum PullRequestStatus: RawRepresentable, Codable, Hashable, Sendable {
     case `open`
     case merged
     case closed
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.draft, .`open`, .merged, .closed]
@@ -3999,7 +3999,7 @@ public enum PushEvent: Codable, Hashable, Sendable {
     case pullRequestGuide(PullRequestGuide)
     case terminalData(TerminalData)
     case terminalExited(TerminalExited)
-    /** A member this build does not know yet, by its tag. */
+    /// A member this build does not know yet, by its tag.
     case unknown(String)
 
     private enum TagKey: String, CodingKey {
@@ -4526,7 +4526,7 @@ public enum ReviewStatus: RawRepresentable, Codable, Hashable, Sendable {
     case approved
     case changesRequested
     case reviewRequired
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.approved, .changesRequested, .reviewRequired]
@@ -4706,7 +4706,7 @@ extension SessionScope {
         case path
         case domain
         case tool
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.command, .path, .domain, .tool]
@@ -5231,7 +5231,7 @@ public enum SubagentStatus: RawRepresentable, Codable, Hashable, Sendable {
     case completed
     case failed
     case stopped
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.running, .completed, .failed, .stopped]
@@ -5458,7 +5458,7 @@ extension TerminalSession {
     public enum Status: RawRepresentable, Codable, Hashable, Sendable {
         case running
         case exited
-        /** A value this build does not know yet. */
+        /// A value this build does not know yet.
         case unknown(String)
 
         public static let known: [Self] = [.running, .exited]
@@ -5696,7 +5696,7 @@ public enum ThreadStatus: RawRepresentable, Codable, Hashable, Sendable {
     case awaitingApproval
     case limited
     case archived
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.idle, .running, .awaitingApproval, .limited, .archived]
@@ -5928,7 +5928,7 @@ public enum ToolCallStatus: RawRepresentable, Codable, Hashable, Sendable {
     case running
     case done
     case error
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.running, .done, .error]
@@ -5958,7 +5958,7 @@ public enum WatchEventKind: RawRepresentable, Codable, Hashable, Sendable {
     case reviewChanged
     case conflicting
     case mergedOrClosed
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.checksFailed, .checksPassed, .reviewChanged, .conflicting, .mergedOrClosed]
@@ -6119,7 +6119,7 @@ public enum WorktreeStatus: RawRepresentable, Codable, Hashable, Sendable {
     case ready
     case failed
     case removed
-    /** A value this build does not know yet. */
+    /// A value this build does not know yet.
     case unknown(String)
 
     public static let known: [Self] = [.preparing, .ready, .failed, .removed]

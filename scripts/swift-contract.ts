@@ -434,7 +434,7 @@ function emitLiterals(decl: Extract<Decl, { kind: "literals" }>) {
   const body = [
     `public enum ${leaf(decl.name)}: RawRepresentable, Codable, Hashable, Sendable${decl.lenient ? "" : ", CaseIterable"} {`,
     ...cases.map((name) => `    case ${identifier(name)}`),
-    ...(decl.lenient ? ["    /** A value this build does not know yet. */", "    case unknown(String)"] : []),
+    ...(decl.lenient ? ["    /// A value this build does not know yet.", "    case unknown(String)"] : []),
     "",
     ...(decl.lenient
       ? [
@@ -474,7 +474,7 @@ function emitTagged(decl: Extract<Decl, { kind: "tagged" }>) {
     `public enum ${leaf(decl.name)}: Codable, Hashable, Sendable {`,
     ...decl.cases.map((c, i) => `    case ${identifier(cases[i]!)}(${leaf(c.payload)})`),
     ...(decl.lenient
-      ? ["    /** A member this build does not know yet, by its tag. */", "    case unknown(String)"]
+      ? ["    /// A member this build does not know yet, by its tag.", "    case unknown(String)"]
       : []),
     "",
     "    private enum TagKey: String, CodingKey {",
@@ -516,7 +516,7 @@ function emitUntagged(decl: Extract<Decl, { kind: "untagged" }>) {
   const nested = parent(decl.name) !== undefined
   const cases = decl.cases.map((_, i) => `option${i + 1}`)
   const body = [
-    "/** Decoded as the first member that fits. */",
+    "/// Decoded as the first member that fits.",
     `public enum ${leaf(decl.name)}: Codable, Hashable, Sendable {`,
     ...decl.cases.map((type, i) => `    case ${cases[i]}(${swift(type, nested)})`),
     "",
@@ -580,7 +580,7 @@ const source = [
   "",
   "import Foundation",
   "",
-  "/** Every desktop method this app calls, with where it is routed when several servers are paired. */",
+  "/// Every desktop method this app calls, with where it is routed when several servers are paired.",
   "public enum RPC {",
   ...table,
   "}",

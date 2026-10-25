@@ -1,11 +1,11 @@
 import Foundation
 
-/** The payload of a method that takes nothing, or the answer of one that returns nothing. */
+/// The payload of a method that takes nothing, or the answer of one that returns nothing.
 public struct NoPayload: Codable, Hashable, Sendable {
     public init() {}
 }
 
-/** Keys of an object with no properties. */
+/// Keys of an object with no properties.
 struct NoKeys: CodingKey {
     var stringValue: String
     var intValue: Int? { nil }
@@ -13,7 +13,7 @@ struct NoKeys: CodingKey {
     init?(intValue: Int) { nil }
 }
 
-/** A value the schema leaves open, such as a tool call's input. */
+/// A value the schema leaves open, such as a tool call's input.
 public enum JSONValue: Codable, Hashable, Sendable {
     case null
     case bool(Bool)
@@ -52,25 +52,23 @@ public enum JSONValue: Codable, Hashable, Sendable {
     }
 }
 
-/** What an id in a payload names, for finding which server owns it. Mirrors `src/shared/routes.ts`. */
+/// What an id in a payload names, for finding which server owns it. Mirrors `src/shared/routes.ts`.
 public enum Entity: String, Hashable, Sendable {
     case thread, project, worktree, terminal, automation, request, root, stream
 }
 
-/**
- * Where a call goes when several servers are paired: every server with the lists concatenated, the server that
- * owns the id at `payload[key]`, or the server the caller names.
- */
+/// Where a call goes when several servers are paired: every server with the lists concatenated, the server that
+/// owns the id at `payload[key]`, or the server the caller names.
 public enum Route: Hashable, Sendable {
     case all
     case named
     case owner(Entity, key: String)
 }
 
-/** One desktop method: its name, whether it changes state, its route, and the types it is sent and answers. */
+/// One desktop method: its name, whether it changes state, its route, and the types it is sent and answers.
 public struct Method<Request: Codable & Sendable, Response: Codable & Sendable>: Sendable {
     public let name: String
-    /** Changes state on the desktop, so a retried call carries a key the desktop deduplicates by. */
+    /// Changes state on the desktop, so a retried call carries a key the desktop deduplicates by.
     public let mutation: Bool
     public let route: Route
 
