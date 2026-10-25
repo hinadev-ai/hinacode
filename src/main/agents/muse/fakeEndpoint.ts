@@ -27,6 +27,11 @@ export interface FakeEndpoint {
   script: (call: ScriptedCall) => void
   /** Leaves every completion whose request carries `when` open after its first delta, until the client goes away. */
   hold: (when: string) => void
+  /**
+   * Answers every completion whose request carries `when` with a 429. Muse reads one with `resetsAt`, in epoch
+   * seconds, as a plan limit, and one without as a rate limit, which it retries until it gives up.
+   */
+  rateLimit: (when: string, resetsAt?: number) => void
   /** Leaves every compaction summary unanswered until the returned release is called. */
   holdSummaries: () => () => void
   /** Resolves once a completion request carrying `when` has arrived. */
@@ -132,6 +137,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
   const bodies: Array<string> = []
   const scripts: Array<ScriptedCall> = []
   const holds: Array<string> = []
+  const rateLimits: Array<{ readonly when: string; readonly resetsAt?: number }> = []
   let heldSummaries: Array<() => void> | undefined
   const waiting = new Set<{ readonly when: string; readonly resolve: () => void }>()
   let scripted = 0
@@ -151,6 +157,14 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
         if (!body.includes(waiter.when)) continue
         waiting.delete(waiter)
         waiter.resolve()
+      }
+      const limit = rateLimits.find(({ when }) => body.includes(when))
+      if (limit !== undefined) {
+        // Retry-After keeps Muse's backoff, which reaches a minute a retry, out of the test.
+        response.writeHead(429, { "content-type": "application/json", "retry-after": "0" })
+        const error = { message: "Rate limit exceeded", code: "rate_limit_exceeded", resets_at: limit.resetsAt }
+        response.end(JSON.stringify({ error }))
+        return
       }
       const summarizer = offeredTools(body).find((tool) => tool.name === "generate_summary")
       if (summarizer !== undefined) {
@@ -197,6 +211,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
     baseUrl,
     script: (call) => scripts.push(call),
     hold: (when) => holds.push(when),
+    rateLimit: (when, resetsAt) => rateLimits.push({ when, resetsAt }),
     holdSummaries: () => {
       const held: Array<() => void> = []
       heldSummaries = held

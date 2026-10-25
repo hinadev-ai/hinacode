@@ -226,6 +226,43 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "ends limited at the reset Muse reports for a plan limit",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const resetsAt = Math.floor(Date.now() / 1000) + 3600
+          const turn = yield* startTurn("supervised", (marker) => endpoint.rateLimit(marker, resetsAt))
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({
+            type: "turn_limited",
+            limit: {
+              kind: "usage",
+              message: expect.stringContaining("429"),
+              reset: { at: new Date(resetsAt * 1000).toISOString(), autoResume: false },
+            },
+          })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "ends limited when Muse gives up retrying a rate limit",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("supervised", (marker) => endpoint.rateLimit(marker))
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({
+            type: "turn_limited",
+            limit: { kind: "usage", message: expect.stringContaining("429"), reset: null },
+          })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "streams a text reply and completes with usage",
     () =>
       withProvider(
