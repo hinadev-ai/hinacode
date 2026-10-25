@@ -1,5 +1,5 @@
 // `pnpm dev` runs the stock Electron.app, and macOS reads the menu bar title, Cmd+Tab and notifications from its
-// Info.plist and the Dock label from its file name, not from `app.setName`. Rename both and give it our icon,
+// Info.plist and the Dock label from its file name, not from `app.setName`. Rename both and give it our dev icon,
 // then re-sign it ad hoc, as it was signed before, so the edited Info.plist still matches the signature.
 // Electron downloads its binary on first use, so resolving `electron` here fetches it before we edit it.
 import { execFileSync } from "node:child_process"
@@ -26,7 +26,7 @@ if (plist && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
     for (const scale of [1, 2]) {
       const out = join(iconset, `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`)
       const px = String(size * scale)
-      execFileSync("sips", ["-z", px, px, "assets/icon.png", "--out", out], { stdio: "ignore" })
+      execFileSync("sips", ["-z", px, px, "assets/icon-dev.png", "--out", out], { stdio: "ignore" })
     }
   }
   execFileSync("iconutil", ["-c", "icns", iconset, "-o", join(bundle, "Contents", "Resources", "electron.icns")])

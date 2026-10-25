@@ -48,6 +48,7 @@
     "effect": "4.0.3",
     "electron-updater": "6.8.9",
     "node-pty": "1.2.0-beta.15",
+    "pele": "1.9.0",
     "qrcode": "^1.5.4",
     "ws": "8.22.0"
   },
@@ -88,7 +89,6 @@
     "electron-builder": "26.17.0",
     "electron-vite": "5.0.0",
     "fuzzysort": "4.0.2",
-    "mermaid": "12.1.0",
     "motion": "14.2.0",
     "node-gyp": "12.2.0",
     "oxfmt": "0.72.0",

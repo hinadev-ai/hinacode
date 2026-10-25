@@ -1,6 +1,6 @@
 import type { NetworkInterfaceInfo } from "node:os"
 import { describe, expect, it } from "vitest"
-import { reachableHosts } from "./access.ts"
+import { networkAddresses, reachableHosts } from "./access.ts"
 
 const ipv4 = (address: string, internal = false): NetworkInterfaceInfo => ({
   address,
@@ -32,5 +32,20 @@ describe("reachableHosts", () => {
 
   it("returns a specific bind host as is", () => {
     expect(reachableHosts("100.64.0.2", {}, "build-box")).toStrictEqual(["100.64.0.2"])
+  })
+})
+
+describe("networkAddresses", () => {
+  it("names each address by its interface, Tailscale first", () => {
+    const interfaces = {
+      lo: [ipv4("127.0.0.1", true)],
+      enp1s0: [ipv4("192.0.2.10")],
+      tailscale0: [ipv4("100.64.0.2")],
+      docker0: [ipv4("172.17.0.1")],
+    }
+    expect(networkAddresses(interfaces)).toStrictEqual([
+      { name: "tailscale0", address: "100.64.0.2" },
+      { name: "enp1s0", address: "192.0.2.10" },
+    ])
   })
 })

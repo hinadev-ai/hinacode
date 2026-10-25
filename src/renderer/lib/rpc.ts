@@ -3,6 +3,7 @@ import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { m } from "../paraglide/messages.js"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
   tag: Schema.String,
@@ -49,7 +50,14 @@ export const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(
   return (...args: Args) => family(JSON.stringify(args))
 }
 
-export const projectsAtom = Atom.make(call("projects.list", undefined)).pipe(Atom.keepAlive)
+/** The chats project is named in the UI's language rather than by its stored name. */
+export const projectsAtom = Atom.make(
+  call("projects.list", undefined).pipe(
+    Effect.map((projects) =>
+      projects.map((project) => (project.kind === "chats" ? { ...project, name: m.sidebar_chats() } : project)),
+    ),
+  ),
+).pipe(Atom.keepAlive)
 
 type InEnvironment<T> = T & { readonly environment: EnvironmentId }
 
@@ -463,6 +471,11 @@ export const remotePairingAtom = Atom.make((get) => {
   get(settingsAtom(null))
   return call("remote.pairing", undefined)
 })
+
+/** Not kept alive, so reopening the page picks up an interface that came up since. */
+export const networkAddressesAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("network.addresses", undefined, { environment })),
+)
 
 /** A reconnect asks again, since a cloud comes back on a new version after it updates itself. */
 export const updateStatusAtom = Atom.family((environment: EnvironmentId) =>

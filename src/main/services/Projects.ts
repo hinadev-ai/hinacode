@@ -55,6 +55,8 @@ export class Projects extends Context.Service<
     ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | CommandError>
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    /** Adds the chats project at `rootPath` if this machine has none, else moves it there, and makes the folder. */
+    readonly ensureChats: (rootPath: string) => Effect.Effect<Project, PersistenceError | ProjectRootInvalidError>
     /** The project's own favicon as a data URL, or null when it has none in a usual place. */
     readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
@@ -131,6 +133,7 @@ const make = Effect.gen(function* () {
         id: randomUUID(),
         ...input,
         linearReview: false,
+        kind: "folder",
         createdAt: now,
         updatedAt: now,
       }
@@ -199,6 +202,32 @@ const make = Effect.gen(function* () {
       return yield* insert({ ...input, rootPath })
     })
 
+  const findChats = SqlSchema.findOne({
+    Request: Schema.Void,
+    Result: ProjectRow,
+    execute: () => sql`SELECT * FROM project WHERE kind = 'chats'`,
+  })
+
+  const ensureChats = (rootPath: string) =>
+    Effect.gen(function* () {
+      yield* makeDirectory(rootPath)
+      const now = yield* nowIso
+      const row = {
+        id: randomUUID(),
+        name: "Chats",
+        rootPath,
+        setupScript: null,
+        kind: "chats",
+        createdAt: now,
+        updatedAt: now,
+      }
+      yield* sql`
+        INSERT INTO project ${sql.insert(row)}
+        ON CONFLICT (kind) WHERE kind = 'chats' DO UPDATE SET root_path = excluded.root_path
+      `.pipe(Effect.mapError(persistence("projects.ensureChats")))
+      return yield* findChats(undefined).pipe(Effect.mapError(persistence("projects.ensureChats")))
+    })
+
   const update = (input: UpdateProject) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
@@ -248,6 +277,7 @@ const make = Effect.gen(function* () {
     clone,
     update,
     icon,
+    ensureChats,
     remove: (id) =>
       sql`DELETE FROM project WHERE id = ${id}`.pipe(Effect.asVoid, Effect.mapError(persistence("projects.delete"))),
   })

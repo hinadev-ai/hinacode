@@ -15,7 +15,7 @@ Open Settings, then Appearance. Choose System, Light, Dark, or an existing named
 
 `Appearance.theme` adds `system` and `light`. The existing `default` ID remains the dark palette so saved settings keep their appearance. New profiles default to System. Named themes retain their original color schemes.
 
-One `prefers-color-scheme` media query supplies the resolved scheme to the document, diff viewer, and Mermaid through `useSyncExternalStore`. The document applies the palette and `color-scheme` before React mounts. A layout effect updates it when settings or system appearance change.
+One `prefers-color-scheme` media query supplies the resolved scheme to the document and diff viewer through `useSyncExternalStore`. The document applies the palette and `color-scheme` before React mounts. A layout effect updates it when settings or system appearance change.
 
 The native window starts hidden. After the first React commit, the renderer calls `app.ready`. This Void request and response use the existing schema-decoded RPC channel and top-level sender check. Main shows only the requesting renderer's window. SQLite remains the source of saved appearance; no startup cache or new table is needed.
 

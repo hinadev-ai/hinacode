@@ -44,7 +44,7 @@ ALTER TABLE host ADD COLUMN pairing TEXT; -- JSON { hosts, port, token } the mac
 ALTER TABLE host ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1; -- Show on my devices
 ```
 
-Desktop SQLite (migration `0022_environment_source`): `environment.source TEXT NOT NULL DEFAULT 'pairing'`. The owner token is the secret `relay.ownerToken`; the service URL is the machine's relay service, `HINACODE_RELAY_URL` or `https://relay.hinacode.app`.
+Desktop SQLite (migration `0023_environment_source`): `environment.source TEXT NOT NULL DEFAULT 'pairing'`. The owner token is the secret `relay.ownerToken`; the service URL is the machine's relay service, `HINACODE_RELAY_URL` or `https://relay.hinacode.app`.
 
 Phone: `StoredServer.source`, absent in older entries and read as `pairing`. The account is `{ serviceUrl, ownerToken }` in SecureStore under `hinacode.relayAccount`.
 

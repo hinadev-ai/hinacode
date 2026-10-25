@@ -190,6 +190,12 @@ type CommentForm =
 
 type Annotation = { readonly kind: "comment"; readonly comment: LineComment } | Extract<CommentForm, { kind: "new" }>
 
+/**
+ * A log captured from a terminal keeps its color codes, which Shiki's `ansi` language renders as colors. The editor
+ * hides the codes but still counts them, so the caret lands off by their length and such a log stays read-only.
+ */
+const isAnsiLog = (path: string, text: string) => path.endsWith(".log") && text.includes("\x1b[")
+
 const linesOf = (text: string, startLine: number, endLine: number) =>
   text
     .split("\n")
@@ -243,9 +249,10 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
     )
   }
 
-  const editable = !truncated
   // The editor replaces its document whenever this text changes, so unsaved edits pin it to where they started.
   const shown = base ?? (saved?.over === disk ? saved.text : disk)
+  const ansi = isAnsiLog(path, shown)
+  const editable = !truncated && !ansi
   const changedOnDisk = base !== undefined && base !== disk
   const currentText = () => editorRef.current?.getText() ?? shown
 
@@ -376,7 +383,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
       )}
       <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
         <File
-          file={{ name: path, contents: shown }}
+          file={{ name: path, contents: shown, lang: ansi ? "ansi" : undefined }}
           edit={editable}
           editStateKey={JSON.stringify([root, path])}
           editorOptions={{

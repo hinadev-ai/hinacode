@@ -148,3 +148,20 @@ describe("Projects.clone", () => {
     }),
   )
 })
+
+describe("Projects.ensureChats", () => {
+  it.live("keeps one chats project, moved to the latest folder", () =>
+    Effect.gen(function* () {
+      const [first, second] = [join(emptyDir(), "chats"), join(emptyDir(), "chats")]
+      const listed = yield* provided(
+        Projects.use((projects) =>
+          projects.ensureChats(first).pipe(Effect.andThen(projects.ensureChats(second)), Effect.andThen(projects.list)),
+        ),
+      )
+      expect(listed.map(({ kind, rootPath }) => ({ kind, rootPath }))).toStrictEqual([
+        { kind: "chats", rootPath: second },
+      ])
+      expect(statSync(second).isDirectory()).toBe(true)
+    }),
+  )
+})

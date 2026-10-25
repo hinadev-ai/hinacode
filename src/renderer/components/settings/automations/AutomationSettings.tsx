@@ -25,8 +25,8 @@ import { Button } from "../../ui/button.tsx"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog.tsx"
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.tsx"
 import { Switch } from "../../ui/switch.tsx"
+import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
 import { SettingsSection } from "../SettingsSection.tsx"
 import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
@@ -73,9 +73,6 @@ export function AutomationSettings() {
   )
 }
 
-const LOOPBACK = "127.0.0.1"
-const ALL_INTERFACES = "0.0.0.0"
-
 function ListenerSettings() {
   const environment = useSettingsEnvironment()
   const { automations: listener } = useSettings(environment)
@@ -83,10 +80,6 @@ function ListenerSettings() {
   const [port, setPort] = useState(String(listener.port))
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
-  const hostItems = [
-    { value: LOOPBACK, label: m.automations_bind_loopback() },
-    { value: ALL_INTERFACES, label: m.automations_bind_all() },
-  ]
 
   const save = (patch: Partial<typeof listener>) =>
     startTransition(async () => {
@@ -108,22 +101,12 @@ function ListenerSettings() {
       <div className="flex flex-wrap items-end gap-4">
         <Field className="w-64">
           <FieldLabel htmlFor="automation-bind-host">{m.automations_bind_label()}</FieldLabel>
-          <Select
-            items={hostItems}
+          <BindHostSelect
+            id="automation-bind-host"
+            environment={environment}
             value={listener.bindHost}
-            onValueChange={(next) => typeof next === "string" && save({ bindHost: next })}
-          >
-            <SelectTrigger id="automation-bind-host" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {hostItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(bindHost) => save({ bindHost })}
+          />
         </Field>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
           <Field className="w-28">
@@ -145,7 +128,11 @@ function ListenerSettings() {
         </form>
       </div>
       <FieldDescription>
-        {listener.bindHost === ALL_INTERFACES ? m.automations_bind_all_hint() : m.automations_bind_loopback_hint()}
+        {listener.bindHost === ALL_INTERFACES
+          ? m.automations_bind_all_hint()
+          : listener.bindHost === LOOPBACK
+            ? m.automations_bind_loopback_hint()
+            : m.automations_bind_address_hint({ address: listener.bindHost })}
       </FieldDescription>
       {error && <FieldError>{errorMessage(error)}</FieldError>}
     </div>
