@@ -14,6 +14,7 @@ import { TestClock } from "effect/testing"
 import { WebSocket, WebSocketServer } from "ws"
 import { SqlClient } from "effect/sql"
 import { unlistedModel } from "../../shared/agent.ts"
+import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import type { RelayMachine } from "../../shared/relayMachines.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../../shared/channels.ts"
 import {
@@ -391,7 +392,12 @@ interface ScriptedOptions {
   readonly answeredUpgrades?: number
   /** Closes with `CLOSE_UNAUTHORIZED` instead of answering `auth`, like someone else's HinaCode. */
   readonly refuse?: boolean
+  /** Sends no `challenge`, like a server that predates it. */
+  readonly noChallenge?: boolean
 }
+
+/** The token every scripted cloud's pairing URL carries. */
+const SCRIPTED_TOKEN = "token"
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   let version = options.version ?? REMOTE_PROTOCOL_VERSION
@@ -417,27 +423,40 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     socket.on("end", () => socket.destroy())
   })
   const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
+  /** The token each `auth` carried or proved, or `"wrong proof"`. */
   const auths: Array<string> = []
+  const received: Array<unknown> = []
   let connections = 0
   let current: WebSocket | undefined
   let holdReady = false
   let heldReady: ServerFrame | undefined
+  let forgeProof = false
   server.on("connection", (socket) => {
     connections++
+    const challenge = newNonce()
+    if (!options.noChallenge) socket.send(JSON.stringify({ type: "challenge", nonce: challenge } satisfies ServerFrame))
     socket.on("message", (raw) => {
       const frame = JSON.parse(String(raw)) as ClientFrame
+      received.push(frame)
       if (frame.type === "call") calls.push(frame)
       if (frame.type !== "auth") return
-      auths.push(frame.token)
-      if (options.refuse) return socket.close(CLOSE_UNAUTHORIZED)
+      if ("token" in frame) auths.push(frame.token)
+      else
+        auths.push(frame.proof === clientProof(SCRIPTED_TOKEN, challenge, frame.nonce) ? SCRIPTED_TOKEN : "wrong proof")
+      if (options.refuse || auths.at(-1) === "wrong proof") return socket.close(CLOSE_UNAUTHORIZED)
       current = socket
       const relay = options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`)
+      const proof =
+        "nonce" in frame
+          ? serverProof(forgeProof ? "not-the-token" : SCRIPTED_TOKEN, frame.nonce, challenge)
+          : undefined
       const ready: ServerFrame = {
         type: "ready",
         version,
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
         ...(relay === undefined ? {} : { relay }),
+        ...(proof === undefined ? {} : { proof }),
       }
       if (holdReady) heldReady = ready
       else socket.send(JSON.stringify(ready))
@@ -451,9 +470,11 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     port,
     /** This cloud's address as a relay hostname, for one served with `tls`. */
     relay: `127.0.0.1:${port}`,
-    pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: "token", relay: null }),
+    pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: SCRIPTED_TOKEN, relay: null }),
     calls,
     auths,
+    /** Every frame a client sent, as it arrived. */
+    received,
     connections: () => connections,
     upgrades: () => upgrades,
     /** Sockets that reached this cloud, counted before TLS or the WebSocket upgrade. */
@@ -467,6 +488,10 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
       holdReady = true
     },
     hasHeldReady: () => heldReady !== undefined,
+    /** Makes every later `ready` carry a proof of another token, like a stranger guessing. */
+    forgeProof: () => {
+      forgeProof = true
+    },
     releaseReady: () => {
       current!.send(JSON.stringify(heldReady))
       heldReady = undefined
@@ -904,13 +929,16 @@ describe("desktop environments over a flaky link", () => {
     }
   })
 
-  test("a stranger refusing the token at the direct address leaves the link on the relay until it drops", async () => {
+  test("a stranger at the direct address never receives the token and leaves the link on the relay until it drops", async () => {
     const relay = await scriptedCloud("stranger", { tls })
     const port = await pairThenLoseDirect("stranger", relay.relay)
     const stranger = await scriptedCloud("someone-else", { port, refuse: true })
     try {
       await connectedTimes("stranger", 2)
       expect(relay.auths).toStrictEqual(["token"])
+      expect(stranger.received).toHaveLength(1)
+      expect(stranger.received).not.toContainEqual(expect.objectContaining({ token: expect.anything() }))
+      expect(JSON.stringify(stranger.received)).not.toContain(SCRIPTED_TOKEN)
       // The race and the refused session each opened one.
       expect(stranger.connections()).toBe(2)
       await passHeard("stranger", 2 * DIRECT_CHECK_INTERVAL_MS)
@@ -926,6 +954,60 @@ describe("desktop environments over a flaky link", () => {
       await remove("stranger")
       relay.stop()
       stranger.stop()
+    }
+  })
+
+  test("a direct address that sends no challenge gets no token when the pairing has a relay", async () => {
+    const relay = await scriptedCloud("silent-direct", { tls })
+    const port = await pairThenLoseDirect("silent-direct", relay.relay)
+    const old = await scriptedCloud("someone-old", { port, noChallenge: true })
+    try {
+      await connectedTimes("silent-direct", 2)
+      expect(relay.auths).toStrictEqual(["token"])
+      // The race and the session that waited for a challenge each opened one.
+      expect(old.connections()).toBe(2)
+      expect(old.received).toStrictEqual([])
+      expect(electron.pushes.some(statusOf("silent-direct", "unauthorized"))).toBe(false)
+    } finally {
+      await remove("silent-direct")
+      relay.stop()
+      old.stop()
+    }
+  })
+
+  test("a cloud whose ready carries a wrong proof is not counted as connected", async () => {
+    const scripted = await pair("forged")
+    try {
+      scripted.forgeProof()
+      scripted.socket().terminate()
+      await pushedEventually(statusOf("forged", "offline"))
+      await clocked.runPromise(Environments.use((environments) => environments.reconnectAll))
+      await pushedEventually(statusOf("forged", "unauthorized"))
+      expect(electron.pushes.filter(statusOf("forged", "connected"))).toHaveLength(1)
+      await expect(add(scripted.pairingUrl)).rejects.toThrow("refused the token")
+    } finally {
+      await remove("forged")
+      scripted.stop()
+    }
+  })
+
+  test("a pairing without a relay still reaches a server that predates the challenge, with the token", async () => {
+    const scripted = await scriptedCloud("predates", { noChallenge: true })
+    try {
+      let added: Awaited<ReturnType<typeof add>> | undefined
+      void add(scripted.pairingUrl).then((environment) => (added = environment))
+      await vi.waitFor(async () => {
+        await adjust("500 millis")
+        expect(added).toMatchObject({ id: "predates" })
+      })
+      await connectedTimes("predates", 1)
+      expect(scripted.received).toStrictEqual([
+        { type: "auth", token: SCRIPTED_TOKEN },
+        { type: "auth", token: SCRIPTED_TOKEN },
+      ])
+    } finally {
+      await remove("predates")
+      scripted.stop()
     }
   })
 

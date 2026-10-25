@@ -14,8 +14,12 @@ export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 
-/** Phone -> desktop. The first frame on a socket must be `auth`. */
+/**
+ * Phone -> desktop. The first frame on a socket must be `auth`: proof of the token for the server's `challenge`
+ * (see `proof.ts`), or the token itself from clients that predate the challenge.
+ */
 export const ClientFrame = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("auth"), nonce: Schema.String, proof: Schema.String }),
   Schema.Struct({ type: Schema.Literal("auth"), token: Schema.String }),
   /** `payload` is absent for methods that take nothing, since JSON has no undefined. */
   Schema.Struct({
@@ -36,9 +40,12 @@ const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
  * A method that returns nothing answers with `envelope: {}`, since JSON drops an undefined `result`.
  */
 export const ServerFrame = Schema.Union([
+  /** The first frame a server sends. Clients that predate it ignore it and send the token. */
+  Schema.Struct({ type: Schema.Literal("challenge"), nonce: Schema.String }),
   /**
    * `environment` names the hinacode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it.
    * `relay` is its tunnel hostname, absent when it has none, so a client paired before the relay existed learns it.
+   * `proof` answers a client that proved its token, so the client knows it reached the machine and not a stranger.
    */
   Schema.Struct({
     type: Schema.Literal("ready"),
@@ -46,6 +53,7 @@ export const ServerFrame = Schema.Union([
     environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
     features: Schema.optionalKey(Schema.Array(Schema.String)),
     relay: Schema.optionalKey(Schema.String),
+    proof: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("result"),
@@ -102,6 +110,13 @@ export const DIRECT_CHECK_INTERVAL_MS = 60_000
 
 /** How long that check waits for a direct address to open. */
 export const DIRECT_CHECK_TIMEOUT_MS = 2_000
+
+/**
+ * How long a client waits for the server's `challenge` after its socket opens. Without one, it sends the token itself
+ * only over the relay, which reaches the machine's own hostname over TLS, or to a pairing without a relay, whose
+ * server may predate the challenge. On the direct address of a pairing with a relay, no challenge counts as a refusal.
+ */
+export const CHALLENGE_WAIT_MS = 1_000
 
 /**
  * What a client dials to reach a pairing: every direct address at once, then the relay after `RELAY_DELAY_MS`. The

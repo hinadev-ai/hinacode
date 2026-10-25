@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { DIRECT_CHECK_INTERVAL_MS, DIRECT_CHECK_TIMEOUT_MS, type Dial, RELAY_DELAY_MS } from "@shared/remote.ts"
+import { clientProof, serverProof } from "@shared/proof.ts"
+import {
+  CHALLENGE_WAIT_MS,
+  DIRECT_CHECK_INTERVAL_MS,
+  DIRECT_CHECK_TIMEOUT_MS,
+  type Dial,
+  RELAY_DELAY_MS,
+} from "@shared/remote.ts"
 import {
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
@@ -12,12 +19,16 @@ import {
   type TransportStatus,
 } from "./transport"
 
+const TOKEN = "secret"
+
+/** A socket and the server behind it, which holds `TOKEN`. */
 class FakeSocket implements SocketLike {
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
   readonly sent: Record<string, unknown>[] = []
   closed = false
+  serverNonce: string | undefined
 
   constructor(readonly url: string) {}
 
@@ -31,8 +42,18 @@ class FakeSocket implements SocketLike {
   open() {
     this.onopen?.()
   }
+  challenge(nonce = "server-nonce") {
+    this.serverNonce = nonce
+    this.receive({ type: "challenge", nonce })
+  }
+  /** Proves `TOKEN` back when the client proved it, as a current server does; an older one omits the proof. */
   ready(features: readonly string[] = ["heartbeat", "call-keys", "terminal-attach"], version = 1) {
-    this.receive({ type: "ready", version, features })
+    const auth = this.sent.find((frame) => frame.type === "auth")
+    const proof =
+      typeof auth?.nonce === "string" && this.serverNonce !== undefined
+        ? { proof: serverProof(TOKEN, auth.nonce, this.serverNonce) }
+        : {}
+    this.receive({ type: "ready", version, features, ...proof })
   }
   receive(frame: unknown) {
     this.onmessage?.({ data: JSON.stringify(frame) })
@@ -57,6 +78,7 @@ let sockets: FakeSocket[]
 let statuses: TransportStatus[]
 let ready: number
 let keys: number
+let plan: readonly Dial[] = []
 
 const direct = (url: string): Dial => ({ url, route: "direct", delayMs: 0 })
 const relay = (url: string): Dial => ({ url, route: "relay", delayMs: RELAY_DELAY_MS })
@@ -66,9 +88,10 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
   statuses = []
   ready = 0
   keys = 0
+  plan = dials
   const transport = new Transport({
     dials,
-    token: "secret",
+    token: TOKEN,
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
@@ -89,6 +112,7 @@ const latest = () => sockets.at(-1)!
 
 function handshake(features?: readonly string[]) {
   latest().open()
+  latest().challenge()
   latest().ready(features)
 }
 
@@ -101,15 +125,33 @@ function track<T>(promise: Promise<T>) {
   return state
 }
 
-beforeEach(() => vi.useFakeTimers())
-afterEach(() => vi.useRealTimers())
+beforeEach(() => {
+  vi.useFakeTimers()
+  sockets = []
+  plan = []
+})
+afterEach(() => {
+  vi.useRealTimers()
+  // Away from home a direct address may be a stranger's HinaCode, so only a pairing without a relay ever sends it
+  // the token.
+  if (!plan.some((dial) => dial.route === "relay")) return
+  const directUrls = new Set(plan.filter((dial) => dial.route === "direct").map((dial) => dial.url))
+  for (const socket of sockets.filter((socket) => directUrls.has(socket.url)))
+    expect(JSON.stringify(socket.sent)).not.toContain(TOKEN)
+})
 
 describe("Transport", () => {
-  it("authenticates first and reports connected after ready", () => {
+  it("answers the challenge with a proof instead of the token and connects on a ready that proves it back", () => {
     setup()
     expect(statuses).toEqual(["connecting"])
     latest().open()
-    expect(latest().sent).toEqual([{ type: "auth", token: "secret" }])
+    expect(latest().sent).toEqual([])
+    latest().challenge("server-nonce")
+    const [auth] = latest().sent
+    expect(auth).toEqual({ type: "auth", nonce: expect.any(String), proof: expect.any(String) })
+    expect(auth!.proof).toBe(clientProof(TOKEN, "server-nonce", auth!.nonce as string))
+    expect(JSON.stringify(latest().sent)).not.toContain(TOKEN)
+    expect(statuses.at(-1)).toBe("connecting")
     latest().ready()
     expect(statuses.at(-1)).toBe("connected")
     expect(ready).toBe(1)
@@ -316,6 +358,7 @@ describe("Transport", () => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
       latest().open()
+      latest().challenge()
       latest().drop(code)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(sockets).toHaveLength(1)
@@ -472,6 +515,7 @@ describe("Transport", () => {
       const transport = setup()
       const read = track(transport.call("threads.list", undefined))
       latest().open()
+      latest().challenge()
       latest().ready([], 2)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(statuses.at(-1)).toBe("unauthorized")
@@ -491,6 +535,7 @@ describe("Transport", () => {
       const transport = setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
       socketAt(RELAY).ready(["call-keys"])
       return transport
     }
@@ -504,13 +549,14 @@ describe("Transport", () => {
       expect(urls()).toEqual([TAILSCALE, LAN, RELAY])
     })
 
-    it("gives the token to the first socket that opens and closes the rest unused", async () => {
+    it("answers only the first socket that opens and closes the rest unused", async () => {
       setup([direct(TAILSCALE), direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(LAN).open()
       socketAt(RELAY).open()
       socketAt(TAILSCALE).open()
-      expect(socketAt(LAN).sent).toEqual([{ type: "auth", token: "secret" }])
+      socketAt(LAN).challenge()
+      expect(socketAt(LAN).sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
       for (const url of [TAILSCALE, RELAY]) {
         expect(socketAt(url).closed).toBe(true)
         expect(socketAt(url).sent).toEqual([])
@@ -523,9 +569,10 @@ describe("Transport", () => {
       setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
       expect(socketAt(LAN).closed).toBe(true)
       expect(socketAt(LAN).sent).toEqual([])
-      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: "secret" }])
+      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
     })
 
     it("waits for the relay when a direct address closes first", async () => {
@@ -534,6 +581,7 @@ describe("Transport", () => {
       expect(statuses.at(-1)).toBe("connecting")
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
       socketAt(RELAY).ready()
       expect(statuses.at(-1)).toBe("connected")
     })
@@ -560,6 +608,7 @@ describe("Transport", () => {
     it("stops on a refused token instead of trying the other addresses", async () => {
       setup([direct(TAILSCALE), direct(LAN)])
       socketAt(TAILSCALE).open()
+      socketAt(TAILSCALE).challenge()
       socketAt(TAILSCALE).drop(CLOSE_UNAUTHORIZED)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(urls()).toEqual([TAILSCALE, LAN])
@@ -628,12 +677,14 @@ describe("Transport", () => {
       expect(socketAt(RELAY).closed).toBe(true)
       expect(latest().url).toBe(LAN)
       latest().open()
-      expect(latest().sent).toEqual([{ type: "auth", token: "secret" }])
+      latest().challenge()
+      expect(latest().sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
     })
 
     it("races the relay alone when a direct address refuses the token, until the network changes", async () => {
       const transport = setup([direct(LAN), relay(RELAY)])
       socketAt(LAN).open()
+      socketAt(LAN).challenge()
       socketAt(LAN).drop(CLOSE_UNAUTHORIZED)
       expect(urls()).toEqual([LAN, RELAY])
       handshake(["call-keys"])
@@ -651,6 +702,7 @@ describe("Transport", () => {
       setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
       socketAt(RELAY).drop(CLOSE_UNAUTHORIZED)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(urls()).toEqual([LAN, RELAY])
@@ -689,6 +741,91 @@ describe("Transport", () => {
       expect(latest().url).toBe(TAILSCALE)
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       expect(latest().url).toBe(RELAY)
+    })
+  })
+
+  describe("proving the token", () => {
+    const LAN = "ws://192.168.1.5:47821/remote"
+    const RELAY = "wss://mac.example.com/remote"
+    const socketAt = (url: string) => sockets.findLast((socket) => socket.url === url)!
+    const urls = () => sockets.map((socket) => socket.url)
+
+    it.each([
+      ["a wrong proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: 1, proof: "00" })],
+      ["no proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: 1 })],
+    ])("races the relay alone when a direct ready carries %s", (_, answer) => {
+      const transport = setup([direct(LAN), relay(RELAY)])
+      const read = track(transport.call("threads.list", undefined))
+      socketAt(LAN).open()
+      socketAt(LAN).challenge()
+      answer(socketAt(LAN))
+      expect(socketAt(LAN).closed).toBe(true)
+      expect(socketAt(LAN).calls()).toEqual([])
+      expect(urls()).toEqual([LAN, RELAY])
+      expect(statuses).not.toContain("connected")
+      expect(statuses).not.toContain("unauthorized")
+
+      handshake()
+      expect(statuses.at(-1)).toBe("connected")
+      expect(read).toEqual({})
+    })
+
+    it("races the relay alone when a direct address says ready without a challenge", () => {
+      setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).open()
+      socketAt(LAN).ready()
+      expect(socketAt(LAN).closed).toBe(true)
+      expect(urls()).toEqual([LAN, RELAY])
+      expect(statuses).not.toContain("connected")
+    })
+
+    it("stops when the relay's ready proves a different token", () => {
+      setup([direct(LAN), relay(RELAY)])
+      vi.advanceTimersByTime(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
+      socketAt(RELAY).receive({ type: "ready", version: 1, proof: "00" })
+      expect(socketAt(RELAY).closed).toBe(true)
+      expect(statuses.at(-1)).toBe("unauthorized")
+    })
+
+    it("sends nothing to a direct address that does not challenge, and races the relay alone", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).open()
+      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
+      expect(socketAt(LAN).sent).toEqual([])
+      expect(urls()).toEqual([LAN])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(socketAt(LAN).sent).toEqual([])
+      expect(socketAt(LAN).closed).toBe(true)
+      expect(urls()).toEqual([LAN, RELAY])
+      expect(statuses).not.toContain("unauthorized")
+
+      handshake()
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("sends the token to a relay that does not challenge", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
+      expect(socketAt(RELAY).sent).toEqual([])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: TOKEN }])
+      socketAt(RELAY).ready()
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("sends the token to a direct address that does not challenge when the pairing has no relay", async () => {
+      setup([direct(LAN)])
+      latest().open()
+      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
+      expect(latest().sent).toEqual([])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(latest().sent).toEqual([{ type: "auth", token: TOKEN }])
+      latest().ready()
+      expect(statuses.at(-1)).toBe("connected")
     })
   })
 

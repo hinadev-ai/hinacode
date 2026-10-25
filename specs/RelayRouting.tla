@@ -18,7 +18,7 @@ CONSTANTS
   MaxRotations, \* times the machine rotates its token
   MaxMoves,     \* times the client changes networks
   PeriodicSync, \* TRUE for the desktop, which syncs every five minutes. FALSE for the phone, which syncs on launch and foreground
-  ProvesToken   \* the client proves it holds the token instead of sending it
+  ProvesToken   \* the client proves it holds the token instead of sending it, since ADR 0022
 
 VARIABLES
   link,         \* the client's state, one of Links
@@ -74,6 +74,8 @@ Dial ==
 \* Environments.ts:560 firstToOpen, transport.ts:102 race: the first socket to open wins, and the auth
 \* frame with the token goes to it. The relay always opens; the direct address opens when anyone answers.
 \* A relay-alone round leaves out the direct address, and a direct-only round leaves out the relay.
+\* With ProvesToken, the winner gets a proof for the challenge server.ts:204 sends (Environments.ts:153,
+\* transport.ts:331), and a stranger learns nothing it can use.
 Win(r) ==
   /\ Trans("racing", "authing")
   /\ r = "direct" => DirectAnswers /\ ~suspect
