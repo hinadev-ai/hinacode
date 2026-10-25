@@ -347,10 +347,13 @@ const indent = (text: string) =>
     .map((line) => (line === "" ? line : `    ${line}`))
     .join("\n")
 
+/** Names for literals with no letters in them, such as a command's trigger. */
+const symbols: Record<string, string> = { "": "empty", "/": "slash", $: "dollar", "@": "at", "#": "hash" }
+
 const caseNames = (values: readonly string[]) => {
   const used = new Set<string>()
   return values.map((value) => {
-    let name = camel(value) || "empty"
+    let name = camel(value) || (symbols[value] ?? fail(`No case name for the literal ${JSON.stringify(value)}`))
     while (used.has(name) || name === "unknown") name = `${name}_`
     used.add(name)
     return name
@@ -473,9 +476,7 @@ function emitTagged(decl: Extract<Decl, { kind: "tagged" }>) {
   const body = [
     `public enum ${leaf(decl.name)}: Codable, Hashable, Sendable {`,
     ...decl.cases.map((c, i) => `    case ${identifier(cases[i]!)}(${leaf(c.payload)})`),
-    ...(decl.lenient
-      ? ["    /// A member this build does not know yet, by its tag.", "    case unknown(String)"]
-      : []),
+    ...(decl.lenient ? ["    /// A member this build does not know yet, by its tag.", "    case unknown(String)"] : []),
     "",
     "    private enum TagKey: String, CodingKey {",
     tagKey === decl.tag ? `        case ${tagKey}` : `        case ${tagKey} = "${decl.tag}"`,

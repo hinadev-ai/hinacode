@@ -161,25 +161,25 @@ extension AgentCommand {
 
 extension AgentCommand {
     public enum Trigger: RawRepresentable, Codable, Hashable, Sendable {
-        case empty
-        case empty_
+        case slash
+        case dollar
         /// A value this build does not know yet.
         case unknown(String)
 
-        public static let known: [Self] = [.empty, .empty_]
+        public static let known: [Self] = [.slash, .dollar]
 
         public init(rawValue: String) {
             switch rawValue {
-            case "/": self = .empty
-            case "$": self = .empty_
+            case "/": self = .slash
+            case "$": self = .dollar
             default: self = .unknown(rawValue)
             }
         }
 
         public var rawValue: String {
             switch self {
-            case .empty: "/"
-            case .empty_: "$"
+            case .slash: "/"
+            case .dollar: "$"
             case .unknown(let value): value
             }
         }
