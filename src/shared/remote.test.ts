@@ -1,6 +1,15 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
-import { ClientFrame, isPortInUse, pairingUrl, parsePairingUrl, remoteWebSocketUrl, ServerFrame } from "./remote.ts"
+import {
+  ClientFrame,
+  isPortInUse,
+  pairingUrl,
+  parsePairingUrl,
+  dialPlan,
+  RELAY_DELAY_MS,
+  remoteWebSocketUrl,
+  ServerFrame,
+} from "./remote.ts"
 
 describe("remote frames", () => {
   it("keeps known capabilities when ready advertises a future feature", () => {
@@ -39,6 +48,7 @@ describe("pairing URLs", () => {
       hosts: ["100.64.0.2", "192.168.1.5", "mac.local", "fd7a:115c::2"],
       port: 47821,
       token: "t/k+n",
+      relay: null,
     } as const
     const url = pairingUrl(target)
     expect(url).toBe(
@@ -52,7 +62,15 @@ describe("pairing URLs", () => {
       hosts: ["192.168.1.5"],
       port: 47821,
       token: "abc",
+      relay: null,
     })
+  })
+
+  it("round-trips the relay ahead of the hosts", () => {
+    const target = { hosts: ["100.64.0.2"], port: 47821, token: "abc", relay: "hinacode-1a2b3c4d.example.com" } as const
+    const url = pairingUrl(target)
+    expect(url).toBe("hinacode://connect?relay=hinacode-1a2b3c4d.example.com&host=100.64.0.2&port=47821&token=abc")
+    expect(parsePairingUrl(url)).toEqual(target)
   })
 
   it("finds the URL inside the lines hinacode serve prints", () => {
@@ -62,7 +80,12 @@ describe("pairing URLs", () => {
       "  hinacode://connect?host=100.64.0.2&host=192.0.2.10&port=47821&token=abc",
       "  hinacode://connect?host=192.0.2.10&port=47821&token=abc",
     ].join("\n")
-    expect(parsePairingUrl(printed)).toEqual({ hosts: ["100.64.0.2", "192.0.2.10"], port: 47821, token: "abc" })
+    expect(parsePairingUrl(printed)).toEqual({
+      hosts: ["100.64.0.2", "192.0.2.10"],
+      port: 47821,
+      token: "abc",
+      relay: null,
+    })
   })
 
   it("finds the URL between words on one line", () => {
@@ -70,6 +93,7 @@ describe("pairing URLs", () => {
       hosts: ["a"],
       port: 1,
       token: "t",
+      relay: null,
     })
   })
 
@@ -86,6 +110,9 @@ describe("pairing URLs", () => {
     ["an invalid IPv6 address", "hinacode://connect?host=1%3A%3A2%3A%3A3&port=1&token=t"],
     ["a port out of range", "hinacode://connect?host=a&port=65536&token=t"],
     ["no token", "hinacode://connect?host=a&port=1"],
+    ["a relay with a port", "hinacode://connect?relay=r.example.com%3A8443&host=a&port=1&token=t"],
+    ["a relay with a path", "hinacode://connect?relay=r.example.com%2Fx&host=a&port=1&token=t"],
+    ["a relay that is not a domain name", "hinacode://connect?relay=localhost&host=a&port=1&token=t"],
   ])("refuses %s", (_, text) => {
     expect(parsePairingUrl(text)).toBeNull()
   })
@@ -93,5 +120,16 @@ describe("pairing URLs", () => {
   it("brackets an IPv6 host in the socket URL", () => {
     expect(remoteWebSocketUrl({ host: "fd7a:115c::2", port: 47821 })).toBe("ws://[fd7a:115c::2]:47821/remote")
     expect(remoteWebSocketUrl({ host: "mac.local", port: 47821 })).toBe("ws://mac.local:47821/remote")
+  })
+
+  it("dials the direct addresses at once and the relay a moment later", () => {
+    expect(dialPlan({ hosts: ["100.64.0.2", "mac.local"], port: 47821, relay: "r.example.com" })).toEqual([
+      { url: "ws://100.64.0.2:47821/remote", route: "direct", delayMs: 0 },
+      { url: "ws://mac.local:47821/remote", route: "direct", delayMs: 0 },
+      { url: "wss://r.example.com/remote", route: "relay", delayMs: RELAY_DELAY_MS },
+    ])
+    expect(dialPlan({ hosts: ["mac.local"], port: 47821, relay: null })).toEqual([
+      { url: "ws://mac.local:47821/remote", route: "direct", delayMs: 0 },
+    ])
   })
 })

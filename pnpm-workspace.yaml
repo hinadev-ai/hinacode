@@ -1,4 +1,5 @@
 packages:
+  - relay
   - site
   - packages/*
 

@@ -226,13 +226,15 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
             {automation.lastRun ? (
               <span className="flex items-center gap-1.5">
                 <RunStatusBadge status={automation.lastRun.status} />
-                <time dateTime={automation.lastRun.createdAt}>{formatTime(automation.lastRun.createdAt)}</time>
+                <time dateTime={automation.lastRun.createdAt} className="tabular-nums">
+                  {formatTime(automation.lastRun.createdAt)}
+                </time>
               </span>
             ) : (
               <span>{m.automations_never_run()}</span>
             )}
             {polling && automation.enabled && (
-              <span>
+              <span className="tabular-nums">
                 {automation.polledAt
                   ? m.automations_polled_at({ time: formatTime(automation.polledAt) })
                   : m.automations_poll_pending()}

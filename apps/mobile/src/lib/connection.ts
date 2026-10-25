@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { create } from "zustand"
 import {
   mutations,
@@ -10,7 +10,7 @@ import {
   type RpcResponse,
 } from "@shared/contract.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "@shared/owners.ts"
-import { remoteWebSocketUrl } from "@shared/remote.ts"
+import { dialPlan } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import type { StoredServer } from "./stored-target"
 import { CONNECT_TIMEOUT_MS, PROBE_TIMEOUT_MS, RpcError, Transport, type TransportStatus } from "./transport"
@@ -87,13 +87,13 @@ const sameTarget = (a: StoredServer, b: StoredServer) =>
 
 function open(server: StoredServer) {
   const transport = new Transport({
-    urls: Arr.map(server.hosts, (host) => remoteWebSocketUrl({ host, port: server.port })),
+    dials: dialPlan(server),
     token: server.token,
     isMutation: (method) => mutations.has(method),
     onStatus: (status, error) => {
       if (transports.get(server.id) === transport) updateServer(server.id, { status, error })
     },
-    onReady: (features, environment) => {
+    onReady: (features, environment, relay) => {
       if (transports.get(server.id) !== transport) return
       updateServer(server.id, (current) => ({
         features,
@@ -101,13 +101,18 @@ function open(server: StoredServer) {
         name: current.name ?? environment?.name ?? null,
         environmentId: environment?.id ?? current.environmentId,
       }))
+      const { servers } = useConnection.getState()
       // The same machine paired again at another address: the older entry goes.
-      const older = useConnection
-        .getState()
-        .servers.find(
-          (other) => other.id !== server.id && environment !== undefined && other.environmentId === environment.id,
+      const older = servers.find(
+        (other) => other.id !== server.id && environment !== undefined && other.environmentId === environment.id,
+      )
+      // A relay set up or removed since pairing.
+      if (older !== undefined || relay !== servers.find((other) => other.id === server.id)?.relay)
+        setServers(
+          servers
+            .filter((other) => other !== older)
+            .map((other) => (other.id === server.id ? { ...other, relay } : other)),
         )
-      if (older !== undefined) setServers(useConnection.getState().servers.filter((other) => other.id !== older.id))
     },
     onEvent: (event) => {
       learnFromPush(owners, server.id, event)
@@ -125,18 +130,36 @@ function close(id: string) {
   remembered.delete(id)
 }
 
+const toStored = ({ id, name, environmentId, hosts, port, token, relay, source }: StoredServer): StoredServer => ({
+  id,
+  name,
+  environmentId,
+  hosts,
+  port,
+  token,
+  relay,
+  source,
+})
+
+/** The servers as they are saved, without their connection state. */
+export const storedServers = () => useConnection.getState().servers.map(toStored)
+
 /**
- * Keeps one socket open to each of `servers`: opens the new ones, closes the ones no longer listed, and redials a
- * server whose addresses or token changed. Callers persist the list from `useConnection` themselves.
+ * Keeps one socket open to each of `servers`: opens the new ones, closes the ones no longer listed, redials a
+ * server whose addresses or token changed, and points one whose relay changed at the new dial plan without dropping
+ * its socket. Callers persist the list from `useConnection` themselves.
  */
 export function setServers(servers: readonly StoredServer[]) {
   const previous = new Map(useConnection.getState().servers.map((server) => [server.id, server]))
   for (const id of previous.keys()) if (!servers.some((server) => server.id === id)) close(id)
   const next = servers.map((server): Server => {
     const existing = previous.get(server.id)
-    const { id, name, environmentId, hosts, port, token } = server
-    const stored = { id, name, environmentId, hosts, port, token }
-    if (existing !== undefined && sameTarget(existing, server)) return { ...existing, ...stored }
+    const stored = toStored(server)
+    if (existing !== undefined && sameTarget(existing, server)) {
+      // Only the relay changed: the open socket and the calls waiting on it stay.
+      if (existing.relay !== server.relay) transports.get(server.id)?.setDials(dialPlan(server))
+      return { ...existing, ...stored }
+    }
     if (existing !== undefined) close(server.id)
     return { ...stored, status: "connecting", error: null, features: new Set(), generation: 0, listed: false }
   })

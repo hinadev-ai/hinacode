@@ -8,6 +8,7 @@ import {
   type RpcEnvelope,
   type RpcMethod,
 } from "../../shared/contract.ts"
+import { newNonce } from "../../shared/proof.ts"
 import type { Settings as SettingsValue } from "../../shared/domain.ts"
 import {
   ClientFrame,
@@ -28,6 +29,7 @@ import {
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
   RemoteAccess,
+  relayHostname,
 } from "./access.ts"
 
 /** A socket that has not sent a valid `auth` frame by then is closed. */
@@ -88,7 +90,8 @@ const make = Effect.gen(function* () {
   const sockets = new Map<WebSocket, { awaitingPong: boolean }>()
   const countConnected = () => runFork(access.report({ connected: sockets.size }))
 
-  const attach = (socket: WebSocket) => {
+  /** `proof` answers a client that proved its token; one that sent the token itself gets none. */
+  const attach = (socket: WebSocket, proof: string | undefined) => {
     const peer = { awaitingPong: false }
     sockets.set(socket, peer)
     socket.on("pong", () => {
@@ -109,11 +112,14 @@ const make = Effect.gen(function* () {
       countConnected()
       runFork(Fiber.interrupt(subscription))
     })
+    const relay = relayHostname(Effect.runSyncWith(services)(access.status).relay)
     send(socket, {
       type: "ready",
       version: REMOTE_PROTOCOL_VERSION,
       environment: access.identity,
       features: FEATURES,
+      ...(relay !== null && { relay }),
+      ...(proof !== undefined && { proof }),
     })
   }
 
@@ -162,7 +168,9 @@ const make = Effect.gen(function* () {
   }
 
   const accept = (socket: WebSocket) => {
-    let token: string | null = null
+    const challenge = newNonce()
+    // The token's generation once the socket authenticated, so a rotation closes it without keeping what it sent.
+    let generation: number | null = null
     const deadline = runFork(
       Effect.sleep(AUTH_TIMEOUT).pipe(
         Effect.andThen(Effect.sync(() => socket.close(CLOSE_AUTH_TIMEOUT, "auth timeout"))),
@@ -175,17 +183,25 @@ const make = Effect.gen(function* () {
       if (socket.readyState !== WebSocket.OPEN) return
       const frame = isBinary ? undefined : parseFrame(raw)
       if (frame === undefined) return socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
-      if (token === null) {
+      if (generation === null) {
         if (frame.type !== "auth") return socket.close(CLOSE_MALFORMED_FRAME, "expected auth")
-        if (!access.authenticate(frame.token)) return socket.close(CLOSE_UNAUTHORIZED, "unauthorized")
-        token = frame.token
+        // Undefined for a client that sent the token itself, which predates the challenge and expects no proof.
+        const proof =
+          "proof" in frame
+            ? access.answerChallenge(challenge, frame.nonce, frame.proof)
+            : access.authenticate(frame.token)
+              ? undefined
+              : null
+        if (proof === null) return socket.close(CLOSE_UNAUTHORIZED, "unauthorized")
+        generation = access.generation()
         runFork(Fiber.interrupt(deadline))
-        return attach(socket)
+        return attach(socket, proof)
       }
-      if (!access.authenticate(token)) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
+      if (access.generation() !== generation) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
       if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })
       if (frame.type === "call") handleCall(socket, frame)
     })
+    send(socket, { type: "challenge", nonce: challenge })
   }
 
   const closeAll = (code: number, reason: string) => {

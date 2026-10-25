@@ -586,7 +586,7 @@ function ChoiceItemLabel({ item }: { item: ChoiceItem<string> }) {
       {Icon && <Icon aria-hidden className="mt-0.5 self-start" />}
       <span className="flex flex-col">
         {item.label}
-        <span className="text-xs text-muted-foreground">{item.hint}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{item.hint}</span>
       </span>
     </>
   )

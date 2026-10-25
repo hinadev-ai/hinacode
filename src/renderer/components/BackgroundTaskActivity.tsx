@@ -6,7 +6,6 @@ import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreadBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
-import { formatElapsed, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { toast } from "sonner"
 
@@ -19,20 +18,19 @@ const kinds = {
 /** A line per background task, such as a dev server Claude started with `run_in_background`, each with a stop button. */
 export function BackgroundTaskActivity({ threadId }: { threadId: string }) {
   const tasks = useThreadBackgroundTasks(threadId)
-  const now = useNow(tasks.length > 0)
   if (tasks.length === 0) return null
   return (
     <ul aria-label={m.activity_background_label()}>
       {tasks.map((task) => (
         <li key={task.id}>
-          <BackgroundTaskRow threadId={threadId} task={task} now={now} />
+          <BackgroundTaskRow threadId={threadId} task={task} />
         </li>
       ))}
     </ul>
   )
 }
 
-function BackgroundTaskRow({ threadId, task, now }: { threadId: string; task: BackgroundTask; now: number }) {
+function BackgroundTaskRow({ threadId, task }: { threadId: string; task: BackgroundTask }) {
   const { icon: Icon, label: kindLabel } = kinds[task.kind]
   return (
     <ActivityRow actions={<StopBackgroundTaskButton threadId={threadId} task={task} />}>
@@ -41,7 +39,6 @@ function BackgroundTaskRow({ threadId, task, now }: { threadId: string; task: Ba
       <span className="truncate text-foreground" title={task.label}>
         {task.label}
       </span>
-      <span className="ml-auto shrink-0 tabular-nums">{formatElapsed(now - Date.parse(task.startedAt))}</span>
     </ActivityRow>
   )
 }

@@ -203,6 +203,9 @@ importers:
       '@effect/sql-sqlite-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)
+      '@fontsource-variable/geist':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
@@ -212,6 +215,9 @@ importers:
       '@muse-code/sdk':
         specifier: 1.4.7
         version: 1.4.7(@types/node@24.19.2)
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
       anser:
         specifier: 2.3.5
         version: 2.3.5
@@ -416,6 +422,31 @@ importers:
         specifier: 1.87.0
         version: 1.87.0
 
+  relay:
+    dependencies:
+      '@effect/sql-d1':
+        specifier: 4.0.3
+        version: 4.0.3(effect@4.0.3)
+      effect:
+        specifier: 4.0.3
+        version: 4.0.3
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
+    devDependencies:
+      '@cloudflare/vitest-plugin':
+        specifier: 1.4.3
+        version: 1.4.3(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)(vitest@5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)))
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
+      wrangler:
+        specifier: 4.151.0
+        version: 4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)
+
   site:
     devDependencies:
       '@astrojs/check':
@@ -435,7 +466,7 @@ importers:
         version: 6.0.3
       wrangler:
         specifier: 4.151.0
-        version: 4.151.0(@types/node@24.19.2)
+        version: 4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)
 
 packages:
 
@@ -1029,6 +1060,11 @@ packages:
       workerd:
         optional: true
 
+  '@cloudflare/vitest-plugin@1.4.3':
+    resolution: {integrity: sha512-GA0735VV3HgWRCO4sIXUL4uPDXbsaM4hA3Kj+8MqaLTgodeGt+VpcZYQUPg0hXBzkPeT/lxORPnWwIHRAmTavQ==}
+    peerDependencies:
+      vitest: ^4.1.0 || ^5.0.0
+
   '@cloudflare/workerd-darwin-64@1.20261012.1':
     resolution: {integrity: sha512-dkTL9aY3V4D40b+jBpGPCistWUPFQ/M61wlWi6i1o8MvHFFgEw7EQkcaYEv6Yd3bkPDD/3TFT4hRsMb2xVZSwQ==}
     engines: {node: '>=16'}
@@ -1058,6 +1094,9 @@ packages:
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
+
+  '@cloudflare/workers-types@5.20261023.1':
+    resolution: {integrity: sha512-jRaMsWUF/08dd0dWnX3zPGPOjakkkA2JPnK5vLsCQFmYC40kbMPZ02fvOPO8kqjqgljoMZrKsRiXpR1u1Lp0Qg==}
 
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
@@ -1171,6 +1210,11 @@ packages:
     peerDependencies:
       effect: ^4.0.3
       redis: '>=5.0.0 <7.0.0'
+
+  '@effect/sql-d1@4.0.3':
+    resolution: {integrity: sha512-PPItxp9aAmJTRIfZtyJMuQCB7d1ExFvIRkGWnfQuWZlPxjtYfQT+V2kS9AUqf0OC1/nZnAFwLlFKCDgumLmy6A==}
+    peerDependencies:
+      effect: ^4.0.3
 
   '@effect/sql-sqlite-node@4.0.3':
     resolution: {integrity: sha512-u+b0X/yt8vATwUscXKHdWF75LRMQKBIkx9DsNw8tdgF9xxPOTfx+e30gdwBjd1kY1GmQYkzD7/cP+9mys2b0pg==}
@@ -1599,6 +1643,9 @@ packages:
   '@fontsource-variable/geist-mono@5.3.0':
     resolution: {integrity: sha512-vBbuwDEo9AkrqADMXOrlAR3DFcJi4/JxeuU43FoiQERnNwsfXNnvxvReZG02cQKmyk4DZkZdBZX3oTDvy2zBAw==}
 
+  '@fontsource-variable/geist@5.3.0':
+    resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
+
   '@fontsource-variable/noto-sans-jp@5.3.0':
     resolution: {integrity: sha512-XVL9GfGBRjj523v9w3Bctu4mNq7E5rUa+AMZm8DK1EM3LAGlKC3DZMvuqkLn4DB4TwwoAjcsJUCiRpUTDzzOkw==}
 
@@ -1906,6 +1953,10 @@ packages:
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
+
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -3581,6 +3632,9 @@ packages:
   ci-info@4.4.0:
     resolution: {integrity: sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg==}
     engines: {node: '>=8'}
+
+  cjs-module-lexer@1.2.3:
+    resolution: {integrity: sha512-0TNiGstbQmCFwt4akjjBg5pLRTSyj/PkWQ1ZoO2zntmg9yLqSRxwEa4iCfQLGjqhiqBfOJa7W/E8wfGrTDmlZQ==}
 
   class-transformer@0.5.1:
     resolution: {integrity: sha512-SQa1Ws6hUbfC98vKGxZH3KFY0Y1lm5Zm0SY8XX9zbK7FJCyVEac3ATW0RIpwzW+oOfmHE5PMPufDG9hCfoEOMw==}
@@ -7673,6 +7727,20 @@ snapshots:
     optionalDependencies:
       workerd: 1.20261012.1
 
+  '@cloudflare/vitest-plugin@1.4.3(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)(vitest@5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1)))':
+    dependencies:
+      cjs-module-lexer: 1.2.3
+      esbuild: 0.28.2
+      miniflare: 5.20261012.0-beta(@types/node@24.19.2)
+      vitest: 5.0.3(@types/node@24.19.2)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
+      wrangler: 4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2)
+      zod: 4.6.5
+    transitivePeerDependencies:
+      - '@cloudflare/workers-types'
+      - '@types/node'
+      - bufferutil
+      - utf-8-validate
+
   '@cloudflare/workerd-darwin-64@1.20261012.1':
     optional: true
 
@@ -7687,6 +7755,8 @@ snapshots:
 
   '@cloudflare/workerd-windows-64@1.20261012.1':
     optional: true
+
+  '@cloudflare/workers-types@5.20261023.1': {}
 
   '@colors/colors@1.5.0':
     optional: true
@@ -7877,6 +7947,11 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@effect/sql-d1@4.0.3(effect@4.0.3)':
+    dependencies:
+      '@cloudflare/workers-types': 5.20261023.1
+      effect: 4.0.3
 
   '@effect/sql-sqlite-node@4.0.3(effect@4.0.3)':
     dependencies:
@@ -8210,6 +8285,8 @@ snapshots:
 
   '@fontsource-variable/geist-mono@5.3.0': {}
 
+  '@fontsource-variable/geist@5.3.0': {}
+
   '@fontsource-variable/noto-sans-jp@5.3.0': {}
 
   '@fontsource-variable/noto-sans-tc@5.3.0': {}
@@ -8503,6 +8580,8 @@ snapshots:
     optional: true
 
   '@noble/hashes@1.8.0': {}
+
+  '@noble/hashes@2.4.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -9934,6 +10013,8 @@ snapshots:
   ci-info@4.3.1: {}
 
   ci-info@4.4.0: {}
+
+  cjs-module-lexer@1.2.3: {}
 
   class-transformer@0.5.1: {}
 
@@ -13389,7 +13470,7 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20261012.1
       '@cloudflare/workerd-windows-64': 1.20261012.1
 
-  wrangler@4.151.0(@types/node@24.19.2):
+  wrangler@4.151.0(@cloudflare/workers-types@5.20261023.1)(@types/node@24.19.2):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.0
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261012.1)
@@ -13400,6 +13481,7 @@ snapshots:
       unenv: 2.0.0-rc.24
       workerd: 1.20261012.1
     optionalDependencies:
+      '@cloudflare/workers-types': 5.20261023.1
       fsevents: 2.3.3
     transitivePeerDependencies:
       - '@types/node'

@@ -2,13 +2,23 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import QRCode from "qrcode"
-import { type FormEvent, useEffect, useId, useState, useTransition } from "react"
-import type { RemotePairing } from "../../../shared/domain.ts"
+import { type FormEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import type { RelayStatus, RemotePairing } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
@@ -54,6 +64,7 @@ export function RemoteSettings() {
       </div>
       <ListenerSettings remote={remote} pending={pending} onSave={save} />
       {error && <FieldError>{error}</FieldError>}
+      <Relay />
       {remote.enabled && <PairPhone />}
     </SettingsSection>
   )
@@ -163,6 +174,193 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
+    </div>
+  )
+}
+
+function ExternalLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+      {children}
+    </a>
+  )
+}
+
+/**
+ * Shown with remote control off too, since setup works then and the status reads paused. Owns the setup call because
+ * it stays pending through `linking` until the machine is approved, which can take minutes.
+ */
+function Relay() {
+  const status = useAtomValue(remoteStatusAtom)
+  const refreshStatus = useAtomRefresh(remoteStatusAtom)
+  const refreshPairing = useAtomRefresh(remotePairingAtom)
+  const [setupError, setSetupError] = useState<string | null>(null)
+  const [settingUp, startSetup] = useTransition()
+  // Cancelling makes the pending setup call fail, and that failure is the user's own doing, not an error to show.
+  const cancelled = useRef(false)
+  const headingId = useId()
+  if (!AsyncResult.isSuccess(status)) return null
+  const relay = status.value.relay
+
+  const onChanged = () => {
+    refreshStatus()
+    refreshPairing()
+  }
+
+  const setUp = () =>
+    startSetup(async () => {
+      cancelled.current = false
+      setSetupError(null)
+      try {
+        await callPromise("remote.setupRelay", undefined)
+      } catch (cause) {
+        if (!cancelled.current) setSetupError(errorMessage(cause))
+      }
+      onChanged()
+    })
+
+  const onCancel = () => {
+    cancelled.current = true
+  }
+
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+      <h3 id={headingId} className="text-sm font-medium">
+        {m.relay_title()}
+      </h3>
+      {relay.state === "off" && (
+        <div className="flex flex-col items-start gap-3">
+          <FieldDescription>{m.relay_description()}</FieldDescription>
+          <Button disabled={settingUp} onClick={setUp}>
+            {settingUp ? m.relay_turning_on() : m.relay_turn_on()}
+          </Button>
+        </div>
+      )}
+      {relay.state === "linking" && (
+        <RelayLinking url={relay.url} userCode={relay.userCode} onCancel={onCancel} onCancelled={onChanged} />
+      )}
+      {relay.state !== "off" && relay.state !== "linking" && (
+        <>
+          <RelayStatusLine relay={relay} />
+          <RemoveRelayButton onRemoved={onChanged} />
+        </>
+      )}
+      {setupError && <FieldError>{setupError}</FieldError>}
+    </section>
+  )
+}
+
+interface RelayLinkingProps {
+  readonly url: string
+  readonly userCode: string
+  readonly onCancel: () => void
+  readonly onCancelled: () => void
+}
+
+function RelayLinking({ url, userCode, onCancel, onCancelled }: RelayLinkingProps) {
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+
+  const cancel = () =>
+    startTransition(async () => {
+      onCancel()
+      setError(null)
+      try {
+        await callPromise("remote.removeRelay", undefined)
+        onCancelled()
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  return (
+    <div aria-live="polite" className="flex flex-col items-start gap-3 text-sm">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {m.relay_linking()}
+        <code className="rounded-md border border-border bg-muted/40 px-2 py-0.5 font-mono tracking-wider">
+          {userCode}
+        </code>
+      </p>
+      <ExternalLink href={url}>{m.relay_linking_reopen()}</ExternalLink>
+      <Button variant="outline" disabled={pending} onClick={cancel}>
+        {m.common_cancel()}
+      </Button>
+      {error && <FieldError>{error}</FieldError>}
+    </div>
+  )
+}
+function RelayStatusLine({ relay }: { relay: Exclude<RelayStatus, { state: "off" | "linking" }> }) {
+  return (
+    <div aria-live="polite" className="flex flex-col gap-1 text-sm">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {relay.state === "connected" && (
+          <span className="flex items-center gap-2">
+            <StatusDot className="bg-success" />
+            {m.relay_status_connected({ hostname: relay.hostname })}
+          </span>
+        )}
+        {relay.state === "connecting" && (
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <StatusDot className="bg-muted-foreground/50" />
+            {m.relay_status_connecting({ hostname: relay.hostname })}
+          </span>
+        )}
+        {relay.state === "paused" && (
+          <>
+            <span className="flex items-center gap-2 text-muted-foreground">
+              <StatusDot className="bg-muted-foreground/50" />
+              {m.relay_status_paused()}
+            </span>
+            <span className="font-mono text-muted-foreground">{relay.hostname}</span>
+          </>
+        )}
+      </p>
+      {relay.state === "connecting" && relay.error !== null && <FieldError>{relay.error}</FieldError>}
+    </div>
+  )
+}
+
+function RemoveRelayButton({ onRemoved }: { onRemoved: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+
+  const remove = () =>
+    startTransition(async () => {
+      setError(null)
+      try {
+        await callPromise("remote.removeRelay", undefined)
+        setOpen(false)
+        onRemoved()
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  return (
+    <div>
+      <Button variant="destructive" onClick={() => setOpen(true)}>
+        {m.relay_remove()}
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen} onOpenChangeComplete={(isOpen) => isOpen || setError(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{m.relay_remove_title()}</AlertDialogTitle>
+            <AlertDialogDescription>{m.relay_remove_body()}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={pending} onClick={remove}>
+              {m.relay_remove()}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
