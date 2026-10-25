@@ -80,8 +80,11 @@ final class WalkTests: XCTestCase {
         XCTAssertTrue(files.waitForExistence(timeout: 20), "files list")
         sleep(2)
         shot("07-files")
-        // Folders sort first, so find the README through search.
-        let fileSearch = app.searchFields.firstMatch
+        // Folders sort first, so find the README through search. Scope by prompt: on iPad the sidebar's own
+        // search field is also on screen.
+        let fileSearch = app.searchFields.matching(
+            NSPredicate(format: "placeholderValue == 'Go to file'")
+        ).firstMatch
         if fileSearch.waitForExistence(timeout: 5) {
             fileSearch.tap()
             fileSearch.typeText("README")
@@ -161,7 +164,9 @@ final class WalkTests: XCTestCase {
 
     @MainActor
     private func goBack(_ app: XCUIApplication) {
-        let back = app.navigationBars.buttons.firstMatch
+        // On iPad there are two navigation bars; the file's is the one titled by the file name.
+        let fileBar = app.navigationBars["README.md"]
+        let back = fileBar.exists ? fileBar.buttons.firstMatch : app.navigationBars.buttons.firstMatch
         if back.exists { back.tap() }
     }
 
