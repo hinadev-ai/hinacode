@@ -22,6 +22,12 @@ describe("unreachableMessage", () => {
     )
   })
 
+  test.each(["ECONNREFUSED", "ENOTFOUND", undefined])("points at the relay's settings for %s", (code) => {
+    expect(unreachableMessage({ relay: "mac.example.com" }, code, "Unexpected server response: 530")).toBe(
+      "mac.example.com did not answer. Check that the relay is connected in Settings > Remote on that machine.",
+    )
+  })
+
   test("keeps the reason for anything else", () => {
     expect(unreachableMessage(cloud, undefined, "Unexpected server response: 404")).toBe(
       "Could not reach 100.64.0.2:47821: Unexpected server response: 404",

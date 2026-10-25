@@ -87,7 +87,7 @@ function Ring({ context }: { context: ContextWindow }) {
           </span>
         }
       />
-      <TooltipContent className="flex-col items-start gap-0.5">
+      <TooltipContent className="flex-col items-start gap-0.5 tabular-nums">
         <span className="font-medium">{m.thread_context_window()}</span>
         <span>{m.thread_context_used({ percent })}</span>
         <span>{m.thread_context_tokens({ used, max })}</span>
