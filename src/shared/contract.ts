@@ -55,6 +55,7 @@ import {
   PullRequestGuideState,
   PullRequestLink,
   LinearIssue,
+  MachineResources,
   NetworkAddress,
   RemotePairing,
   RemoteStatus,
@@ -545,6 +546,8 @@ export const RpcMethods = {
   ),
   /** IPv4 addresses the remote and webhook listeners can bind to, Tailscale first. */
   "network.addresses": rpc(Schema.Void, Schema.Array(NetworkAddress)),
+  /** This machine's CPU, memory and load over the last 10 minutes, and the disks its projects live on. */
+  "system.resources": rpc(Schema.Void, MachineResources),
   /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
@@ -694,6 +697,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "automations.runNow": "mutation",
   "automations.runs": "read",
   "network.addresses": "read",
+  "system.resources": "read",
   "remote.status": "read",
   "remote.pairing": "read",
   "remote.rotateToken": "mutation",

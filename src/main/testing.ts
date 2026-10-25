@@ -24,6 +24,7 @@ import * as GitHub from "./services/GitHub.ts"
 import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
+import * as SystemResources from "./services/SystemResources.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as Search from "./services/Search.ts"
@@ -76,9 +77,15 @@ export const makeTestAppLayer = (
   )
   const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
-  const features = Layer.mergeAll(Mcp.credentialsLayer, Ports.layer, remoteAccess, tinyVm, passkeys, linear).pipe(
-    Layer.provide(domain),
-  )
+  const features = Layer.mergeAll(
+    Mcp.credentialsLayer,
+    Ports.layer,
+    SystemResources.layer,
+    remoteAccess,
+    tinyVm,
+    passkeys,
+    linear,
+  ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),

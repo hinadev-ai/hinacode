@@ -1,3 +1,4 @@
+import { homedir } from "node:os"
 import { Cause, Effect, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
@@ -33,6 +34,7 @@ import { PullRequests } from "./services/PullRequests.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
@@ -47,6 +49,7 @@ export type AppServices =
   | Threads
   | Worktrees
   | Settings
+  | SystemResources
   | ClientSettings
   | Environments
   | AgentRunner
@@ -368,6 +371,13 @@ const handlers: Handlers = {
   "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 
   "network.addresses": () => Effect.sync(() => networkAddresses()),
+  "system.resources": () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects.use((service) => service.list)
+      const { worktreeRoot } = yield* Settings.use((settings) => settings.get)
+      const paths = [homedir(), ...projects.map((project) => project.rootPath), ...(worktreeRoot ? [worktreeRoot] : [])]
+      return yield* SystemResources.use((resources) => resources.read(paths))
+    }),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
