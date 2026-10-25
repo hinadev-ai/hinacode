@@ -6,7 +6,7 @@ import SwiftUI
 struct FilesPanel: View {
     let threadId: String
     /// False while another tab is up. The panel stays mounted, but `.searchable` hoists to the navigation stack and
-    /// would float over the other tabs, so its presentation is forced off until the tab returns.
+    /// would float over the other tabs, so it is not applied until the tab returns (see `body`).
     var isSelected: Bool = true
 
     @Environment(AppModel.self) private var model
@@ -17,6 +17,18 @@ struct FilesPanel: View {
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
+        // Not applying `.searchable` at all on other tabs remounts the listing, which then refetches. That beats a
+        // search field floating over Chat, PRs and the terminal (on iPad it pins to the toolbar even unpresented).
+        if isSelected {
+            content
+                .searchable(
+                    text: $query, isPresented: $searchPresented, prompt: Text(.mobileFilesSearchPlaceholder))
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         Group {
             if let thread {
                 if let root = model.threads.root(of: thread) {
@@ -36,9 +48,6 @@ struct FilesPanel: View {
                 ContentUnavailableView(.mobileFilesThreadMissing, systemImage: "questionmark.circle")
             }
         }
-        .searchable(
-            text: $query, isPresented: isSelected ? $searchPresented : .constant(false),
-            prompt: Text(.mobileFilesSearchPlaceholder))
         .background {
             Button("Search") { searchPresented = true }
                 .keyboardShortcut("f", modifiers: .command)
