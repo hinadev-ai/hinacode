@@ -25,7 +25,7 @@ import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./automations/shared.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 type RemoteSettingsValue = ReturnType<typeof useSettings>["remote"]
 
@@ -47,22 +47,24 @@ export function RemoteSettings() {
 
   return (
     <SettingsSection title={m.settings_remote()} description={m.remote_description()}>
-      <div className="flex flex-col gap-3">
-        <Field orientation="horizontal">
-          <FieldContent>
-            <FieldLabel htmlFor="remote-enabled">{m.remote_enable_label()}</FieldLabel>
-            <FieldDescription>{m.remote_enable_hint()}</FieldDescription>
-          </FieldContent>
-          <Switch
-            id="remote-enabled"
-            checked={remote.enabled}
-            disabled={pending}
-            onCheckedChange={(enabled) => save({ enabled })}
-          />
-        </Field>
-        <RemoteStatusLine remote={remote} />
-      </div>
-      <ListenerSettings remote={remote} pending={pending} onSave={save} />
+      <SettingsGroup>
+        <div className="flex flex-col gap-3">
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldLabel htmlFor="remote-enabled">{m.remote_enable_label()}</FieldLabel>
+              <FieldDescription>{m.remote_enable_hint()}</FieldDescription>
+            </FieldContent>
+            <Switch
+              id="remote-enabled"
+              checked={remote.enabled}
+              disabled={pending}
+              onCheckedChange={(enabled) => save({ enabled })}
+            />
+          </Field>
+          <RemoteStatusLine remote={remote} />
+        </div>
+        <ListenerSettings remote={remote} pending={pending} onSave={save} />
+      </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
       <Relay />
       {remote.enabled && <PairPhone />}
@@ -136,7 +138,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-4">
         <Field className="w-64">
           <FieldLabel htmlFor="remote-bind-host">{m.remote_bind_label()}</FieldLabel>
@@ -224,7 +226,7 @@ function Relay() {
   }
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <section aria-labelledby={headingId} className={cn(settingsSurfaceClass, "flex flex-col gap-3 p-4")}>
       <h3 id={headingId} className="text-sm font-medium">
         {m.relay_title()}
       </h3>
@@ -377,7 +379,7 @@ function PairingSection() {
   const headingId = useId()
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-4 rounded-lg border border-border p-4">
+    <section aria-labelledby={headingId} className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}>
       <h3 id={headingId} className="text-sm font-medium">
         {m.remote_pair_title()}
       </h3>

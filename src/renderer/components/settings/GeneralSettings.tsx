@@ -6,9 +6,9 @@ import { callPromise, updateClientSettingsAtom, updateStatusAtom } from "../../l
 import { m } from "../../paraglide/messages.js"
 import { useLocale } from "../../stores/locale.ts"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldTitle } from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldTitle } from "../ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 import { WorktreeSettings } from "./WorktreeSettings.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
@@ -43,29 +43,28 @@ function AppSettings() {
 
   return (
     <SettingsSection title={m.settings_general()}>
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="settings-locale">{m.settings_language()}</FieldLabel>
-          {/* The wrapper takes Field's full-width child rule so the trigger can stay narrow. */}
-          <div>
-            <Select items={locales} value={locale} onValueChange={changeLocale}>
-              <SelectTrigger id="settings-locale" className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {locales.map((item) => (
-                  <SelectItem key={item.value} value={item.value} lang={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <FieldDescription>{m.settings_language_hint()}</FieldDescription>
-          {error && <FieldError>{error}</FieldError>}
+      <SettingsGroup>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor="settings-locale">{m.settings_language()}</FieldLabel>
+            <FieldDescription>{m.settings_language_hint()}</FieldDescription>
+            {error && <FieldError>{error}</FieldError>}
+          </FieldContent>
+          <Select items={locales} value={locale} onValueChange={changeLocale}>
+            <SelectTrigger id="settings-locale" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {locales.map((item) => (
+                <SelectItem key={item.value} value={item.value} lang={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <VersionField />
-      </FieldGroup>
+      </SettingsGroup>
     </SettingsSection>
   )
 }

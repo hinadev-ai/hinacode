@@ -1,4 +1,5 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
@@ -54,7 +55,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
@@ -69,7 +70,7 @@ export function EnvironmentSettings() {
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>
       ) : (
-        <ul aria-label={m.settings_environments()} className="flex flex-col divide-y divide-border rounded-lg border">
+        <ul aria-label={m.settings_environments()} className={settingsGroupClass}>
           {clouds.map((cloud) => (
             <EnvironmentRow key={cloud.id} cloud={cloud} />
           ))}
@@ -108,7 +109,7 @@ function RelaySignInForm() {
     <form
       onSubmit={onSubmit}
       aria-labelledby="environment-relay-title"
-      className="flex flex-col gap-4 rounded-lg border border-border p-4"
+      className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}
     >
       <h3 id="environment-relay-title" className="text-sm font-medium">
         {m.environment_relay_title()}
@@ -147,7 +148,7 @@ function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state
   return (
     <section
       aria-labelledby="environment-relay-title"
-      className="flex flex-col gap-1 rounded-lg border border-border px-4 py-3"
+      className={cn(settingsSurfaceClass, "flex flex-col gap-1 px-4 py-3")}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-48 flex-1 flex-col gap-0.5">
@@ -209,10 +210,7 @@ function RelayMachines({ selfId }: { selfId: string }) {
         <p className="text-sm text-muted-foreground">{m.environment_relay_no_machines()}</p>
       )}
       {hosts.length > 0 && (
-        <ul
-          aria-labelledby="environment-relay-machines-title"
-          className="flex flex-col divide-y divide-border rounded-md border"
-        >
+        <ul aria-labelledby="environment-relay-machines-title" className="flex flex-col divide-y divide-foreground/8">
           {hosts.map((host) => (
             <RelayMachineRow key={host.id} host={host} self={host.environmentId === selfId} />
           ))}
@@ -239,7 +237,7 @@ function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
     })
 
   return (
-    <li className="flex flex-col gap-1 px-3 py-2">
+    <li className="flex flex-col gap-1 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-48 flex-1 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{host.name}</span>
@@ -448,7 +446,7 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
   }
 
   return (
-    <li className="flex flex-col gap-1 px-4 py-3">
+    <li className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-48 flex-1 flex-col gap-0.5">
           <span className="truncate text-sm font-medium">{cloud.name}</span>
@@ -701,7 +699,7 @@ function AddEnvironmentForm() {
     <form
       onSubmit={onSubmit}
       aria-labelledby="environment-add-title"
-      className="flex flex-col gap-4 rounded-lg border border-border p-4"
+      className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}
     >
       <h3 id="environment-add-title" className="text-sm font-medium">
         {m.environment_add_title()}

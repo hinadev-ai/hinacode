@@ -8,17 +8,9 @@ import { callPromise, notificationPermissionAtom, updateClientSettingsAtom } fro
 import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  FieldSeparator,
-} from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
 type Notifications = ClientSettings["notifications"]
 
@@ -75,7 +67,7 @@ export function NotificationSettings() {
       }
     >
       <PermissionNotice />
-      <FieldGroup>
+      <SettingsGroup>
         {toggles.map(({ key, label, hint }) => (
           <ToggleField
             key={key}
@@ -86,7 +78,8 @@ export function NotificationSettings() {
             onChange={(checked) => void save({ [key]: checked })}
           />
         ))}
-        <FieldSeparator />
+      </SettingsGroup>
+      <SettingsGroup>
         <ToggleField
           id="settings-notifications-sound"
           label={m.settings_notifications_sound()}
@@ -94,8 +87,8 @@ export function NotificationSettings() {
           checked={notifications.sound}
           onChange={(sound) => void save({ sound })}
         />
-        {error && <FieldError>{error}</FieldError>}
-      </FieldGroup>
+      </SettingsGroup>
+      {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
   )
 }
@@ -144,7 +137,7 @@ function PermissionNotice() {
 
 function Notice({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="flex items-start gap-4 rounded-lg border border-attention/30 bg-attention/10 p-3">
+    <div className="flex items-start gap-4 rounded-xl bg-attention/10 px-4 py-3">
       <div className="flex flex-1 flex-col gap-1">
         <p className="text-sm font-semibold text-attention">{title}</p>
         <p className="text-sm text-pretty text-muted-foreground">{body}</p>

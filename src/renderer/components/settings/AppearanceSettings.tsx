@@ -8,11 +8,11 @@ import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateClientSettingsAtom } from "../../lib/rpc.ts"
 import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { Slider } from "../ui/slider.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
 const fontSizes = [12, 13, 14, 15, 16, 17, 18, 20].map((size) => ({ value: size, label: `${size}px` }))
 
@@ -34,29 +34,32 @@ export function AppearanceSettings() {
 
   return (
     <SettingsSection title={m.settings_appearance()}>
-      <FieldGroup>
-        <ThemePicker current={appearance.theme} onPick={(theme) => void save({ theme })} />
+      <SettingsGroup>
+        {/* A legend sits on the fieldset's top edge and ignores its padding, so the row is a wrapper. */}
+        <div>
+          <ThemePicker current={appearance.theme} onPick={(theme) => void save({ theme })} />
+        </div>
+      </SettingsGroup>
+      <SettingsGroup>
         <ContrastField saved={appearance.contrast} onCommit={(contrast) => save({ contrast })} />
-        <Field>
+        <Field orientation="horizontal">
           <FieldLabel htmlFor="settings-font-size">{m.settings_font_size()}</FieldLabel>
-          <div>
-            <Select
-              items={fontSizes}
-              value={appearance.fontSize}
-              onValueChange={(fontSize) => fontSize !== null && void save({ fontSize })}
-            >
-              <SelectTrigger id="settings-font-size" className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {fontSizes.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select
+            items={fontSizes}
+            value={appearance.fontSize}
+            onValueChange={(fontSize) => fontSize !== null && void save({ fontSize })}
+          >
+            <SelectTrigger id="settings-font-size" className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {fontSizes.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
         <FontField
           id="settings-ui-font"
@@ -75,8 +78,8 @@ export function AppearanceSettings() {
           current={appearance.monoFont}
           onPick={(monoFont) => void save({ monoFont })}
         />
-        {error && <FieldError>{error}</FieldError>}
-      </FieldGroup>
+      </SettingsGroup>
+      {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
   )
 }
@@ -156,27 +159,25 @@ function ContrastField({ saved, onCommit }: { saved: number; onCommit: (contrast
     if (await onCommit(value)) setDraft(null)
   }
   return (
-    <Field>
-      <div>
-        <div className="flex w-72 flex-col gap-2">
-          <div className="flex items-baseline justify-between">
-            <FieldLabel id={labelId}>{m.settings_contrast()}</FieldLabel>
-            <span className="text-sm text-muted-foreground tabular-nums">{contrastLabel(contrast)}</span>
-          </div>
-          <Slider
-            aria-labelledby={labelId}
-            className="py-1.5"
-            min={-100}
-            max={100}
-            step={10}
-            value={contrast}
-            onValueChange={preview}
-            onValueCommitted={(value) => void commit(value)}
-            thumbAlignment="center"
-          />
-        </div>
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel id={labelId}>{m.settings_contrast()}</FieldLabel>
+        <FieldDescription>{m.settings_contrast_hint()}</FieldDescription>
+      </FieldContent>
+      <div className="flex w-56 shrink-0 flex-col gap-2">
+        <span className="self-end text-sm text-muted-foreground tabular-nums">{contrastLabel(contrast)}</span>
+        <Slider
+          aria-labelledby={labelId}
+          className="py-1.5"
+          min={-100}
+          max={100}
+          step={10}
+          value={contrast}
+          onValueChange={preview}
+          onValueCommitted={(value) => void commit(value)}
+          thumbAlignment="center"
+        />
       </div>
-      <FieldDescription>{m.settings_contrast_hint()}</FieldDescription>
     </Field>
   )
 }
@@ -195,8 +196,11 @@ interface FontFieldProps {
 function FontField({ id, label, description, bundled, kind, current, onPick }: FontFieldProps) {
   const fonts = useAtomValue(installedFontsAtom)
   return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {description && <FieldDescription>{description}</FieldDescription>}
+      </FieldContent>
       {AsyncResult.builder(fonts)
         .onInitial(() => (
           <SkeletonList label={m.settings_fonts_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
@@ -207,29 +211,26 @@ function FontField({ id, label, description, bundled, kind, current, onPick }: F
             ...installed[kind].map((family) => ({ value: family, label: family })),
           ]
           return (
-            <div>
-              <Select items={items} value={current} onValueChange={onPick}>
-                <SelectTrigger id={id} className="w-72">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {items.map((item) => (
-                    <SelectItem
-                      key={item.value ?? ""}
-                      value={item.value}
-                      style={{ fontFamily: JSON.stringify(item.value ?? `${bundled} Variable`) }}
-                    >
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Select items={items} value={current} onValueChange={onPick}>
+              <SelectTrigger id={id} className="w-72">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {items.map((item) => (
+                  <SelectItem
+                    key={item.value ?? ""}
+                    value={item.value}
+                    style={{ fontFamily: JSON.stringify(item.value ?? `${bundled} Variable`) }}
+                  >
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )
         })
         .onError((cause) => <FieldError>{m.settings_fonts_failed({ message: errorMessage(cause) })}</FieldError>)
         .orNull()}
-      {description && <FieldDescription>{description}</FieldDescription>}
     </Field>
   )
 }

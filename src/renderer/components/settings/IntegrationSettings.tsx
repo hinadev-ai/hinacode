@@ -6,15 +6,15 @@ import { callPromise, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
 export function IntegrationSettings() {
   return (
     <SettingsSection title={m.settings_integrations()}>
-      <FieldGroup>
+      <SettingsGroup>
         <GitHubStatus />
         <SecretField
           name="linear.apiKey"
@@ -28,7 +28,7 @@ export function IntegrationSettings() {
           placeholder="xoxp-…"
           hint={m.settings_slack_hint()}
         />
-      </FieldGroup>
+      </SettingsGroup>
     </SettingsSection>
   )
 }

@@ -6,16 +6,16 @@ import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
 export function WorkspaceSettings() {
   return (
     <SettingsSection title={m.settings_workspace()}>
-      <FieldGroup>
+      <SettingsGroup>
         <WorktreeRootField />
-      </FieldGroup>
+      </SettingsGroup>
     </SettingsSection>
   )
 }
