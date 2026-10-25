@@ -3,7 +3,6 @@ import { Image, Platform } from "react-native"
 import { SvgXml } from "react-native-svg"
 import { create } from "zustand"
 import { Icon } from "@/components/icon"
-import { svgMarkup } from "@/components/markdown-image"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 
@@ -42,4 +41,21 @@ export function ProjectIcon({ projectId, size }: { projectId: string; size: numb
       style={{ width: size, height: size }}
     />
   )
+}
+
+const SVG_PREFIX = /^data:image\/svg\+xml(;[^,]*)?,/i
+
+/** The markup of an SVG data URL, or null for any other image. */
+function svgMarkup(uri: string): string | null {
+  const match = SVG_PREFIX.exec(uri)
+  if (match === null) return null
+  const body = uri.slice(match[0].length)
+  try {
+    const xml = /;base64/i.test(match[1] ?? "")
+      ? decodeURIComponent(atob(body).replace(/[\s\S]/g, (c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`))
+      : decodeURIComponent(body)
+    return xml.includes("<svg") ? xml : null
+  } catch {
+    return null
+  }
 }
