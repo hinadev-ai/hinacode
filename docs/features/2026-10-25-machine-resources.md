@@ -19,7 +19,7 @@ A developer runs agents on this machine and on paired clouds (`2026-10-15-deskto
 
 Every HinaCode process, desktop or `hinacode serve`, samples its own machine. The desktop asks each environment for its samples over the connection it already has.
 
-We considered Prometheus with `node_exporter`, and the `systeminformation` package. Prometheus needs an exporter and a scraper on every machine, a port open between them, and a second auth story beside the cloud token. `systeminformation` shells out to `vm_stat`, `df` and others for numbers Node already has. Node's built-ins cover all four:
+We considered Prometheus with `node_exporter`, and the `systeminformation` package. Prometheus needs an exporter and a scraper on every machine, a port open between them, and a second credential beside the cloud token. `systeminformation` shells out to `vm_stat`, `df` and others for numbers Node already has. Node's built-ins cover all four:
 
 | Metric | Source                                              | Notes                                                                                                                                                                                                                                                     |
 | ------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -28,7 +28,7 @@ We considered Prometheus with `node_exporter`, and the `systeminformation` packa
 | Load   | `os.loadavg()[0]`                                   | Windows has none. It reports `null`.                                                                                                                                                                                                                      |
 | Disk   | `fs.statfs` on the home directory and project roots | Paths on one device (`stat().dev`) count once. Used is `blocks - bfree` and free is `bavail`, as `df` reports them. On APFS that is the whole container.                                                                                                  |
 
-`services/SystemResources.ts` forks a fiber that samples every 5 seconds and keeps the last 120 samples, 10 minutes. CPU and memory history is ready the moment the popover opens. Disks are read on each request, since they change slowly and depend on the project list.
+`services/SystemResources.ts` forks a fiber that samples every 5 seconds and keeps the last 120 samples, 10 minutes. CPU and memory history is ready the moment the popover opens. `read` stats the disks on each request, since they change slowly and depend on the project list.
 
 ```ts
 ResourceSample   = { at, cpu, memoryUsed, load: number | null }   // cpu is 0 to 1
@@ -40,7 +40,7 @@ MachineResources = { cpuCount, memoryTotal,
 
 `system.resources` is a `named` route, so the renderer asks each environment on its own and knows which one answered. It asks only connected clouds, every 5 seconds, while the popover is open. A call to a cloud that drops waits in the outbox as any call does, and closing the popover cancels it. An older cloud answers `SchemaError` for the unknown method, which the row reads as "update this cloud".
 
-The answer crosses the cloud socket and is decoded with the `MachineResources` schema like every other response. It carries no paths beyond the disk paths, which the paired desktop can already list with `fs.list`.
+The desktop decodes a cloud's answer with the `MachineResources` schema, as it does every response. The only paths in it are the disk paths, and the paired desktop can already list those with `fs.list`.
 
 ## Out of scope
 
@@ -51,5 +51,5 @@ The answer crosses the cloud socket and is decoded with the `MachineResources` s
 
 ## Verification
 
-- `src/main/services/SystemResources.integration.test.ts` drives the sampler with `TestClock` and reads real temp directories: one sample per 5 seconds, capped at 10 minutes, one disk for two paths on the same device, and a missing path left out.
-- By hand, pair an isolated desktop with `hinacode serve` packed from the branch and run in a Linux container with `-m 2g` and `HINACODE_SERVE_AUTO_UPDATE=false`, since the daemon otherwise updates itself to the published release. Compare the cloud's row with `memory.current`, `df` and `/proc/loadavg` inside the container, screenshot the popover in light and dark, and stop the container to see its row go offline. A cloud on the published release shows the update message.
+- `src/main/services/SystemResources.integration.test.ts` drives the sampler with `TestClock` and reads real temp directories. It checks one sample per 5 seconds, the 10-minute cap, one disk for two paths on the same device, and that a missing path is skipped.
+- By hand, run `hinacode serve` packed from the branch in a Linux container with `-m 2g`, and pair an isolated desktop with it. Set `HINACODE_SERVE_AUTO_UPDATE=false`, or the daemon replaces itself with the published release. Compare the cloud's row with `memory.current`, `df` and `/proc/loadavg` inside the container. Screenshot the popover in light and dark, then stop the container and check that its row goes offline. A cloud on the published release shows the update message.
