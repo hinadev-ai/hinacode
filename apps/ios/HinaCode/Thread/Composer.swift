@@ -29,9 +29,15 @@ struct Composer: View {
         return transcript.messages.isEmpty && thread.worktreeId == nil
     }
 
+    /// The caret as a UTF-16 offset. The selection's indices come from the text field's own string, and measuring
+    /// a distance to one traps when it is stale (the text changed under it), so match it by position instead and
+    /// fall back to the end.
     private var caret: Int {
         guard let selection, case .selection(let range) = selection.indices else { return text.utf16.count }
-        return text.utf16.distance(from: text.startIndex, to: range.upperBound)
+        for (offset, index) in text.utf16.indices.enumerated() where index == range.upperBound {
+            return offset
+        }
+        return text.utf16.count
     }
 
     private var completion: ComposerSyntax.Completion? {

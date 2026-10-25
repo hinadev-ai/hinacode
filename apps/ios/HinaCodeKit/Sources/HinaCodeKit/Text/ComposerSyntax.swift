@@ -4,7 +4,9 @@ import Foundation
 /// `/command`, `$skill`, `@mention` or `#pull-request` token the caret is completing.
 ///
 /// Offsets (`Completion.start`, `Completion.end`, `Edit.caret`, a caret passed in) are UTF-16 code unit offsets,
-/// the unit of `NSRange` and of the desktop's JavaScript. Convert a `String.Index` with `utf16.distance(from:to:)`.
+/// the unit of `NSRange` and of the desktop's JavaScript. A `String.Index` from a text field's selection belongs
+/// to the field's string; match it by position against your own string's indices rather than measuring a
+/// distance to it, which traps when the index is stale.
 public enum ComposerSyntax {
     public enum Kind: Hashable, Sendable {
         case text, bullet, code, command, mention
