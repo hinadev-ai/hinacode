@@ -5,11 +5,12 @@ import { type AddressInfo, createServer, type Socket } from "node:net"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
-import { Clock, type Duration, Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Clock, type Duration, Effect, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { WebSocket, WebSocketServer } from "ws"
 import { SqlClient } from "effect/sql"
 import { unlistedModel } from "../../shared/agent.ts"
+import type { RelayMachine } from "../../shared/relayMachines.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../../shared/channels.ts"
 import {
   PushEvent,
@@ -742,5 +743,76 @@ describe("desktop environments over a flaky link", () => {
     await clocked.dispose()
     const offline = { error: { tag: "EnvironmentOffline", message: "closing is offline" } }
     expect(await Promise.all([sent, queued])).toStrictEqual([offline, offline])
+  })
+})
+
+const syncRelay = (machines: ReadonlyArray<RelayMachine>) =>
+  desktop.runPromise(Environments.use((environments) => environments.syncRelay(machines)))
+const listedClouds = async () =>
+  (await desktop.runPromise(Environments.use((environments) => environments.list))).clouds
+const tokenOf = async (id: string) =>
+  Option.getOrNull(await desktop.runPromise(Secrets.use((secrets) => secrets.get(`environment.${id}.token`))))
+/** 192.0.2.1 never answers, so a sync that probed a machine before saving it would never add it. */
+const machine = (environmentId: string, pairing: Partial<RelayMachine["pairing"]> = {}): RelayMachine => ({
+  environmentId,
+  name: `${environmentId} on the relay`,
+  pairing: {
+    hosts: ["192.0.2.1"],
+    port: 48081,
+    token: `token-${environmentId}`,
+    relay: `${environmentId}.relay.invalid`,
+    ...pairing,
+  },
+})
+
+describe("desktop environments from the relay", () => {
+  test("adds every listed machine but this desktop without dialing it first, and tells the window", async () => {
+    const self = await desktop.runPromise(RemoteAccess.use((remote) => Effect.succeed(remote.identity.id)))
+    const changes = electron.pushes.filter((event) => event.type === "environments.changed").length
+
+    await syncRelay([machine("home-server"), machine(self)])
+
+    expect(await listedClouds()).toMatchObject([
+      {
+        id: "home-server",
+        name: "home-server on the relay",
+        host: "192.0.2.1",
+        port: 48081,
+        relay: "home-server.relay.invalid",
+        source: "relay",
+      },
+    ])
+    expect(await tokenOf("home-server")).toBe("token-home-server")
+    expect(electron.pushes.filter((event) => event.type === "environments.changed").length).toBeGreaterThan(changes)
+  })
+
+  test("refreshes a paired machine's address and token, and keeps its name and source", async () => {
+    const scripted = await scriptedCloud("paired-laptop", {})
+    await desktop.runPromise(
+      Environments.use((environments) => environments.add({ name: "my laptop", pairingUrl: scripted.pairingUrl })),
+    )
+    await pushedEventually(statusOf("paired-laptop", "connected"))
+    // Stopped, so no ready frame rewrites the relay this sync saves.
+    scripted.stop()
+    await pushedEventually(statusOf("paired-laptop", "offline"))
+
+    await syncRelay([machine("home-server"), machine("paired-laptop", { hosts: ["localhost"], token: "new" })])
+
+    expect((await listedClouds()).find((entry) => entry.id === "paired-laptop")).toMatchObject({
+      name: "my laptop",
+      host: "localhost",
+      port: 48081,
+      relay: "paired-laptop.relay.invalid",
+      source: "pairing",
+    })
+    expect(await tokenOf("paired-laptop")).toBe("new")
+  })
+
+  test("drops a relay machine the list lost and keeps a paired one", async () => {
+    await syncRelay([])
+
+    expect((await listedClouds()).map((entry) => entry.id)).toStrictEqual(["paired-laptop"])
+    expect(await tokenOf("home-server")).toBeNull()
+    await desktop.runPromise(Environments.use((environments) => environments.remove("paired-laptop")))
   })
 })

@@ -11,6 +11,7 @@ const server = (overrides: Partial<StoredServer> = {}): StoredServer => ({
   port: 47821,
   token: "abc",
   relay: null,
+  source: "pairing",
   ...overrides,
 })
 
@@ -23,6 +24,16 @@ describe("parseStoredServers", () => {
   it("reads an entry saved before the relay existed as having none", () => {
     const { relay: _, ...older } = server()
     expect(parseStoredServers(JSON.stringify([older]), null, newId)).toEqual([server()])
+  })
+
+  it("reads an entry saved before the relay sync as paired by QR code", () => {
+    const { source: _, ...older } = server()
+    expect(parseStoredServers(JSON.stringify([older]), null, newId)).toEqual([server()])
+  })
+
+  it("keeps a server's source across a save", () => {
+    const servers = [server({ source: "relay" })]
+    expect(parseStoredServers(JSON.stringify(servers), null, newId)).toEqual(servers)
   })
 
   it("keeps a server's relay across a save", () => {
@@ -38,7 +49,16 @@ describe("parseStoredServers", () => {
   it("turns the single pairing an older app saved into the first server", () => {
     const legacy = JSON.stringify({ hosts: ["100.64.0.2"], port: 47821, token: "abc" })
     expect(parseStoredServers(null, legacy, newId)).toEqual([
-      { id: "new", name: null, environmentId: null, hosts: ["100.64.0.2"], port: 47821, token: "abc", relay: null },
+      {
+        id: "new",
+        name: null,
+        environmentId: null,
+        hosts: ["100.64.0.2"],
+        port: 47821,
+        token: "abc",
+        relay: null,
+        source: "pairing",
+      },
     ])
   })
 
@@ -76,6 +96,12 @@ describe("addPairing", () => {
     const { servers, id } = addPairing([server()], pairing(["10.0.0.9"], 47821, "xyz"), newId)
     expect(id).toBe("new")
     expect(servers.map((entry) => entry.id)).toEqual(["a", "new"])
+    expect(servers[1]?.source).toBe("pairing")
+  })
+
+  it("keeps the source of a relay server paired again by QR code", () => {
+    const { servers } = addPairing([server({ source: "relay" })], pairing(["192.168.1.5"], 47821, "rotated"), newId)
+    expect(servers[0]?.source).toBe("relay")
   })
 
   it("updates the token of a server paired again at an address it had", () => {

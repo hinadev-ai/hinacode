@@ -21,6 +21,7 @@ import projectLinearReview from "./migrations/0019_project_linear_review.ts"
 import pullRequestGuide from "./migrations/0020_pull_request_guide.ts"
 import projectKind from "./migrations/0021_project_kind.ts"
 import environmentRelay from "./migrations/0022_environment_relay.ts"
+import environmentSource from "./migrations/0023_environment_source.ts"
 
 const run = Migrator.make({})
 
@@ -51,6 +52,7 @@ export const runMigrations = run({
     "20_pull_request_guide": pullRequestGuide,
     "21_project_kind": projectKind,
     "22_environment_relay": environmentRelay,
+    "23_environment_source": environmentSource,
   }),
 }).pipe(
   Effect.tap((ran) =>

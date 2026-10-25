@@ -44,6 +44,7 @@ const server = (id: string, port: number): StoredServer => ({
   port,
   token: "t",
   relay: null,
+  source: "pairing",
 })
 
 const socketOf = (port: number) => FakeSocket.all.findLast((socket) => socket.url.includes(`:${port}/`))!

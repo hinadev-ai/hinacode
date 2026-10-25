@@ -130,6 +130,20 @@ function close(id: string) {
   remembered.delete(id)
 }
 
+const toStored = ({ id, name, environmentId, hosts, port, token, relay, source }: StoredServer): StoredServer => ({
+  id,
+  name,
+  environmentId,
+  hosts,
+  port,
+  token,
+  relay,
+  source,
+})
+
+/** The servers as they are saved, without their connection state. */
+export const storedServers = () => useConnection.getState().servers.map(toStored)
+
 /**
  * Keeps one socket open to each of `servers`: opens the new ones, closes the ones no longer listed, redials a
  * server whose addresses or token changed, and points one whose relay changed at the new URLs without dropping
@@ -140,11 +154,10 @@ export function setServers(servers: readonly StoredServer[]) {
   for (const id of previous.keys()) if (!servers.some((server) => server.id === id)) close(id)
   const next = servers.map((server): Server => {
     const existing = previous.get(server.id)
-    const { id, name, environmentId, hosts, port, token, relay } = server
-    const stored = { id, name, environmentId, hosts, port, token, relay }
+    const stored = toStored(server)
     if (existing !== undefined && sameTarget(existing, server)) {
       // Only the relay changed: the open socket and the calls waiting on it stay.
-      if (existing.relay !== relay) transports.get(id)?.setUrls(remoteSocketUrls(server))
+      if (existing.relay !== server.relay) transports.get(server.id)?.setUrls(remoteSocketUrls(server))
       return { ...existing, ...stored }
     }
     if (existing !== undefined) close(server.id)

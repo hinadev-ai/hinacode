@@ -10,10 +10,10 @@ const TOKEN_KEY = "hinacode-relay-owner-token"
 async function api(method, path) {
   const token = localStorage.getItem(TOKEN_KEY)
   const response = await fetch(path, { method, headers: { Authorization: "Bearer " + token } })
-  const body = response.status === 204 ? null : await response.json().catch(() => null)
+  const answer = response.status === 204 ? null : await response.json().catch(() => null)
   if (response.status === 401) localStorage.removeItem(TOKEN_KEY)
-  if (!response.ok) throw new Error(body && body.error ? body.error : "The relay answered HTTP " + response.status + ".")
-  return body
+  if (!response.ok) throw new Error(answer && answer.error ? answer.error : "The relay answered HTTP " + response.status + ".")
+  return answer
 }
 
 async function renderLink() {
@@ -34,47 +34,10 @@ async function renderLink() {
       show("approve", false)
       say("link-title", link.name + " is linked.")
       say("link-status", "Return to HinaCode. It connects on its own.")
-      renderHosts()
     } catch (error) {
       $("approve").disabled = false
       say("link-status", error.message)
     }
-  }
-}
-
-async function renderHosts() {
-  const list = $("hosts")
-  let hosts
-  try {
-    hosts = (await api("GET", "/v1/hosts")).hosts
-  } catch (error) {
-    return say("hosts-status", error.message)
-  }
-  list.replaceChildren()
-  say("hosts-status", hosts.length === 0 ? "No machines are linked yet." : "")
-  for (const host of hosts) {
-    const item = document.createElement("li")
-    const label = document.createElement("div")
-    const name = document.createElement("strong")
-    name.textContent = host.name
-    const hostname = document.createElement("span")
-    hostname.textContent = host.hostname
-    label.append(name, hostname)
-    const remove = document.createElement("button")
-    remove.textContent = "Remove"
-    remove.className = "secondary"
-    remove.onclick = async () => {
-      remove.disabled = true
-      try {
-        await api("DELETE", "/v1/hosts/" + encodeURIComponent(host.id))
-        renderHosts()
-      } catch (error) {
-        remove.disabled = false
-        say("hosts-status", error.message)
-      }
-    }
-    item.append(label, remove)
-    list.append(item)
   }
 }
 
@@ -96,7 +59,6 @@ async function rotateToken() {
 
 function start() {
   say("link-title", "Link a machine")
-  show("machines", true)
   show("owner-token", true)
   $("rotate").onclick = rotateToken
   $("copy-token").onclick = () => navigator.clipboard.writeText($("new-token").value)
@@ -107,7 +69,6 @@ function start() {
     location.reload()
   }
   renderLink()
-  renderHosts()
 }
 
 if (localStorage.getItem(TOKEN_KEY)) {
@@ -136,14 +97,11 @@ input, button { font: inherit; }
 input { padding: 7px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }
 button { padding: 8px 16px; border-radius: 8px; border: 0; background: #e8618c; color: white; cursor: pointer; }
 button.secondary { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding: 4px 12px; }
+[hidden] { display: none !important; }
 button:disabled { opacity: 0.5; cursor: default; }
 .row { display: flex; gap: 8px; margin: 8px 0; }
 .row input { flex: 1; min-width: 0; font-family: ui-monospace, monospace; }
 #rotate { margin-top: 8px; }
-ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-li div { display: grid; min-width: 0; }
-li span { font-size: 0.875rem; color: color-mix(in srgb, currentColor 60%, transparent); overflow-wrap: anywhere; }
 a { color: inherit; font-size: 0.875rem; }
 `
 
@@ -165,11 +123,6 @@ export const linkPage = `<!doctype html>
 </section>
 <button id="approve" hidden>Approve</button>
 <form id="sign-in" hidden><input id="token" type="password" autocomplete="current-password" required> <button>Continue</button></form>
-<section id="machines" hidden>
-<h2>Your machines</h2>
-<p id="hosts-status"></p>
-<ul id="hosts"></ul>
-</section>
 <section id="owner-token" hidden>
 <h2>Owner token</h2>
 <p id="token-status">Replace it if it may have leaked.</p>

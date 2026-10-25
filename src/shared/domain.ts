@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
+import { EntrySource } from "./relayMachines.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -667,7 +668,8 @@ export const defaultSettings: Settings = {
 
 /**
  * A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret
- * `environment.<id>.token`. `relay` is its tunnel hostname, dialed before `host`.
+ * `environment.<id>.token`. `relay` is its tunnel hostname, dialed before `host`. `source` says whether it was
+ * paired by URL or listed by the relay the desktop signed in to.
  */
 export const Environment = Schema.Struct({
   id: Schema.String,
@@ -675,9 +677,28 @@ export const Environment = Schema.Struct({
   host: Schema.String,
   port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
   relay: Schema.NullOr(Schema.String),
+  source: EntrySource,
   createdAt: Timestamp,
 })
 export type Environment = typeof Environment.Type
+
+/** Whether this desktop holds the relay's owner token, and how its last sync of the relay's machines went. */
+export const RelayAccountStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("signedOut") }),
+  Schema.Struct({
+    state: Schema.Literal("signedIn"),
+    serviceUrl: Schema.String,
+    /** This desktop's own environment id, to tell its row among the relay's machines. */
+    environmentId: Schema.String,
+    /** How many machines the last successful sync listed for this desktop. */
+    machines: Schema.Int,
+    /** Null until the first sync since start. */
+    syncedAt: Schema.NullOr(Timestamp),
+    /** Why the last sync failed; null after a successful one. */
+    error: Schema.NullOr(Schema.String),
+  }),
+])
+export type RelayAccountStatus = typeof RelayAccountStatus.Type
 
 /**
  * The desktop's link to a cloud. `unauthorized` stops retrying until a new pairing URL. `incompatible` keeps

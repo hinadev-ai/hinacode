@@ -27,6 +27,7 @@ import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
+import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -92,7 +93,10 @@ export const makeTestAppLayer = (
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
-  const environments = Environments.layer.pipe(Layer.provide(Layer.mergeAll(Secrets.layer, agents)))
+  const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
+    Layer.provideMerge(Environments.layer),
+    Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
+  )
   const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments, PullRequestGuides.idleLayer)
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return RemoteServer.layer.pipe(

@@ -3,26 +3,14 @@ import { useURL } from "expo-linking"
 import { type ReactNode, useEffect, useState } from "react"
 import { AppState } from "react-native"
 import { parsePairingUrl, type PairingTarget } from "@shared/remote.ts"
-import { networkChanged, onEvent, setForeground, setServers, useConnection } from "@/lib/connection"
+import { networkChanged, onEvent, setForeground, setServers, storedServers, useConnection } from "@/lib/connection"
 import { loadServers, saveServers } from "@/lib/storage"
-import { addPairing, newServerId, type StoredServer } from "@/lib/stored-target"
+import { addPairing, newServerId } from "@/lib/stored-target"
 import { isTranscriptPush, useMessages } from "@/stores/messages"
 import { usePreferences } from "@/stores/preferences"
 import { usePullRequests } from "@/stores/pull-requests"
+import { useRelayAccount } from "@/stores/relay-account"
 import { useThreads } from "@/stores/threads"
-
-const storedServers = (): StoredServer[] =>
-  useConnection
-    .getState()
-    .servers.map(({ id, name, environmentId, hosts, port, token, relay }) => ({
-      id,
-      name,
-      environmentId,
-      hosts,
-      port,
-      token,
-      relay,
-    }))
 
 /** Adds a server, or updates the one this pairing reaches again. Returns its id. */
 export function pair(target: PairingTarget) {
@@ -40,9 +28,9 @@ export function forgetServer(id: string) {
 }
 
 /**
- * Restores the paired servers and preferences, saves the server list whenever it changes, accepts
- * `hinacode://connect` links, and keeps the thread, message and pull request stores in step with every server's
- * socket. Renders nothing until storage has been read.
+ * Restores the paired servers and preferences, syncs with the relay account at launch and on every return to the
+ * foreground, saves the server list whenever it changes, accepts `hinacode://connect` links, and keeps the thread,
+ * message and pull request stores in step with every server's socket. Renders nothing until storage has been read.
  */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
@@ -64,6 +52,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
         void saveServers(next)
       })
       setRestored(true)
+      void useRelayAccount.getState().restore()
     })
     return () => {
       cancelled = true
@@ -79,6 +68,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active" || state === "background") setForeground(state === "active")
+      if (state === "active") void useRelayAccount.getState().sync()
     })
     return () => subscription.remove()
   }, [])

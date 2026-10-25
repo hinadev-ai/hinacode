@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect"
+import { EntrySource } from "@shared/relayMachines.ts"
 import { type PairingTarget, pairingUrl, parsePairingUrl } from "@shared/remote.ts"
 
 export const SERVERS_KEY = "hinacode.servers"
@@ -13,6 +14,7 @@ export interface StoredServer extends PairingTarget {
   readonly id: string
   readonly name: string | null
   readonly environmentId: string | null
+  readonly source: EntrySource
 }
 
 const Entry = Schema.Struct({
@@ -24,6 +26,8 @@ const Entry = Schema.Struct({
   token: Schema.String,
   /** Absent in entries saved before the relay existed. */
   relay: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** Absent in entries saved before the relay listed machines. */
+  source: Schema.optionalKey(EntrySource),
 })
 
 const Legacy = Schema.Union([
@@ -41,7 +45,7 @@ const validTarget = (target: PairingTarget) => parsePairingUrl(pairingUrl(target
 const validEntry = (raw: unknown): StoredServer[] => {
   const entry = Option.getOrNull(decodeEntry(raw))
   const target = entry === null ? null : validTarget({ ...entry, relay: entry.relay ?? null })
-  return entry === null || target === null ? [] : [{ ...entry, ...target }]
+  return entry === null || target === null ? [] : [{ ...entry, ...target, source: entry.source ?? "pairing" }]
 }
 
 const migrate = (legacy: string | null, newId: () => string): StoredServer[] => {
@@ -52,7 +56,7 @@ const migrate = (legacy: string | null, newId: () => string): StoredServer[] => 
       ? { hosts: [stored.host], port: stored.port, token: stored.token, relay: null }
       : { ...stored, relay: null },
   )
-  return target === null ? [] : [{ id: newId(), name: null, environmentId: null, ...target }]
+  return target === null ? [] : [{ id: newId(), name: null, environmentId: null, ...target, source: "pairing" }]
 }
 
 export const newServerId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -74,8 +78,8 @@ export function addPairing(servers: readonly StoredServer[], target: PairingTarg
       (server.port === target.port && server.hosts.some((host) => target.hosts.includes(host))),
   )
   if (same === undefined) {
-    const id = newId()
-    return { servers: [...servers, { id, name: null, environmentId: null, ...target }], id }
+    const added: StoredServer = { id: newId(), name: null, environmentId: null, ...target, source: "pairing" }
+    return { servers: [...servers, added], id: added.id }
   }
   return {
     servers: servers.map((server) => (server === same ? { ...server, ...target } : server)),
