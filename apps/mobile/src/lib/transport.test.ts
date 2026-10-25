@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { DIRECT_CHECK_INTERVAL_MS, DIRECT_CHECK_TIMEOUT_MS, type Dial, RELAY_DELAY_MS } from "@shared/remote.ts"
 import {
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
+  CONNECT_TIMEOUT_MS,
   LOST_REPLY_MESSAGE,
   MAY_HAVE_RUN_MESSAGE,
   NOT_SENT_MESSAGE,
@@ -56,13 +58,16 @@ let statuses: TransportStatus[]
 let ready: number
 let keys: number
 
-function setup(urls: readonly [string, ...string[]] = ["ws://desktop/remote"]) {
+const direct = (url: string): Dial => ({ url, route: "direct", delayMs: 0 })
+const relay = (url: string): Dial => ({ url, route: "relay", delayMs: RELAY_DELAY_MS })
+
+function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote")]) {
   sockets = []
   statuses = []
   ready = 0
   keys = 0
   const transport = new Transport({
-    urls,
+    dials,
     token: "secret",
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
@@ -279,7 +284,7 @@ describe("Transport", () => {
     it("applies up to 30% jitter", async () => {
       sockets = []
       const transport = new Transport({
-        urls: ["ws://desktop/remote"],
+        dials: [direct("ws://desktop/remote")],
         token: "secret",
         isMutation: () => false,
         onStatus: () => {},
@@ -310,6 +315,7 @@ describe("Transport", () => {
     it.each([CLOSE_UNAUTHORIZED, CLOSE_TOKEN_ROTATED])("stops after close code %i and fails pending calls", async (code) => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
+      latest().open()
       latest().drop(code)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(sockets).toHaveLength(1)
@@ -474,77 +480,215 @@ describe("Transport", () => {
     })
   })
 
-  describe("several addresses", () => {
+  describe("racing the dial plan", () => {
     const TAILSCALE = "ws://100.64.0.2:47821/remote"
     const LAN = "ws://192.168.1.5:47821/remote"
-    const HOSTNAME = "ws://mac.local:47821/remote"
+    const RELAY = "wss://mac.example.com/remote"
+    const socketAt = (url: string) => sockets.findLast((socket) => socket.url === url)!
     const urls = () => sockets.map((socket) => socket.url)
 
-    it("falls back to the next address when the first never answers, then keeps the one that worked", async () => {
-      const transport = setup([TAILSCALE, LAN])
-      const read = track(transport.call("threads.list", undefined))
-      await vi.advanceTimersByTimeAsync(10_000)
-      expect(sockets[0]!.closed).toBe(true)
-      await vi.advanceTimersByTimeAsync(500)
+    async function connectOverRelay() {
+      const transport = setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).ready(["call-keys"])
+      return transport
+    }
+
+    it("dials every direct address at once and the relay after its delay", async () => {
+      setup([direct(TAILSCALE), direct(LAN), relay(RELAY)])
       expect(urls()).toEqual([TAILSCALE, LAN])
-      handshake()
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS - 1)
+      expect(urls()).toEqual([TAILSCALE, LAN])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(urls()).toEqual([TAILSCALE, LAN, RELAY])
+    })
+
+    it("gives the token to the first socket that opens and closes the rest unused", async () => {
+      setup([direct(TAILSCALE), direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(LAN).open()
+      socketAt(RELAY).open()
+      socketAt(TAILSCALE).open()
+      expect(socketAt(LAN).sent).toEqual([{ type: "auth", token: "secret" }])
+      for (const url of [TAILSCALE, RELAY]) {
+        expect(socketAt(url).closed).toBe(true)
+        expect(socketAt(url).sent).toEqual([])
+      }
+      socketAt(LAN).ready()
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("falls back to the relay when no direct address opens", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      expect(socketAt(LAN).closed).toBe(true)
+      expect(socketAt(LAN).sent).toEqual([])
+      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: "secret" }])
+    })
+
+    it("waits for the relay when a direct address closes first", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).drop()
+      expect(statuses.at(-1)).toBe("connecting")
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).ready()
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("loses the link when nothing opens within the connect timeout, then backs off", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(sockets.every((socket) => socket.closed)).toBe(true)
+      expect(statuses.at(-1)).toBe("offline")
+      await vi.advanceTimersByTimeAsync(499)
+      expect(sockets).toHaveLength(2)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(urls()).toEqual([LAN, RELAY, LAN])
+    })
+
+    it("loses the link at once when every socket closed", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(LAN).drop()
+      socketAt(RELAY).drop()
+      expect(statuses.at(-1)).toBe("offline")
+    })
+
+    it("stops on a refused token instead of trying the other addresses", async () => {
+      setup([direct(TAILSCALE), direct(LAN)])
+      socketAt(TAILSCALE).open()
+      socketAt(TAILSCALE).drop(CLOSE_UNAUTHORIZED)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(urls()).toEqual([TAILSCALE, LAN])
+      expect(statuses.at(-1)).toBe("unauthorized")
+    })
+
+    it("moves from the relay to a direct address once one answers, keeping pending calls", async () => {
+      const transport = await connectOverRelay()
+      const read = track(transport.call("threads.list", undefined))
+      const before = sockets.length
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS - 1)
+      expect(sockets).toHaveLength(before)
+      await vi.advanceTimersByTimeAsync(1)
+      const check = latest()
+      expect(check.url).toBe(LAN)
+
+      check.open()
+      expect(check.closed).toBe(true)
+      expect(check.sent).toEqual([])
+      expect(socketAt(RELAY).closed).toBe(true)
+      expect(latest()).not.toBe(check)
+      expect(latest().url).toBe(LAN)
+
+      handshake(["call-keys"])
       expect(latest().calls()).toEqual([{ type: "call", id: 1, method: "threads.list" }])
       latest().result(1, [])
       await vi.advanceTimersByTimeAsync(0)
       expect(read.value).toEqual({ result: [] })
-
-      latest().drop()
-      await vi.advanceTimersByTimeAsync(500)
-      expect(urls().at(-1)).toBe(LAN)
     })
 
-    it("moves on at each failed attempt, in order, wrapping around", async () => {
-      setup([TAILSCALE, LAN, HOSTNAME])
-      latest().drop()
-      await vi.advanceTimersByTimeAsync(500)
-      latest().open()
-      latest().drop(4003)
-      await vi.advanceTimersByTimeAsync(1_000)
-      await vi.advanceTimersByTimeAsync(10_000)
-      await vi.advanceTimersByTimeAsync(4_000)
-      expect(urls()).toEqual([TAILSCALE, LAN, HOSTNAME, TAILSCALE])
+    it("stays on the relay when no direct address answers the check", async () => {
+      await connectOverRelay()
+      const relaySocket = socketAt(RELAY)
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS + DIRECT_CHECK_TIMEOUT_MS)
+      expect(latest().url).toBe(LAN)
+      expect(latest().closed).toBe(true)
+      expect(relaySocket.closed).toBe(false)
+      expect(statuses.at(-1)).toBe("connected")
 
-      handshake()
-      latest().drop()
-      await vi.advanceTimersByTimeAsync(500)
-      latest().drop()
-      await vi.advanceTimersByTimeAsync(1_000)
-      expect(urls().slice(4)).toEqual([TAILSCALE, LAN])
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS - DIRECT_CHECK_TIMEOUT_MS)
+      expect(sockets.filter((socket) => socket.url === LAN)).toHaveLength(3)
     })
 
-    it("starts from the address that worked when the network changes or the app returns", async () => {
-      const transport = setup([TAILSCALE, LAN])
-      latest().drop()
-      await vi.advanceTimersByTimeAsync(500)
-      handshake()
+    it("checks no direct address while connected directly", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      handshake(["call-keys"])
+      await vi.advanceTimersByTimeAsync(3 * DIRECT_CHECK_INTERVAL_MS)
+      expect(urls()).toEqual([LAN])
+    })
 
-      transport.networkChanged()
-      expect(urls().at(-1)).toBe(LAN)
-      latest().drop()
-      transport.networkChanged()
-      expect(urls().at(-1)).toBe(LAN)
-
-      latest().drop()
+    it("checks nothing in the background and checks at once on return", async () => {
+      const transport = await connectOverRelay()
+      const before = sockets.length
       transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(5 * DIRECT_CHECK_INTERVAL_MS)
+      expect(sockets).toHaveLength(before)
+
       transport.setForeground(true)
-      expect(urls().at(-1)).toBe(LAN)
-      latest().drop()
-      await vi.advanceTimersByTimeAsync(1_000)
-      expect(urls().at(-1)).toBe(TAILSCALE)
+      expect(sockets).toHaveLength(before + 1)
+      expect(latest().url).toBe(LAN)
     })
 
-    it("stops on a refused token instead of trying the other addresses", async () => {
-      setup([TAILSCALE, LAN])
+    it("re-races from the direct addresses when the network changes", async () => {
+      const transport = await connectOverRelay()
+      transport.networkChanged()
+      expect(socketAt(RELAY).closed).toBe(true)
+      expect(latest().url).toBe(LAN)
       latest().open()
-      latest().drop(CLOSE_UNAUTHORIZED)
+      expect(latest().sent).toEqual([{ type: "auth", token: "secret" }])
+    })
+
+    it("races the relay alone when a direct address refuses the token, until the network changes", async () => {
+      const transport = setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).open()
+      socketAt(LAN).drop(CLOSE_UNAUTHORIZED)
+      expect(urls()).toEqual([LAN, RELAY])
+      handshake(["call-keys"])
+      expect(statuses).not.toContain("unauthorized")
+      expect(statuses.at(-1)).toBe("connected")
+
+      await vi.advanceTimersByTimeAsync(3 * DIRECT_CHECK_INTERVAL_MS)
+      expect(urls()).toEqual([LAN, RELAY])
+
+      transport.networkChanged()
+      expect(urls()).toEqual([LAN, RELAY, LAN])
+    })
+
+    it("stops when the relay refuses the token", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).drop(CLOSE_UNAUTHORIZED)
       await vi.advanceTimersByTimeAsync(60_000)
-      expect(urls()).toEqual([TAILSCALE])
+      expect(urls()).toEqual([LAN, RELAY])
       expect(statuses.at(-1)).toBe("unauthorized")
+    })
+
+    it("dials only the direct addresses in the round after a direct check answers", async () => {
+      await connectOverRelay()
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
+      latest().open()
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS - 1)
+      expect(urls()).toEqual([LAN, RELAY, LAN, LAN])
+    })
+
+    it("races both routes at once when no direct address opens in the direct round", async () => {
+      await connectOverRelay()
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
+      latest().open()
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS)
+      expect(urls()).toEqual([LAN, RELAY, LAN, LAN, LAN])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      expect(urls()).toEqual([LAN, RELAY, LAN, LAN, LAN, RELAY])
+    })
+
+    it("keeps the open socket when the dials change and uses them from the next round", async () => {
+      const transport = setup([direct(LAN)])
+      handshake(["call-keys"])
+      const first = latest()
+      transport.setDials([direct(TAILSCALE), relay(RELAY)])
+      expect(first.closed).toBe(false)
+      void transport.call("threads.list", undefined)
+      expect(first.calls()).toHaveLength(1)
+
+      first.drop()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(latest().url).toBe(TAILSCALE)
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      expect(latest().url).toBe(RELAY)
     })
   })
 

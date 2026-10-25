@@ -5,7 +5,8 @@ import {
   isPortInUse,
   pairingUrl,
   parsePairingUrl,
-  remoteSocketUrls,
+  dialPlan,
+  RELAY_DELAY_MS,
   remoteWebSocketUrl,
   ServerFrame,
 } from "./remote.ts"
@@ -121,14 +122,14 @@ describe("pairing URLs", () => {
     expect(remoteWebSocketUrl({ host: "mac.local", port: 47821 })).toBe("ws://mac.local:47821/remote")
   })
 
-  it("dials the relay before the direct hosts", () => {
-    expect(remoteSocketUrls({ hosts: ["100.64.0.2", "mac.local"], port: 47821, relay: "r.example.com" })).toEqual([
-      "wss://r.example.com/remote",
-      "ws://100.64.0.2:47821/remote",
-      "ws://mac.local:47821/remote",
+  it("dials the direct addresses at once and the relay a moment later", () => {
+    expect(dialPlan({ hosts: ["100.64.0.2", "mac.local"], port: 47821, relay: "r.example.com" })).toEqual([
+      { url: "ws://100.64.0.2:47821/remote", route: "direct", delayMs: 0 },
+      { url: "ws://mac.local:47821/remote", route: "direct", delayMs: 0 },
+      { url: "wss://r.example.com/remote", route: "relay", delayMs: RELAY_DELAY_MS },
     ])
-    expect(remoteSocketUrls({ hosts: ["mac.local"], port: 47821, relay: null })).toEqual([
-      "ws://mac.local:47821/remote",
+    expect(dialPlan({ hosts: ["mac.local"], port: 47821, relay: null })).toEqual([
+      { url: "ws://mac.local:47821/remote", route: "direct", delayMs: 0 },
     ])
   })
 })

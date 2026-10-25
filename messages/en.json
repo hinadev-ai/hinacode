@@ -830,7 +830,7 @@
   "remote_pair_loading": "Loading pairing code…",
   "remote_pair_failed": "Could not load the pairing code: {message}",
   "remote_pair_host_label": "Addresses",
-  "remote_pair_host_hint": "The QR code carries every address. The phone tries them in this order and starts with the last one that worked, so the pairing keeps working on Tailscale away from home.",
+  "remote_pair_host_hint": "The QR code carries every address. The phone tries them all at once and uses the relay only when none answers, so the pairing keeps working away from home.",
   "remote_pair_qr_label": "Pairing QR code",
   "remote_pair_url_label": "Pairing URL",
   "remote_pair_url_copy": "Copy pairing URL",
