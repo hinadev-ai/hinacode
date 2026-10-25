@@ -1540,6 +1540,8 @@
   "mobile_image_unavailable": "無法顯示圖片：{path}",
   "mobile_image_open": "開啟圖片：{path}",
   "mobile_image_close": "關閉圖片",
+  "mobile_markdown_task_done": "已完成",
+  "mobile_markdown_task_open": "未完成",
   "mobile_files_search_placeholder": "前往檔案",
   "mobile_files_clear_search": "清除搜尋",
   "mobile_files_crumbs_label": "資料夾路徑",

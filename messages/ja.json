@@ -1522,6 +1522,8 @@
   "mobile_image_unavailable": "画像を表示できません: {path}",
   "mobile_image_open": "画像を開く: {path}",
   "mobile_image_close": "画像を閉じる",
+  "mobile_markdown_task_done": "完了",
+  "mobile_markdown_task_open": "未完了",
   "mobile_files_search_placeholder": "ファイルへ移動",
   "mobile_files_clear_search": "検索をクリア",
   "mobile_files_crumbs_label": "フォルダのパス",

@@ -1567,6 +1567,8 @@
   "mobile_image_unavailable": "Image unavailable: {path}",
   "mobile_image_open": "Open image: {path}",
   "mobile_image_close": "Close image",
+  "mobile_markdown_task_done": "Done",
+  "mobile_markdown_task_open": "Not done",
   "mobile_files_search_placeholder": "Go to file",
   "mobile_files_clear_search": "Clear search",
   "mobile_files_crumbs_label": "Folder path",

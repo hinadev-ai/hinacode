@@ -3,7 +3,7 @@ import SwiftUI
 
 extension Color {
     /// A color with its own value in dark mode, for the few brand and syntax colors the system palette lacks.
-    init(light: UInt32, dark: UInt32) {
+    nonisolated init(light: UInt32, dark: UInt32) {
         self.init(
             uiColor: UIColor { traits in
                 UIColor(rgb: traits.userInterfaceStyle == .dark ? dark : light)
@@ -12,13 +12,36 @@ extension Color {
 }
 
 extension UIColor {
-    fileprivate convenience init(rgb: UInt32) {
+    nonisolated fileprivate convenience init(rgb: UInt32) {
         self.init(
             red: CGFloat((rgb >> 16) & 0xFF) / 255,
             green: CGFloat((rgb >> 8) & 0xFF) / 255,
             blue: CGFloat(rgb & 0xFF) / 255,
             alpha: 1
         )
+    }
+}
+
+/// GitHub's light and dark syntax colors. Plain text keeps the text color. Nonisolated, so code is colored off the
+/// main actor.
+nonisolated enum SyntaxPalette {
+    private static let comment = Color(light: 0x57606A, dark: 0x8B949E)
+    private static let string = Color(light: 0x0A3069, dark: 0xA5D6FF)
+    private static let number = Color(light: 0x0550AE, dark: 0x79C0FF)
+    private static let keyword = Color(light: 0xCF222E, dark: 0xFF7B72)
+    private static let type = Color(light: 0x953800, dark: 0xFFA657)
+    private static let function = Color(light: 0x6639BA, dark: 0xD2A8FF)
+
+    static func color(_ kind: SyntaxToken.Kind) -> Color? {
+        switch kind {
+        case .plain: nil
+        case .comment: comment
+        case .string: string
+        case .number, .constant: number
+        case .keyword, .operator: keyword
+        case .type: type
+        case .function: function
+        }
     }
 }
 
