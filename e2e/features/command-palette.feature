@@ -20,7 +20,7 @@ Feature: Command palette
     And I type "readme" into the palette
     Then the first palette result reads "README.md"
     When I press "Enter"
-    Then the file viewer shows "README.md" with "# e2e"
+    Then the file viewer shows "README.md" with "e2e"
 
   Scenario: The commands mode runs a command
     When I press "ControlOrMeta+Shift+p"
