@@ -5,15 +5,11 @@ import Observation
 @MainActor
 @Observable
 public final class UnseenStore {
-    public enum Outcome: Sendable {
-        case completed, failed
-    }
-
-    public private(set) var outcomes: [String: Outcome] = [:]
+    public private(set) var outcomes: [String: ThreadOutcome] = [:]
 
     public init() {}
 
-    public func record(_ outcome: Outcome, threadId: String) {
+    public func record(_ outcome: ThreadOutcome, threadId: String) {
         outcomes[threadId] = outcome
     }
 

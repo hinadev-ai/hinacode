@@ -41,34 +41,9 @@ public final class LinearStore {
         let configuredResult = await configuredRead.result
         let at = timers.now
         switch issuesResult {
-        case .success(let list): issues = .ready(Self.sortIssues(list), at: at)
+        case .success(let list): issues = .ready(Overview.sortIssues(list), at: at)
         case .failure(let error): issues = .failure(error, at: at)
         }
         configured = try? configuredResult.get()
-    }
-
-    private static let stateRank = ["started": 0, "unstarted": 1, "triage": 2, "backlog": 3]
-
-    /// Issues from every server once each, work in progress first, then by priority and the latest update. Two
-    /// servers with the same Linear account answer the same issues.
-    private static func sortIssues(_ issues: [LinearIssue]) -> [LinearIssue] {
-        var unique: [LinearIssue] = []
-        var positions: [String: Int] = [:]
-        for issue in issues {
-            if let position = positions[issue.id] {
-                unique[position] = issue
-            } else {
-                positions[issue.id] = unique.count
-                unique.append(issue)
-            }
-        }
-        // Linear's 0 means no priority, which sorts after low.
-        func priorityRank(_ issue: LinearIssue) -> Double { issue.priority == 0 ? 5 : issue.priority }
-        return unique.sorted { a, b in
-            let (stateA, stateB) = (stateRank[a.state.type] ?? 4, stateRank[b.state.type] ?? 4)
-            if stateA != stateB { return stateA < stateB }
-            if priorityRank(a) != priorityRank(b) { return priorityRank(a) < priorityRank(b) }
-            return a.updatedAt > b.updatedAt
-        }
     }
 }
