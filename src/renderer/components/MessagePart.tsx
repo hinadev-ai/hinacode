@@ -269,14 +269,14 @@ export function ToolGroup({
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
         <RiToolsLine aria-hidden className="size-3.5 shrink-0" />
-        <span className="min-w-0 shrink truncate font-medium">{summarizeTools(calls)}</span>
+        <span className="min-w-0 shrink truncate font-medium tabular-nums">{summarizeTools(calls)}</span>
         {running && (
           <span className="min-w-0 flex-1 truncate">
             <Highlighted text={describeCommand(running)} />
           </span>
         )}
         {failed > 0 && (
-          <span className="flex shrink-0 items-center gap-1 text-destructive">
+          <span className="flex shrink-0 items-center gap-1 text-destructive tabular-nums">
             <RiErrorWarningLine aria-hidden className="size-3.5" />
             {m.tool_commands_failed({ count: failed })}
           </span>

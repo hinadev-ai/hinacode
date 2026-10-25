@@ -120,7 +120,7 @@ export function AccountLimitNotice({ thread }: { thread: AccountThread }) {
           {m.account_limit_notice({ window: windowLabel(spent.window), account: current.name })}
         </span>
         {spent.resetsAt !== null && (
-          <span className="text-muted-foreground"> {resetLabel(spent.resetsAt, now, getLocale())}</span>
+          <span className="text-muted-foreground tabular-nums"> {resetLabel(spent.resetsAt, now, getLocale())}</span>
         )}
       </span>
       {suggestion && (

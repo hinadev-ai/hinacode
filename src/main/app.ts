@@ -8,6 +8,7 @@ import { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import { applyServeConfig, type ServeConfig } from "./serve.ts"
 import type { PushEvent } from "../shared/contract.ts"
@@ -30,9 +31,11 @@ import * as Ports from "./services/Ports.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
+import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
+import * as SystemResources from "./services/SystemResources.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
@@ -99,13 +102,19 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
       : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
   const claude = mockClaude ?? ClaudeProvider.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const relayServiceUrl = process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL
+  const relay = Relay.layer({ serviceUrl: relayServiceUrl, cloudflaredDir: join(userData, "cloudflared") }).pipe(
+    Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
+  )
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
+    SystemResources.layer,
     naming,
     remoteAccess,
+    relay,
     tinyVm,
     passkeys,
     linearLayer(process.env),
@@ -120,7 +129,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     updates,
     Mcp.serverLayer,
     AgentLogins.layer,
-    Environments.layer.pipe(Layer.provide(Secrets.layer)),
+    RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(
+      Layer.provideMerge(Environments.layer),
+      Layer.provide(Secrets.layer),
+    ),
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   // A cloud's address is written below it, so the listener's first read of its settings already has it.

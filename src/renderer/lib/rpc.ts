@@ -104,7 +104,11 @@ export const worktreeCheckoutsAtom = Atom.make(
 
 /** Paired clouds with their link status. A status push lists them again. */
 export const environmentsAtom = Atom.make((get) => {
-  get.addFinalizer(onPushEvent((event) => event.type === "environment.status" && get.refreshSelf()))
+  get.addFinalizer(
+    onPushEvent(
+      (event) => (event.type === "environment.status" || event.type === "environments.changed") && get.refreshSelf(),
+    ),
+  )
   return call("environments.list", undefined)
 }).pipe(Atom.keepAlive)
 
@@ -122,6 +126,43 @@ export const removeEnvironmentAtom = Atom.fn((id: string) =>
 
 /** Answers at once. The cloud's status pushes tell how the new attempt went. */
 export const reconnectEnvironmentAtom = Atom.fn((id: string) => call("environments.reconnect", { id }))
+
+/** Read on each visit, since the background sync every five minutes sends no push of its own. */
+export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined))
+
+const relayAccountAction = <A>(effect: Effect.Effect<A, RpcError>) =>
+  effect.pipe(
+    Effect.tap(() => Atom.refresh(relayAccountAtom)),
+    Effect.tap(() => Atom.refresh(environmentsAtom)),
+  )
+
+export const signInRelayAtom = Atom.fn((ownerToken: string) =>
+  relayAccountAction(call("relayAccount.signIn", { ownerToken })),
+)
+
+export const signOutRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.signOut", undefined)))
+
+export const syncRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.sync", undefined)))
+
+/** Every machine linked to the relay. Read on each visit; a machine that claims its link sends no push. */
+export const relayMachinesAtom = Atom.make(call("relayAccount.machines", undefined))
+
+const relayMachinesAction = <A>(effect: Effect.Effect<A, RpcError>) =>
+  relayAccountAction(effect).pipe(Effect.tap(() => Atom.refresh(relayMachinesAtom)))
+
+export const setRelayMachineShownAtom = Atom.fn((input: RpcRequest<"relayAccount.setShown">) =>
+  relayMachinesAction(call("relayAccount.setShown", input)),
+)
+
+export const removeRelayMachineAtom = Atom.fn((id: string) =>
+  relayMachinesAction(call("relayAccount.removeMachine", { id })),
+)
+
+export const pendingRelayLinkAtom = Atom.fn((userCode: string) => call("relayAccount.pendingLink", { userCode }))
+
+export const approveRelayLinkAtom = Atom.fn((userCode: string) =>
+  relayMachinesAction(call("relayAccount.approveLink", { userCode })),
+)
 
 export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
@@ -420,6 +461,12 @@ export const accountLimitsAtom = Atom.make((get) => {
 /** Polls the remote listener every 2s while subscribed so the device count stays current. */
 export const remoteStatusAtom = Atom.make(
   Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
+)
+
+export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(
+    Stream.fromEffectSchedule(call("system.resources", undefined, { environment }), Schedule.spaced("5 seconds")),
+  ),
 )
 
 /**

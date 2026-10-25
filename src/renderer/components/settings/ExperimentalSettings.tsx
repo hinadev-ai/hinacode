@@ -9,10 +9,10 @@ import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
 export function ExperimentalSettings() {
   const environment = useSettingsEnvironment()
@@ -58,7 +58,7 @@ export function ExperimentalSettings() {
 
   return (
     <SettingsSection title={m.settings_experimental()} description={m.settings_experimental_hint()}>
-      <FieldGroup>
+      <SettingsGroup>
         <Field orientation="horizontal">
           <FieldContent>
             <FieldLabel htmlFor="settings-experimental-tiny-vm">{m.settings_tiny_vm()}</FieldLabel>
@@ -100,8 +100,8 @@ export function ExperimentalSettings() {
             />
           </Field>
         )}
-        {error && <FieldError>{error}</FieldError>}
-      </FieldGroup>
+      </SettingsGroup>
+      {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
   )
 }
@@ -114,15 +114,17 @@ function VmTemplateField({ value, onChange }: { value: string; onChange: (name: 
     AsyncResult.isSuccess(host) && host.value.status === "connected" ? host.value.templates : []
   if (templates.length === 0) return null
   return (
-    <Field>
-      <FieldLabel htmlFor="settings-experimental-tiny-vm-template">{m.settings_tiny_vm_template()}</FieldLabel>
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor="settings-experimental-tiny-vm-template">{m.settings_tiny_vm_template()}</FieldLabel>
+        <FieldDescription>{m.settings_tiny_vm_template_hint()}</FieldDescription>
+      </FieldContent>
       <VmTemplateSelect
         id="settings-experimental-tiny-vm-template"
         templates={templates}
         value={value}
         onChange={onChange}
       />
-      <FieldDescription>{m.settings_tiny_vm_template_hint()}</FieldDescription>
     </Field>
   )
 }

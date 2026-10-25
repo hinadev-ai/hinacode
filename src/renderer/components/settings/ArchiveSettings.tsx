@@ -6,9 +6,9 @@ import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
 const toggles: ReadonlyArray<{
   readonly key: keyof Archive
@@ -36,7 +36,7 @@ export function ArchiveSettings() {
 
   return (
     <SettingsSection title={m.settings_archive()} description={m.settings_archive_hint()}>
-      <FieldGroup>
+      <SettingsGroup>
         {toggles.map(({ key, label, hint }) => (
           <Field key={key} orientation="horizontal">
             <FieldContent>
@@ -50,8 +50,8 @@ export function ArchiveSettings() {
             />
           </Field>
         ))}
-        {error && <FieldError>{error}</FieldError>}
-      </FieldGroup>
+      </SettingsGroup>
+      {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
   )
 }

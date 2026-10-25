@@ -69,7 +69,9 @@ The cloud is the source of truth and the server is a pipe. See [ADR 0016](../adr
 
 Verified: `npx --package <tarball> hinacode serve` on the Linux home server installs, pairs, answers `projects.create`, `projects.list` and `models.list` for Claude and Codex over the WebSocket, refuses `dialog.pickFolder` as `DesktopOnly`, refuses a second daemon on the same directory, and frees its lock on `SIGTERM`.
 
-### Slice 3: the server (relay)
+### Slice 3: the server (relay), replaced by a Cloudflare tunnel
+
+Superseded by `2026-10-24-relay.md` and [ADR 0020](../adr/0020-cloudflare-tunnel-as-the-relay.md): each machine runs a Cloudflare named tunnel in the developer's own account, so there is no relay server to run. The plan below is kept for its reasoning.
 
 - A cloud with `settings.server` set opens one outbound WSS connection at boot and registers `{ cloudId, name, version }`. `cloudId` is generated once per data directory and stored in the `setting` table next to the remote token.
 - A client opens one socket per cloud through the server. Relay frames wrap the existing ones: `{ cloudId, frame: ClientFrame }` up, `{ cloudId, frame: ServerFrame }` down. The server never decodes `frame` beyond routing, so the remote protocol can evolve without a server deploy.

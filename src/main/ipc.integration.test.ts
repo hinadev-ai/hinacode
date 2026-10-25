@@ -13,6 +13,7 @@ import type { AccountHome, AgentEvent, Subagent, ThreadUsage } from "../shared/a
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
+import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
 import type { Project, Thread, Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
@@ -1303,6 +1304,7 @@ const phone = (port: number, options?: { autoPong: boolean }) => {
       if (!("type" in frame)) throw new Error(`socket closed before the answer: ${frame.code} ${frame.reason}`)
       return (frame as Extract<ServerFrame, { type: "result" }>).envelope as RpcEnvelope<RpcResponseEncoded<M>>
     },
+    challenge: () => until(() => frames.find((f) => f.type === "challenge")),
     ready: () => until(() => frames.find((f) => f.type === "ready")),
     answered: (count: number) =>
       until(() => (frames.filter((f) => f.type === "result").length >= count ? true : undefined)),
@@ -1333,6 +1335,44 @@ describe("remote mode", () => {
     const wrong = phone(port)
     await wrong.send({ type: "auth", token: "not-the-token" })
     expect((await wrong.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+  })
+
+  test("the first frame is a challenge, and a proof of the token gets a ready that proves it back", async () => {
+    const { token } = result(await invoke("remote.pairing", undefined))
+    const proved = phone(port)
+    const challenge = await proved.challenge()
+    expect(proved.frames[0]).toBe(challenge)
+    const nonce = newNonce()
+    await proved.send({ type: "auth", nonce, proof: clientProof(token, challenge.nonce, nonce) })
+    expect((await proved.ready()).proof).toBe(serverProof(token, nonce, challenge.nonce))
+    expect(result(await proved.call("projects.list", undefined))).toBeInstanceOf(Array)
+    proved.socket.close()
+  })
+
+  test("a wrong proof is refused like a wrong token", async () => {
+    const forged = phone(port)
+    const challenge = await forged.challenge()
+    const nonce = newNonce()
+    await forged.send({ type: "auth", nonce, proof: clientProof("not-the-token", challenge.nonce, nonce) })
+    expect((await forged.closed()).code).toBe(RemoteAccess.CLOSE_UNAUTHORIZED)
+  })
+
+  test("a client that predates the challenge still connects with the token, and its ready proves nothing", async () => {
+    const old = phone(port)
+    await old.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect(await old.ready()).not.toHaveProperty("proof")
+    old.socket.close()
+  })
+
+  test("rotating the token closes a socket that authenticated with a proof", async () => {
+    const { token } = result(await invoke("remote.pairing", undefined))
+    const proved = phone(port)
+    const challenge = await proved.challenge()
+    const nonce = newNonce()
+    await proved.send({ type: "auth", nonce, proof: clientProof(token, challenge.nonce, nonce) })
+    await proved.ready()
+    result(await invoke("remote.rotateToken", undefined))
+    expect((await proved.closed()).code).toBe(RemoteAccess.CLOSE_TOKEN_ROTATED)
   })
 
   test("a paired phone calls rpc, receives pushes and is refused desktop-only methods", async () => {

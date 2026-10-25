@@ -589,8 +589,12 @@ export function DefaultAccountField({ provider }: { provider: ProviderId }) {
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_default_account()}</FieldLabel>
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_default_account()}</FieldLabel>
+        <FieldDescription>{m.settings_default_account_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
       <div>
         <Select items={items} value={defaultAccount[provider] ?? CLI_LOGIN} onValueChange={(next) => void save(next)}>
           <SelectTrigger id={inputId} className="w-72">
@@ -605,8 +609,6 @@ export function DefaultAccountField({ provider }: { provider: ProviderId }) {
           </SelectContent>
         </Select>
       </div>
-      <FieldDescription>{m.settings_default_account_hint()}</FieldDescription>
-      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }
