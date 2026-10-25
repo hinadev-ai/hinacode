@@ -1,0 +1,65 @@
+name: glass shots
+on:
+  push:
+    branches: [kk/glass-shots-scratch]
+
+jobs:
+  shots:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: xcodebuild -version && xcrun simctl list runtimes
+      - run: pnpm install --frozen-lockfile && pnpm build
+      - name: Start a mock cloud and seed threads
+        run: |
+          D=$RUNNER_TEMP/glass
+          git init -q $D/repo && git -C $D/repo -c user.name=a -c user.email=a@b commit -q --allow-empty -m init
+          HINACODE_USER_DATA=$D/data HINACODE_MOCK_CLAUDE=markdown HINACODE_SERVE_AUTO_UPDATE=0 \
+            nohup node out/main/daemon.js serve --port 47123 --host 127.0.0.1 --relay off > $D/serve.log 2>&1 &
+          for i in $(seq 60); do grep -q "hinacode://connect" $D/serve.log && break; sleep 1; done
+          URL=$(grep -o 'hinacode://connect[^ ]*' $D/serve.log | head -1)
+          TOKEN=$(node -e 'console.log(new URL(process.argv[1]).searchParams.get("token"))' "$URL")
+          node scripts-glass-seed.mjs 47123 "$TOKEN" $D/repo
+          echo "EXPO_PUBLIC_DEMO_PAIR=$URL" >> $GITHUB_ENV
+      - name: Build the iOS app for the simulator
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_DEMO_THREAD_DELAY: "30000"
+        run: |
+          pnpm install --frozen-lockfile
+          npx expo prebuild --platform ios --no-install
+          (cd ios && pod install)
+          xcodebuild -workspace ios/HinaCode.xcworkspace -scheme HinaCode -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO | tail -40
+      - name: Screenshot
+        run: |
+          set -x
+          APP=$(find apps/mobile/build/Build/Products -name '*.app' -maxdepth 2 | head -1)
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
+          DEVICE=$(xcrun simctl list devices available -j | node -e '
+            const d = JSON.parse(require("fs").readFileSync(0)).devices
+            const all = Object.entries(d).filter(([r]) => r.includes("iOS-26")).flatMap(([, l]) => l)
+            const pick = all.find((x) => x.name === "iPhone 17 Pro") ?? all.find((x) => x.name.startsWith("iPhone"))
+            console.log(pick.udid)')
+          xcrun simctl boot $DEVICE && xcrun simctl bootstatus $DEVICE -b
+          xcrun simctl status_bar $DEVICE override --time 9:41 --batteryState charged --batteryLevel 100
+          xcrun simctl install $DEVICE "$APP"
+          mkdir -p shots
+          for mode in light dark; do
+            xcrun simctl ui $DEVICE appearance $mode
+            xcrun simctl terminate $DEVICE $BUNDLE || true
+            xcrun simctl launch $DEVICE $BUNDLE
+            sleep 20 && xcrun simctl io $DEVICE screenshot shots/iphone-home-$mode.png
+            sleep 25 && xcrun simctl io $DEVICE screenshot shots/iphone-thread-$mode.png
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots
+          path: shots

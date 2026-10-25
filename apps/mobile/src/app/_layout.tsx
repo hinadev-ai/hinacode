@@ -5,6 +5,7 @@ import { Appearance, Platform, StyleSheet, View } from "react-native"
 import { ConnectionProvider } from "@/components/connection-provider"
 import { isIOS } from "@/components/glass"
 import { Notifier } from "@/components/notifier"
+import { DemoDriver } from "@/components/demo-driver"
 import { ThreadSidebar } from "@/components/thread-sidebar"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useScheme, useTheme } from "@/hooks/use-theme"
@@ -44,6 +45,7 @@ export default function RootLayout() {
       <ConnectionProvider>
         <Routes />
         <Notifier />
+        <DemoDriver />
       </ConnectionProvider>
     </ThemeProvider>
   )

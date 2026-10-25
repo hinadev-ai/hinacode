@@ -61,7 +61,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const target = url === null ? null : parsePairingUrl(url)
+    const demo = process.env.EXPO_PUBLIC_DEMO_PAIR
+    const target = url !== null ? parsePairingUrl(url) : demo ? parsePairingUrl(demo) : null
     if (target !== null && restored) pair(target)
   }, [url, restored])
 
