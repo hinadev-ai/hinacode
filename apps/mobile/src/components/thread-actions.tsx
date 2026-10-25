@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useState } from "react"
 import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon } from "@/components/icon"
 import { IconSwap, Spinner } from "@/components/motion"
 import { Notice } from "@/components/ui"
@@ -91,8 +92,13 @@ export function ThreadActionsSheet({
       <Animated.View
         entering={rise}
         accessibilityViewIsModal
-        style={[styles.sheet, { paddingBottom: 8 + insets.bottom, backgroundColor: theme.background }]}
+        style={[
+          styles.sheet,
+          liquidGlass && styles.glassSheet,
+          { paddingBottom: 8 + insets.bottom, backgroundColor: liquidGlass ? "transparent" : theme.background },
+        ]}
       >
+        <GlassFill />
         <Text accessibilityRole="header" numberOfLines={2} style={[styles.title, { color: theme.textMuted }]}>
           {title}
         </Text>
@@ -151,6 +157,7 @@ export function ThreadActionsSheet({
 const styles = StyleSheet.create({
   // The scrim is dark in both themes, so it borrows the dark palette's background.
   scrim: { flex: 1, backgroundColor: Colors.dark.background, opacity: 0.5 },
+  glassSheet: { overflow: "hidden" },
   sheet: {
     gap: 8,
     paddingHorizontal: 8,

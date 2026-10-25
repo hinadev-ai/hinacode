@@ -1472,6 +1472,7 @@
   "mobile_search_searching": "Searching messages",
   "mobile_search_empty": "No results",
   "mobile_search_empty_hint": "Try a different word.",
+  "mobile_thread_actions": "Thread actions",
   "mobile_thread_actions_hint": "Long press to pin or archive",
   "mobile_thread_actions_pin": "Pin",
   "mobile_thread_actions_unpin": "Unpin",

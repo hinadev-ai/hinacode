@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
@@ -51,13 +52,15 @@ export function Sheet({
         style={[
           styles.sheet,
           fit ? styles.fitSheet : styles.fill,
+          liquidGlass && styles.glassSheet,
           {
             paddingBottom: SHEET_PADDING + insets.bottom,
-            backgroundColor: theme.background,
-            borderColor: theme.border,
+            backgroundColor: liquidGlass ? "transparent" : theme.background,
+            borderColor: liquidGlass ? "transparent" : theme.border,
           },
         ]}
       >
+        <GlassFill />
         <View style={styles.sheetHeader}>
           <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
             {title}
@@ -161,6 +164,7 @@ const styles = StyleSheet.create({
   fitSheet: { maxHeight: "85%" },
   fitScroll: { flexGrow: 0 },
   // A tablet keeps the sheet to a column, with the scrim on both sides; every phone is narrower.
+  glassSheet: { overflow: "hidden" },
   sheet: {
     width: "100%",
     maxWidth: 640,

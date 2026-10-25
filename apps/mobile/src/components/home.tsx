@@ -1,8 +1,9 @@
 import type { Project, Thread } from "@shared/domain.ts"
-import { router } from "expo-router"
+import { router, Stack } from "expo-router"
 import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
+import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
@@ -49,21 +50,93 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
 }
 
 /**
- * The thread list with its search, loading and empty states: the whole home screen on a phone, the sidebar in a
- * wide window. `selectedId` marks the thread open next to it.
+ * The same three actions as native iOS toolbar items, so the system draws them and they take the Liquid Glass
+ * capsules on iOS 26. There the bottom toolbar also hosts the search field, with New thread beside it. Older
+ * iOS keeps every action in the header and the search under the title.
  */
-export function HomeContent({ selectedId }: { selectedId?: string }) {
+export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
+  const overview = (
+    <Stack.Toolbar.Button
+      icon="square.grid.2x2"
+      accessibilityLabel={copy("mobile_home_overview")}
+      onPress={() => router.push("/overview")}
+    >
+      {copy("mobile_home_overview")}
+    </Stack.Toolbar.Button>
+  )
+  const settings = (
+    <Stack.Toolbar.Button
+      icon="gearshape"
+      accessibilityLabel={copy("mobile_home_settings")}
+      onPress={() => router.push("/settings")}
+    >
+      {copy("mobile_home_settings")}
+    </Stack.Toolbar.Button>
+  )
+  if (!liquidGlass)
+    return (
+      <Stack.Toolbar placement="right">
+        {overview}
+        <Stack.Toolbar.Button
+          icon="square.and.pencil"
+          accessibilityLabel={copy("mobile_home_new_thread")}
+          onPress={onNewThread}
+        >
+          {copy("mobile_home_new_thread")}
+        </Stack.Toolbar.Button>
+        {settings}
+      </Stack.Toolbar>
+    )
+  return (
+    <>
+      <Stack.Toolbar placement="right">
+        {overview}
+        {settings}
+      </Stack.Toolbar>
+      <Stack.Toolbar placement="bottom">
+        <Stack.Toolbar.SearchBarSlot separateBackground />
+        <Stack.Toolbar.Spacer />
+        <Stack.Toolbar.Button
+          icon="square.and.pencil"
+          variant="prominent"
+          accessibilityLabel={copy("mobile_home_new_thread")}
+          onPress={onNewThread}
+        >
+          {copy("mobile_home_new_thread")}
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
+    </>
+  )
+}
+
+/**
+ * The thread list with its search, loading and empty states: the whole home screen on a phone, the sidebar in a
+ * wide window. `selectedId` marks the thread open next to it. With `search`, the platform's own search field owns
+ * the query and the built-in one is not shown.
+ */
+export function HomeContent({
+  selectedId,
+  search,
+  transparent = false,
+}: {
+  selectedId?: string
+  search?: { readonly query: string; readonly onChange: (query: string) => void }
+  /** Lets the surface behind show through, for the floating glass sidebar. */
+  transparent?: boolean
+}) {
   const theme = useTheme()
   const loadStatus = useThreads((state) => state.status)
   const loadError = useThreads((state) => state.error)
   const hasProjects = useThreads((state) => state.projects.length > 0)
-  const [query, setQuery] = useState("")
+  const [ownQuery, setOwnQuery] = useState("")
+  const query = search?.query ?? ownQuery
+  const setQuery = search?.onChange ?? setOwnQuery
 
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+    <View style={[styles.screen, { backgroundColor: transparent ? "transparent" : theme.background }]}>
       {loadStatus === "error" && loadError !== null && (
         <View style={styles.notice}>
           <Notice text={loadError} tone="danger" />
@@ -98,15 +171,17 @@ export function HomeContent({ selectedId }: { selectedId?: string }) {
       ) : (
         hasProjects && (
           <>
-            <View style={styles.search}>
-              <SearchField
-                testID="thread-search"
-                value={query}
-                onChange={setQuery}
-                placeholder={copy("mobile_search_placeholder")}
-                clearLabel={copy("mobile_search_clear")}
-              />
-            </View>
+            {search === undefined && (
+              <View style={styles.search}>
+                <SearchField
+                  testID="thread-search"
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={copy("mobile_search_placeholder")}
+                  clearLabel={copy("mobile_search_clear")}
+                />
+              </View>
+            )}
             {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
           </>
         )
