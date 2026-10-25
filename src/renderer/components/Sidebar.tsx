@@ -7,6 +7,8 @@ import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import {
   RiAddLine,
   RiArrowRightSLine,
+  RiChat3Line,
+  RiChatNewLine,
   RiFilter3Fill,
   RiFilter3Line,
   RiFolder3Line,
@@ -102,6 +104,7 @@ export function Sidebar({
           className="mr-1 h-7 min-w-0 flex-1 text-sm"
         />
         <ProjectFilterMenu />
+        <NewChatButton />
         <Button
           ref={addProjectButtonRef}
           variant="ghost"
@@ -337,17 +340,18 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
 
   return AsyncResult.builder(projects)
     .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
-    .onSuccess((list) =>
-      list.length === 0 ? (
-        <div className="flex flex-col items-start gap-2 px-3 py-4">
-          <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
-          <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>
-          <Button variant="outline" size="sm" onClick={onAddProject}>
-            <RiFolderAddLine aria-hidden />
-            {m.sidebar_add_project()}
-          </Button>
-        </div>
-      ) : (
+    .onSuccess((list) => (
+      <>
+        {list.every((project) => project.kind === "chats") && (
+          <div className="flex flex-col items-start gap-2 px-3 py-4">
+            <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
+            <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>
+            <Button variant="outline" size="sm" onClick={onAddProject}>
+              <RiFolderAddLine aria-hidden />
+              {m.sidebar_add_project()}
+            </Button>
+          </div>
+        )}
         <ul ref={listRef} className="flex flex-col gap-0.5 px-1.5 pb-3">
           {shown.length === 0 && (
             <li className="px-1.5 py-2 text-xs text-muted-foreground">{m.sidebar_no_matches()}</li>
@@ -356,8 +360,8 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
             <ProjectGroup key={group.key} group={group} query={query} focusAfterDelete={focusAfterDelete} />
           ))}
         </ul>
-      ),
-    )
+      </>
+    ))
     .orElse(() => (
       <div role="alert" className="flex flex-col items-start gap-2 px-3 py-2">
         <p className="text-xs text-destructive">{m.sidebar_load_failed()}</p>
@@ -414,6 +418,8 @@ function ProjectGroup({ group, query, focusAfterDelete }: ProjectGroupProps) {
             />
             {cloud ? (
               <CloudMark cloud={cloud} id={cloudMarkId} className="size-4" />
+            ) : first.kind === "chats" ? (
+              <RiChat3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             ) : (
               <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             )}
@@ -422,13 +428,15 @@ function ProjectGroup({ group, query, focusAfterDelete }: ProjectGroupProps) {
             </span>
           </CollapsibleTrigger>
           <NewThreadButton projects={projects} buttonRef={newThreadButtonRef} onNewThread={newThread} />
-          <ProjectMenu
-            projects={projects}
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            onNewThread={newThread}
-            focusAfterDelete={focusAfterDelete}
-          />
+          {first.kind === "folder" && (
+            <ProjectMenu
+              projects={projects}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              onNewThread={newThread}
+              focusAfterDelete={focusAfterDelete}
+            />
+          )}
         </div>
         {/* Clips the rows while the height animates, with room left for a row's 2px focus ring. */}
         <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] [overflow-clip-margin:2px] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
@@ -465,6 +473,24 @@ function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonPr
       onClick={() => onNewThread(project)}
     >
       <RiAddLine aria-hidden />
+    </Button>
+  )
+}
+
+/** Starts a thread in this machine's chats project, which needs no repository. */
+function NewChatButton() {
+  const navigate = useNavigate()
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
+  const chats = projects.find((project) => project.kind === "chats" && project.environmentId === undefined)
+  if (chats === undefined) return null
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={m.sidebar_new_chat()}
+      onClick={() => void startThread(chats.id, navigate)}
+    >
+      <RiChatNewLine aria-hidden />
     </Button>
   )
 }

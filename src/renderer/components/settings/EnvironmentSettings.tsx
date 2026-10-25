@@ -250,7 +250,7 @@ function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <Switch id={switchId} size="sm" checked={host.enabled} disabled={pending} onCheckedChange={toggle} />
+            <Switch id={switchId} checked={host.enabled} disabled={pending} onCheckedChange={toggle} />
             <label htmlFor={switchId} className="text-xs whitespace-nowrap">
               {m.environment_relay_show()}
             </label>

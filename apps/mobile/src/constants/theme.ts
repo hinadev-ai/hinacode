@@ -28,6 +28,13 @@ export const Colors = {
     /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
     token: "#7c3aed",
     tokenBg: "rgba(124, 58, 237, 0.12)",
+    /** The send button's holographic pearl, the desktop's `send-halo` in the default themes. */
+    haloA: "#5ee7ff",
+    haloB: "#ff7ae0",
+    haloC: "#ffd84d",
+    haloD: "#8f7bff",
+    haloCore: "#e8ddff",
+    haloInk: "#14121c",
   },
   dark: {
     text: "#fafafa",
@@ -51,6 +58,12 @@ export const Colors = {
     prMerged: "#a371f7",
     token: "#a78bfa",
     tokenBg: "rgba(167, 139, 250, 0.16)",
+    haloA: "#aef3ff",
+    haloB: "#ffc6f5",
+    haloC: "#fff3b0",
+    haloD: "#c4b5ff",
+    haloCore: "#f2eaff",
+    haloInk: "#14121c",
   },
 } as const
 

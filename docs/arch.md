@@ -103,7 +103,7 @@ The visible thread owns its renderer history. Leaving it unloads the transcript 
 
 Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
 
-The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document, diffs, and Mermaid; the selected theme remains in SQLite.
+The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in SQLite.
 
 ## Main-process layers
 
@@ -378,6 +378,7 @@ erDiagram
     text id PK
     text root_path UK
     text setup_script
+    text kind "folder|chats"
   }
   worktree {
     text id PK
@@ -452,6 +453,7 @@ erDiagram
 - `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
+- `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<userData>/chats` by `Projects.ensureChats`. Its threads start in conversation mode and have no workspace picker.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
 ## Lifecycles

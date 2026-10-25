@@ -23,7 +23,8 @@ import { Keyring } from "./services/Secrets.ts"
 import { startResourceMonitor } from "./resourceMonitor.ts"
 import { hydratePath } from "./shellPath.ts"
 import * as Updater from "./updater.ts"
-import icon from "../../assets/icon.png?asset"
+import devIcon from "../../assets/icon-dev.png?asset"
+import releaseIcon from "../../assets/icon.png?asset"
 
 // Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves. The name
 // stays "kkcode", the product's name before HinaCode, so installs keep their profile directory and the
@@ -47,6 +48,7 @@ if (!app.requestSingleInstanceLock()) {
   app.exit(0)
 }
 if (!app.isPackaged) startResourceMonitor(app.getPath("userData"))
+const icon = app.isPackaged ? releaseIcon : devIcon
 // The login shell takes most of a second to start, so it runs while Electron gets ready.
 const pathHydrated = hydratePath(process.env)
 protocol.registerSchemesAsPrivileged([
