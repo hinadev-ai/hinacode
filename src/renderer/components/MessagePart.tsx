@@ -446,7 +446,6 @@ function CompactionPart({ compaction }: { compaction: Compaction }) {
   )
 }
 
-/** A rule across the transcript: the turns below it bill a different account. */
 function AccountSwitchPart({ part }: { part: Extract<MessagePart, { type: "account_switch" }> }) {
   const names = { from: part.from ?? m.account_default(), to: part.to ?? m.account_default() }
   return (

@@ -21,7 +21,6 @@ import { FieldError } from "./ui/field.tsx"
 
 type AccountThread = Pick<Thread, "id" | "provider" | "accountId" | "model">
 
-/** A remote environment's accounts have unknown limits, since `limits.list` only reads this machine. */
 export interface AccountOption extends AccountRoom {
   /** Null is the CLI's own login. */
   readonly id: string | null
@@ -33,10 +32,9 @@ export function useAccountOptions(thread: AccountThread) {
   const added = useProviderAccounts(environment, thread.provider)
   const defaultName = useDefaultAccountName(environment, thread.provider)
   const limits = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), (): ReadonlyArray<AccountLimits> => [])
+  const localLimits = environment === null ? limits : []
   const windowsOf = (id: string | null) =>
-    environment === null
-      ? (limits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? [])
-      : []
+    localLimits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? []
   const options = [{ id: null, name: defaultName }, ...added].map(({ id, name }): AccountOption => ({
     id,
     name,

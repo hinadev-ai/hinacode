@@ -613,7 +613,6 @@ export function DefaultAccountField({ provider }: { provider: ProviderId }) {
   )
 }
 
-/** Whether a limited thread of `provider` moves on by itself. Hidden until the provider has an added account. */
 export function AutoSwitchAccountField({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)

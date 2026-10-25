@@ -137,7 +137,6 @@ let heldTurn = Promise.withResolvers<void>()
 /** Each sub-agent the scripted providers were asked to stop. */
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
 
-/** An added Claude account named "Roomy" reports this, so it has room left when another account is limited. */
 const roomyLimits: PlanLimits = {
   windows: [{ window: { kind: "session" }, usedPercent: 12, resetsAt: "2026-10-12T15:00:00.000Z" }],
   readAt: "2026-10-12T10:00:00.000Z",
@@ -146,7 +145,6 @@ const roomyLimits: PlanLimits = {
 /** Turns the scripted Claude starts by itself. */
 const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
-/** The account home and prompt of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 const turnPrompts: Array<string> = []
 

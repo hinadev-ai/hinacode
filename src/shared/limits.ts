@@ -33,7 +33,6 @@ export type LimitWindow = typeof LimitWindow.Type
 export const PlanLimits = Schema.Struct({ windows: Schema.Array(LimitWindow), readAt: Schema.String })
 export type PlanLimits = typeof PlanLimits.Type
 
-/** A window is amber from 80% used and red once it is spent. */
 export const limitLevel = (usedPercent: number) =>
   usedPercent >= 100 ? "exhausted" : usedPercent >= 80 ? "warning" : "normal"
 
@@ -47,9 +46,7 @@ const blocks = (window: LimitWindow, model: string) =>
   limitLevel(window.usedPercent) === "exhausted" &&
   (window.window.kind !== "model" || model.toLowerCase().includes(window.window.name.toLowerCase()))
 
-/** An unknown reset sorts last, since nothing says the account recovers sooner. */
-const resetsLater = (a: LimitWindow, b: LimitWindow) =>
-  a.resetsAt === null || (b.resetsAt !== null && a.resetsAt > b.resetsAt)
+const resetMs = (window: LimitWindow) => (window.resetsAt === null ? Infinity : Date.parse(window.resetsAt))
 
 /**
  * The spent window that keeps an account from running `model`, the one that resets last. A per-model window
@@ -59,7 +56,7 @@ export const spentWindow = (windows: ReadonlyArray<LimitWindow>, model: string) 
   windows
     .filter((window) => blocks(window, model))
     .reduce<LimitWindow | undefined>(
-      (last, window) => (last === undefined || resetsLater(window, last) ? window : last),
+      (last, window) => (last === undefined || resetMs(window) > resetMs(last) ? window : last),
       undefined,
     )
 
