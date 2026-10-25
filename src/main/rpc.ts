@@ -28,9 +28,11 @@ import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses, RemoteAccess } from "./remote/access.ts"
+import { Relay } from "./remote/relay.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
+import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
@@ -69,6 +71,8 @@ export type AppServices =
   | Favicons
   | Updates
   | RemoteAccess
+  | Relay
+  | RelayAccount
   | Events
   | TinyVm
   | VmPasskeyRelay
@@ -88,6 +92,8 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
+  /** Opens an http(s) URL in the default browser. Anything else is ignored. */
+  readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
@@ -237,6 +243,15 @@ const handlers: Handlers = {
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
+  "relayAccount.status": () => RelayAccount.use((account) => account.status),
+  "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),
+  "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
+  "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
+  "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
+  "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
+  "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "relayAccount.pendingLink": ({ userCode }) => RelayAccount.use((account) => account.pendingLink(userCode)),
+  "relayAccount.approveLink": ({ userCode }) => RelayAccount.use((account) => account.approveLink(userCode)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
@@ -381,6 +396,21 @@ const handlers: Handlers = {
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
+  "remote.setupRelay": (_, desktop) =>
+    Effect.gen(function* () {
+      const account = yield* RelayAccount
+      const relay = yield* Relay
+      yield* relay.setup({
+        onLink: (link) =>
+          account
+            .approveOwnLink(link.userCode)
+            .pipe(
+              Effect.flatMap((approved) => (approved ? Effect.void : (desktop?.openExternal(link.url) ?? Effect.void))),
+            ),
+      })
+    }).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
+  "remote.removeRelay": () =>
+    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
 }
 
 export const RpcCall = Schema.Struct({

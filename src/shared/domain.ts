@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
+import { EntrySource } from "./relayMachines.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -665,15 +666,39 @@ export const defaultSettings: Settings = {
   worktreeRoot: null,
 }
 
-/** A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret `environment.<id>.token`. */
+/**
+ * A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret
+ * `environment.<id>.token`. `relay` is its tunnel hostname, dialed when `host` does not answer. `source` says whether it was
+ * paired by URL or listed by the relay the desktop signed in to.
+ */
 export const Environment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   host: Schema.String,
   port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  relay: Schema.NullOr(Schema.String),
+  source: EntrySource,
   createdAt: Timestamp,
 })
 export type Environment = typeof Environment.Type
+
+/** Whether this desktop holds the relay's owner token, and how its last sync of the relay's machines went. */
+export const RelayAccountStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("signedOut") }),
+  Schema.Struct({
+    state: Schema.Literal("signedIn"),
+    serviceUrl: Schema.String,
+    /** This desktop's own environment id, to tell its row among the relay's machines. */
+    environmentId: Schema.String,
+    /** How many machines the last successful sync listed for this desktop. */
+    machines: Schema.Int,
+    /** Null until the first sync since start. */
+    syncedAt: Schema.NullOr(Timestamp),
+    /** Why the last sync failed; null after a successful one. */
+    error: Schema.NullOr(Schema.String),
+  }),
+])
+export type RelayAccountStatus = typeof RelayAccountStatus.Type
 
 /**
  * The desktop's link to a cloud. `unauthorized` stops retrying until a new pairing URL. `incompatible` keeps
@@ -975,11 +1000,25 @@ export const FileSearchHit = Schema.Struct({
 })
 export type FileSearchHit = typeof FileSearchHit.Type
 
-/** What Settings > Remote shows: whether phones can connect right now, and how many do. */
+/**
+ * This machine's relay. `off` is not linked to an account. `linking` waits for the owner to approve `userCode` at
+ * `url`. `paused` keeps the tunnel while the remote listener is off.
+ * `error` is why the last `cloudflared` stopped, failed to register or could not be downloaded.
+ */
+export const RelayStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("off") }),
+  Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String, userCode: Schema.String }),
+  Schema.Struct({ state: Schema.Literals(["paused", "connected"]), hostname: Schema.String }),
+  Schema.Struct({ state: Schema.Literal("connecting"), hostname: Schema.String, error: Schema.NullOr(Schema.String) }),
+])
+export type RelayStatus = typeof RelayStatus.Type
+
+/** What Settings > Remote shows: whether phones can connect right now, how many do, and through which relay. */
 export const RemoteStatus = Schema.Struct({
   listening: Schema.Boolean,
   listenError: Schema.NullOr(Schema.String),
   connected: Schema.Int,
+  relay: RelayStatus,
 })
 export type RemoteStatus = typeof RemoteStatus.Type
 
@@ -1020,10 +1059,14 @@ export const MachineResources = Schema.Struct({
 })
 export type MachineResources = typeof MachineResources.Type
 
-/** Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first. */
+/**
+ * Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first, and
+ * `relay` is the tunnel hostname that answers from any network.
+ */
 export const RemotePairing = Schema.Struct({
   hosts: Schema.NonEmptyArray(Schema.String),
   port: Schema.Int,
   token: Schema.String,
+  relay: Schema.NullOr(Schema.String),
 })
 export type RemotePairing = typeof RemotePairing.Type

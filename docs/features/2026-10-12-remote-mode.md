@@ -83,7 +83,7 @@ The listener is reachable from the network when `bindHost` is not loopback. The 
 
 ## Out of scope
 
-- A relay or tunnel. The phone must reach the desktop directly, which Tailscale gives for free.
+- A relay or tunnel. The phone must reach the desktop directly, which Tailscale gives for free. The relay came later, in `2026-10-24-relay.md`.
 - Several tokens or a device list. One token, rotated when in doubt.
 - Push notifications to the phone. The app is live only while open. It raises banners and local notifications for threads that need the developer while it runs (`2026-10-18-mobile-workbench.md`).
 - Attachments from the phone, the git graph and automations. The phone is for steering, not for everything. Files, search, settings and pull request details came later, in `2026-10-18-mobile-workbench.md`.

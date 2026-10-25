@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions } from "expo-camera"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { parsePairingUrl } from "@shared/remote.ts"
@@ -12,9 +12,17 @@ import { useTheme } from "@/hooks/use-theme"
 
 /**
  * Scan or paste a pairing URL. The first pairing needs no `onPaired`: the protected stack swaps this screen for
- * the thread list once a server is stored.
+ * the thread list once a server is stored. `footer` goes below the form, inside its scroll view.
  */
-export function PairingForm({ refused = null, onPaired }: { refused?: string | null; onPaired?: () => void }) {
+export function PairingForm({
+  refused = null,
+  onPaired,
+  footer,
+}: {
+  refused?: string | null
+  onPaired?: () => void
+  footer?: ReactNode
+}) {
   const theme = useTheme()
   const [text, setText] = useState("")
   const [invalid, setInvalid] = useState(false)
@@ -88,6 +96,7 @@ export function PairingForm({ refused = null, onPaired }: { refused?: string | n
           variant={native ? "secondary" : "primary"}
           onPress={() => void submit(text)}
         />
+        {footer}
         {scanning && <Scanner onClose={() => setScanning(false)} onScan={submit} />}
       </ScrollView>
     </KeyboardAvoidingView>

@@ -8,6 +8,7 @@ import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
@@ -27,6 +28,7 @@ import * as Ports from "./services/Ports.ts"
 import * as SystemResources from "./services/SystemResources.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
+import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -71,6 +73,7 @@ export const makeTestAppLayer = (
     Files.layer,
   )
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
+  const relay = Relay.layer().pipe(Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)))
   const tinyVm = TinyVm.layer(
     { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
     join(dirname(dbPath), "tiny-vm"),
@@ -82,6 +85,7 @@ export const makeTestAppLayer = (
     Ports.layer,
     SystemResources.layer,
     remoteAccess,
+    relay,
     tinyVm,
     passkeys,
     linear,
@@ -91,7 +95,10 @@ export const makeTestAppLayer = (
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
-  const environments = Environments.layer.pipe(Layer.provide(Layer.mergeAll(Secrets.layer, agents)))
+  const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
+    Layer.provideMerge(Environments.layer),
+    Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
+  )
   const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments, PullRequestGuides.idleLayer)
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return RemoteServer.layer.pipe(
