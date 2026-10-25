@@ -36,7 +36,7 @@ jobs:
           (cd ios && pod install)
           xcodebuild -workspace ios/HinaCode.xcworkspace -scheme HinaCode -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO | tail -40
+            CODE_SIGN_IDENTITY=- | tail -40
       - name: Screenshot
         run: |
           set -x
@@ -51,13 +51,16 @@ jobs:
           xcrun simctl status_bar $DEVICE override --time 9:41 --batteryState charged --batteryLevel 100
           xcrun simctl install $DEVICE "$APP"
           mkdir -p shots
+          xcrun simctl spawn $DEVICE log stream --level debug --predicate 'process == "HinaCode"' > shots/app.log 2>&1 &
           for mode in light dark; do
             xcrun simctl ui $DEVICE appearance $mode
             xcrun simctl terminate $DEVICE $BUNDLE || true
             xcrun simctl launch $DEVICE $BUNDLE
-            sleep 20 && xcrun simctl io $DEVICE screenshot shots/iphone-home-$mode.png
+            sleep 8 && xcrun simctl io $DEVICE screenshot shots/iphone-early-$mode.png
+            sleep 12 && xcrun simctl io $DEVICE screenshot shots/iphone-home-$mode.png
             sleep 25 && xcrun simctl io $DEVICE screenshot shots/iphone-thread-$mode.png
           done
+          cp $RUNNER_TEMP/glass/serve.log shots/ || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
