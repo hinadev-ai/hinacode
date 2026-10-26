@@ -3,13 +3,11 @@ import { useEffect, useRef } from "react"
 import { flushSync } from "react-dom"
 import { RiCloseLine } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
-import { rowState } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { useUnseen } from "../stores/unseen.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { StatusIndicator } from "./SidebarThreadList.tsx"
+import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 
 /** The threads the user keeps open, above the open one. It shows once they keep a second thread open. */
@@ -67,10 +65,7 @@ interface ThreadTabProps {
 }
 
 function ThreadTab({ thread, active, onClose }: ThreadTabProps) {
-  const state = rowState(
-    thread.status,
-    useUnseen((unseen) => unseen.byThreadId[thread.id]),
-  )
+  const state = useThreadRowState(thread)
   return (
     <div
       data-active={active}
