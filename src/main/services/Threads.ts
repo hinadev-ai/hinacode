@@ -81,15 +81,17 @@ export interface UpdateThread {
   readonly usageLimit?: UsageLimit | null | undefined
   readonly sortIndex?: number | undefined
   readonly pinned?: boolean | undefined
+  /** Null wakes the thread. */
+  readonly snoozedUntil?: string | null | undefined
   readonly providerSessionId?: string | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
 }
 
-// Arranging the sidebar is not activity, so it must not make a thread look fresh.
+const arranging = new Set(["id", "sortIndex", "pinned", "snoozedUntil"])
+
+// Arranging the sidebar is not activity, so it must not make a thread look fresh. Activity wakes a snoozed thread.
 const onlyArranges = (input: UpdateThread) =>
-  Object.entries(input).every(
-    ([key, value]) => key === "id" || key === "sortIndex" || key === "pinned" || value === undefined,
-  )
+  Object.entries(input).every(([key, value]) => arranging.has(key) || value === undefined)
 
 export class Threads extends Context.Service<
   Threads,
@@ -245,6 +247,7 @@ const make = Effect.gen(function* () {
         usageLimit: null,
         sortIndex: next,
         pinnedAt: null,
+        snoozedUntil: null,
         queue: [],
         createdBy,
         createdAt: now,
@@ -283,6 +286,7 @@ const make = Effect.gen(function* () {
   const write = (current: Thread, input: UpdateThread) =>
     Effect.gen(function* () {
       const now = yield* nowIso
+      const arranges = onlyArranges(input)
       const next: Thread = {
         ...current,
         title: input.title ?? current.title,
@@ -302,16 +306,18 @@ const make = Effect.gen(function* () {
               : input.usageLimit,
         sortIndex: input.sortIndex ?? current.sortIndex,
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
+        snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
         queue: input.queue ?? current.queue,
-        updatedAt: onlyArranges(input) ? current.updatedAt : now,
+        updatedAt: arranges ? current.updatedAt : now,
       }
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
             effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0},
             access_mode = ${next.accessMode}, status = ${next.status},
-            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, provider_session_id = ${next.providerSessionId},
+            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil},
+            provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
             queue = ${JSON.stringify(next.queue)}
         WHERE id = ${next.id}

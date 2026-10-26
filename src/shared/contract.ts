@@ -65,6 +65,7 @@ import {
   TerminalOffset,
   TerminalSession,
   Thread,
+  Timestamp,
   ThreadSearchHit,
   UpdateStatus,
   ThreadStatus,
@@ -171,6 +172,8 @@ export const RpcMethods = {
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
       pinned: Schema.optional(Schema.Boolean),
+      /** Null wakes the thread. */
+      snoozedUntil: Schema.optional(Schema.NullOr(Timestamp)),
     }),
     Thread,
   ),
