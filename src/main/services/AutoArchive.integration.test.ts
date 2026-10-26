@@ -6,7 +6,7 @@ import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
-import type { PullRequest, PullRequestStatus, ThreadStatus } from "../../shared/domain.ts"
+import type { PullRequest, PullRequestDetail, PullRequestStatus, ThreadStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import { AutoArchive, layer as autoArchiveLayer } from "./AutoArchive.ts"
@@ -24,6 +24,7 @@ import * as Worktrees from "./Worktrees.ts"
 const pushes: Array<PushEvent> = []
 const statuses = new Map<string, PullRequestStatus>()
 const heads = new Map<string, string>()
+const headOids = new Map<string, string>()
 
 const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
 
@@ -41,6 +42,7 @@ const gitHub = Layer.mock(GitHub, {
     const url = [...heads].find(([, head]) => head === branch)?.[0]
     return Effect.succeed(url === undefined ? null : ({ url, status: statuses.get(url) ?? "open" } as PullRequest))
   },
+  pullRequestDetail: (url) => Effect.succeed({ url, head: headOids.get(url) ?? "" } as PullRequestDetail),
 })
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-auto-archive-")))
@@ -192,19 +194,36 @@ const worktreeThread = (projectId: string, branch: string, baseRef = "main") =>
     return { threadId: thread.id, path: worktree.path }
   })
 
-/** Links the pull request of `branch` to the thread, opened in the given status. */
-const linkPullRequest = (threadId: string, branch: string, status: PullRequestStatus) =>
+/** Links the pull request of `branch` to the thread, opened in the given status from `head`, the worktree's tip by default. */
+const linkPullRequest = (
+  thread: { readonly threadId: string; readonly path: string },
+  branch: string,
+  status: PullRequestStatus,
+  head = git(thread.path, "rev-parse", "HEAD").trim(),
+) =>
   Effect.gen(function* () {
     const url = `https://github.com/o/r/pull/${heads.size + 1}`
     heads.set(url, branch)
+    headOids.set(url, head)
     statuses.set(url, status)
-    yield* PullRequests.use((pullRequests) => pullRequests.link(threadId, url))
+    yield* PullRequests.use((pullRequests) => pullRequests.link(thread.threadId, url))
     return url
   })
 
 const setStatus = (url: string, status: PullRequestStatus) => Effect.sync(() => void statuses.set(url, status))
 
 const sweep = AutoArchive.use((autoArchive) => autoArchive.sweep)
+
+/** Checks `branch` out again, which waits for the removal before it, and expects it still at `tip`. */
+const expectBranchAt = (projectId: string, branch: string, tip: string) =>
+  Effect.gen(function* () {
+    const worktree = yield* Worktrees.Worktrees.use((worktrees) =>
+      worktrees
+        .create({ projectId, branch, baseRef: "main" })
+        .pipe(Effect.flatMap((created) => worktrees.whenPrepared(created.id))),
+    )
+    expect(git(worktree.path, "rev-parse", "HEAD").trim()).toBe(tip)
+  })
 
 describe("worktree cleanup across threads", () => {
   layer(testLayer)((it) => {
@@ -215,7 +234,7 @@ describe("worktree cleanup across threads", () => {
         yield* cleanupOn
         const { root, projectId } = yield* project("squash")
         const child = yield* worktreeThread(projectId, "kk/child")
-        yield* linkPullRequest(child.threadId, "kk/child", "merged")
+        yield* linkPullRequest(child, "kk/child", "merged")
 
         yield* sweep
 
@@ -226,12 +245,46 @@ describe("worktree cleanup across threads", () => {
       }),
     )
 
+    it.effect("keeps a branch with commits made after its pull request merged", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { projectId } = yield* project("after-merge")
+        const child = yield* worktreeThread(projectId, "kk/after-merge")
+        yield* linkPullRequest(child, "kk/after-merge", "merged")
+        git(child.path, "commit", "-q", "--allow-empty", "-m", "after merge")
+        const tip = git(child.path, "rev-parse", "HEAD").trim()
+
+        yield* sweep
+
+        expect(yield* statusOf(child.threadId)).toBe("archived")
+        yield* waitUntilGone(child.path)
+        yield* expectBranchAt(projectId, "kk/after-merge", tip)
+      }),
+    )
+
+    it.effect("keeps a reused branch whose name an older merged pull request had", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { root, projectId } = yield* project("reused")
+        const oldHead = git(root, "commit-tree", "-p", "main", "-m", "old work", "main^{tree}").trim()
+        const child = yield* worktreeThread(projectId, "kk/reused")
+        yield* linkPullRequest(child, "kk/reused", "merged", oldHead)
+        const tip = git(child.path, "rev-parse", "HEAD").trim()
+
+        yield* sweep
+
+        expect(yield* statusOf(child.threadId)).toBe("archived")
+        yield* waitUntilGone(child.path)
+        yield* expectBranchAt(projectId, "kk/reused", tip)
+      }),
+    )
+
     it.effect("removes the worktree of a closed pull request and keeps its unmerged branch", () =>
       Effect.gen(function* () {
         yield* cleanupOn
         const { root, projectId } = yield* project("closed-pr")
         const child = yield* worktreeThread(projectId, "kk/abandoned")
-        yield* linkPullRequest(child.threadId, "kk/abandoned", "closed")
+        yield* linkPullRequest(child, "kk/abandoned", "closed")
 
         yield* sweep
 
@@ -247,8 +300,8 @@ describe("worktree cleanup across threads", () => {
         const { root, projectId } = yield* project("conductor")
         const conductor = yield* worktreeThread(projectId, "kk/conductor")
         const child = yield* worktreeThread(projectId, "kk/worker")
-        yield* linkPullRequest(conductor.threadId, "kk/conductor", "merged")
-        const childUrl = yield* linkPullRequest(child.threadId, "kk/worker", "open")
+        yield* linkPullRequest(conductor, "kk/conductor", "merged")
+        const childUrl = yield* linkPullRequest(child, "kk/worker", "open")
         yield* PullRequests.use((pullRequests) => pullRequests.link(conductor.threadId, childUrl))
 
         yield* sweep
@@ -275,8 +328,8 @@ describe("worktree cleanup across threads", () => {
         const { projectId } = yield* project("watching")
         const conductor = yield* worktreeThread(projectId, "kk/watcher")
         const child = yield* worktreeThread(projectId, "kk/watched")
-        yield* linkPullRequest(conductor.threadId, "kk/watcher", "merged")
-        const childUrl = yield* linkPullRequest(child.threadId, "kk/watched", "open")
+        yield* linkPullRequest(conductor, "kk/watcher", "merged")
+        const childUrl = yield* linkPullRequest(child, "kk/watched", "open")
         yield* PullRequests.use((pullRequests) => pullRequests.watch(conductor.threadId, childUrl))
 
         yield* sweep
@@ -298,8 +351,8 @@ describe("worktree cleanup across threads", () => {
           const child = yield* worktreeThread(projectId, "kk/stacked", "kk/parent")
           const threads = { parent, child }
           const urls = {
-            parent: yield* linkPullRequest(parent.threadId, "kk/parent", "open"),
-            child: yield* linkPullRequest(child.threadId, "kk/stacked", "open"),
+            parent: yield* linkPullRequest(parent, "kk/parent", "open"),
+            child: yield* linkPullRequest(child, "kk/stacked", "open"),
           }
           const [first, second] = order
 
