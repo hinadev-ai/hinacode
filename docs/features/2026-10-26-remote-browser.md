@@ -1,6 +1,6 @@
 # Browser on the thread's machine
 
-Status: Building
+Status: Shipped
 Date: 2026-10-26
 
 ## Problem
@@ -23,6 +23,8 @@ Closing a tab or panel closes its remote session. Idle leases clean up sessions 
 
 The host uses installed Chrome or Chromium, or Playwright's installed Chromium. `HINACODE_BROWSER_EXECUTABLE_PATH` selects a custom executable. A missing browser gives an installation instruction in the panel. No browser downloads occur during an ordinary page open.
 
+New-window pages replace the current tab by adopting their existing document. This preserves POST bodies and script-generated pages without repeating the request. The adopted page has its own Chromium history, so Back does not return to the closed opener.
+
 ## Prior art
 
 [T3 Code](https://github.com/pingdotgg/t3code/blob/03df289735527354a500c8e8cf371c11d4c75d3c/apps/server/src/preview/ServerBrowserContexts.ts) runs a headless Playwright browser on the environment and streams JPEG screencasts with bounded frames. This works in a plain Node daemon on a Linux VM.
@@ -39,3 +41,5 @@ Mobile Browser UI, audio or video streaming, downloads, native file dialogs, Dev
 2. Host browser. Real Chromium integration checks open a loopback page, receive a frame, navigate, type, scroll, resize, select an element, reject cross-thread sessions, and close resources.
 3. Desktop to daemon. Pair an isolated Electron client with an isolated Node daemon. Open the daemon's page through Browser, interact through the streamed view, pick an element, switch tabs, and capture screenshots. Confirm the browser is a daemon child and the attachment lives on the daemon.
 4. Run `pnpm typecheck`, `pnpm lint`, `pnpm test`, and the existing browser end-to-end scenarios.
+
+Verified with an isolated Electron client paired to a plain Node daemon. The streamed page accepted typing, Tab and Enter, saved the submitted value, retained its form across tab switches, resized to a phone viewport, and attached a picked button as a PNG in the daemon's attachment directory. The page's Chromium process belonged to the daemon. Restarting the daemon showed a recoverable error, and Retry opened a new session. No agent turn was needed.

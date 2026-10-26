@@ -1,22 +1,10 @@
-import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { Schema } from "effect"
-import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
-import {
-  RiArrowLeftLine,
-  RiArrowRightLine,
-  RiCloseLine,
-  RiComputerLine,
-  RiCursorLine,
-  RiErrorWarningLine,
-  RiGlobalLine,
-  RiRefreshLine,
-  RiSmartphoneLine,
-  RiTabletLine,
-} from "react-icons/ri"
+import { RiArrowLeftLine, RiArrowRightLine, RiCloseLine, RiCursorLine, RiRefreshLine } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
+import { useThreadEnvironment } from "../../lib/environments.ts"
 import {
   attachPick,
   CANCEL_PICK_SCRIPT,
@@ -26,23 +14,14 @@ import {
   type WebviewElement,
 } from "../../lib/elementPicker.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { threadPortsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { useUi } from "../../stores/ui.ts"
 import { Button } from "../ui/button.tsx"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu.tsx"
 import { Input } from "../ui/input.tsx"
+import { BrowserStart, type Device, type Failure, LoadFailure, ViewportMenu } from "./BrowserChrome.tsx"
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
+import { RemoteBrowserPage } from "./RemoteBrowserPage.tsx"
 
 /**
  * Without `allowpopups` the page's `window.open` and `target=_blank` links do nothing; with it, main loads them in
@@ -57,38 +36,11 @@ type NavigationEvent = Event & { url: string; isMainFrame?: boolean; isInPlace?:
 type TitleEvent = Event & { title: string }
 type FailLoadEvent = Event & { errorCode: number; errorDescription: string; validatedURL: string; isMainFrame: boolean }
 
-interface Device {
-  readonly name: string
-  readonly width: number
-  readonly height: number
-}
-
-/** CSS viewports at the default display zoom, the sizes a page's media queries see. */
-const DEVICES = {
-  phone: [
-    { name: "iPhone SE", width: 375, height: 667 },
-    { name: "iPhone 17", width: 402, height: 874 },
-    { name: "iPhone Air", width: 420, height: 912 },
-    { name: "iPhone 17 Pro Max", width: 440, height: 956 },
-    { name: "Galaxy S25", width: 360, height: 780 },
-  ],
-  tablet: [
-    { name: "iPad mini", width: 744, height: 1133 },
-    { name: 'iPad Air 11"', width: 820, height: 1180 },
-    { name: 'iPad Pro 13"', width: 1032, height: 1376 },
-  ],
-} satisfies Record<string, ReadonlyArray<Device>>
-
-const FIT_PANEL = "fit"
-
-interface Failure {
-  readonly url: string
-  readonly description: string
-}
-
 /** Browser tabs for the thread's dev servers, whose elements can be picked into the message. */
 export function BrowserView({ thread }: { thread: Thread }) {
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(thread.id))
+  const remote = useThreadEnvironment(thread.id) !== null
+  const Page = remote ? RemoteBrowserPage : BrowserPage
 
   // A page needs the room an editor gets.
   useEffect(() => {
@@ -99,13 +51,7 @@ export function BrowserView({ thread }: { thread: Thread }) {
   return (
     <div className="relative min-h-0 flex-1">
       {tabs.map((tab) => (
-        <BrowserPage
-          key={tab.id}
-          threadId={thread.id}
-          tabId={tab.id}
-          initialUrl={tab.url}
-          active={tab.id === activeId}
-        />
+        <Page key={tab.id} threadId={thread.id} tabId={tab.id} initialUrl={tab.url} active={tab.id === activeId} />
       ))}
     </div>
   )
@@ -365,110 +311,6 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-    </div>
-  )
-}
-
-function ViewportMenu({ device, onChange }: { device: Device | null; onChange: (device: Device | null) => void }) {
-  const devices = [...DEVICES.phone, ...DEVICES.tablet]
-  const Icon = device === null ? RiComputerLine : DEVICES.phone.includes(device) ? RiSmartphoneLine : RiTabletLine
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={m.browser_viewport()}
-            title={device?.name ?? m.browser_viewport()}
-            className={cn(device && "text-primary")}
-          />
-        }
-      >
-        <Icon aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto min-w-56">
-        <DropdownMenuRadioGroup
-          value={device?.name ?? FIT_PANEL}
-          onValueChange={(name: string) => onChange(devices.find((each) => each.name === name) ?? null)}
-        >
-          <DropdownMenuRadioItem value={FIT_PANEL} closeOnClick>
-            {m.browser_viewport_responsive()}
-          </DropdownMenuRadioItem>
-          <DeviceGroup label={m.browser_viewport_mobile()} devices={DEVICES.phone} />
-          <DeviceGroup label={m.browser_viewport_tablet()} devices={DEVICES.tablet} />
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function DeviceGroup({ label, devices }: { label: string; devices: ReadonlyArray<Device> }) {
-  return (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>{label}</DropdownMenuLabel>
-        {devices.map((device) => (
-          <DropdownMenuRadioItem key={device.name} value={device.name} closeOnClick>
-            {device.name}
-            <span className="ml-auto pl-4 font-mono text-xs text-muted-foreground tabular-nums">
-              {device.width}×{device.height}
-            </span>
-          </DropdownMenuRadioItem>
-        ))}
-      </DropdownMenuGroup>
-    </>
-  )
-}
-
-/** Before any page is open: the ports the thread's processes listen on, one click each. */
-function BrowserStart({ threadId, onOpen }: { threadId: string; onOpen: (url: string) => void }) {
-  const ports = AsyncResult.getOrElse(useAtomValue(threadPortsAtom(threadId)), () => [])
-  const unique = [...new Map(ports.map((port) => [port.port, port])).values()]
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-      <RiGlobalLine aria-hidden className="size-6 text-muted-foreground" />
-      <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-medium">{m.browser_start_title()}</h3>
-        <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.browser_start_hint()}</p>
-      </div>
-      {unique.length > 0 && (
-        <ul className="flex w-full max-w-72 flex-col gap-1">
-          {unique.map((port) => (
-            <li key={port.port}>
-              <Button
-                variant="outline"
-                size="sm"
-                aria-label={m.browser_start_open_port({ port: String(port.port) })}
-                onClick={() => onOpen(`http://localhost:${port.port}/`)}
-                className="w-full justify-between font-normal"
-              >
-                <span className="font-mono">localhost:{port.port}</span>
-                <span className="truncate text-muted-foreground">{port.command}</span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-function LoadFailure({ failure, onRetry }: { failure: Failure; onRetry: () => void }) {
-  return (
-    <div
-      role="alert"
-      className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background p-6 text-center"
-    >
-      <RiErrorWarningLine aria-hidden className="size-6 text-muted-foreground" />
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium break-all">{m.browser_load_failed({ url: failure.url })}</p>
-        <p className="font-mono text-xs text-muted-foreground">{failure.description}</p>
-      </div>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        {m.sidebar_retry()}
-      </Button>
     </div>
   )
 }

@@ -18,6 +18,7 @@ Remote threads use sandboxed headless Playwright Chromium on their cloud. The de
 - The browser and its requests run beside the agent. No extra network listener or application port forwarding is needed.
 - Different threads have isolated contexts. Tabs in one thread share cookies until their context closes.
 - Frames stay bounded to the newest image. A slow viewer does not build a queue of obsolete screenshots.
+- A new-window page replaces its opener with the original response intact. Its history starts with that page, so Back does not return to the closed opener.
 - The host needs Chrome, Chromium, or Playwright's Chromium installation. An ordinary page open never downloads a binary.
 - A streamed canvas has no local page DOM for assistive technology. Keyboard input, a named application region, and an Escape route remain available. Full screen-reader access requires a separate design.
 - Native file dialogs, audio, downloads, and persistent profiles remain outside this slice. See [the feature design](../features/2026-10-26-remote-browser.md).
