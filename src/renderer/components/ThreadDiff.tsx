@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-reac
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
 import { RiRefreshLine } from "react-icons/ri"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -51,7 +51,7 @@ export function ThreadDiff({ thread }: { thread: Thread }) {
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <Tabs value={scope} onValueChange={(value: ChangesScope) => setScope(value)}>
+      <Tabs value={scope} changeAction={(value: ChangesScope) => setScope(value)}>
         <TabsList aria-label={m.diff_scope_label()} className="w-full">
           <TabsTrigger value="worktree">{m.diff_scope_worktree()}</TabsTrigger>
           <TabsTrigger value="turn">{m.diff_scope_turn()}</TabsTrigger>
@@ -124,7 +124,7 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
   }, [openPath])
 
   const loaded = AsyncResult.isSuccess(changes) ? changes.value : null
-  const diffs = useMemo(() => splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? []), [loaded])
+  const diffs = splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? [])
 
   if (AsyncResult.isFailure(changes)) {
     return (

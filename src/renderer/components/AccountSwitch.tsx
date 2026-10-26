@@ -1,7 +1,7 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live notice holds a button and its error, which <output> cannot.
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { startTransition, useActionState } from "react"
+import { useActionState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { AccountLimits } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
@@ -92,14 +92,7 @@ export function SwitchAccountButton({
   }, null)
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={isPending}
-        aria-busy={isPending}
-        onClick={() => startTransition(run)}
-      >
+      <Button type="button" variant="outline" size="sm" disabled={isPending} aria-busy={isPending} action={run}>
         {label}
       </Button>
       {error && <FieldError>{error}</FieldError>}

@@ -164,7 +164,7 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeA
           const window = BrowserWindow.getAllWindows()[0]
           if (!window) throw new Error("no app window for push events")
           for (const event of input.events) {
-            // Pacing is input to the streaming workload; it does not wait for an assertion.
+            // oxlint-disable-next-line hinacode/no-wall-clock-in-test -- pacing is input to the streaming workload, not a wait for an assertion.
             if (input.intervalMs > 0) await new Promise<void>((done) => setTimeout(done, input.intervalMs))
             window.webContents.send("event", event)
           }
@@ -179,6 +179,7 @@ export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeA
           env: appEnv(userData, options),
           stdio: "ignore",
         })
+        // oxlint-disable-next-line hinacode/no-wall-clock-in-test -- a second instance that stays up has no event to wait on.
         const timer = setTimeout(() => {
           second.kill("SIGKILL")
           done(null)

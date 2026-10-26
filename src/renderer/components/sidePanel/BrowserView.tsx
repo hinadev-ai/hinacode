@@ -1,6 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react"
 import { RiArrowLeftLine, RiArrowRightLine, RiCloseLine, RiCursorLine, RiRefreshLine } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
@@ -88,11 +88,11 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
     addressRef.current?.focus()
   }, [focusAddress])
 
-  const endPick = useCallback(() => {
+  const endPick = () => {
     pick.current?.abort()
     pick.current = null
     setPicking(false)
-  }, [])
+  }
 
   // The cancelled pick resolves null, and `startPick` ends it like an Escape.
   useEffect(() => {
@@ -100,50 +100,47 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
     viewRef.current?.executeJavaScript(CANCEL_PICK_SCRIPT).catch(() => {})
   }, [active])
 
-  const attachView = useCallback(
-    (view: WebviewElement | null) => {
-      if (!view) return
-      viewRef.current = view
-      const syncHistory = () => setHistory({ back: view.canGoBack(), forward: view.canGoForward() })
-      const arrived = (url: string) => {
-        setFailure(null)
-        setPickError(null)
-        // A client-side route change or hot reload must not wipe what the user is typing.
-        if (document.activeElement !== addressRef.current) setAddress(url)
-        useBrowserTabs.getState().updateTab(threadId, tabId, { url })
+  const attachView = (view: WebviewElement | null) => {
+    if (!view) return
+    viewRef.current = view
+    const syncHistory = () => setHistory({ back: view.canGoBack(), forward: view.canGoForward() })
+    const arrived = (url: string) => {
+      setFailure(null)
+      setPickError(null)
+      // A client-side route change or hot reload must not wipe what the user is typing.
+      if (document.activeElement !== addressRef.current) setAddress(url)
+      useBrowserTabs.getState().updateTab(threadId, tabId, { url })
+      syncHistory()
+    }
+    const listeners: Record<string, (event: never) => void> = {
+      "did-start-loading": () => setLoading(true),
+      "did-stop-loading": () => {
+        setLoading(false)
         syncHistory()
+      },
+      "did-start-navigation": (event: NavigationEvent) => {
+        if (event.isMainFrame && !event.isInPlace) endPick()
+      },
+      "did-navigate": (event: NavigationEvent) => arrived(event.url),
+      "did-navigate-in-page": (event: NavigationEvent) => {
+        if (event.isMainFrame) arrived(event.url)
+      },
+      "page-title-updated": (event: TitleEvent) =>
+        useBrowserTabs.getState().updateTab(threadId, tabId, { title: event.title }),
+      "did-fail-load": (event: FailLoadEvent) => {
+        if (!event.isMainFrame || event.errorCode === ERR_ABORTED) return
+        setFailure({ url: event.validatedURL, description: event.errorDescription })
+        setAddress(event.validatedURL)
+      },
+    }
+    for (const [type, listener] of Object.entries(listeners)) view.addEventListener(type, listener as EventListener)
+    return () => {
+      for (const [type, listener] of Object.entries(listeners)) {
+        view.removeEventListener(type, listener as EventListener)
       }
-      const listeners: Record<string, (event: never) => void> = {
-        "did-start-loading": () => setLoading(true),
-        "did-stop-loading": () => {
-          setLoading(false)
-          syncHistory()
-        },
-        "did-start-navigation": (event: NavigationEvent) => {
-          if (event.isMainFrame && !event.isInPlace) endPick()
-        },
-        "did-navigate": (event: NavigationEvent) => arrived(event.url),
-        "did-navigate-in-page": (event: NavigationEvent) => {
-          if (event.isMainFrame) arrived(event.url)
-        },
-        "page-title-updated": (event: TitleEvent) =>
-          useBrowserTabs.getState().updateTab(threadId, tabId, { title: event.title }),
-        "did-fail-load": (event: FailLoadEvent) => {
-          if (!event.isMainFrame || event.errorCode === ERR_ABORTED) return
-          setFailure({ url: event.validatedURL, description: event.errorDescription })
-          setAddress(event.validatedURL)
-        },
-      }
-      for (const [type, listener] of Object.entries(listeners)) view.addEventListener(type, listener as EventListener)
-      return () => {
-        for (const [type, listener] of Object.entries(listeners)) {
-          view.removeEventListener(type, listener as EventListener)
-        }
-        viewRef.current = null
-      }
-    },
-    [threadId, tabId, endPick],
-  )
+      viewRef.current = null
+    }
+  }
 
   const open = (url: string) => {
     setAddress(url)
@@ -171,16 +168,16 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
     try {
       const result = await view.executeJavaScript(PICK_ELEMENT_SCRIPT)
       controller.signal.throwIfAborted()
-      if (result === null) return
-      const decoded = Schema.decodeUnknownSync(PagePick)(result)
-      const attachment = await attachPick(threadId, view, decoded, controller.signal)
-      setAnnouncement(m.browser_pick_added({ element: elementLabel(attachment.element) }))
-      useUi.getState().requestComposerFocus()
+      if (result !== null) {
+        const decoded = Schema.decodeUnknownSync(PagePick)(result)
+        const attachment = await attachPick(threadId, view, decoded, controller.signal)
+        setAnnouncement(m.browser_pick_added({ element: elementLabel(attachment.element) }))
+        useUi.getState().requestComposerFocus()
+      }
     } catch (cause) {
       if (!controller.signal.aborted) setPickError(m.browser_pick_failed({ message: errorMessage(cause) }))
-    } finally {
-      if (pick.current === controller) endPick()
     }
+    if (pick.current === controller) endPick()
   }
 
   const stopPick = () => {

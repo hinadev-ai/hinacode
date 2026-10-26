@@ -1,5 +1,5 @@
 import { cn } from "cn"
-import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react"
+import { type FormEvent, useEffect, useId, useRef, useState } from "react"
 import {
   RiArrowLeftLine,
   RiArrowRightLine,
@@ -53,34 +53,29 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
   const hintId = useId()
   const focusAddress = useBrowserTabs((state) => state.addressFocusRequest === tabId)
 
-  const receiveState = useCallback(
-    (state: BrowserState) => {
-      setConnection({ kind: "ready", state })
-      if (document.activeElement !== addressRef.current) setAddress(state.url)
-      const tab = selectBrowserTabs(threadId)(useBrowserTabs.getState()).tabs.find((each) => each.id === tabId)
-      if (tab && (tab.url !== state.url || tab.title !== state.title)) {
-        useBrowserTabs.getState().updateTab(threadId, tabId, { url: state.url, title: state.title })
-      }
-      if (state.pick.kind === "picked" && !attachments.current.has(state.pick.attachment.id)) {
-        const attachment = state.pick.attachment
-        attachments.current.add(attachment.id)
-        useDrafts.getState().addAttachments(threadId, [attachment])
-        setAnnouncement(
-          m.browser_pick_added({ element: attachment.element ? elementLabel(attachment.element) : attachment.name }),
-        )
-        useUi.getState().requestComposerFocus()
-      }
-    },
-    [threadId, tabId],
-  )
-
   useEffect(() => {
     const canvas = canvasRef.current
     const viewport = viewportRef.current
     if (!canvas || !viewport) return
     const rect = viewport.getBoundingClientRect()
     const session = new RemoteBrowserSession(threadId, canvas, browserViewport(rect.width, rect.height), {
-      onState: receiveState,
+      onState: (state) => {
+        setConnection({ kind: "ready", state })
+        if (document.activeElement !== addressRef.current) setAddress(state.url)
+        const tab = selectBrowserTabs(threadId)(useBrowserTabs.getState()).tabs.find((each) => each.id === tabId)
+        if (tab && (tab.url !== state.url || tab.title !== state.title)) {
+          useBrowserTabs.getState().updateTab(threadId, tabId, { url: state.url, title: state.title })
+        }
+        if (state.pick.kind === "picked" && !attachments.current.has(state.pick.attachment.id)) {
+          const attachment = state.pick.attachment
+          attachments.current.add(attachment.id)
+          useDrafts.getState().addAttachments(threadId, [attachment])
+          setAnnouncement(
+            m.browser_pick_added({ element: attachment.element ? elementLabel(attachment.element) : attachment.name }),
+          )
+          useUi.getState().requestComposerFocus()
+        }
+      },
       onFailure: (url, message) => setConnection({ kind: "failed", url, message }),
     })
     sessionRef.current = session
@@ -89,7 +84,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
       session.dispose()
       sessionRef.current = null
     }
-  }, [threadId, startUrl, receiveState])
+  }, [threadId, tabId, startUrl])
 
   useEffect(() => {
     const viewport = viewportRef.current

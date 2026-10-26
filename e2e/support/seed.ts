@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { DatabaseSync } from "node:sqlite"
 
+export const SEEDED_AT = "2026-01-01T00:00:00.000Z"
+
 export interface SeedProject {
   readonly name: string
   readonly rootPath: string
@@ -38,20 +40,18 @@ export class Seed {
 
   project({ name, rootPath, setupScript = null }: SeedProject): string {
     const id = randomUUID()
-    const now = new Date().toISOString()
     this.#with((db) =>
       db
         .prepare(
           `INSERT INTO project (id, name, root_path, setup_script, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
         )
-        .run(id, name, rootPath, setupScript, now, now),
+        .run(id, name, rootPath, setupScript, SEEDED_AT, SEEDED_AT),
     )
     return id
   }
 
   thread({ projectId, title, provider = "claude", worktreeId = null, status = "idle" }: SeedThread): string {
     const id = randomUUID()
-    const now = new Date().toISOString()
     this.#with((db) =>
       db
         .prepare(
@@ -59,7 +59,7 @@ export class Seed {
            VALUES (?, ?, ?, ?, ?, 'claude-sonnet-5-5', NULL, ?,
                    (SELECT COALESCE(MAX(sort_index) + 1, 0) FROM thread WHERE project_id = ?), ?, ?)`,
         )
-        .run(id, projectId, worktreeId, title, provider, status, projectId, now, now),
+        .run(id, projectId, worktreeId, title, provider, status, projectId, SEEDED_AT, SEEDED_AT),
     )
     return id
   }

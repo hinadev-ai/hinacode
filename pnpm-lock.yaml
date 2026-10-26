@@ -213,8 +213,8 @@ importers:
         specifier: 1.32.1
         version: 1.32.1(supports-color@7.2.0)(zod@4.6.5)
       '@muse-code/sdk':
-        specifier: 1.4.7
-        version: 1.4.7(@types/node@24.19.2)
+        specifier: 1.4.13
+        version: 1.4.13(@types/node@24.19.2)
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
@@ -363,6 +363,9 @@ importers:
       oxlint:
         specifier: 1.87.0
         version: 1.87.0
+      oxlint-plugin-hinacode:
+        specifier: workspace:*
+        version: link:packages/oxlint-plugin-hinacode
       oxlint-plugin-react-doctor:
         specifier: 0.9.17
         version: 0.9.17
@@ -415,6 +418,12 @@ importers:
       node-mac-permissions:
         specifier: github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37
         version: https://codeload.github.com/codebytere/node-mac-permissions/tar.gz/7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37
+
+  packages/oxlint-plugin-hinacode:
+    dependencies:
+      '@oxlint/plugins':
+        specifier: 1.87.0
+        version: 1.87.0
 
   relay:
     dependencies:
@@ -1914,8 +1923,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@muse-code/sdk@1.4.7':
-    resolution: {integrity: sha512-O4ZSSDZx8RLne0OhcR+AzBhGY+/0+nhk8Zs5v7FiNNHoNsV+14O9Wylpw1lq1dNyRehqVxBiCHehCRQBXI7Cpw==}
+  '@muse-code/sdk@1.4.13':
+    resolution: {integrity: sha512-MWs/zklX7pEiTBvPBCFpUdc6SFc5Z/bNo0VqoAM11/Xui15BPEvh9lpJII2JVec9GOKsS9Ivc+3kjYt7vE8sSQ==}
     engines: {node: '>=20'}
     peerDependencies:
       '@types/node': '>=20'
@@ -2480,6 +2489,10 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
+
+  '@oxlint/plugins@1.87.0':
+    resolution: {integrity: sha512-OtSZ6NxNkS7bkVy7zk9zGnajz2hVIu0uRPP/dJvJesGRaXtimpA4lpxap7FaIJndG2UIoKhnBU4DxyDQIWv6yg==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
   '@peculiar/asn1-schema@2.10.0':
     resolution: {integrity: sha512-GhokD41lV4gQrrLYm3wCkHfBOnJrnhDMgt4XeMW8gzfE1UdJqIuSwsE+ggf82XBjUXRJylcm+KIGQFa4utIVLw==}
@@ -8542,7 +8555,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@muse-code/sdk@1.4.7(@types/node@24.19.2)':
+  '@muse-code/sdk@1.4.13(@types/node@24.19.2)':
     optionalDependencies:
       '@types/node': 24.19.2
 
@@ -8843,6 +8856,8 @@ snapshots:
 
   '@oxlint/binding-win32-x64-msvc@1.87.0':
     optional: true
+
+  '@oxlint/plugins@1.87.0': {}
 
   '@peculiar/asn1-schema@2.10.0':
     dependencies:
