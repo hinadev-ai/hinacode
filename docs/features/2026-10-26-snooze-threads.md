@@ -1,6 +1,6 @@
 # Snooze threads
 
-Status: Building
+Status: Shipped
 Date: 2026-10-26
 
 ## Problem
