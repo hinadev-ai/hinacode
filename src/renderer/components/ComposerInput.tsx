@@ -3,11 +3,9 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type Ref,
-  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -96,18 +94,15 @@ export function ComposerInput({
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   useImperativeHandle(ref, () => textareaRef.current!, [])
 
-  const known = useMemo(
-    () => ({
-      commands: new Set(commands.map((command) => command.trigger + command.name)),
-      files: new Set(files),
-      threads: new Set(threads.map((thread) => thread.id)),
-    }),
-    [commands, files, threads],
-  )
-  const skill = useMemo(() => leadingSkill(value, commands), [value, commands])
+  const known = {
+    commands: new Set(commands.map((command) => command.trigger + command.name)),
+    files: new Set(files),
+    threads: new Set(threads.map((thread) => thread.id)),
+  }
+  const skill = leadingSkill(value, commands)
   const chipToken = skill?.token ?? ""
   const text = value.slice(chipToken.length)
-  const segments = useMemo(() => highlight(text, known), [text, known])
+  const segments = highlight(text, known)
 
   const completion = completionAt(text, caret)
   const active = completion && completion.start !== dismissedAt ? completion : null
@@ -125,14 +120,14 @@ export function ComposerInput({
    * Keeps the chip's width in `--skill-chip-width` for `afterChip`. The observer reads `layersRef` when it fires,
    * because React attaches a child's ref before its parent's.
    */
-  const measureChip = useCallback((element: HTMLElement | null) => {
+  const measureChip = (element: HTMLElement | null) => {
     if (element === null) return
     const observer = new ResizeObserver(() =>
       layersRef.current?.style.setProperty("--skill-chip-width", `${element.offsetWidth}px`),
     )
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }
 
   /**
    * Sets the whole message and puts the caret at `position`, an index into it. Rendering a new value moves the

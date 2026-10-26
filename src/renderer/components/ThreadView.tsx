@@ -1,7 +1,7 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react"
+import { type ReactNode, type RefObject, useEffect, useRef } from "react"
 import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
@@ -105,7 +105,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
     useUi((state) => state.findQuery),
     FIND_DEBOUNCE_MS,
   )
-  const pattern = useMemo(() => (findOpen ? findPattern(findQuery) : null), [findOpen, findQuery])
+  const pattern = findOpen ? findPattern(findQuery) : null
   const listRef = useRef<LegendListRef>(null)
 
   useEffect(() => {

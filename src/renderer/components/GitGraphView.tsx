@@ -8,14 +8,11 @@ import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
   type KeyboardEvent,
-  memo,
   type PointerEvent,
   Suspense,
-  useCallback,
   useDeferredValue,
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -135,28 +132,22 @@ interface GraphWithDiffProps {
 function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffProps) {
   const listId = useId()
   const listRef = useRef<LegendListRef>(null)
-  const rows = useMemo(() => layoutGraph(commits), [commits])
+  const rows = layoutGraph(commits)
   const lanes = Math.max(laneCount(rows), 1)
   const laneWidth = Math.min(Math.max(MAX_GRAPH_WIDTH / lanes, MIN_LANE_WIDTH), MAX_LANE_WIDTH)
-  const graph = useMemo(
-    () => ({ laneWidth, width: Math.min(LANE_INSET * 2 + (lanes - 1) * laneWidth, MAX_GRAPH_WIDTH) }),
-    [laneWidth, lanes],
-  )
+  const graph = { laneWidth, width: Math.min(LANE_INSET * 2 + (lanes - 1) * laneWidth, MAX_GRAPH_WIDTH) }
   const [selected, setSelected] = useState<string | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
   const [split, setSplit] = useState(55)
   const selectedIndex = selected === null ? -1 : rows.findIndex((row) => row.commit.hash === selected)
   const selectedCommit = rows[selectedIndex]?.commit
 
-  const select = useCallback(
-    (index: number) => {
-      const row = rows[index]
-      if (!row) return
-      setSelected(row.commit.hash)
-      void listRef.current?.scrollIndexIntoView({ index, animated: false })
-    },
-    [rows],
-  )
+  const select = (index: number) => {
+    const row = rows[index]
+    if (!row) return
+    setSelected(row.commit.hash)
+    void listRef.current?.scrollIndexIntoView({ index, animated: false })
+  }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const moves: Record<string, number> = {
@@ -175,22 +166,19 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
     }
   }
 
-  const renderItem = useCallback(
-    ({ item, index }: { item: GraphRow; index: number }) => (
-      <CommitRow
-        id={`${listId}-${item.commit.hash}`}
-        row={item}
-        incoming={rows[index - 1]?.edges ?? []}
-        graph={graph}
-        branch={branch}
-        selected={item.commit.hash === selected}
-        onSelect={() => {
-          setSelected(item.commit.hash)
-          setDiffOpen(true)
-        }}
-      />
-    ),
-    [listId, rows, graph, branch, selected],
+  const renderItem = ({ item, index }: { item: GraphRow; index: number }) => (
+    <CommitRow
+      id={`${listId}-${item.commit.hash}`}
+      row={item}
+      incoming={rows[index - 1]?.edges ?? []}
+      graph={graph}
+      branch={branch}
+      selected={item.commit.hash === selected}
+      onSelect={() => {
+        setSelected(item.commit.hash)
+        setDiffOpen(true)
+      }}
+    />
   )
 
   const showDiff = diffOpen && selectedCommit !== undefined
@@ -249,7 +237,7 @@ interface CommitRowProps {
   readonly onSelect: () => void
 }
 
-const CommitRow = memo(function CommitRow({ id, row, incoming, graph, branch, selected, onSelect }: CommitRowProps) {
+function CommitRow({ id, row, incoming, graph, branch, selected, onSelect }: CommitRowProps) {
   const { commit } = row
   return (
     <div
@@ -282,7 +270,7 @@ const CommitRow = memo(function CommitRow({ id, row, incoming, graph, branch, se
       </time>
     </div>
   )
-})
+}
 
 interface GraphSize {
   readonly laneWidth: number
@@ -452,7 +440,7 @@ function CommitFiles({ root, hash }: { root: string; hash: string }) {
   const diff = useAtomSuspense(commitDiffAtom(commitKey(root, hash)), { includeFailure: true })
   const theme = useTheme(useClientSettings().appearance.theme)
   const patch = AsyncResult.isSuccess(diff) ? diff.value.patch : ""
-  const files = useMemo(() => parsePatchFiles(patch, `commit-${hash}`).flatMap((parsed) => parsed.files), [patch, hash])
+  const files = parsePatchFiles(patch, `commit-${hash}`).flatMap((parsed) => parsed.files)
   if (AsyncResult.isFailure(diff)) {
     return <Notice alert>{m.git_graph_diff_failed({ message: errorMessage(Cause.squash(diff.cause)) })}</Notice>
   }

@@ -118,7 +118,7 @@ describe("Search.threads", () => {
       expect(yield* search.threads("still")).toStrictEqual([])
 
       yield* sql`
-        UPDATE message SET parts = ${JSON.stringify([text("rewritten answer")])}, completed_at = ${new Date().toISOString()} WHERE id = ${id}
+        UPDATE message SET parts = ${JSON.stringify([text("rewritten answer")])}, completed_at = '2026-01-01T00:00:00.000Z' WHERE id = ${id}
       `
       expect(yield* search.threads("streaming")).toStrictEqual([])
       expect((yield* search.threads("rewritten")).map((hit) => hit.messageId)).toStrictEqual([id])
