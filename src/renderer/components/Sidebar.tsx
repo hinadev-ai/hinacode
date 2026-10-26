@@ -22,6 +22,7 @@ import { projectsAtom } from "../lib/rpc.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
 import { startThread } from "../lib/startThread.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import {
   selectArchivedThreads,
@@ -232,7 +233,7 @@ function PinnedThreads({ query }: { query: Query }) {
 
 /** Active threads of every project in one list, the most recently updated on top. */
 function InboxList({ query }: { query: Query }) {
-  const threads = useMatchingThreads(selectInboxThreads, query)
+  const threads = useMatchingThreads(selectInboxThreads(useNow()), query)
   return threads.length === 0 ? (
     <p className="px-3 py-2 text-xs text-muted-foreground">
       {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
