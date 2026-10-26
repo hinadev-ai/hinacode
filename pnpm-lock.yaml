@@ -213,8 +213,8 @@ importers:
         specifier: 1.32.1
         version: 1.32.1(supports-color@7.2.0)(zod@4.6.5)
       '@muse-code/sdk':
-        specifier: 1.4.7
-        version: 1.4.7(@types/node@24.19.2)
+        specifier: 1.4.13
+        version: 1.4.13(@types/node@24.19.2)
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
@@ -1920,8 +1920,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@muse-code/sdk@1.4.7':
-    resolution: {integrity: sha512-O4ZSSDZx8RLne0OhcR+AzBhGY+/0+nhk8Zs5v7FiNNHoNsV+14O9Wylpw1lq1dNyRehqVxBiCHehCRQBXI7Cpw==}
+  '@muse-code/sdk@1.4.13':
+    resolution: {integrity: sha512-MWs/zklX7pEiTBvPBCFpUdc6SFc5Z/bNo0VqoAM11/Xui15BPEvh9lpJII2JVec9GOKsS9Ivc+3kjYt7vE8sSQ==}
     engines: {node: '>=20'}
     peerDependencies:
       '@types/node': '>=20'
@@ -8552,7 +8552,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@muse-code/sdk@1.4.7(@types/node@24.19.2)':
+  '@muse-code/sdk@1.4.13(@types/node@24.19.2)':
     optionalDependencies:
       '@types/node': 24.19.2
 

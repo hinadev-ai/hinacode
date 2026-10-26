@@ -2,7 +2,6 @@ import { Schema } from "effect"
 
 export type {
   ApprovalChoice,
-  ApprovalMode,
   ApprovalRequestParams,
   ApprovalResolvedParams,
   ApprovalUpdatedParams,
