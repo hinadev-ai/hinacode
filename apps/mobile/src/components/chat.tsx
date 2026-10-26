@@ -6,6 +6,7 @@ import type {
   QuestionAnswers,
   QuestionRequest,
 } from "@shared/agent.ts"
+import { toolSummary } from "@shared/compactTranscript.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
@@ -272,17 +273,19 @@ function PartView({ part }: { part: MessagePart }) {
       )
     case "reasoning":
       return <Reasoning text={part.text} />
-    case "tool_call":
+    case "tool_call": {
+      const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
           <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.toolName, { color: theme.text }]}>
             {part.name}
-            {summarize(part.input) && <Text style={{ color: theme.textMuted }}> {summarize(part.input)}</Text>}
+            {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
           </Text>
           <ToolStatus status={part.status} />
         </View>
       )
+    }
     case "file_change":
       return (
         <View style={styles.fileChange}>
@@ -329,17 +332,6 @@ function ToolStatus({ status }: { status: ToolCallStatus }) {
       <Pill label={copy(label)} tone={tone} />
     </View>
   )
-}
-
-/** The one field that says what a tool call touched, when its input has one. */
-function summarize(input: unknown) {
-  if (typeof input !== "object" || input === null) return ""
-  const record = input as Record<string, unknown>
-  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
-    const value = record[key]
-    if (typeof value === "string") return value.split("\n")[0]
-  }
-  return ""
 }
 
 function Reasoning({ text }: { text: string }) {
