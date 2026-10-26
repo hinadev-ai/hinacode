@@ -262,6 +262,16 @@ export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly
   full: { icon: RiLockUnlockLine, label: m.access_full },
 }
 
+/** Muse Code's threads use the names its own permission picker shows, since each mode is one of its profiles. */
+const museAccessLabels: Record<AccessMode, () => string> = {
+  supervised: m.access_supervised_muse,
+  auto: m.access_auto_muse,
+  full: m.access_full_muse,
+}
+
+const accessLabel = (accessMode: AccessMode, provider: ProviderId) =>
+  provider === "muse" ? museAccessLabels[accessMode]() : accessModes[accessMode].label()
+
 const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
@@ -283,7 +293,7 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
     case "auto":
       return autoHint[thread.provider](model)
     case "full":
-      return m.access_full_hint()
+      return thread.provider === "muse" ? m.access_full_hint_muse() : m.access_full_hint()
   }
 }
 
@@ -395,7 +405,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
     value: thread.accessMode,
     items: AccessMode.literals.map((value) => ({
       value,
-      label: accessModes[value].label(),
+      label: accessLabel(value, thread.provider),
       icon: accessModes[value].icon,
       hint: accessHint(value, thread, current),
     })),

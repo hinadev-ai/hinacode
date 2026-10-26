@@ -181,11 +181,16 @@ const watchBackgroundTasks = Effect.gen(function* () {
   return { stop: tasks.stop, changes, until }
 })
 
+/** Ask me runs a command in the sandbox without asking, so this one asks to leave it. */
 const twoStages = (marker: string) =>
   endpoint.script({
     when: marker,
     name: "bash",
-    arguments: { command: "echo one && echo two", description: "Print two lines" },
+    arguments: {
+      command: "echo one && echo two",
+      description: "Print two lines",
+      sandbox_permissions: "require_escalated",
+    },
   })
 
 describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
@@ -275,7 +280,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
-    "runs a command outside the sandbox under full access without asking",
+    "writes outside the workspace and reaches the network under full access without asking",
     () =>
       withProvider(
         Effect.gen(function* () {
@@ -284,16 +289,15 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               when: marker,
               name: "bash",
               arguments: {
-                command: "echo escalated",
-                description: "Print outside the sandbox",
-                sandbox_permissions: "require_escalated",
+                command: `echo hi > ${join(root, `outside-${marker}`)} && curl -s -o /dev/null -w '%{http_code}' ${endpoint.baseUrl}`,
+                description: "Write outside the workspace and reach the network",
               },
             }),
           )
           yield* Fiber.join(turn.fiber)
 
           expect(eventsOf(turn, "approval_requested")).toStrictEqual([])
-          expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ output: "escalated\n", isError: false }])
+          expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ output: "200", isError: false }])
         }),
       ),
     TURN_TIMEOUT,
