@@ -3,6 +3,7 @@ import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 import type { EnvironmentId } from "../lib/rpc.ts"
 import { cycleSwitcher, type ThreadSwitcher, visitRecent } from "../lib/threadSwitcher.ts"
+import { navigateTabs, neighborTab, openTab } from "../lib/threadTabs.ts"
 import {
   clampWidth,
   loadWidth,
@@ -34,6 +35,7 @@ const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
 const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
 const RECENT_THREADS_KEY = "hinacode.recentThreads"
+const THREAD_TABS_KEY = "hinacode.threadTabs"
 const PULL_REQUEST_CODE_VIEW_KEY = "hinacode.pullRequestCodeView"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "hinacode.collapsedPullRequestSections"
 const VM_FLOATING_WIDTH_KEY = "hinacode.vmFloatingWidth"
@@ -146,7 +148,17 @@ interface UiState {
   readonly setSidePanelWidth: (size: SidePanelSize, width: number | null) => void
   /** Threads the user opened, most recent first, kept across restarts. */
   readonly recentThreadIds: ReadonlyArray<string>
+  /** Records that the user opened the thread, and shows it in their current tab when it has none. */
   readonly visitThread: (threadId: string) => void
+  /** The thread tabs in strip order. The open thread is the active tab, so it is not stored. */
+  readonly tabThreadIds: ReadonlyArray<string>
+  /** Opens the thread in a background tab at the end of the strip. */
+  readonly openThreadTab: (threadId: string, openThreadId: string | null) => void
+  /**
+   * Closes the thread's tab and returns the tab that takes over when it was the open one. `existing` skips
+   * tabs of deleted threads.
+   */
+  readonly closeThreadTab: (threadId: string, existing: (id: string) => boolean) => string | undefined
   /** The Ctrl+Tab switcher while it is open. */
   readonly threadSwitcher: ThreadSwitcher | null
   /** Opens the switcher, or moves its highlight. `existing` drops threads deleted since the user opened them. */
@@ -284,9 +296,29 @@ export const useUi = create<UiState>()((set, get) => ({
   },
   recentThreadIds: loadStrings(RECENT_THREADS_KEY),
   visitThread: (threadId) => {
-    const recentThreadIds = visitRecent(get().recentThreadIds, threadId)
+    const state = get()
+    const recentThreadIds = visitRecent(state.recentThreadIds, threadId)
+    const tabThreadIds = navigateTabs(state.tabThreadIds, state.recentThreadIds, threadId)
     localStorage.setItem(RECENT_THREADS_KEY, JSON.stringify(recentThreadIds))
-    set({ recentThreadIds })
+    localStorage.setItem(THREAD_TABS_KEY, JSON.stringify(tabThreadIds))
+    set({ recentThreadIds, tabThreadIds })
+  },
+  tabThreadIds: loadStrings(THREAD_TABS_KEY),
+  openThreadTab: (threadId, openThreadId) => {
+    const tabThreadIds = openTab(get().tabThreadIds, threadId, openThreadId)
+    localStorage.setItem(THREAD_TABS_KEY, JSON.stringify(tabThreadIds))
+    set({ tabThreadIds })
+  },
+  closeThreadTab: (threadId, existing) => {
+    const state = get()
+    const tabs = state.tabThreadIds.filter(existing)
+    const tabThreadIds = tabs.filter((id) => id !== threadId)
+    // Closing a tab means the user is done with the thread, so Ctrl+Tab stops offering it.
+    const recentThreadIds = state.recentThreadIds.filter((id) => id !== threadId)
+    localStorage.setItem(THREAD_TABS_KEY, JSON.stringify(tabThreadIds))
+    localStorage.setItem(RECENT_THREADS_KEY, JSON.stringify(recentThreadIds))
+    set({ tabThreadIds, recentThreadIds })
+    return neighborTab(tabs, threadId)
   },
   threadSwitcher: null,
   cycleThreadSwitcher: (openThreadId, step, existing) =>

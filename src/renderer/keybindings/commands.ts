@@ -69,6 +69,14 @@ const cycleRecentThreads = (ctx: CommandContext, step: 1 | -1) => {
   useUi.getState().cycleThreadSwitcher(ctx.threadId, step, (id) => id in byId)
 }
 
+/** Closes the open thread's tab and opens the tab beside it, or home when it was the last one. */
+const closeThreadTab = (ctx: CommandContext) => {
+  if (!ctx.threadId) return
+  const { byId } = useThreads.getState()
+  const next = useUi.getState().closeThreadTab(ctx.threadId, (id) => id in byId)
+  void (next ? ctx.navigate({ to: "/thread/$threadId", params: { threadId: next } }) : ctx.navigate({ to: "/" }))
+}
+
 /** Switches the side panel to `view` and focuses it, or hides the panel when it already shows `view`. */
 const showView = (ctx: CommandContext, view: SidePanelViewId) => {
   if (ctx.threadId) useUi.getState().toggleView(ctx.threadId, view, { focus: true })
@@ -234,6 +242,13 @@ export const commands = [
     defaultKeys: "Control+Shift+Tab",
     title: m.command_thread_switch_recent_back,
     run: (ctx) => cycleRecentThreads(ctx, -1),
+  },
+  // Mod+W belongs to the window menu's Close Window, which takes the key before the page sees it.
+  {
+    id: "tab.close",
+    defaultKeys: "",
+    title: m.command_tab_close,
+    run: closeThreadTab,
   },
   // Ctrl+[ is Escape to a terminal, so these keep out of it.
   {

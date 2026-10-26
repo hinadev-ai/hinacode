@@ -38,6 +38,7 @@ import {
   RiEyeLine,
   RiEyeOffLine,
   RiFileCopyLine,
+  RiWindow2Line,
   RiGitBranchLine,
   RiInboxUnarchiveLine,
   RiMoreFill,
@@ -64,6 +65,7 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -269,6 +271,11 @@ const ThreadRow = memo(function ThreadRow({
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
+  const router = useRouter()
+  const openInTab = () => {
+    const open = router.state.matches.find((match) => match.routeId === "/thread/$threadId")
+    useUi.getState().openThreadTab(thread.id, open?.params.threadId ?? null)
+  }
   const state = rowState(
     thread.status,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
@@ -355,6 +362,17 @@ const ThreadRow = memo(function ThreadRow({
             event.preventDefault()
             setMenuOpen(true)
           }}
+          // Mod+click and middle-click keep the open thread and open this one in a background tab, as in a browser.
+          onClick={(event) => {
+            if (!event.metaKey && !event.ctrlKey) return
+            event.preventDefault()
+            openInTab()
+          }}
+          onAuxClick={(event) => {
+            if (event.button !== 1) return
+            event.preventDefault()
+            openInTab()
+          }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
           className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
@@ -434,6 +452,10 @@ const ThreadRow = memo(function ThreadRow({
               <RiMoreFill aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={openInTab}>
+                <RiWindow2Line aria-hidden />
+                {m.sidebar_thread_open_in_tab()}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={queue("renaming")}>
                 <RiPencilLine aria-hidden />
                 {m.sidebar_thread_rename()}

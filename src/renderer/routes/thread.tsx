@@ -5,6 +5,7 @@ import { FloatingTinyVm } from "../components/FloatingTinyVm.tsx"
 import { ThreadOpenWith } from "../components/OpenWith.tsx"
 import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
+import { ThreadTabs } from "../components/ThreadTabs.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
 import { usePanelLayout } from "../lib/panelLayout.ts"
@@ -42,41 +43,49 @@ export function ThreadRoute() {
   useVisit(threadId)
 
   if (!thread) {
-    return <p className="m-auto text-sm text-muted-foreground">{m.thread_not_found()}</p>
+    return (
+      <>
+        <ThreadTabs threadId={threadId} />
+        <p className="m-auto text-sm text-muted-foreground">{m.thread_not_found()}</p>
+      </>
+    )
   }
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <ThreadView
-          key={thread.id}
-          thread={thread}
-          agent={agent}
-          overlay={<FloatingTinyVm threadId={thread.id} />}
-          actions={
-            <>
-              <ThreadOpenWith thread={thread} />
-              <TerminalToggle threadId={thread.id} />
-              {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
-            </>
-          }
-        />
-        <TerminalDrawer threadId={thread.id} />
+    <>
+      <ThreadTabs threadId={threadId} />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ThreadView
+            key={thread.id}
+            thread={thread}
+            agent={agent}
+            overlay={<FloatingTinyVm threadId={thread.id} />}
+            actions={
+              <>
+                <ThreadOpenWith thread={thread} />
+                <TerminalToggle threadId={thread.id} />
+                {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
+              </>
+            }
+          />
+          <TerminalDrawer threadId={thread.id} />
+        </div>
+        {docked && <ThreadSidePanel key={thread.id} thread={thread} />}
+        {!docked && (
+          <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
+            <DialogPortal>
+              <DialogPrimitive.Backdrop className="fixed inset-x-0 top-titlebar bottom-0 z-50 bg-background/60" />
+              <DialogPrimitive.Popup
+                finalFocus={toggleRef}
+                className="fixed top-titlebar right-0 bottom-0 z-50 flex w-[calc(24rem+2.75rem)] max-w-full flex-col overflow-hidden border-l border-border bg-background outline-none"
+              >
+                <DialogTitle className="sr-only">{m.panel_label()}</DialogTitle>
+                <ThreadSidePanel key={thread.id} thread={thread} compact />
+              </DialogPrimitive.Popup>
+            </DialogPortal>
+          </Dialog>
+        )}
       </div>
-      {docked && <ThreadSidePanel key={thread.id} thread={thread} />}
-      {!docked && (
-        <Dialog open={overlayOpen} onOpenChange={setOverlayOpen}>
-          <DialogPortal>
-            <DialogPrimitive.Backdrop className="fixed inset-x-0 top-titlebar bottom-0 z-50 bg-background/60" />
-            <DialogPrimitive.Popup
-              finalFocus={toggleRef}
-              className="fixed top-titlebar right-0 bottom-0 z-50 flex w-[calc(24rem+2.75rem)] max-w-full flex-col overflow-hidden border-l border-border bg-background outline-none"
-            >
-              <DialogTitle className="sr-only">{m.panel_label()}</DialogTitle>
-              <ThreadSidePanel key={thread.id} thread={thread} compact />
-            </DialogPrimitive.Popup>
-          </DialogPortal>
-        </Dialog>
-      )}
-    </div>
+    </>
   )
 }

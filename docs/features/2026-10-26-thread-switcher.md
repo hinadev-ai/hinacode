@@ -20,6 +20,7 @@ A developer steering several agents bounces between two or three threads. The si
 
 - `useUi.recentThreadIds` keeps the last 10 opened threads, most recent first, in local storage. The thread route records a visit when its `threadId` changes, so the router stays the only source of where the user is.
 - The two commands live in the keybinding registry. Each press opens `useUi.threadSwitcher` or moves its highlight. The switcher snapshots the recent list when it opens, so the order holds still while the user cycles. The pure logic is `lib/threadSwitcher.ts`.
+- Closing a thread tab drops the thread from the recent list (see `2026-10-26-thread-tabs.md`).
 - `ThreadSwitcher` listens for keyup while open. It commits once no modifier is held, and closes without switching when the window loses focus, since the keyup never arrives then.
 - The list fades in after 150ms, so a quick tap switches without flashing it. The fade is opacity only and stays under reduced motion.
 
