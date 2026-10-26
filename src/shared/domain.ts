@@ -156,6 +156,10 @@ export type ChecksStatus = typeof ChecksStatus.Type
 export const ReviewStatus = Schema.Literals(["approved", "changesRequested", "reviewRequired"])
 export type ReviewStatus = typeof ReviewStatus.Type
 
+/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
+export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
+export type Mergeable = typeof Mergeable.Type
+
 /** A GitHub pull request as `gh pr view` reports it. */
 export const PullRequest = Schema.Struct({
   url: Schema.String,
@@ -166,6 +170,8 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** Defaults for a desktop or cloud from before the sidebar read it. */
+  mergeable: Mergeable.pipe(Schema.withDecodingDefaultKey(Effect.succeed("unknown" as const))),
   /** The author's login. */
   author: Schema.String,
   headRefName: Schema.String,
@@ -187,10 +193,6 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
-/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
-export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
-export type Mergeable = typeof Mergeable.Type
-
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -199,7 +201,6 @@ export const PullRequestDetail = Schema.Struct({
   headRef: Schema.String,
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
-  mergeable: Mergeable,
   checkRuns: Schema.Array(CheckRun),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
@@ -576,6 +577,17 @@ export const Opener = Schema.Struct({
 })
 export type Opener = typeof Opener.Type
 
+export const SidebarGroup = Schema.Struct({ id: Schema.String, name: Schema.String, collapsed: Schema.Boolean })
+export type SidebarGroup = typeof SidebarGroup.Type
+
+export const SidebarGroups = Schema.Struct({
+  /** In sidebar order. */
+  groups: Schema.Array(SidebarGroup),
+  /** Group id by project row key (`ProjectGroup.key` in the renderer). A row in no group has no entry. */
+  groupOf: Schema.Record(Schema.String, Schema.String),
+})
+export type SidebarGroups = typeof SidebarGroups.Type
+
 /** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
 export const ClientSettings = Schema.Struct({
   locale: Locale,
@@ -585,6 +597,7 @@ export const ClientSettings = Schema.Struct({
   keybindings: Schema.Record(Schema.String, Schema.String),
   appearance: Appearance,
   notifications: NotificationSettings,
+  sidebarGroups: SidebarGroups,
 })
 export type ClientSettings = typeof ClientSettings.Type
 
@@ -594,6 +607,7 @@ export const defaultClientSettings: ClientSettings = {
   keybindings: {},
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  sidebarGroups: { groups: [], groupOf: {} },
 }
 
 /**
