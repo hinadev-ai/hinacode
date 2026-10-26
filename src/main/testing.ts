@@ -14,6 +14,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
+import * as Browser from "./services/Browser.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
@@ -83,6 +84,7 @@ export const makeTestAppLayer = (
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
+    Browser.layer,
     SystemResources.layer,
     remoteAccess,
     relay,

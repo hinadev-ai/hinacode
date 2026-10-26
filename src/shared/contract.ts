@@ -80,6 +80,7 @@ import {
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
 import { PendingLink, RelayHost } from "./relayMachines.ts"
+import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 
 const AutomationInput = Schema.Struct({
   projectId: Schema.String,
@@ -102,6 +103,26 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "browser.open": rpc(
+    Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
+    Schema.Struct({ sessionId: Schema.String }),
+  ),
+  "browser.command": rpc(
+    Schema.Struct({
+      ...BrowserSession.fields,
+      commands: Schema.Array(BrowserCommand).check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    }),
+    Schema.Void,
+  ),
+  "browser.frame": rpc(
+    Schema.Struct({
+      ...BrowserSession.fields,
+      after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      visible: Schema.Boolean,
+    }),
+    BrowserSnapshot,
+  ),
+  "browser.close": rpc(BrowserSession, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -588,6 +609,10 @@ export type RpcMethod = keyof typeof RpcMethods
 
 /** Reads rerun after a reconnect; mutations retain one call key for the whole action. */
 export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
+  "browser.open": "mutation",
+  "browser.command": "mutation",
+  "browser.frame": "read",
+  "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "projects.list": "read",

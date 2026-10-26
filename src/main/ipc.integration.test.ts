@@ -1348,7 +1348,7 @@ describe("remote mode", () => {
     const paired = phone(port)
     await paired.send({ type: "auth", token: pairing.token })
     await paired.ready()
-    expect(result(await invoke("remote.status", undefined)).connected).toBe(1)
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).connected).toBe(1))
 
     const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-project"))
 

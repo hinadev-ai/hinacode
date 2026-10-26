@@ -107,6 +107,9 @@ jobs:
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - if: needs.changes.outputs.app == 'true'
+        name: Install remote browser test dependency
+        run: pnpm exec playwright install --with-deps chromium
+      - if: needs.changes.outputs.app == 'true'
         run: pnpm test
 
   mobile:
