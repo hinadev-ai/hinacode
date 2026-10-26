@@ -220,11 +220,10 @@ struct WorkspaceChip: View {
                         .font(.caption)
                 }
                 Image(systemName: "chevron.down")
+                    .foregroundStyle(.secondary)
             }
-            .frame(minHeight: 44)
-            .contentShape(.rect)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.composerChip)
         .accessibilityLabel(Text(.mobileComposerWorkspace))
         .accessibilityValue(
             workspace?.mode == .worktree

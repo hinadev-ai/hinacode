@@ -64,32 +64,32 @@ struct Composer: View {
             VStack(alignment: .leading, spacing: 6) {
                 sendingBlocks
                 suggestionList
-                GlassEffectContainer {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField(
-                            text: textBinding, selection: $selection,
-                            prompt: Text(busy ? .mobileComposerPlaceholderSteer : .mobileComposerPlaceholder),
-                            axis: .vertical
-                        ) {
-                            Text(.mobileComposerMessage)
-                        }
-                        .lineLimit(1...8)
-                        .focused($focused)
-                        .accessibilityIdentifier("composer-field")
-                        HStack(spacing: 8) {
-                            settingsChip(thread)
-                            if unstarted {
-                                WorkspaceChip(threadId: threadId, projectId: thread.projectId) {
-                                    showWorkspace = true
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            sendButton
-                        }
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField(
+                        text: textBinding, selection: $selection,
+                        prompt: Text(busy ? .mobileComposerPlaceholderSteer : .mobileComposerPlaceholder),
+                        axis: .vertical
+                    ) {
+                        Text(.mobileComposerMessage)
                     }
-                    .padding(10)
-                    .glassEffect(in: .rect(cornerRadius: 24))
+                    .lineLimit(1...8)
+                    .focused($focused)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("composer-field")
+                    HStack(spacing: 6) {
+                        settingsChip(thread)
+                        if unstarted {
+                            WorkspaceChip(threadId: threadId, projectId: thread.projectId) {
+                                showWorkspace = true
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        sendButton
+                    }
                 }
+                .padding(.horizontal, 6)
+                .glassEffect(in: .rect(cornerRadius: 24))
                 if let error {
                     Text(verbatim: error)
                         .font(.footnote)
@@ -153,47 +153,47 @@ struct Composer: View {
         Button {
             showSettings = true
         } label: {
-            HStack(spacing: 4) {
-                ProviderMark(provider: thread.provider)
+            HStack(spacing: 5) {
+                ProviderMark(provider: thread.provider, size: 13)
                 Text(verbatim: modelLabel)
-                    .font(.caption)
-                    .lineLimit(1)
                 Image(systemName: "chevron.down")
+                    .foregroundStyle(.secondary)
             }
-            .frame(minHeight: 44)
-            .contentShape(.rect)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.composerChip)
         .accessibilityLabel(Text(.mobileComposerSettings))
         .accessibilityValue("\(String(localized: thread.provider.name)), \(modelLabel)")
     }
 
-    @ViewBuilder private var sendButton: some View {
-        if busy && isBlank {
-            Button(role: .destructive) {
-                interrupt()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .buttonStyle(.glass)
-            .tint(Tone.danger.color)
-            .accessibilityIdentifier("composer-send")
-            .accessibilityLabel(Text(.mobileComposerStop))
-            .keyboardShortcut(.cancelAction)
-        } else {
-            Button {
-                submit()
-            } label: {
-                Image(systemName: "arrow.up")
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .buttonStyle(.glassProminent)
-            .disabled(isBlank)
-            .accessibilityIdentifier("composer-send")
-            .accessibilityLabel(Text(busy ? .mobileComposerSteer : .mobileComposerSend))
-            .keyboardShortcut(.return, modifiers: .command)
+    /// Send, or Stop while a turn runs and the draft is empty. One button, so the arrow turns into the stop square
+    /// in place.
+    private var sendButton: some View {
+        let stops = busy && isBlank
+        let enabled = stops || !isBlank
+        return Button(role: stops ? .destructive : nil) {
+            if stops { interrupt() } else { submit() }
+        } label: {
+            Image(systemName: stops ? "stop.fill" : "arrow.up")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(enabled ? Color.white : Color.secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 34, height: 34)
+                .background(fill(enabled: enabled, stops: stops), in: .circle)
+                .frame(width: 44, height: 44)
+                .contentShape(.circle)
         }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .animation(.snappy(duration: 0.2), value: stops)
+        .animation(.snappy(duration: 0.2), value: enabled)
+        .accessibilityIdentifier("composer-send")
+        .accessibilityLabel(Text(stops ? .mobileComposerStop : busy ? .mobileComposerSteer : .mobileComposerSend))
+        .keyboardShortcut(stops ? .cancelAction : KeyboardShortcut(.return, modifiers: .command))
+    }
+
+    private func fill(enabled: Bool, stops: Bool) -> Color {
+        guard enabled else { return Color(.tertiarySystemFill) }
+        return stops ? Tone.danger.color : .accentColor
     }
 
     private var textBinding: Binding<String> {
@@ -356,4 +356,24 @@ private struct SuggestionRow: View {
             .padding(.vertical, 6)
         }
     }
+}
+
+/// A compact control on the composer's glass. A plain fill rather than glass, since glass cannot sit on glass.
+struct ComposerChipStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.footnote)
+            .imageScale(.small)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(.fill.tertiary, in: .capsule)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+    }
+}
+
+extension ButtonStyle where Self == ComposerChipStyle {
+    static var composerChip: ComposerChipStyle { ComposerChipStyle() }
 }
