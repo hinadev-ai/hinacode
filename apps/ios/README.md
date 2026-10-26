@@ -6,6 +6,10 @@ The native SwiftUI app for HinaCode's remote mode. Android keeps the Expo app in
 - `HinaCode.xcodeproj` uses synchronized folders. Adding a file never touches `project.pbxproj`.
 - `HinaCodeKit/` is a Swift package with everything that is not a view. It holds the wire contract, the transport,
   the server hub and the stores. It also builds for macOS, so `swift test` needs no simulator.
+- `HinaCodeWidgets/` is the widget extension: the Live Activity for a turn sent from the phone, and the threads
+  widget. It compiles the app's `Theme.swift`, `Assets.xcassets` and `Localizable.xcstrings` through target
+  membership, and reads what the app shares in the App Group `group.app.hinacode.ios`. See
+  `docs/features/2026-10-26-ios-live-activities.md`.
 - Minimum iOS 26, for Liquid Glass.
 
 ## Build and test

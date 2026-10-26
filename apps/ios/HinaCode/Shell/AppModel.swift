@@ -19,6 +19,7 @@ final class AppModel {
     let preferences: PreferencesStore
     let pushes = PushListeners()
     @ObservationIgnored let liveActivities: LiveActivities
+    @ObservationIgnored private let widgetSnapshots = WidgetSnapshots()
     /// Thread events that may alert, for the notifier.
     @ObservationIgnored var onThreadEvent: ((String, AgentEvent) -> Void)?
 
@@ -66,12 +67,17 @@ final class AppModel {
                 for await _ in Observations({ self.hub.paired }) { self.messages.reset() }
             },
         ]
+        widgetSnapshots.start(model: self)
         Task { await relayAccount.restore() }
     }
 
     func setActive(_ active: Bool) {
         hub.setForeground(active)
-        if active { Task { await relayAccount.sync() } }
+        if active {
+            Task { await relayAccount.sync() }
+        } else {
+            widgetSnapshots.stamp(model: self)
+        }
     }
 
     /// A `hinacode://connect` link pairs, as a scanned code does.

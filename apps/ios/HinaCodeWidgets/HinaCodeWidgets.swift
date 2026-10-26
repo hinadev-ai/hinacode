@@ -4,6 +4,7 @@ import WidgetKit
 @main
 struct HinaCodeWidgets: WidgetBundle {
     var body: some Widget {
+        ThreadsWidget()
         ThreadActivityWidget()
     }
 }

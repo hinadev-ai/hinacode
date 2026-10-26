@@ -1848,5 +1848,11 @@
   "resources_sampling": "計測中…",
   "resources_loading": "リソースを読み取り中…",
   "resources_update_cloud": "{name} の HinaCode を更新するとリソースを表示できます。",
-  "resources_failed": "リソースを読み取れませんでした: {message}"
+  "resources_failed": "リソースを読み取れませんでした: {message}",
+  "mobile_widget_name": "スレッド",
+  "mobile_widget_description": "対応待ちのスレッドと実行中のスレッドを確認できます。",
+  "mobile_widget_nothing": "対応待ちはありません",
+  "mobile_widget_unpaired": "HinaCode を開いてペアリング",
+  "mobile_widget_needs_you_count": "対応待ち：{count}",
+  "mobile_widget_running_count": "実行中：{count}"
 }

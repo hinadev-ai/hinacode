@@ -1863,5 +1863,11 @@
   "resources_sampling": "取樣中…",
   "resources_loading": "正在讀取資源…",
   "resources_update_cloud": "請更新 {name} 上的 HinaCode 才能查看它的資源。",
-  "resources_failed": "無法讀取資源：{message}"
+  "resources_failed": "無法讀取資源：{message}",
+  "mobile_widget_name": "對話串",
+  "mobile_widget_description": "查看哪些對話串等你處理、哪些還在執行。",
+  "mobile_widget_nothing": "目前沒有要你處理的事",
+  "mobile_widget_unpaired": "開啟 HinaCode 進行配對",
+  "mobile_widget_needs_you_count": "等你處理：{count}",
+  "mobile_widget_running_count": "執行中：{count}"
 }

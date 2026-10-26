@@ -82,7 +82,7 @@ A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
 
-The iOS app (`apps/ios`) is a native port of the same client. `HinaCodeKit` holds `Transport`, `ServerHub` and the stores as `@MainActor` ports of `transport.ts`, `connection.ts` and `apps/mobile/src/stores`, so a protocol change is ported with its test. Its wire types are generated from `src/shared` by `scripts/swift-contract.ts` and its copy from `messages/*.json` by `scripts/ios-strings.ts`. See `features/2026-10-25-ios-native-app.md` and [ADR 0023](adr/0023-native-ios-app.md).
+The iOS app (`apps/ios`) is a native port of the same client. `HinaCodeKit` holds `Transport`, `ServerHub` and the stores as `@MainActor` ports of `transport.ts`, `connection.ts` and `apps/mobile/src/stores`, so a protocol change is ported with its test. Its wire types are generated from `src/shared` by `scripts/swift-contract.ts` and its copy from `messages/*.json` by `scripts/ios-strings.ts`. See `features/2026-10-25-ios-native-app.md` and [ADR 0023](adr/0023-native-ios-app.md). The `HinaCodeWidgets` extension never opens a socket: Live Activities are updated by the app while its socket is live, and the threads widget reads a `WidgetSnapshot` the app writes to their shared App Group (`features/2026-10-26-ios-live-activities.md`).
 
 ```mermaid
 flowchart LR
