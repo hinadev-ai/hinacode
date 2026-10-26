@@ -22,7 +22,7 @@ import pullRequestGuide from "./migrations/0020_pull_request_guide.ts"
 import projectKind from "./migrations/0021_project_kind.ts"
 import environmentRelay from "./migrations/0022_environment_relay.ts"
 import environmentSource from "./migrations/0023_environment_source.ts"
-import threadSnooze from "./migrations/0024_thread_snooze.ts"
+import threadSnooze from "./migrations/0025_thread_snooze.ts"
 
 const run = Migrator.make({})
 
@@ -54,7 +54,7 @@ export const runMigrations = run({
     "21_project_kind": projectKind,
     "22_environment_relay": environmentRelay,
     "23_environment_source": environmentSource,
-    "24_thread_snooze": threadSnooze,
+    "25_thread_snooze": threadSnooze,
   }),
 }).pipe(
   Effect.tap((ran) =>

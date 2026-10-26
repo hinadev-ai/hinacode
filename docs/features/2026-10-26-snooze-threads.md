@@ -19,7 +19,7 @@ The Inbox puts every active thread in one list, newest first. A thread that is w
 
 ## Design
 
-- `thread.snoozed_until` (migration 0024), exposed as `Thread.snoozedUntil: Timestamp | null`. A time in the future means snoozed. A past time means the thread woke then. It decodes to null when a cloud running an older version leaves it out.
+- `thread.snoozed_until` (migration 0025), exposed as `Thread.snoozedUntil: Timestamp | null`. A time in the future means snoozed. A past time means the thread woke then. It decodes to null when a cloud running an older version leaves it out.
 - `threads.update` takes `snoozedUntil: Timestamp | null`. Like pinning, snoozing only arranges the sidebar, so it keeps `updatedAt`. Any write that does bump `updatedAt` clears the snooze, which is how activity wakes a thread. No timer runs in the main process.
 - The renderer decides what is snoozed from `useNow`, which ticks every 30 seconds. The Inbox sorts by the later of `updatedAt` and a past `snoozedUntil`, which moves a woken thread to the top.
 - The presets and the parser live in `src/renderer/lib/snooze.ts` and take the current time as an argument. Parsing uses `chrono-node` in the app's locale, then in English, since people type English times whatever the UI language.
