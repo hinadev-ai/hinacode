@@ -27,6 +27,7 @@ The flows match the Expo app (`apps/mobile/README.md`): pair by QR code or URL, 
 - Time goes through a `Timers` protocol, so the ported transport tests drive a manual clock instead of sleeping.
 - `URLSessionWebSocketTask` carries the socket. Its `maximumMessageSize` is raised above the listener's 8 MiB slow-consumer limit, and close codes 4001 and 4002 come from the delegate.
 - The pairing token and the server list live in the Keychain. Preferences and drafts live in `UserDefaults`.
+- Colors are the desktop's Catppuccin Latte palette in light mode and Tokyo Night in dark mode, as named colors in the asset catalog's Palette folder. The composer keeps the desktop's paper frame and its send halo, a conic gradient of the primary turned +45° and -35° in hue.
 - Markdown is parsed by Foundation's `AttributedString(markdown:)` with full syntax, and rendered block by block in SwiftUI, so code blocks use the ported lexer and workspace images load through `fs.preview`.
 - The terminal is SwiftTerm's `TerminalView`, attached with `terminal.attach` offsets. Its accessory bar replaces `terminal-keys.ts`.
 - Notifications use `UserNotifications`, fired from the live socket as the Expo app does.
