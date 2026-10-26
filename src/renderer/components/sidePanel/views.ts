@@ -1,4 +1,4 @@
-import { type ComponentType, useMemo } from "react"
+import type { ComponentType } from "react"
 import type { IconType } from "react-icons"
 import {
   RiFileCopy2Line,
@@ -89,10 +89,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
 /** The views whose experiment, if any, is turned on. */
 export const useSidePanelViews = (environment: EnvironmentId): ReadonlyArray<SidePanelView> => {
   const { experimental } = useSettings(environment)
-  return useMemo(
-    () => sidePanelViews.filter((view) => view.experiment === undefined || experimental[view.experiment]),
-    [experimental],
-  )
+  return sidePanelViews.filter((view) => view.experiment === undefined || experimental[view.experiment])
 }
 
 /** The view to show for `id`, or the first one when `id` is not among `views`, such as a view whose experiment was turned off. */

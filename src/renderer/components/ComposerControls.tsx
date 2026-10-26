@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
   RiBrainLine,
@@ -643,35 +643,33 @@ function useRefSuggestions(projectId: string, query: string) {
     (): ReadonlyArray<OpenPullRequest> => [],
   )
 
-  return useMemo(() => {
-    const groups = [
-      {
-        label: m.thread_worktree_ref_pull_requests(),
-        items: pullRequests.map((pullRequest): RefSuggestion => ({
-          kind: "pullRequest",
-          ref: `#${pullRequest.number}`,
-          pullRequest,
-        })),
-      },
-      {
-        label: m.thread_worktree_ref_branches(),
-        items: branches.map((branch): RefSuggestion => ({ kind: "branch", ref: branch })),
-      },
-    ]
-    const trimmed = query.trim()
-    const needle = trimmed.toLowerCase()
-    const showAll = groups.some((group) => group.items.some((item) => item.ref === trimmed))
-    const matches = (item: RefSuggestion) =>
-      (item.kind === "pullRequest" ? `${item.ref} ${item.pullRequest.title} ${item.pullRequest.headRefName}` : item.ref)
-        .toLowerCase()
-        .includes(needle)
-    return groups
-      .map((group) => ({
-        ...group,
-        items: (showAll ? group.items : group.items.filter(matches)).slice(0, SUGGESTIONS_PER_GROUP),
-      }))
-      .filter((group) => group.items.length > 0)
-  }, [branches, pullRequests, query])
+  const groups = [
+    {
+      label: m.thread_worktree_ref_pull_requests(),
+      items: pullRequests.map((pullRequest): RefSuggestion => ({
+        kind: "pullRequest",
+        ref: `#${pullRequest.number}`,
+        pullRequest,
+      })),
+    },
+    {
+      label: m.thread_worktree_ref_branches(),
+      items: branches.map((branch): RefSuggestion => ({ kind: "branch", ref: branch })),
+    },
+  ]
+  const trimmed = query.trim()
+  const needle = trimmed.toLowerCase()
+  const showAll = groups.some((group) => group.items.some((item) => item.ref === trimmed))
+  const matches = (item: RefSuggestion) =>
+    (item.kind === "pullRequest" ? `${item.ref} ${item.pullRequest.title} ${item.pullRequest.headRefName}` : item.ref)
+      .toLowerCase()
+      .includes(needle)
+  return groups
+    .map((group) => ({
+      ...group,
+      items: (showAll ? group.items : group.items.filter(matches)).slice(0, SUGGESTIONS_PER_GROUP),
+    }))
+    .filter((group) => group.items.length > 0)
 }
 
 function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowDownSLine,
@@ -54,7 +54,7 @@ export function TodoActivity({ thread }: { thread: Thread }) {
     const history = state.byThread[thread.id]
     return history?.status === "ready" ? history.messages : NO_MESSAGES
   })
-  const todos = useMemo(() => latestTodos(messages), [messages])
+  const todos = latestTodos(messages)
   const [expanded, setExpanded] = useState(false)
 
   const done = todos.filter((todo) => todo.status === "completed").length

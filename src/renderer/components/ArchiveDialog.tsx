@@ -1,4 +1,4 @@
-import { startTransition, useActionState } from "react"
+import { useActionState } from "react"
 import { isThreadBusy, type Thread, type Worktree } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -60,11 +60,7 @@ export function ArchiveDialog({ thread, worktree, open, onOpenChange, onArchived
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            disabled={isPending || isThreadBusy(thread.status)}
-            onClick={() => startTransition(archive)}
-          >
+          <AlertDialogAction variant="destructive" disabled={isPending || isThreadBusy(thread.status)} action={archive}>
             {m.archive_dialog_confirm()}
           </AlertDialogAction>
         </AlertDialogFooter>

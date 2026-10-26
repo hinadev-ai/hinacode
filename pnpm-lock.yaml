@@ -360,6 +360,9 @@ importers:
       oxlint:
         specifier: 1.87.0
         version: 1.87.0
+      oxlint-plugin-hinacode:
+        specifier: workspace:*
+        version: link:packages/oxlint-plugin-hinacode
       oxlint-plugin-react-doctor:
         specifier: 0.9.17
         version: 0.9.17
@@ -412,6 +415,12 @@ importers:
       node-mac-permissions:
         specifier: github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37
         version: https://codeload.github.com/codebytere/node-mac-permissions/tar.gz/7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37
+
+  packages/oxlint-plugin-hinacode:
+    dependencies:
+      '@oxlint/plugins':
+        specifier: 1.87.0
+        version: 1.87.0
 
   relay:
     dependencies:
@@ -2477,6 +2486,10 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
+
+  '@oxlint/plugins@1.87.0':
+    resolution: {integrity: sha512-OtSZ6NxNkS7bkVy7zk9zGnajz2hVIu0uRPP/dJvJesGRaXtimpA4lpxap7FaIJndG2UIoKhnBU4DxyDQIWv6yg==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
   '@peculiar/asn1-schema@2.10.0':
     resolution: {integrity: sha512-GhokD41lV4gQrrLYm3wCkHfBOnJrnhDMgt4XeMW8gzfE1UdJqIuSwsE+ggf82XBjUXRJylcm+KIGQFa4utIVLw==}
@@ -8840,6 +8853,8 @@ snapshots:
 
   '@oxlint/binding-win32-x64-msvc@1.87.0':
     optional: true
+
+  '@oxlint/plugins@1.87.0': {}
 
   '@peculiar/asn1-schema@2.10.0':
     dependencies:

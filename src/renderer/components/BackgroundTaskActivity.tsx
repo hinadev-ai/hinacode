@@ -1,4 +1,3 @@
-import { useState } from "react"
 import type { IconType } from "react-icons"
 import { RiFlowChart, RiLoader4Line, RiStopFill, RiTerminalBoxLine } from "react-icons/ri"
 import type { BackgroundTask, BackgroundTaskKind } from "../../shared/agent.ts"
@@ -45,15 +44,11 @@ function BackgroundTaskRow({ threadId, task }: { threadId: string; task: Backgro
 }
 
 function StopBackgroundTaskButton({ threadId, task }: { threadId: string; task: BackgroundTask }) {
-  const [stopping, setStopping] = useState(false)
   const stop = async () => {
-    setStopping(true)
     try {
       await callPromise("backgroundTasks.stop", { threadId, taskId: task.id })
     } catch (cause) {
       toast.error(m.activity_background_stop_failed({ message: errorMessage(cause) }))
-    } finally {
-      setStopping(false)
     }
   }
   const label = m.activity_background_stop({ label: task.label })
@@ -61,8 +56,7 @@ function StopBackgroundTaskButton({ threadId, task }: { threadId: string; task: 
     <Button
       variant="ghost"
       size="icon-xs"
-      disabled={stopping}
-      onClick={stop}
+      action={stop}
       aria-label={label}
       title={label}
       className="text-muted-foreground hover:text-foreground"

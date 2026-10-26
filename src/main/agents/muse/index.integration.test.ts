@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -89,7 +90,7 @@ const forkTurn = (turnInput: RunTurnInput) =>
 const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTurnInput) => void = () => {}) =>
   Effect.suspend(() => {
     turns += 1
-    const marker = `kk-muse-turn-${turns}-${Date.now()}`
+    const marker = `kk-muse-turn-${turns}-${randomUUID()}`
     const turnInput = input(accessMode, marker)
     setup(marker, turnInput)
     return forkTurn(turnInput)
