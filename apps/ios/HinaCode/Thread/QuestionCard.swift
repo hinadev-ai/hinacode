@@ -26,26 +26,31 @@ struct QuestionCard: View {
                         set: { typed[question.id] = $0 }))
             }
             HStack(spacing: 8) {
-                Spacer(minLength: 0)
                 Button {
                     respond([:])
                 } label: {
                     Text(.mobileChatSkip)
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.bordered)
                 .disabled(busy)
                 Button {
                     respond(answers)
                 } label: {
-                    if busy {
-                        ProgressView()
-                    } else {
-                        Text(.mobileChatSubmit)
+                    Group {
+                        if busy {
+                            ProgressView()
+                        } else {
+                            Text(.mobileChatSubmit)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .disabled(busy || answers.isEmpty)
             }
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
             if let error {
                 Text(verbatim: error)
                     .font(.footnote)
@@ -99,20 +104,33 @@ private struct QuestionSection: View {
                 Button {
                     toggle(option.label)
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: option.label)
-                            .font(.body.weight(.semibold))
-                        if !option.description.isEmpty {
-                            Text(verbatim: option.description)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: picked.contains(option.label) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(picked.contains(option.label) ? Color.accentColor : Color.secondary)
+                            .contentTransition(.symbolEffect(.replace))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(verbatim: option.label)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            if !option.description.isEmpty {
+                                Text(verbatim: option.description)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        picked.contains(option.label)
+                            ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.background.opacity(0.6)),
+                        in: .rect(cornerRadius: 12)
+                    )
                     .contentShape(.rect)
                 }
-                .buttonStyle(.bordered)
-                .tint(picked.contains(option.label) ? Color.accentColor : Color.secondary)
+                .buttonStyle(.plain)
                 .accessibilityAddTraits(picked.contains(option.label) ? .isSelected : [])
             }
             if question.allowsText {

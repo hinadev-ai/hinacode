@@ -12,52 +12,28 @@ struct ApprovalCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(verbatim: request.title)
-                .font(.subheadline.weight(.semibold))
-                .textSelection(.enabled)
+            Label {
+                Text(verbatim: request.title)
+                    .font(.subheadline.weight(.semibold))
+                    .textSelection(.enabled)
+            } icon: {
+                Image(systemName: "hand.raised.fill")
+                    .foregroundStyle(Tone.attention.color)
+            }
             if !request.detail.isEmpty {
-                ScrollView {
-                    Text(verbatim: request.detail)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 160)
-                .padding(8)
-                .background(.fill.quaternary, in: .rect(cornerRadius: 6))
+                ScrollView { detail }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: 160)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .background(.background.opacity(0.6), in: .rect(cornerRadius: 10))
             }
-            HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                Button(role: .destructive) {
-                    respond(.deny)
-                } label: {
-                    Text(.mobileChatDeny)
-                }
-                .buttonStyle(.glass)
-                .disabled(busy != nil)
-                .accessibilityIdentifier("approval-deny")
-                if request.sessionScope != nil {
-                    Button {
-                        respond(.allowForSession)
-                    } label: {
-                        Text(.mobileChatAllowSession)
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(busy != nil)
-                }
-                Button {
-                    respond(.allow)
-                } label: {
-                    if busy == .allow {
-                        ProgressView()
-                    } else {
-                        Text(.mobileChatAllow)
-                    }
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(busy != nil && busy != .allow)
-                .accessibilityIdentifier("approval-allow")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { buttons }
+                VStack(spacing: 8) { buttons }
             }
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
             if let error {
                 Text(verbatim: error)
                     .font(.footnote)
@@ -70,6 +46,53 @@ struct ApprovalCard: View {
         .sensoryFeedback(.success, trigger: answered)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(.mobileChatApproval(request.title)))
+    }
+
+    private var detail: some View {
+        Text(verbatim: request.detail)
+            .font(.system(.footnote, design: .monospaced))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Plain bordered buttons, since glass cannot sit on the card's glass.
+    @ViewBuilder private var buttons: some View {
+        Button(role: .destructive) {
+            respond(.deny)
+        } label: {
+            Text(.mobileChatDeny)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .disabled(busy != nil)
+        .accessibilityIdentifier("approval-deny")
+        if request.sessionScope != nil {
+            Button {
+                respond(.allowForSession)
+            } label: {
+                Text(.mobileChatAllowSession)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(busy != nil)
+        }
+        Button {
+            respond(.allow)
+        } label: {
+            Group {
+                if busy == .allow {
+                    ProgressView()
+                } else {
+                    Text(.mobileChatAllow)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(busy != nil && busy != .allow)
+        .accessibilityIdentifier("approval-allow")
     }
 
     private func respond(_ decision: ApprovalDecision) {

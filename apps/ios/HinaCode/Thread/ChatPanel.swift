@@ -24,6 +24,12 @@ struct ChatPanel: View {
                         pendingCards
                         Composer(threadId: threadId)
                     }
+                    .animation(
+                        reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.35, bounce: 0.15),
+                        value: pendingIds
+                    )
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .task(id: threadId) { await model.messages.load(threadId: threadId) }
@@ -51,7 +57,7 @@ struct ChatPanel: View {
             }
         case .ready(let transcript):
             if transcript.messages.isEmpty {
-                ContentUnavailableView(.mobileChatEmpty, systemImage: "text.bubble")
+                emptyTranscript
             } else {
                 transcriptView(transcript)
             }
@@ -62,9 +68,24 @@ struct ChatPanel: View {
         }
     }
 
+    /// Who will answer, so the first prompt goes to a face rather than a blank page.
+    @ViewBuilder private var emptyTranscript: some View {
+        if let thread {
+            ContentUnavailableView {
+                Label {
+                    Text(thread.provider.name)
+                } icon: {
+                    ProviderMark(provider: thread.provider, size: 44)
+                }
+            } description: {
+                Text(.mobileChatEmpty)
+            }
+        }
+    }
+
     private func transcriptView(_ transcript: MessagesStore.Transcript) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 24) {
                 ForEach(transcript.messages) { message in
                     MessageRow(message: message, root: root)
                         .equatable()
@@ -78,7 +99,7 @@ struct ChatPanel: View {
         .defaultScrollAnchor(.bottom)
         .scrollPosition($scrollPosition)
         .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 80
+            geometry.visibleRect.maxY - geometry.contentInsets.bottom >= geometry.contentSize.height - 80
         } action: { _, atBottom in
             isAtBottom = atBottom
         }
@@ -101,22 +122,35 @@ struct ChatPanel: View {
         .accessibilityLabel(Text(.mobileChatTranscript))
     }
 
+    private var pendingIds: [String] {
+        guard case .ready(let transcript) = history else { return [] }
+        return transcript.approvals.map(\.id) + transcript.questions.map(\.id)
+    }
+
     @ViewBuilder private var pendingCards: some View {
         if case .ready(let transcript) = history, !transcript.approvals.isEmpty || !transcript.questions.isEmpty {
             GlassEffectContainer {
                 VStack(spacing: 8) {
                     ForEach(transcript.approvals) { request in
                         ApprovalCard(request: request)
+                            .transition(cardTransition)
                     }
                     ForEach(transcript.questions) { request in
                         QuestionCard(request: request)
+                            .transition(cardTransition)
                     }
                 }
             }
+            .transition(cardTransition)
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
             .padding(.horizontal)
         }
+    }
+
+    /// A card rises out of the composer it sits on and sinks back into it once answered. Reduce Motion fades it.
+    private var cardTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity)
     }
 
     private func scrollToBottom(animated: Bool) {
