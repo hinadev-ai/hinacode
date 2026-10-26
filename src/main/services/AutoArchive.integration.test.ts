@@ -91,10 +91,10 @@ describe("AutoArchive", () => {
       }),
     )
 
-    it.effect("archives only threads whose linked pull requests are all merged", () =>
+    it.effect("archives only threads whose linked pull requests have all merged or closed", () =>
       Effect.gen(function* () {
         yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
-        const allMerged = yield* threadWithPullRequests("all", ["merged", "merged"])
+        const allMerged = yield* threadWithPullRequests("all", ["merged", "closed"])
         const oneOpen = yield* threadWithPullRequests("some", ["merged", "open"])
         const closed = yield* threadWithPullRequests("closed", ["closed"])
         const running = yield* threadWithPullRequests("running", ["merged"], "running")
@@ -104,7 +104,7 @@ describe("AutoArchive", () => {
 
         expect(yield* statusOf(allMerged)).toBe("archived")
         expect(yield* statusOf(oneOpen)).toBe("idle")
-        expect(yield* statusOf(closed)).toBe("idle")
+        expect(yield* statusOf(closed)).toBe("archived")
         expect(yield* statusOf(running)).toBe("running")
         expect(yield* statusOf(unlinked)).toBe("idle")
         expect(pushes).toContainEqual(
