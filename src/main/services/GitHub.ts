@@ -84,7 +84,7 @@ const RollupEntry = Schema.Struct({
 type RollupEntry = typeof RollupEntry.Type
 
 export const PULL_REQUEST_FIELDS =
-  "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,author,headRefName,baseRefName,additions,deletions"
+  "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,mergeable,author,headRefName,baseRefName,additions,deletions"
 
 const PullRequestFields = Schema.Struct({
   url: Schema.String,
@@ -94,6 +94,7 @@ const PullRequestFields = Schema.Struct({
   isDraft: Schema.Boolean,
   reviewDecision: Schema.String,
   statusCheckRollup: Schema.Array(RollupEntry),
+  mergeable: Schema.String,
   author: Schema.Struct({ login: Schema.String }),
   headRefName: Schema.String,
   baseRefName: Schema.String,
@@ -102,13 +103,12 @@ const PullRequestFields = Schema.Struct({
 })
 const PullRequestJson = Schema.fromJsonString(PullRequestFields)
 
-const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,mergeable,headRefOid`
+const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,headRefOid`
 
 const PullRequestDetailJson = Schema.fromJsonString(
   Schema.Struct({
     ...PullRequestFields.fields,
     body: Schema.String,
-    mergeable: Schema.String,
     headRefOid: Schema.String,
   }),
 )
@@ -142,6 +142,8 @@ const reviewStatus: Record<string, ReviewStatus> = {
 const pullRequestStatus = (state: typeof PullRequestFields.Type.state, isDraft: boolean): PullRequestStatus =>
   state === "OPEN" ? (isDraft ? "draft" : "open") : state === "MERGED" ? "merged" : "closed"
 
+const mergeable: Record<string, Mergeable> = { MERGEABLE: "mergeable", CONFLICTING: "conflicting" }
+
 export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest => {
   const status = pullRequestStatus(json.state, json.isDraft)
   return {
@@ -151,6 +153,7 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
     status,
     checks: summarizeChecks(json.statusCheckRollup),
     review: reviewStatus[json.reviewDecision] ?? null,
+    mergeable: mergeable[json.mergeable] ?? "unknown",
     author: json.author.login,
     headRefName: json.headRefName,
     baseRefName: json.baseRefName,
@@ -175,15 +178,12 @@ const toCheckRun = (entry: RollupEntry): CheckRun => {
   }
 }
 
-const mergeable: Record<string, Mergeable> = { MERGEABLE: "mergeable", CONFLICTING: "conflicting" }
-
 export const toPullRequestDetail = (json: typeof PullRequestDetailJson.Type): PullRequestDetail => ({
   ...toPullRequest(json),
   body: json.body,
   baseRef: json.baseRefName,
   headRef: json.headRefName,
   head: json.headRefOid,
-  mergeable: mergeable[json.mergeable] ?? "unknown",
   checkRuns: json.statusCheckRollup
     .map(toCheckRun)
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),

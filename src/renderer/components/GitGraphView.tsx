@@ -22,6 +22,7 @@ import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
 import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
+import { GIT_GRAPH_SPLIT_BOUNDS } from "../lib/panelSize.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -138,7 +139,8 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
   const graph = { laneWidth, width: Math.min(LANE_INSET * 2 + (lanes - 1) * laneWidth, MAX_GRAPH_WIDTH) }
   const [selected, setSelected] = useState<string | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
-  const [split, setSplit] = useState(55)
+  const split = useUi((state) => state.gitGraphSplit)
+  const setSplit = useUi((state) => state.setGitGraphSplit)
   const selectedIndex = selected === null ? -1 : rows.findIndex((row) => row.commit.hash === selected)
   const selectedCommit = rows[selectedIndex]?.commit
 
@@ -362,8 +364,7 @@ const relativeTime = (iso: string) => {
   return format.format(0, "minute")
 }
 
-const MIN_SPLIT = 20
-const MAX_SPLIT = 80
+const { min: MIN_SPLIT, max: MAX_SPLIT } = GIT_GRAPH_SPLIT_BOUNDS
 
 /** The divider between the list and the diff. Dragging or the arrow keys move it. */
 function SplitHandle({ value, onChange }: { value: number; onChange: (value: number) => void }) {

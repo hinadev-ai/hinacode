@@ -1,6 +1,6 @@
 import { Array as Arr, Schema } from "effect"
 import { isArrayNonEmpty, type NonEmptyReadonlyArray } from "effect/Array"
-import { PushEvent } from "./contract.ts"
+import { PushEvent, type RpcMethod } from "./contract.ts"
 
 /** Path the phone upgrades to a WebSocket on. */
 export const REMOTE_PATH = "/remote"
@@ -11,8 +11,25 @@ export const REMOTE_PROTOCOL_VERSION = 1
 /** The listener closes a socket whose unsent output grows past this, so no single answer may be larger. */
 export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 
-export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach"] as const
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
+
+/** The reads a cloud may `ask` a desktop for, to see threads on the user's other machines. Nothing that writes. */
+export const AskableMethod = Schema.Literals([
+  "threads.list",
+  "projects.list",
+  "worktrees.list",
+  "threads.transcript",
+  "pullRequests.list",
+] satisfies ReadonlyArray<RpcMethod>)
+export type AskableMethod = typeof AskableMethod.Type
+
+const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
+
+const Envelope = Schema.Union([
+  Schema.Struct({ error: Failure }),
+  Schema.Struct({ result: Schema.optionalKey(Schema.Unknown) }),
+])
 
 /**
  * Phone -> desktop. The first frame on a socket must be `auth`: proof of the token for the server's `challenge`
@@ -30,10 +47,11 @@ export const ClientFrame = Schema.Union([
     key: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("ping"), at: Schema.Number }),
+  /** Sent by a desktop after a `ready` that lists `asks`: it answers `ask` frames from then on. */
+  Schema.Struct({ type: Schema.Literal("hub") }),
+  Schema.Struct({ type: Schema.Literal("answer"), id: Schema.Int, envelope: Envelope }),
 ])
 export type ClientFrame = typeof ClientFrame.Type
-
-const Failure = Schema.Struct({ tag: Schema.String, message: Schema.String })
 
 /**
  * Desktop -> phone. `result` answers one `call`; `event` is the same push the desktop renderer gets.
@@ -55,16 +73,16 @@ export const ServerFrame = Schema.Union([
     relay: Schema.optionalKey(Schema.String),
     proof: Schema.optionalKey(Schema.String),
   }),
-  Schema.Struct({
-    type: Schema.Literal("result"),
-    id: Schema.Int,
-    envelope: Schema.Union([
-      Schema.Struct({ error: Failure }),
-      Schema.Struct({ result: Schema.optionalKey(Schema.Unknown) }),
-    ]),
-  }),
+  Schema.Struct({ type: Schema.Literal("result"), id: Schema.Int, envelope: Envelope }),
   Schema.Struct({ type: Schema.Literal("event"), event: PushEvent }),
   Schema.Struct({ type: Schema.Literal("pong"), at: Schema.Number }),
+  /** Sent only to a client that sent `hub`, which answers it with an `answer` of the same `id`. */
+  Schema.Struct({
+    type: Schema.Literal("ask"),
+    id: Schema.Int,
+    method: AskableMethod,
+    payload: Schema.optionalKey(Schema.Unknown),
+  }),
 ])
 export type ServerFrame = typeof ServerFrame.Type
 

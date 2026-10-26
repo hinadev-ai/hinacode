@@ -3,6 +3,7 @@ import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
@@ -340,6 +341,18 @@ export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) =>
 /** A linked pull request's status, asked through `gh` in the environment of the thread showing it. */
 export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
   call("github.pullRequest", { url }, { environment }),
+)
+
+/** Why any of a thread's linked pull requests waits on the developer, or undefined while none does. */
+export const pullRequestAttentionAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
+  Atom.make((get) =>
+    pullRequestAttention(
+      urls.map((url) => {
+        const lookup = get(pullRequestStatusAtom(environment, url))
+        return AsyncResult.isSuccess(lookup) ? lookup.value : undefined
+      }),
+    ),
+  ),
 )
 
 /** Everything the PR tab shows about one pull request. */

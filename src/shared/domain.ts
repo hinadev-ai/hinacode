@@ -145,6 +145,10 @@ export type ChecksStatus = typeof ChecksStatus.Type
 export const ReviewStatus = Schema.Literals(["approved", "changesRequested", "reviewRequired"])
 export type ReviewStatus = typeof ReviewStatus.Type
 
+/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
+export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
+export type Mergeable = typeof Mergeable.Type
+
 /** A GitHub pull request as `gh pr view` reports it. */
 export const PullRequest = Schema.Struct({
   url: Schema.String,
@@ -155,6 +159,8 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** Defaults for a desktop or cloud from before the sidebar read it. */
+  mergeable: Mergeable.pipe(Schema.withDecodingDefaultKey(Effect.succeed("unknown" as const))),
   /** The author's login. */
   author: Schema.String,
   headRefName: Schema.String,
@@ -176,10 +182,6 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
-/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
-export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
-export type Mergeable = typeof Mergeable.Type
-
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -188,7 +190,6 @@ export const PullRequestDetail = Schema.Struct({
   headRef: Schema.String,
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
-  mergeable: Mergeable,
   checkRuns: Schema.Array(CheckRun),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
@@ -598,12 +599,26 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+/**
+ * The `default*` keys are what a new thread starts with. Picking an option on a thread before its first message
+ * saves it here, so the next new thread starts the way the last one was set up.
+ */
 export const Settings = Schema.Struct({
+  defaultProvider: ProviderId,
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** Null is the model's own default effort. */
+  defaultEffort: Schema.Struct({
+    claude: Schema.NullOr(Schema.String),
+    codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
+  }),
+  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  /** Whether the first turn of a new thread in a repository runs in a new worktree or in the project root. */
+  defaultWorkspaceMode: WorkspaceChoice.fields.mode,
   /** Model ids the thread model picker lists per agent, in any order. Empty lists every model the agent has. */
   modelPresets: Schema.Struct({
     claude: Schema.Array(Schema.String),
@@ -656,7 +671,11 @@ export const Settings = Schema.Struct({
 export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
+  defaultProvider: "claude",
   defaultModel: { claude: null, codex: null, muse: null },
+  defaultEffort: { claude: null, codex: null, muse: null },
+  defaultFastMode: { claude: false, codex: false, muse: false },
+  defaultWorkspaceMode: "local",
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   defaultAccountName: { claude: null, codex: null, muse: null },

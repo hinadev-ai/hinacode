@@ -32,6 +32,7 @@ import {
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
+import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -47,8 +48,7 @@ import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
-const DEFAULT_TREE_HEIGHT = 240
-const MIN_PANE_HEIGHT = 96
+const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
 
 const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
   image: RiImageLine,
@@ -111,7 +111,8 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const listRef = useRef<LegendListRef>(null)
   const typeahead = useRef({ text: "", at: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
-  const [treeHeight, setTreeHeight] = useState(DEFAULT_TREE_HEIGHT)
+  const treeHeight = useUi((state) => state.fileTreeHeight)
+  const setTreeHeight = useUi((state) => state.setFileTreeHeight)
   const rowId = `${useId()}-row-`
 
   useEffect(() => {
