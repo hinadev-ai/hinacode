@@ -145,6 +145,10 @@ export type ChecksStatus = typeof ChecksStatus.Type
 export const ReviewStatus = Schema.Literals(["approved", "changesRequested", "reviewRequired"])
 export type ReviewStatus = typeof ReviewStatus.Type
 
+/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
+export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
+export type Mergeable = typeof Mergeable.Type
+
 /** A GitHub pull request as `gh pr view` reports it. */
 export const PullRequest = Schema.Struct({
   url: Schema.String,
@@ -155,6 +159,8 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** Defaults for a desktop or cloud from before the sidebar read it. */
+  mergeable: Mergeable.pipe(Schema.withDecodingDefaultKey(Effect.succeed("unknown" as const))),
   /** The author's login. */
   author: Schema.String,
   headRefName: Schema.String,
@@ -176,10 +182,6 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
-/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
-export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
-export type Mergeable = typeof Mergeable.Type
-
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -188,7 +190,6 @@ export const PullRequestDetail = Schema.Struct({
   headRef: Schema.String,
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
-  mergeable: Mergeable,
   checkRuns: Schema.Array(CheckRun),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
