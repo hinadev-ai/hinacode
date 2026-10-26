@@ -32,6 +32,17 @@ export const Project = Schema.Struct({
 })
 export type Project = typeof Project.Type
 
+/**
+ * A chat's own folder inside the chats root. It is derived, never stored, and exists while the chat is not archived.
+ * It joins with the root's own separator, because the renderer derives it too, for a chat on a machine of any OS.
+ */
+export const chatFolder = (chatsRoot: string, threadId: string) =>
+  `${chatsRoot.replace(/[\\/]+$/, "")}${chatsRoot.includes("\\") ? "\\" : "/"}${threadId}`
+
+/** Where a thread works when it has no live worktree: the project root, or a chat's own folder. */
+export const threadFolder = (project: Pick<Project, "kind" | "rootPath">, threadId: string) =>
+  project.kind === "chats" ? chatFolder(project.rootPath, threadId) : project.rootPath
+
 export const WorktreeStatus = Schema.Literals(["preparing", "ready", "failed", "removed"])
 export type WorktreeStatus = typeof WorktreeStatus.Type
 

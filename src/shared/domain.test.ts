@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import { RpcMethods } from "./contract.ts"
-import { defaultSettings, Settings, Thread } from "./domain.ts"
+import { chatFolder, defaultSettings, Settings, Thread } from "./domain.ts"
 
 const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
@@ -64,5 +64,14 @@ describe("older cloud responses", () => {
     expect(Schema.decodeUnknownSync(RpcMethods["settings.set"].request)(settingsPatch)).toStrictEqual(settingsPatch)
     const threadPatch = { id: legacyThread.id, title: "Renamed" }
     expect(Schema.decodeUnknownSync(RpcMethods["threads.update"].request)(threadPatch)).toStrictEqual(threadPatch)
+  })
+})
+
+describe("chatFolder", () => {
+  it("joins with the separator of the machine the chats root is on", () => {
+    expect(chatFolder("/home/k/.config/kkcode/chats", "t1")).toBe("/home/k/.config/kkcode/chats/t1")
+    expect(chatFolder("C:\\Users\\k\\AppData\\Roaming\\kkcode\\chats\\", "t1")).toBe(
+      "C:\\Users\\k\\AppData\\Roaming\\kkcode\\chats\\t1",
+    )
   })
 })

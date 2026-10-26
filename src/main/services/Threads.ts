@@ -7,6 +7,7 @@ import {
   type AccessMode,
   type Changes,
   type ChangesScope,
+  chatFolder,
   isThreadBusy,
   QueuedMessage,
   Thread,
@@ -35,7 +36,7 @@ import { Projects } from "./Projects.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { Settings } from "./Settings.ts"
 import { Terminals } from "./Terminals.ts"
-import { chatFolder, makeActiveWorkspace } from "./workspace.ts"
+import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
 
 /** Enough for `@` completion in a large monorepo without sending the renderer a huge payload. */

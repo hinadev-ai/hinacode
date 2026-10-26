@@ -1,7 +1,6 @@
-import { join } from "node:path"
 import { Effect, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { ProjectKind } from "../../shared/domain.ts"
+import { chatFolder, ProjectKind } from "../../shared/domain.ts"
 import { NotFoundError, persistence } from "./errors.ts"
 
 export const ActiveWorkspace = Schema.Struct({
@@ -13,9 +12,6 @@ export const ActiveWorkspace = Schema.Struct({
   baseRef: Schema.NullOr(Schema.String),
 })
 export type ActiveWorkspace = typeof ActiveWorkspace.Type
-
-/** A chat's own folder inside the chats project. It is derived, never stored, and exists while the chat is not archived. */
-export const chatFolder = (chatsRoot: string, threadId: string) => join(chatsRoot, threadId)
 
 const WorkspaceRow = Schema.Struct({
   ...ActiveWorkspace.fields,
