@@ -85,7 +85,7 @@ struct ThreadView: View {
             if visitedTerminal, let server {
                 TerminalPanel(
                     threadId: threadId, caller: model.hub, pushes: model.pushes, features: server.features,
-                    generation: server.generation, isConnected: isConnected
+                    generation: server.generation, isConnected: isConnected, isSelected: tab == .terminal
                 )
                 .opacity(tab == .terminal ? 1 : 0)
                 .allowsHitTesting(tab == .terminal)

@@ -8,13 +8,15 @@ struct TerminalPanel: View {
     /// The thread's server's handshake count. A change means the socket came back.
     let generation: Int
     let isConnected: Bool
+    let isSelected: Bool
     // Seeded once: the thread screen keeps one panel per thread until it goes away, which closes the shell.
     @State private var shell: TerminalShell
 
     init(
         threadId: String, caller: any Caller, pushes: PushListeners, features: Set<String>, generation: Int,
-        isConnected: Bool
+        isConnected: Bool, isSelected: Bool
     ) {
+        self.isSelected = isSelected
         self.features = features
         self.generation = generation
         self.isConnected = isConnected
@@ -26,7 +28,7 @@ struct TerminalPanel: View {
     }
 
     var body: some View {
-        TerminalScreen(shell: shell)
+        TerminalScreen(shell: shell, isSelected: isSelected)
             .accessibilityIdentifier("terminal-view")
             .padding(.horizontal, 4)
             .overlay { TerminalStartup(phase: shell.phase, retry: shell.retry) }

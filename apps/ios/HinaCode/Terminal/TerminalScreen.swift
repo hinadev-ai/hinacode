@@ -4,6 +4,7 @@ import SwiftUI
 /// The SwiftTerm view of a shell: keys go to the shell, grid sizes open and resize it, and its output is drawn here.
 struct TerminalScreen: UIViewRepresentable {
     let shell: TerminalShell
+    let isSelected: Bool
 
     func makeUIView(context: Context) -> ShellTerminalView {
         let view = ShellTerminalView(frame: .zero)
@@ -15,6 +16,8 @@ struct TerminalScreen: UIViewRepresentable {
 
     func updateUIView(_ view: ShellTerminalView, context: Context) {
         context.coordinator.openURL = context.environment.openURL
+        // The panel stays mounted behind the other tabs, and a focused terminal would keep its keyboard up over them.
+        if !isSelected, view.isFirstResponder { _ = view.resignFirstResponder() }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(shell: shell) }
