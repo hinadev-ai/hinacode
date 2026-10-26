@@ -15,6 +15,7 @@ export type {
   SessionStartResult,
   TurnCompletedParams,
   TurnInputPart,
+  TurnModelRetryScheduledParams,
   TurnStartResult,
   UserInputAnswer,
   UserInputQuestion,
