@@ -767,7 +767,7 @@ const environmentIcon = (project: Project | undefined) =>
  * The machine the thread runs on, among those its project's group spans. Picking another moves the unstarted thread
  * there. Hidden when the repository is on one machine only.
  */
-function EnvironmentPicker({ thread, onError }: ControlProps) {
+export function EnvironmentPicker({ thread, onError }: ControlProps) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
   const navigate = useNavigate()

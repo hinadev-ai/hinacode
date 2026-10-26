@@ -10,7 +10,7 @@ import { useExplorer } from "../stores/explorer.ts"
 import { selectProjectThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import type { Project, Thread } from "../../shared/domain.ts"
+import { type Project, threadFolder, Thread } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
@@ -105,7 +105,8 @@ export const openFile = (ctx: PaletteContext, path: string) => {
   if (!thread) return
   const worktree = thread.worktreeId ? useWorktrees.getState().byId[thread.worktreeId] : undefined
   const live = worktree?.status === "removed" ? undefined : worktree
-  const root = live?.path ?? ctx.projects.find((project) => project.id === thread.projectId)?.rootPath
+  const project = ctx.projects.find((candidate) => candidate.id === thread.projectId)
+  const root = live?.path ?? (project && threadFolder(project, thread.id))
   if (root === undefined) return
   useExplorer.getState().open(root, path)
   useUi.getState().showView(thread.id, "files")
