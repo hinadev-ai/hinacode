@@ -26,7 +26,13 @@ struct HinaCodeApp: App {
                 .environment(router)
                 .preferredColorScheme(colorScheme)
                 .task { model.start() }
-                .onOpenURL { model.open($0) }
+                .onOpenURL { url in
+                    if let threadId = ThreadLink.threadId(in: url) {
+                        router.open(thread: threadId)
+                    } else {
+                        model.open(url)
+                    }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     model.setActive(phase == .active)
                     notifier.appActive = phase == .active

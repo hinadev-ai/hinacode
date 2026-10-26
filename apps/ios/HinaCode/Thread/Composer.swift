@@ -243,6 +243,7 @@ struct Composer: View {
                     }
                 }
                 if workspace != nil { model.drafts.setWorkspace(nil, threadId: threadId) }
+                model.liveActivities.follow(threadId: threadId)
             } catch {
                 model.drafts.restore(sent, threadId: threadId)
                 self.error = error.localizedDescription

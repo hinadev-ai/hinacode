@@ -18,6 +18,7 @@ final class AppModel {
     let models: ModelsStore
     let preferences: PreferencesStore
     let pushes = PushListeners()
+    @ObservationIgnored let liveActivities: LiveActivities
     /// Thread events that may alert, for the notifier.
     @ObservationIgnored var onThreadEvent: ((String, AgentEvent) -> Void)?
 
@@ -40,6 +41,7 @@ final class AppModel {
         linear = LinearStore(caller: caller, timers: timers)
         models = ModelsStore(caller: caller)
         preferences = PreferencesStore(defaults: defaults)
+        liveActivities = LiveActivities(threads: threads, hub: hub, pushes: pushes)
         hub.onEvent = { [weak self] push in self?.route(push) }
     }
 
@@ -100,6 +102,7 @@ final class AppModel {
         async let threadsLoad: Void = threads.load()
         async let pullRequestsLoad: Void = pullRequests.load()
         _ = await (threadsLoad, pullRequestsLoad)
+        liveActivities.reconcileAll()
     }
 
     private func route(_ push: PushEvent) {

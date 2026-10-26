@@ -35,7 +35,7 @@ The flows match the Expo app (`apps/mobile/README.md`): pair by QR code or URL, 
 ## Out of scope
 
 - Push notifications while the app is not running. They need APNs on the desktop side.
-- Live Activities and App Intents. Both are worth doing once the app ships; neither is needed for parity.
+- App Intents. Live Activities and the threads widget are in `docs/features/2026-10-26-ios-live-activities.md`.
 - Migrating pairings from an Expo build on the same phone. Pairing again takes one scan.
 - Attachments, editing files, the git graph, automations and secret requests, as in the Expo app.
 
