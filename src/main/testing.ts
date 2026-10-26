@@ -6,8 +6,10 @@ import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
+import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as Peers from "./remote/peers.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
@@ -81,6 +83,10 @@ export const makeTestAppLayer = (
   )
   const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
+  const peers = Peers.layer.pipe(
+    Layer.provideMerge(Environments.layer),
+    Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
+  )
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -91,6 +97,7 @@ export const makeTestAppLayer = (
     tinyVm,
     passkeys,
     linear,
+    peers,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
@@ -98,12 +105,11 @@ export const makeTestAppLayer = (
   )
   const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
   const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
-    Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )
   const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments, PullRequestGuides.idleLayer)
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
-  return RemoteServer.layer.pipe(
+  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),
     Layer.provideMerge(events),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
