@@ -233,6 +233,9 @@ importers:
       pele:
         specifier: 1.9.0
         version: 1.9.0
+      playwright:
+        specifier: 1.64.0
+        version: 1.64.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4

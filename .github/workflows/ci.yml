@@ -107,6 +107,12 @@ jobs:
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - if: needs.changes.outputs.app == 'true'
+        name: Install remote browser test dependency
+        run: pnpm exec playwright install --with-deps chromium
+      - if: needs.changes.outputs.app == 'true'
+        name: Allow Chromium sandbox namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - if: needs.changes.outputs.app == 'true'
         run: pnpm test
 
   mobile:

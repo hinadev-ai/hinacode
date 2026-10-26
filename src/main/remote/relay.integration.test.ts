@@ -73,7 +73,7 @@ const tarball = (body: string) => {
 const serves =
   (archive: Uint8Array): Fetch =>
   async (url) =>
-    url.href === ASSET_URL ? new Response(archive) : new Response(null, { status: 404 })
+    url.href === ASSET_URL ? new Response(new Uint8Array(archive)) : new Response(null, { status: 404 })
 
 const unexpected: Fetch = () => Promise.reject(new Error("no relay service call expected"))
 

@@ -15,6 +15,7 @@ import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
 import { ClientSettings } from "./services/ClientSettings.ts"
 import { Environments } from "./services/Environments.ts"
@@ -63,6 +64,7 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Browser
   | Automations
   | Git
   | GitHub
@@ -136,6 +138,10 @@ const closeTerminals = (threadId: string) => Terminals.use((terminals) => termin
 const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
 
 const handlers: Handlers = {
+  "browser.open": (input) => Browser.use((browser) => browser.open(input)),
+  "browser.command": (input) => Browser.use((browser) => browser.command(input)),
+  "browser.frame": (input) => Browser.use((browser) => browser.frame(input)),
+  "browser.close": (input) => Browser.use((browser) => browser.close(input)),
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),

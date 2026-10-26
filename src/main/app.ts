@@ -17,6 +17,7 @@ import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as AutoArchive from "./services/AutoArchive.ts"
+import * as Browser from "./services/Browser.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
@@ -111,6 +112,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
+    Browser.layer,
     SystemResources.layer,
     naming,
     remoteAccess,
