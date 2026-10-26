@@ -24,7 +24,6 @@ import { editedPath, toolInput, toolName, toolResult } from "./items.ts"
 import { toPlanLimits } from "./limits.ts"
 import {
   AccountState,
-  type ApprovalMode,
   type ApprovalRequestParams,
   type ApprovalResolvedParams,
   type ApprovalUpdatedParams,
@@ -53,22 +52,17 @@ import { makeSessionUsage } from "./usage.ts"
 
 const CLIENT_VERSION = "0.1.0"
 
-/**
- * Muse's OS sandbox stays on with the network open. Under the default `proxy-only`, `allowAll` silently blocks every
- * connection, so Full access could not reach the network. The posture is fixed per host and a loaded session cannot
- * move to another host, so every thread shares it. `--trust-workspace` loads the project's skills and rules, since
- * importing a project trusts it.
- */
-const HOST_ARGS = ["serve", "--trust-workspace", "--sandbox-network", "enabled"]
+/** `--trust-workspace` loads the project's skills and rules, since importing a project trusts it. */
+const HOST_ARGS = ["serve", "--trust-workspace"]
 
 /**
- * Full access is `onRequest` with every request allowed here. Under `allowAll` Muse refuses a command that asks to
- * leave the sandbox, because only a human may allow that and `allowAll` turns asking off.
+ * Muse's built-in permission profiles, the ones its own picker lists. Each sets the sandbox, network and approval
+ * mode together, so a thread behaves the same here as in the Muse TUI.
  */
-const approvalModes: Record<AccessMode, ApprovalMode> = {
-  supervised: "promptUnmatched",
-  auto: "onRequest",
-  full: "onRequest",
+const permissionProfiles: Record<AccessMode, string> = {
+  supervised: ":ask-me",
+  auto: ":auto-review",
+  full: ":unrestricted",
 }
 
 /** The size Claude Code accepts inline. A larger image goes in as a path, and Muse re-encodes it when it reads it. */
@@ -85,7 +79,8 @@ const SUMMARY_BREAK = "\n\n"
 /** What a host knows about each session it loaded, so a turn only sends the changes. */
 interface LoadedSession {
   model: string | null
-  approvalMode: ApprovalMode | null
+  /** Null when the session was loaded without picking one, such as a probe session. */
+  permissionProfile: string | null
   cwd: string
   /** The context size Muse last reported, null until it reports one. */
   usedTokens: number | null
@@ -106,7 +101,6 @@ interface HostEntry {
 type Run = {
   /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
-  accessMode: AccessMode
   entry?: HostEntry
   sessionId?: string
   /** Outlives a stopped run, so a turn Muse starts after Stop can still be interrupted. */
@@ -133,7 +127,7 @@ interface Approval {
   /** The latest choices and current stage. */
   params: ApprovalRequestParams
   decision: ApprovalDecision | undefined
-  /** False when full access or a session grant answered it without asking. */
+  /** False when a session grant answered it without asking. */
   presented: boolean
   /** The stage answered last, so no stage is answered twice. */
   answered: number | undefined
@@ -342,8 +336,6 @@ const make = Effect.gen(function* () {
   const runs = new Map<string, Run>()
   /** "Allow for session" grants keyed by hinacode threadId. They last until hinacode quits. */
   const grants = new Map<string, Set<string>>()
-  /** Each thread's access mode as of its last turn, for the turns Muse starts by itself. */
-  const accessModes = new Map<string, AccessMode>()
   const wakes = yield* Queue.unbounded<Wake>()
   /** Turns Muse started by itself, keyed by session, from `turn/started` until the runner is done with them. */
   const wakeTurns = new Map<string, WakeTurn>()
@@ -380,7 +372,7 @@ const make = Effect.gen(function* () {
     const wakeTurn: WakeTurn = { turnId, inbox: Effect.runSync(Queue.unbounded<Incoming>()), ended: false }
     wakeTurns.set(sessionId, wakeTurn)
     const release = Effect.sync(() => wakeTurns.get(sessionId) === wakeTurn && wakeTurns.delete(sessionId))
-    const events = turnStream(threadId, accessModes.get(threadId) ?? "supervised", (run, emit) =>
+    const events = turnStream(threadId, (run, emit) =>
       Effect.gen(function* () {
         // A run started for the user's message took the turn over.
         if (wakeTurns.get(sessionId) !== wakeTurn) return
@@ -452,7 +444,7 @@ const make = Effect.gen(function* () {
           if (resumed !== undefined) {
             sessions.set(known, {
               model: resumed.modelId,
-              approvalMode: resumed.approvalMode?.mode ?? null,
+              permissionProfile: null,
               cwd,
               usedTokens: null,
               compacting: false,
@@ -465,7 +457,7 @@ const make = Effect.gen(function* () {
           .pipe(Effect.mapError(toAgentError))
         sessions.set(session.sessionId, {
           model: session.modelId ?? null,
-          approvalMode: null,
+          permissionProfile: null,
           cwd,
           usedTokens: null,
           compacting: false,
@@ -494,11 +486,11 @@ const make = Effect.gen(function* () {
       return skills.map(toCommand)
     })
 
-  /** Starts the thread's session or loads it into the host, then brings its model and approval mode up to date. */
+  /** Starts the thread's session or loads it into the host, then brings its model and permission profile up to date. */
   const openSession = (entry: HostEntry, input: RunTurnInput) =>
     Effect.gen(function* () {
       const { host, sessions } = entry
-      const approvalMode = approvalModes[input.accessMode]
+      const permissionProfile = permissionProfiles[input.accessMode]
       // Each session carries its own thread's credential for the hinacode MCP server.
       const config = {
         mcpServers: {
@@ -509,12 +501,12 @@ const make = Effect.gen(function* () {
         const { session } = yield* host.command<SessionStartResult>("session/start", {
           workspaceRoot: input.cwd,
           modelId: input.model,
-          approvalMode,
+          permissionProfile,
           config,
         })
         sessions.set(session.sessionId, {
           model: input.model,
-          approvalMode,
+          permissionProfile,
           cwd: input.cwd,
           usedTokens: null,
           compacting: false,
@@ -528,11 +520,12 @@ const make = Effect.gen(function* () {
         const { session } = yield* host.command<SessionResumeResult>("session/resume", {
           sessionId,
           excludeItems: true,
+          permissionProfile,
           config,
         })
         loaded = {
           model: session.modelId,
-          approvalMode: session.approvalMode?.mode ?? null,
+          permissionProfile,
           cwd: input.cwd,
           // An `excludeItems` resume carries no context usage.
           usedTokens: input.autoCompactTokens === null ? null : yield* latestUsedTokens(host, sessionId),
@@ -545,9 +538,9 @@ const make = Effect.gen(function* () {
         yield* host.command("session/setModel", { sessionId, model: { modelId: input.model } })
         loaded.model = input.model
       }
-      if (loaded.approvalMode !== approvalMode) {
-        yield* host.command("session/setApprovalMode", { sessionId, mode: approvalMode })
-        loaded.approvalMode = approvalMode
+      if (loaded.permissionProfile !== permissionProfile) {
+        yield* host.command("session/setPermissionProfile", { sessionId, profileId: permissionProfile })
+        loaded.permissionProfile = permissionProfile
       }
       return sessionId
     }).pipe(Effect.mapError(toAgentError))
@@ -633,7 +626,7 @@ const make = Effect.gen(function* () {
             answered: undefined,
           }
           pendingApprovals.set(params.approvalId, approval)
-          if (run.accessMode === "full" || threadGrants.has(grantKey(sessionScope(params)))) {
+          if (threadGrants.has(grantKey(sessionScope(params)))) {
             approval.decision = "allow"
             return yield* decide(approval, "allow")
           }
@@ -910,7 +903,6 @@ const make = Effect.gen(function* () {
   /** A turn's event stream. Stop ends it with `interruptedEvent`, and interrupts the Muse turn once it has one. */
   const turnStream = (
     threadId: string,
-    accessMode: AccessMode,
     follow: (
       run: Run,
       emit: (event: AgentEvent) => Effect.Effect<boolean>,
@@ -919,7 +911,7 @@ const make = Effect.gen(function* () {
     Stream.callback<AgentEvent, AgentError>((out) =>
       Effect.gen(function* () {
         const emit = (event: AgentEvent) => Queue.offer(out, event)
-        const run: Run = { stop: yield* Deferred.make<void>(), accessMode, ended: false }
+        const run: Run = { stop: yield* Deferred.make<void>(), ended: false }
         runs.set(threadId, run)
         yield* Effect.addFinalizer(() => Effect.sync(() => runs.get(threadId) === run && runs.delete(threadId)))
 
@@ -943,9 +935,8 @@ const make = Effect.gen(function* () {
     )
 
   const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
-    turnStream(input.threadId, input.accessMode, (run, emit) =>
+    turnStream(input.threadId, (run, emit) =>
       Effect.gen(function* () {
-        accessModes.set(input.threadId, input.accessMode)
         const entry = yield* getEntry(input.home)
         const { host } = entry
         run.entry = entry
@@ -1028,19 +1019,17 @@ const make = Effect.gen(function* () {
         .pipe(Effect.mapError(toAgentError))
     })
 
-  /** Muse switches a loaded session's approval mode at once, so a running turn takes the new mode. */
+  /** Muse switches a loaded session's permission profile at once, so a running turn takes the new profile. */
   const setAccessMode = (threadId: string, accessMode: AccessMode) =>
     Effect.gen(function* () {
-      accessModes.set(threadId, accessMode)
       const run = runs.get(threadId)
-      if (run !== undefined) run.accessMode = accessMode
       const loaded = run?.sessionId === undefined ? undefined : run.entry?.sessions.get(run.sessionId)
       if (!run?.entry || !run.sessionId || !loaded) return
-      const mode = approvalModes[accessMode]
+      const profileId = permissionProfiles[accessMode]
       yield* run.entry.host
-        .command("session/setApprovalMode", { sessionId: run.sessionId, mode })
+        .command("session/setPermissionProfile", { sessionId: run.sessionId, profileId })
         .pipe(Effect.mapError(toAgentError))
-      loaded.approvalMode = mode
+      loaded.permissionProfile = profileId
     })
 
   /** A background task's id is its `toolCall` item's id. The ended call's `item/completed` drops it from the set. */
