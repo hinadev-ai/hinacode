@@ -14,11 +14,11 @@ import { duration } from "@/constants/motion"
 import { radius } from "@/constants/theme"
 import { useProjectServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
+import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
@@ -274,9 +274,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
     setCreating(true)
     setError(null)
     try {
-      const thread = await call("threads.create", { projectId: project.id })
-      useThreads.getState().upsert(thread)
-      openThread(thread.id)
+      openThread((await createThread(project)).id)
     } catch (cause) {
       setError(errorText(cause))
     } finally {

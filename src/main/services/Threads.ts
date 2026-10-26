@@ -59,6 +59,9 @@ export interface CreateThread {
   readonly title: string
   readonly provider: ProviderId
   readonly model: string
+  /** Null, the default, is the model's own effort. */
+  readonly effort?: string | null | undefined
+  readonly fastMode?: boolean | undefined
   /** Creates a worktree for the thread first; the thread points at it while its setup script runs. */
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
   /** Defaults to `user`. */
@@ -237,7 +240,13 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const create = ({ worktree: worktreeInput, createdBy = "user", ...input }: CreateThread) =>
+  const create = ({
+    worktree: worktreeInput,
+    createdBy = "user",
+    effort = null,
+    fastMode = false,
+    ...input
+  }: CreateThread) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
       const worktree = worktreeInput
@@ -250,8 +259,8 @@ const make = Effect.gen(function* () {
         id: randomUUID(),
         ...input,
         worktreeId: worktree?.id ?? null,
-        effort: null,
-        fastMode: false,
+        effort,
+        fastMode,
         userSkills: project.kind === "folder",
         accessMode: defaultAccessMode,
         accountId: defaultAccount[input.provider],

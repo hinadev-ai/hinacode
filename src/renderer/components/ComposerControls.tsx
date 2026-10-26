@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
   RiBrainLine,
@@ -262,6 +262,16 @@ export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly
   full: { icon: RiLockUnlockLine, label: m.access_full },
 }
 
+/** Muse Code's threads use the names its own permission picker shows, since each mode is one of its profiles. */
+const museAccessLabels: Record<AccessMode, () => string> = {
+  supervised: m.access_supervised_muse,
+  auto: m.access_auto_muse,
+  full: m.access_full_muse,
+}
+
+const accessLabel = (accessMode: AccessMode, provider: ProviderId) =>
+  provider === "muse" ? museAccessLabels[accessMode]() : accessModes[accessMode].label()
+
 const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
@@ -283,7 +293,7 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
     case "auto":
       return autoHint[thread.provider](model)
     case "full":
-      return m.access_full_hint()
+      return thread.provider === "muse" ? m.access_full_hint_muse() : m.access_full_hint()
   }
 }
 
@@ -395,7 +405,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
     value: thread.accessMode,
     items: AccessMode.literals.map((value) => ({
       value,
-      label: accessModes[value].label(),
+      label: accessLabel(value, thread.provider),
       icon: accessModes[value].icon,
       hint: accessHint(value, thread, current),
     })),
@@ -633,35 +643,33 @@ function useRefSuggestions(projectId: string, query: string) {
     (): ReadonlyArray<OpenPullRequest> => [],
   )
 
-  return useMemo(() => {
-    const groups = [
-      {
-        label: m.thread_worktree_ref_pull_requests(),
-        items: pullRequests.map((pullRequest): RefSuggestion => ({
-          kind: "pullRequest",
-          ref: `#${pullRequest.number}`,
-          pullRequest,
-        })),
-      },
-      {
-        label: m.thread_worktree_ref_branches(),
-        items: branches.map((branch): RefSuggestion => ({ kind: "branch", ref: branch })),
-      },
-    ]
-    const trimmed = query.trim()
-    const needle = trimmed.toLowerCase()
-    const showAll = groups.some((group) => group.items.some((item) => item.ref === trimmed))
-    const matches = (item: RefSuggestion) =>
-      (item.kind === "pullRequest" ? `${item.ref} ${item.pullRequest.title} ${item.pullRequest.headRefName}` : item.ref)
-        .toLowerCase()
-        .includes(needle)
-    return groups
-      .map((group) => ({
-        ...group,
-        items: (showAll ? group.items : group.items.filter(matches)).slice(0, SUGGESTIONS_PER_GROUP),
-      }))
-      .filter((group) => group.items.length > 0)
-  }, [branches, pullRequests, query])
+  const groups = [
+    {
+      label: m.thread_worktree_ref_pull_requests(),
+      items: pullRequests.map((pullRequest): RefSuggestion => ({
+        kind: "pullRequest",
+        ref: `#${pullRequest.number}`,
+        pullRequest,
+      })),
+    },
+    {
+      label: m.thread_worktree_ref_branches(),
+      items: branches.map((branch): RefSuggestion => ({ kind: "branch", ref: branch })),
+    },
+  ]
+  const trimmed = query.trim()
+  const needle = trimmed.toLowerCase()
+  const showAll = groups.some((group) => group.items.some((item) => item.ref === trimmed))
+  const matches = (item: RefSuggestion) =>
+    (item.kind === "pullRequest" ? `${item.ref} ${item.pullRequest.title} ${item.pullRequest.headRefName}` : item.ref)
+      .toLowerCase()
+      .includes(needle)
+  return groups
+    .map((group) => ({
+      ...group,
+      items: (showAll ? group.items : group.items.filter(matches)).slice(0, SUGGESTIONS_PER_GROUP),
+    }))
+    .filter((group) => group.items.length > 0)
 }
 
 function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {

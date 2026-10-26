@@ -1,10 +1,10 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
-import { createElement, type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
+import { createElement, type RefObject, useEffect, useRef } from "react"
 import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
-import { SIDE_PANEL_BOUNDS } from "../lib/panelWidth.ts"
+import { SIDE_PANEL_BOUNDS } from "../lib/panelSize.ts"
 import { m } from "../paraglide/messages.js"
 import { selectSidePanelView, useUi } from "../stores/ui.ts"
 import { ResizeHandle } from "./ResizeHandle.tsx"
@@ -51,17 +51,17 @@ interface ViewContentProps {
 function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
   const viewId = view.id
   const maximum = useSidePanelMaxWidth()
-  const content = useMemo(() => createElement(view.component, { thread }), [view, thread])
-  const header = useMemo(() => view.header && createElement(view.header, { thread }), [view, thread])
+  const content = createElement(view.component, { thread })
+  const header = view.header && createElement(view.header, { thread })
   const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))
   const width = useUi((state) => state.sidePanelWidths[size])
   const setWidth = useUi((state) => state.setSidePanelWidth)
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
   const ref = useRef<HTMLElement | null>(null)
-  const setRef = useCallback((node: HTMLElement | null) => {
+  const setRef = (node: HTMLElement | null) => {
     ref.current = node
     return returnFocusToComposer(node)
-  }, [])
+  }
 
   // A view shortcut moves focus into the view. Files focuses its own tree once it has listed the root.
   const focusRequest = useUi((state) => state.viewFocusRequest)

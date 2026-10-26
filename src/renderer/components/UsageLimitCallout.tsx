@@ -1,5 +1,5 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live region groups a heading, provider message, and controls.
-import { startTransition, useActionState, useId } from "react"
+import { useActionState, useId } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import type { UsageLimit } from "../../shared/limits.ts"
@@ -74,7 +74,7 @@ export function UsageLimitCallout({
               size="sm"
               disabled={isPending}
               aria-busy={isPending}
-              onClick={() => startTransition(() => setAutoResume(!reset.autoResume))}
+              action={() => setAutoResume(!reset.autoResume)}
             >
               {reset.autoResume ? m.thread_usage_limit_cancel_resume() : m.thread_usage_limit_resume_at_reset()}
             </Button>

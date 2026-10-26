@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { type Duration, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
 import { WebSocket } from "ws"
@@ -15,7 +15,7 @@ import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
-import type { Project, Thread, Worktree } from "../shared/domain.ts"
+import { defaultSettings, type Project, type Thread, type Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
@@ -212,7 +212,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                         limit: {
                           kind: "usage",
                           message: "Usage limit reached",
-                          reset: { at: new Date(Date.now() + 60000).toISOString(), autoResume: false },
+                          reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
                         },
                       },
                     ]
@@ -413,6 +413,21 @@ describe("rpc contract", () => {
 })
 
 describe("projects, threads and settings over rpc", () => {
+  afterEach(async () => {
+    const { defaultProvider, defaultModel, defaultEffort, defaultFastMode, defaultAccessMode, defaultWorkspaceMode } =
+      defaultSettings
+    result(
+      await invoke("settings.set", {
+        defaultProvider,
+        defaultModel,
+        defaultEffort,
+        defaultFastMode,
+        defaultAccessMode,
+        defaultWorkspaceMode,
+      }),
+    )
+  })
+
   test("a created project is listed and can be read back", async () => {
     const project = await createProject("repo")
     expect(project).toMatchObject({ name: "repo", rootPath: repo, setupScript: null } satisfies Partial<Project>)
@@ -515,6 +530,28 @@ describe("projects, threads and settings over rpc", () => {
     result(await invoke("threads.update", { id: thread.id, accessMode: "supervised" }))
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
     expect(listed?.accessMode).toBe("supervised")
+  })
+
+  test("a new thread starts as the last new thread was set up, ignoring changes after its first message", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const first = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.update", { id: first.id, provider: "codex" }))
+    result(await invoke("threads.update", { id: first.id, effort: "high", fastMode: true, accessMode: "auto" }))
+    result(await invoke("settings.set", { defaultWorkspaceMode: "worktree" }))
+    result(await invoke("threads.send", { threadId: first.id, prompt: "hi" }))
+
+    const second = result(await invoke("threads.create", { projectId: project.id }))
+    expect(second).toMatchObject({
+      provider: "codex",
+      model: "codex-model",
+      effort: "high",
+      fastMode: true,
+      accessMode: "auto",
+    } satisfies Partial<Thread>)
+    expect(result(await invoke("settings.get", undefined)).defaultWorkspaceMode).toBe("local")
+
+    result(await invoke("threads.update", { id: first.id, accessMode: "supervised" }))
+    expect(result(await invoke("threads.create", { projectId: project.id })).accessMode).toBe("auto")
   })
 
   test("reordering a thread keeps its updatedAt", async () => {
@@ -1348,7 +1385,7 @@ describe("remote mode", () => {
     const paired = phone(port)
     await paired.send({ type: "auth", token: pairing.token })
     await paired.ready()
-    expect(result(await invoke("remote.status", undefined)).connected).toBe(1)
+    await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).connected).toBe(1))
 
     const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-project"))
 

@@ -223,7 +223,7 @@ export function Composer({ thread }: { thread: Thread }) {
         <ActivityIndicator thread={thread}>
           <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
         </ActivityIndicator>
-        <ComposerBar className="min-h-0 border-(color:--composer-edge)">
+        <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
           {comments.length > 0 && (
             <ul
               aria-label={m.comment_pending_label()}

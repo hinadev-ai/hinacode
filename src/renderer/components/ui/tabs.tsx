@@ -1,13 +1,29 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
+import { startTransition, useOptimistic } from "react"
 
-function Tabs({ className, orientation = "horizontal", ...props }: TabsPrimitive.Root.Props) {
+type TabsProps = TabsPrimitive.Root.Props & {
+  /** Runs inside a transition. The selected tab moves at once while the new panel renders. */
+  changeAction?: (value: TabsPrimitive.Tab.Value) => void | Promise<void>
+}
+
+function Tabs({ className, orientation = "horizontal", value, onValueChange, changeAction, ...props }: TabsProps) {
+  const [optimisticValue, setOptimisticValue] = useOptimistic(value)
   return (
     <TabsPrimitive.Root
       data-slot="tabs"
       data-orientation={orientation}
       className={cn("group/tabs flex gap-2 data-horizontal:flex-col", className)}
+      value={optimisticValue}
+      onValueChange={(next, details) => {
+        onValueChange?.(next, details)
+        if (!changeAction) return
+        startTransition(async () => {
+          setOptimisticValue(next)
+          await changeAction(next)
+        })
+      }}
       {...props}
     />
   )

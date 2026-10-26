@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, PubSub, Stream } from "effect"
+import { Effect, Fiber, PubSub, Queue, Stream } from "effect"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import { findBinary } from "../binary.ts"
@@ -89,7 +90,7 @@ const forkTurn = (turnInput: RunTurnInput) =>
 const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTurnInput) => void = () => {}) =>
   Effect.suspend(() => {
     turns += 1
-    const marker = `kk-muse-turn-${turns}-${Date.now()}`
+    const marker = `kk-muse-turn-${turns}-${randomUUID()}`
     const turnInput = input(accessMode, marker)
     setup(marker, turnInput)
     return forkTurn(turnInput)
@@ -180,12 +181,17 @@ const watchBackgroundTasks = Effect.gen(function* () {
   return { stop: tasks.stop, changes, until }
 })
 
-const twoStages = (marker: string) =>
-  endpoint.script({
-    when: marker,
-    name: "bash",
-    arguments: { command: "echo one && echo two", description: "Print two lines" },
-  })
+/** Ask me runs a command in the sandbox without asking, so this one asks to leave it. */
+const twoStagesCall = {
+  name: "bash",
+  arguments: {
+    command: "echo one && echo two",
+    description: "Print two lines",
+    sandbox_permissions: "require_escalated",
+  },
+}
+
+const twoStages = (marker: string) => endpoint.script({ ...twoStagesCall, when: marker })
 
 describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   beforeAll(async () => {
@@ -220,6 +226,43 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             expect.objectContaining({ id: FAKE_MODEL_ID, label: "Fake Model", provider: "muse" }),
           ])
           expect(yield* provider.account(null)).toStrictEqual({ type: "apiKey" })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "ends limited at the reset Muse reports for a plan limit",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const resetsAt = Date.parse("2099-01-01T00:00:00.000Z") / 1000
+          const turn = yield* startTurn("supervised", (marker) => endpoint.rateLimit(marker, resetsAt))
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({
+            type: "turn_limited",
+            limit: {
+              kind: "usage",
+              message: expect.stringContaining("429"),
+              reset: { at: new Date(resetsAt * 1000).toISOString(), autoResume: false },
+            },
+          })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "ends limited when Muse gives up retrying a rate limit",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("supervised", (marker) => endpoint.rateLimit(marker))
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({
+            type: "turn_limited",
+            limit: { kind: "usage", message: expect.stringContaining("429"), reset: null },
+          })
         }),
       ),
     TURN_TIMEOUT,
@@ -274,7 +317,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
-    "runs a command outside the sandbox under full access without asking",
+    "writes outside the workspace and reaches the network under full access without asking",
     () =>
       withProvider(
         Effect.gen(function* () {
@@ -283,16 +326,15 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               when: marker,
               name: "bash",
               arguments: {
-                command: "echo escalated",
-                description: "Print outside the sandbox",
-                sandbox_permissions: "require_escalated",
+                command: `echo hi > ${join(root, `outside-${marker}`)} && curl -s -o /dev/null -w '%{http_code}' ${endpoint.baseUrl}`,
+                description: "Write outside the workspace and reach the network",
               },
             }),
           )
           yield* Fiber.join(turn.fiber)
 
           expect(eventsOf(turn, "approval_requested")).toStrictEqual([])
-          expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ output: "escalated\n", isError: false }])
+          expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ output: "200", isError: false }])
         }),
       ),
     TURN_TIMEOUT,
@@ -362,6 +404,42 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "follows the turn Muse starts when a background shell finishes, and its approval",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
+          const turn = yield* startTurn("supervised", (marker) => {
+            // The shell prints the marker without the command holding it, so only the wake's request carries it.
+            backgroundShell(`sleep 2 && echo woken-$(echo ${marker})`)(marker)
+            endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
+          })
+          const { request: shell } = yield* untilEvent(turn, ofType("approval_requested"))
+          yield* provider.respondApproval(shell.id, "allow")
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)?.type).toBe("turn_completed")
+
+          const wake = yield* Queue.take(wakes)
+          expect(wake.threadId).toBe(turn.threadId)
+          const events: Array<AgentEvent> = []
+          yield* wake.events.pipe(
+            Stream.runForEach((event) =>
+              Effect.gen(function* () {
+                events.push(event)
+                if (event.type === "approval_requested") yield* provider.respondApproval(event.request.id, "allow")
+              }),
+            ),
+          )
+          expect(events.filter(ofType("approval_requested"))).toHaveLength(1)
+          expect(events.filter(ofType("tool_call_finished"))).toMatchObject([{ isError: false }])
+          expect(events.at(-1)?.type).toBe("turn_completed")
+        }).pipe(Effect.scoped),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "empties a thread's background tasks when the host dies",
     () =>
       withProvider(
@@ -425,6 +503,87 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           ])
           expect(eventsOf(turn, "tool_call_finished")).toMatchObject([{ isError: false }])
           expect(turn.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "reports a spawned sub-agent until its result is ready",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("full", (marker) => {
+            endpoint.script({
+              when: marker,
+              name: "subagent_spawn",
+              arguments: { command_id: "test-spawn-1", role: "probe", objective: "Reply with one word." },
+            })
+            endpoint.script({
+              when: marker,
+              name: "subagent_wait",
+              arguments: {
+                command_id: "test-wait-1",
+                subagent_id: "subagent-1",
+                timeout_ms: 30000,
+                wait_for: "result_ready",
+              },
+            })
+          })
+          yield* Fiber.join(turn.fiber)
+
+          const updates = eventsOf(turn, "subagent_updated").map((event) => event.subagent)
+          expect(updates[0]).toMatchObject({
+            id: "subagent-1",
+            label: "Reply with one word.",
+            status: "running",
+            summary: null,
+            callId: expect.any(String),
+            endedAt: null,
+          })
+          expect(updates.at(-1)).toMatchObject({
+            id: "subagent-1",
+            status: "completed",
+            summary: REPLY,
+            tokens: expect.any(Number),
+            endedAt: expect.any(String),
+          })
+          expect(turn.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "stops one running sub-agent",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const stopSubagent = provider.stopSubagent
+          if (stopSubagent === undefined) return yield* Effect.die("stopSubagent is missing")
+          const turn = yield* startTurn("full", (marker) => {
+            const held = `${marker}-child`
+            endpoint.hold(held)
+            endpoint.script({
+              when: marker,
+              name: "subagent_spawn",
+              arguments: { command_id: "test-spawn-1", role: "probe", objective: `Reply slowly. ${held}` },
+            })
+          })
+          const started = yield* untilEvent(turn, ofType("subagent_updated"))
+          expect(started.subagent).toMatchObject({ id: "subagent-1", status: "running" })
+
+          yield* stopSubagent(turn.threadId, started.subagent.id)
+          const stopped = yield* untilEvent(
+            turn,
+            (event): event is Extract<AgentEvent, { type: "subagent_updated" }> =>
+              event.type === "subagent_updated" && event.subagent.status === "stopped",
+          )
+          expect(stopped.subagent.summary).toContain("cancelled")
+
+          yield* provider.interrupt(turn.threadId)
+          yield* Fiber.join(turn.fiber)
         }),
       ),
     TURN_TIMEOUT,

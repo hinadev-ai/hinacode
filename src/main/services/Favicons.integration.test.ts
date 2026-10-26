@@ -97,7 +97,7 @@ describe("Favicons.favicon", () => {
     expect(await favicon(origin)).toBe(null)
   })
 
-  test("stops reading an endless icon at the cap", async () => {
+  test("stops reading an endless icon at the cap", { timeout: 2000 }, async () => {
     const { origin } = await serve({
       "/favicon.ico": (_, response) => {
         response.writeHead(200, { "content-type": "image/png" })
@@ -109,9 +109,7 @@ describe("Favicons.favicon", () => {
         pump()
       },
     })
-    const started = Date.now()
     expect(await favicon(origin)).toBe(null)
-    expect(Date.now() - started).toBeLessThan(2000)
   })
 
   test("follows at most 3 redirects", async () => {
@@ -140,11 +138,9 @@ describe("Favicons.favicon", () => {
     expect(await favicon(origin)).toBe(null)
   })
 
-  test("gives up on a site within 8 seconds, however its requests stall", async () => {
+  test("gives up on a site within 8 seconds, however its requests stall", { timeout: 9000 }, async () => {
     const { origin } = await serve({ "/": hang, "/favicon.ico": hang })
-    const started = Date.now()
     expect(await favicon(origin)).toBe(null)
-    expect(Date.now() - started).toBeLessThan(9000)
   })
 
   test("only looks up http and https", async () => {

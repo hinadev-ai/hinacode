@@ -2,7 +2,6 @@ import { Schema } from "effect"
 
 export type {
   ApprovalChoice,
-  ApprovalMode,
   ApprovalRequestParams,
   ApprovalResolvedParams,
   ApprovalUpdatedParams,
@@ -10,12 +9,14 @@ export type {
   ItemCompletedParams,
   ItemDeltaParams,
   ItemStartedParams,
+  ItemUpdatedParams,
   SessionCompactResult,
   SessionContextUsageParams,
   SessionResumeResult,
   SessionStartResult,
   TurnCompletedParams,
   TurnInputPart,
+  TurnModelRetryScheduledParams,
   TurnStartResult,
   UserInputAnswer,
   UserInputQuestion,

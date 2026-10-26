@@ -1,5 +1,7 @@
 import { createMemoryHistory, createRootRoute, createRoute, createRouter } from "@tanstack/react-router"
 import { AppShell } from "./components/AppShell.tsx"
+import { registry } from "./lib/registry.ts"
+import { settingsAtom } from "./lib/rpc.ts"
 import { HomeRoute } from "./routes/home.tsx"
 import { SettingsRoute } from "./routes/settings.tsx"
 import { ThreadRoute } from "./routes/thread.tsx"
@@ -26,6 +28,8 @@ const settingsRoute = createRoute({
     ...(typeof search.page === "string" ? { page: search.page } : {}),
     ...(typeof search.environment === "string" ? { environment: search.environment } : {}),
   }),
+  // Picking options for a new thread saves them as the defaults on the server, so the cached ones may be stale.
+  onEnter: ({ search }) => registry.refresh(settingsAtom(search.environment ?? null)),
 })
 
 const LOCATION_KEY = "hinacode.location"

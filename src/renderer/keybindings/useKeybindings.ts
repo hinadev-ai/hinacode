@@ -2,7 +2,7 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { type Hotkey, matchesKeyboardEvent, useHotkeys } from "@tanstack/react-hotkeys"
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useEffectEvent, useMemo } from "react"
+import { useEffect, useEffectEvent } from "react"
 import { projectsAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { useClientSettings, useSettings } from "../lib/settings.ts"
@@ -22,7 +22,7 @@ import {
 /** The user's effective keymap: command id -> normalized chord, "" when unbound. */
 export const useKeymap = (): Keymap => {
   const { keybindings } = useClientSettings()
-  return useMemo(() => resolveKeymap(keybindings), [keybindings])
+  return resolveKeymap(keybindings)
 }
 
 /**
@@ -45,10 +45,7 @@ export const useCommandContext = (): CommandContext => {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const updateClientSettings = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
   const { experimental } = useSettings(useThreadEnvironment(threadId))
-  return useMemo(
-    () => ({ navigate, history, threadId, projects, updateClientSettings, experimental }),
-    [navigate, history, threadId, projects, updateClientSettings, experimental],
-  )
+  return { navigate, history, threadId, projects, updateClientSettings, experimental }
 }
 
 /** Runs the command if its `when` clause holds where the keydown happened. Returns whether it ran. */
