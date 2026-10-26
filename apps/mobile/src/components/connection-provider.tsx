@@ -125,10 +125,6 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   return restored ? children : null
 }
 
-/**
- * Lists what each server last answered while the sockets are still dialing, so a launch on a slow network shows
- * the threads at once. The first handshake reads them again.
- */
 async function showLastLists(serverIds: readonly string[]) {
   const saved = await Promise.all(serverIds.map(loadAnswers))
   serverIds.forEach((id, index) => {

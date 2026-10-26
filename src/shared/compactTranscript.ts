@@ -37,7 +37,6 @@ export const compactMessage = (message: Message): Message => ({
   parts: message.parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart),
 })
 
-/** Under two seconds of 3G, so one page never nears the 25 s the clients wait for a frame before redialing. */
 export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
 
 /**

@@ -45,11 +45,11 @@ export function Chat({ thread }: { thread: Thread }) {
   }, [connected, history, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
-  // Messages that arrive after the transcript opened rise in; the ones it opened with and earlier pages stay put.
   const [openedNewest, setOpenedNewest] = useState<string | null>()
   if (messages !== undefined && openedNewest === undefined) setOpenedNewest(messages.at(-1)?.id ?? null)
-  const firstNew = messages?.findIndex((message) => message.id === openedNewest) ?? -1
+  const openedAt = messages?.findIndex((message) => message.id === openedNewest) ?? -1
   const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
+  const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
 
   return (
     <View style={styles.flex}>
@@ -71,7 +71,7 @@ export function Chat({ thread }: { thread: Thread }) {
           keyExtractor={(message) => message.id}
           renderItem={({ item, index }) => (
             <motion.View
-              initial={newestFirst.length - 1 - index > firstNew && risesInFlippedCell}
+              initial={arrivedAfterOpening(index) && risesInFlippedCell}
               animate={rise.animate}
             >
               <MessageView message={item} root={root} />

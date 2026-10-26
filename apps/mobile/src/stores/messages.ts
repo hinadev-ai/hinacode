@@ -10,7 +10,6 @@ const STREAM_PUBLICATION_INTERVAL_MS = 100
 type ReadyHistory = {
   readonly status: "ready"
   readonly messages: readonly Message[]
-  /** Whether the desktop holds messages older than the first one here, read with `loadEarlier`. */
   readonly hasEarlier: boolean
   readonly loadingEarlier: boolean
   readonly approvals: readonly ApprovalRequest[]
@@ -117,7 +116,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
                     .filter((push) => push.seq > seq)
                     .reduce<ReadyHistory>(applyPush, {
                       ...current,
-                      ...keepEarlierPages(current, messages, hasEarlier),
+                      ...mergeNewestPage(current, messages, hasEarlier),
                       approvals,
                       questions,
                     })
@@ -143,14 +142,13 @@ export const useMessages = create<MessagesState>()((set, get) => {
       settle(() => ({ loadingEarlier: true }))
       try {
         const page = await call("threads.transcript", { threadId, compact: true, page: { before } })
-        // A reload in the meantime may have replaced the messages this page continues.
+        const stillStartsAtBefore = (current: ReadyHistory) => current.messages[0]?.id === before
         settle((current) =>
-          current.messages[0]?.id === before
+          stillStartsAtBefore(current)
             ? { messages: [...page.messages, ...current.messages], hasEarlier: page.hasEarlier ?? false }
             : {},
         )
       } catch {
-        // The next scroll to the top asks again.
         settle(() => ({}))
       }
     },
@@ -203,11 +201,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
 const readPage = (threadId: string) => call("threads.transcript", { threadId, compact: true, page: {} })
 
-/**
- * A reload reads only the newest page, so the older pages already scrolled into view stay in front of it when it
- * still starts with a message they lead up to. Otherwise the new page replaces them.
- */
-function keepEarlierPages(current: ReadyHistory, page: readonly Message[], hasEarlier: boolean) {
+function mergeNewestPage(current: ReadyHistory, page: readonly Message[], hasEarlier: boolean) {
   const at = page[0] === undefined ? -1 : current.messages.findIndex((message) => message.id === page[0]!.id)
   return at <= 0
     ? { messages: page, hasEarlier }

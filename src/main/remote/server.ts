@@ -223,7 +223,6 @@ const make = Effect.gen(function* () {
     Effect.acquireRelease(
       Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
-        // Transcripts are JSON that deflates to about a seventh, which is most of a slow link's wait.
         const wss = new WebSocketServer({
           server,
           path: REMOTE_PATH,

@@ -81,7 +81,6 @@ const owners = makeOwners()
 /** A server's last answer to each `all` method, by method, with the payload it answered. */
 export type RememberedAnswers = Readonly<Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>>
 
-/** Each server's last answers to `all` methods, listed while it is offline or still connecting. */
 const remembered = new Map<string, RememberedAnswers>()
 const rememberListeners = new Set<(serverId: string, answers: RememberedAnswers) => void>()
 const listeners = new Set<(event: PushEvent) => void>()

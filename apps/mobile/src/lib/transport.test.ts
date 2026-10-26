@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { TRANSCRIPT_PAGE_BYTES } from "@shared/compactTranscript.ts"
 import { clientProof, serverProof } from "@shared/proof.ts"
 import {
   CHALLENGE_WAIT_MS,
@@ -17,6 +18,7 @@ import {
   type SocketLike,
   Transport,
   type TransportStatus,
+  IDLE_TIMEOUT_MS,
 } from "./transport"
 
 const TOKEN = "secret"
@@ -838,5 +840,12 @@ describe("Transport", () => {
     expect(send.error).toMatchObject({ tag: "Offline" })
     expect(sockets).toHaveLength(1)
     expect(latest().closed).toBe(true)
+  })
+})
+
+describe("transcript pages", () => {
+  it("arrive over 3G well inside the silence limit, which no frame can outlast", () => {
+    const threeGBytesPerMs = 400_000 / 8 / 1000
+    expect(TRANSCRIPT_PAGE_BYTES / threeGBytesPerMs).toBeLessThan(IDLE_TIMEOUT_MS / 10)
   })
 })
