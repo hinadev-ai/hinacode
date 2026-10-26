@@ -38,7 +38,12 @@ struct PullRequestsPanel: View {
             if links.isEmpty && branch == nil {
                 Section {
                     ContentUnavailableView {
-                        Label(.mobilePrEmpty, systemImage: "arrow.triangle.branch")
+                        Label {
+                            Text(.mobilePrEmpty)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "arrow.triangle.branch")
+                        }
                     } description: {
                         Text(.mobilePrEmptyHint)
                     } actions: {

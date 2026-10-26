@@ -45,7 +45,12 @@ struct OverviewView: View {
         if overview.attention.isEmpty && overview.open.isEmpty && overview.merged.isEmpty {
             Section {
                 ContentUnavailableView {
-                    Label(.mobileOverviewPullRequestsEmpty, systemImage: "arrow.triangle.branch")
+                    Label {
+                        Text(.mobileOverviewPullRequestsEmpty)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "arrow.triangle.branch")
+                    }
                 } description: {
                     Text(.mobileOverviewPullRequestsEmptyHint)
                 }
@@ -89,7 +94,12 @@ struct OverviewView: View {
             if issues.isEmpty {
                 if model.linear.configured == false {
                     ContentUnavailableView {
-                        Label(.mobileOverviewLinearNotConnected, systemImage: "checklist")
+                        Label {
+                            Text(.mobileOverviewLinearNotConnected)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "checklist")
+                        }
                     } description: {
                         Text(.mobileOverviewLinearConnectHint)
                     }
