@@ -39,7 +39,7 @@ const gitHub = Layer.mock(GitHub, {
       return { url, status: statuses.get(url) ?? "open", headRefName: heads.get(url) ?? "" } as PullRequest
     }),
   branchPullRequest: (_cwd, branch) => {
-    const url = [...heads].find(([, head]) => head === branch)?.[0]
+    const url = [...heads].findLast(([, head]) => head === branch)?.[0]
     return Effect.succeed(url === undefined ? null : ({ url, status: statuses.get(url) ?? "open" } as PullRequest))
   },
   pullRequestDetail: (url) => Effect.succeed({ url, head: headOids.get(url) ?? "" } as PullRequestDetail),

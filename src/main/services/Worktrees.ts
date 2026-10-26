@@ -452,12 +452,19 @@ const make = Effect.gen(function* () {
       }
     })
 
-  /** A squash merge leaves no trace in the local history, so the pull request is the only proof. */
+  /**
+   * A squash merge leaves no trace in the local history, so the pull request is the only proof. It covers the
+   * local tip only when the tip is in the merged head: later commits, or a reused branch name, are not merged.
+   */
   const mergedOnGitHub = (rootPath: string, branch: string) =>
-    github.branchPullRequest(rootPath, branch).pipe(
-      Effect.map((pullRequest) => pullRequest?.status === "merged"),
-      Effect.orElseSucceed(() => false),
-    )
+    Effect.gen(function* () {
+      const pullRequest = yield* github.branchPullRequest(rootPath, branch)
+      if (pullRequest?.status !== "merged") return false
+      const { head } = yield* github.pullRequestDetail(pullRequest.url)
+      // Fails when the tip is not an ancestor or the head is not fetched, and a failure keeps the branch.
+      yield* git.run(rootPath, ["merge-base", "--is-ancestor", `refs/heads/${branch}`, head])
+      return true
+    }).pipe(Effect.orElseSucceed(() => false))
 
   const deleteIfMerged = (rootPath: string, worktree: Worktree) =>
     Effect.gen(function* () {
