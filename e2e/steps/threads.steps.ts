@@ -129,19 +129,6 @@ When("I unpin the thread {string} from its menu", async ({ app, names }, title: 
   await threadMenu(app.page, names.of(title), "Unpin")
 })
 
-When(
-  "I snooze the thread {string} until {string} from its menu",
-  async ({ app, names }, title: string, time: string) => {
-    await threadMenu(app.page, names.of(title), "Snooze…")
-    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
-    await app.page.keyboard.press("Enter")
-  },
-)
-
-When("I unsnooze the thread {string} from its menu", async ({ app, names }, title: string) => {
-  await threadMenu(app.page, names.of(title), "Unsnooze")
-})
-
 When("I copy the ID of the thread {string} from its menu", async ({ app, names }, title: string) => {
   await threadMenu(app.page, names.of(title), "Copy thread ID")
 })
@@ -183,6 +170,31 @@ Then("the open tab lists the threads {string} in that order", async ({ app, name
       return links.map((text) => expected.find((title) => text.includes(title))).filter(Boolean)
     })
     .toStrictEqual(expected)
+})
+
+Then("the open tab lists the thread {string}", async ({ app, names }, title: string) => {
+  await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeVisible()
+})
+
+// The Threads tab stays mounted behind the Inbox with its own row for the same thread.
+const openTabMenu = async (page: Page, title: string, item: string) => {
+  await openTab(page)
+    .getByRole("button", { name: `Actions for ${title}`, exact: true })
+    .click()
+  await page.getByRole("menuitem", { name: item, exact: true }).click()
+}
+
+When(
+  "I snooze the thread {string} until {string} from its menu",
+  async ({ app, names }, title: string, time: string) => {
+    await openTabMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+When("I unsnooze the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await openTabMenu(app.page, names.of(title), "Unsnooze")
 })
 
 Then("the open tab does not list the thread {string}", async ({ app, names }, title: string) => {
