@@ -1,6 +1,6 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { useId, useState } from "react"
+import { useId, useRef, useState } from "react"
 import { RiAlarmLine, RiAlarmSnoozeLine, RiCalendarLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { Thread } from "../../shared/domain.ts"
@@ -63,6 +63,7 @@ const keepFocus = () => {
 function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: Date | null) => void }) {
   const [text, setText] = useState("")
   const problemId = useId()
+  const browsed = useRef(false)
   const now = new Date(useNow())
   const locale = getLocale()
   const parsed = parseSnoozeTime(text, now, locale)
@@ -106,12 +107,15 @@ function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: 
         inline
         items={choices}
         filter={null}
-        // With a problem shown, Enter must not quietly pick a preset the person did not ask for.
         autoHighlight={problem === "" ? "always" : false}
         keepHighlight
         value={text}
         onValueChange={(value, details) => {
           if (details.reason !== "item-press") setText(value)
+          browsed.current = false
+        }}
+        onItemHighlighted={(_, details) => {
+          browsed.current = details.reason === "keyboard"
         }}
         itemToStringValue={(choice: Choice) => choice.label}
       >
@@ -125,6 +129,9 @@ function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: 
             onKeyDown={(event) => {
               // The always-open list would otherwise take Escape for itself and keep the dialog up.
               if (event.key === "Escape") close()
+              // With a problem shown, the highlight is left over from before it, and Enter must not quietly pick a
+              // preset the person did not ask for. One they arrowed to after typing is theirs.
+              if (event.key === "Enter" && problem !== "" && !browsed.current) event.preventBaseUIHandler()
             }}
             className="h-12 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
