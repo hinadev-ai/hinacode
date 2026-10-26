@@ -141,6 +141,9 @@ const checkoutsDir = (rootPath: string, worktreeRoot: string | null) =>
 const checkoutPath = (checkouts: string, branch: string, id: string) =>
   join(checkouts, `${branch.replaceAll("/", "-")}-${id.slice(0, 8)}`)
 
+/** The local branch a pull request from a fork is checked out on, since its head branch name can clash with ours. */
+export const forkPullRequestBranch = (number: number) => `kk/pr-${number}`
+
 const removalKey = (projectId: string, branch: string) => `${projectId}\0${branch}`
 
 /** Parses `git worktree list --porcelain -z`: NUL-separated attribute lines, an empty field between checkouts. */
@@ -387,7 +390,7 @@ const make = Effect.gen(function* () {
   const fetchPullRequest = (rootPath: string, head: PullRequestHead) =>
     Effect.gen(function* () {
       const [branch, source, fetched] = head.isCrossRepository
-        ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
+        ? [forkPullRequestBranch(head.number), `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
         : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
       yield* git.remote(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
       return { branch, startPoint: fetched }
@@ -452,6 +455,50 @@ const make = Effect.gen(function* () {
       }
     })
 
+  /**
+   * A squash merge leaves no trace in the local history, so the pull request is the only proof. It covers the
+   * local tip only when the tip is in the merged head: later commits, or a reused branch name, are not merged.
+   */
+  const mergedOnGitHub = (rootPath: string, branch: string) =>
+    Effect.gen(function* () {
+      const pullRequest = yield* github.branchPullRequest(rootPath, branch)
+      if (pullRequest?.status !== "merged") return false
+      const { head } = yield* github.pullRequestDetail(pullRequest.url)
+      // Fails when the tip is not an ancestor or the head is not fetched, and a failure keeps the branch.
+      yield* git.run(rootPath, ["merge-base", "--is-ancestor", `refs/heads/${branch}`, head])
+      return true
+    }).pipe(Effect.orElseSucceed(() => false))
+
+  const deleteIfMerged = (rootPath: string, worktree: Worktree) =>
+    Effect.gen(function* () {
+      if (!(yield* branchExists(rootPath, worktree.branch))) return
+      const merged =
+        (yield* isMerged(rootPath, worktree.branch, worktree.baseRef)) ||
+        (yield* mergedOnGitHub(rootPath, worktree.branch))
+      // `-D` even when merged: `-d` checks against the root checkout's HEAD, which may not be the base ref.
+      if (merged) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
+    })
+
+  /**
+   * Deletes the merged branches of every removed worktree in the project, not only the one just removed. A
+   * branch that a live worktree checks out or forks from stays until that worktree is removed too, so stacked
+   * threads converge whichever of them merges first.
+   */
+  const pruneMergedBranches = (rootPath: string, projectId: string) =>
+    Effect.gen(function* () {
+      const all = (yield* findAll(undefined)).filter((worktree) => worktree.projectId === projectId)
+      const live = all.filter((worktree) => worktree.status !== "removed")
+      const inUse = new Set(live.flatMap((worktree) => [worktree.branch, worktree.baseRef]))
+      const removed = new Map(
+        all
+          .filter((worktree) => worktree.status === "removed" && !inUse.has(worktree.branch))
+          .map((worktree) => [worktree.branch, worktree]),
+      )
+      yield* Effect.forEach(removed.values(), (worktree) => Effect.ignore(deleteIfMerged(rootPath, worktree)), {
+        discard: true,
+      })
+    })
+
   const deleteFiles = (rootPath: string, worktree: Worktree, deleteBranch: DeleteBranch) =>
     Effect.gen(function* () {
       if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
@@ -460,11 +507,10 @@ const make = Effect.gen(function* () {
       }
       yield* git.run(rootPath, ["worktree", "prune"])
 
-      if (deleteBranch !== "keep" && (yield* branchExists(rootPath, worktree.branch))) {
-        // `-D` even when merged: `-d` checks against the root checkout's HEAD, which may not be the base ref.
-        const shouldDelete = deleteBranch === "force" || (yield* isMerged(rootPath, worktree.branch, worktree.baseRef))
-        if (shouldDelete) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
+      if (deleteBranch === "force" && (yield* branchExists(rootPath, worktree.branch))) {
+        yield* git.run(rootPath, ["branch", "-D", worktree.branch])
       }
+      if (deleteBranch !== "keep") yield* pruneMergedBranches(rootPath, worktree.projectId)
     }).pipe(
       // While the checkout survives, put the row back so the user can retry instead of losing it.
       // Once the checkout is gone, a live row would point turns at a missing directory.
