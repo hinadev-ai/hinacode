@@ -1792,7 +1792,7 @@
   "mobile_time_weeks": "{count}w ago",
   "mobile_time_months": "{count}mo ago",
   "mobile_time_years": "{count}y ago",
-  "mobile_home_tab_threads": "Threads",
+  "mobile_home_tab_threads": "Projects",
   "mobile_status_unseen_completed": "Finished, not yet opened",
   "mobile_status_unseen_failed": "Failed, not yet opened",
   "mobile_row_branch": "Branch {branch}",

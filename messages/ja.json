@@ -1747,7 +1747,7 @@
   "mobile_time_weeks": "{count}週間前",
   "mobile_time_months": "{count}か月前",
   "mobile_time_years": "{count}年前",
-  "mobile_home_tab_threads": "スレッド",
+  "mobile_home_tab_threads": "プロジェクト",
   "mobile_status_unseen_completed": "完了、まだ開いていません",
   "mobile_status_unseen_failed": "失敗、まだ開いていません",
   "mobile_row_branch": "ブランチ：{branch}",

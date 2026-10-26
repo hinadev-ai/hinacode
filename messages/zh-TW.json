@@ -1765,7 +1765,7 @@
   "mobile_time_weeks": "{count} 週前",
   "mobile_time_months": "{count} 個月前",
   "mobile_time_years": "{count} 年前",
-  "mobile_home_tab_threads": "對話串",
+  "mobile_home_tab_threads": "專案",
   "mobile_status_unseen_completed": "已完成，尚未開啟",
   "mobile_status_unseen_failed": "失敗，尚未開啟",
   "mobile_row_branch": "分支 {branch}",

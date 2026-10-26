@@ -3273,19 +3273,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Threads"
+            "value" : "Projects"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "スレッド"
+            "value" : "プロジェクト"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "對話串"
+            "value" : "專案"
           }
         }
       }
