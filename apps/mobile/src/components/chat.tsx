@@ -45,9 +45,10 @@ export function Chat({ thread }: { thread: Thread }) {
   }, [connected, history, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
-  // Messages that arrive after the transcript loads rise in; the ones it opened with stay put.
-  const [loadedIds, setLoadedIds] = useState<ReadonlySet<string>>()
-  if (messages !== undefined && loadedIds === undefined) setLoadedIds(new Set(messages.map((message) => message.id)))
+  // Messages that arrive after the transcript opened rise in; the ones it opened with and earlier pages stay put.
+  const [openedNewest, setOpenedNewest] = useState<string | null>()
+  if (messages !== undefined && openedNewest === undefined) setOpenedNewest(messages.at(-1)?.id ?? null)
+  const firstNew = messages?.findIndex((message) => message.id === openedNewest) ?? -1
   const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
 
   return (
@@ -68,8 +69,11 @@ export function Chat({ thread }: { thread: Thread }) {
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
-          renderItem={({ item }) => (
-            <motion.View initial={loadedIds?.has(item.id) === false && risesInFlippedCell} animate={rise.animate}>
+          renderItem={({ item, index }) => (
+            <motion.View
+              initial={newestFirst.length - 1 - index > firstNew && risesInFlippedCell}
+              animate={rise.animate}
+            >
               <MessageView message={item} root={root} />
             </motion.View>
           )}
@@ -80,6 +84,18 @@ export function Chat({ thread }: { thread: Thread }) {
           windowSize={9}
           contentContainerStyle={styles.transcript}
           keyboardShouldPersistTaps="handled"
+          // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
+          onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
+          onEndReachedThreshold={1}
+          ListFooterComponent={
+            history.loadingEarlier ? (
+              <ActivityIndicator
+                style={styles.earlier}
+                color={theme.textMuted}
+                accessibilityLabel={copy("mobile_chat_loading")}
+              />
+            ) : null
+          }
           ListEmptyComponent={
             <Text style={[styles.empty, { color: theme.textMuted }]}>{copy("mobile_chat_empty")}</Text>
           }
@@ -544,6 +560,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
+  earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   message: { gap: 6, borderRadius: radius.lg, padding: 12 },
   user: { borderWidth: StyleSheet.hairlineWidth },

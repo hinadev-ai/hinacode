@@ -10,6 +10,9 @@ const STREAM_PUBLICATION_INTERVAL_MS = 100
 type ReadyHistory = {
   readonly status: "ready"
   readonly messages: readonly Message[]
+  /** Whether the desktop holds messages older than the first one here, read with `loadEarlier`. */
+  readonly hasEarlier: boolean
+  readonly loadingEarlier: boolean
   readonly approvals: readonly ApprovalRequest[]
   readonly questions: readonly QuestionRequest[]
 }
@@ -22,8 +25,10 @@ export type ThreadHistory =
 
 interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
-  /** Loads a thread's history once; later changes arrive through `receive`. */
+  /** Loads the newest page of a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
+  /** Prepends the page before the oldest loaded message, when there is one and none is loading. */
+  readonly loadEarlier: (threadId: string) => Promise<void>
   /**
    * Reads every loaded history again after a reconnect, since pushes sent while the socket was down are lost.
    * The last known history stays on screen until its new snapshot replaces it in one step.
@@ -74,11 +79,18 @@ export const useMessages = create<MessagesState>()((set, get) => {
         setHistory(threadId, (history) => (history?.status === "loading" ? update(history.pending) : history))
       }
       try {
-        const { seq, messages, approvals, questions } = await call("threads.transcript", { threadId, compact: true })
+        const { seq, messages, hasEarlier = false, approvals, questions } = await readPage(threadId)
         settleIfStillCurrent((pending) =>
           pending
             .filter((push) => push.seq > seq)
-            .reduce<ReadyHistory>(applyPush, { status: "ready", messages, approvals, questions }),
+            .reduce<ReadyHistory>(applyPush, {
+              status: "ready",
+              messages,
+              hasEarlier,
+              loadingEarlier: false,
+              approvals,
+              questions,
+            }),
         )
       } catch (cause) {
         settleIfStillCurrent(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
@@ -94,8 +106,8 @@ export const useMessages = create<MessagesState>()((set, get) => {
         }
         const reload = { pushes: [] as TranscriptPush[] }
         pushesDuringReload.set(threadId, reload)
-        call("threads.transcript", { threadId, compact: true }).then(
-          ({ seq, messages, approvals, questions }) => {
+        readPage(threadId).then(
+          ({ seq, messages, hasEarlier = false, approvals, questions }) => {
             if (pushesDuringReload.get(threadId) !== reload) return
             pushesDuringReload.delete(threadId)
             takePending(threadId)
@@ -103,7 +115,12 @@ export const useMessages = create<MessagesState>()((set, get) => {
               current?.status === "ready"
                 ? reload.pushes
                     .filter((push) => push.seq > seq)
-                    .reduce<ReadyHistory>(applyPush, { status: "ready", messages, approvals, questions })
+                    .reduce<ReadyHistory>(applyPush, {
+                      ...current,
+                      ...keepEarlierPages(current, messages, hasEarlier),
+                      approvals,
+                      questions,
+                    })
                 : current,
             )
           },
@@ -111,6 +128,30 @@ export const useMessages = create<MessagesState>()((set, get) => {
             if (pushesDuringReload.get(threadId) === reload) pushesDuringReload.delete(threadId)
           },
         )
+      }
+    },
+
+    loadEarlier: async (threadId) => {
+      const history = get().byThread[threadId]
+      if (history?.status !== "ready" || !history.hasEarlier || history.loadingEarlier) return
+      const before = history.messages[0]?.id
+      if (before === undefined) return
+      const settle = (update: (history: ReadyHistory) => Partial<ReadyHistory>) =>
+        setHistory(threadId, (current) =>
+          current?.status === "ready" ? { ...current, loadingEarlier: false, ...update(current) } : current,
+        )
+      settle(() => ({ loadingEarlier: true }))
+      try {
+        const page = await call("threads.transcript", { threadId, compact: true, page: { before } })
+        // A reload in the meantime may have replaced the messages this page continues.
+        settle((current) =>
+          current.messages[0]?.id === before
+            ? { messages: [...page.messages, ...current.messages], hasEarlier: page.hasEarlier ?? false }
+            : {},
+        )
+      } catch {
+        // The next scroll to the top asks again.
+        settle(() => ({}))
       }
     },
 
@@ -159,6 +200,19 @@ export const useMessages = create<MessagesState>()((set, get) => {
     },
   }
 })
+
+const readPage = (threadId: string) => call("threads.transcript", { threadId, compact: true, page: {} })
+
+/**
+ * A reload reads only the newest page, so the older pages already scrolled into view stay in front of it when it
+ * still starts with a message they lead up to. Otherwise the new page replaces them.
+ */
+function keepEarlierPages(current: ReadyHistory, page: readonly Message[], hasEarlier: boolean) {
+  const at = page[0] === undefined ? -1 : current.messages.findIndex((message) => message.id === page[0]!.id)
+  return at <= 0
+    ? { messages: page, hasEarlier }
+    : { messages: [...current.messages.slice(0, at), ...page], hasEarlier: current.hasEarlier }
+}
 
 export const isTranscriptPush = (event: { readonly type: string }): event is TranscriptPush =>
   event.type === "thread.event" || event.type === "message.created" || event.type === "message.updated"

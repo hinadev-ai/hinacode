@@ -945,6 +945,15 @@ describe("compact transcripts over rpc", () => {
       { type: "text", text: "Listed and edited." },
     ])
     expect(compact?.[0]).not.toHaveProperty("output")
+
+    const all = result(await invoke("threads.transcript", { threadId: thread.id })).messages.map((m) => m.id)
+    const newest = result(await invoke("threads.transcript", { threadId: thread.id, compact: true, page: {} }))
+    expect(newest.messages.map((m) => m.id)).toStrictEqual(all)
+    expect(newest.hasEarlier).toBe(false)
+    const older = result(
+      await invoke("threads.transcript", { threadId: thread.id, compact: true, page: { before: all.at(-1)! } }),
+    )
+    expect(older.messages.map((m) => m.id)).toStrictEqual(all.slice(0, -1))
   })
 })
 

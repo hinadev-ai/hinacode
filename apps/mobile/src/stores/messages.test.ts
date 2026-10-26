@@ -135,6 +135,52 @@ describe("reload", () => {
     calls.length = 0
 
     useMessages.getState().reload()
-    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true }])
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true, page: {} }])
+  })
+})
+
+describe("earlier pages", () => {
+  const page = (ids: readonly string[], hasEarlier: boolean) => ({ ...snapshot(1, ids), hasEarlier })
+
+  it("asks for the newest page, then prepends the page before the oldest message", async () => {
+    const loading = useMessages.getState().load("t1")
+    const first = calls.shift()!
+    expect(first.payload).toEqual({ threadId: "t1", compact: true, page: {} })
+    first.resolve(page(["c", "d"], true))
+    await loading
+
+    const earlier = useMessages.getState().loadEarlier("t1")
+    const call = calls.shift()!
+    expect(call.payload).toEqual({ threadId: "t1", compact: true, page: { before: "c" } })
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(0)
+    call.resolve(page(["a", "b"], false))
+    await earlier
+    expect(ids()).toEqual(["a", "b", "c", "d"])
+
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(0)
+  })
+
+  it("treats a server that sends every message as having nothing earlier", async () => {
+    await loadReady(1, ["a", "b"])
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(0)
+  })
+
+  it("keeps the earlier pages in front of a reloaded newest page", async () => {
+    const loading = useMessages.getState().load("t1")
+    calls.shift()!.resolve(page(["c", "d"], true))
+    await loading
+    const earlier = useMessages.getState().loadEarlier("t1")
+    calls.shift()!.resolve(page(["a", "b"], false))
+    await earlier
+
+    useMessages.getState().reload()
+    calls.shift()!.resolve(page(["d", "e"], true))
+    await flush()
+    expect(ids()).toEqual(["a", "b", "c", "d", "e"])
+    const current = history()
+    expect(current?.status === "ready" && current.hasEarlier).toBe(false)
   })
 })

@@ -37,3 +37,26 @@ export const compactMessage = (message: Message): Message => ({
   parts: message.parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart),
 })
 
+/** Under two seconds of 3G, so one page never nears the 25 s the clients wait for a frame before redialing. */
+export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
+
+/**
+ * The newest of `messages` older than the message `before` (or the newest overall) whose JSON fits in `budget`,
+ * always at least one. `hasEarlier` says whether older messages remain. An unknown `before` gives an empty page.
+ */
+export function transcriptPage(
+  messages: ReadonlyArray<Message>,
+  before: string | undefined,
+  budget = TRANSCRIPT_PAGE_BYTES,
+): { readonly messages: ReadonlyArray<Message>; readonly hasEarlier: boolean } {
+  const end = before === undefined ? messages.length : messages.findIndex((message) => message.id === before)
+  if (end <= 0) return { messages: [], hasEarlier: false }
+  let start = end - 1
+  let bytes = JSON.stringify(messages[start]).length
+  while (start > 0) {
+    bytes += JSON.stringify(messages[start - 1]).length
+    if (bytes > budget) break
+    start--
+  }
+  return { messages: messages.slice(start, end), hasEarlier: start > 0 }
+}

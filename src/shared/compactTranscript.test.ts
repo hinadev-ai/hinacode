@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { Message } from "./domain.ts"
-import { compactMessage, toolSummary } from "./compactTranscript.ts"
+import { compactMessage, toolSummary, transcriptPage } from "./compactTranscript.ts"
 
 const message = (parts: Message["parts"]): Message => ({
   id: "m",
@@ -64,3 +64,30 @@ describe("toolSummary", () => {
   })
 })
 
+const sized = (id: string, chars: number): Message => ({ ...message([{ type: "text", text: "x".repeat(chars) }]), id })
+const ids = (page: { messages: ReadonlyArray<Message> }) => page.messages.map((m) => m.id)
+
+describe("transcriptPage", () => {
+  const transcript = ["a", "b", "c", "d"].map((id) => sized(id, 400))
+  const one = JSON.stringify(transcript[0]).length
+
+  test("takes the newest messages that fit and says older ones remain", () => {
+    const page = transcriptPage(transcript, undefined, one * 2)
+    expect(ids(page)).toStrictEqual(["c", "d"])
+    expect(page.hasEarlier).toBe(true)
+  })
+
+  test("continues before a message, down to the first", () => {
+    expect(ids(transcriptPage(transcript, "c", one * 2))).toStrictEqual(["a", "b"])
+    expect(transcriptPage(transcript, "c", one * 2).hasEarlier).toBe(false)
+    expect(transcriptPage(transcript, "a", one * 2)).toStrictEqual({ messages: [], hasEarlier: false })
+  })
+
+  test("always returns one message, however large", () => {
+    expect(ids(transcriptPage([...transcript, sized("huge", 10_000)], undefined, one))).toStrictEqual(["huge"])
+  })
+
+  test("an unknown message gives an empty page", () => {
+    expect(transcriptPage(transcript, "gone")).toStrictEqual({ messages: [], hasEarlier: false })
+  })
+})
