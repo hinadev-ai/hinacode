@@ -55,6 +55,12 @@ describe("parseSnoozeTime", () => {
     expect(parseSnoozeTime("兩小時後", now, "zh-TW")).toStrictEqual({ status: "ok", at: local(26, 17) })
   })
 
+  test("a bare weekday that is today and past 9:00 means next week's", () => {
+    const mondayMorning = local(26, 10)
+    expect(parseSnoozeTime("monday", mondayMorning, "en")).toStrictEqual({ status: "ok", at: local(2 + 31, 9) })
+    expect(parseSnoozeTime("月曜", mondayMorning, "ja")).toStrictEqual({ status: "ok", at: local(2 + 31, 9) })
+  })
+
   test("tells empty, unreadable and past text apart", () => {
     expect(parseSnoozeTime("  ", now, "en")).toStrictEqual({ status: "empty" })
     expect(parseSnoozeTime("whenever", now, "en")).toStrictEqual({ status: "unreadable" })
