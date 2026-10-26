@@ -41,6 +41,7 @@ import {
   ToolCallFrame,
   type TurnCompletedParams,
   type TurnInputPart,
+  type TurnModelRetryScheduledParams,
   type TurnStartResult,
   type UserInputRequestParams,
   type UserInputSettledParams,
@@ -522,6 +523,11 @@ const make = Effect.gen(function* () {
           let context: ContextWindow | undefined
           /** True while the compaction hinacode asked for before the turn runs. */
           let compacting = false
+          /**
+           * Muse retries a 429 without a reset time as a rate limit, and its giving up carries no `quota`. It is the
+           * same wall to the user, so the turn ends limited, as a Claude 429 does.
+           */
+          let rateLimited = false
 
           const decide = (approval: Approval, decision: ApprovalDecision) =>
             Effect.gen(function* () {
@@ -775,13 +781,14 @@ const make = Effect.gen(function* () {
               }
               if (params.terminal === "cancelled") return yield* emit(interruptedEvent)
               const quota = params.error?.quota
-              if (quota !== undefined) {
+              if (quota !== undefined || rateLimited) {
                 return yield* emit({
                   type: "turn_limited",
                   limit: {
                     kind: "usage",
                     message: params.error?.message ?? "Muse Code usage limit reached",
-                    reset: { at: new Date(quota.resetsAtMs).toISOString(), autoResume: false },
+                    reset:
+                      quota === undefined ? null : { at: new Date(quota.resetsAtMs).toISOString(), autoResume: false },
                   },
                 })
               }
@@ -830,6 +837,9 @@ const make = Effect.gen(function* () {
                   return false
                 case "userInput/settled":
                   yield* resolveQuestion(message.params as UserInputSettledParams)
+                  return false
+                case "turn/modelRetryScheduled":
+                  rateLimited = (message.params as TurnModelRetryScheduledParams).httpStatus === 429
                   return false
                 case "session/contextUsage": {
                   const { usedTokens, windowTokens } = message.params as SessionContextUsageParams
