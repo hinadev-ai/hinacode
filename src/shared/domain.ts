@@ -564,11 +564,9 @@ export const Opener = Schema.Struct({
 })
 export type Opener = typeof Opener.Type
 
-/** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
 export const SidebarGroup = Schema.Struct({ id: Schema.String, name: Schema.String, collapsed: Schema.Boolean })
 export type SidebarGroup = typeof SidebarGroup.Type
 
-/** Named headings the Threads tab files project rows under. */
 export const SidebarGroups = Schema.Struct({
   /** In sidebar order. */
   groups: Schema.Array(SidebarGroup),
@@ -577,6 +575,7 @@ export const SidebarGroups = Schema.Struct({
 })
 export type SidebarGroups = typeof SidebarGroups.Type
 
+/** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
 export const ClientSettings = Schema.Struct({
   locale: Locale,
   /** The app "Open with" used last, which the thread header opens in one click. */
