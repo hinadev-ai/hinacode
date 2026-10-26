@@ -10,22 +10,17 @@ struct PairingForm<Footer: View>: View {
     @ViewBuilder var footer: Footer
 
     @State private var text = ""
-    @State private var invalid = false
+    /// The text that failed to parse; the error shows until the text changes.
+    @State private var rejected: String?
     @State private var scanning = false
     @State private var cameraDenied = false
 
     var body: some View {
         Form {
             Section {
-                Label {
-                    Text(.mobilePairingLead)
-                        .foregroundStyle(.secondary)
-                } icon: {
-                    Image(systemName: "iphone.and.arrow.left.and.arrow.right")
-                        .foregroundStyle(.tint)
-                }
-                .labelStyle(PairingLeadLabelStyle())
+                PairingHeader()
             }
+            .listRowBackground(Color.clear)
 
             if let refusal {
                 Section {
@@ -34,19 +29,18 @@ struct PairingForm<Footer: View>: View {
                 }
             }
 
-            if PairingScanner.isSupported {
-                Section {
-                    Button(.mobilePairingScan, systemImage: "qrcode.viewfinder", action: scan)
-                        .accessibilityIdentifier("pairing-scan")
-                } footer: {
-                    if cameraDenied {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(.mobilePairingCameraDenied)
-                            Button(.mobilePairingOpenSettings, action: openSettings)
-                        }
+            Section {
+                actions
+            } footer: {
+                if cameraDenied {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(.mobilePairingCameraDenied)
+                        Button(.mobilePairingOpenSettings, action: openSettings)
                     }
                 }
             }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
 
             Section {
                 TextField(
@@ -61,36 +55,34 @@ struct PairingForm<Footer: View>: View {
                 .lineLimit(2...6)
                 .submitLabel(.go)
                 .onSubmit(submit)
-                .onChange(of: text) { invalid = false }
                 .accessibilityIdentifier("pairing-url")
 
-                PasteButton(payloadType: String.self) { strings in
-                    text = strings.first ?? ""
-                    submit()
-                }
-            } header: {
-                Text(.mobilePairingUrl)
-            } footer: {
-                if invalid {
-                    Text(.mobilePairingInvalid)
-                        .foregroundStyle(.red)
-                        .accessibilityAddTraits(.isStaticText)
-                }
-            }
-
-            Section {
                 Button(.mobilePairingConnect, action: submit)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("pairing-connect")
+            } header: {
+                Text(.mobilePairingUrl)
+            } footer: {
+                if rejected == text {
+                    Text(.mobilePairingInvalid)
+                        .foregroundStyle(.red)
+                        .accessibilityAddTraits(.isStaticText)
+                } else {
+                    Text(.mobilePairingUrlFootnote)
+                }
             }
 
             footer
         }
+        // One readable column on iPad, the way setup screens stay narrow on a wide display.
+        .frame(maxWidth: 600)
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground))
         .fullScreenCover(isPresented: $scanning) {
             ScannerScreen { code in
                 guard let target = PairingTarget.parse(code) else {
                     text = code
-                    invalid = true
+                    rejected = code
                     return false
                 }
                 scanning = false
@@ -98,12 +90,35 @@ struct PairingForm<Footer: View>: View {
                 return true
             }
         }
-        .sensoryFeedback(.error, trigger: invalid) { _, now in now }
+        .sensoryFeedback(.error, trigger: rejected) { _, now in now != nil }
+    }
+
+    /// Scan when the camera can read QR codes, with Paste under it. The system Paste button reads the clipboard
+    /// without asking, and dims itself while there is nothing to paste.
+    private var actions: some View {
+        VStack(spacing: 12) {
+            if PairingScanner.isSupported {
+                Button(action: scan) {
+                    Text(.mobilePairingScan)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .accessibilityIdentifier("pairing-scan")
+            }
+            PasteButton(payloadType: String.self) { strings in
+                text = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                submit()
+            }
+            .buttonBorderShape(.capsule)
+            .labelStyle(.titleAndIcon)
+        }
+        .controlSize(.large)
+        .frame(maxWidth: .infinity)
     }
 
     private func submit() {
         guard let target = PairingTarget.parse(text) else {
-            invalid = true
+            rejected = text
             return
         }
         onPair(target)
@@ -135,18 +150,24 @@ extension PairingForm where Footer == EmptyView {
     }
 }
 
-/// The lead paragraph with its symbol above it, centered, like the top of a system setup screen.
-private struct PairingLeadLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
+/// The top of a system setup screen: the symbol, the title and one lead line, centered.
+private struct PairingHeader: View {
+    var body: some View {
         VStack(spacing: 12) {
-            configuration.icon
-                .font(.system(size: 44))
+            Image(systemName: "macbook.and.iphone")
+                .font(.system(size: 56))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tint)
                 .accessibilityHidden(true)
-            configuration.title
-                .multilineTextAlignment(.center)
+            Text(.mobileConnectTitle)
+                .font(.title.bold())
+                .accessibilityAddTraits(.isHeader)
+            Text(.mobilePairingLead)
+                .foregroundStyle(.secondary)
         }
+        .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.top, 8)
     }
 }
 

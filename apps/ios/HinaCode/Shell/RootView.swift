@@ -14,16 +14,24 @@ struct RootView: View {
     }
 }
 
-/// The first-run screen: the pairing form with the relay sign-in as its footer.
+/// The first-run screen: the pairing form, with the relay sign-in one level down for those who use a relay.
 struct PairingScreen: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         NavigationStack {
             PairingForm(refusal: refusal, onPair: { _ = model.hub.pair($0) }) {
-                RelayAccountSection()
+                Section {
+                    NavigationLink {
+                        Form {
+                            RelayAccountSection()
+                        }
+                        .navigationTitle(.mobileRelayTitle)
+                    } label: {
+                        Label(.mobilePairingRelay, systemImage: "cloud")
+                    }
+                }
             }
-            .navigationTitle(.mobileConnectTitle)
         }
     }
 
@@ -44,7 +52,6 @@ struct AddServerSheet: View {
                 _ = model.hub.pair($0)
                 dismiss()
             }
-            .navigationTitle(.mobileConnectTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .cancel) { dismiss() }

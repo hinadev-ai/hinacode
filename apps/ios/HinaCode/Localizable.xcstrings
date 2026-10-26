@@ -4308,19 +4308,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later."
+            "value" : "In the desktop's Settings, Remote, turn on Allow remote control. Then scan its QR code or paste its pairing URL."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "デスクトップで設定のリモート接続を開き、リモート操作を許可をオンにします。表示された QR コードを読み取るか、ペアリング URL を貼り付けてください。クラウドは hinacode serve の実行時、または後から hinacode pair で QR コードを表示します。"
+            "value" : "デスクトップの設定のリモート接続で、リモート操作を許可をオンにします。表示された QR コードを読み取るか、ペアリング URL を貼り付けてください。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在桌面版開啟設定的遠端，並開啟允許遠端控制。掃描它顯示的 QR 碼，或貼上配對網址。雲端會在執行 hinacode serve 時印出 QR 碼，之後也可以用 hinacode pair 再次印出。"
+            "value" : "在桌面版設定的遠端中，開啟允許遠端控制。然後掃描它顯示的 QR 碼，或貼上配對網址。"
           }
         }
       }
@@ -4344,6 +4344,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟設定"
+          }
+        }
+      }
+    },
+    "mobile_pairing_relay" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in with a relay account"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リレーアカウントでサインイン"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用中繼帳號登入"
           }
         }
       }
@@ -4413,6 +4436,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "配對網址"
+          }
+        }
+      }
+    },
+    "mobile_pairing_url_footnote" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cloud prints its pairing URL when you run hinacode serve, or hinacode pair later."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クラウドは hinacode serve の実行時、または後から hinacode pair でペアリング URL を表示します。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "雲端會在執行 hinacode serve 時印出配對網址，之後也可以用 hinacode pair 再次印出。"
           }
         }
       }
