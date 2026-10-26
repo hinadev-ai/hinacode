@@ -46,7 +46,7 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, reconnectNow, setServers, useConnection } = await import("./connection")
+const { call, onRemembered, reconnectNow, restoreAnswers, setServers, useConnection } = await import("./connection")
 
 const server = (id: string, port: number): StoredServer => ({
   id,
@@ -155,6 +155,27 @@ describe("call", () => {
     const second = call("projects.list", undefined)
     socketOf(1001).answer("projects.list", [project("web"), project("docs")])
     expect((await second).map((entry) => entry.name)).toEqual(["web", "docs", "api"])
+  })
+
+  it("lists the answers saved at the last launch while the server is still connecting", async () => {
+    setServers([])
+    restoreAnswers("a", { "threads.list": { payload: "null", result: [thread("t-saved", "web")] } })
+    setServers([server("a", 1001)])
+    expect((await call("threads.list", undefined)).map((entry) => entry.id)).toEqual(["t-saved"])
+  })
+
+  it("reports each fresh answer, to be saved for the next launch", async () => {
+    const saved: unknown[] = []
+    const stop = onRemembered((serverId, answers) => saved.push([serverId, answers["threads.list"]?.result]))
+    const listing = call("threads.list", undefined)
+    socketOf(1001).answer("threads.list", [thread("t-web", "web")])
+    socketOf(1002).answer("threads.list", [])
+    await listing
+    stop()
+    expect(saved).toEqual([
+      ["a", [thread("t-web", "web")]],
+      ["b", []],
+    ])
   })
 
   it("sends a named call to the server it names", async () => {
