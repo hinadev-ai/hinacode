@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, watch } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer } from "effect"
@@ -22,6 +23,7 @@ import * as Worktrees from "./Worktrees.ts"
 
 const pushes: Array<PushEvent> = []
 const statuses = new Map<string, PullRequestStatus>()
+const heads = new Map<string, string>()
 
 const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
 
@@ -33,8 +35,12 @@ const gitHub = Layer.mock(GitHub, {
         yield* Deferred.succeed(hold.asked, undefined)
         yield* Deferred.await(hold.release)
       }
-      return { url, status: statuses.get(url) ?? "open" } as PullRequest
+      return { url, status: statuses.get(url) ?? "open", headRefName: heads.get(url) ?? "" } as PullRequest
     }),
+  branchPullRequest: (_cwd, branch) => {
+    const url = [...heads].find(([, head]) => head === branch)?.[0]
+    return Effect.succeed(url === undefined ? null : ({ url, status: statuses.get(url) ?? "open" } as PullRequest))
+  },
 })
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-auto-archive-")))
@@ -134,6 +140,188 @@ describe("AutoArchive", () => {
             }),
           )
           yield* Terminals.Terminals.use((terminals) => terminals.close(terminal.id))
+        }),
+      )
+    }
+  })
+})
+
+const git = (cwd: string, ...args: Array<string>) =>
+  execFileSync("git", ["-C", cwd, "-c", "user.email=t@t", "-c", "user.name=t", ...args], { encoding: "utf8" })
+
+const localBranches = (root: string) =>
+  git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads").split("\n").filter(Boolean).toSorted()
+
+/** Worktree removal deletes the checkout and branch in the background; the parent directory reports each. */
+const waitUntilGone = (path: string) =>
+  Effect.callback<void>((resume) => {
+    let done = false
+    const check = () => {
+      if (done || existsSync(path)) return
+      done = true
+      watcher.close()
+      resume(Effect.void)
+    }
+    const watcher = watch(dirname(path), check)
+    check()
+    return Effect.sync(() => watcher.close())
+  })
+
+const waitUntilBranchGone = (root: string, branch: string) => waitUntilGone(join(root, ".git", "refs", "heads", branch))
+
+/** A git repo registered as a project. */
+const project = (name: string) =>
+  Effect.gen(function* () {
+    const root = join(base, name)
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    git(root, "commit", "-q", "--allow-empty", "-m", "init")
+    const { id } = yield* Projects.Projects.use((projects) =>
+      projects.create({ name, rootPath: root, setupScript: null }),
+    )
+    return { root, projectId: id }
+  })
+
+/** A thread in its own worktree with one commit on its branch, so the branch is unmerged until GitHub says so. */
+const worktreeThread = (projectId: string, branch: string, baseRef = "main") =>
+  Effect.gen(function* () {
+    const thread = yield* Threads.use((threads) =>
+      threads.create({ projectId, title: branch, provider: "claude", model: "m", worktree: { branch, baseRef } }),
+    )
+    const worktree = yield* Worktrees.Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!))
+    git(worktree.path, "commit", "-q", "--allow-empty", "-m", branch)
+    return { threadId: thread.id, path: worktree.path }
+  })
+
+/** Links the pull request of `branch` to the thread, opened in the given status. */
+const linkPullRequest = (threadId: string, branch: string, status: PullRequestStatus) =>
+  Effect.gen(function* () {
+    const url = `https://github.com/o/r/pull/${heads.size + 1}`
+    heads.set(url, branch)
+    statuses.set(url, status)
+    yield* PullRequests.use((pullRequests) => pullRequests.link(threadId, url))
+    return url
+  })
+
+const setStatus = (url: string, status: PullRequestStatus) => Effect.sync(() => void statuses.set(url, status))
+
+const sweep = AutoArchive.use((autoArchive) => autoArchive.sweep)
+
+describe("worktree cleanup across threads", () => {
+  layer(testLayer)((it) => {
+    const cleanupOn = Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: true } }))
+
+    it.effect("removes a worktree and its squash-merged branch once its pull request merges", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { root, projectId } = yield* project("squash")
+        const child = yield* worktreeThread(projectId, "kk/child")
+        yield* linkPullRequest(child.threadId, "kk/child", "merged")
+
+        yield* sweep
+
+        expect(yield* statusOf(child.threadId)).toBe("archived")
+        yield* waitUntilGone(child.path)
+        yield* waitUntilBranchGone(root, "kk/child")
+        expect(localBranches(root)).toStrictEqual(["main"])
+      }),
+    )
+
+    it.effect("removes the worktree of a closed pull request and keeps its unmerged branch", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { root, projectId } = yield* project("closed-pr")
+        const child = yield* worktreeThread(projectId, "kk/abandoned")
+        yield* linkPullRequest(child.threadId, "kk/abandoned", "closed")
+
+        yield* sweep
+
+        expect(yield* statusOf(child.threadId)).toBe("archived")
+        yield* waitUntilGone(child.path)
+        expect(localBranches(root)).toStrictEqual(["kk/abandoned", "main"])
+      }),
+    )
+
+    it.effect("cleans up a conductor once its own pull request merges, while a child's linked one is open", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { root, projectId } = yield* project("conductor")
+        const conductor = yield* worktreeThread(projectId, "kk/conductor")
+        const child = yield* worktreeThread(projectId, "kk/worker")
+        yield* linkPullRequest(conductor.threadId, "kk/conductor", "merged")
+        const childUrl = yield* linkPullRequest(child.threadId, "kk/worker", "open")
+        yield* PullRequests.use((pullRequests) => pullRequests.link(conductor.threadId, childUrl))
+
+        yield* sweep
+
+        expect(yield* statusOf(conductor.threadId)).toBe("archived")
+        expect(yield* statusOf(child.threadId)).toBe("idle")
+        yield* waitUntilGone(conductor.path)
+        expect(existsSync(child.path)).toBe(true)
+
+        yield* setStatus(childUrl, "merged")
+        yield* sweep
+
+        expect(yield* statusOf(child.threadId)).toBe("archived")
+        yield* waitUntilGone(child.path)
+        yield* waitUntilBranchGone(root, "kk/conductor")
+        yield* waitUntilBranchGone(root, "kk/worker")
+        expect(localBranches(root)).toStrictEqual(["main"])
+      }),
+    )
+
+    it.effect("keeps a conductor that still watches a child's open pull request", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { projectId } = yield* project("watching")
+        const conductor = yield* worktreeThread(projectId, "kk/watcher")
+        const child = yield* worktreeThread(projectId, "kk/watched")
+        yield* linkPullRequest(conductor.threadId, "kk/watcher", "merged")
+        const childUrl = yield* linkPullRequest(child.threadId, "kk/watched", "open")
+        yield* PullRequests.use((pullRequests) => pullRequests.watch(conductor.threadId, childUrl))
+
+        yield* sweep
+
+        expect(yield* statusOf(conductor.threadId)).toBe("idle")
+        expect(existsSync(conductor.path)).toBe(true)
+      }),
+    )
+
+    for (const order of [
+      ["parent", "child"],
+      ["child", "parent"],
+    ] as const) {
+      it.effect(`converges for a stacked child when the ${order[0]} merges first`, () =>
+        Effect.gen(function* () {
+          yield* cleanupOn
+          const { root, projectId } = yield* project(`stacked-${order[0]}-first`)
+          const parent = yield* worktreeThread(projectId, "kk/parent")
+          const child = yield* worktreeThread(projectId, "kk/stacked", "kk/parent")
+          const threads = { parent, child }
+          const urls = {
+            parent: yield* linkPullRequest(parent.threadId, "kk/parent", "open"),
+            child: yield* linkPullRequest(child.threadId, "kk/stacked", "open"),
+          }
+          const [first, second] = order
+
+          yield* setStatus(urls[first], "merged")
+          yield* sweep
+
+          yield* waitUntilGone(threads[first].path)
+          expect(yield* statusOf(threads[second].threadId)).toBe("idle")
+          if (second === "child") {
+            const changes = yield* Threads.use((all) => all.changes(child.threadId, "worktree"))
+            expect(changes).not.toBeNull()
+          }
+
+          yield* setStatus(urls[second], "merged")
+          yield* sweep
+          yield* sweep
+
+          expect(yield* statusOf(threads[second].threadId)).toBe("archived")
+          yield* waitUntilGone(threads[second].path)
+          yield* waitUntilBranchGone(root, "kk/parent")
+          yield* waitUntilBranchGone(root, "kk/stacked")
+          expect(localBranches(root)).toStrictEqual(["main"])
         }),
       )
     }
