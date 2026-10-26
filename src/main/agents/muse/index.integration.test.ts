@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, PubSub, Stream } from "effect"
+import { Effect, Fiber, PubSub, Queue, Stream } from "effect"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import { findBinary } from "../binary.ts"
@@ -182,16 +182,16 @@ const watchBackgroundTasks = Effect.gen(function* () {
 })
 
 /** Ask me runs a command in the sandbox without asking, so this one asks to leave it. */
-const twoStages = (marker: string) =>
-  endpoint.script({
-    when: marker,
-    name: "bash",
-    arguments: {
-      command: "echo one && echo two",
-      description: "Print two lines",
-      sandbox_permissions: "require_escalated",
-    },
-  })
+const twoStagesCall = {
+  name: "bash",
+  arguments: {
+    command: "echo one && echo two",
+    description: "Print two lines",
+    sandbox_permissions: "require_escalated",
+  },
+}
+
+const twoStages = (marker: string) => endpoint.script({ ...twoStagesCall, when: marker })
 
 describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   beforeAll(async () => {
@@ -399,6 +399,42 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           yield* Fiber.join(turn.fiber)
           expect(tasks.changes.filter((change) => change.threadId === turn.threadId)).toHaveLength(2)
         }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "follows the turn Muse starts when a background shell finishes, and its approval",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
+          const turn = yield* startTurn("supervised", (marker) => {
+            // The shell prints the marker without the command holding it, so only the wake's request carries it.
+            backgroundShell(`sleep 2 && echo woken-$(echo ${marker})`)(marker)
+            endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
+          })
+          const { request: shell } = yield* untilEvent(turn, ofType("approval_requested"))
+          yield* provider.respondApproval(shell.id, "allow")
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)?.type).toBe("turn_completed")
+
+          const wake = yield* Queue.take(wakes)
+          expect(wake.threadId).toBe(turn.threadId)
+          const events: Array<AgentEvent> = []
+          yield* wake.events.pipe(
+            Stream.runForEach((event) =>
+              Effect.gen(function* () {
+                events.push(event)
+                if (event.type === "approval_requested") yield* provider.respondApproval(event.request.id, "allow")
+              }),
+            ),
+          )
+          expect(events.filter(ofType("approval_requested"))).toHaveLength(1)
+          expect(events.filter(ofType("tool_call_finished"))).toMatchObject([{ isError: false }])
+          expect(events.at(-1)?.type).toBe("turn_completed")
+        }).pipe(Effect.scoped),
       ),
     TURN_TIMEOUT,
   )
