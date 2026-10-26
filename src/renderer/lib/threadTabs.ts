@@ -7,8 +7,9 @@ export function navigateTabs(
   recent: ReadonlyArray<string>,
   threadId: string,
 ): ReadonlyArray<string> {
-  if (tabs.includes(threadId)) return tabs
-  const current = recent.find((id) => tabs.includes(id))
+  const open = new Set(tabs)
+  if (open.has(threadId)) return tabs
+  const current = recent.find((id) => open.has(id))
   return current === undefined ? [...tabs, threadId] : tabs.map((id) => (id === current ? threadId : id))
 }
 
