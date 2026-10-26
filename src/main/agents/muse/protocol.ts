@@ -24,6 +24,11 @@ export type {
   UserInputSettledParams,
 } from "@muse-code/sdk/dist/src/msp.js"
 
+/** `turn/modelRetryScheduled`, which Muse 1.4.13 sends and SDK 1.4.7 does not type: a model call failed and runs again. */
+export interface TurnModelRetryScheduledParams {
+  readonly httpStatus?: number
+}
+
 /** `account/read`, an experimental method: which credential the host signs model calls with. */
 export const AccountState = Schema.Struct({
   /** `accountLogin` for a Meta login, `apiKey` or `envKey` for a key, `loggedOut`. Open for new lanes. */
