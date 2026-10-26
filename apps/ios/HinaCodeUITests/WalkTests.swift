@@ -66,6 +66,7 @@ final class WalkTests: XCTestCase {
         shot("04-thread-empty")
         composer.tap()
         composer.typeText("Show me some markdown")
+        shot("04b-thread-draft")
         app.buttons["composer-send"].tap()
         let heading = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Heading 1")).firstMatch
         XCTAssertTrue(heading.waitForExistence(timeout: 30), "mock reply rendered")

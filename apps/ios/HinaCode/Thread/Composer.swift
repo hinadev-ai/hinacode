@@ -64,7 +64,7 @@ struct Composer: View {
             VStack(alignment: .leading, spacing: 6) {
                 sendingBlocks
                 suggestionList
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 8) {
                     TextField(
                         text: textBinding, selection: $selection,
                         prompt: Text(busy ? .mobileComposerPlaceholderSteer : .mobileComposerPlaceholder),
@@ -72,12 +72,12 @@ struct Composer: View {
                     ) {
                         Text(.mobileComposerMessage)
                     }
-                    .lineLimit(1...8)
+                    .lineLimit(2...8)
                     .focused($focused)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
                     .accessibilityIdentifier("composer-field")
-                    HStack(spacing: 6) {
+                    HStack(spacing: 2) {
                         settingsChip(thread)
                         if unstarted {
                             WorkspaceChip(threadId: threadId, projectId: thread.projectId) {
@@ -88,8 +88,15 @@ struct Composer: View {
                         sendButton
                     }
                 }
-                .padding(.horizontal, 6)
+                .padding(10)
                 .glassEffect(in: .rect(cornerRadius: 24))
+                .overlay {
+                    // The desktop's composer edge: the border at 60%, the focus ring while typing.
+                    RoundedRectangle(cornerRadius: 24)
+                        .strokeBorder(focused ? Palette.ring : Palette.border.opacity(0.6), lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+                .animation(.easeOut(duration: 0.15), value: focused)
                 if let error {
                     Text(verbatim: error)
                         .font(.footnote)
@@ -169,31 +176,16 @@ struct Composer: View {
     /// in place.
     private var sendButton: some View {
         let stops = busy && isBlank
-        let enabled = stops || !isBlank
         return Button(role: stops ? .destructive : nil) {
             if stops { interrupt() } else { submit() }
         } label: {
-            Image(systemName: stops ? "stop.fill" : "arrow.up")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(enabled ? Color.white : Color.secondary)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 34, height: 34)
-                .background(fill(enabled: enabled, stops: stops), in: .circle)
-                .frame(width: 44, height: 44)
-                .contentShape(.circle)
+            SendButtonLabel(symbol: stops ? "stop.fill" : "arrow.up", active: stops || !isBlank)
         }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .animation(.snappy(duration: 0.2), value: stops)
-        .animation(.snappy(duration: 0.2), value: enabled)
+        .buttonStyle(.composerSend)
+        .disabled(!stops && isBlank)
         .accessibilityIdentifier("composer-send")
         .accessibilityLabel(Text(stops ? .mobileComposerStop : busy ? .mobileComposerSteer : .mobileComposerSend))
         .keyboardShortcut(stops ? .cancelAction : KeyboardShortcut(.return, modifiers: .command))
-    }
-
-    private func fill(enabled: Bool, stops: Bool) -> Color {
-        guard enabled else { return Color(.tertiarySystemFill) }
-        return stops ? Tone.danger.color : .accentColor
     }
 
     private var textBinding: Binding<String> {
@@ -359,17 +351,18 @@ private struct SuggestionRow: View {
     }
 }
 
-/// A compact control on the composer's glass. A plain fill rather than glass, since glass cannot sit on glass.
+/// A control on the composer's toolbar, as the desktop's select triggers: muted text on no fill, a faint fill while
+/// pressed.
 struct ComposerChipStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.footnote)
+            .font(.caption)
             .imageScale(.small)
             .lineLimit(1)
+            .foregroundStyle(Palette.mutedForeground)
             .padding(.horizontal, 10)
             .frame(height: 30)
-            .background(.fill.tertiary, in: .capsule)
-            .opacity(configuration.isPressed ? 0.6 : 1)
+            .background(Palette.foreground.opacity(configuration.isPressed ? 0.08 : 0), in: .capsule)
             .frame(minHeight: 44)
             .contentShape(.rect)
     }

@@ -49,8 +49,8 @@ private struct UserMessageView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color.accentColor.opacity(0.14), in: .rect(cornerRadius: 20))
+            .padding(.vertical, 8)
+            .background(Palette.muted, in: .rect(cornerRadius: 16))
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(.mobileChatYou))
