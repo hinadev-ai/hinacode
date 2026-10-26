@@ -225,7 +225,9 @@ export function Composer({ thread }: { thread: Thread }) {
             <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
         </div>
-        <ComposerBar className="min-h-0 border-(color:--composer-edge)">
+        {/* The bar's backdrop blur makes it a stacking context, which traps the suggestions list inside it. The
+            tray sits above the bar to cover its top border, so the bar rises above the tray while the list is open. */}
+        <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
           {comments.length > 0 && (
             <ul
               aria-label={m.comment_pending_label()}
