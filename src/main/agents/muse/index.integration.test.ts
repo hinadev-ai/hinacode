@@ -236,7 +236,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
     () =>
       withProvider(
         Effect.gen(function* () {
-          const resetsAt = Math.floor(Date.now() / 1000) + 3600
+          const resetsAt = Date.parse("2099-01-01T00:00:00.000Z") / 1000
           const turn = yield* startTurn("supervised", (marker) => endpoint.rateLimit(marker, resetsAt))
           yield* Fiber.join(turn.fiber)
           expect(turn.events.at(-1)).toStrictEqual({
