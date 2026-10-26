@@ -55,7 +55,9 @@ final class WalkTests: XCTestCase {
             source.tap()
             source.typeText(projectRoot)
             shot("03-add-project")
-            app.buttons["project-submit"].tap()
+            // Return is Go once the path is valid. The Add project button is not tapped: with the sheet at its medium
+            // detent and lifted over the keyboard, its accessibility frame still reports the unlifted spot.
+            source.typeText("\n")
         }
 
         // Adding a project opens its first thread. Send a prompt and read the Markdown reply.
