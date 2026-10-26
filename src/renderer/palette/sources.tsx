@@ -10,7 +10,7 @@ import { useExplorer } from "../stores/explorer.ts"
 import { selectProjectThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import type { Project } from "../../shared/domain.ts"
+import type { Project, Thread } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
@@ -52,8 +52,8 @@ export const projectsSource: PaletteSource = {
 }
 
 /**
- * Projects to start a thread in, the open thread's project first. Mod+1 to Mod+9 follow the project
- * list, so a project keeps its chord whichever thread is open.
+ * Projects to start a thread in, the open thread's project first, else the project of the newest thread the user
+ * created. Mod+1 to Mod+9 follow the project list, so a project keeps its chord whichever thread is open.
  */
 export const newThreadSource: PaletteSource = {
   group: "projects",
@@ -68,7 +68,14 @@ export const newThreadSource: PaletteSource = {
       ...(index < 9 ? { chord: `Mod+${index + 1}` } : {}),
       run: () => void startThread(project.id, ctx.navigate),
     }))
-    const current = ctx.threadId ? `new-thread:${ctx.threads[ctx.threadId]?.projectId}` : undefined
+    const newest = Object.values(ctx.threads)
+      .filter((thread) => thread.createdBy === "user")
+      .reduce<Thread | undefined>(
+        (latest, thread) => (latest && latest.createdAt > thread.createdAt ? latest : thread),
+        undefined,
+      )
+    const preferred = ctx.threadId ? ctx.threads[ctx.threadId]?.projectId : newest?.projectId
+    const current = `new-thread:${preferred}`
     const isCurrent = (item: PaletteItem) => item.id === current
     return [...items.filter(isCurrent), ...items.filter((item) => !isCurrent(item))]
   },
