@@ -593,12 +593,26 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+/**
+ * The `default*` keys are what a new thread starts with. Picking an option on a thread before its first message
+ * saves it here, so the next new thread starts the way the last one was set up.
+ */
 export const Settings = Schema.Struct({
+  defaultProvider: ProviderId,
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** Null is the model's own default effort. */
+  defaultEffort: Schema.Struct({
+    claude: Schema.NullOr(Schema.String),
+    codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
+  }),
+  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  /** Whether the first turn of a new thread in a repository runs in a new worktree or in the project root. */
+  defaultWorkspaceMode: WorkspaceChoice.fields.mode,
   /** Model ids the thread model picker lists per agent, in any order. Empty lists every model the agent has. */
   modelPresets: Schema.Struct({
     claude: Schema.Array(Schema.String),
@@ -651,7 +665,11 @@ export const Settings = Schema.Struct({
 export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
+  defaultProvider: "claude",
   defaultModel: { claude: null, codex: null, muse: null },
+  defaultEffort: { claude: null, codex: null, muse: null },
+  defaultFastMode: { claude: false, codex: false, muse: false },
+  defaultWorkspaceMode: "local",
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   defaultAccountName: { claude: null, codex: null, muse: null },
