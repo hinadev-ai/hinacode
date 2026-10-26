@@ -414,6 +414,8 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             backgroundShell(`sleep 2 && echo woken-$(echo ${marker})`)(marker)
             endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
           })
+          const { request: shell } = yield* untilEvent(turn, ofType("approval_requested"))
+          yield* provider.respondApproval(shell.id, "allow")
           yield* Fiber.join(turn.fiber)
           expect(turn.events.at(-1)?.type).toBe("turn_completed")
 
