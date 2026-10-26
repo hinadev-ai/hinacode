@@ -141,6 +141,9 @@ const checkoutsDir = (rootPath: string, worktreeRoot: string | null) =>
 const checkoutPath = (checkouts: string, branch: string, id: string) =>
   join(checkouts, `${branch.replaceAll("/", "-")}-${id.slice(0, 8)}`)
 
+/** The local branch a pull request from a fork is checked out on, since its head branch name can clash with ours. */
+export const forkPullRequestBranch = (number: number) => `kk/pr-${number}`
+
 const removalKey = (projectId: string, branch: string) => `${projectId}\0${branch}`
 
 /** Parses `git worktree list --porcelain -z`: NUL-separated attribute lines, an empty field between checkouts. */
@@ -387,7 +390,7 @@ const make = Effect.gen(function* () {
   const fetchPullRequest = (rootPath: string, head: PullRequestHead) =>
     Effect.gen(function* () {
       const [branch, source, fetched] = head.isCrossRepository
-        ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
+        ? [forkPullRequestBranch(head.number), `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
         : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
       yield* git.remote(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
       return { branch, startPoint: fetched }

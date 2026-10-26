@@ -5,7 +5,7 @@ import { GitHub } from "./GitHub.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Settings } from "./Settings.ts"
 import { Threads } from "./Threads.ts"
-import { Worktrees } from "./Worktrees.ts"
+import { forkPullRequestBranch, Worktrees } from "./Worktrees.ts"
 
 const SWEEP_INTERVAL = "3 minutes"
 
@@ -42,7 +42,8 @@ const make = Effect.gen(function* () {
       if (thread.status === "archived" || isThreadBusy(thread.status)) return
       const branch = yield* ownBranch(thread.worktreeId)
       const found = yield* Effect.forEach(links, (link) => github.pullRequest(link.url), { concurrency: 4 })
-      const isOwn = (pullRequest: PullRequest) => branch === null || pullRequest.headRefName === branch
+      const isOwn = (pullRequest: PullRequest) =>
+        branch === null || branch === pullRequest.headRefName || branch === forkPullRequestBranch(pullRequest.number)
       const done =
         found.some(isOwn) &&
         found.every(
