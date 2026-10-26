@@ -38,16 +38,7 @@ struct ServersSection: View {
                 NavigationLink {
                     ServerDetailView(serverId: server.id)
                 } label: {
-                    LabeledContent {
-                        ConnectionStatusLabel(status: server.status)
-                    } label: {
-                        Label {
-                            Text(verbatim: server.settingsName)
-                                .lineLimit(1)
-                        } icon: {
-                            Image(systemName: "desktopcomputer")
-                        }
-                    }
+                    ServerRow(server: server)
                 }
             }
             Button(.mobileSettingsAddServer, systemImage: "plus") {
@@ -57,6 +48,38 @@ struct ServersSection: View {
             Text(.mobileSettingsServers)
         } footer: {
             Text(.mobileSettingsConnectionFootnote)
+        }
+    }
+}
+
+/// A server as a Settings row: its name, wrapping to a second line before it truncates, and its status trailing.
+private struct ServerRow: View {
+    let server: ServerHub.Server
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label {
+                Text(verbatim: server.settingsName)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            } icon: {
+                Image(systemName: "desktopcomputer")
+            }
+            Spacer(minLength: 8)
+            ConnectionStatusLabel(status: server.status)
+                .labelStyle(StatusDotLabelStyle())
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+    }
+}
+
+/// The status word with its dot before it, tighter than a list row's icon column.
+private struct StatusDotLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+            configuration.title
         }
     }
 }
