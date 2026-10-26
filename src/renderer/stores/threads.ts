@@ -28,6 +28,10 @@ const inProjects = (state: Pick<ThreadsState, "byId">, projectIds: ReadonlyArray
 const isActive = (thread: Thread) => thread.status !== "archived"
 const isPinned = (thread: Thread) => thread.pinnedAt !== null
 const newestFirst = (a: Thread, b: Thread) => b.updatedAt.localeCompare(a.updatedAt)
+const isSnoozed = (thread: Thread, now: number) => thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now
+/** A thread that woke from a snooze counts as updated when it woke. */
+export const lastActivity = (thread: Thread) =>
+  thread.snoozedUntil !== null && thread.snoozedUntil > thread.updatedAt ? thread.snoozedUntil : thread.updatedAt
 
 /** The projects' threads that are not archived, in their saved sidebar order. */
 export const selectProjectThreads =
@@ -43,11 +47,17 @@ export const selectUnpinnedProjectThreads =
   (state: Pick<ThreadsState, "byId">) =>
     selectProjectThreads(...projectIds)(state).filter((thread) => !isPinned(thread))
 
-/** Active threads of every project that are not pinned, most recently updated first. */
-export const selectInboxThreads = (state: Pick<ThreadsState, "byId">) =>
+/** Active threads of every project that are neither pinned nor snoozed at `now`, most recent activity first. */
+export const selectInboxThreads = (now: number) => (state: Pick<ThreadsState, "byId">) =>
   Object.values(state.byId)
-    .filter((thread) => isActive(thread) && !isPinned(thread))
-    .toSorted(newestFirst)
+    .filter((thread) => isActive(thread) && !isPinned(thread) && !isSnoozed(thread, now))
+    .toSorted((a, b) => lastActivity(b).localeCompare(lastActivity(a)))
+
+/** The Inbox's threads snoozed at `now`, the first to wake on top. */
+export const selectSnoozedThreads = (now: number) => (state: Pick<ThreadsState, "byId">) =>
+  Object.values(state.byId)
+    .filter((thread) => isActive(thread) && !isPinned(thread) && isSnoozed(thread, now))
+    .toSorted((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? ""))
 
 /** Active pinned threads of every project, in the order they were pinned. */
 export const selectPinnedThreads = (state: Pick<ThreadsState, "byId">) =>

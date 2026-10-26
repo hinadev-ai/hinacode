@@ -1,3 +1,4 @@
+import { homedir } from "node:os"
 import { Cause, Effect, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
@@ -8,12 +9,15 @@ import type {
   OpenerId,
   PermissionRequestOutcome,
   PullRequestDetail,
+  Thread,
+  WorkspaceChoice,
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
 import { Attachments } from "./services/Attachments.ts"
+import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
 import { ClientSettings } from "./services/ClientSettings.ts"
 import { Environments } from "./services/Environments.ts"
@@ -27,12 +31,15 @@ import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
 import { networkAddresses, RemoteAccess } from "./remote/access.ts"
+import { Relay } from "./remote/relay.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
 import { PullRequests } from "./services/PullRequests.ts"
+import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
@@ -47,6 +54,7 @@ export type AppServices =
   | Threads
   | Worktrees
   | Settings
+  | SystemResources
   | ClientSettings
   | Environments
   | AgentRunner
@@ -58,6 +66,7 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Browser
   | Automations
   | Git
   | GitHub
@@ -66,6 +75,8 @@ export type AppServices =
   | Favicons
   | Updates
   | RemoteAccess
+  | Relay
+  | RelayAccount
   | Events
   | TinyVm
   | VmPasskeyRelay
@@ -85,6 +96,8 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
+  /** Opens an http(s) URL in the default browser. Anything else is ignored. */
+  readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
@@ -99,14 +112,42 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
-/** The model a new thread starts with: the user's default for the agent, else the first one it lists. */
-const defaultModel = (provider: ProviderId) =>
+/** What a new thread of `provider` starts with: the options last picked for one, else the agent's first model. */
+const newThreadOptions = (provider: ProviderId) =>
   Effect.gen(function* () {
-    const { defaultModel: preferredModels } = yield* Settings.use((settings) => settings.get)
-    const preferred = preferredModels[provider]
-    if (preferred !== null) return preferred
-    const models = yield* AgentRunner.use((runner) => runner.listModels(provider))
-    return models[0]?.id ?? ""
+    const settings = yield* Settings.use((service) => service.get)
+    const model =
+      settings.defaultModel[provider] ?? (yield* AgentRunner.use((runner) => runner.listModels(provider)))[0]?.id ?? ""
+    return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
+  })
+
+/** A thread's options become the next new thread's defaults while it is still being set up, before its first message. */
+const rememberNewThreadOptions = (thread: Thread) =>
+  Effect.gen(function* () {
+    if (yield* Threads.use((threads) => threads.started(thread.id))) return
+    const settings = yield* Settings.use((service) => service.get)
+    const provider = thread.provider
+    yield* Settings.use((service) =>
+      service.set({
+        defaultProvider: provider,
+        defaultModel: { ...settings.defaultModel, [provider]: thread.model },
+        defaultEffort: { ...settings.defaultEffort, [provider]: thread.effort },
+        defaultFastMode: { ...settings.defaultFastMode, [provider]: thread.fastMode },
+        defaultAccessMode: thread.accessMode,
+        defaultAccount: { ...settings.defaultAccount, [provider]: thread.accountId },
+      }),
+    )
+  })
+
+/** Where a repository thread's first turn runs becomes where the next new one starts. Returns the save to run once it sent. */
+const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) =>
+  Effect.gen(function* () {
+    const thread = yield* Threads.use((threads) => threads.get(threadId))
+    const project = yield* Projects.use((projects) => projects.get(thread.projectId))
+    const first = thread.worktreeId === null && !(yield* Threads.use((threads) => threads.started(threadId)))
+    return first && project.kind === "folder"
+      ? Settings.use((service) => service.set({ defaultWorkspaceMode: mode })).pipe(Effect.asVoid)
+      : Effect.void
   })
 
 /** Git history is only read from a checkout hinacode recorded, never from a path the renderer made up. */
@@ -127,6 +168,10 @@ const closeTerminals = (threadId: string) => Terminals.use((terminals) => termin
 const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
 
 const handlers: Handlers = {
+  "browser.open": (input) => Browser.use((browser) => browser.open(input)),
+  "browser.command": (input) => Browser.use((browser) => browser.command(input)),
+  "browser.frame": (input) => Browser.use((browser) => browser.frame(input)),
+  "browser.close": (input) => Browser.use((browser) => browser.close(input)),
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
@@ -147,9 +192,10 @@ const handlers: Handlers = {
   // Thread changes are pushed as well as returned, so a phone and the desktop window stay in step.
   "threads.create": ({ projectId }) =>
     Effect.gen(function* () {
-      const model = yield* defaultModel("claude")
+      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
-        threads.create({ projectId, title: randomName(), provider: "claude", model }),
+        threads.create({ projectId, title: randomName(), provider, ...options }),
       )
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
@@ -157,18 +203,14 @@ const handlers: Handlers = {
   // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
-      const patch =
-        input.provider === undefined
-          ? input
-          : {
-              ...input,
-              model: input.model ?? (yield* defaultModel(input.provider)),
-              effort: input.effort ?? null,
-              fastMode: input.fastMode ?? false,
-            }
+      const patch = input.provider === undefined ? input : { ...(yield* newThreadOptions(input.provider)), ...input }
       const thread = yield* Threads.use((threads) => threads.update(patch))
       if (input.accessMode !== undefined) {
         yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
+      }
+      const { provider, model, effort, fastMode, accessMode } = input
+      if ([provider, model, effort, fastMode, accessMode].some((option) => option !== undefined)) {
+        yield* rememberNewThreadOptions(thread)
       }
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
@@ -181,7 +223,9 @@ const handlers: Handlers = {
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
   "threads.switchAccount": ({ id, accountId, resend }) =>
-    AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })),
+    AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })).pipe(
+      Effect.tap(rememberNewThreadOptions),
+    ),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
@@ -234,6 +278,15 @@ const handlers: Handlers = {
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
+  "relayAccount.status": () => RelayAccount.use((account) => account.status),
+  "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),
+  "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
+  "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
+  "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
+  "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
+  "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
+  "relayAccount.pendingLink": ({ userCode }) => RelayAccount.use((account) => account.pendingLink(userCode)),
+  "relayAccount.approveLink": ({ userCode }) => RelayAccount.use((account) => account.approveLink(userCode)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
@@ -270,7 +323,11 @@ const handlers: Handlers = {
       ),
     ),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
-    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace })),
+    Effect.gen(function* () {
+      const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
+      yield* AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace }))
+      yield* remember
+    }),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
   "threads.queue": ({ threadId, text, attachments = [] }) =>
@@ -368,9 +425,31 @@ const handlers: Handlers = {
   "automations.webhookUrl": ({ id }) => Automations.use((automations) => automations.webhookUrl(id)),
 
   "network.addresses": () => Effect.sync(() => networkAddresses()),
+  "system.resources": () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects.use((service) => service.list)
+      const { worktreeRoot } = yield* Settings.use((settings) => settings.get)
+      const paths = [homedir(), ...projects.map((project) => project.rootPath), ...(worktreeRoot ? [worktreeRoot] : [])]
+      return yield* SystemResources.use((resources) => resources.read(paths))
+    }),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
+  "remote.setupRelay": (_, desktop) =>
+    Effect.gen(function* () {
+      const account = yield* RelayAccount
+      const relay = yield* Relay
+      yield* relay.setup({
+        onLink: (link) =>
+          account
+            .approveOwnLink(link.userCode)
+            .pipe(
+              Effect.flatMap((approved) => (approved ? Effect.void : (desktop?.openExternal(link.url) ?? Effect.void))),
+            ),
+      })
+    }).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
+  "remote.removeRelay": () =>
+    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
 }
 
 export const RpcCall = Schema.Struct({

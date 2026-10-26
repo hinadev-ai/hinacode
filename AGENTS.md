@@ -49,6 +49,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 ## Conventions
 
 - The renderer lints with the React Compiler rules (`react/purity`, `react/refs` and the rest) and the React Doctor rules listed in `.oxlintrc.json`. Code the compiler cannot optimize fails `pnpm lint`.
+- Our own rules live in `packages/oxlint-plugin-hinacode`. `no-manual-memo` bans `useMemo`, `useCallback` and `memo` because the compiler memoizes. `no-wall-clock-in-test` bans timers, `Date.now()` and `new Date()` in tests. `prefer-start-transition` warns when a click or submit handler sets state outside a transition. Base components run their action props in one: Button `action`, Tabs `changeAction`.
 - Internal scripts are TypeScript that Node runs directly (`node scripts/tlc.ts`), so they use erasable syntax only and `.ts` import paths. `tsconfig.scripts.json` type-checks them. `bin/hinacode.mjs` stays JavaScript because it ships in the npm package, and Node does not strip types under `node_modules`.
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.

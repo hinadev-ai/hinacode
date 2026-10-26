@@ -47,7 +47,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
       className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground data-[needs-you=true]:border-attention/30 data-[needs-you=true]:bg-attention/10 data-[needs-you=true]:text-attention"
     >
       <Icon aria-hidden className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1">{text}</span>
+      <span className="min-w-0 flex-1 tabular-nums">{text}</span>
       {cloud.status === "unauthorized" ? (
         <Button
           variant="outline"

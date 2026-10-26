@@ -1,4 +1,5 @@
 minimumReleaseAgeExclude:
   - effect@4.0.3
 allowBuilds:
+  react-native-enriched-markdown: true
   unrs-resolver: false

@@ -1,5 +1,7 @@
 import { Effect } from "effect"
 import { RemoteAccess } from "./remote/access.ts"
+import { Relay } from "./remote/relay.ts"
+import type { RelayError, RelayLink } from "./remote/relayService.ts"
 import type { PersistenceError } from "./services/errors.ts"
 import { Settings } from "./services/Settings.ts"
 
@@ -13,6 +15,8 @@ serve options:
   --port <n>        Port to listen on, or HINACODE_SERVE_PORT.
   --host <host>     Address to bind, or HINACODE_SERVE_HOST. 0.0.0.0 for every interface.
   --rotate-token    Replace the token, which unpairs every client, or HINACODE_SERVE_ROTATE_TOKEN=1.
+  --relay on|off    Reach the cloud from any network through the HinaCode relay, or HINACODE_SERVE_RELAY.
+                    on links it to your HinaCode account once, and needs cloudflared on PATH. off unlinks it.
 
   -h, --help        Print this help.
   --version         Print the version.
@@ -31,7 +35,7 @@ const OPTIONS: Record<
   "serve" | "pair",
   { readonly values: ReadonlyArray<string>; readonly switches: ReadonlyArray<string> }
 > = {
-  serve: { values: ["--port", "--host"], switches: ["--rotate-token"] },
+  serve: { values: ["--port", "--host", "--relay"], switches: ["--rotate-token"] },
   pair: { values: [], switches: [] },
 }
 
@@ -64,6 +68,8 @@ export interface ServeConfig {
   readonly bindHost?: string
   readonly port?: number
   readonly rotateToken: boolean
+  /** Turns the relay on or off. Left out keeps whatever relay is stored. */
+  readonly relay?: "on" | "off"
 }
 
 const envFlag = (env: NodeJS.ProcessEnv, name: string): boolean => {
@@ -129,10 +135,16 @@ export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv)
         : undefined
   const bindHost = flagValue(argv, "host") ?? env["HINACODE_SERVE_HOST"]
   if (bindHost !== undefined && bindHost.trim() === "") throw new Error("serve host must not be empty")
+  const relayFlag = flagValue(argv, "relay")
+  const relay = relayFlag ?? env["HINACODE_SERVE_RELAY"]
+  if (relay !== undefined && relay !== "on" && relay !== "off") {
+    throw new UsageError(`${relayFlag !== undefined ? "--relay" : "HINACODE_SERVE_RELAY"} must be on or off`)
+  }
 
   return {
     ...(bindHost !== undefined && { bindHost }),
     ...(port !== undefined && { port }),
+    ...(relay !== undefined && { relay }),
     rotateToken: argv.includes("--rotate-token") || envFlag(env, "HINACODE_SERVE_ROTATE_TOKEN"),
   }
 }
@@ -155,4 +167,20 @@ export const applyServeConfig = (config: ServeConfig): Effect.Effect<void, Persi
       yield* settings.set({ remote: next })
     }
     if (config.rotateToken) yield* RemoteAccess.use((remote) => remote.rotateToken)
+  })
+
+/**
+ * Turns the relay on or off as `--relay` asks, once the listener is bound. A relay that already has a hostname is
+ * left as it is, so a boot needs no call to the relay service. `onLink` shows the sign-in of a first link.
+ */
+export const applyServeRelay = (
+  relay: ServeConfig["relay"],
+  onLink: (link: RelayLink) => Effect.Effect<void>,
+): Effect.Effect<void, RelayError | PersistenceError, Relay> =>
+  Effect.gen(function* () {
+    if (relay === undefined) return
+    const service = yield* Relay
+    if (relay === "off") return yield* service.remove
+    if ("hostname" in (yield* service.status)) return
+    yield* service.setup({ onLink })
   })

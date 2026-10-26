@@ -56,3 +56,21 @@ When("I click {string} in the file tree", async ({ app }, name: string) => {
 When("I append {string} to {string} while browsing files", ({ repo }, text: string, path: string) => {
   appendFileSync(join(repo, path), `${text}\n`)
 })
+
+const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
+Given("the image {string} exists in my repository", ({ repo }, path: string) => {
+  writeFileSync(join(repo, path), Buffer.from(ONE_PIXEL_PNG, "base64"))
+})
+
+Then(
+  "the file viewer renders the heading {string} and the image {string}",
+  async ({ app }, heading: string, image: string) => {
+    await expect(app.page.getByRole("heading", { name: heading, exact: true })).toBeVisible()
+    await expect(app.page.getByRole("img", { name: image, exact: true })).toHaveJSProperty("naturalWidth", 1)
+  },
+)
+
+When("I click {string} in the file viewer", async ({ app }, button: string) => {
+  await app.page.getByRole("button", { name: button, exact: true }).click()
+})

@@ -1,0 +1,11 @@
+{
+  "name": "oxlint-plugin-hinacode",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HinaCode's own oxlint rules.",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@oxlint/plugins": "1.87.0"
+  }
+}

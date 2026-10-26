@@ -75,6 +75,8 @@ Adding an agent backend means one implementation of `AgentProvider` in `src/main
 
 Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own HinaCode on a throwaway `HINACODE_USER_DATA`, seeds preconditions through `window.hinacode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
 
+Remote Browser tabs and their integration tests need Chrome or Chromium on the host. To install Playwright's Chromium and its Linux dependencies, run `pnpm exec playwright install --with-deps chromium`. A cloud installed from npm can use `npx playwright install --with-deps chromium`. Set `HINACODE_BROWSER_EXECUTABLE_PATH` when the browser lives elsewhere. The browser runs on the thread's machine, so its `localhost` reaches that machine's services.
+
 Scenarios that depend on native pointer capture, scrolling or window focus carry `@desktop`. They run with one worker after the parallel scenarios finish, because separate app profiles still share the desktop's focus and input.
 
 Run selected desktop scenarios with `pnpm test:e2e --project desktop --no-deps -g 'Resizable'`. The `--no-deps` flag skips the parallel project for a focused run.
@@ -89,3 +91,4 @@ Several designs in HinaCode follow [T3 Code](https://github.com/pingdotgg/t3code
 - The MCP server design: Effect's `McpServer.layerHttp` behind bearer auth, one random credential per thread, injected into the agent's MCP config. The pull request tools (`link_pull_request`, `unlink_pull_request`, `list_thread_pull_requests`) and `request_secret` share T3 Code's names.
 - The pull request checks rollup: `null` when a PR has no checks, failing before pending before passing, and `workflow / name` as the check label.
 - Webhook automations verified with a `sha256=` HMAC in `x-hub-signature-256`, with `{{path}}` placeholders filled into the prompt.
+- Remote browser tabs run headless Chromium on the thread's host and send screencasts to the client. We compared Orca's local network proxy and server streaming before choosing this design for the Node daemon. See [the remote browser design](docs/features/2026-10-26-remote-browser.md).

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useRef } from "react"
 import { RiArrowLeftLine } from "react-icons/ri"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
@@ -28,7 +28,7 @@ export function SubagentTranscript({
   providerLabel: string
 }) {
   const subagent = useSubagentByCallId(thread.id, callId)
-  const { spawn, calls, startedAt } = useMemo(() => findSubagentWork(messages, callId), [messages, callId])
+  const { spawn, calls, startedAt } = findSubagentWork(messages, callId)
   const open = useOpenSubagent(thread.id)
   const now = useNow(subagent?.status === "running")
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -49,23 +49,20 @@ export function SubagentTranscript({
       : (inputField(findSubagentWork(messages, parentCallId).spawn, "description") ?? m.agents_untitled())
 
   const createdAt = startedAt ?? subagent?.startedAt
-  const transcript = useMemo<ReadonlyArray<Message>>(
-    () =>
-      createdAt === undefined
-        ? []
-        : [
-            {
-              id: `subagent:${callId}`,
-              threadId: thread.id,
-              role: "assistant",
-              parts: result ? [...calls, { type: "text", text: result }] : calls,
-              createdAt,
-              completedAt: status === "running" ? null : createdAt,
-              usage: null,
-            },
-          ],
-    [callId, thread.id, calls, result, createdAt, status],
-  )
+  const transcript: ReadonlyArray<Message> =
+    createdAt === undefined
+      ? []
+      : [
+          {
+            id: `subagent:${callId}`,
+            threadId: thread.id,
+            role: "assistant",
+            parts: result ? [...calls, { type: "text", text: result }] : calls,
+            createdAt,
+            completedAt: status === "running" ? null : createdAt,
+            usage: null,
+          },
+        ]
 
   useEffect(() => headingRef.current?.focus({ preventScroll: true }), [])
 

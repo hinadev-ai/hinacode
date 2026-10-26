@@ -4,15 +4,13 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useEffectEvent } from "react"
 import type { Thread } from "../../shared/domain.ts"
-import { rowState } from "../../shared/threadStatus.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import type { ThreadSwitcher as Switcher } from "../lib/threadSwitcher.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { useUnseen } from "../stores/unseen.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { StatusIndicator } from "./SidebarThreadList.tsx"
+import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 
 /** The Ctrl+Tab overlay. Letting go of the modifier opens the highlighted thread. */
 export function ThreadSwitcher() {
@@ -93,10 +91,7 @@ interface SwitcherRowProps {
 function SwitcherRow({ thread, highlighted, current, onChoose }: SwitcherRowProps) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const project = projects.find((candidate) => candidate.id === thread.projectId)?.name
-  const state = rowState(
-    thread.status,
-    useUnseen((unseen) => unseen.byThreadId[thread.id]),
-  )
+  const state = useThreadRowState(thread)
   return (
     <li>
       <button

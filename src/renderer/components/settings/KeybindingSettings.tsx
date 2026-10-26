@@ -1,4 +1,5 @@
 import { useAtomSet } from "@effect/atom-react"
+import { cn } from "cn"
 import { useHotkeyRecorder } from "@tanstack/react-hotkeys"
 import { useState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
@@ -11,7 +12,7 @@ import { ChordKeys } from "../ChordKeys.tsx"
 import { Button } from "../ui/button.tsx"
 import { FieldError } from "../ui/field.tsx"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
 const whenLabels: Record<When, () => string> = {
@@ -87,34 +88,37 @@ export function KeybindingSettings() {
       }
     >
       {error && <FieldError>{error}</FieldError>}
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-2/5">{m.settings_keybindings_command()}</TableHead>
-            <TableHead>{m.settings_keybindings_shortcut()}</TableHead>
-            <TableHead className="w-36 text-right">
-              <span className="sr-only">{m.settings_keybindings_actions()}</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {commands
-            .filter((command) => isCommandAvailable(command, experimental))
-            .map((command) => (
-              <KeybindingRow
-                key={command.id}
-                command={command}
-                chord={keymap[command.id] ?? ""}
-                conflicts={conflictsOf(keymap, command.id)}
-                overridden={command.id in overrides}
-                recording={recordingId === command.id}
-                onRecord={() => record(command)}
-                onRecordEnd={endRecording}
-                onReset={() => reset(command)}
-              />
-            ))}
-        </TableBody>
-      </Table>
+      {/* Rows keep the table's hairlines, recolored to read on the surface. */}
+      <div className={cn(settingsSurfaceClass, "px-2 [&_tr]:border-foreground/8")}>
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-2/5">{m.settings_keybindings_command()}</TableHead>
+              <TableHead>{m.settings_keybindings_shortcut()}</TableHead>
+              <TableHead className="w-36 text-right">
+                <span className="sr-only">{m.settings_keybindings_actions()}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {commands
+              .filter((command) => isCommandAvailable(command, experimental))
+              .map((command) => (
+                <KeybindingRow
+                  key={command.id}
+                  command={command}
+                  chord={keymap[command.id] ?? ""}
+                  conflicts={conflictsOf(keymap, command.id)}
+                  overridden={command.id in overrides}
+                  recording={recordingId === command.id}
+                  onRecord={() => record(command)}
+                  onRecordEnd={endRecording}
+                  onReset={() => reset(command)}
+                />
+              ))}
+          </TableBody>
+        </Table>
+      </div>
     </SettingsSection>
   )
 }

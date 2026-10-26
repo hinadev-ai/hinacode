@@ -182,7 +182,7 @@ function DiffSummary({ files }: { files: ReadonlyArray<PullRequestFile> }) {
   const removed = files.reduce((sum, file) => sum + file.deletions, 0)
   return (
     <p className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span>{m.pr_code_summary({ count: files.length })}</span>
+      <span className="tabular-nums">{m.pr_code_summary({ count: files.length })}</span>
       <LineCounts added={added} removed={removed} />
     </p>
   )
@@ -360,7 +360,7 @@ function GuideGroupView({ group }: { group: ResolvedGroup }) {
           {group.containsCritical && <CriticalMark className="size-4" />}
         </div>
         <p className="flex items-center gap-2 pl-6 text-xs text-muted-foreground">
-          <span>{m.guide_group_files({ count: files.length })}</span>
+          <span className="tabular-nums">{m.guide_group_files({ count: files.length })}</span>
           <LineCounts
             added={files.reduce((sum, entry) => sum + entry.file.additions, 0)}
             removed={files.reduce((sum, entry) => sum + entry.file.deletions, 0)}

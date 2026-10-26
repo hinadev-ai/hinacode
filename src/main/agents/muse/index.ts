@@ -15,7 +15,7 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { elementContext } from "../elementContext.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange } from "../provider.ts"
+import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
@@ -24,7 +24,6 @@ import { editedPath, toolInput, toolName, toolResult } from "./items.ts"
 import { toPlanLimits } from "./limits.ts"
 import {
   AccountState,
-  type ApprovalMode,
   type ApprovalRequestParams,
   type ApprovalResolvedParams,
   type ApprovalUpdatedParams,
@@ -32,6 +31,7 @@ import {
   type ItemCompletedParams,
   type ItemDeltaParams,
   type ItemStartedParams,
+  type ItemUpdatedParams,
   ModelList,
   type SessionCompactResult,
   type SessionContextUsageParams,
@@ -42,6 +42,7 @@ import {
   ToolCallFrame,
   type TurnCompletedParams,
   type TurnInputPart,
+  type TurnModelRetryScheduledParams,
   type TurnStartResult,
   type UserInputRequestParams,
   type UserInputSettledParams,
@@ -49,26 +50,22 @@ import {
 } from "./protocol.ts"
 import { toAnswers, toQuestion } from "./questions.ts"
 import { parseSkillInvocation, toCommand } from "./skills.ts"
+import { applySubagentItem, type Subagents } from "./subagents.ts"
 import { makeSessionUsage } from "./usage.ts"
 
 const CLIENT_VERSION = "0.1.0"
 
-/**
- * Muse's OS sandbox stays on with the network open. Under the default `proxy-only`, `allowAll` silently blocks every
- * connection, so Full access could not reach the network. The posture is fixed per host and a loaded session cannot
- * move to another host, so every thread shares it. `--trust-workspace` loads the project's skills and rules, since
- * importing a project trusts it.
- */
-const HOST_ARGS = ["serve", "--trust-workspace", "--sandbox-network", "enabled"]
+/** `--trust-workspace` loads the project's skills and rules, since importing a project trusts it. */
+const HOST_ARGS = ["serve", "--trust-workspace"]
 
 /**
- * Full access is `onRequest` with every request allowed here. Under `allowAll` Muse refuses a command that asks to
- * leave the sandbox, because only a human may allow that and `allowAll` turns asking off.
+ * Muse's built-in permission profiles, the ones its own picker lists. Each sets the sandbox, network and approval
+ * mode together, so a thread behaves the same here as in the Muse TUI.
  */
-const approvalModes: Record<AccessMode, ApprovalMode> = {
-  supervised: "promptUnmatched",
-  auto: "onRequest",
-  full: "onRequest",
+const permissionProfiles: Record<AccessMode, string> = {
+  supervised: ":ask-me",
+  auto: ":auto-review",
+  full: ":unrestricted",
 }
 
 /** The size Claude Code accepts inline. A larger image goes in as a path, and Muse re-encodes it when it reads it. */
@@ -85,7 +82,8 @@ const SUMMARY_BREAK = "\n\n"
 /** What a host knows about each session it loaded, so a turn only sends the changes. */
 interface LoadedSession {
   model: string | null
-  approvalMode: ApprovalMode | null
+  /** Null when the session was loaded without picking one, such as a probe session. */
+  permissionProfile: string | null
   cwd: string
   /** The context size Muse last reported, null until it reports one. */
   usedTokens: number | null
@@ -106,12 +104,20 @@ interface HostEntry {
 type Run = {
   /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
-  accessMode: AccessMode
   entry?: HostEntry
   sessionId?: string
   /** Outlives a stopped run, so a turn Muse starts after Stop can still be interrupted. */
   turnStart?: Fiber.Fiber<string, AgentError>
   turnId?: string
+  /** Set as soon as Muse completes `turnId`, while the run's stream may still be winding down. */
+  ended: boolean
+}
+
+/** A turn Muse started by itself. Its notifications wait in `inbox` until the runner follows it. */
+interface WakeTurn {
+  readonly turnId: string
+  readonly inbox: Queue.Queue<Incoming>
+  ended: boolean
 }
 
 /**
@@ -124,7 +130,7 @@ interface Approval {
   /** The latest choices and current stage. */
   params: ApprovalRequestParams
   decision: ApprovalDecision | undefined
-  /** False when full access or a session grant answered it without asking. */
+  /** False when a session grant answered it without asking. */
   presented: boolean
   /** The stage answered last, so no stage is answered twice. */
   answered: number | undefined
@@ -300,6 +306,7 @@ const make = Effect.gen(function* () {
         yield* host
           .subscribe((message) => {
             trackBackgroundTasks(entry, message)
+            trackTurns(entry, message)
             if (message.kind !== "notification") return
             if (message.method === "usage/changed") {
               planUsage = Option.getOrElse(decodePlanUsage(message.params), () => planUsage)
@@ -322,6 +329,8 @@ const make = Effect.gen(function* () {
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
   /** Each thread's Muse session, so `skill/list` can ask the session a turn would run in. */
   const threadSessions = new Map<string, string>()
+  /** Sub-agents each thread's agent spawned, kept across its turns like Codex's. */
+  const subagentsByThread = new Map<string, Subagents>()
   /**
    * One throwaway session per workspace, started only to read its `skill/list` before the thread's first
    * turn. It never runs a turn, and a respawned host resumes it instead of starting another.
@@ -332,6 +341,57 @@ const make = Effect.gen(function* () {
   const runs = new Map<string, Run>()
   /** "Allow for session" grants keyed by hinacode threadId. They last until hinacode quits. */
   const grants = new Map<string, Set<string>>()
+  const wakes = yield* Queue.unbounded<Wake>()
+  /** Turns Muse started by itself, keyed by session, from `turn/started` until the runner is done with them. */
+  const wakeTurns = new Map<string, WakeTurn>()
+
+  const isFollowed = (threadId: string, sessionId: string) => {
+    const run = runs.get(threadId)
+    const wake = wakeTurns.get(sessionId)
+    return (run !== undefined && !run.ended) || (wake !== undefined && !wake.ended)
+  }
+
+  /**
+   * Muse starts a turn by itself, such as to answer a background shell that finished after the turn ended. When no
+   * run follows the session, that turn becomes a wake. Its notifications are kept from `turn/started` on, so an
+   * approval it asks for before the runner adopts it still reaches the user.
+   */
+  const trackTurns = (entry: HostEntry, message: Incoming) => {
+    if (message.kind === "exit") {
+      for (const wake of wakeTurns.values()) Queue.offerUnsafe(wake.inbox, message)
+      return
+    }
+    const { sessionId, turnId } = (message.params ?? {}) as { sessionId?: string; turnId?: string }
+    if (sessionId === undefined) return
+    if (message.method === "turn/completed") {
+      for (const turn of [...runs.values(), ...wakeTurns.values()]) if (turn.turnId === turnId) turn.ended = true
+    }
+    if (message.method === "turn/started" && turnId !== undefined) wake(entry, sessionId, turnId)
+    const wakeTurn = wakeTurns.get(sessionId)
+    if (wakeTurn !== undefined) Queue.offerUnsafe(wakeTurn.inbox, message)
+  }
+
+  const wake = (entry: HostEntry, sessionId: string, turnId: string) => {
+    const threadId = threadOf(sessionId)
+    if (threadId === undefined || isFollowed(threadId, sessionId)) return
+    const wakeTurn: WakeTurn = { turnId, inbox: Effect.runSync(Queue.unbounded<Incoming>()), ended: false }
+    wakeTurns.set(sessionId, wakeTurn)
+    const release = Effect.sync(() => wakeTurns.get(sessionId) === wakeTurn && wakeTurns.delete(sessionId))
+    const events = turnStream(threadId, (run, emit) =>
+      Effect.gen(function* () {
+        // A run started for the user's message took the turn over.
+        if (wakeTurns.get(sessionId) !== wakeTurn) return
+        Object.assign(run, { entry, sessionId, turnId })
+        const { handle } = yield* followTurn(threadId, run, entry, sessionId, emit)
+        while (!(yield* Queue.take(wakeTurn.inbox).pipe(Effect.flatMap(handle)))) {}
+      }),
+    )
+    Queue.offerUnsafe(wakes, {
+      threadId,
+      events: events.pipe(Stream.ensuring(release)),
+      discard: release.pipe(Effect.andThen(interruptTurn(entry.host, sessionId, turnId)), Effect.ignore),
+    })
+  }
 
   const listModels = Effect.gen(function* () {
     const host = yield* getHost(null)
@@ -389,7 +449,7 @@ const make = Effect.gen(function* () {
           if (resumed !== undefined) {
             sessions.set(known, {
               model: resumed.modelId,
-              approvalMode: resumed.approvalMode?.mode ?? null,
+              permissionProfile: null,
               cwd,
               usedTokens: null,
               compacting: false,
@@ -402,7 +462,7 @@ const make = Effect.gen(function* () {
           .pipe(Effect.mapError(toAgentError))
         sessions.set(session.sessionId, {
           model: session.modelId ?? null,
-          approvalMode: null,
+          permissionProfile: null,
           cwd,
           usedTokens: null,
           compacting: false,
@@ -431,11 +491,11 @@ const make = Effect.gen(function* () {
       return skills.map(toCommand)
     })
 
-  /** Starts the thread's session or loads it into the host, then brings its model and approval mode up to date. */
+  /** Starts the thread's session or loads it into the host, then brings its model and permission profile up to date. */
   const openSession = (entry: HostEntry, input: RunTurnInput) =>
     Effect.gen(function* () {
       const { host, sessions } = entry
-      const approvalMode = approvalModes[input.accessMode]
+      const permissionProfile = permissionProfiles[input.accessMode]
       // Each session carries its own thread's credential for the hinacode MCP server.
       const config = {
         mcpServers: {
@@ -446,12 +506,12 @@ const make = Effect.gen(function* () {
         const { session } = yield* host.command<SessionStartResult>("session/start", {
           workspaceRoot: input.cwd,
           modelId: input.model,
-          approvalMode,
+          permissionProfile,
           config,
         })
         sessions.set(session.sessionId, {
           model: input.model,
-          approvalMode,
+          permissionProfile,
           cwd: input.cwd,
           usedTokens: null,
           compacting: false,
@@ -465,11 +525,12 @@ const make = Effect.gen(function* () {
         const { session } = yield* host.command<SessionResumeResult>("session/resume", {
           sessionId,
           excludeItems: true,
+          permissionProfile,
           config,
         })
         loaded = {
           model: session.modelId,
-          approvalMode: session.approvalMode?.mode ?? null,
+          permissionProfile,
           cwd: input.cwd,
           // An `excludeItems` resume carries no context usage.
           usedTokens: input.autoCompactTokens === null ? null : yield* latestUsedTokens(host, sessionId),
@@ -482,417 +543,406 @@ const make = Effect.gen(function* () {
         yield* host.command("session/setModel", { sessionId, model: { modelId: input.model } })
         loaded.model = input.model
       }
-      if (loaded.approvalMode !== approvalMode) {
-        yield* host.command("session/setApprovalMode", { sessionId, mode: approvalMode })
-        loaded.approvalMode = approvalMode
+      if (loaded.permissionProfile !== permissionProfile) {
+        yield* host.command("session/setPermissionProfile", { sessionId, profileId: permissionProfile })
+        loaded.permissionProfile = permissionProfile
       }
       return sessionId
     }).pipe(Effect.mapError(toAgentError))
 
-  const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
+  /**
+   * Translates the session's notifications into one turn's events. `handle` answers true once Muse completes
+   * `run.turnId`. Approvals and questions still open when the scope closes are denied or cancelled.
+   */
+  const followTurn = (
+    threadId: string,
+    run: Run,
+    entry: HostEntry,
+    sessionId: string,
+    emit: (event: AgentEvent) => Effect.Effect<boolean>,
+  ) =>
+    Effect.gen(function* () {
+      const { host } = entry
+      const cwd = entry.sessions.get(sessionId)?.cwd ?? ""
+      const threadGrants = grants.get(threadId) ?? new Set<string>()
+      grants.set(threadId, threadGrants)
+      let subagents = subagentsByThread.get(threadId)
+      if (subagents === undefined) subagentsByThread.set(threadId, (subagents = new Map()))
+      const pendingApprovals = new Map<string, Approval>()
+      const pendingQuestions = new Map<string, { readonly id: string; readonly params: UserInputRequestParams }>()
+      /** Text already shown per streamed item, so `item/completed` adds only what never arrived as a delta. */
+      const shown = new Map<string, string>()
+      /** The reasoning summary part each item streamed last. */
+      const summaryParts = new Map<string, string>()
+      const toolOutput = new Map<string, string>()
+      const openTools = new Set<string>()
+      /** Calls whose row closed when they went to the background; the tray follows them from there. */
+      const backgroundedTools = new Set<string>()
+      let context: ContextWindow | undefined
+      /** `running` is true while the compaction hinacode asked for before the turn runs. */
+      const requestedCompaction = { running: false }
+      /**
+       * Muse retries a 429 without a reset time as a rate limit, and its giving up carries no `quota`. It is the
+       * same wall to the user, so the turn ends limited, as a Claude 429 does.
+       */
+      let rateLimited = false
+
+      const decide = (approval: Approval, decision: ApprovalDecision) =>
+        Effect.gen(function* () {
+          const stage = approval.params.currentRequirementId.sourceIndex
+          if (approval.answered === stage) return
+          approval.answered = stage
+          const choice = choiceFor(decision, approval.params.availableChoices)
+          if (choice === undefined) {
+            return yield* Effect.logWarning("Muse offered no choice for the decision", decision)
+          }
+          yield* host
+            .command("approval/decide", {
+              sessionId,
+              approvalId: approval.params.approvalId,
+              requirementId: approval.params.currentRequirementId,
+              choiceId: choice.choiceId,
+            })
+            .pipe(
+              // A stage the host already settled, such as one it resolved while the answer was in flight.
+              Effect.catch((error) => Effect.logWarning("approval/decide failed", error.message)),
+            )
+        })
+
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          // The consumer went away mid-approval: deny instead of leaving Muse waiting.
+          for (const approval of pendingApprovals.values()) {
+            if (approvals.delete(approval.id) && approval.decision === undefined) yield* decide(approval, "deny")
+          }
+          for (const { id, params } of pendingQuestions.values()) {
+            if (!questions.delete(id)) continue
+            yield* host.command("userInput/cancel", { sessionId, userInputId: params.userInputId }).pipe(Effect.ignore)
+          }
+        }),
+      )
+
+      const requestApproval = (params: ApprovalRequestParams) =>
+        Effect.gen(function* () {
+          const known = pendingApprovals.get(params.approvalId)
+          if (known !== undefined) {
+            known.params = params
+            if (known.decision !== undefined) yield* decide(known, known.decision)
+            return
+          }
+          const approval: Approval = {
+            id: randomUUID(),
+            params,
+            decision: undefined,
+            presented: false,
+            answered: undefined,
+          }
+          pendingApprovals.set(params.approvalId, approval)
+          if (threadGrants.has(grantKey(sessionScope(params)))) {
+            approval.decision = "allow"
+            return yield* decide(approval, "allow")
+          }
+          approval.presented = true
+          const deferred = yield* Deferred.make<ApprovalDecision>()
+          approvals.set(approval.id, deferred)
+          yield* emit({
+            type: "approval_requested",
+            request: toApprovalRequest(params, approval.id, threadId),
+          })
+          yield* Deferred.await(deferred).pipe(
+            Effect.flatMap((decision) => {
+              approval.decision = decision
+              if (decision === "allow_for_session") threadGrants.add(grantKey(sessionScope(approval.params)))
+              return decide(approval, decision)
+            }),
+            Effect.forkScoped,
+          )
+        })
+
+      const updateApproval = (params: ApprovalUpdatedParams) =>
+        Effect.gen(function* () {
+          const known = pendingApprovals.get(params.approvalId)
+          if (known === undefined) return
+          const { availableChoices, currentRequirementId, subject } = params
+          known.params = { ...known.params, availableChoices, currentRequirementId, subject }
+          if (known.decision !== undefined) yield* decide(known, known.decision)
+        })
+
+      const resolveApproval = ({ approvalId }: ApprovalResolvedParams) =>
+        Effect.gen(function* () {
+          const approval = pendingApprovals.get(approvalId)
+          if (approval === undefined) return
+          pendingApprovals.delete(approvalId)
+          approvals.delete(approval.id)
+          if (approval.presented) yield* emit({ type: "approval_resolved", requestId: approval.id })
+        })
+
+      const requestQuestion = (params: UserInputRequestParams) =>
+        Effect.gen(function* () {
+          if (pendingQuestions.has(params.userInputId)) return
+          const id = randomUUID()
+          const answers = yield* Deferred.make<QuestionAnswers>()
+          questions.set(id, answers)
+          pendingQuestions.set(params.userInputId, { id, params })
+          yield* emit({
+            type: "question_requested",
+            request: {
+              id,
+              threadId,
+              provider: "muse",
+              questions: params.questions.map(toQuestion),
+            },
+          })
+          yield* Deferred.await(answers).pipe(
+            Effect.flatMap((chosen) => {
+              const answered = toAnswers(params.questions, chosen)
+              return answered === null
+                ? host.command("userInput/cancel", { sessionId, userInputId: params.userInputId })
+                : host.command("userInput/answer", {
+                    sessionId,
+                    userInputId: params.userInputId,
+                    answers: answered,
+                  })
+            }),
+            Effect.catch((error) => Effect.logWarning("answering a Muse question failed", error.message)),
+            Effect.forkScoped,
+          )
+        })
+
+      const resolveQuestion = ({ userInputId }: UserInputSettledParams) =>
+        Effect.gen(function* () {
+          const pending = pendingQuestions.get(userInputId)
+          if (pending === undefined) return
+          pendingQuestions.delete(userInputId)
+          questions.delete(pending.id)
+          yield* emit({ type: "question_resolved", requestId: pending.id })
+        })
+
+      const startTool = (item: Item) => {
+        if (item.tool === undefined || openTools.has(item.itemId)) return Effect.void
+        openTools.add(item.itemId)
+        return emit({
+          type: "tool_call_started",
+          callId: item.itemId,
+          name: toolName(item.tool),
+          input: toolInput(item.args),
+        })
+      }
+
+      const backgroundTool = (params: unknown) =>
+        Effect.gen(function* () {
+          const frame = decodeToolCall(params)
+          if (Option.isNone(frame)) return
+          const { item } = frame.value
+          if (!isBackgrounded(item) || !openTools.has(item.itemId)) return
+          openTools.delete(item.itemId)
+          toolOutput.delete(item.itemId)
+          backgroundedTools.add(item.itemId)
+          yield* emit({
+            type: "tool_call_finished",
+            callId: item.itemId,
+            output: "Running in the background",
+            isError: false,
+          })
+        })
+
+      const finishTool = (item: Item) =>
+        Effect.gen(function* () {
+          if (item.tool === undefined || backgroundedTools.has(item.itemId)) return
+          yield* startTool(item)
+          openTools.delete(item.itemId)
+          yield* emit({
+            type: "tool_call_finished",
+            callId: item.itemId,
+            ...toolResult(item, toolOutput.get(item.itemId)),
+          })
+          toolOutput.delete(item.itemId)
+          const path = editedPath(item, cwd)
+          if (path !== undefined) yield* emit({ type: "file_changed", path })
+        })
+
+      /** Emits whatever part of the final text never arrived as a delta, such as after a gap in the stream. */
+      const finishText = (item: Item, type: "text_delta" | "reasoning_delta", text: string) =>
+        Effect.gen(function* () {
+          const seen = shown.get(item.itemId) ?? ""
+          shown.delete(item.itemId)
+          const rest = text.startsWith(seen) ? text.slice(seen.length) : ""
+          if (rest !== "") yield* emit({ type, text: rest })
+        })
+
+      const onDelta = ({ itemId, field = "text", delta }: ItemDeltaParams) =>
+        Effect.gen(function* () {
+          if (field === "output") {
+            toolOutput.set(itemId, (toolOutput.get(itemId) ?? "") + delta)
+            return
+          }
+          const reasoning = field.startsWith("summary.")
+          if (field !== "text" && !reasoning) return
+          const previousPart = summaryParts.get(itemId)
+          if (reasoning) summaryParts.set(itemId, field)
+          const text = previousPart !== undefined && previousPart !== field ? `${SUMMARY_BREAK}${delta}` : delta
+          shown.set(itemId, (shown.get(itemId) ?? "") + text)
+          yield* emit({ type: reasoning ? "reasoning_delta" : "text_delta", text })
+        })
+
+      const emitSubagent = (item: Item) => {
+        const changed = applySubagentItem(subagents, item, new Date().toISOString())
+        return changed === undefined ? Effect.void : emit({ type: "subagent_updated", subagent: changed })
+      }
+
+      const onCompleted = (item: Item) => {
+        switch (item.kind) {
+          case "agentMessage":
+            return finishText(item, "text_delta", item.text ?? "")
+          case "reasoning":
+            summaryParts.delete(item.itemId)
+            return finishText(item, "reasoning_delta", (item.summary ?? []).join(SUMMARY_BREAK))
+          case "toolCall":
+            return finishTool(item)
+          case "subagent":
+            return emitSubagent(item)
+          case "compaction":
+            return finishCompaction(item)
+          default:
+            return Effect.void
+        }
+      }
+
+      /** A noop leaves the context as small as Muse can make it, which reads as done rather than failed. */
+      const finishCompaction = (item: Item) => {
+        const trigger = requestedCompaction.running || item.trigger !== "manual" ? "auto" : "manual"
+        requestedCompaction.running = false
+        const compaction: Compaction =
+          item.outcome === "compacted" || item.outcome === "noop"
+            ? {
+                status: "done",
+                trigger,
+                preTokens: item.tokensBefore ?? null,
+                postTokens: item.tokensAfter ?? null,
+              }
+            : { status: "failed", message: item.reason ?? null }
+        return emit({ type: "compaction_updated", compaction })
+      }
+
+      const finishTurn = (params: TurnCompletedParams) =>
+        Effect.gen(function* () {
+          // A stopped turn may complete without item/completed for the tools it cut off.
+          for (const callId of openTools) {
+            const output = toolOutput.get(callId) ?? `Turn ${params.terminal}`
+            yield* emit({ type: "tool_call_finished", callId, output, isError: true })
+          }
+          openTools.clear()
+          if (params.terminal === "completed") {
+            return yield* emit({
+              type: "turn_completed",
+              usage: {
+                inputTokens: params.usage?.inputTokens ?? 0,
+                outputTokens: params.usage?.outputTokens ?? 0,
+                ...(context && { context }),
+              },
+            })
+          }
+          if (params.terminal === "cancelled") return yield* emit(interruptedEvent)
+          const quota = params.error?.quota
+          if (quota !== undefined || rateLimited) {
+            return yield* emit({
+              type: "turn_limited",
+              limit: {
+                kind: "usage",
+                message: params.error?.message ?? "Muse Code usage limit reached",
+                reset: quota === undefined ? null : { at: new Date(quota.resetsAtMs).toISOString(), autoResume: false },
+              },
+            })
+          }
+          yield* emit({
+            type: "turn_failed",
+            message: params.error?.message ?? params.reason ?? `Turn ${params.terminal}`,
+          })
+        })
+
+      /** Returns true once the turn is over. */
+      const handle = (message: Incoming): Effect.Effect<boolean, AgentError, Scope.Scope> =>
+        Effect.gen(function* () {
+          if (message.kind === "exit") return yield* Effect.fail(message.error)
+          if ((message.params as { sessionId?: string } | undefined)?.sessionId !== sessionId) return false
+          if (message.kind === "request") {
+            if (message.method === "approval/request") {
+              yield* requestApproval(message.params as ApprovalRequestParams)
+            } else if (message.method === "userInput/request") {
+              yield* requestQuestion(message.params as UserInputRequestParams)
+            }
+            return false
+          }
+          switch (message.method) {
+            case "item/started": {
+              const { item } = message.params as ItemStartedParams
+              if (item.kind === "toolCall") yield* startTool(item)
+              if (item.kind === "subagent") yield* emitSubagent(item)
+              if (item.kind === "compaction") {
+                yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+              }
+              return false
+            }
+            case "item/updated": {
+              yield* backgroundTool(message.params)
+              const { item } = message.params as ItemUpdatedParams
+              if (item.kind === "subagent") yield* emitSubagent(item)
+              return false
+            }
+            case "item/delta":
+              yield* onDelta(message.params as ItemDeltaParams)
+              return false
+            case "item/completed":
+              yield* onCompleted((message.params as ItemCompletedParams).item)
+              return false
+            case "approval/updated":
+              yield* updateApproval(message.params as ApprovalUpdatedParams)
+              return false
+            case "approval/resolved":
+              yield* resolveApproval(message.params as ApprovalResolvedParams)
+              return false
+            case "userInput/settled":
+              yield* resolveQuestion(message.params as UserInputSettledParams)
+              return false
+            case "turn/modelRetryScheduled":
+              rateLimited = (message.params as TurnModelRetryScheduledParams).httpStatus === 429
+              return false
+            case "session/contextUsage": {
+              const { usedTokens, windowTokens } = message.params as SessionContextUsageParams
+              if (windowTokens !== undefined) context = { usedTokens, maxTokens: windowTokens }
+              return false
+            }
+            case "turn/completed": {
+              const params = message.params as TurnCompletedParams
+              if (params.turnId !== run.turnId) return false
+              yield* finishTurn(params)
+              return true
+            }
+            default:
+              return false
+          }
+        })
+
+      return { handle, requestedCompaction }
+    })
+
+  /** A turn's event stream. Stop ends it with `interruptedEvent`, and interrupts the Muse turn once it has one. */
+  const turnStream = (
+    threadId: string,
+    follow: (
+      run: Run,
+      emit: (event: AgentEvent) => Effect.Effect<boolean>,
+    ) => Effect.Effect<void, AgentError, Scope.Scope>,
+  ) =>
     Stream.callback<AgentEvent, AgentError>((out) =>
       Effect.gen(function* () {
         const emit = (event: AgentEvent) => Queue.offer(out, event)
-        const run: Run = { stop: yield* Deferred.make<void>(), accessMode: input.accessMode }
-        runs.set(input.threadId, run)
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => runs.get(input.threadId) === run && runs.delete(input.threadId)),
-        )
-
-        const stream = Effect.gen(function* () {
-          const entry = yield* getEntry(input.home)
-          const { host } = entry
-          run.entry = entry
-
-          // Subscribe before starting so no notification is missed; they wait here until the turn id is known.
-          const inbox = yield* Queue.unbounded<Incoming>()
-          yield* host.subscribe((message) => Queue.offerUnsafe(inbox, message))
-
-          const sessionId = yield* openSession(entry, input)
-          run.sessionId = sessionId
-          yield* emit({ type: "session_bound", providerSessionId: sessionId })
-
-          const threadGrants = grants.get(input.threadId) ?? new Set<string>()
-          grants.set(input.threadId, threadGrants)
-          const pendingApprovals = new Map<string, Approval>()
-          const pendingQuestions = new Map<string, { readonly id: string; readonly params: UserInputRequestParams }>()
-          /** Text already shown per streamed item, so `item/completed` adds only what never arrived as a delta. */
-          const shown = new Map<string, string>()
-          /** The reasoning summary part each item streamed last. */
-          const summaryParts = new Map<string, string>()
-          const toolOutput = new Map<string, string>()
-          const openTools = new Set<string>()
-          /** Calls whose row closed when they went to the background; the tray follows them from there. */
-          const backgroundedTools = new Set<string>()
-          let context: ContextWindow | undefined
-          /** True while the compaction hinacode asked for before the turn runs. */
-          let compacting = false
-
-          const decide = (approval: Approval, decision: ApprovalDecision) =>
-            Effect.gen(function* () {
-              const stage = approval.params.currentRequirementId.sourceIndex
-              if (approval.answered === stage) return
-              approval.answered = stage
-              const choice = choiceFor(decision, approval.params.availableChoices)
-              if (choice === undefined) {
-                return yield* Effect.logWarning("Muse offered no choice for the decision", decision)
-              }
-              yield* host
-                .command("approval/decide", {
-                  sessionId,
-                  approvalId: approval.params.approvalId,
-                  requirementId: approval.params.currentRequirementId,
-                  choiceId: choice.choiceId,
-                })
-                .pipe(
-                  // A stage the host already settled, such as one it resolved while the answer was in flight.
-                  Effect.catch((error) => Effect.logWarning("approval/decide failed", error.message)),
-                )
-            })
-
-          yield* Effect.addFinalizer(() =>
-            Effect.gen(function* () {
-              // The consumer went away mid-approval: deny instead of leaving Muse waiting.
-              for (const approval of pendingApprovals.values()) {
-                if (approvals.delete(approval.id) && approval.decision === undefined) yield* decide(approval, "deny")
-              }
-              for (const { id, params } of pendingQuestions.values()) {
-                if (!questions.delete(id)) continue
-                yield* host
-                  .command("userInput/cancel", { sessionId, userInputId: params.userInputId })
-                  .pipe(Effect.ignore)
-              }
-            }),
-          )
-
-          const requestApproval = (params: ApprovalRequestParams) =>
-            Effect.gen(function* () {
-              const known = pendingApprovals.get(params.approvalId)
-              if (known !== undefined) {
-                known.params = params
-                if (known.decision !== undefined) yield* decide(known, known.decision)
-                return
-              }
-              const approval: Approval = {
-                id: randomUUID(),
-                params,
-                decision: undefined,
-                presented: false,
-                answered: undefined,
-              }
-              pendingApprovals.set(params.approvalId, approval)
-              if (run.accessMode === "full" || threadGrants.has(grantKey(sessionScope(params)))) {
-                approval.decision = "allow"
-                return yield* decide(approval, "allow")
-              }
-              approval.presented = true
-              const deferred = yield* Deferred.make<ApprovalDecision>()
-              approvals.set(approval.id, deferred)
-              yield* emit({
-                type: "approval_requested",
-                request: toApprovalRequest(params, approval.id, input.threadId),
-              })
-              yield* Deferred.await(deferred).pipe(
-                Effect.flatMap((decision) => {
-                  approval.decision = decision
-                  if (decision === "allow_for_session") threadGrants.add(grantKey(sessionScope(approval.params)))
-                  return decide(approval, decision)
-                }),
-                Effect.forkScoped,
-              )
-            })
-
-          const updateApproval = (params: ApprovalUpdatedParams) =>
-            Effect.gen(function* () {
-              const known = pendingApprovals.get(params.approvalId)
-              if (known === undefined) return
-              const { availableChoices, currentRequirementId, subject } = params
-              known.params = { ...known.params, availableChoices, currentRequirementId, subject }
-              if (known.decision !== undefined) yield* decide(known, known.decision)
-            })
-
-          const resolveApproval = ({ approvalId }: ApprovalResolvedParams) =>
-            Effect.gen(function* () {
-              const approval = pendingApprovals.get(approvalId)
-              if (approval === undefined) return
-              pendingApprovals.delete(approvalId)
-              approvals.delete(approval.id)
-              if (approval.presented) yield* emit({ type: "approval_resolved", requestId: approval.id })
-            })
-
-          const requestQuestion = (params: UserInputRequestParams) =>
-            Effect.gen(function* () {
-              if (pendingQuestions.has(params.userInputId)) return
-              const id = randomUUID()
-              const answers = yield* Deferred.make<QuestionAnswers>()
-              questions.set(id, answers)
-              pendingQuestions.set(params.userInputId, { id, params })
-              yield* emit({
-                type: "question_requested",
-                request: {
-                  id,
-                  threadId: input.threadId,
-                  provider: "muse",
-                  questions: params.questions.map(toQuestion),
-                },
-              })
-              yield* Deferred.await(answers).pipe(
-                Effect.flatMap((chosen) => {
-                  const answered = toAnswers(params.questions, chosen)
-                  return answered === null
-                    ? host.command("userInput/cancel", { sessionId, userInputId: params.userInputId })
-                    : host.command("userInput/answer", {
-                        sessionId,
-                        userInputId: params.userInputId,
-                        answers: answered,
-                      })
-                }),
-                Effect.catch((error) => Effect.logWarning("answering a Muse question failed", error.message)),
-                Effect.forkScoped,
-              )
-            })
-
-          const resolveQuestion = ({ userInputId }: UserInputSettledParams) =>
-            Effect.gen(function* () {
-              const pending = pendingQuestions.get(userInputId)
-              if (pending === undefined) return
-              pendingQuestions.delete(userInputId)
-              questions.delete(pending.id)
-              yield* emit({ type: "question_resolved", requestId: pending.id })
-            })
-
-          const startTool = (item: Item) => {
-            if (item.tool === undefined || openTools.has(item.itemId)) return Effect.void
-            openTools.add(item.itemId)
-            return emit({
-              type: "tool_call_started",
-              callId: item.itemId,
-              name: toolName(item.tool),
-              input: toolInput(item.args),
-            })
-          }
-
-          const backgroundTool = (params: unknown) =>
-            Effect.gen(function* () {
-              const frame = decodeToolCall(params)
-              if (Option.isNone(frame)) return
-              const { item } = frame.value
-              if (!isBackgrounded(item) || !openTools.has(item.itemId)) return
-              openTools.delete(item.itemId)
-              toolOutput.delete(item.itemId)
-              backgroundedTools.add(item.itemId)
-              yield* emit({
-                type: "tool_call_finished",
-                callId: item.itemId,
-                output: "Running in the background",
-                isError: false,
-              })
-            })
-
-          const finishTool = (item: Item) =>
-            Effect.gen(function* () {
-              if (item.tool === undefined || backgroundedTools.has(item.itemId)) return
-              yield* startTool(item)
-              openTools.delete(item.itemId)
-              yield* emit({
-                type: "tool_call_finished",
-                callId: item.itemId,
-                ...toolResult(item, toolOutput.get(item.itemId)),
-              })
-              toolOutput.delete(item.itemId)
-              const path = editedPath(item, input.cwd)
-              if (path !== undefined) yield* emit({ type: "file_changed", path })
-            })
-
-          /** Emits whatever part of the final text never arrived as a delta, such as after a gap in the stream. */
-          const finishText = (item: Item, type: "text_delta" | "reasoning_delta", text: string) =>
-            Effect.gen(function* () {
-              const seen = shown.get(item.itemId) ?? ""
-              shown.delete(item.itemId)
-              const rest = text.startsWith(seen) ? text.slice(seen.length) : ""
-              if (rest !== "") yield* emit({ type, text: rest })
-            })
-
-          const onDelta = ({ itemId, field = "text", delta }: ItemDeltaParams) =>
-            Effect.gen(function* () {
-              if (field === "output") {
-                toolOutput.set(itemId, (toolOutput.get(itemId) ?? "") + delta)
-                return
-              }
-              const reasoning = field.startsWith("summary.")
-              if (field !== "text" && !reasoning) return
-              const previousPart = summaryParts.get(itemId)
-              if (reasoning) summaryParts.set(itemId, field)
-              const text = previousPart !== undefined && previousPart !== field ? `${SUMMARY_BREAK}${delta}` : delta
-              shown.set(itemId, (shown.get(itemId) ?? "") + text)
-              yield* emit({ type: reasoning ? "reasoning_delta" : "text_delta", text })
-            })
-
-          const onCompleted = (item: Item) => {
-            switch (item.kind) {
-              case "agentMessage":
-                return finishText(item, "text_delta", item.text ?? "")
-              case "reasoning":
-                summaryParts.delete(item.itemId)
-                return finishText(item, "reasoning_delta", (item.summary ?? []).join(SUMMARY_BREAK))
-              case "toolCall":
-                return finishTool(item)
-              case "compaction":
-                return finishCompaction(item)
-              default:
-                return Effect.void
-            }
-          }
-
-          /** A noop leaves the context as small as Muse can make it, which reads as done rather than failed. */
-          const finishCompaction = (item: Item) => {
-            const trigger = compacting || item.trigger !== "manual" ? "auto" : "manual"
-            compacting = false
-            const compaction: Compaction =
-              item.outcome === "compacted" || item.outcome === "noop"
-                ? {
-                    status: "done",
-                    trigger,
-                    preTokens: item.tokensBefore ?? null,
-                    postTokens: item.tokensAfter ?? null,
-                  }
-                : { status: "failed", message: item.reason ?? null }
-            return emit({ type: "compaction_updated", compaction })
-          }
-
-          const finishTurn = (params: TurnCompletedParams) =>
-            Effect.gen(function* () {
-              // A stopped turn may complete without item/completed for the tools it cut off.
-              for (const callId of openTools) {
-                const output = toolOutput.get(callId) ?? `Turn ${params.terminal}`
-                yield* emit({ type: "tool_call_finished", callId, output, isError: true })
-              }
-              openTools.clear()
-              if (params.terminal === "completed") {
-                return yield* emit({
-                  type: "turn_completed",
-                  usage: {
-                    inputTokens: params.usage?.inputTokens ?? 0,
-                    outputTokens: params.usage?.outputTokens ?? 0,
-                    ...(context && { context }),
-                  },
-                })
-              }
-              if (params.terminal === "cancelled") return yield* emit(interruptedEvent)
-              const quota = params.error?.quota
-              if (quota !== undefined) {
-                return yield* emit({
-                  type: "turn_limited",
-                  limit: {
-                    kind: "usage",
-                    message: params.error?.message ?? "Muse Code usage limit reached",
-                    reset: { at: new Date(quota.resetsAtMs).toISOString(), autoResume: false },
-                  },
-                })
-              }
-              yield* emit({
-                type: "turn_failed",
-                message: params.error?.message ?? params.reason ?? `Turn ${params.terminal}`,
-              })
-            })
-
-          /** Returns true once the turn is over. */
-          const handle = (message: Incoming): Effect.Effect<boolean, AgentError, Scope.Scope> =>
-            Effect.gen(function* () {
-              if (message.kind === "exit") return yield* Effect.fail(message.error)
-              if ((message.params as { sessionId?: string } | undefined)?.sessionId !== sessionId) return false
-              if (message.kind === "request") {
-                if (message.method === "approval/request") {
-                  yield* requestApproval(message.params as ApprovalRequestParams)
-                } else if (message.method === "userInput/request") {
-                  yield* requestQuestion(message.params as UserInputRequestParams)
-                }
-                return false
-              }
-              switch (message.method) {
-                case "item/started": {
-                  const { item } = message.params as ItemStartedParams
-                  if (item.kind === "toolCall") yield* startTool(item)
-                  if (item.kind === "compaction") {
-                    yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
-                  }
-                  return false
-                }
-                case "item/updated":
-                  yield* backgroundTool(message.params)
-                  return false
-                case "item/delta":
-                  yield* onDelta(message.params as ItemDeltaParams)
-                  return false
-                case "item/completed":
-                  yield* onCompleted((message.params as ItemCompletedParams).item)
-                  return false
-                case "approval/updated":
-                  yield* updateApproval(message.params as ApprovalUpdatedParams)
-                  return false
-                case "approval/resolved":
-                  yield* resolveApproval(message.params as ApprovalResolvedParams)
-                  return false
-                case "userInput/settled":
-                  yield* resolveQuestion(message.params as UserInputSettledParams)
-                  return false
-                case "session/contextUsage": {
-                  const { usedTokens, windowTokens } = message.params as SessionContextUsageParams
-                  if (windowTokens !== undefined) context = { usedTokens, maxTokens: windowTokens }
-                  return false
-                }
-                case "turn/completed": {
-                  const params = message.params as TurnCompletedParams
-                  if (params.turnId !== run.turnId) return false
-                  yield* finishTurn(params)
-                  return true
-                }
-                default:
-                  return false
-              }
-            })
-
-          // MSP takes no compaction threshold, so hinacode compacts before the turn. Muse rejects a turn/start that
-          // arrives during a compaction with `runtime_busy` and has no call that cancels one, so the turn waits for
-          // the compaction item to settle, including one a stopped turn left running.
-          const loaded = entry.sessions.get(sessionId)
-          const usedTokens = loaded?.usedTokens ?? null
-          if (loaded?.compacting) {
-            compacting = true
-            yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
-          } else if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
-            const ack = yield* host.command<SessionCompactResult>("session/compact", { sessionId }).pipe(
-              Effect.map((result) => result.status),
-              Effect.catch((error) => Effect.logWarning("session/compact failed", error.message).pipe(Effect.as(null))),
-            )
-            compacting = ack === "accepted"
-          }
-          if (compacting) {
-            yield* Queue.take(inbox).pipe(Effect.flatMap(handle), Effect.repeat({ while: () => compacting }))
-          }
-
-          // MSP has no developer instructions, so hinacode's ride in front of the prompt.
-          const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
-          run.turnStart = yield* host
-            .command<TurnStartResult>("turn/start", {
-              sessionId,
-              // Muse shows `displayText`, never the instructions in front of the prompt.
-              input: prompt,
-              displayText: input.prompt,
-              ...(input.effort === null ? {} : { reasoningEffort: input.effort }),
-            })
-            .pipe(
-              Effect.map((ack) => ack.turnId),
-              Effect.mapError(toAgentError),
-              Effect.forkIn(providerScope),
-            )
-          run.turnId = yield* Fiber.join(run.turnStart)
-
-          while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
-        })
+        const run: Run = { stop: yield* Deferred.make<void>(), ended: false }
+        runs.set(threadId, run)
+        yield* Effect.addFinalizer(() => Effect.sync(() => runs.get(threadId) === run && runs.delete(threadId)))
 
         const stopped = yield* Effect.raceFirst(
-          stream.pipe(Effect.as(false)),
+          follow(run, emit).pipe(Effect.as(false)),
           Deferred.await(run.stop).pipe(Effect.as(true)),
         )
         if (stopped) {
@@ -907,6 +957,68 @@ const make = Effect.gen(function* () {
           yield* emit(interruptedEvent)
         }
         yield* Queue.end(out)
+      }),
+    )
+
+  const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
+    turnStream(input.threadId, (run, emit) =>
+      Effect.gen(function* () {
+        const entry = yield* getEntry(input.home)
+        const { host } = entry
+        run.entry = entry
+
+        // Subscribe before starting so no notification is missed; they wait here until the turn id is known.
+        const inbox = yield* Queue.unbounded<Incoming>()
+        yield* host.subscribe((message) => Queue.offerUnsafe(inbox, message))
+
+        const sessionId = yield* openSession(entry, input)
+        run.sessionId = sessionId
+        yield* emit({ type: "session_bound", providerSessionId: sessionId })
+        const { handle, requestedCompaction } = yield* followTurn(input.threadId, run, entry, sessionId, emit)
+
+        // MSP takes no compaction threshold, so hinacode compacts before the turn. Muse rejects a turn/start that
+        // arrives during a compaction with `runtime_busy` and has no call that cancels one, so the turn waits for
+        // the compaction item to settle, including one a stopped turn left running.
+        const loaded = entry.sessions.get(sessionId)
+        const usedTokens = loaded?.usedTokens ?? null
+        if (loaded?.compacting) {
+          requestedCompaction.running = true
+          yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+        } else if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
+          const ack = yield* host.command<SessionCompactResult>("session/compact", { sessionId }).pipe(
+            Effect.map((result) => result.status),
+            Effect.catch((error) => Effect.logWarning("session/compact failed", error.message).pipe(Effect.as(null))),
+          )
+          requestedCompaction.running = ack === "accepted"
+        }
+        if (requestedCompaction.running) {
+          yield* Queue.take(inbox).pipe(
+            Effect.flatMap(handle),
+            Effect.repeat({ while: () => requestedCompaction.running }),
+          )
+        }
+
+        // MSP has no developer instructions, so hinacode's ride in front of the prompt.
+        const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
+        run.turnStart = yield* host
+          .command<TurnStartResult>("turn/start", {
+            sessionId,
+            // Muse shows `displayText`, never the instructions in front of the prompt.
+            input: prompt,
+            displayText: input.prompt,
+            ...(input.effort === null ? {} : { reasoningEffort: input.effort }),
+          })
+          .pipe(
+            Effect.map((ack) => ack.turnId),
+            Effect.mapError(toAgentError),
+            Effect.forkIn(providerScope),
+          )
+        run.turnId = yield* Fiber.join(run.turnStart)
+        // Muse steered or queued the prompt behind a turn it started by itself that the runner had not adopted yet.
+        // This run follows the session until its own turn completes, so it shows that turn instead of the wake.
+        wakeTurns.delete(sessionId)
+
+        while (!(yield* Queue.take(inbox).pipe(Effect.flatMap(handle)))) {}
       }),
     )
 
@@ -933,18 +1045,17 @@ const make = Effect.gen(function* () {
         .pipe(Effect.mapError(toAgentError))
     })
 
-  /** Muse switches a loaded session's approval mode at once, so a running turn takes the new mode. */
+  /** Muse switches a loaded session's permission profile at once, so a running turn takes the new profile. */
   const setAccessMode = (threadId: string, accessMode: AccessMode) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
-      if (run !== undefined) run.accessMode = accessMode
       const loaded = run?.sessionId === undefined ? undefined : run.entry?.sessions.get(run.sessionId)
       if (!run?.entry || !run.sessionId || !loaded) return
-      const mode = approvalModes[accessMode]
+      const profileId = permissionProfiles[accessMode]
       yield* run.entry.host
-        .command("session/setApprovalMode", { sessionId: run.sessionId, mode })
+        .command("session/setPermissionProfile", { sessionId: run.sessionId, profileId })
         .pipe(Effect.mapError(toAgentError))
-      loaded.approvalMode = mode
+      loaded.permissionProfile = profileId
     })
 
   /** A background task's id is its `toolCall` item's id. The ended call's `item/completed` drops it from the set. */
@@ -964,6 +1075,16 @@ const make = Effect.gen(function* () {
         ),
         Effect.mapError(toAgentError),
       )
+    })
+
+  /** A sub-agent's id is its durable MSP `subagentId`, which `subagent/stop` names on the parent session. */
+  const stopSubagent = (threadId: string, subagentId: string) =>
+    Effect.gen(function* () {
+      const sessionId = threadSessions.get(threadId)
+      if (!current?.host.isAlive() || sessionId === undefined) {
+        return yield* museError("The sub-agent has no active session to stop")
+      }
+      yield* current.host.command("subagent/stop", { sessionId, subagentId }).pipe(Effect.mapError(toAgentError))
     })
 
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>
@@ -987,8 +1108,10 @@ const make = Effect.gen(function* () {
     listCommands,
     runTurn,
     steer,
+    wakes: Stream.fromQueue(wakes),
     interrupt,
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
+    stopSubagent,
     respondApproval,
     respondQuestion,
     setAccessMode,
