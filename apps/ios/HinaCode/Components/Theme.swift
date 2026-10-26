@@ -127,7 +127,12 @@ struct RelativeTimeText: View {
 /// The logo of the agent a thread runs, in its brand color, sized with the text around it.
 struct ProviderMark: View {
     let provider: ProviderId
-    @ScaledMetric(relativeTo: .body) private var size = 16
+    @ScaledMetric private var size: CGFloat
+
+    init(provider: ProviderId, size: CGFloat = 16) {
+        self.provider = provider
+        _size = ScaledMetric(wrappedValue: size, relativeTo: .body)
+    }
 
     var body: some View {
         provider.mark

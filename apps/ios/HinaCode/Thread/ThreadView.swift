@@ -34,6 +34,7 @@ struct ThreadView: View {
         }
         .navigationTitle(thread.map { $0.title.isEmpty ? String(localized: .mobileNotifyUntitled) : $0.title } ?? "")
         .navigationSubtitle(subtitle)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .alert(
             Text(.mobileThreadActionFailed),

@@ -35,23 +35,25 @@ struct MessageRow: View, Equatable {
     }
 }
 
+/// The developer's prompt, as a bubble on the trailing side, so a scroll through the transcript finds each turn.
 private struct UserMessageView: View {
     let message: Message
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(.mobileChatYou)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            ForEach(Array(message.parts.enumerated()), id: \.offset) { _, part in
-                PartView(
-                    part: part, isAssistant: false, root: nil, openFile: { _, _ in }, loadImage: { _, _ in Data() })
+        HStack(spacing: 0) {
+            Spacer(minLength: 48)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(message.parts.enumerated()), id: \.offset) { _, part in
+                    PartView(
+                        part: part, isAssistant: false, root: nil, openFile: { _, _ in }, loadImage: { _, _ in Data() })
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.accentColor.opacity(0.14), in: .rect(cornerRadius: 20))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.fill.quaternary, in: .rect(cornerRadius: 14))
         .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(.mobileChatYou))
     }
 }
 
@@ -85,9 +87,6 @@ private struct AssistantMessageView: View {
     var body: some View {
         if streaming || !parts.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text(.mobileChatAgent)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
                 if streaming {
                     streamingParts
                 } else {
@@ -96,12 +95,13 @@ private struct AssistantMessageView: View {
                 if let usage = message.usage {
                     Text(.mobileChatUsage(String(Int(usage.inputTokens)), String(Int(usage.outputTokens))))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text(.mobileChatAgent))
         }
     }
 
@@ -144,7 +144,6 @@ private struct AssistantMessageView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            Divider()
         }
         ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
             if showActivity || !isActivity(part) {
@@ -274,10 +273,15 @@ private struct ReasoningView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-            Text(expanded ? .mobileChatHideReasoning : .mobileChatReasoning)
-                .font(.subheadline)
-                .frame(minHeight: 44)
+            Label {
+                Text(expanded ? .mobileChatHideReasoning : .mobileChatReasoning)
+            } icon: {
+                Image(systemName: "brain")
+            }
+            .font(.subheadline)
+            .frame(minHeight: 44)
         }
+        .tint(.secondary)
     }
 }
 
@@ -292,10 +296,14 @@ private struct ToolCallRow: View {
                 CodeBlockView(code: Self.pretty(output), language: "json")
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "wrench.and.screwdriver")
+            HStack(spacing: 8) {
+                Image(systemName: Self.symbol(for: call.name))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
                 Text(verbatim: call.name)
-                    .font(.system(.footnote, design: .monospaced))
+                    .font(.system(.footnote, design: .monospaced).weight(.medium))
+                    .foregroundStyle(.primary)
                 if let summary = Self.summary(of: call.input) {
                     Text(verbatim: summary)
                         .font(.system(.footnote, design: .monospaced))
@@ -309,10 +317,9 @@ private struct ToolCallRow: View {
             .frame(minHeight: 44)
             .contentShape(.rect)
         }
-        .padding(.horizontal, 8)
-        .overlay {
-            RoundedRectangle(cornerRadius: 10).strokeBorder(.separator)
-        }
+        .padding(.horizontal, 12)
+        .background(.fill.quinary, in: .rect(cornerRadius: 12))
+        .tint(.secondary)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(call.name) \(Self.summary(of: call.input) ?? "")")
     }
@@ -335,17 +342,28 @@ private struct ToolCallRow: View {
             .font(.caption)
             .foregroundStyle(Tone.danger.color)
         case .done:
-            Label {
-                Text(.mobileChatToolDone)
-            } icon: {
-                Image(systemName: "checkmark")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Image(systemName: "checkmark")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(Text(.mobileChatToolDone))
         case .unknown(let value):
             Text(verbatim: value)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// What the tool does, at a glance. Unknown tools, MCP ones included, get the generic wrench.
+    static func symbol(for name: String) -> String {
+        switch name {
+        case "Bash", "BashOutput", "KillShell": "terminal"
+        case "Read", "NotebookRead": "doc.text"
+        case "Edit", "MultiEdit", "Write", "NotebookEdit": "pencil"
+        case "Grep", "Glob", "LS": "magnifyingglass"
+        case "WebFetch", "WebSearch": "globe"
+        case "Task", "Agent": "person.2"
+        case "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "update_plan": "checklist"
+        default: "wrench.and.screwdriver"
         }
     }
 
