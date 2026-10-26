@@ -1,16 +1,32 @@
 import type { useNavigate } from "@tanstack/react-router"
+import { AsyncResult } from "effect/reactivity"
 import type { Thread } from "../../shared/domain.ts"
 import { useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { environmentOf } from "./environments.ts"
 import { errorMessage } from "./errorMessage.ts"
-import { callPromise } from "./rpc.ts"
+import { registry } from "./registry.ts"
+import { callPromise, projectsAtom } from "./rpc.ts"
+
+/** Ticks the worktree box of a new repository thread when the last one started in a worktree. */
+async function pickRememberedWorkspace(thread: Thread) {
+  const project = AsyncResult.getOrElse(registry.get(projectsAtom), () => []).find(
+    (candidate) => candidate.id === thread.projectId,
+  )
+  if (project?.kind !== "folder") return
+  const settings = await callPromise("settings.get", undefined, { environment: environmentOf(project) })
+  if (settings.defaultWorkspaceMode !== "worktree") return
+  const ref = await callPromise("projects.defaultBranch", { id: project.id })
+  useDrafts.getState().setWorkspace(thread.id, { mode: "worktree", ref })
+}
 
 /** Creates an empty thread and opens it with the composer focused, where its agent and workspace are picked. */
 export async function startThread(projectId: string, navigate: ReturnType<typeof useNavigate>) {
   try {
     const thread = await callPromise("threads.create", { projectId })
     useThreads.getState().upsert(thread)
+    await pickRememberedWorkspace(thread)
     await navigate({ to: "/thread/$threadId", params: { threadId: thread.id } })
     useUi.getState().requestComposerFocus()
   } catch (cause) {
@@ -19,7 +35,7 @@ export async function startThread(projectId: string, navigate: ReturnType<typeof
 }
 
 /**
- * Moves a thread with no messages yet to `projectId`, the same repository on another machine. A thread lives on
+ * Moves a thread with no messages yet to `projectId`, the same repository or the chats on another machine. A thread lives on
  * the machine it was created on, so this creates one there, hands it the draft and agent, and deletes the old one.
  * Staged attachments stay behind with their files on the old machine.
  */

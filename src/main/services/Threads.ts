@@ -7,6 +7,7 @@ import {
   type AccessMode,
   type Changes,
   type ChangesScope,
+  chatFolder,
   isThreadBusy,
   QueuedMessage,
   Thread,
@@ -58,6 +59,9 @@ export interface CreateThread {
   readonly title: string
   readonly provider: ProviderId
   readonly model: string
+  /** Null, the default, is the model's own effort. */
+  readonly effort?: string | null | undefined
+  readonly fastMode?: boolean | undefined
   /** Creates a worktree for the thread first; the thread points at it while its setup script runs. */
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
   /** Defaults to `user`. */
@@ -81,15 +85,17 @@ export interface UpdateThread {
   readonly usageLimit?: UsageLimit | null | undefined
   readonly sortIndex?: number | undefined
   readonly pinned?: boolean | undefined
+  /** Null wakes the thread. */
+  readonly snoozedUntil?: string | null | undefined
   readonly providerSessionId?: string | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
 }
 
-// Arranging the sidebar is not activity, so it must not make a thread look fresh.
+const arranging = new Set(["id", "sortIndex", "pinned", "snoozedUntil"])
+
+// Arranging the sidebar is not activity, so it must not make a thread look fresh. Activity wakes a snoozed thread.
 const onlyArranges = (input: UpdateThread) =>
-  Object.entries(input).every(
-    ([key, value]) => key === "id" || key === "sortIndex" || key === "pinned" || value === undefined,
-  )
+  Object.entries(input).every(([key, value]) => arranging.has(key) || value === undefined)
 
 export class Threads extends Context.Service<
   Threads,
@@ -131,11 +137,13 @@ export class Threads extends Context.Service<
     >
     /**
      * Marks the thread archived and ends its terminals. With `Settings.archive.removeWorktree` on, it first
-     * removes the thread's worktree, deleting the branch only if it is merged. Refuses while a turn runs.
+     * removes the thread's worktree, deleting the branch only if it is merged. A chat's folder is deleted.
+     * Refuses while a turn runs.
      */
     readonly archive: (
       id: string,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
+    /** Makes a chat's folder again, empty. */
     readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     /** `removeWorktree` first removes the thread's worktree the way archiving does. */
     readonly remove: (
@@ -171,6 +179,7 @@ const make = Effect.gen(function* () {
   const terminals = yield* Terminals
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
+  const fs = yield* FileSystem.FileSystem
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
 
@@ -211,6 +220,17 @@ const make = Effect.gen(function* () {
       Effect.mapError(persistence("threads.started")),
     )
 
+  /** Makes or removes a chat's own folder, and does nothing for a thread in a folder project. */
+  const syncChatFolder = (thread: Thread, exists: boolean) =>
+    Effect.gen(function* () {
+      const project = yield* projects.get(thread.projectId)
+      if (project.kind !== "chats") return
+      const folder = chatFolder(project.rootPath, thread.id)
+      yield* (
+        exists ? fs.makeDirectory(folder, { recursive: true }) : fs.remove(folder, { recursive: true, force: true })
+      ).pipe(Effect.mapError(persistence("threads.chatFolder")))
+    })
+
   const get = (id: string) =>
     findById(id).pipe(
       Effect.mapError(persistence("threads.get")),
@@ -222,7 +242,13 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const create = ({ worktree: worktreeInput, createdBy = "user", ...input }: CreateThread) =>
+  const create = ({
+    worktree: worktreeInput,
+    createdBy = "user",
+    effort = null,
+    fastMode = false,
+    ...input
+  }: CreateThread) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
       const worktree = worktreeInput
@@ -235,8 +261,8 @@ const make = Effect.gen(function* () {
         id: randomUUID(),
         ...input,
         worktreeId: worktree?.id ?? null,
-        effort: null,
-        fastMode: false,
+        effort,
+        fastMode,
         userSkills: project.kind === "folder",
         accessMode: defaultAccessMode,
         accountId: defaultAccount[input.provider],
@@ -245,6 +271,7 @@ const make = Effect.gen(function* () {
         usageLimit: null,
         sortIndex: next,
         pinnedAt: null,
+        snoozedUntil: null,
         queue: [],
         createdBy,
         createdAt: now,
@@ -252,6 +279,7 @@ const make = Effect.gen(function* () {
       }
       const row = yield* encodeRow(thread).pipe(Effect.mapError(persistence("threads.create")))
       yield* sql`INSERT INTO thread ${sql.insert(row)}`.pipe(Effect.mapError(persistence("threads.create")))
+      yield* syncChatFolder(thread, true)
       return thread
     })
 
@@ -283,6 +311,7 @@ const make = Effect.gen(function* () {
   const write = (current: Thread, input: UpdateThread) =>
     Effect.gen(function* () {
       const now = yield* nowIso
+      const arranges = onlyArranges(input)
       const next: Thread = {
         ...current,
         title: input.title ?? current.title,
@@ -302,16 +331,18 @@ const make = Effect.gen(function* () {
               : input.usageLimit,
         sortIndex: input.sortIndex ?? current.sortIndex,
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
+        snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
         queue: input.queue ?? current.queue,
-        updatedAt: onlyArranges(input) ? current.updatedAt : now,
+        updatedAt: arranges ? current.updatedAt : now,
       }
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
             effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0},
             access_mode = ${next.accessMode}, status = ${next.status},
-            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, provider_session_id = ${next.providerSessionId},
+            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil},
+            provider_session_id = ${next.providerSessionId},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
             queue = ${JSON.stringify(next.queue)}
         WHERE id = ${next.id}
@@ -434,16 +465,24 @@ const make = Effect.gen(function* () {
         yield* sql`
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
         `.pipe(Effect.mapError(persistence("threads.archive")))
+        yield* syncChatFolder(thread, false)
         return yield* get(id)
       }),
     )
 
-  const unarchive = (id: string) => Effect.flatMap(get(id), (thread) => write(thread, { id, status: "idle" }))
+  const unarchive = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      yield* syncChatFolder(thread, true)
+      return yield* write(thread, { id, status: "idle" })
+    })
 
   const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
     Effect.gen(function* () {
-      if (options?.removeWorktree) yield* removeOwnWorktree(yield* get(id))
+      const thread = yield* get(id)
+      if (options?.removeWorktree) yield* removeOwnWorktree(thread)
       yield* sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.mapError(persistence("threads.delete")))
+      yield* syncChatFolder(thread, false)
     })
 
   return Threads.of({

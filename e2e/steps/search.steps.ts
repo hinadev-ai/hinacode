@@ -4,6 +4,7 @@ import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { Given, Then, When } from "../support/fixtures.ts"
+import { SEEDED_AT } from "../support/seed.ts"
 
 Given(
   "the thread {string} and its workspace each have {int} search match(es)",
@@ -17,7 +18,7 @@ Given(
       const insert = db.prepare(
         "INSERT INTO message(id, thread_id, role, parts, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      const now = new Date().toISOString()
+      const now = SEEDED_AT
       for (let index = 0; index < count; index++) {
         insert.run(
           randomUUID(),

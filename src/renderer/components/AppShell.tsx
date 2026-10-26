@@ -4,6 +4,7 @@ import { useKeybindings } from "../keybindings/useKeybindings.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
+import { SnoozeDialog } from "./SnoozeDialog.tsx"
 import { Sidebar } from "./Sidebar.tsx"
 import { StatusBar } from "./StatusBar.tsx"
 import { ThreadSwitcher } from "./ThreadSwitcher.tsx"
@@ -41,6 +42,7 @@ export function AppShell() {
       <StatusBar />
       <CommandPalette />
       <ThreadSwitcher />
+      <SnoozeDialog />
     </div>
   )
 }

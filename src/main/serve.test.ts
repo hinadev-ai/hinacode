@@ -57,6 +57,24 @@ describe("serveConfig", () => {
     expect(() => serveConfig(["hinacode", "serve", "--port", "0"], {})).toThrow(/port/)
   })
 
+  test("reads the relay switch from the flag before the environment", () => {
+    expect(serveConfig(["serve", "--relay", "on"], { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({
+      rotateToken: false,
+      relay: "on",
+    })
+    expect(serveConfig(["serve"], { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({ rotateToken: false, relay: "off" })
+    expect(serveConfig(["serve", "--relay=off"], {})).toStrictEqual({ rotateToken: false, relay: "off" })
+    expect(parseCommand(["serve", "--relay", "on"])).toBe("serve")
+  })
+
+  test("refuses a relay value other than on or off", () => {
+    expect(() => serveConfig(["serve", "--relay", "example.com"], {})).toThrow("--relay must be on or off")
+    expect(() => serveConfig(["serve"], { HINACODE_SERVE_RELAY: "1" })).toThrow(
+      "HINACODE_SERVE_RELAY must be on or off",
+    )
+    expect(() => serveConfig(["serve", "--relay"], {})).toThrow("--relay needs a value")
+  })
+
   test("refuses an unknown HINACODE_SERVE_ROTATE_TOKEN value instead of guessing", () => {
     expect(() => serveConfig(["serve"], { HINACODE_SERVE_ROTATE_TOKEN: "yes" })).toThrow(/HINACODE_SERVE_ROTATE_TOKEN/)
   })

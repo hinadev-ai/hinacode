@@ -72,6 +72,7 @@ const json = {
   isDraft: false,
   reviewDecision: "",
   statusCheckRollup: [],
+  mergeable: "UNKNOWN",
   author: { login: "octocat" },
   headRefName: "kk/fix",
   baseRefName: "main",
@@ -98,6 +99,11 @@ describe("toPullRequest", () => {
   test("maps the review decision and leaves an empty one null", () => {
     expect(toPullRequest({ ...json, reviewDecision: "CHANGES_REQUESTED" }).review).toBe("changesRequested")
     expect(toPullRequest(json).review).toBe(null)
+  })
+
+  test("maps mergeability and leaves one GitHub is still computing unknown", () => {
+    expect(toPullRequest({ ...json, mergeable: "CONFLICTING" }).mergeable).toBe("conflicting")
+    expect(toPullRequest(json).mergeable).toBe("unknown")
   })
 })
 
@@ -141,14 +147,13 @@ describe("toPullRequestDetail", () => {
     ],
   }
 
-  test("orders failing, pending, passing, then skipped checks and maps mergeability", () => {
+  test("orders failing, pending, passing, then skipped checks", () => {
     expect(toPullRequestDetail(detailJson)).toStrictEqual({
       ...toPullRequest(detailJson),
       body: "Adds a PR tab.",
       baseRef: "main",
       headRef: "feat/pr-tab",
       head: "abc1234",
-      mergeable: "conflicting",
       checkRuns: [
         { name: "CI / test", status: "failing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2" },
         { name: "vercel", status: "pending", url: "https://vercel.com/hinadev-ai/hinacode/abc" },

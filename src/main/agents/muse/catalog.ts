@@ -17,7 +17,7 @@ export const toModelInfo = (model: CatalogModel): ModelInfo => ({
   efforts: model.variants ?? [],
   defaultEffort: model.defaultReasoningEffort ?? null,
   fastMode: false,
-  // `onRequest` runs work inside Muse's sandbox and asks only to go beyond it.
+  // Auto-review has an AI reviewer decide the actions that would otherwise ask.
   autoMode: true,
 })
 

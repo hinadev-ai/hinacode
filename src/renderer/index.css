@@ -10,6 +10,14 @@
 @import "@wterm/dom/css";
 @import "tw-shimmer";
 
+@font-face {
+  font-family: "Geist Tabular Digits";
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0030-0039;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
@@ -137,6 +145,9 @@
   /* --ui-font and --mono-font hold the user's picks from Appearance settings. */
   --app-font-sans: var(--ui-font, "DM Sans Variable"), var(--font-cjk, sans-serif), sans-serif;
   --app-font-mono: var(--mono-font, "Geist Mono Variable"), var(--font-cjk, monospace), monospace;
+  /* DM Sans has no tabular figures, so `tabular-nums` borrows Geist's digits. A user-picked UI font replaces both. */
+  --app-font-sans-tabular:
+    var(--ui-font, "Geist Tabular Digits", "DM Sans Variable"), var(--font-cjk, sans-serif), sans-serif;
   /* The diff viewer renders in a shadow root and only reads these inherited variables. */
   --diffs-font-family: var(--app-font-mono);
   --diffs-font-size: 0.8125rem;
@@ -463,6 +474,10 @@
   html {
     @apply font-sans;
   }
+  /* In the base layer, so `font-mono` on the same element still wins. */
+  .tabular-nums {
+    font-family: var(--app-font-sans-tabular);
+  }
 }
 
 /* Drags the window on macOS, where the native title bar is hidden. Controls inside it still take clicks. */
@@ -517,6 +532,21 @@
   to {
     --send-spin: 360deg;
   }
+}
+
+/* Cuts the bottom 12px of the activity tray's side borders, where its flares take over the outline. */
+@utility tray-flare-cut {
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-size:
+    100% 100%,
+    1px 12px,
+    1px 12px;
+  mask-position:
+    0 0,
+    left bottom,
+    right bottom;
+  mask-repeat: no-repeat;
+  mask-composite: exclude;
 }
 
 @utility send-halo {

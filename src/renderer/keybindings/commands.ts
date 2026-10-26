@@ -102,6 +102,12 @@ export const commands = [
     run: (ctx) => void ctx.navigate({ to: "/settings" }),
   },
   {
+    id: "resources.show",
+    defaultKeys: "",
+    title: m.command_resources_show,
+    run: () => useUi.getState().setResourcesOpen(true),
+  },
+  {
     id: "thread.new",
     defaultKeys: "mod+n",
     title: m.command_thread_new,
@@ -229,6 +235,14 @@ export const commands = [
     defaultKeys: "mod+shift+[",
     title: m.command_thread_previous,
     run: (ctx) => goToSiblingThread(ctx, -1),
+  },
+  {
+    id: "thread.snooze",
+    defaultKeys: "mod+shift+s",
+    title: m.command_thread_snooze,
+    run: (ctx) => {
+      if (ctx.threadId) useUi.getState().setSnoozeThreadId(ctx.threadId)
+    },
   },
   // Control on every platform, because macOS keeps Cmd+Tab for switching apps.
   {

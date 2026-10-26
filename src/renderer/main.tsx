@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
+import { registry } from "./lib/registry.ts"
 import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
@@ -24,8 +25,6 @@ import { useTerminals } from "./stores/terminals.ts"
 import { useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
-
-const registry = AtomRegistry.make()
 
 function App() {
   const locale = useLocale((state) => state.locale)
@@ -104,6 +103,10 @@ onPushEvent((event) => {
       registry.refresh(loadAllPullRequestsAtom)
       reloadTranscripts(event.id)
       reattachTerminals(event.id)
+      return void loadLists()
+    case "environments.changed":
+      // A cloud the relay dropped takes its projects and threads out of the sidebar.
+      registry.refresh(projectsAtom)
       return void loadLists()
   }
 })

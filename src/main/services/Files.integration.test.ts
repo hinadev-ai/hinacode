@@ -14,6 +14,7 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Option, Queue } from "effect"
+import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { FsEntry } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -74,7 +75,7 @@ beforeAll(() => {
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 const run = <A, E>(
-  effect: Effect.Effect<A, E, Files>,
+  effect: Effect.Effect<A, E, Files | SqlClient.SqlClient>,
   seed: SeedThread = { rootPath: repo, worktree: { path: worktree, baseRef: "main", status: "ready" } },
   pushes?: Queue.Queue<PushEvent>,
 ) => {
@@ -189,6 +190,23 @@ describe("fs.list", () => {
       const seed = { rootPath: repo, worktree: { path: worktree, baseRef: "main", status: "removed" as const } }
       const error = yield* run(list(worktree, ""), seed).pipe(Effect.flip)
       expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unknownRoot" })
+    }),
+  )
+
+  it.effect("lists a chat's own folder, but no other folder in the chats root", () =>
+    Effect.gen(function* () {
+      const chats = join(dir, "chats")
+      const listChat = Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: chats, kind: "chats" })
+        write(join(chats, threadId, "notes.md"), "draft\n")
+        write(join(chats, "stray", "notes.md"), "draft\n")
+        const own = yield* list(join(chats, threadId), "")
+        const stray = yield* list(join(chats, "stray"), "").pipe(Effect.flip)
+        return { own, stray }
+      })
+      const { own, stray } = yield* run(listChat)
+      expect(own.map((entry) => entry.path)).toStrictEqual(["notes.md"])
+      expect(stray).toMatchObject({ _tag: "FsAccessError", reason: "unknownRoot" })
     }),
   )
 })

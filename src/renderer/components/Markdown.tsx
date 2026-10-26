@@ -1,5 +1,5 @@
 import { cn } from "cn"
-import { isValidElement, memo, type ReactNode, use, useEffect, useMemo, useState } from "react"
+import { createContext, isValidElement, type ReactNode, use, useEffect, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
@@ -29,14 +29,21 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
  * Agents embed files they saved on this machine, like `vm_screenshot` captures, by absolute path. Markdown
  * percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
  */
-const imageSrc = (src: string, environment: EnvironmentId) =>
-  githubAssetUrl(src) ?? (src.startsWith("/") ? attachmentUrl(decodeURI(src), environment) : src)
+const imageSrc = (src: string, environment: EnvironmentId, baseUrl: string | null) => {
+  const asset = githubAssetUrl(src)
+  if (asset !== null) return asset
+  if (src.startsWith("/")) return attachmentUrl(decodeURI(src), environment)
+  return baseUrl === null ? src : new URL(src, baseUrl).href
+}
+
+const BaseUrl = createContext<string | null>(null)
 
 function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   const environment = useOpenThreadEnvironment()
+  const baseUrl = use(BaseUrl)
   return (
     <img
-      src={src === undefined ? undefined : imageSrc(src, environment)}
+      src={src === undefined ? undefined : imageSrc(src, environment, baseUrl)}
       alt={alt}
       loading="lazy"
       className="inline-block max-w-full rounded-md"
@@ -146,22 +153,21 @@ const components: Components = {
   ),
 }
 
-/** Agent markdown with GFM. Memoized because streaming re-renders the message on every delta. */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/** Agent markdown with GFM. `baseUrl` resolves relative image paths, for a file shown from disk. */
+export function Markdown({ text, baseUrl = null }: { text: string; baseUrl?: string | null }) {
   const pattern = useFindPattern()
   const part = use(FindPartContext)
-  const rehypePlugins = useMemo(() => (pattern === null ? [] : [rehypeFindMarks(pattern, part)]), [pattern, part])
+  const rehypePlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
   const repository = useThreadRepository()
-  const remarkPlugins = useMemo(
-    () => (repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]),
-    [repository],
-  )
+  const remarkPlugins = repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-      {text}
-    </ReactMarkdown>
+    <BaseUrl value={baseUrl}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+        {text}
+      </ReactMarkdown>
+    </BaseUrl>
   )
-})
+}
 
 /** GitHub embeds bare attachment links as video, which is what they usually are; an image falls back to <img>. */
 function GitHubAttachment({ src }: { src: string }) {

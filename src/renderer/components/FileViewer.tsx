@@ -26,6 +26,7 @@ import { m } from "../paraglide/messages.js"
 import { emptyDraft, type LineComment, useDrafts } from "../stores/drafts.ts"
 import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
+import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
 
 interface FileViewerProps {
@@ -83,7 +84,13 @@ function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
             </Button>
           )}
         </ViewerHeader>
-        <FilePreviewPane preview={preview} root={root} path={path} />
+        {preview === "markdown" ? (
+          <Suspense fallback={<Note text={m.viewer_loading()} className="animate-reveal" />}>
+            <MarkdownPreview root={root} path={path} />
+          </Suspense>
+        ) : (
+          <FilePreviewPane preview={preview} root={root} path={path} />
+        )}
       </>
     )
   }
@@ -156,6 +163,37 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
           className="max-h-full max-w-full bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-size-[16px_16px] object-contain"
         />
       )}
+    </div>
+  )
+}
+
+/** The file rendered as markdown, reloaded when its folder changes on disk. */
+function MarkdownPreview({ root, path }: { root: string; path: string }) {
+  const contentAtom = fileContentAtom(JSON.stringify([root, path]))
+  const content = useAtomSuspense(contentAtom, { includeFailure: true })
+  const reload = useAtomRefresh(contentAtom)
+
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type === "fs.changed" && event.root === root && event.path === parentOf(path)) reload()
+      }),
+    [reload, root, path],
+  )
+
+  if (AsyncResult.isFailure(content)) {
+    return (
+      <p role="alert" className="p-3 text-xs text-destructive">
+        {m.viewer_failed({ message: errorMessage(Cause.squash(content.cause)) })}
+      </p>
+    )
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-auto">
+      {content.value.truncated && <Note text={m.viewer_truncated()} />}
+      <article className="mx-auto max-w-3xl px-6 py-4 text-sm">
+        <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} />
+      </article>
     </div>
   )
 }

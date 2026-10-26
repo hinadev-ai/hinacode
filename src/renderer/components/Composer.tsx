@@ -35,7 +35,7 @@ import {
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
-import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
+import { EnvironmentPicker, ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
@@ -220,12 +220,10 @@ export function Composer({ thread }: { thread: Thread }) {
   return (
     <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col px-3 pb-3">
       <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
-        <div className="flex min-h-0 flex-col bg-background">
-          <ActivityIndicator thread={thread}>
-            <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
-          </ActivityIndicator>
-        </div>
-        <ComposerBar className="min-h-0 border-(color:--composer-edge)">
+        <ActivityIndicator thread={thread}>
+          <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
+        </ActivityIndicator>
+        <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
           {comments.length > 0 && (
             <ul
               aria-label={m.comment_pending_label()}
@@ -289,7 +287,14 @@ export function Composer({ thread }: { thread: Thread }) {
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>
-      {unstarted && !isChat && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
+      {unstarted &&
+        (isChat ? (
+          <div className="mx-auto mt-1 flex w-full max-w-3xl items-center px-1 empty:hidden">
+            <EnvironmentPicker thread={thread} onError={setError} />
+          </div>
+        ) : (
+          <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />
+        ))}
       {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )

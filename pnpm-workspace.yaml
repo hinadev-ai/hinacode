@@ -1,5 +1,7 @@
 packages:
+  - relay
   - site
+  - packages/*
 
 allowBuilds:
   "@google/genai": false

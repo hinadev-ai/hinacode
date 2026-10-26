@@ -1,6 +1,6 @@
 # Resizable panels
 
-The sidebar and docked thread details panel resize by pointer or keyboard. Their widths persist in local storage. The details panel keeps separate normal and wide preferences, so opening a file or diff does not overwrite the width used for other views. Double-click restores the default for the current size.
+The sidebar and docked thread details panel resize by pointer or keyboard. Their widths persist in local storage, and so do the terminal drawer height, the Files tree height and the Git graph split. The details panel keeps separate normal and wide preferences, so opening a file or diff does not overwrite the width used for other views. Double-click restores the default for the current size.
 
 The right panel must leave a usable conversation beside the sidebar and activity bar. Its displayed maximum is the smaller of 960 pixels, half the window, and the space left in the main area after the activity bar and a conversation column with a 200-pixel message field plus its padding and borders. At 16-pixel text, that column is 246 pixels wide. When there is not enough room for the 280-pixel panel minimum as well, the panel uses the existing overlay layout.
 

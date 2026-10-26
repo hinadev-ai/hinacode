@@ -7,6 +7,7 @@ import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { cn } from "../lib/utils.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
+import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
@@ -55,6 +56,7 @@ export function TitleBar({
       <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
         <RiSettings3Line aria-hidden />
       </Button>
+      <MachineResourcesButton />
     </header>
   )
 }

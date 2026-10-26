@@ -17,7 +17,7 @@ import { SkeletonList } from "../../ui/skeleton.tsx"
 /** Webhook URL, Run now and recent runs for one automation. */
 export function AutomationDetails({ automation }: { automation: Automation }) {
   return (
-    <div className="flex flex-col gap-5 border-t border-border pt-4">
+    <div className="flex flex-col gap-5 border-t border-foreground/8 pt-4">
       {automation.trigger.type === "webhook" && <WebhookUrlField automationId={automation.id} />}
       <RunNowForm automation={automation} />
       <RecentRuns automationId={automation.id} />
@@ -161,7 +161,7 @@ function RecentRuns({ automationId }: { automationId: string }) {
           list.length === 0 ? (
             <p className="text-sm text-muted-foreground">{m.automations_runs_empty()}</p>
           ) : (
-            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+            <ul className="flex flex-col divide-y divide-foreground/8">
               {list.map((run) => (
                 <RunRow key={run.id} run={run} />
               ))}
@@ -183,7 +183,7 @@ function RecentRuns({ automationId }: { automationId: string }) {
 
 function RunRow({ run }: { run: AutomationRun }) {
   return (
-    <li className="flex flex-col gap-1 px-3 py-2 text-sm">
+    <li className="flex flex-col gap-1 py-2 text-sm">
       <div className="flex items-center gap-2">
         <RunStatusBadge status={run.status} />
         <time dateTime={run.createdAt} className="text-muted-foreground tabular-nums">
