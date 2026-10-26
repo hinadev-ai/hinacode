@@ -58,3 +58,14 @@ export function parseSnoozeTime(text: string, now: Date, locale: Locale): Parsed
   }
   return { status: "unreadable" }
 }
+
+const DAY_MS = 24 * HOUR_MS
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+
+/** A wake time as short as it can be read: "18:00" today, "Mon 8:00" this week, "Nov 12, 8:00" later. */
+export function formatSnoozeTime(time: Date, now: Date, locale: string): string {
+  const clock = { hour: "numeric", minute: "2-digit" } as const
+  if (sameDay(time, now)) return time.toLocaleTimeString(locale, clock)
+  if (time.getTime() - now.getTime() < 6 * DAY_MS) return time.toLocaleString(locale, { weekday: "short", ...clock })
+  return time.toLocaleString(locale, { month: "short", day: "numeric", ...clock })
+}

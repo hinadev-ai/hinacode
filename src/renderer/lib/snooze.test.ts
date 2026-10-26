@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { parseSnoozeTime, snoozePresets } from "./snooze.ts"
+import { formatSnoozeTime, parseSnoozeTime, snoozePresets } from "./snooze.ts"
 
 // Local times, so the expectations hold in any time zone. 2026-10-26 is a Monday.
 const local = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute)
@@ -51,11 +51,25 @@ describe("parseSnoozeTime", () => {
     expect(parseSnoozeTime("月曜日 8:00", now, "ja")).toStrictEqual({ status: "ok", at: local(2 + 31, 8) })
     expect(parseSnoozeTime("明天 上午9點", now, "zh-TW")).toStrictEqual({ status: "ok", at: local(27, 9) })
     expect(parseSnoozeTime("tomorrow 10:00", now, "ja")).toStrictEqual({ status: "ok", at: local(27, 10) })
+    expect(parseSnoozeTime("明日 14:30", now, "ja")).toStrictEqual({ status: "ok", at: local(27, 14, 30) })
+    expect(parseSnoozeTime("兩小時後", now, "zh-TW")).toStrictEqual({ status: "ok", at: local(26, 17) })
   })
 
   test("tells empty, unreadable and past text apart", () => {
     expect(parseSnoozeTime("  ", now, "en")).toStrictEqual({ status: "empty" })
     expect(parseSnoozeTime("whenever", now, "en")).toStrictEqual({ status: "unreadable" })
     expect(parseSnoozeTime("today 8:00", now, "en")).toStrictEqual({ status: "past", at: local(26, 8) })
+  })
+})
+
+describe("formatSnoozeTime", () => {
+  const now = local(26, 15)
+
+  test.each([
+    [local(26, 18), "6:00 PM"],
+    [local(27, 9), "Tue 9:00 AM"],
+    [local(2 + 31, 8), "Nov 2, 8:00 AM"],
+  ])("formats %s", (time, expected) => {
+    expect(formatSnoozeTime(time, now, "en")).toBe(expected)
   })
 })

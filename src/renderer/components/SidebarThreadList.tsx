@@ -28,6 +28,8 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 import {
+  RiAlarmLine,
+  RiAlarmSnoozeLine,
   RiArchiveLine,
   RiDeleteBinLine,
   RiDraggable,
@@ -50,6 +52,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
+import { formatSnoozeTime } from "../lib/snooze.ts"
 import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
@@ -60,6 +63,7 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -82,6 +86,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
+import { snoozeThread } from "./SnoozeDialog.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -429,6 +434,18 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                   {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                 </DropdownMenuItem>
               )}
+              {!archived && (
+                <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                  <RiAlarmSnoozeLine aria-hidden />
+                  {m.sidebar_thread_snooze()}
+                </DropdownMenuItem>
+              )}
+              {!archived && meta.snoozedUntil !== null && (
+                <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                  <RiAlarmLine aria-hidden />
+                  {m.sidebar_thread_unsnooze()}
+                </DropdownMenuItem>
+              )}
               {watched.length === 0 ? (
                 <DropdownMenuItem disabled>
                   <RiEyeOffLine aria-hidden />
@@ -677,7 +694,14 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     links,
     threadId: thread.id,
     updatedAt: thread.updatedAt,
+    snoozedUntil: useSnoozedUntil(thread),
   }
+}
+
+/** When the thread wakes, or null when it is not snoozed. */
+function useSnoozedUntil(thread: Thread) {
+  const now = useNow()
+  return thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now ? thread.snoozedUntil : null
 }
 
 const noLinks: ReadonlyArray<PullRequestLink> = []
@@ -689,6 +713,7 @@ function ThreadMeta({
   links,
   threadId,
   updatedAt,
+  snoozedUntil,
   cloud,
   environment,
 }: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
@@ -718,7 +743,7 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      <LastActive updatedAt={updatedAt} />
+      {snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />}
     </div>
   )
 }
@@ -734,6 +759,24 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
       className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
     >
       {formatRelativeTime(updatedAt, now, locale)}
+    </time>
+  )
+}
+
+/** Where the last activity would be, so a snoozed row says when it comes back instead. */
+function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
+  const now = useNow()
+  const locale = getLocale()
+  const time = formatSnoozeTime(new Date(snoozedUntil), new Date(now), locale)
+  return (
+    <time
+      dateTime={snoozedUntil}
+      title={m.sidebar_snoozed_until({ time })}
+      className="ml-auto flex shrink-0 items-center gap-1 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+    >
+      <RiAlarmSnoozeLine aria-hidden className="size-3" />
+      <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
+      <span aria-hidden>{time}</span>
     </time>
   )
 }
