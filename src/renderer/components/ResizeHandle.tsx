@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { clampWidth, type WidthBounds } from "../lib/panelWidth.ts"
+import { clampSize, type SizeBounds } from "../lib/panelSize.ts"
 
 const KEYBOARD_STEP = 16
 
@@ -16,7 +16,7 @@ interface ResizeHandleProps {
   /** The edge of `targetRef` the handle sits on. Moving away from the target makes it wider. */
   readonly edge: "left" | "right"
   readonly targetRef: RefObject<HTMLElement | null>
-  readonly bounds: WidthBounds
+  readonly bounds: SizeBounds
   /** Receives the final width of a drag or key press. */
   readonly onResize: (width: number) => void
   readonly onReset: () => void
@@ -81,7 +81,7 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     const current = drag.current
     const element = targetRef.current
     if (!current || !element) return
-    current.width = clampWidth(bounds, current.startWidth + grow * (event.clientX - current.startX))
+    current.width = clampSize(bounds, current.startWidth + grow * (event.clientX - current.startX))
     element.style.width = `${current.width}px`
   }
 
@@ -102,7 +102,7 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     }[event.key]
     if (next === undefined) return
     event.preventDefault()
-    const resized = clampWidth(bounds, next)
+    const resized = clampSize(bounds, next)
     // Keyboard input is direct manipulation too. Finish this step before measuring the next one.
     const transition = element.style.transition
     element.style.transition = "none"
