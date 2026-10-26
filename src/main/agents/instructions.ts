@@ -1,4 +1,5 @@
-import type { ExperimentalSettings } from "../../shared/domain.ts"
+import type { ProviderId } from "../../shared/agent.ts"
+import type { Settings } from "../../shared/domain.ts"
 import { threadMention } from "../../shared/threadMention.ts"
 
 /**
@@ -72,7 +73,24 @@ const environmentInstructions = ({
   platform: ${platform}
 </environment>`
 
-export const agentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment): string =>
+const userInstructions = (agentsMd: Settings["agentsMd"], provider: ProviderId) => {
+  const rules = [agentsMd.all, agentsMd[provider]].map((part) => part.trim()).filter((part) => part !== "")
+  return rules.length === 0
+    ? []
+    : [
+        `<user-instructions>
+The user's global AGENTS.md from HinaCode settings. Follow it in every project. A project's own AGENTS.md or CLAUDE.md may add to it.
+
+${rules.join("\n\n")}
+</user-instructions>`,
+      ]
+}
+
+export const agentInstructions = (
+  { experimental, agentsMd }: Pick<Settings, "experimental" | "agentsMd">,
+  provider: ProviderId,
+  environment: AgentEnvironment,
+): string =>
   [
     AGENT_INSTRUCTIONS,
     environmentInstructions(environment),
@@ -85,4 +103,5 @@ export const agentInstructions = (experimental: ExperimentalSettings, environmen
           ),
         ]
       : []),
+    ...userInstructions(agentsMd, provider),
   ].join("\n\n")

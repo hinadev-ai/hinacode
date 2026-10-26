@@ -1,7 +1,10 @@
 import { expect, test } from "@effect/vitest"
 import { agentInstructions } from "./instructions.ts"
 
-const experimental = { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false }
+const settings = {
+  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
+  agentsMd: { all: "", claude: "", codex: "", muse: "" },
+}
 const environment = {
   gitRepository: true,
   branch: "feat/x",
@@ -12,7 +15,7 @@ const environment = {
 } as const
 
 test("names the thread's repository, branch, paths, remote and platform", () => {
-  expect(agentInstructions(experimental, environment)).toContain(`<environment>
+  expect(agentInstructions(settings, "claude", environment)).toContain(`<environment>
   is a git repository: true
   git branch: \`feat/x\`
   current project path: \`/wt\`
@@ -23,7 +26,7 @@ test("names the thread's repository, branch, paths, remote and platform", () => 
 })
 
 test("keeps a token in an https remote out of the prompt", () => {
-  const instructions = agentInstructions(experimental, {
+  const instructions = agentInstructions(settings, "claude", {
     ...environment,
     remote: "https://x-access-token:ghp_secret@github.com/o/r.git",
   })
@@ -32,7 +35,22 @@ test("keeps a token in an https remote out of the prompt", () => {
 })
 
 test("says none for a detached HEAD and a repository without an origin", () => {
-  const instructions = agentInstructions(experimental, { ...environment, branch: null, remote: null })
+  const instructions = agentInstructions(settings, "claude", { ...environment, branch: null, remote: null })
   expect(instructions).toContain("git branch: `(none)`")
   expect(instructions).toContain("remote: `(none)`")
+})
+
+test("adds the shared rules, then the agent's own, to that agent only", () => {
+  const agentsMd = { all: "Answer in English.", claude: "Use TodoWrite.", codex: "Use update_plan.", muse: "" }
+  const claude = agentInstructions({ ...settings, agentsMd }, "claude", environment)
+  expect(claude).toContain("Answer in English.\n\nUse TodoWrite.\n</user-instructions>")
+  expect(claude).not.toContain("update_plan")
+  expect(agentInstructions({ ...settings, agentsMd }, "muse", environment)).toContain(
+    "Answer in English.\n</user-instructions>",
+  )
+})
+
+test("adds no user block when every part is blank", () => {
+  const agentsMd = { all: "  \n", claude: "", codex: "", muse: "" }
+  expect(agentInstructions({ ...settings, agentsMd }, "claude", environment)).not.toContain("<user-instructions>")
 })

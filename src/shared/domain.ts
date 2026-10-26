@@ -540,6 +540,15 @@ export const ExperimentalSettings = Schema.Struct({
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
+/** The user's own rules, like a global AGENTS.md. Every agent gets `all`, then its own entry. Empty adds nothing. */
+export const AgentsMd = Schema.Struct({
+  all: Schema.String,
+  claude: Schema.String,
+  codex: Schema.String,
+  muse: Schema.String,
+})
+export type AgentsMd = typeof AgentsMd.Type
+
 /** Apps "Open with" knows how to launch. Main lists the ones installed on this desktop. */
 export const OpenerId = Schema.Literals([
   "vscode",
@@ -645,6 +654,7 @@ export const Settings = Schema.Struct({
   defaultAccessMode: AccessMode,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
+  agentsMd: AgentsMd,
   /** Absolute directory for new worktrees, one folder per project. Null keeps them in `.hinacode-worktrees` beside each project. */
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
 })
@@ -663,6 +673,7 @@ export const defaultSettings: Settings = {
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
   experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
+  agentsMd: { all: "", claude: "", codex: "", muse: "" },
   worktreeRoot: null,
 }
 

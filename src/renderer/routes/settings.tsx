@@ -7,6 +7,7 @@ import type { IconType } from "react-icons"
 import {
   RiArchiveLine,
   RiCpuLine,
+  RiFileTextLine,
   RiFlaskLine,
   RiFlashlightLine,
   RiFolderLine,
@@ -24,6 +25,7 @@ import { AutomationSettings } from "../components/settings/automations/Automatio
 import { EnvironmentSettings } from "../components/settings/EnvironmentSettings.tsx"
 import { ExperimentalSettings } from "../components/settings/ExperimentalSettings.tsx"
 import { GeneralSettings } from "../components/settings/GeneralSettings.tsx"
+import { InstructionsSettings } from "../components/settings/InstructionsSettings.tsx"
 import { IntegrationSettings } from "../components/settings/IntegrationSettings.tsx"
 import { KeybindingSettings } from "../components/settings/KeybindingSettings.tsx"
 import { ModelSettings } from "../components/settings/ModelSettings.tsx"
@@ -71,6 +73,13 @@ const pages: ReadonlyArray<SettingsPage> = [
     component: EnvironmentSettings,
   },
   { id: "models", scope: "environment", label: m.settings_models, icon: RiCpuLine, component: ModelSettings },
+  {
+    id: "instructions",
+    scope: "environment",
+    label: m.settings_instructions,
+    icon: RiFileTextLine,
+    component: InstructionsSettings,
+  },
   { id: "archive", scope: "environment", label: m.settings_archive, icon: RiArchiveLine, component: ArchiveSettings },
   {
     id: "workspace",

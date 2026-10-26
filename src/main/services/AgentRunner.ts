@@ -522,7 +522,7 @@ const make = Effect.gen(function* () {
       follow(
         Stream.unwrap(
           Effect.gen(function* () {
-            const [mcpServer, { experimental, autoCompactTokens }] = yield* Effect.all([
+            const [mcpServer, { experimental, agentsMd, autoCompactTokens }] = yield* Effect.all([
               mcp.connectionFor(thread.id),
               settings.get,
             ])
@@ -543,7 +543,7 @@ const make = Effect.gen(function* () {
               resumeSessionId: thread.providerSessionId,
               home,
               mcpServer,
-              instructions: agentInstructions(experimental, environment),
+              instructions: agentInstructions({ experimental, agentsMd }, provider.id, environment),
             })
           }),
         ),
