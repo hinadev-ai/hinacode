@@ -588,6 +588,28 @@ describe("projects, threads and settings over rpc", () => {
     expect(listed).toMatchObject({ pinnedAt: null, updatedAt: thread.updatedAt })
   })
 
+  test("snoozing keeps a thread's updatedAt, and activity wakes it", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.snoozedUntil).toBeNull()
+
+    const until = "2026-11-02T08:00:00.000Z"
+    const snoozed = result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+    expect(snoozed).toMatchObject({ snoozedUntil: until, updatedAt: thread.updatedAt })
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed?.snoozedUntil).toBe(until)
+
+    const pinned = result(await invoke("threads.update", { id: thread.id, pinned: true }))
+    expect(pinned.snoozedUntil).toBe(until)
+
+    const active = result(await invoke("threads.update", { id: thread.id, status: "idle" }))
+    expect(active.snoozedUntil).toBeNull()
+
+    result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+    const woken = result(await invoke("threads.update", { id: thread.id, snoozedUntil: null }))
+    expect(woken.snoozedUntil).toBeNull()
+  })
+
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))

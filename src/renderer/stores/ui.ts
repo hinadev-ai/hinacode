@@ -111,6 +111,8 @@ interface UiState {
   readonly pickerRequest: { readonly picker: ComposerPicker } | null
   readonly addProjectOpen: boolean
   readonly resourcesOpen: boolean
+  /** The thread the snooze picker is open for, or null. */
+  readonly snoozeThreadId: string | null
   /** Where the Add project dialog starts, for opening it on a cloud that was just paired. */
   readonly addProjectEnvironment: EnvironmentId
   /** The thread whose find bar is open, or null. */
@@ -145,6 +147,7 @@ interface UiState {
   readonly requestPicker: (picker: ComposerPicker) => void
   readonly setAddProjectOpen: (open: boolean, environment?: EnvironmentId) => void
   readonly setResourcesOpen: (open: boolean) => void
+  readonly setSnoozeThreadId: (threadId: string | null) => void
   /** Opens and focuses the thread's find bar, replacing its query when one is given. */
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
@@ -215,6 +218,7 @@ export const useUi = create<UiState>()((set, get) => ({
   addProjectOpen: false,
   resourcesOpen: false,
   addProjectEnvironment: null,
+  snoozeThreadId: null,
   findThreadId: null,
   findQuery: "",
   findMessageId: null,
@@ -276,6 +280,7 @@ export const useUi = create<UiState>()((set, get) => ({
   setAddProjectOpen: (addProjectOpen, environment = null) =>
     set({ addProjectOpen, addProjectEnvironment: environment }),
   setResourcesOpen: (resourcesOpen) => set({ resourcesOpen }),
+  setSnoozeThreadId: (snoozeThreadId) => set({ snoozeThreadId }),
   openFind: (threadId, query, messageId) =>
     set((state) => ({
       findThreadId: threadId,

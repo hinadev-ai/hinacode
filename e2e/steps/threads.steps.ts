@@ -148,6 +148,17 @@ Then("no thread is pinned", async ({ app }) => {
   await expect(pinned(app.page)).toBeHidden()
 })
 
+const snoozed = (page: Page) => sidebar(page).getByRole("region", { name: "Snoozed", exact: true })
+
+Then("the snoozed threads are {string}", async ({ app, names }, titles: string) => {
+  const expected = titles.split(",").map((title) => names.of(title.trim()))
+  await expect(snoozed(app.page).getByRole("link")).toHaveText(expected)
+})
+
+Then("no thread is snoozed", async ({ app }) => {
+  await expect(snoozed(app.page)).toBeHidden()
+})
+
 // Hidden tab panels stay mounted, so only the open one's rows count.
 const openTab = (page: Page) => sidebar(page).getByRole("tabpanel")
 
@@ -159,6 +170,54 @@ Then("the open tab lists the threads {string} in that order", async ({ app, name
       return links.map((text) => expected.find((title) => text.includes(title))).filter(Boolean)
     })
     .toStrictEqual(expected)
+})
+
+Then("the open tab lists the thread {string}", async ({ app, names }, title: string) => {
+  await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeVisible()
+})
+
+// The Threads tab stays mounted behind the Inbox with its own row for the same thread.
+const openTabMenu = async (page: Page, title: string, item: string) => {
+  await openTab(page)
+    .getByRole("button", { name: `Actions for ${title}`, exact: true })
+    .click()
+  await page.getByRole("menuitem", { name: item, exact: true }).click()
+}
+
+When(
+  "I snooze the thread {string} until {string} from its menu",
+  async ({ app, names }, title: string, time: string) => {
+    await openTabMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+const snoozePicker = (page: Page) => page.getByRole("dialog", { name: /^Snooze / })
+
+When(
+  "I type {string} into the snooze picker of the thread {string} and press Enter",
+  async ({ app, names }, time: string, title: string) => {
+    await openTabMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await expect(snoozePicker(app.page).getByRole("status")).not.toBeEmpty()
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+// Closing flips data-open off in the same commit as the key press, before the exit transition.
+Then("the snooze picker is still open and says {string}", async ({ app }, problem: string) => {
+  await expect(snoozePicker(app.page)).toHaveAttribute("data-open")
+  await expect(snoozePicker(app.page).getByRole("status")).toHaveText(problem)
+})
+
+When("I pick the next snooze preset with the keyboard", async ({ app }) => {
+  await app.page.keyboard.press("ArrowDown")
+  await app.page.keyboard.press("Enter")
+})
+
+When("I unsnooze the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await openTabMenu(app.page, names.of(title), "Unsnooze")
 })
 
 Then("the open tab does not list the thread {string}", async ({ app, names }, title: string) => {

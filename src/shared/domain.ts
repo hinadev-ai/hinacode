@@ -422,6 +422,11 @@ export const Thread = Schema.Struct({
   sortIndex: Schema.Number,
   /** When the user pinned the thread to the top of the sidebar, or null when it is not pinned. */
   pinnedAt: Schema.NullOr(Timestamp),
+  /**
+   * Until when the thread is out of the Inbox. A past time is when it woke, and sorts the Inbox like an update.
+   * Activity clears it. Clouds on an older version leave it out.
+   */
+  snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   /** Oldest first. */
   queue: Schema.Array(QueuedMessage),
   /**

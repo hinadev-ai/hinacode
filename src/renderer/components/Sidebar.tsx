@@ -29,12 +29,14 @@ import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelSize.ts"
 import { startThread } from "../lib/startThread.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import {
   selectArchivedThreads,
   selectInboxThreads,
   selectPinnedThreads,
   selectProjectThreads,
+  selectSnoozedThreads,
   selectUnpinnedProjectThreads,
   type ThreadsState,
   useThreads,
@@ -238,15 +240,33 @@ function PinnedThreads({ query }: { query: Query }) {
   )
 }
 
-/** Active threads of every project in one list, the most recently updated on top. */
+/** Active threads of every project in one list, the most recently updated on top, then the snoozed ones. */
 function InboxList({ query }: { query: Query }) {
-  const threads = useMatchingThreads(selectInboxThreads, query)
-  return threads.length === 0 ? (
-    <p className="px-3 py-2 text-xs text-muted-foreground">
-      {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
-    </p>
-  ) : (
-    <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+  const now = useNow()
+  const threads = useMatchingThreads(selectInboxThreads(now), query)
+  const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
+  return (
+    <>
+      {threads.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
+        </p>
+      ) : (
+        <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+      )}
+      {snoozed.length > 0 && (
+        <section aria-label={m.sidebar_snoozed()} className="border-t border-sidebar-border pt-1">
+          <h2 className="px-3.5 pt-1 text-xs font-medium text-muted-foreground">{m.sidebar_snoozed()}</h2>
+          <SidebarThreadList
+            group="snoozed"
+            threads={snoozed}
+            reorderable={false}
+            showProject
+            className="px-1.5 pb-3"
+          />
+        </section>
+      )}
+    </>
   )
 }
 

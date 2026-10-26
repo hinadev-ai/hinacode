@@ -223,6 +223,14 @@ export const commands = [
     title: m.command_thread_previous,
     run: (ctx) => goToSiblingThread(ctx, -1),
   },
+  {
+    id: "thread.snooze",
+    defaultKeys: "mod+shift+s",
+    title: m.command_thread_snooze,
+    run: (ctx) => {
+      if (ctx.threadId) useUi.getState().setSnoozeThreadId(ctx.threadId)
+    },
+  },
   // Ctrl+[ is Escape to a terminal, so these keep out of it.
   {
     id: "navigation.back",
