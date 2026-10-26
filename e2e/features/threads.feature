@@ -79,6 +79,18 @@ Feature: Threads
     Then no thread is pinned
     And the open tab lists the threads "Keep, Other" in that order
 
+  Scenario: A thread snoozed until a typed time waits under Snoozed, after a restart too, until it is unsnoozed
+    Given the project "demo" has a thread "Later"
+    And the project "demo" has a thread "Now"
+    And I open the sidebar tab "Inbox"
+    When I snooze the thread "Later" until "monday 8:00" from its menu
+    Then the snoozed threads are "Later"
+    When the app restarts
+    Then the snoozed threads are "Later"
+    When I unsnooze the thread "Later" from its menu
+    Then no thread is snoozed
+    And the open tab lists the threads "Now, Later" in that order
+
   @desktop
   Scenario: A thread's ID is copied from its row menu, to point another agent at it
     Given the project "demo" has a thread "Handoff"

@@ -129,6 +129,19 @@ When("I unpin the thread {string} from its menu", async ({ app, names }, title: 
   await threadMenu(app.page, names.of(title), "Unpin")
 })
 
+When(
+  "I snooze the thread {string} until {string} from its menu",
+  async ({ app, names }, title: string, time: string) => {
+    await threadMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+When("I unsnooze the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Unsnooze")
+})
+
 When("I copy the ID of the thread {string} from its menu", async ({ app, names }, title: string) => {
   await threadMenu(app.page, names.of(title), "Copy thread ID")
 })
@@ -146,6 +159,17 @@ Then("the pinned threads are {string}", async ({ app, names }, titles: string) =
 
 Then("no thread is pinned", async ({ app }) => {
   await expect(pinned(app.page)).toBeHidden()
+})
+
+const snoozed = (page: Page) => sidebar(page).getByRole("region", { name: "Snoozed", exact: true })
+
+Then("the snoozed threads are {string}", async ({ app, names }, titles: string) => {
+  const expected = titles.split(",").map((title) => names.of(title.trim()))
+  await expect(snoozed(app.page).getByRole("link")).toHaveText(expected)
+})
+
+Then("no thread is snoozed", async ({ app }) => {
+  await expect(snoozed(app.page)).toBeHidden()
 })
 
 // Hidden tab panels stay mounted, so only the open one's rows count.
