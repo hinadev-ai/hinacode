@@ -90,6 +90,19 @@ Feature: Threads
     Then no thread is snoozed
     And the open tab lists the thread "Later"
 
+  Scenario Outline: Enter on a time the picker can't use keeps it open, until a preset is picked with the keyboard
+    Given the project "demo" has a thread "Later"
+    And I open the sidebar tab "Inbox"
+    When I type "<time>" into the snooze picker of the thread "Later" and press Enter
+    Then the snooze picker is still open and says "<problem>"
+    When I pick the next snooze preset with the keyboard
+    Then the snoozed threads are "Later"
+
+    Examples:
+      | time            | problem                   |
+      | not a real date | Can't read that as a time |
+      | yesterday 9:00  | That time has passed      |
+
   @desktop
   Scenario: A thread's ID is copied from its row menu, to point another agent at it
     Given the project "demo" has a thread "Handoff"

@@ -193,6 +193,29 @@ When(
   },
 )
 
+const snoozePicker = (page: Page) => page.getByRole("dialog", { name: /^Snooze / })
+
+When(
+  "I type {string} into the snooze picker of the thread {string} and press Enter",
+  async ({ app, names }, time: string, title: string) => {
+    await openTabMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await expect(snoozePicker(app.page).getByRole("status")).not.toBeEmpty()
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+// Closing flips data-open off in the same commit as the key press, before the exit transition.
+Then("the snooze picker is still open and says {string}", async ({ app }, problem: string) => {
+  await expect(snoozePicker(app.page)).toHaveAttribute("data-open")
+  await expect(snoozePicker(app.page).getByRole("status")).toHaveText(problem)
+})
+
+When("I pick the next snooze preset with the keyboard", async ({ app }) => {
+  await app.page.keyboard.press("ArrowDown")
+  await app.page.keyboard.press("Enter")
+})
+
 When("I unsnooze the thread {string} from its menu", async ({ app, names }, title: string) => {
   await openTabMenu(app.page, names.of(title), "Unsnooze")
 })
