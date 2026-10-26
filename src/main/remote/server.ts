@@ -31,6 +31,7 @@ import {
   RemoteAccess,
   relayHostname,
 } from "./access.ts"
+import { type Hub, Peers } from "./peers.ts"
 
 /** A socket that has not sent a valid `auth` frame by then is closed. */
 const AUTH_TIMEOUT = Duration.seconds(5)
@@ -39,7 +40,7 @@ const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 
-const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach"]
+const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach", "asks"]
 
 const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
 
@@ -82,6 +83,7 @@ const make = Effect.gen(function* () {
   const access = yield* RemoteAccess
   const broadcast = yield* PushBroadcast
   const settings = yield* Settings
+  const peers = yield* Peers
   const services = yield* Effect.context<AppServices | PushBroadcast>()
   const runFork = Effect.runForkWith(services)
   const runPromise = Effect.runPromiseWith(services)
@@ -171,12 +173,16 @@ const make = Effect.gen(function* () {
     const challenge = newNonce()
     // The token's generation once the socket authenticated, so a rotation closes it without keeping what it sent.
     let generation: number | null = null
+    let hub: Hub | null = null
     const deadline = runFork(
       Effect.sleep(AUTH_TIMEOUT).pipe(
         Effect.andThen(Effect.sync(() => socket.close(CLOSE_AUTH_TIMEOUT, "auth timeout"))),
       ),
     )
-    socket.on("close", () => runFork(Fiber.interrupt(deadline)))
+    socket.on("close", () => {
+      runFork(Fiber.interrupt(deadline))
+      hub?.leave()
+    })
     socket.on("error", () => {})
     socket.on("message", (raw, isBinary) => {
       // Frames can still arrive while the close handshake runs; a closing socket must not authenticate or dispatch.
@@ -199,7 +205,12 @@ const make = Effect.gen(function* () {
       }
       if (access.generation() !== generation) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
       if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })
-      if (frame.type === "call") handleCall(socket, frame)
+      if (frame.type === "call") return handleCall(socket, frame)
+      if (frame.type === "hub") hub ??= peers.join((ask) => send(socket, ask))
+      if (frame.type === "answer") {
+        const { envelope } = frame
+        hub?.answer(frame.id, "error" in envelope ? envelope : { result: envelope.result })
+      }
     })
     send(socket, { type: "challenge", nonce: challenge })
   }
