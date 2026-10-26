@@ -399,6 +399,7 @@ erDiagram
     text status
     int sort_index
     text pinned_at "null = not pinned"
+    text snoozed_until "out of the Inbox until then, null or past = not snoozed"
     text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
   }
