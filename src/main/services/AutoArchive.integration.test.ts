@@ -36,7 +36,8 @@ const gitHub = Layer.mock(GitHub, {
         yield* Deferred.succeed(hold.asked, undefined)
         yield* Deferred.await(hold.release)
       }
-      return { url, status: statuses.get(url) ?? "open", headRefName: heads.get(url) ?? "" } as PullRequest
+      const number = Number(url.split("/").at(-1))
+      return { url, number, status: statuses.get(url) ?? "open", headRefName: heads.get(url) ?? "" } as PullRequest
     }),
   branchPullRequest: (_cwd, branch) => {
     const url = [...heads].findLast(([, head]) => head === branch)?.[0]
@@ -194,6 +195,8 @@ const worktreeThread = (projectId: string, branch: string, baseRef = "main") =>
     return { threadId: thread.id, path: worktree.path }
   })
 
+const nextNumber = () => heads.size + 1
+
 /** Links the pull request of `branch` to the thread, opened in the given status from `head`, the worktree's tip by default. */
 const linkPullRequest = (
   thread: { readonly threadId: string; readonly path: string },
@@ -202,7 +205,7 @@ const linkPullRequest = (
   head = git(thread.path, "rev-parse", "HEAD").trim(),
 ) =>
   Effect.gen(function* () {
-    const url = `https://github.com/o/r/pull/${heads.size + 1}`
+    const url = `https://github.com/o/r/pull/${nextNumber()}`
     heads.set(url, branch)
     headOids.set(url, head)
     statuses.set(url, status)
@@ -242,6 +245,20 @@ describe("worktree cleanup across threads", () => {
         yield* waitUntilGone(child.path)
         yield* waitUntilBranchGone(root, "kk/child")
         expect(localBranches(root)).toStrictEqual(["main"])
+      }),
+    )
+
+    it.effect("removes the worktree of a fork's pull request, checked out as kk/pr-N, once it merges", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { projectId } = yield* project("fork")
+        const fork = yield* worktreeThread(projectId, `kk/pr-${nextNumber()}`)
+        yield* linkPullRequest(fork, "contributor/feature", "merged")
+
+        yield* sweep
+
+        expect(yield* statusOf(fork.threadId)).toBe("archived")
+        yield* waitUntilGone(fork.path)
       }),
     )
 
