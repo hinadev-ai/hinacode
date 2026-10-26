@@ -304,7 +304,7 @@ private struct ToolCallRow: View {
                 Text(verbatim: call.name)
                     .font(.system(.footnote, design: .monospaced).weight(.medium))
                     .foregroundStyle(.primary)
-                if let summary = Self.summary(of: call.input) {
+                if let summary = call.input.toolSummary {
                     Text(verbatim: summary)
                         .font(.system(.footnote, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -321,7 +321,7 @@ private struct ToolCallRow: View {
         .background(.fill.quinary, in: .rect(cornerRadius: 12))
         .tint(.secondary)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(call.name) \(Self.summary(of: call.input) ?? "")")
+        .accessibilityLabel("\(call.name) \(call.input.toolSummary ?? "")")
     }
 
     @ViewBuilder private var status: some View {
@@ -365,17 +365,6 @@ private struct ToolCallRow: View {
         case "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "update_plan": "checklist"
         default: "wrench.and.screwdriver"
         }
-    }
-
-    static func summary(of input: JSONValue) -> String? {
-        guard case .object(let fields) = input else { return nil }
-        for key in ["command", "file_path", "path", "pattern", "url", "description"] {
-            if case .string(let value) = fields[key] {
-                let firstLine = value.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? value
-                if !firstLine.isEmpty { return firstLine }
-            }
-        }
-        return nil
     }
 
     static func pretty(_ value: JSONValue) -> String {
