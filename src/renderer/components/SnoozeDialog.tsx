@@ -91,57 +91,63 @@ function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: 
     parsed.status === "unreadable" ? m.snooze_unreadable() : parsed.status === "past" ? m.snooze_past() : ""
 
   return (
-    <Autocomplete.Root
-      open
-      inline
-      items={choices}
-      filter={null}
-      autoHighlight="always"
-      keepHighlight
-      value={text}
-      onValueChange={(value, details) => {
-        if (details.reason !== "item-press") setText(value)
-      }}
-      itemToStringValue={(choice: Choice) => choice.label}
-    >
-      <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-        <RiAlarmSnoozeLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <Autocomplete.Input
-          ref={focusOnMount}
-          aria-label={m.snooze_input_label()}
-          aria-describedby={problemId}
-          placeholder={m.snooze_placeholder()}
-          onKeyDown={(event) => {
-            // The always-open list would otherwise take Escape for itself and keep the dialog up.
-            if (event.key === "Escape") close()
-          }}
-          className="h-12 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-      </div>
-      <output id={problemId} className="block px-3.5 pt-2 text-xs text-muted-foreground empty:hidden">
-        {problem}
-      </output>
-      <Autocomplete.List className="min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1.5">
-        {(choice: Choice) => (
-          <Autocomplete.Item
-            key={choice.id}
-            value={choice}
-            onClick={() => onChoose(choice.until)}
-            className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
-          >
-            {choice.id === "typed" ? (
-              <RiCalendarLine aria-hidden className="size-4 shrink-0" />
-            ) : choice.until === null ? (
-              <RiAlarmLine aria-hidden className="size-4 shrink-0" />
-            ) : (
-              <span aria-hidden className="size-4 shrink-0" />
-            )}
-            <span className="min-w-0 flex-1 truncate">{choice.label}</span>
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{choice.hint}</span>
-          </Autocomplete.Item>
-        )}
-      </Autocomplete.List>
-    </Autocomplete.Root>
+    <>
+      <DialogPrimitive.Title className="truncate px-3.5 pt-3 text-xs text-muted-foreground">
+        {m.snooze_label({ title: thread.title })}
+      </DialogPrimitive.Title>
+      <Autocomplete.Root
+        open
+        inline
+        items={choices}
+        filter={null}
+        // With a problem shown, Enter must not quietly pick a preset the person did not ask for.
+        autoHighlight={problem === "" ? "always" : false}
+        keepHighlight
+        value={text}
+        onValueChange={(value, details) => {
+          if (details.reason !== "item-press") setText(value)
+        }}
+        itemToStringValue={(choice: Choice) => choice.label}
+      >
+        <div className="flex items-center gap-2.5 border-b border-border px-3.5">
+          <RiAlarmSnoozeLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <Autocomplete.Input
+            ref={focusOnMount}
+            aria-label={m.snooze_input_label()}
+            aria-describedby={problemId}
+            placeholder={m.snooze_placeholder()}
+            onKeyDown={(event) => {
+              // The always-open list would otherwise take Escape for itself and keep the dialog up.
+              if (event.key === "Escape") close()
+            }}
+            className="h-12 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+        <output id={problemId} className="block px-3.5 pt-2 text-xs text-muted-foreground empty:hidden">
+          {problem}
+        </output>
+        <Autocomplete.List className="min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1.5">
+          {(choice: Choice) => (
+            <Autocomplete.Item
+              key={choice.id}
+              value={choice}
+              onClick={() => onChoose(choice.until)}
+              className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
+            >
+              {choice.id === "typed" ? (
+                <RiCalendarLine aria-hidden className="size-4 shrink-0" />
+              ) : choice.until === null ? (
+                <RiAlarmLine aria-hidden className="size-4 shrink-0" />
+              ) : (
+                <span aria-hidden className="size-4 shrink-0" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{choice.label}</span>
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{choice.hint}</span>
+            </Autocomplete.Item>
+          )}
+        </Autocomplete.List>
+      </Autocomplete.Root>
+    </>
   )
 }
 
@@ -151,14 +157,18 @@ export function SnoozeDialog() {
   const thread = useThreads((state) => (threadId === null ? undefined : state.byId[threadId]))
 
   return (
-    <Dialog open={thread !== undefined} onOpenChange={(open) => (open ? undefined : close())}>
+    <Dialog
+      open={thread !== undefined}
+      onOpenChange={(open) => (open ? undefined : close())}
+      onOpenChangeComplete={(open) => {
+        // A row snoozed from its menu has moved to another list, taking the focus target with it.
+        if (!open && document.activeElement === document.body) useUi.getState().requestComposerFocus()
+      }}
+    >
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12dvh]">
-          <DialogPrimitive.Popup
-            aria-label={thread && m.snooze_label({ title: thread.title })}
-            className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
-          >
+          <DialogPrimitive.Popup className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0">
             {thread && (
               <SnoozePicker
                 key={thread.id}

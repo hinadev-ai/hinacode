@@ -30,7 +30,7 @@ const isPinned = (thread: Thread) => thread.pinnedAt !== null
 const newestFirst = (a: Thread, b: Thread) => b.updatedAt.localeCompare(a.updatedAt)
 const isSnoozed = (thread: Thread, now: number) => thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now
 /** A thread that woke from a snooze counts as updated when it woke. */
-const lastActivity = (thread: Thread) =>
+export const lastActivity = (thread: Thread) =>
   thread.snoozedUntil !== null && thread.snoozedUntil > thread.updatedAt ? thread.snoozedUntil : thread.updatedAt
 
 /** The projects' threads that are not archived, in their saved sidebar order. */

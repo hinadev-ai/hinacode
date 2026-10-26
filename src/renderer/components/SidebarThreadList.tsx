@@ -62,7 +62,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
-import { useThreads } from "../stores/threads.ts"
+import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -693,7 +693,7 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     removed: worktree?.status === "removed",
     links,
     threadId: thread.id,
-    updatedAt: thread.updatedAt,
+    updatedAt: lastActivity(thread),
     snoozedUntil: useSnoozedUntil(thread),
   }
 }
