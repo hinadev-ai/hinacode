@@ -147,7 +147,7 @@ struct ThreadListView: View {
         if !pinned.isEmpty {
             Section(.mobileHomePinned) {
                 ForEach(pinned) { thread in
-                    ThreadRow(thread: thread, showProject: true)
+                    ThreadRow(thread: thread, showProject: Self.spansProjects(pinned))
                         .tag(SidebarItem.thread(thread.id))
                 }
             }
@@ -162,7 +162,7 @@ struct ThreadListView: View {
                         .mobileHomeInboxEmpty, systemImage: "tray", description: Text(.mobileHomeInboxEmptyHint))
                 } else {
                     ForEach(inbox) { thread in
-                        ThreadRow(thread: thread, showProject: true)
+                        ThreadRow(thread: thread, showProject: Self.spansProjects(inbox))
                             .tag(SidebarItem.thread(thread.id))
                     }
                 }
@@ -174,7 +174,7 @@ struct ThreadListView: View {
                     ContentUnavailableView(.mobileHomeArchivedEmpty, systemImage: "archivebox")
                 } else {
                     ForEach(archived) { thread in
-                        ThreadRow(thread: thread, showProject: true)
+                        ThreadRow(thread: thread, showProject: Self.spansProjects(archived))
                             .tag(SidebarItem.thread(thread.id))
                     }
                 }
@@ -184,6 +184,11 @@ struct ThreadListView: View {
                 projectSection(project, threads: all)
             }
         }
+    }
+
+    /// A row names its project only when its neighbors could belong to another one.
+    private static func spansProjects(_ threads: [AgentThread]) -> Bool {
+        Set(threads.map(\.projectId)).count > 1
     }
 
     private func projectSection(_ project: Project, threads all: [AgentThread]) -> some View {
@@ -212,7 +217,7 @@ struct ThreadListView: View {
             }
         } header: {
             HStack(spacing: 6) {
-                Image(systemName: "folder")
+                ProjectIcon(projectId: project.id)
                 Text(verbatim: project.name)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)

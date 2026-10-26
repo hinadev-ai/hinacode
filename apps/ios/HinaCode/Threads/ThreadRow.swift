@@ -34,58 +34,29 @@ struct ThreadRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if showProject, let project {
-                HStack(spacing: 4) {
-                    ProjectIcon(projectId: project.id)
-                    Text(verbatim: project.name)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            ProviderMark(provider: thread.provider)
+                .alignmentGuide(.firstTextBaseline) { $0.height * 0.85 }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(title)
+                        .font(state.emphasis == .attention ? .body.weight(.semibold) : .body)
+                        .foregroundStyle(titleStyle)
                         .lineLimit(1)
-                }
-            }
-            HStack(spacing: 8) {
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(titleStyle)
-                    .lineLimit(1)
-                ProviderMark(provider: thread.provider)
-                statusIndicator
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 22)
-            HStack(spacing: 8) {
-                if showProject, severalServers, let server {
-                    ServerMark(server: server)
-                }
-                if let branch = model.threads.branch(of: thread) {
-                    Label {
-                        Text(verbatim: branch.name)
-                            .font(.system(.caption, design: .monospaced))
-                            .strikethrough(branch.removed)
-                            .lineLimit(1)
-                    } icon: {
-                        Image(systemName: "arrow.triangle.branch")
+                    statusIndicator
+                        .font(.subheadline)
+                    Spacer(minLength: 4)
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        RelativeTimeText(iso: thread.updatedAt, now: context.date)
                     }
-                    .labelStyle(.titleAndIcon)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-                if let mark {
-                    PullRequestMarkView(mark: mark)
-                }
-                if watching {
-                    Image(systemName: "eye")
-                }
-                Spacer(minLength: 0)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    RelativeTimeText(iso: thread.updatedAt, now: context.date)
-                }
+                details
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .opacity(0.8)
-            .frame(minHeight: 18)
         }
-        .opacity(away ? 0.5 : state.emphasis == .working ? 0.6 : 1)
+        .padding(.vertical, 2)
+        .opacity(away ? 0.5 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Text(.mobileThreadActionsHint))
@@ -123,11 +94,43 @@ struct ThreadRow: View {
     }
 
     private var titleStyle: Color {
-        switch state.emphasis {
-        case .attention: .primary
-        case .resting: .primary.opacity(0.8)
-        case .working: .secondary
+        state.emphasis == .resting ? .primary.opacity(0.85) : .primary
+    }
+
+    /// Where the thread works and what it shipped, on one quiet line under the title.
+    private var details: some View {
+        HStack(spacing: 6) {
+            if showProject, severalServers, let server {
+                ServerMark(server: server)
+            }
+            if showProject, let project {
+                Text(verbatim: project.name)
+                    .lineLimit(1)
+            }
+            if let branch = model.threads.branch(of: thread) {
+                Label {
+                    Text(verbatim: branch.name)
+                        .font(.system(.footnote, design: .monospaced))
+                        .strikethrough(branch.removed)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } icon: {
+                    Image(systemName: "arrow.triangle.branch")
+                        .imageScale(.small)
+                }
+                .labelStyle(.titleAndIcon)
+                .layoutPriority(1)
+            }
+            if let mark {
+                PullRequestMarkView(mark: mark)
+            }
+            if watching {
+                Image(systemName: "eye")
+                    .imageScale(.small)
+            }
         }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
     }
 
     private var summaryKey: String {
@@ -139,6 +142,8 @@ struct ThreadRow: View {
             let image = Image(systemName: symbol).foregroundStyle(tone.color)
             if state == .awaitingApproval, !reduceMotion {
                 image.symbolEffect(.pulse, options: .repeat(3))
+            } else if state == .running, !reduceMotion {
+                image.symbolEffect(.breathe)
             } else {
                 image
             }
