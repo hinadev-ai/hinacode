@@ -22,15 +22,19 @@ struct OverviewView: View {
 
     var body: some View {
         List {
-            if !connected {
-                Section {
-                    Label(.mobileOverviewOffline, systemImage: "wifi.slash")
-                        .foregroundStyle(.secondary)
+            Group {
+                if !connected {
+                    Section {
+                        Label(.mobileOverviewOffline, systemImage: "wifi.slash")
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                pullRequestSections
+                linearSection
             }
-            pullRequestSections
-            linearSection
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         .navigationTitle(.mobileOverviewTitle)
         .refreshable { await refresh() }
         .task(id: "\(overview.urls.joined(separator: "\0"))@\(model.hub.generation)") {

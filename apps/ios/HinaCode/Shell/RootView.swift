@@ -24,8 +24,12 @@ struct PairingScreen: View {
                 Section {
                     NavigationLink {
                         Form {
-                            RelayAccountSection()
+                            Group {
+                                RelayAccountSection()
+                            }
+                            .listRowBackground(Palette.background)
                         }
+                        .paletteList()
                         .navigationTitle(.mobileRelayTitle)
                     } label: {
                         Label(.mobilePairingRelay, systemImage: "cloud")

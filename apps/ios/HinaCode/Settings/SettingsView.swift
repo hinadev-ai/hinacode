@@ -10,17 +10,21 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                PhoneSettingsSections()
-                DesktopSettingsSections()
-                ServersSection()
-                RelayAccountSection()
+                Group {
+                    PhoneSettingsSections()
+                    DesktopSettingsSections()
+                    ServersSection()
+                    RelayAccountSection()
 
-                Section {
-                    Label(.mobileSettingsVersion(version), systemImage: "iphone")
-                } header: {
-                    Text(.mobileSettingsAbout)
+                    Section {
+                        Label(.mobileSettingsVersion(version), systemImage: "iphone")
+                    } header: {
+                        Text(.mobileSettingsAbout)
+                    }
                 }
+                .listRowBackground(Palette.background)
             }
+            .paletteList()
             .navigationTitle(.mobileHomeSettings)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -106,7 +110,7 @@ private struct PhoneSettingsSections: View {
             .disabled(asking)
         case .denied:
             Label(.mobileSettingsNotificationsDenied, systemImage: "bell.slash")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Palette.attention)
             Button(.mobileSettingsOpenSettings, systemImage: "gearshape") {
                 if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
             }

@@ -97,7 +97,11 @@ struct ThreadsWidgetView: View {
         content
             .widgetURL(snapshot?.threads.first.map { ThreadLink.url(threadId: $0.id) })
             .containerBackground(for: .widget) {
-                if family == .accessoryCircular { AccessoryWidgetBackground() }
+                if family == .accessoryCircular {
+                    AccessoryWidgetBackground()
+                } else if family == .systemSmall || family == .systemMedium {
+                    Palette.background
+                }
             }
     }
 

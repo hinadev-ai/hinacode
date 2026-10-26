@@ -21,49 +21,53 @@ struct WorkspaceSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    TextField(text: refBinding, prompt: Text(.mobileComposerWorkspacePlaceholder)) {
-                        Text(.mobileComposerWorkspaceRef)
-                    }
-                    .font(.system(.body, design: .monospaced))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .accessibilityLabel(Text(.mobileComposerWorkspaceRef))
-                }
-                runInSection
-                if !filteredPullRequests.isEmpty {
+                Group {
                     Section {
-                        ForEach(filteredPullRequests, id: \.number) { pullRequest in
-                            pickRow(
-                                selected: trimmedRef == "#\(pullRequest.number)",
-                                title: "#\(pullRequest.number) \(pullRequest.title)",
-                                subtitle: pullRequest.isDraft
-                                    ? "\(String(localized: .mobilePrStateDraft)), \(pullRequest.headRefName)"
-                                    : pullRequest.headRefName,
-                                symbol: "arrow.triangle.pull"
-                            ) {
-                                setRef("#\(pullRequest.number)")
-                            }
+                        TextField(text: refBinding, prompt: Text(.mobileComposerWorkspacePlaceholder)) {
+                            Text(.mobileComposerWorkspaceRef)
                         }
-                    } header: {
-                        Text(.mobileOverviewPullRequests)
+                        .font(.system(.body, design: .monospaced))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .accessibilityLabel(Text(.mobileComposerWorkspaceRef))
+                    }
+                    runInSection
+                    if !filteredPullRequests.isEmpty {
+                        Section {
+                            ForEach(filteredPullRequests, id: \.number) { pullRequest in
+                                pickRow(
+                                    selected: trimmedRef == "#\(pullRequest.number)",
+                                    title: "#\(pullRequest.number) \(pullRequest.title)",
+                                    subtitle: pullRequest.isDraft
+                                        ? "\(String(localized: .mobilePrStateDraft)), \(pullRequest.headRefName)"
+                                        : pullRequest.headRefName,
+                                    symbol: "arrow.triangle.pull"
+                                ) {
+                                    setRef("#\(pullRequest.number)")
+                                }
+                            }
+                        } header: {
+                            Text(.mobileOverviewPullRequests)
+                        }
+                    }
+                    if !filteredBranches.isEmpty {
+                        Section {
+                            ForEach(filteredBranches, id: \.self) { branch in
+                                pickRow(
+                                    selected: trimmedRef == branch, title: branch, subtitle: nil,
+                                    symbol: "arrow.triangle.branch"
+                                ) {
+                                    setRef(branch)
+                                }
+                            }
+                        } header: {
+                            Text(.mobileComposerBranches)
+                        }
                     }
                 }
-                if !filteredBranches.isEmpty {
-                    Section {
-                        ForEach(filteredBranches, id: \.self) { branch in
-                            pickRow(
-                                selected: trimmedRef == branch, title: branch, subtitle: nil,
-                                symbol: "arrow.triangle.branch"
-                            ) {
-                                setRef(branch)
-                            }
-                        }
-                    } header: {
-                        Text(.mobileComposerBranches)
-                    }
-                }
+                .listRowBackground(Palette.background)
             }
+            .paletteList()
             .navigationTitle(Text(.mobileComposerWorkspace))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

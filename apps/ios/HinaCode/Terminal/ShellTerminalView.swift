@@ -49,10 +49,10 @@ final class ShellTerminalView: TerminalView {
     }
 
     private func applyColors() {
-        let foreground = UIColor.label.resolvedColor(with: traitCollection)
+        let foreground = UIColor(resource: .Palette.foreground).resolvedColor(with: traitCollection)
         let accent = UIColor(resource: .accent).resolvedColor(with: traitCollection)
         nativeForegroundColor = foreground
-        nativeBackgroundColor = UIColor.systemBackground.resolvedColor(with: traitCollection)
+        nativeBackgroundColor = UIColor(resource: .Palette.background).resolvedColor(with: traitCollection)
         caretColor = accent
         selectedTextBackgroundColor = accent.withAlphaComponent(0.3)
         selectedTextForegroundColor = foreground

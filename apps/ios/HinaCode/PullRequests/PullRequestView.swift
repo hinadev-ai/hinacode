@@ -39,8 +39,12 @@ struct PullRequestView: View {
 
     var body: some View {
         List {
-            content
+            Group {
+                content
+            }
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         .navigationTitle(Text(verbatim: number.map { "#\($0)" } ?? ""))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

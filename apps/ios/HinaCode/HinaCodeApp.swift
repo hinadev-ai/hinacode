@@ -12,6 +12,7 @@ struct HinaCodeApp: App {
         #if DEBUG
             if UserDefaults.standard.bool(forKey: "HinaCodeResetState") { Self.resetState() }
         #endif
+        Self.themeNavigationBars()
         let model = AppModel(hub: ServerHub())
         let router = Router()
         _model = State(initialValue: model)
@@ -22,6 +23,8 @@ struct HinaCodeApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .tint(Palette.primary)
+                .foregroundStyle(Palette.foreground)
                 .environment(model)
                 .environment(router)
                 .preferredColorScheme(colorScheme)
@@ -46,6 +49,8 @@ struct HinaCodeApp: App {
         WindowGroup(for: String.self) { binding in
             if let threadId = binding.wrappedValue {
                 ThreadWindow(threadId: threadId)
+                    .tint(Palette.primary)
+                    .foregroundStyle(Palette.foreground)
                     .environment(model)
                     .preferredColorScheme(colorScheme)
                     .task { model.start() }
@@ -59,6 +64,14 @@ struct HinaCodeApp: App {
         case .light: .light
         case .dark: .dark
         }
+    }
+
+    /// Navigation titles in the palette's text color. SwiftUI's foreground style does not reach UIKit's bars.
+    private static func themeNavigationBars() {
+        let foreground = UIColor(resource: .Palette.foreground)
+        let appearance = UINavigationBar.appearance()
+        appearance.titleTextAttributes = [.foregroundColor: foreground]
+        appearance.largeTitleTextAttributes = [.foregroundColor: foreground]
     }
 
     /// Back to a first launch, so a UI test run starts unpaired.

@@ -93,6 +93,7 @@ struct ThreadView: View {
                 .accessibilityHidden(tab != .terminal)
             }
         }
+        .background(Palette.background)
         .safeAreaBar(edge: .top) {
             VStack(spacing: 8) {
                 Picker(selection: $tab) {

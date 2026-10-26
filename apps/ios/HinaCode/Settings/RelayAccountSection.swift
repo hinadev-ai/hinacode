@@ -58,7 +58,7 @@ private struct RelayStatusSections: View {
         if let error = account.error {
             Section {
                 Label(error.localized, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.destructive)
             }
         }
 
@@ -164,7 +164,7 @@ private struct RelaySignInForm: View {
 
         if let error {
             Label(error.localized, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(Palette.destructive)
         }
 
         Button(action: submit) {

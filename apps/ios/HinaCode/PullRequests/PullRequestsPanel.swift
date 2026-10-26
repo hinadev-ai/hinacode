@@ -18,14 +18,18 @@ struct PullRequestsPanel: View {
 
     var body: some View {
         List {
-            if let error {
-                Section {
-                    Label(.mobilePrLinksFailed(error), systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(Tone.danger.color)
+            Group {
+                if let error {
+                    Section {
+                        Label(.mobilePrLinksFailed(error), systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(Tone.danger.color)
+                    }
                 }
+                content
             }
-            content
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         .refreshable { await refresh() }
         .task(id: "\(threadId)@\(model.server(of: thread)?.generation ?? 0)") { await load() }
     }

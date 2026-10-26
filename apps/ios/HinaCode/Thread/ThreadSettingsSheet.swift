@@ -38,18 +38,22 @@ struct ThreadSettingsSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if let thread {
-                    if unstarted { agentSection(thread) }
-                    modelSection(thread)
-                    if currentListed, let current = currentModel, !current.efforts.isEmpty {
-                        effortSection(thread, model: current)
+                Group {
+                    if let thread {
+                        if unstarted { agentSection(thread) }
+                        modelSection(thread)
+                        if currentListed, let current = currentModel, !current.efforts.isEmpty {
+                            effortSection(thread, model: current)
+                        }
+                        if let current = currentModel, current.fastMode {
+                            speedSection(thread)
+                        }
+                        accessSection(thread)
                     }
-                    if let current = currentModel, current.fastMode {
-                        speedSection(thread)
-                    }
-                    accessSection(thread)
                 }
+                .listRowBackground(Palette.background)
             }
+            .paletteList()
             .navigationTitle(Text(.mobileComposerSettings))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

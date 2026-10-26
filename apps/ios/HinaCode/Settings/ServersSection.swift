@@ -19,10 +19,10 @@ struct ConnectionStatusLabel: View {
 
     private var color: Color {
         switch status {
-        case .connected: .green
+        case .connected: Palette.success
         case .connecting: .secondary
-        case .offline: .orange
-        case .unauthorized: .red
+        case .offline: Palette.attention
+        case .unauthorized: Palette.destructive
         }
     }
 }
@@ -100,49 +100,53 @@ struct ServerDetailView: View {
 
     var body: some View {
         Form {
-            if let server {
-                Section {
-                    ConnectionStatusLabel(status: server.status)
+            Group {
+                if let server {
+                    Section {
+                        ConnectionStatusLabel(status: server.status)
 
-                    if server.source == .relay {
-                        Label(.mobileRelayFromRelay, systemImage: "cloud")
-                            .foregroundStyle(.secondary)
+                        if server.source == .relay {
+                            Label(.mobileRelayFromRelay, systemImage: "cloud")
+                                .foregroundStyle(.secondary)
+                        }
+                        if let error = server.error {
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Palette.destructive)
+                        }
+                        if let relay = server.relay {
+                            address(relay)
+                        }
+                        ForEach(server.hosts, id: \.self) { host in
+                            address("\(host):\(server.port)")
+                        }
                     }
-                    if let error = server.error {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                    }
-                    if let relay = server.relay {
-                        address(relay)
-                    }
-                    ForEach(server.hosts, id: \.self) { host in
-                        address("\(host):\(server.port)")
-                    }
-                }
 
-                Section {
-                    if server.status == .offline {
-                        Button(.mobileSettingsServerReconnect, systemImage: "arrow.clockwise") {
-                            model.hub.reconnectNow(id: server.id)
+                    Section {
+                        if server.status == .offline {
+                            Button(.mobileSettingsServerReconnect, systemImage: "arrow.clockwise") {
+                                model.hub.reconnectNow(id: server.id)
+                            }
                         }
-                    }
-                    if server.status == .unauthorized {
-                        Button(.mobileSettingsServerPairAgain, systemImage: "qrcode.viewfinder") {
-                            router.sheet = .addServer
+                        if server.status == .unauthorized {
+                            Button(.mobileSettingsServerPairAgain, systemImage: "qrcode.viewfinder") {
+                                router.sheet = .addServer
+                            }
                         }
-                    }
-                    if server.source != .relay {
-                        Button(.mobileSettingsServerForget, systemImage: "minus.circle", role: .destructive) {
-                            confirmingForget = true
+                        if server.source != .relay {
+                            Button(.mobileSettingsServerForget, systemImage: "minus.circle", role: .destructive) {
+                                confirmingForget = true
+                            }
                         }
-                    }
-                } footer: {
-                    if server.source == .relay {
-                        Text(.mobileRelayForgetHint)
+                    } footer: {
+                        if server.source == .relay {
+                            Text(.mobileRelayForgetHint)
+                        }
                     }
                 }
             }
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         .navigationTitle(Text(verbatim: server?.settingsName ?? ""))
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(

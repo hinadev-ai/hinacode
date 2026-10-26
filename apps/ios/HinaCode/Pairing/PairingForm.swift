@@ -17,67 +17,71 @@ struct PairingForm<Footer: View>: View {
 
     var body: some View {
         Form {
-            Section {
-                PairingHeader()
-            }
-            .listRowBackground(Color.clear)
-
-            if let refusal {
+            Group {
                 Section {
-                    Label(refusal, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                    PairingHeader()
                 }
-            }
+                .listRowBackground(Color.clear)
 
-            Section {
-                actions
-            } footer: {
-                if cameraDenied {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(.mobilePairingCameraDenied)
-                        Button(.mobilePairingOpenSettings, action: openSettings)
+                if let refusal {
+                    Section {
+                        Label(refusal, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Palette.destructive)
                     }
                 }
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
 
-            Section {
-                TextField(
-                    text: $text, prompt: Text(verbatim: "hinacode://connect?host=…&port=…&token=…"), axis: .vertical
-                ) {
+                Section {
+                    actions
+                } footer: {
+                    if cameraDenied {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(.mobilePairingCameraDenied)
+                            Button(.mobilePairingOpenSettings, action: openSettings)
+                        }
+                    }
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+
+                Section {
+                    TextField(
+                        text: $text, prompt: Text(verbatim: "hinacode://connect?host=…&port=…&token=…"), axis: .vertical
+                    ) {
+                        Text(.mobilePairingUrl)
+                    }
+                    .font(.system(.callout, design: .monospaced))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .lineLimit(2...6)
+                    .submitLabel(.go)
+                    .onSubmit(submit)
+                    .accessibilityIdentifier("pairing-url")
+
+                    Button(.mobilePairingConnect, action: submit)
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("pairing-connect")
+                } header: {
                     Text(.mobilePairingUrl)
+                } footer: {
+                    if rejected == text {
+                        Text(.mobilePairingInvalid)
+                            .foregroundStyle(Palette.destructive)
+                            .accessibilityAddTraits(.isStaticText)
+                    } else {
+                        Text(.mobilePairingUrlFootnote)
+                    }
                 }
-                .font(.system(.callout, design: .monospaced))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .lineLimit(2...6)
-                .submitLabel(.go)
-                .onSubmit(submit)
-                .accessibilityIdentifier("pairing-url")
 
-                Button(.mobilePairingConnect, action: submit)
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("pairing-connect")
-            } header: {
-                Text(.mobilePairingUrl)
-            } footer: {
-                if rejected == text {
-                    Text(.mobilePairingInvalid)
-                        .foregroundStyle(.red)
-                        .accessibilityAddTraits(.isStaticText)
-                } else {
-                    Text(.mobilePairingUrlFootnote)
-                }
+                footer
             }
-
-            footer
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         // One readable column on iPad, the way setup screens stay narrow on a wide display.
         .frame(maxWidth: 600)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Palette.page)
         .fullScreenCover(isPresented: $scanning) {
             ScannerScreen { code in
                 guard let target = PairingTarget.parse(code) else {

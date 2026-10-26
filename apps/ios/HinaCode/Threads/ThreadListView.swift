@@ -6,6 +6,7 @@ import SwiftUI
 struct ThreadListView: View {
     @Environment(AppModel.self) private var model
     @Environment(Router.self) private var router
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var query = ""
     @State private var searchPresented = false
     @State private var collapsed: Set<String> = []
@@ -70,7 +71,11 @@ struct ThreadListView: View {
                 ProgressView(.mobileHomeLoading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .error(let message):
-                List { errorSection(message) }
+                List {
+                    Group { errorSection(message) }
+                        .listRowBackground(Palette.background)
+                }
+                .paletteList()
             case .ready:
                 ContentUnavailableView {
                     Label(.mobileHomeNoProjects, systemImage: "folder.badge.plus")
@@ -93,15 +98,20 @@ struct ThreadListView: View {
 
     private var threadList: some View {
         List(selection: Bindable(router).selection) {
-            if case .error(let message) = threads.status {
-                errorSection(message)
+            Group {
+                if case .error(let message) = threads.status {
+                    errorSection(message)
+                }
+                if searching {
+                    searchSections
+                } else {
+                    homeSections
+                }
             }
-            if searching {
-                searchSections
-            } else {
-                homeSections
-            }
+            // As the iPad sidebar, rows keep the system's background so selection still shows.
+            .listRowBackground(sizeClass == .compact ? Palette.background : nil)
         }
+        .paletteList()
         .safeAreaBar(edge: .top) {
             if !searching {
                 Picker(.mobileHomeTabs, selection: Bindable(model.preferences).homeTab) {

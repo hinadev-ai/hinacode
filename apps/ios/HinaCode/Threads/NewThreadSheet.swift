@@ -21,19 +21,23 @@ struct NewThreadSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if let createError {
-                    Label {
-                        Text(verbatim: createError)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Tone.danger.color)
+                Group {
+                    if let createError {
+                        Label {
+                            Text(verbatim: createError)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Tone.danger.color)
+                        }
+                    }
+                    if let group {
+                        chooser(group)
+                    } else {
+                        projectList
                     }
                 }
-                if let group {
-                    chooser(group)
-                } else {
-                    projectList
-                }
+                .listRowBackground(Palette.background)
             }
+            .paletteList()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

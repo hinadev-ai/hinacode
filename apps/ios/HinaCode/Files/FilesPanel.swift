@@ -91,12 +91,16 @@ struct FolderContentsView: View {
                     ContentUnavailableView(.mobileFilesEmptyFolder, systemImage: "folder")
                 } else {
                     List {
-                        ForEach(entries, id: \.path) { entry in
-                            NavigationLink(value: route(for: entry)) {
-                                FileEntryRow(entry: entry)
+                        Group {
+                            ForEach(entries, id: \.path) { entry in
+                                NavigationLink(value: route(for: entry)) {
+                                    FileEntryRow(entry: entry)
+                                }
                             }
                         }
+                        .listRowBackground(Palette.background)
                     }
+                    .paletteList()
                     .accessibilityIdentifier("files-list")
                     .refreshable { await load() }
                 }
@@ -269,18 +273,22 @@ private struct FileSearchView: View {
 
     private func resultsList(_ matches: [PathMatch]) -> some View {
         List {
-            if matches.isEmpty {
-                Text(.mobileFilesNoMatches(query))
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(matches, id: \.path) { match in
-                    NavigationLink(value: DetailRoute.file(threadId: threadId, path: match.path, line: nil)) {
-                        PathMatchRow(match: match)
+            Group {
+                if matches.isEmpty {
+                    Text(.mobileFilesNoMatches(query))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(matches, id: \.path) { match in
+                        NavigationLink(value: DetailRoute.file(threadId: threadId, path: match.path, line: nil)) {
+                            PathMatchRow(match: match)
+                        }
                     }
                 }
+                contentsSection
             }
-            contentsSection
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         .accessibilityIdentifier("files-list")
     }
 

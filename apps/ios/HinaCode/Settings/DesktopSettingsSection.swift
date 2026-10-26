@@ -108,7 +108,7 @@ private struct ServerPreferencesSections: View {
         if let writeError {
             Section {
                 Label(.mobileSettingsSaveFailed(writeError), systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.destructive)
             }
         }
         if let loadError {
@@ -129,7 +129,7 @@ private struct ServerPreferencesSections: View {
                         }
                     } icon: {
                         Image(systemName: Self.accessSymbol(mode))
-                            .foregroundStyle(!offline && mode == .full ? Color.red : Color.secondary)
+                            .foregroundStyle(!offline && mode == .full ? Palette.destructive : Color.secondary)
                     }
                     .tag(mode)
                 }
@@ -272,7 +272,7 @@ struct LoadFailedRows: View {
 
     var body: some View {
         Label(.mobileSettingsLoadFailed(message), systemImage: "exclamationmark.triangle.fill")
-            .foregroundStyle(.red)
+            .foregroundStyle(Palette.destructive)
         Button(.mobileSettingsRetry, systemImage: "arrow.clockwise", action: onRetry)
     }
 }
@@ -340,38 +340,42 @@ private struct ModelListView: View {
 
     var body: some View {
         Form {
-            Section {
-                option(id: nil) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(.mobileSettingsAgentDefault)
-                        Text(.mobileSettingsAgentDefaultHint)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+            Group {
+                Section {
+                    option(id: nil) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(.mobileSettingsAgentDefault)
+                            Text(.mobileSettingsAgentDefaultHint)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    ForEach(models ?? []) { entry in
+                        option(id: entry.id) {
+                            Text(verbatim: entry.label)
+                        }
                     }
                 }
-                ForEach(models ?? []) { entry in
-                    option(id: entry.id) {
-                        Text(verbatim: entry.label)
-                    }
-                }
-            }
 
-            if let error {
-                Section {
-                    Label(.mobileSettingsModelsFailed(error), systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                    Button(.mobileSettingsRetry, systemImage: "arrow.clockwise") { attempt += 1 }
-                }
-            } else if models == nil {
-                Section {
-                    Label {
-                        Text(.mobileSettingsModelsLoading)
-                    } icon: {
-                        ProgressView()
+                if let error {
+                    Section {
+                        Label(.mobileSettingsModelsFailed(error), systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Palette.destructive)
+                        Button(.mobileSettingsRetry, systemImage: "arrow.clockwise") { attempt += 1 }
+                    }
+                } else if models == nil {
+                    Section {
+                        Label {
+                            Text(.mobileSettingsModelsLoading)
+                        } icon: {
+                            ProgressView()
+                        }
                     }
                 }
             }
+            .listRowBackground(Palette.background)
         }
+        .paletteList()
         .navigationTitle(Text(.mobileSettingsModelSheetTitle(agentName)))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: attempt) {

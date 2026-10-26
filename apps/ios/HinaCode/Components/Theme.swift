@@ -45,16 +45,48 @@ nonisolated enum SyntaxPalette {
     }
 }
 
-/// The tones a status, notice or mark can take, on system colors so they follow dark mode and Increase Contrast.
+/// The desktop's two themes from `src/renderer/index.css`: Catppuccin Latte in light mode and Tokyo Night in dark
+/// mode. The values live in the asset catalog's Palette folder, with the primary as the accent color. Attention and
+/// success keep the desktop's own values, since neither theme sets them there.
+enum Palette {
+    /// Behind grouped lists and the sidebar, the desktop's `--surface`.
+    static let page = Color(.Palette.page)
+    /// Plain screens, list rows and cards.
+    static let background = Color(.Palette.background)
+    static let muted = Color(.Palette.muted)
+    static let foreground = Color(.Palette.foreground)
+    static let mutedForeground = Color(.Palette.mutedForeground)
+    static let border = Color(.Palette.border)
+    static let input = Color(.Palette.input)
+    static let primary = Color(.accent)
+    static let primaryForeground = Color(.Palette.primaryForeground)
+    static let ring = Color(.Palette.ring)
+    static let destructive = Color(.Palette.destructive)
+    static let attention = Color(.Palette.attention)
+    static let success = Color(.Palette.success)
+    /// The send halo's second and third stops: the primary turned +45° and -35° in hue, as the desktop derives them.
+    static let sendB = Color(.Palette.sendB)
+    static let sendC = Color(.Palette.sendC)
+}
+
+extension View {
+    /// A list or form on the palette: the page behind it, and its rows on `Palette.background`.
+    func paletteList() -> some View {
+        scrollContentBackground(.hidden)
+            .background(Palette.page)
+    }
+}
+
+/// The tones a status, notice or mark can take, on the palette.
 enum Tone {
     case neutral, attention, running, danger
 
     var color: Color {
         switch self {
-        case .neutral: .secondary
-        case .attention: .orange
-        case .running: .green
-        case .danger: .red
+        case .neutral: Palette.mutedForeground
+        case .attention: Palette.attention
+        case .running: Palette.success
+        case .danger: Palette.destructive
         }
     }
 }

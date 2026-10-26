@@ -58,7 +58,7 @@ private struct LockScreenActivity: View {
         HStack(alignment: .top, spacing: 12) {
             ProviderMark(provider: context.attributes.provider, size: 24)
                 .frame(width: 40, height: 40)
-                .background(.fill.tertiary, in: .circle)
+                .background(Palette.muted, in: .circle)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(verbatim: context.attributes.title)
@@ -82,7 +82,9 @@ private struct LockScreenActivity: View {
             }
         }
         .padding(16)
-        .activitySystemActionForegroundColor(.primary)
+        .foregroundStyle(Palette.foreground)
+        .activityBackgroundTint(Palette.background)
+        .activitySystemActionForegroundColor(Palette.foreground)
     }
 }
 

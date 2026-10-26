@@ -39,81 +39,85 @@ struct AddProjectSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                if servers.count > 1 {
-                    Section(.mobileProjectServer) {
-                        Picker(.mobileProjectServer, selection: serverBinding) {
-                            ForEach(servers) { server in
-                                Text(verbatim: server.name ?? "").tag(server.id)
+                Group {
+                    if servers.count > 1 {
+                        Section(.mobileProjectServer) {
+                            Picker(.mobileProjectServer, selection: serverBinding) {
+                                ForEach(servers) { server in
+                                    Text(verbatim: server.name ?? "").tag(server.id)
+                                }
                             }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                    }
-                }
-
-                Section {
-                    TextField(text: $source, prompt: Text(.mobileProjectSourcePlaceholder)) {
-                        Text(.mobileProjectSourceLabel)
-                    }
-                    .font(.system(.body, design: .monospaced))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($sourceFocused)
-                    .submitLabel(ready ? .go : .next)
-                    .onSubmit { if ready { submit() } }
-                    .accessibilityIdentifier("project-source")
-                    .onChange(of: source) {
-                        cloneEdited = false
-                        createdProject = nil
                     }
 
-                    if let repository {
-                        Label {
-                            Text(.mobileProjectRepository("\(repository.owner)/\(repository.name)"))
-                        } icon: {
-                            Image(systemName: "arrow.triangle.branch")
-                        }
-                        TextField(text: cloneBinding, prompt: Text(verbatim: effectiveCloneFolder)) {
-                            Text(.mobileProjectCloneTo)
+                    Section {
+                        TextField(text: $source, prompt: Text(.mobileProjectSourcePlaceholder)) {
+                            Text(.mobileProjectSourceLabel)
                         }
                         .font(.system(.body, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($sourceFocused)
+                        .submitLabel(ready ? .go : .next)
+                        .onSubmit { if ready { submit() } }
+                        .accessibilityIdentifier("project-source")
+                        .onChange(of: source) {
+                            cloneEdited = false
+                            createdProject = nil
+                        }
+
+                        if let repository {
+                            Label {
+                                Text(.mobileProjectRepository("\(repository.owner)/\(repository.name)"))
+                            } icon: {
+                                Image(systemName: "arrow.triangle.branch")
+                            }
+                            TextField(text: cloneBinding, prompt: Text(verbatim: effectiveCloneFolder)) {
+                                Text(.mobileProjectCloneTo)
+                            }
+                            .font(.system(.body, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        }
+
+                        TextField(text: $name, prompt: Text(verbatim: namePlaceholder)) {
+                            HStack(spacing: 6) {
+                                Text(.mobileProjectName)
+                                Text(.mobileProjectOptional)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } footer: {
+                        Text(repository == nil ? .mobileProjectFolderHint : .mobileProjectCloneHint)
                     }
 
-                    TextField(text: $name, prompt: Text(verbatim: namePlaceholder)) {
-                        HStack(spacing: 6) {
-                            Text(.mobileProjectName)
-                            Text(.mobileProjectOptional)
-                                .foregroundStyle(.secondary)
+                    if let submitError {
+                        Label {
+                            Text(verbatim: submitError)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Tone.danger.color)
                         }
                     }
-                } footer: {
-                    Text(repository == nil ? .mobileProjectFolderHint : .mobileProjectCloneHint)
-                }
 
-                if let submitError {
-                    Label {
-                        Text(verbatim: submitError)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Tone.danger.color)
-                    }
-                }
-
-                Section {
-                    Button(action: submit) {
-                        if busy {
-                            ProgressView()
-                        } else if repository != nil {
-                            Label(.mobileProjectClone, systemImage: "arrow.down.circle")
-                        } else {
-                            Label(.mobileProjectAdd, systemImage: "folder.badge.plus")
+                    Section {
+                        Button(action: submit) {
+                            if busy {
+                                ProgressView()
+                            } else if repository != nil {
+                                Label(.mobileProjectClone, systemImage: "arrow.down.circle")
+                            } else {
+                                Label(.mobileProjectAdd, systemImage: "folder.badge.plus")
+                            }
                         }
+                        .disabled(!ready || busy)
+                        .accessibilityIdentifier("project-submit")
                     }
-                    .disabled(!ready || busy)
-                    .accessibilityIdentifier("project-submit")
                 }
+                .listRowBackground(Palette.background)
             }
+            .paletteList()
             .navigationTitle(.mobileHomeAddProject)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
