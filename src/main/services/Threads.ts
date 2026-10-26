@@ -7,6 +7,7 @@ import {
   type AccessMode,
   type Changes,
   type ChangesScope,
+  chatFolder,
   isThreadBusy,
   QueuedMessage,
   Thread,
@@ -136,11 +137,13 @@ export class Threads extends Context.Service<
     >
     /**
      * Marks the thread archived and ends its terminals. With `Settings.archive.removeWorktree` on, it first
-     * removes the thread's worktree, deleting the branch only if it is merged. Refuses while a turn runs.
+     * removes the thread's worktree, deleting the branch only if it is merged. A chat's folder is deleted.
+     * Refuses while a turn runs.
      */
     readonly archive: (
       id: string,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
+    /** Makes a chat's folder again, empty. */
     readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     /** `removeWorktree` first removes the thread's worktree the way archiving does. */
     readonly remove: (
@@ -176,6 +179,7 @@ const make = Effect.gen(function* () {
   const terminals = yield* Terminals
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
+  const fs = yield* FileSystem.FileSystem
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
 
@@ -215,6 +219,17 @@ const make = Effect.gen(function* () {
       Effect.map((row) => row.started === 1),
       Effect.mapError(persistence("threads.started")),
     )
+
+  /** Makes or removes a chat's own folder, and does nothing for a thread in a folder project. */
+  const syncChatFolder = (thread: Thread, exists: boolean) =>
+    Effect.gen(function* () {
+      const project = yield* projects.get(thread.projectId)
+      if (project.kind !== "chats") return
+      const folder = chatFolder(project.rootPath, thread.id)
+      yield* (
+        exists ? fs.makeDirectory(folder, { recursive: true }) : fs.remove(folder, { recursive: true, force: true })
+      ).pipe(Effect.mapError(persistence("threads.chatFolder")))
+    })
 
   const get = (id: string) =>
     findById(id).pipe(
@@ -264,6 +279,7 @@ const make = Effect.gen(function* () {
       }
       const row = yield* encodeRow(thread).pipe(Effect.mapError(persistence("threads.create")))
       yield* sql`INSERT INTO thread ${sql.insert(row)}`.pipe(Effect.mapError(persistence("threads.create")))
+      yield* syncChatFolder(thread, true)
       return thread
     })
 
@@ -449,16 +465,24 @@ const make = Effect.gen(function* () {
         yield* sql`
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
         `.pipe(Effect.mapError(persistence("threads.archive")))
+        yield* syncChatFolder(thread, false)
         return yield* get(id)
       }),
     )
 
-  const unarchive = (id: string) => Effect.flatMap(get(id), (thread) => write(thread, { id, status: "idle" }))
+  const unarchive = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      yield* syncChatFolder(thread, true)
+      return yield* write(thread, { id, status: "idle" })
+    })
 
   const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
     Effect.gen(function* () {
-      if (options?.removeWorktree) yield* removeOwnWorktree(yield* get(id))
+      const thread = yield* get(id)
+      if (options?.removeWorktree) yield* removeOwnWorktree(thread)
       yield* sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.mapError(persistence("threads.delete")))
+      yield* syncChatFolder(thread, false)
     })
 
   return Threads.of({

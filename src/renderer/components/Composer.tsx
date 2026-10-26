@@ -35,7 +35,7 @@ import {
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
-import { ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
+import { EnvironmentPicker, ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
@@ -287,7 +287,14 @@ export function Composer({ thread }: { thread: Thread }) {
           </ComposerToolbar>
         </ComposerBar>
       </ComposerRoot>
-      {unstarted && !isChat && <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />}
+      {unstarted &&
+        (isChat ? (
+          <div className="mx-auto mt-1 flex w-full max-w-3xl items-center px-1 empty:hidden">
+            <EnvironmentPicker thread={thread} onError={setError} />
+          </div>
+        ) : (
+          <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />
+        ))}
       {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
     </form>
   )

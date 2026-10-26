@@ -691,6 +691,18 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
   })
 
+  test("sidebar groups persist through the client settings patch", async () => {
+    const before = result(await invoke("clientSettings.get", undefined))
+    expect(before.sidebarGroups).toStrictEqual({ groups: [], groupOf: {} })
+    const sidebarGroups = {
+      groups: [{ id: "work", name: "Work", collapsed: true }],
+      groupOf: { "acme/web": "work" },
+    }
+    const saved = result(await invoke("clientSettings.set", { sidebarGroups }))
+    expect(saved).toStrictEqual({ ...before, sidebarGroups })
+    expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
+  })
+
   test("creating a worktree pushes its state changes to every window", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     writeFileSync(join(repo, "README.md"), "hello")

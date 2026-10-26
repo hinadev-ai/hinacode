@@ -32,6 +32,17 @@ export const Project = Schema.Struct({
 })
 export type Project = typeof Project.Type
 
+/**
+ * A chat's own folder inside the chats root. It is derived, never stored, and exists while the chat is not archived.
+ * It joins with the root's own separator, because the renderer derives it too, for a chat on a machine of any OS.
+ */
+export const chatFolder = (chatsRoot: string, threadId: string) =>
+  `${chatsRoot.replace(/[\\/]+$/, "")}${chatsRoot.includes("\\") ? "\\" : "/"}${threadId}`
+
+/** Where a thread works when it has no live worktree: the project root, or a chat's own folder. */
+export const threadFolder = (project: Pick<Project, "kind" | "rootPath">, threadId: string) =>
+  project.kind === "chats" ? chatFolder(project.rootPath, threadId) : project.rootPath
+
 export const WorktreeStatus = Schema.Literals(["preparing", "ready", "failed", "removed"])
 export type WorktreeStatus = typeof WorktreeStatus.Type
 
@@ -571,6 +582,17 @@ export const Opener = Schema.Struct({
 })
 export type Opener = typeof Opener.Type
 
+export const SidebarGroup = Schema.Struct({ id: Schema.String, name: Schema.String, collapsed: Schema.Boolean })
+export type SidebarGroup = typeof SidebarGroup.Type
+
+export const SidebarGroups = Schema.Struct({
+  /** In sidebar order. */
+  groups: Schema.Array(SidebarGroup),
+  /** Group id by project row key (`ProjectGroup.key` in the renderer). A row in no group has no entry. */
+  groupOf: Schema.Record(Schema.String, Schema.String),
+})
+export type SidebarGroups = typeof SidebarGroups.Type
+
 /** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
 export const ClientSettings = Schema.Struct({
   locale: Locale,
@@ -580,6 +602,7 @@ export const ClientSettings = Schema.Struct({
   keybindings: Schema.Record(Schema.String, Schema.String),
   appearance: Appearance,
   notifications: NotificationSettings,
+  sidebarGroups: SidebarGroups,
 })
 export type ClientSettings = typeof ClientSettings.Type
 
@@ -589,6 +612,7 @@ export const defaultClientSettings: ClientSettings = {
   keybindings: {},
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  sidebarGroups: { groups: [], groupOf: {} },
 }
 
 /**

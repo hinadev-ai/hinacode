@@ -3,7 +3,13 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
-import type { PullRequest, Thread, Worktree, WorktreeStatus } from "../../../shared/domain.ts"
+import {
+  type PullRequest,
+  type Thread,
+  threadFolder,
+  type Worktree,
+  type WorktreeStatus,
+} from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
@@ -37,7 +43,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
           {worktree ? (
             <WorktreeWorkspace worktree={worktree} canReveal={local} />
           ) : (
-            <RootWorkspace projectId={thread.projectId} canReveal={local} />
+            <RootWorkspace thread={thread} canReveal={local} />
           )}
         </Section>
         {worktree && (
@@ -68,17 +74,18 @@ function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) 
   )
 }
 
-function RootWorkspace({ projectId, canReveal }: { projectId: string; canReveal: boolean }) {
+function RootWorkspace({ thread, canReveal }: { thread: Thread; canReveal: boolean }) {
   const projects = useAtomValue(projectsAtom)
-  const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === projectId)
+  const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === thread.projectId)
+  const folder = project && threadFolder(project, thread.id)
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{m.panel_workspace_root()}</p>
-      {project && (
+      {folder && (
         <>
-          <p className="font-mono text-xs break-all text-muted-foreground">{project.rootPath}</p>
-          {canReveal && <RevealButton path={project.rootPath} />}
+          <p className="font-mono text-xs break-all text-muted-foreground">{folder}</p>
+          {canReveal && <RevealButton path={folder} />}
         </>
       )}
     </div>
