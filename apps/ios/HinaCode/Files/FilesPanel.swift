@@ -127,13 +127,12 @@ struct FileEntryRow: View {
     let entry: FsEntry
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: FileKind.icon(path: entry.path, entry: entry.kind).symbol)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+        HStack(spacing: 12) {
+            FileKindIcon(path: entry.path, kind: entry.kind)
             Text(verbatim: entry.name)
                 .foregroundStyle(entry.ignored ? .secondary : .primary)
                 .lineLimit(1)
+                .truncationMode(.middle)
             Spacer(minLength: 8)
             if let status = entry.gitStatus {
                 Text(verbatim: status.letter)
@@ -142,7 +141,6 @@ struct FileEntryRow: View {
                     .accessibilityHidden(true)
             }
         }
-        .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -157,10 +155,28 @@ struct FileEntryRow: View {
     }
 }
 
+/// A folder filled in the tint, like the Files app, or the file kind's document symbol, at one fixed width so names
+/// line up.
+struct FileKindIcon: View {
+    let path: String
+    let kind: FsEntryKind
+
+    @ScaledMetric(relativeTo: .body) private var width = 28
+
+    var body: some View {
+        let icon = FileKind.icon(path: path, entry: kind)
+        Image(systemName: icon.symbol)
+            .font(.title3)
+            .foregroundStyle(icon == .folder ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .frame(width: width)
+            .accessibilityHidden(true)
+    }
+}
+
 extension FileKind.Icon {
     var symbol: String {
         switch self {
-        case .folder: "folder"
+        case .folder: "folder.fill"
         case .image: "photo"
         case .markdown: "doc.richtext"
         case .code: "doc.text"
@@ -348,10 +364,8 @@ private struct PathMatchRow: View {
     let match: PathMatch
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: FileKind.icon(path: match.path, entry: .file).symbol)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+        HStack(spacing: 12) {
+            FileKindIcon(path: match.path, kind: .file)
             VStack(alignment: .leading, spacing: 2) {
                 Text(Self.highlighted(match.path, positions: match.positions, in: nameRange))
                     .lineLimit(1)
@@ -364,7 +378,6 @@ private struct PathMatchRow: View {
                 }
             }
         }
-        .frame(minHeight: 44)
         .accessibilityLabel(Text(verbatim: match.path))
     }
 
@@ -402,7 +415,6 @@ private struct ContentHitRow: View {
                 .font(.system(.subheadline, design: .monospaced))
                 .lineLimit(2)
         }
-        .frame(minHeight: 44)
         .accessibilityLabel(Text(verbatim: "\(hit.path), \(hit.text)"))
     }
 
