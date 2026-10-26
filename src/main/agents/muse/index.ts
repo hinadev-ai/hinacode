@@ -850,8 +850,7 @@ const make = Effect.gen(function* () {
               limit: {
                 kind: "usage",
                 message: params.error?.message ?? "Muse Code usage limit reached",
-                reset:
-                  quota === undefined ? null : { at: new Date(quota.resetsAtMs).toISOString(), autoResume: false },
+                reset: quota === undefined ? null : { at: new Date(quota.resetsAtMs).toISOString(), autoResume: false },
               },
             })
           }

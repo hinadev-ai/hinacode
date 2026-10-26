@@ -102,4 +102,4 @@ Every other field is required. A provider that cannot do a required thing still 
 
 - Claude maps every capability in the matrix. It has no `questions_posted` path. Its questions always block the turn.
 - Codex polls background terminals of the parent thread only, not of its sub-agent threads. Codex exposes no `wakes` stream. Codex compaction reports no token counts, so the UI cannot show before and after sizes. Codex applies access mode changes only on the next turn.
-- Muse does not map `subagent` items or `subagent/stop`. Its sub-agents never reach the UI and cannot be stopped. Muse cannot stop one of two or more shells it backgrounded itself, and does not track registry-only tasks such as `monitor`. Muse does not map `session/todoListChanged`. Its todos reach the UI only through `write_todos` tool calls. Muse has no `copySession` and no added accounts.
+- Muse cannot stop one of two or more shells it backgrounded itself, and does not track registry-only tasks such as `monitor`. Muse does not map `session/todoListChanged`. Its todos reach the UI only through `write_todos` tool calls. Muse has no `copySession` and no added accounts.
