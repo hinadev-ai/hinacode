@@ -38,6 +38,7 @@ flowchart LR
 | `items.ts`, `approvals.ts`, `questions.ts` | Pure mappings from MSP items, approvals and questions                                                      |
 | `skills.ts`                                | Slash completions and typed skill invocations                                                              |
 | `usage.ts`                                 | Thread tokens from `view/page`, memoized per session                                                       |
+| `subagents.ts`                             | A parent session's `subagent` items as Agents tab rows                                                     |
 | `backgroundTasks.ts`                       | The background task set after a `toolCall` item changes                                                    |
 
 ## A turn
@@ -66,6 +67,7 @@ sequenceDiagram
 | `item/delta` field `summary.N`               | `reasoning_delta`, one paragraph per part                                    |
 | `toolCall` item started and completed        | `tool_call_started`, `tool_call_finished`                                    |
 | completed `write_file` or `edit_file`        | `file_changed` with the path                                                 |
+| `subagent` item started, updated, completed  | `subagent_updated` with the full row                                         |
 | `approval/request`                           | `approval_requested`; `approval/resolved` gives `approval_resolved`          |
 | `userInput/request`                          | `question_requested`; `userInput/settled` gives `question_resolved`          |
 | `turn/completed` `completed`                 | `turn_completed` with the turn's usage and the latest `session/contextUsage` |

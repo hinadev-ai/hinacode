@@ -31,6 +31,7 @@ import {
   type ItemCompletedParams,
   type ItemDeltaParams,
   type ItemStartedParams,
+  type ItemUpdatedParams,
   ModelList,
   type SessionCompactResult,
   type SessionContextUsageParams,
@@ -48,6 +49,7 @@ import {
 } from "./protocol.ts"
 import { toAnswers, toQuestion } from "./questions.ts"
 import { parseSkillInvocation, toCommand } from "./skills.ts"
+import { applySubagentItem, type Subagents } from "./subagents.ts"
 import { makeSessionUsage } from "./usage.ts"
 
 const CLIENT_VERSION = "0.1.0"
@@ -316,6 +318,8 @@ const make = Effect.gen(function* () {
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
   /** Each thread's Muse session, so `skill/list` can ask the session a turn would run in. */
   const threadSessions = new Map<string, string>()
+  /** Sub-agents each thread's agent spawned, kept across its turns like Codex's. */
+  const subagentsByThread = new Map<string, Subagents>()
   /**
    * One throwaway session per workspace, started only to read its `skill/list` before the thread's first
    * turn. It never runs a turn, and a respawned host resumes it instead of starting another.
@@ -509,6 +513,8 @@ const make = Effect.gen(function* () {
 
           const threadGrants = grants.get(input.threadId) ?? new Set<string>()
           grants.set(input.threadId, threadGrants)
+          let subagents = subagentsByThread.get(input.threadId)
+          if (subagents === undefined) subagentsByThread.set(input.threadId, (subagents = new Map()))
           const pendingApprovals = new Map<string, Approval>()
           const pendingQuestions = new Map<string, { readonly id: string; readonly params: UserInputRequestParams }>()
           /** Text already shown per streamed item, so `item/completed` adds only what never arrived as a delta. */
@@ -723,6 +729,11 @@ const make = Effect.gen(function* () {
               yield* emit({ type: reasoning ? "reasoning_delta" : "text_delta", text })
             })
 
+          const emitSubagent = (item: Item) => {
+            const changed = applySubagentItem(subagents, item, new Date().toISOString())
+            return changed === undefined ? Effect.void : emit({ type: "subagent_updated", subagent: changed })
+          }
+
           const onCompleted = (item: Item) => {
             switch (item.kind) {
               case "agentMessage":
@@ -732,6 +743,8 @@ const make = Effect.gen(function* () {
                 return finishText(item, "reasoning_delta", (item.summary ?? []).join(SUMMARY_BREAK))
               case "toolCall":
                 return finishTool(item)
+              case "subagent":
+                return emitSubagent(item)
               case "compaction":
                 return finishCompaction(item)
               default:
@@ -808,14 +821,18 @@ const make = Effect.gen(function* () {
                 case "item/started": {
                   const { item } = message.params as ItemStartedParams
                   if (item.kind === "toolCall") yield* startTool(item)
+                  if (item.kind === "subagent") yield* emitSubagent(item)
                   if (item.kind === "compaction") {
                     yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
                   }
                   return false
                 }
-                case "item/updated":
+                case "item/updated": {
                   yield* backgroundTool(message.params)
+                  const { item } = message.params as ItemUpdatedParams
+                  if (item.kind === "subagent") yield* emitSubagent(item)
                   return false
+                }
                 case "item/delta":
                   yield* onDelta(message.params as ItemDeltaParams)
                   return false
@@ -960,6 +977,16 @@ const make = Effect.gen(function* () {
       )
     })
 
+  /** A sub-agent's id is its durable MSP `subagentId`, which `subagent/stop` names on the parent session. */
+  const stopSubagent = (threadId: string, subagentId: string) =>
+    Effect.gen(function* () {
+      const sessionId = threadSessions.get(threadId)
+      if (!current?.host.isAlive() || sessionId === undefined) {
+        return yield* museError("The sub-agent has no active session to stop")
+      }
+      yield* current.host.command("subagent/stop", { sessionId, subagentId }).pipe(Effect.mapError(toAgentError))
+    })
+
   const respondApproval = (requestId: string, decision: ApprovalDecision) =>
     Effect.suspend(() => {
       const deferred = approvals.get(requestId)
@@ -983,6 +1010,7 @@ const make = Effect.gen(function* () {
     steer,
     interrupt,
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
+    stopSubagent,
     respondApproval,
     respondQuestion,
     setAccessMode,
