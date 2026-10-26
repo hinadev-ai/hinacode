@@ -508,6 +508,87 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "reports a spawned sub-agent until its result is ready",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("full", (marker) => {
+            endpoint.script({
+              when: marker,
+              name: "subagent_spawn",
+              arguments: { command_id: "test-spawn-1", role: "probe", objective: "Reply with one word." },
+            })
+            endpoint.script({
+              when: marker,
+              name: "subagent_wait",
+              arguments: {
+                command_id: "test-wait-1",
+                subagent_id: "subagent-1",
+                timeout_ms: 30000,
+                wait_for: "result_ready",
+              },
+            })
+          })
+          yield* Fiber.join(turn.fiber)
+
+          const updates = eventsOf(turn, "subagent_updated").map((event) => event.subagent)
+          expect(updates[0]).toMatchObject({
+            id: "subagent-1",
+            label: "Reply with one word.",
+            status: "running",
+            summary: null,
+            callId: expect.any(String),
+            endedAt: null,
+          })
+          expect(updates.at(-1)).toMatchObject({
+            id: "subagent-1",
+            status: "completed",
+            summary: REPLY,
+            tokens: expect.any(Number),
+            endedAt: expect.any(String),
+          })
+          expect(turn.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "stops one running sub-agent",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const stopSubagent = provider.stopSubagent
+          if (stopSubagent === undefined) return yield* Effect.die("stopSubagent is missing")
+          const turn = yield* startTurn("full", (marker) => {
+            const held = `${marker}-child`
+            endpoint.hold(held)
+            endpoint.script({
+              when: marker,
+              name: "subagent_spawn",
+              arguments: { command_id: "test-spawn-1", role: "probe", objective: `Reply slowly. ${held}` },
+            })
+          })
+          const started = yield* untilEvent(turn, ofType("subagent_updated"))
+          expect(started.subagent).toMatchObject({ id: "subagent-1", status: "running" })
+
+          yield* stopSubagent(turn.threadId, started.subagent.id)
+          const stopped = yield* untilEvent(
+            turn,
+            (event): event is Extract<AgentEvent, { type: "subagent_updated" }> =>
+              event.type === "subagent_updated" && event.subagent.status === "stopped",
+          )
+          expect(stopped.subagent.summary).toContain("cancelled")
+
+          yield* provider.interrupt(turn.threadId)
+          yield* Fiber.join(turn.fiber)
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "stops a turn whose reply is still streaming",
     () =>
       withProvider(
