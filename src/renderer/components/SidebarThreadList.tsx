@@ -21,12 +21,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  memo,
-  startTransition,
   useActionState,
-  useCallback,
   useId,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -54,7 +50,14 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
-import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import {
+  callPromise,
+  currentBranchAtom,
+  type EnvironmentId,
+  projectsAtom,
+  pullRequestAttentionAtom,
+  pullRequestStatusAtom,
+} from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -114,6 +117,11 @@ const accessibility = () =>
     },
   })
 
+const plugins: DragDropPlugins = (defaults) => [
+  ...defaults.filter((plugin) => plugin !== Accessibility),
+  accessibility(),
+]
+
 /**
  * Rows drag by the whole row with the mouse (after a few pixels, so clicks still navigate) and by
  * the grip handle from the keyboard, which is dnd-kit's default keyboard sensor.
@@ -161,15 +169,8 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
-  const focusAfterRemoval = useCallback(
-    () => firstRowRef.current ?? newThreadButtonRef?.current ?? null,
-    [newThreadButtonRef],
-  )
+  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
-  const plugins = useMemo<DragDropPlugins>(
-    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility()],
-    [],
-  )
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 
@@ -244,16 +245,7 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-// Memoized so a push for one thread re-renders only its row, and the rows whose index moved.
-const ThreadRow = memo(function ThreadRow({
-  thread,
-  index,
-  group,
-  reorderable,
-  showProject,
-  linkRef,
-  focusAfterRemoval,
-}: ThreadRowProps) {
+function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -272,6 +264,12 @@ const ThreadRow = memo(function ThreadRow({
   const state = rowState(
     thread.status,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
+    useAtomValue(
+      pullRequestAttentionAtom(
+        environment,
+        meta.links.map((link) => link.url),
+      ),
+    ),
   )
 
   // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
@@ -494,7 +492,7 @@ const ThreadRow = memo(function ThreadRow({
       )}
     </li>
   )
-})
+}
 
 /** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
@@ -639,12 +637,7 @@ function DeleteThreadPopover({
         )}
         {/* Confirm comes first, the nearest button to the trash icon the pointer just clicked. */}
         <div className="flex gap-2">
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={isPending || offline}
-            onClick={() => startTransition(remove)}
-          >
+          <Button variant="destructive" size="sm" disabled={isPending || offline} action={remove}>
             {m.delete_dialog_confirm()}
           </Button>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
@@ -669,6 +662,12 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconTyp
   limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited) },
   unseen_completed: { label: m.thread_status_unseen_completed, ...toIcon(rowStatusIndicator.unseen_completed) },
   unseen_failed: { label: m.thread_status_unseen_failed, ...toIcon(rowStatusIndicator.unseen_failed) },
+  pr_conflicting: { label: m.thread_status_pr_conflicting, ...toIcon(rowStatusIndicator.pr_conflicting) },
+  pr_checksFailing: { label: m.thread_status_pr_checks_failing, ...toIcon(rowStatusIndicator.pr_checksFailing) },
+  pr_changesRequested: {
+    label: m.thread_status_pr_changes_requested,
+    ...toIcon(rowStatusIndicator.pr_changesRequested),
+  },
 }
 
 function StatusIndicator({ state }: { state: RowState }): ReactNode {

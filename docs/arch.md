@@ -18,8 +18,10 @@ flowchart LR
     mcp["MCP server<br/>127.0.0.1:random/mcp"]
     autos["Automations<br/>webhook + pollers"]
     remote["Remote listener<br/>ws://bindHost:port/remote"]
+    relay["Relay<br/>cloudflared child"]
   end
   phone["Phone app<br/>apps/mobile (Expo)"]
+  edge["Cloudflare edge<br/>wss://relay hostname/remote"]
   db[("hinacode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
   codex["codex app-server<br/>JSON-RPC over stdio"]
@@ -31,6 +33,9 @@ flowchart LR
   stores -- "rpc (request/response)" --> preload --> ipc
   ipc -- "event (push)" --> preload --> stores
   phone -- "auth, then the same calls and pushes" <--> remote --> ipc
+  phone -. "from any network" .-> edge
+  relay -- "dials out" --> edge
+  relay --> remote
   ipc --> services & runner
   runner --> claude & codex & muse
   claude & codex & muse -- "Bearer threadId.secret" --> mcp
@@ -67,19 +72,19 @@ flowchart LR
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
-Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, sends `{ type: "auth", token }` first, and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` (`rpc.ts`) as the Electron channel with no `DesktopCalls`, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments probe every host at once, keep the earliest that answers, and wait at most a second for earlier hosts once a later one answered. See `features/2026-10-16-resilient-remote.md`.
+Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, answers the server's `challenge` with `{ type: "auth", nonce, proof }`, a proof of the token rather than the token (`shared/proof.ts`, [ADR 0022](adr/0022-clients-prove-the-pairing-token.md)), and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` (`rpc.ts`) as the Electron channel with no `DesktopCalls`, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments probe every host at once, keep the earliest that answers, and wait at most a second for earlier hosts once a later one answered. See `features/2026-10-16-resilient-remote.md`.
 
 `hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron (`src/main/daemon.ts`, built to `out/main/daemon.js` and published to npm). `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
 ### Environments: routing a window call
 
-A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call by `routes[method]` in `src/shared/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
+A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call through `route` in `environments/route.ts` by `routes[method]` in `src/shared/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
 
 ```mermaid
 flowchart LR
-  renderer["renderer: rpc(method, payload, environment?)"] --> route["ipc.ts route"]
+  renderer["renderer: rpc(method, payload, environment?)"] --> route["environments/route.ts route"]
   route -- "client, or an id no cloud owns,<br/>or named without environment" --> dispatch["dispatch: local layers"]
   route -- "owner: owners.owner(entity, payload[key])<br/>named: environment" --> forward["Environments.forward"]
   route -- "all" --> both["dispatch + Environments.gather, concatenated"]
@@ -90,7 +95,11 @@ flowchart LR
 
 - `src/shared/owners.ts` is an in-memory index of cloud-owned ids (thread, project, worktree, terminal, automation, request, root path, VM stream), taught from every cloud answer and push. An unknown id belongs to this desktop.
 - A cloud that is not connected answers `EnvironmentOffline`; for `all` routes it contributes its last answer to the same call. Close code 4001 (`unauthorized`) stops reconnecting. A `ready` with another `REMOTE_PROTOCOL_VERSION` (`incompatible`) fails waiting calls and keeps retrying, like anything else, with jittered backoff from 0.5 s to 60 s. `environments.reconnect` and waking from sleep skip the wait. A ping every 10 s drops a socket silent for 25 s.
+- Remote Browser tabs use `browser.*` RPCs routed by thread ownership. The cloud's `Browser` service owns sandboxed headless Chromium and a context per thread. The desktop forwards typed input and draws the latest JPEG frame. Hidden tabs pause image streaming, and expired session leases release abandoned pages. Local threads keep their Electron webview. See [ADR 0023](adr/0023-host-browser-for-remote-threads.md).
+- A cloud reaches the user's other machines through a connected desktop. A cloud lists `asks` in `ready`, the desktop answers with a `hub` frame, and from then on the cloud can send it `ask` frames for five thread reads (`AskableMethod` in `src/shared/remote.ts`). The desktop runs each one through `route` (`src/main/environments/route.ts`) like a window call and replies with `answer`. `Peers` (`src/main/remote/peers.ts`) gives the MCP thread tools one `ask` for both directions. See `features/2026-10-26-cross-machine-threads.md`.
 - Every data directory has an id (setting row `environment.id`, read by `RemoteAccess`), sent in the `ready` frame. The desktop keys its `environment` rows by it, so pairing the same cloud again updates one row. Tokens are the secrets `environment.<id>.token`.
+
+Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel that the relay service creates in HinaCode's account, served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients dial with `dialPlan`: every direct address at once and the relay half a second later, and the first socket to open wins. Over the relay they check the direct addresses every minute and move over when one answers. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
 
 The visible thread owns its renderer history. Leaving it unloads the transcript even while its agent runs; the main process owns ongoing turns and pending approvals. Reopening reads a fresh sequence-numbered snapshot. Each load has an identity so a response from an earlier visit cannot replace a newer snapshot.
 

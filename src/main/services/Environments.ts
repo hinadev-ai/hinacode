@@ -4,17 +4,26 @@ import { SqlClient, SqlSchema } from "effect/sql"
 import { type RawData, WebSocket } from "ws"
 import { methodKind, type RpcEnvelope, type RpcMethod } from "../../shared/contract.ts"
 import { Environment, type EnvironmentStatus, type Environments as EnvironmentList } from "../../shared/domain.ts"
+import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
 import {
+  CHALLENGE_WAIT_MS,
   type ClientFrame,
+  type Dial,
+  DIRECT_CHECK_INTERVAL_MS,
+  DIRECT_CHECK_TIMEOUT_MS,
+  dialPlan,
   type PairingTarget,
   parsePairingUrl,
   REMOTE_PROTOCOL_VERSION,
+  relayWebSocketUrl,
   remoteWebSocketUrl,
   ServerFrame,
 } from "../../shared/remote.ts"
+import type { RelayMachine } from "../../shared/relayMachines.ts"
+import { planRelaySync } from "../../shared/relaySync.ts"
 import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
-import { unreachableMessage } from "../environments/unreachable.ts"
+import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events, WindowPush } from "./Events.ts"
@@ -49,6 +58,11 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
+    /**
+     * Makes the clouds match the relay's list without dialing them, since the relay already named each one. Answers
+     * how many listed machines this desktop now has. A cloud paired by URL is refreshed but never dropped or renamed.
+     */
+    readonly syncRelay: (machines: ReadonlyArray<RelayMachine>) => Effect.Effect<number, PersistenceError>
     /** Dials a cloud now instead of after its backoff. Does nothing while it is connected or refused its token. */
     readonly reconnect: (id: string) => Effect.Effect<void>
     /** `reconnect` for every cloud, for when the network may have come back, such as waking from sleep. */
@@ -65,6 +79,8 @@ export class Environments extends Context.Service<
     readonly gather: (call: ForwardedCall) => Effect.Effect<ReadonlyArray<unknown>>
     /** The cloud that owns `id`, or undefined when it is this desktop's. */
     readonly owner: (entity: Entity, id: string) => string | undefined
+    /** Answers the `ask` frames of every cloud from now on. Until then, they get an error. */
+    readonly answerAsks: (answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>) => Effect.Effect<void>
   }
 >()("hinacode/Environments") {}
 
@@ -93,6 +109,9 @@ const incompatible = (name: string): RpcEnvelope<never> => ({
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
+const notAnswering: RpcEnvelope<never> = {
+  error: { tag: "NotReady", message: "The desktop is still starting." },
+}
 
 const decodeServerFrame = Schema.decodeUnknownOption(ServerFrame)
 
@@ -107,7 +126,7 @@ const parseFrame = (raw: RawData, isBinary: boolean): ServerFrame | undefined =>
 
 type Ready = Extract<ServerFrame, { type: "ready" }>
 
-interface Dial {
+interface DialHandlers {
   readonly onFrame: (frame: ServerFrame) => void
   readonly onUndecodable?: () => void
   readonly onPong?: () => void
@@ -115,58 +134,157 @@ interface Dial {
   readonly onClose: (code: number) => void
 }
 
-interface Address {
-  readonly host: string
-  readonly port: number
-}
-
-/** Opens a socket to a cloud's remote listener and authenticates as soon as it opens. */
-const dial = (target: Address, token: string, handlers: Dial) => {
-  const socket = new WebSocket(remoteWebSocketUrl(target))
-  socket.on("open", () => socket.send(JSON.stringify({ type: "auth", token } satisfies ClientFrame)))
-  socket.on("message", (raw, isBinary) => {
-    const frame = parseFrame(raw, isBinary)
-    if (frame === undefined) handlers.onUndecodable?.()
-    else handlers.onFrame(frame)
+/**
+ * Opens a socket to a cloud's remote listener and answers its `challenge` with a proof of `token`. Without a challenge
+ * within `CHALLENGE_WAIT_MS`, it sends the token itself only when `plainToken` allows it, which is over the relay or
+ * for a pairing without one. Frames reach `handlers` only from a `ready` that proved the token back, or that answered
+ * the token itself. A socket this side refuses closes as `CLOSE_UNAUTHORIZED`, like a cloud that refused the token.
+ */
+const dial = (url: string, token: string, plainToken: boolean, handlers: DialHandlers) =>
+  Effect.map(Effect.context<never>(), (services) => {
+    const socket = new WebSocket(url)
+    // The proof `ready` must carry: undefined until this side sent `auth`, null after it sent the token itself.
+    let expected: string | null | undefined
+    let authenticated = false
+    let refused = false
+    let waiting: Fiber.Fiber<void> | undefined
+    const authenticate = (frame: Extract<ClientFrame, { type: "auth" }>) => socket.send(JSON.stringify(frame))
+    const refuse = () => {
+      refused = true
+      socket.terminate()
+    }
+    socket.on("open", () => {
+      waiting = Effect.runForkWith(services)(
+        Effect.sleep(CHALLENGE_WAIT_MS).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (expected !== undefined) return
+              if (!plainToken) return refuse()
+              expected = null
+              authenticate({ type: "auth", token })
+            }),
+          ),
+        ),
+      )
+    })
+    socket.on("message", (raw, isBinary) => {
+      const frame = parseFrame(raw, isBinary)
+      if (frame === undefined) return handlers.onUndecodable?.()
+      if (authenticated) return handlers.onFrame(frame)
+      if (frame.type === "challenge") {
+        if (expected !== undefined) return
+        waiting?.interruptUnsafe()
+        const nonce = newNonce()
+        expected = serverProof(token, nonce, frame.nonce)
+        return authenticate({ type: "auth", nonce, proof: clientProof(token, frame.nonce, nonce) })
+      }
+      if (frame.type !== "ready") return
+      if (expected === undefined || (expected !== null && frame.proof !== expected)) return refuse()
+      authenticated = true
+      handlers.onFrame(frame)
+    })
+    socket.on("pong", () => handlers.onPong?.())
+    socket.on("error", (error) => handlers.onError?.(error))
+    socket.on("close", (code) => {
+      waiting?.interruptUnsafe()
+      handlers.onClose(refused ? CLOSE_UNAUTHORIZED : code)
+    })
+    return socket
   })
-  socket.on("pong", () => handlers.onPong?.())
-  socket.on("error", (error) => handlers.onError?.(error))
-  socket.on("close", handlers.onClose)
-  return socket
-}
 
-/** Succeeds with the cloud's `ready` frame once it accepts `token`. */
-const probe = (target: Address & { readonly token: string }) => {
-  const where = `${target.host}:${target.port}`
-  return Effect.callback<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>((resume) => {
+/** Whether a socket to `url` opens. It closes again without a frame, so it never carries the token. */
+const opens = (url: string) =>
+  Effect.callback<boolean>((resume) => {
+    const socket = new WebSocket(url)
+    socket.on("open", () => {
+      resume(Effect.succeed(true))
+      socket.close()
+    })
+    socket.on("error", () => {})
+    socket.on("close", () => resume(Effect.succeed(false)))
+    return Effect.sync(() => socket.terminate())
+  })
+
+/**
+ * Opens a socket to each of `dials` after its `delayMs` and answers the first one that opened, or null once every
+ * socket failed or none opened within `timeoutMs`. Every socket closes again, the winner's too.
+ */
+const firstToOpen = (dials: ReadonlyArray<Dial>, timeoutMs: number) =>
+  Effect.gen(function* () {
+    const won = yield* Deferred.make<Dial | null>()
+    let failed = 0
+    yield* Effect.forEach(
+      dials,
+      (planned) =>
+        Effect.forkScoped(
+          Effect.sleep(planned.delayMs).pipe(
+            Effect.andThen(opens(planned.url)),
+            Effect.flatMap((opened) => {
+              if (opened) return Deferred.succeed(won, planned)
+              failed++
+              return failed === dials.length ? Deferred.succeed(won, null) : Effect.void
+            }),
+          ),
+        ),
+      { discard: true },
+    )
+    return yield* Deferred.await(won).pipe(
+      Effect.timeoutOrElse({ duration: timeoutMs, orElse: () => Effect.succeed(null) }),
+    )
+  }).pipe(Effect.scoped)
+
+/** Completes once one of `direct` opens, checking every `DIRECT_CHECK_INTERVAL_MS`. */
+const directAnswers = (direct: ReadonlyArray<Dial>): Effect.Effect<void> =>
+  Effect.sleep(DIRECT_CHECK_INTERVAL_MS).pipe(
+    Effect.andThen(firstToOpen(direct, DIRECT_CHECK_TIMEOUT_MS)),
+    Effect.flatMap((opened) => (opened === null ? directAnswers(direct) : Effect.void)),
+  )
+
+/**
+ * Succeeds with the cloud's `ready` frame once it accepts `token`. `plainToken` is `dial`'s: a host of a pairing with a
+ * relay gets a proof of the token, never the token.
+ */
+const probe = (target: DialTarget, token: string, plainToken: boolean) => {
+  const where = "relay" in target ? target.relay : `${target.host}:${target.port}`
+  const url = "relay" in target ? relayWebSocketUrl(target.relay) : remoteWebSocketUrl(target)
+  return Effect.gen(function* () {
+    const answered = yield* Deferred.make<Ready, EnvironmentUnreachable | EnvironmentUnauthorized>()
     let reason = "the connection closed"
     let errorCode: string | undefined
-    const socket = dial(target, target.token, {
-      onFrame: (frame) => {
-        if (frame.type !== "ready") return
-        resume(Effect.succeed(frame))
-        socket.close()
-      },
-      onError: (error) => {
-        // A host with several addresses fails with an AggregateError, whose message is empty.
-        reason = error.message || reason
-        errorCode = "code" in error && typeof error.code === "string" ? error.code : undefined
-      },
-      onClose: (code) => {
-        if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
-          return resume(
-            Effect.fail(
-              new EnvironmentUnauthorized({
-                message: `${where} refused the token. Copy a new pairing URL from hinacode serve.`,
-              }),
-            ),
+    const socket: WebSocket = yield* Effect.acquireRelease(
+      dial(url, token, plainToken, {
+        onFrame: (frame) => {
+          if (frame.type !== "ready") return
+          Deferred.doneUnsafe(answered, Effect.succeed(frame))
+          socket.close()
+        },
+        onError: (error) => {
+          // A host with several addresses fails with an AggregateError, whose message is empty.
+          reason = error.message || reason
+          errorCode = "code" in error && typeof error.code === "string" ? error.code : undefined
+        },
+        onClose: (code) => {
+          if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
+            return Deferred.doneUnsafe(
+              answered,
+              Effect.fail(
+                new EnvironmentUnauthorized({
+                  message: `${where} refused the token. Copy a new pairing URL from hinacode serve.`,
+                }),
+              ),
+            )
+          }
+          Deferred.doneUnsafe(
+            answered,
+            Effect.fail(new EnvironmentUnreachable({ message: unreachableMessage(target, errorCode, reason) })),
           )
-        }
-        resume(Effect.fail(new EnvironmentUnreachable({ message: unreachableMessage(target, errorCode, reason) })))
-      },
-    })
-    return Effect.sync(() => socket.terminate())
+        },
+      }),
+      (opened) => Effect.sync(() => opened.terminate()),
+    )
+    return yield* Deferred.await(answered)
   }).pipe(
+    Effect.scoped,
     Effect.timeoutOrElse({
       duration: READY_TIMEOUT_MS,
       orElse: () =>
@@ -180,10 +298,10 @@ const probe = (target: Address & { readonly token: string }) => {
 }
 
 /**
- * Probes every host of a pairing at once and keeps the first in URL order that answers. Once any host answered,
- * earlier hosts get `PREFER_EARLIER_HOST_MS` more, so an address this desktop cannot reach, such as a Tailscale
- * address off the tailnet, does not hold pairing for the whole probe timeout. When none answers, a refused token
- * outranks unreachable hosts.
+ * Probes every host of a pairing and its relay at once and keeps the first host in URL order that answers, or the
+ * first host when only the relay answered. Once anything answered, earlier hosts get `PREFER_EARLIER_HOST_MS` more,
+ * so an address this desktop cannot reach, such as a Tailscale address off the tailnet, does not hold pairing for
+ * the whole probe timeout. When nothing answers, a refused token outranks unreachable hosts.
  */
 const probeHosts = (pairing: PairingTarget) =>
   Effect.gen(function* () {
@@ -197,9 +315,22 @@ const probeHosts = (pairing: PairingTarget) =>
         Effect.sleep(PREFER_EARLIER_HOST_MS).pipe(Effect.andThen(Deferred.succeed(graceOver, undefined))),
       )
     })
+    let relayReady: Ready | undefined
+    const relayProbe =
+      pairing.relay === null
+        ? null
+        : yield* Effect.forkScoped(
+            probe({ relay: pairing.relay }, pairing.token, true).pipe(
+              Effect.tap((ready) => {
+                relayReady = ready
+                return startGrace
+              }),
+              Effect.result,
+            ),
+          )
     const probes = yield* Effect.forEach(pairing.hosts, (host, index) =>
       Effect.forkScoped(
-        probe({ host, port: pairing.port, token: pairing.token }).pipe(
+        probe({ host, port: pairing.port }, pairing.token, pairing.relay === null).pipe(
           Effect.tap((ready) => {
             answers[index] = ready
             return startGrace
@@ -216,6 +347,11 @@ const probeHosts = (pairing: PairingTarget) =>
     }
     const won = answers.findIndex((ready) => ready !== undefined)
     if (won !== -1) return { host: pairing.hosts[won]!, ready: answers[won]! }
+    if (relayProbe !== null && relayReady === undefined) {
+      const outcome = yield* Fiber.join(relayProbe)
+      if (outcome._tag === "Failure") failures.push(outcome.failure)
+    }
+    if (relayReady !== undefined) return { host: pairing.hosts[0], ready: relayReady }
     return yield* Effect.fail(failures.find((error) => error._tag === "EnvironmentUnauthorized") ?? failures[0]!)
   }).pipe(Effect.scoped)
 
@@ -254,9 +390,15 @@ interface Cloud {
 
 interface SessionEnd {
   readonly code: number
+  /** Whether the cloud accepted the token before the socket closed. */
+  readonly ready: boolean
   /** The cloud's protocol version when it is not this desktop's. */
   readonly otherProtocol: number | null
   readonly connectedMs: number
+}
+
+const sendFrame = (socket: WebSocket, frame: ClientFrame) => {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
 }
 
 const send = (live: Live, call: Pending) => {
@@ -266,6 +408,8 @@ const send = (live: Live, call: Pending) => {
   const frame: ClientFrame = { type: "call", id: call.id, method: call.method, payload: call.payload }
   live.socket.send(JSON.stringify(key === undefined ? frame : { ...frame, key }))
 }
+
+const environmentDialPlan = ({ host, port, relay }: Environment) => dialPlan({ hosts: [host], port, relay })
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -278,17 +422,18 @@ const make = Effect.gen(function* () {
   const owners = makeOwners()
   const clouds = new Map<string, Cloud>()
   let nextCallId = 1
+  let answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>> = () => Effect.succeed(notAnswering)
   const now = () => clock.currentTimeMillisUnsafe()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: Environment,
-    execute: () => sql`SELECT id, name, host, port, created_at FROM environment ORDER BY created_at`,
+    execute: () => sql`SELECT id, name, host, port, relay, source, created_at FROM environment ORDER BY created_at`,
   })
   const findOne = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: Environment,
-    execute: (id) => sql`SELECT id, name, host, port, created_at FROM environment WHERE id = ${id}`,
+    execute: (id) => sql`SELECT id, name, host, port, relay, source, created_at FROM environment WHERE id = ${id}`,
   })
 
   const setStatus = (cloud: Cloud, status: EnvironmentStatus) =>
@@ -352,8 +497,20 @@ const make = Effect.gen(function* () {
     }
   }
 
-  /** Resolves once the socket closes. Interrupting it drops the socket. */
-  const session = (cloud: Cloud, token: string) =>
+  /** Keeps the relay the cloud reports, so the next dial reaches it from any network. */
+  const learnRelay = (cloud: Cloud, relay: string | null) => {
+    if (cloud.environment.relay === relay) return
+    cloud.environment = { ...cloud.environment, relay }
+    const { id } = cloud.environment
+    runFork(
+      sql`UPDATE environment SET relay = ${relay} WHERE id = ${id}`.pipe(
+        Effect.catchCause((cause) => Effect.logWarning("could not save the relay", cause)),
+      ),
+    )
+  }
+
+  /** Resolves once the socket closes. Interrupting it drops the socket. `plainToken` is `dial`'s. */
+  const session = (cloud: Cloud, token: string, url: string, plainToken: boolean) =>
     Effect.gen(function* () {
       const { id, name } = cloud.environment
       const closed = yield* Deferred.make<number>()
@@ -364,52 +521,58 @@ const make = Effect.gen(function* () {
         heardAt = now()
         cloud.lastSeenAt = new Date(heardAt).toISOString()
       }
-      const socket = yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          dial(cloud.environment, token, {
-            onFrame: (frame) => {
-              heard()
-              switch (frame.type) {
-                case "ready": {
-                  if (frame.version !== REMOTE_PROTOCOL_VERSION) {
-                    otherProtocol = frame.version
-                    return socket.close()
-                  }
-                  connectedAt = now()
-                  cloud.protocol = null
-                  const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
-                  cloud.live = live
-                  for (const call of cloud.outbox.values()) {
-                    pauseOfflineTimer(call)
-                    if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
-                    else send(live, call)
-                  }
-                  return runFork(setStatus(cloud, "connected"))
+      const socket: WebSocket = yield* Effect.acquireRelease(
+        dial(url, token, plainToken, {
+          onFrame: (frame) => {
+            heard()
+            switch (frame.type) {
+              case "ready": {
+                if (frame.version !== REMOTE_PROTOCOL_VERSION) {
+                  otherProtocol = frame.version
+                  return socket.close()
                 }
-                case "result": {
-                  const call = cloud.outbox.get(frame.id)
-                  if (call === undefined) return
-                  return settle(
-                    cloud,
-                    call,
-                    "error" in frame.envelope ? frame.envelope : { result: frame.envelope.result },
-                  )
+                connectedAt = now()
+                cloud.protocol = null
+                learnRelay(cloud, frame.relay ?? null)
+                const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
+                cloud.live = live
+                if (frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
+                for (const call of cloud.outbox.values()) {
+                  pauseOfflineTimer(call)
+                  if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
+                  else send(live, call)
                 }
-                case "event":
-                  learnFromPush(owners, id, frame.event)
-                  return runFork(windows.send(frame.event))
-                case "pong":
-                  return
+                return runFork(setStatus(cloud, "connected"))
               }
-            },
-            onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
-            onPong: heard,
-            onClose: (code) => {
-              disconnect(cloud, socket)
-              Deferred.doneUnsafe(closed, Effect.succeed(code))
-            },
-          }),
-        ),
+              case "result": {
+                const call = cloud.outbox.get(frame.id)
+                if (call === undefined) return
+                return settle(
+                  cloud,
+                  call,
+                  "error" in frame.envelope ? frame.envelope : { result: frame.envelope.result },
+                )
+              }
+              case "event":
+                learnFromPush(owners, id, frame.event)
+                return runFork(windows.send(frame.event))
+              case "pong":
+                return
+              case "ask":
+                return runFork(
+                  answer({ method: frame.method, payload: frame.payload }).pipe(
+                    Effect.map((envelope) => sendFrame(socket, { type: "answer", id: frame.id, envelope })),
+                  ),
+                )
+            }
+          },
+          onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
+          onPong: heard,
+          onClose: (code) => {
+            disconnect(cloud, socket)
+            Deferred.doneUnsafe(closed, Effect.succeed(code))
+          },
+        }),
         (opened) =>
           Effect.sync(() => {
             disconnect(cloud, opened)
@@ -439,6 +602,7 @@ const make = Effect.gen(function* () {
       const code = yield* Deferred.await(closed)
       return {
         code,
+        ready: connectedAt !== null,
         otherProtocol,
         connectedMs: connectedAt === null ? 0 : now() - connectedAt,
       } satisfies SessionEnd
@@ -446,7 +610,9 @@ const make = Effect.gen(function* () {
 
   /**
    * Keeps `cloud` connected until interrupted or refused. A cloud on another protocol version keeps being retried,
-   * so it reconnects on its own once updated.
+   * so it reconnects on its own once updated. Each round races the cloud's dial plan and runs a session on the
+   * first URL that opens, and a round where none opens waits out the backoff. A session over the relay ends as soon
+   * as a direct address answers, and the next round dials the direct addresses alone to move there.
    */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
@@ -458,20 +624,51 @@ const make = Effect.gen(function* () {
       }
       yield* setStatus(cloud, "connecting")
       let attempt = 0
+      // Which routes this round dials. Every round after a backoff dials both.
+      let round: "both" | "direct" | "relay" = "both"
       for (;;) {
-        const end = yield* session(cloud, token)
-        if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
-          failAll(cloud, unauthorized(name))
-          return yield* setStatus(cloud, "unauthorized")
-        }
-        if (end.otherProtocol === null) {
+        const plan = environmentDialPlan(cloud.environment)
+        const dials = round === "both" ? plan : plan.filter((planned) => planned.route === round)
+        const won = yield* firstToOpen(dials, READY_TIMEOUT_MS)
+        if (won === null) {
+          if (round === "direct") {
+            round = "both"
+            continue
+          }
           yield* setStatus(cloud, "offline")
         } else {
-          cloud.protocol = end.otherProtocol
-          failAll(cloud, incompatible(name))
-          yield* setStatus(cloud, "incompatible")
+          const direct = plan.filter((planned) => planned.route === "direct")
+          const hasRelay = plan.some((planned) => planned.route === "relay")
+          const opened = session(cloud, token, won.url, won.route === "relay" || !hasRelay)
+          const end =
+            won.route === "relay" && round === "both" && direct.length > 0
+              ? yield* Effect.raceFirst(opened, directAnswers(direct).pipe(Effect.as(null)))
+              : yield* opened
+          if (end === null) {
+            round = "direct"
+            continue
+          }
+          if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
+            // Away from home, someone else's HinaCode can answer at the direct address, refuse the proof or fail to
+            // prove the token back. Only the relay surely reaches this cloud, so the rest of this link dials it alone
+            // and takes its verdict.
+            if (!end.ready && won.route === "direct" && hasRelay) {
+              round = "relay"
+              continue
+            }
+            failAll(cloud, unauthorized(name))
+            return yield* setStatus(cloud, "unauthorized")
+          }
+          if (end.otherProtocol === null) {
+            yield* setStatus(cloud, "offline")
+          } else {
+            cloud.protocol = end.otherProtocol
+            failAll(cloud, incompatible(name))
+            yield* setStatus(cloud, "incompatible")
+          }
+          if (end.connectedMs >= STABLE_MS) attempt = 0
         }
-        if (end.connectedMs >= STABLE_MS) attempt = 0
+        round = "both"
         const wake = yield* Deferred.make<void>()
         cloud.wake = wake
         const woken = yield* Effect.race(
@@ -534,7 +731,7 @@ const make = Effect.gen(function* () {
         })
       }
       const { host, ready } = yield* probeHosts(pairing)
-      const target = { host, port: pairing.port, token: pairing.token }
+      const { port, token, relay } = pairing
       if (ready.environment?.id === self.id) {
         return yield* new InvalidPairingUrl({ message: "That pairing URL is for this desktop." })
       }
@@ -542,19 +739,21 @@ const make = Effect.gen(function* () {
       const id = ready.environment?.id ?? randomUUID()
       const existing = Option.getOrNull(yield* findOne(id).pipe(Effect.mapError(persistence("environments.add"))))
       const environment: Environment = existing
-        ? { ...existing, name: typed || existing.name, host: target.host, port: target.port }
+        ? { ...existing, name: typed || existing.name, host, port, relay }
         : {
             id,
-            name: typed || ready.environment?.name || target.host,
-            host: target.host,
-            port: target.port,
+            name: typed || ready.environment?.name || host,
+            host,
+            port,
+            relay,
+            source: "pairing",
             createdAt: new Date().toISOString(),
           }
       const write = existing
-        ? sql`UPDATE environment SET name = ${environment.name}, host = ${environment.host}, port = ${environment.port} WHERE id = ${id}`
+        ? sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`
         : sql`INSERT INTO environment ${sql.insert(environment)}`
       yield* write.pipe(
-        Effect.andThen(secrets.set(tokenSecret(id), target.token)),
+        Effect.andThen(secrets.set(tokenSecret(id), token)),
         sql.withTransaction,
         Effect.catchTag("SqlError", (error) => Effect.fail(persistence("environments.add")(error))),
       )
@@ -571,6 +770,68 @@ const make = Effect.gen(function* () {
       yield* secrets.clear(tokenSecret(id))
       clouds.delete(id)
       owners.forget(id)
+    })
+
+  const syncRelay = (machines: ReadonlyArray<RelayMachine>) =>
+    Effect.gen(function* () {
+      const failed = persistence("environments.syncRelay")
+      const rows = yield* findAll(undefined).pipe(Effect.mapError(failed))
+      const { upsert, drop } = planRelaySync(
+        rows.map((row) => ({ ...row, environmentId: row.id })),
+        machines,
+        self.id,
+      )
+      const rowById = new Map(rows.map((row) => [row.id, row]))
+      let changed = drop.length > 0
+      for (const { environmentId: id, name, pairing } of upsert) {
+        const { port, token, relay } = pairing
+        const host = pairing.hosts[0]
+        const existing = rowById.get(id)
+        if (existing === undefined) {
+          const environment: Environment = {
+            id,
+            name,
+            host,
+            port,
+            relay,
+            source: "relay",
+            createdAt: new Date().toISOString(),
+          }
+          yield* sql`INSERT INTO environment ${sql.insert(environment)}`.pipe(
+            Effect.andThen(secrets.set(tokenSecret(id), token)),
+            sql.withTransaction,
+            Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
+          )
+          yield* start(environment)
+          changed = true
+          continue
+        }
+        const environment: Environment = {
+          ...existing,
+          name: existing.source === "relay" ? name : existing.name,
+          host,
+          port,
+          relay,
+        }
+        const redial =
+          host !== existing.host ||
+          port !== existing.port ||
+          relay !== existing.relay ||
+          token !== Option.getOrNull(yield* secrets.get(tokenSecret(id)))
+        if (!redial && environment.name === existing.name) continue
+        yield* sql`UPDATE environment SET name = ${environment.name}, host = ${host}, port = ${port}, relay = ${relay} WHERE id = ${id}`.pipe(
+          Effect.andThen(secrets.set(tokenSecret(id), token)),
+          sql.withTransaction,
+          Effect.catchTag("SqlError", (error) => Effect.fail(failed(error))),
+        )
+        changed = true
+        const cloud = clouds.get(id)
+        if (redial || cloud === undefined) yield* start(environment)
+        else cloud.environment = environment
+      }
+      yield* Effect.forEach(drop, (row) => remove(row.id), { discard: true })
+      if (changed) yield* events.publish({ type: "environments.changed" })
+      return upsert.length
     })
 
   const reconnect = (id: string) =>
@@ -645,7 +906,21 @@ const make = Effect.gen(function* () {
 
   yield* Effect.forEach(yield* findAll(undefined).pipe(Effect.mapError(persistence("environments.load"))), start)
 
-  return Environments.of({ list, add, remove, reconnect, reconnectAll, forward, gather, owner: owners.owner })
+  return Environments.of({
+    list,
+    add,
+    remove,
+    syncRelay,
+    reconnect,
+    reconnectAll,
+    forward,
+    gather,
+    owner: owners.owner,
+    answerAsks: (answerWith) =>
+      Effect.sync(() => {
+        answer = answerWith
+      }),
+  })
 })
 
 export const layer = Layer.effect(Environments, make)

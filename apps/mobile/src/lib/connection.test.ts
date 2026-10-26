@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { serverProof } from "@shared/proof.ts"
+import { RELAY_DELAY_MS } from "@shared/remote.ts"
 import type { StoredServer } from "./stored-target"
 
 /** A server's socket, answered by hand. */
@@ -7,7 +9,7 @@ class FakeSocket {
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
-  readonly sent: { type: string; id?: number; method?: string; payload?: unknown }[] = []
+  readonly sent: { type: string; id?: number; method?: string; payload?: unknown; nonce?: string }[] = []
 
   constructor(readonly url: string) {
     FakeSocket.all.push(this)
@@ -17,9 +19,19 @@ class FakeSocket {
   }
   close() {}
 
-  ready(environment?: { id: string; name: string }) {
+  /** Opens, challenges, and proves the token `server()` pairs with back to the client's answer. */
+  ready(environment?: { id: string; name: string }, relay?: string) {
     this.onopen?.()
-    this.receive({ type: "ready", version: 1, features: ["call-keys"], ...(environment && { environment }) })
+    this.receive({ type: "challenge", nonce: "server-nonce" })
+    const proof = serverProof("t", this.sent.find((frame) => frame.type === "auth")!.nonce!, "server-nonce")
+    this.receive({
+      type: "ready",
+      version: 1,
+      features: ["call-keys"],
+      ...(environment && { environment }),
+      relay,
+      proof,
+    })
   }
   receive(frame: unknown) {
     this.onmessage?.({ data: JSON.stringify(frame) })
@@ -34,7 +46,7 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, setServers, useConnection } = await import("./connection")
+const { call, reconnectNow, setServers, useConnection } = await import("./connection")
 
 const server = (id: string, port: number): StoredServer => ({
   id,
@@ -43,6 +55,8 @@ const server = (id: string, port: number): StoredServer => ({
   hosts: ["127.0.0.1"],
   port,
   token: "t",
+  relay: null,
+  source: "pairing",
 })
 
 const socketOf = (port: number) => FakeSocket.all.findLast((socket) => socket.url.includes(`:${port}/`))!
@@ -163,5 +177,42 @@ describe("servers", () => {
     setServers([...useConnection.getState().servers, server("c", 1003)])
     socketOf(1003).ready({ id: "env-a", name: "studio" })
     expect(useConnection.getState().servers.map((entry) => entry.id)).toEqual(["b", "c"])
+  })
+
+  it("dials the hosts at once and the relay after them", () => {
+    vi.useFakeTimers()
+    try {
+      setServers([...useConnection.getState().servers, { ...server("c", 1003), relay: "c.example.com" }])
+      expect(FakeSocket.all.at(-1)?.url).toBe("ws://127.0.0.1:1003/remote")
+      vi.advanceTimersByTime(RELAY_DELAY_MS)
+      expect(FakeSocket.all.at(-1)?.url).toBe("wss://c.example.com/remote")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("learns a relay from the handshake without dropping the socket or its calls", async () => {
+    setServers([...useConnection.getState().servers, server("c", 1003)])
+    const creating = call("projects.create", { name: "api", rootPath: "/srv/api", setupScript: null }, { server: "c" })
+    const direct = socketOf(1003)
+    direct.ready({ id: "env-c", name: "laptop" }, "c.example.com")
+    expect(useConnection.getState().servers.find((entry) => entry.id === "c")?.relay).toBe("c.example.com")
+    expect(FakeSocket.all.at(-1)).toBe(direct)
+
+    direct.answer("projects.create", project("api"))
+    expect((await creating).name).toBe("api")
+
+    // The next round races the host against the learned relay.
+    vi.useFakeTimers()
+    try {
+      direct.onclose?.({ code: 1006 })
+      reconnectNow("c")
+      expect(FakeSocket.all.at(-1)).not.toBe(direct)
+      expect(FakeSocket.all.at(-1)?.url).toBe("ws://127.0.0.1:1003/remote")
+      vi.advanceTimersByTime(RELAY_DELAY_MS)
+      expect(FakeSocket.all.at(-1)?.url).toBe("wss://c.example.com/remote")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

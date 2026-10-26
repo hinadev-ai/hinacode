@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { startTransition, useActionState, useState } from "react"
+import { useActionState, useState } from "react"
 import { RiChat3Line, RiDeleteBinLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import { type CheckoutState, isThreadBusy, type Project, type Thread, type Worktree } from "../../../shared/domain.ts"
@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
 
 /** Why a worktree cannot be removed right now. Main refuses both, so the button is disabled instead. */
 type Blocker = "setup" | "turn"
@@ -108,7 +108,7 @@ function ProjectWorktrees({ group }: { group: ProjectGroup }) {
   const environment = group.project?.environmentId ?? null
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="flex min-w-0 items-baseline gap-2 text-sm font-medium">
+      <h3 className="flex min-w-0 items-baseline gap-2 px-1 text-sm font-medium">
         <span className="truncate">{group.project?.name ?? m.settings_worktree_unknown_project()}</span>
         {clouds.length > 0 && (
           <span className="shrink-0 text-xs font-normal text-muted-foreground">
@@ -116,7 +116,7 @@ function ProjectWorktrees({ group }: { group: ProjectGroup }) {
           </span>
         )}
       </h3>
-      <ul className="flex flex-col divide-y rounded-lg border">
+      <ul className={settingsGroupClass}>
         {group.rows.map((row) => (
           <WorktreeItem key={row.worktree.id} row={row} />
         ))}
@@ -130,7 +130,7 @@ function WorktreeItem({ row }: { row: WorktreeRow }) {
   const [removing, setRemoving] = useState(false)
 
   return (
-    <li className="flex items-start gap-3 px-3 py-2.5">
+    <li className="flex items-start gap-3">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 font-mono text-sm font-medium break-all">{worktree.branch}</span>
@@ -221,7 +221,7 @@ function RemoveWorktreeDialog({ row, open, onOpenChange }: RemoveWorktreeDialogP
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(remove)}>
+          <AlertDialogAction variant="destructive" disabled={isPending} action={remove}>
             {m.worktree_remove_confirm()}
           </AlertDialogAction>
         </AlertDialogFooter>

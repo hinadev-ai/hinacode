@@ -1,7 +1,7 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { normalizeHotkey, useHotkeys } from "@tanstack/react-hotkeys"
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useDeferredValue, useEffect, useRef, useState } from "react"
 import { RiSearchLine } from "react-icons/ri"
 import { useCommandContext, useKeymap } from "../keybindings/useKeybindings.ts"
 import { type RankedItem, rankPalette } from "../palette/rank.ts"
@@ -19,7 +19,7 @@ type SourceResult = ReturnType<PaletteSource["items"]>
 
 /** Calls every source for the query. Async results join once they settle, so sync groups never wait on files. */
 function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ctx: PaletteContext) {
-  const results = useMemo(() => sources.map((source) => source.items(query, ctx)), [sources, query, ctx])
+  const results = sources.map((source) => source.items(query, ctx))
   const [settled, setSettled] = useState<ReadonlyMap<SourceResult, ReadonlyArray<PaletteItem>>>(new Map())
 
   useEffect(() => {
@@ -40,10 +40,7 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
     }
   }, [results])
 
-  return useMemo(
-    () => results.flatMap((result) => (result instanceof Promise ? (settled.get(result) ?? []) : result)),
-    [results, settled],
-  )
+  return results.flatMap((result) => (result instanceof Promise ? (settled.get(result) ?? []) : result))
 }
 
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
@@ -107,15 +104,12 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
   const keymap = useKeymap()
   const threads = useThreads((state) => state.byId)
   const clouds = useClouds()
-  const ctx = useMemo(() => ({ ...commandContext, keymap, threads, clouds }), [commandContext, keymap, threads, clouds])
+  const ctx = { ...commandContext, keymap, threads, clouds }
 
   const { mode, query: modeQuery } = modeOf(query)
   const search = useDeferredValue(modeQuery)
   const items = useSourceItems(mode.sources, search, ctx)
-  const groups = useMemo(
-    () => (mode.rank ? mode.rank(items, search) : rankPalette(items, search, recent)),
-    [mode, items, search, recent],
-  )
+  const groups = mode.rank ? mode.rank(items, search) : rankPalette(items, search, recent)
   const choose = (item: PaletteItem) => onChoose(item, mode.rank === undefined)
   // On the document rather than the field, so a chord pressed right after the palette opens, before the field has focus, still counts.
   useHotkeys(

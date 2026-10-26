@@ -17,7 +17,7 @@ export type Remote<T> =
   | { readonly status: "error"; readonly message: string; readonly at: number }
 
 /** What a thread row needs to color its pull request number. */
-export type PullRequestSummary = Pick<PullRequest, "status" | "checks" | "review">
+export type PullRequestSummary = Pick<PullRequest, "status" | "checks" | "review" | "mergeable">
 
 /** Every `github.*` read runs `gh` on the desktop, so a pull request is read at most this often. */
 export const SUMMARY_MAX_AGE = 60_000
@@ -76,8 +76,8 @@ const snapshotSummaries = (links: readonly PullRequestLink[]) => {
   for (const link of links) {
     const snapshot = link.watch?.snapshot
     if (snapshot === null || snapshot === undefined) continue
-    const { status, checks, review } = snapshot
-    summaries[link.url] = { status: "ready", value: { status, checks, review }, at: Date.now() }
+    const { status, checks, review, mergeable } = snapshot
+    summaries[link.url] = { status: "ready", value: { status, checks, review, mergeable }, at: Date.now() }
   }
   return summaries
 }
@@ -146,9 +146,9 @@ export const usePullRequests = create<PullRequestsState>()((set, get) => {
         (value) => {
           if (pending.get(url) !== request) return
           const at = Date.now()
-          const { status, checks, review } = value
+          const { status, checks, review, mergeable } = value
           write({ status: "ready", value, at })
-          writeSummary(url, { status: "ready", value: { status, checks, review }, at })
+          writeSummary(url, { status: "ready", value: { status, checks, review, mergeable }, at })
         },
         (cause: unknown) => {
           if (pending.get(url) !== request) return

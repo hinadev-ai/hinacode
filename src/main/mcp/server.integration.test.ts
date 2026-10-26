@@ -16,6 +16,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
+import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
 import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
@@ -90,6 +91,13 @@ const stubs = Layer.mergeAll(
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
+  Layer.succeed(
+    Peers,
+    Peers.of({
+      ask: () => Effect.fail({ message: "This machine has no other machines." }),
+      join: () => ({ answer: () => {}, leave: () => {} }),
+    }),
+  ),
 )
 
 const core = Layer.mergeAll(
@@ -119,7 +127,7 @@ const domain = Layer.mergeAll(
   linearLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
-const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(agents)), agents, seeded).pipe(
+const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
   Layer.provide(Layer.mergeAll(stubs, Git.layer)),
   Layer.provideMerge(GitHub.layer),
   Layer.provideMerge(Db.layer(":memory:")),

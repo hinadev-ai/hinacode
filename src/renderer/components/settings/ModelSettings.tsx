@@ -10,26 +10,49 @@ import { m } from "../../paraglide/messages.js"
 import { accessModes, effortLabel } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../ui/field.tsx"
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
-import { SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsGroupTitle, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
 
 export function ModelSettings() {
   return (
     <SettingsSection title={m.settings_models()} description={m.settings_models_hint()}>
-      <FieldGroup>
-        {ProviderId.literals.map((provider) => (
-          <DefaultModelField key={provider} provider={provider} />
-        ))}
+      {ProviderId.literals.map((provider) => (
+        <ProviderModels key={provider} provider={provider} />
+      ))}
+      <SettingsGroup>
         <DefaultAccessField />
         <TextGenerationModelField />
         <PullRequestGuideField />
-      </FieldGroup>
+      </SettingsGroup>
     </SettingsSection>
+  )
+}
+
+function ProviderModels({ provider }: { provider: ProviderId }) {
+  const environment = useSettingsEnvironment()
+  const models = useAtomValue(modelsAtom(environment, provider))
+  const headingId = `provider-models-${provider}`
+  return (
+    <fieldset aria-labelledby={headingId} className="mt-4 flex min-w-0 flex-col gap-4">
+      <SettingsGroupTitle id={headingId} className="flex items-center gap-2">
+        <ProviderIcon provider={provider} />
+        {providerLabel[provider]()}
+      </SettingsGroupTitle>
+      <SettingsGroup>
+        <AccountList provider={provider} />
+        <DefaultAccountField provider={provider} />
+        <DefaultModelField provider={provider} />
+        {AsyncResult.isSuccess(models) && models.value.length > 0 && (
+          <ModelPresetField provider={provider} models={models.value} />
+        )}
+        <AutoCompactField provider={provider} />
+      </SettingsGroup>
+    </fieldset>
   )
 }
 
@@ -53,42 +76,32 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
   }
 
   const textFallback = (notice: string) => (
-    <>
+    <div className="flex flex-col gap-1.5">
       <ModelIdForm inputId={inputId} current={current} onSave={save} />
       <FieldDescription>{notice}</FieldDescription>
-    </>
+    </div>
   )
 
   return (
-    <FieldSet>
-      <FieldLegend variant="label" className="flex items-center gap-2">
-        <ProviderIcon provider={provider} />
-        {label}
-      </FieldLegend>
-      <AccountList provider={provider} />
-      <DefaultAccountField provider={provider} />
-      <Field>
+    <Field orientation="horizontal">
+      <FieldContent>
         <FieldLabel htmlFor={inputId}>{m.settings_default_model()}</FieldLabel>
-        {AsyncResult.builder(models)
-          .onInitial(() => (
-            <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
-          ))
-          .onSuccess((list) =>
-            list.length > 0 ? (
-              <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
-            ) : (
-              textFallback(m.settings_models_unlisted({ provider: label }))
-            ),
-          )
-          .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
-          .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
         {error && <FieldError>{error}</FieldError>}
-      </Field>
-      {AsyncResult.isSuccess(models) && models.value.length > 0 && (
-        <ModelPresetField provider={provider} models={models.value} />
-      )}
-      <AutoCompactField provider={provider} />
-    </FieldSet>
+      </FieldContent>
+      {AsyncResult.builder(models)
+        .onInitial(() => (
+          <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
+        ))
+        .onSuccess((list) =>
+          list.length > 0 ? (
+            <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
+          ) : (
+            textFallback(m.settings_models_unlisted({ provider: label }))
+          ),
+        )
+        .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
+        .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
+    </Field>
   )
 }
 
@@ -113,9 +126,13 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_model_preset()}</FieldLabel>
-      <div className="flex items-center gap-2">
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_model_preset()}</FieldLabel>
+        <FieldDescription>{m.settings_model_preset_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
+      <div className="flex shrink-0 flex-col items-end gap-1">
         <Select items={items} multiple value={selected} onValueChange={(next) => void save(next)}>
           <SelectTrigger id={inputId} className="w-72">
             <SelectValue className="min-w-0 truncate">
@@ -143,8 +160,6 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
           </Button>
         )}
       </div>
-      <FieldDescription>{m.settings_model_preset_hint()}</FieldDescription>
-      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }
@@ -237,8 +252,12 @@ function DefaultAccessField() {
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_default_access()}</FieldLabel>
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_default_access()}</FieldLabel>
+        <FieldDescription>{m.settings_default_access_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
       <div>
         <Select items={items} value={defaultAccessMode} onValueChange={(next) => void save(next)}>
           <SelectTrigger id={inputId} className="w-72">
@@ -258,8 +277,6 @@ function DefaultAccessField() {
           </SelectContent>
         </Select>
       </div>
-      <FieldDescription>{m.settings_default_access_hint()}</FieldDescription>
-      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }
@@ -289,11 +306,13 @@ function TextGenerationModelField() {
     : [unlistedModel(textGenerationModel, "claude"), ...listed]
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_text_generation_model()}</FieldLabel>
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_text_generation_model()}</FieldLabel>
+        <FieldDescription>{m.settings_text_generation_model_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
       <ModelSelect inputId={inputId} models={items} current={textGenerationModel} onSave={save} clearable={false} />
-      <FieldDescription>{m.settings_text_generation_model_hint()}</FieldDescription>
-      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }

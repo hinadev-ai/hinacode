@@ -1,5 +1,5 @@
 import type { LegendListRef } from "@legendapp/list/react"
-import { type KeyboardEvent, type RefObject, useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
+import { type KeyboardEvent, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react"
 import { RiArrowDownSLine, RiArrowUpSLine, RiCloseLine, RiSearchLine } from "react-icons/ri"
 import type { Message } from "../../shared/domain.ts"
 import { type FindMatch, findMatches } from "../lib/find.ts"
@@ -62,13 +62,11 @@ export function FindBar({
   const revealToken = useRef(0)
 
   const startMessageId = useUi((state) => state.findMessageId)
-  const matches = useMemo(() => findMatches(messages, query), [messages, query])
+  const matches = findMatches(messages, query)
   // New text starts at the last match, nearest the end of the transcript where the reader usually is,
   // or at the message a global search result pointed to.
-  const start = useMemo(() => {
-    const inMessage = matches.findLastIndex((match) => match.messageId === startMessageId)
-    return inMessage === -1 ? matches.length - 1 : inMessage
-  }, [matches, startMessageId])
+  const inMessage = matches.findLastIndex((match) => match.messageId === startMessageId)
+  const start = inMessage === -1 ? matches.length - 1 : inMessage
   const [selected, setSelected] = useState<{ query: string; index: number } | null>(null)
   const current =
     matches.length === 0 ? -1 : selected?.query === query ? Math.min(selected.index, matches.length - 1) : start

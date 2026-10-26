@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store"
+import { parseRelayAccount, RELAY_ACCOUNT_KEY, type RelayAccount } from "./relay-account"
 import { parsePreferences, PREFERENCES_KEY, type Preferences } from "./preferences"
 import { LEGACY_KEY, newServerId, parseStoredServers, SERVERS_KEY, type StoredServer } from "./stored-target"
 
@@ -19,3 +20,10 @@ export const loadPreferences = async () => parsePreferences(await SecureStore.ge
 
 export const savePreferences = (preferences: Preferences) =>
   SecureStore.setItemAsync(PREFERENCES_KEY, JSON.stringify(preferences))
+
+export const loadRelayAccount = async () => parseRelayAccount(await SecureStore.getItemAsync(RELAY_ACCOUNT_KEY))
+
+export const saveRelayAccount = (account: RelayAccount) =>
+  SecureStore.setItemAsync(RELAY_ACCOUNT_KEY, JSON.stringify(account))
+
+export const clearRelayAccount = () => SecureStore.deleteItemAsync(RELAY_ACCOUNT_KEY)

@@ -4,10 +4,11 @@ import { AccessMode, type Settings } from "@shared/domain.ts"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import { router } from "expo-router"
-import { Alert, AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
+import { AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
 import { forgetServer } from "@/components/connection-provider"
 import type { IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
+import { RelayAccountSection } from "@/components/relay-account"
 import { Footnote, SettingsGroup, SettingsRow, SwitchRow } from "@/components/settings-rows"
 import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from "@/components/ui"
@@ -15,6 +16,7 @@ import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { mono } from "@/constants/theme"
 import { call, reconnectNow, type Server, useConnection } from "@/lib/connection"
+import { confirmDestructive } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import {
@@ -37,6 +39,7 @@ export default function SettingsScreen() {
       <PhoneSettings />
       <DesktopSettings />
       <ServerSettings />
+      <RelayAccountSection />
       <SettingsGroup title={copy("mobile_settings_about")}>
         <SettingsRow
           icon="RiSmartphoneLine"
@@ -493,8 +496,12 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
       <View style={styles.permission}>
         <View style={styles.serverStatus}>
           <ConnectionBadge status={server.status} />
+          {server.source === "relay" && (
+            <Text style={[styles.source, { color: theme.textMuted }]}>{copy("mobile_relay_from_relay")}</Text>
+          )}
         </View>
         {server.error !== null && <Notice tone="danger" text={server.error} />}
+        {server.relay !== null && <Text style={[styles.address, { color: theme.textMuted }]}>{server.relay}</Text>}
         {server.hosts.map((host) => (
           <Text key={host} style={[styles.address, { color: theme.textMuted }]}>{`${host}:${server.port}`}</Text>
         ))}
@@ -516,37 +523,36 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
             }}
           />
         )}
-        <Button
-          icon="RiLinkUnlinkM"
-          variant="danger"
-          label={copy("mobile_settings_server_forget")}
-          onPress={() => confirmForget(serverName(server), forget)}
-        />
+        {server.source === "relay" ? (
+          <Footnote text={copy("mobile_relay_forget_hint")} />
+        ) : (
+          <Button
+            icon="RiLinkUnlinkM"
+            variant="danger"
+            label={copy("mobile_settings_server_forget")}
+            onPress={() => confirmForget(serverName(server), forget)}
+          />
+        )}
       </View>
     </Sheet>
   )
 }
 
-// react-native-web's Alert shows no buttons, so the browser's own confirm stands in.
-function confirmForget(name: string, forget: () => void) {
-  const title = copy("mobile_settings_server_forget_title", { server: name })
-  const message = copy("mobile_settings_server_forget_message")
-  if (Platform.OS === "web") {
-    if (window.confirm(`${title}\n\n${message}`)) forget()
-    return
-  }
-  Alert.alert(title, message, [
-    { text: copy("mobile_settings_cancel"), style: "cancel" },
-    { text: copy("mobile_settings_server_forget"), style: "destructive", onPress: forget },
-  ])
-}
+const confirmForget = (name: string, forget: () => void) =>
+  confirmDestructive(
+    copy("mobile_settings_server_forget_title", { server: name }),
+    copy("mobile_settings_server_forget_message"),
+    copy("mobile_settings_server_forget"),
+    forget,
+  )
 
 const styles = StyleSheet.create({
   content: { gap: 24, padding: 16, paddingBottom: 40 },
   segmentRow: { padding: 8 },
   permission: { gap: 8, padding: 12 },
   loading: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
-  serverStatus: { flexDirection: "row" },
+  serverStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
+  source: { fontSize: 13 },
   address: { fontFamily: mono, fontSize: 13 },
   serverPicker: { padding: 8 },
 })

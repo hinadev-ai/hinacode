@@ -28,6 +28,7 @@ import {
   Environment,
   Environments,
   EnvironmentStatus,
+  RelayAccountStatus,
   Attachment,
   QueuedMessage,
   Automation,
@@ -55,6 +56,7 @@ import {
   PullRequestGuideState,
   PullRequestLink,
   LinearIssue,
+  MachineResources,
   NetworkAddress,
   RemotePairing,
   RemoteStatus,
@@ -77,6 +79,8 @@ import {
   PullRequestMatch,
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
+import { PendingLink, RelayHost } from "./relayMachines.ts"
+import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 
 const AutomationInput = Schema.Struct({
   projectId: Schema.String,
@@ -99,6 +103,26 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "browser.open": rpc(
+    Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
+    Schema.Struct({ sessionId: Schema.String }),
+  ),
+  "browser.command": rpc(
+    Schema.Struct({
+      ...BrowserSession.fields,
+      commands: Schema.Array(BrowserCommand).check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    }),
+    Schema.Void,
+  ),
+  "browser.frame": rpc(
+    Schema.Struct({
+      ...BrowserSession.fields,
+      after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      visible: Schema.Boolean,
+    }),
+    BrowserSnapshot,
+  ),
+  "browser.close": rpc(BrowserSession, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -253,6 +277,23 @@ export const RpcMethods = {
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   /** Dials an offline or incompatible cloud now instead of after its backoff. Calls waiting for it keep waiting. */
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "relayAccount.status": rpc(Schema.Void, RelayAccountStatus),
+  /** Lists the relay's machines with the owner token, and keeps it only when the relay accepts it. */
+  "relayAccount.signIn": rpc(Schema.Struct({ ownerToken: Schema.String }), RelayAccountStatus),
+  /** Forgets the owner token and every environment the relay added. */
+  "relayAccount.signOut": rpc(Schema.Void, RelayAccountStatus),
+  /** Never fails: why a sync failed is the status's `error`. */
+  "relayAccount.sync": rpc(Schema.Void, RelayAccountStatus),
+  /** Every machine linked to the relay, for the owner to manage. */
+  "relayAccount.machines": rpc(Schema.Void, Schema.Array(RelayHost)),
+  /** Show on my devices. Syncs, then answers the fresh list. */
+  "relayAccount.setShown": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Schema.Array(RelayHost)),
+  /** Deletes another machine's tunnel and hostname. Refuses this desktop's own. Syncs, then answers the fresh list. */
+  "relayAccount.removeMachine": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(RelayHost)),
+  /** The machine waiting on a link code that `hinacode serve --relay on` printed. */
+  "relayAccount.pendingLink": rpc(Schema.Struct({ userCode: Schema.String }), PendingLink),
+  /** Waits for the machine to publish its pairing and syncs, then answers the fresh list. */
+  "relayAccount.approveLink": rpc(Schema.Struct({ userCode: Schema.String }), Schema.Array(RelayHost)),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   /** Who the account is signed in as. `accountId` null is the CLI's own login. */
@@ -545,11 +586,19 @@ export const RpcMethods = {
   ),
   /** IPv4 addresses the remote and webhook listeners can bind to, Tailscale first. */
   "network.addresses": rpc(Schema.Void, Schema.Array(NetworkAddress)),
+  "system.resources": rpc(Schema.Void, MachineResources),
   /** `listenError` is set when the webhook listener could not bind, e.g. the port is taken. */
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
   /** Replaces the access token and disconnects every phone. */
   "remote.rotateToken": rpc(Schema.Void, RemotePairing),
+  /**
+   * Links this machine to a HinaCode account, opening the approval page in the browser, and starts its tunnel.
+   * Answers once the tunnel exists, or fails when the link expires. A linked machine only refreshes its tunnel.
+   */
+  "remote.setupRelay": rpc(Schema.Void, RemotePairing),
+  /** Unlinks this machine, which deletes its tunnel and hostname. Also cancels a link waiting for approval. */
+  "remote.removeRelay": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
     Schema.Struct({ id: Schema.String }),
     Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
@@ -560,6 +609,10 @@ export type RpcMethod = keyof typeof RpcMethods
 
 /** Reads rerun after a reconnect; mutations retain one call key for the whole action. */
 export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
+  "browser.open": "mutation",
+  "browser.command": "mutation",
+  "browser.frame": "read",
+  "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "projects.list": "read",
@@ -605,6 +658,15 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "environments.add": "mutation",
   "environments.remove": "mutation",
   "environments.reconnect": "mutation",
+  "relayAccount.status": "read",
+  "relayAccount.signIn": "mutation",
+  "relayAccount.signOut": "mutation",
+  "relayAccount.sync": "mutation",
+  "relayAccount.machines": "read",
+  "relayAccount.setShown": "mutation",
+  "relayAccount.removeMachine": "mutation",
+  "relayAccount.pendingLink": "read",
+  "relayAccount.approveLink": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -694,9 +756,12 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "automations.runNow": "mutation",
   "automations.runs": "read",
   "network.addresses": "read",
+  "system.resources": "read",
   "remote.status": "read",
   "remote.pairing": "read",
   "remote.rotateToken": "mutation",
+  "remote.setupRelay": "mutation",
+  "remote.removeRelay": "mutation",
   "automations.webhookUrl": "read",
 }
 
@@ -726,12 +791,23 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.passkey.prepare",
   "remote.pairing",
   "remote.rotateToken",
+  "remote.setupRelay",
+  "remote.removeRelay",
   "clientSettings.get",
   "clientSettings.set",
   "environments.list",
   "environments.add",
   "environments.remove",
   "environments.reconnect",
+  "relayAccount.status",
+  "relayAccount.signIn",
+  "relayAccount.signOut",
+  "relayAccount.sync",
+  "relayAccount.machines",
+  "relayAccount.setShown",
+  "relayAccount.removeMachine",
+  "relayAccount.pendingLink",
+  "relayAccount.approveLink",
   "agents.update",
 ])
 /** Pushes that only answer desktop-only methods. The remote listener does not forward them. */
@@ -739,6 +815,7 @@ export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEve
   "vm.screen.data",
   "vm.screen.closed",
   "fs.changed",
+  "environments.changed",
 ])
 export type RpcRequest<M extends RpcMethod> = (typeof RpcMethods)[M]["request"]["Type"]
 export type RpcResponse<M extends RpcMethod> = (typeof RpcMethods)[M]["response"]["Type"]
@@ -816,6 +893,8 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   /** The desktop's link to a cloud changed state. */
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
+  /** A relay sync added, renamed or dropped clouds; ask environments.list again. */
+  Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */

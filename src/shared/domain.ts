@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
+import { EntrySource } from "./relayMachines.ts"
 
 /** ISO-8601 UTC timestamp, as stored in SQLite. */
 export const Timestamp = Schema.String
@@ -144,6 +145,10 @@ export type ChecksStatus = typeof ChecksStatus.Type
 export const ReviewStatus = Schema.Literals(["approved", "changesRequested", "reviewRequired"])
 export type ReviewStatus = typeof ReviewStatus.Type
 
+/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
+export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
+export type Mergeable = typeof Mergeable.Type
+
 /** A GitHub pull request as `gh pr view` reports it. */
 export const PullRequest = Schema.Struct({
   url: Schema.String,
@@ -154,6 +159,8 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** Defaults for a desktop or cloud from before the sidebar read it. */
+  mergeable: Mergeable.pipe(Schema.withDecodingDefaultKey(Effect.succeed("unknown" as const))),
   /** The author's login. */
   author: Schema.String,
   headRefName: Schema.String,
@@ -175,10 +182,6 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
-/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
-export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
-export type Mergeable = typeof Mergeable.Type
-
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -187,7 +190,6 @@ export const PullRequestDetail = Schema.Struct({
   headRef: Schema.String,
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
-  mergeable: Mergeable,
   checkRuns: Schema.Array(CheckRun),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
@@ -592,12 +594,26 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+/**
+ * The `default*` keys are what a new thread starts with. Picking an option on a thread before its first message
+ * saves it here, so the next new thread starts the way the last one was set up.
+ */
 export const Settings = Schema.Struct({
+  defaultProvider: ProviderId,
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** Null is the model's own default effort. */
+  defaultEffort: Schema.Struct({
+    claude: Schema.NullOr(Schema.String),
+    codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
+  }),
+  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  /** Whether the first turn of a new thread in a repository runs in a new worktree or in the project root. */
+  defaultWorkspaceMode: WorkspaceChoice.fields.mode,
   /** Model ids the thread model picker lists per agent, in any order. Empty lists every model the agent has. */
   modelPresets: Schema.Struct({
     claude: Schema.Array(Schema.String),
@@ -650,7 +666,11 @@ export const Settings = Schema.Struct({
 export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
+  defaultProvider: "claude",
   defaultModel: { claude: null, codex: null, muse: null },
+  defaultEffort: { claude: null, codex: null, muse: null },
+  defaultFastMode: { claude: false, codex: false, muse: false },
+  defaultWorkspaceMode: "local",
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   defaultAccountName: { claude: null, codex: null, muse: null },
@@ -665,15 +685,39 @@ export const defaultSettings: Settings = {
   worktreeRoot: null,
 }
 
-/** A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret `environment.<id>.token`. */
+/**
+ * A cloud this desktop paired with. `id` is the cloud's own id; its pairing token is the secret
+ * `environment.<id>.token`. `relay` is its tunnel hostname, dialed when `host` does not answer. `source` says whether it was
+ * paired by URL or listed by the relay the desktop signed in to.
+ */
 export const Environment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   host: Schema.String,
   port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  relay: Schema.NullOr(Schema.String),
+  source: EntrySource,
   createdAt: Timestamp,
 })
 export type Environment = typeof Environment.Type
+
+/** Whether this desktop holds the relay's owner token, and how its last sync of the relay's machines went. */
+export const RelayAccountStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("signedOut") }),
+  Schema.Struct({
+    state: Schema.Literal("signedIn"),
+    serviceUrl: Schema.String,
+    /** This desktop's own environment id, to tell its row among the relay's machines. */
+    environmentId: Schema.String,
+    /** How many machines the last successful sync listed for this desktop. */
+    machines: Schema.Int,
+    /** Null until the first sync since start. */
+    syncedAt: Schema.NullOr(Timestamp),
+    /** Why the last sync failed; null after a successful one. */
+    error: Schema.NullOr(Schema.String),
+  }),
+])
+export type RelayAccountStatus = typeof RelayAccountStatus.Type
 
 /**
  * The desktop's link to a cloud. `unauthorized` stops retrying until a new pairing URL. `incompatible` keeps
@@ -975,11 +1019,25 @@ export const FileSearchHit = Schema.Struct({
 })
 export type FileSearchHit = typeof FileSearchHit.Type
 
-/** What Settings > Remote shows: whether phones can connect right now, and how many do. */
+/**
+ * This machine's relay. `off` is not linked to an account. `linking` waits for the owner to approve `userCode` at
+ * `url`. `paused` keeps the tunnel while the remote listener is off.
+ * `error` is why the last `cloudflared` stopped, failed to register or could not be downloaded.
+ */
+export const RelayStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("off") }),
+  Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String, userCode: Schema.String }),
+  Schema.Struct({ state: Schema.Literals(["paused", "connected"]), hostname: Schema.String }),
+  Schema.Struct({ state: Schema.Literal("connecting"), hostname: Schema.String, error: Schema.NullOr(Schema.String) }),
+])
+export type RelayStatus = typeof RelayStatus.Type
+
+/** What Settings > Remote shows: whether phones can connect right now, how many do, and through which relay. */
 export const RemoteStatus = Schema.Struct({
   listening: Schema.Boolean,
   listenError: Schema.NullOr(Schema.String),
   connected: Schema.Int,
+  relay: RelayStatus,
 })
 export type RemoteStatus = typeof RemoteStatus.Type
 
@@ -990,10 +1048,44 @@ export const NetworkAddress = Schema.Struct({
 })
 export type NetworkAddress = typeof NetworkAddress.Type
 
-/** Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first. */
+/** One reading of a machine. `cpu` is the share of all cores busy since the reading before, from 0 to 1. */
+export const ResourceSample = Schema.Struct({
+  at: Schema.Number,
+  cpu: Schema.Number,
+  memoryUsed: Schema.Number,
+  /** The 1-minute load average. Windows has none. */
+  load: Schema.NullOr(Schema.Number),
+})
+export type ResourceSample = typeof ResourceSample.Type
+
+/** A disk HinaCode writes to, named by the shortest path on it that HinaCode uses. Bytes, as `df` counts them. */
+export const DiskUsage = Schema.Struct({
+  path: Schema.String,
+  used: Schema.Number,
+  free: Schema.Number,
+})
+export type DiskUsage = typeof DiskUsage.Type
+
+export const diskFullness = ({ used, free }: DiskUsage) => used / (used + free || 1)
+
+export const MachineResources = Schema.Struct({
+  cpuCount: Schema.Int,
+  memoryTotal: Schema.Number,
+  /** Oldest first, the last 10 minutes. Empty for the first 5 seconds after start. */
+  samples: Schema.Array(ResourceSample),
+  /** Fullest first. */
+  disks: Schema.Array(DiskUsage),
+})
+export type MachineResources = typeof MachineResources.Type
+
+/**
+ * Everything a phone needs to connect. `hosts` are the addresses this machine answers on, Tailscale first, and
+ * `relay` is the tunnel hostname that answers from any network.
+ */
 export const RemotePairing = Schema.Struct({
   hosts: Schema.NonEmptyArray(Schema.String),
   port: Schema.Int,
   token: Schema.String,
+  relay: Schema.NullOr(Schema.String),
 })
 export type RemotePairing = typeof RemotePairing.Type

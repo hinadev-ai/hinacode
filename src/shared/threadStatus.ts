@@ -1,5 +1,5 @@
 import type { AgentEvent } from "./agent.ts"
-import type { ChecksStatus, PullRequestStatus, ThreadStatus } from "./domain.ts"
+import type { ChecksStatus, PullRequest, PullRequestStatus, ThreadStatus } from "./domain.ts"
 
 /**
  * How the desktop sidebar and the phone's thread list draw a thread and its pull request. Icons are Remix names
@@ -16,11 +16,47 @@ export function outcomeOf(event: AgentEvent): Outcome | undefined {
   return undefined
 }
 
-/** What a row shows: the thread's status, or for an idle thread, a result the developer has not opened yet. */
-export type RowState = ThreadStatus | `unseen_${Outcome}`
+/** Why an open pull request waits on the developer, most urgent first. Fixing a conflict reruns the checks anyway. */
+const pullRequestAttentions = ["conflicting", "checksFailing", "changesRequested"] as const
+export type PullRequestAttention = (typeof pullRequestAttentions)[number]
 
-export const rowState = (status: ThreadStatus, unseen: Outcome | undefined): RowState =>
-  status === "idle" && unseen !== undefined ? `unseen_${unseen}` : status
+type PullRequestState = Pick<PullRequest, "status" | "checks" | "review" | "mergeable">
+
+const needs = (pullRequest: PullRequestState, attention: PullRequestAttention) => {
+  if (!isOpen(pullRequest.status)) return false
+  switch (attention) {
+    case "conflicting":
+      return pullRequest.mergeable === "conflicting"
+    case "checksFailing":
+      return pullRequest.checks === "failing"
+    case "changesRequested":
+      return pullRequest.review === "changesRequested"
+  }
+}
+
+/** The most urgent reason any of a thread's pull requests waits on the developer. Unloaded ones count as fine. */
+export const pullRequestAttention = (
+  pullRequests: ReadonlyArray<PullRequestState | undefined>,
+): PullRequestAttention | undefined =>
+  pullRequestAttentions.find((attention) =>
+    pullRequests.some((pullRequest) => pullRequest !== undefined && needs(pullRequest, attention)),
+  )
+
+/**
+ * What a row shows. A thread that is not idle shows its status. An idle one shows a result the developer has not
+ * opened yet, then a pull request waiting on them, since opening the thread is usually how they act on either.
+ */
+export type RowState = ThreadStatus | `unseen_${Outcome}` | `pr_${PullRequestAttention}`
+
+export const rowState = (
+  status: ThreadStatus,
+  unseen: Outcome | undefined,
+  pullRequest: PullRequestAttention | undefined,
+): RowState => {
+  if (status !== "idle") return status
+  if (unseen !== undefined) return `unseen_${unseen}`
+  return pullRequest === undefined ? status : `pr_${pullRequest}`
+}
 
 /**
  * How loudly a row reads. A thread that needs the developer is at full contrast, a resting one a step down, and a
@@ -31,6 +67,9 @@ export const rowEmphasis = {
   limited: "attention",
   unseen_completed: "attention",
   unseen_failed: "attention",
+  pr_conflicting: "attention",
+  pr_checksFailing: "attention",
+  pr_changesRequested: "attention",
   idle: "resting",
   archived: "resting",
   running: "working",
@@ -45,6 +84,9 @@ export const rowStatusIndicator = {
   limited: { icon: "RiHourglassFill", tone: "attention" },
   unseen_completed: { icon: "RiCheckboxCircleFill", tone: "success" },
   unseen_failed: { icon: "RiErrorWarningFill", tone: "danger" },
+  pr_conflicting: { icon: "RiGitMergeFill", tone: "attention" },
+  pr_checksFailing: { icon: "RiCloseCircleFill", tone: "danger" },
+  pr_changesRequested: { icon: "RiFeedbackFill", tone: "attention" },
 } as const satisfies Partial<Record<RowState, { icon: string; tone: IndicatorTone }>>
 
 /** A pull request's state as GitHub draws it. */

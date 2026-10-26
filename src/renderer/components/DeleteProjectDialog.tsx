@@ -1,6 +1,6 @@
 import { useAtomRefresh } from "@effect/atom-react"
 import { useNavigate, useParams } from "@tanstack/react-router"
-import { type RefObject, startTransition, useActionState, useId, useState } from "react"
+import { type RefObject, useActionState, useId, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
 import type { Project } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -108,7 +108,7 @@ export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDel
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(remove)}>
+          <AlertDialogAction variant="destructive" disabled={isPending} action={remove}>
             {m.project_delete_confirm()}
           </AlertDialogAction>
         </AlertDialogFooter>

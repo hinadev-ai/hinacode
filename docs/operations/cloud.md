@@ -16,14 +16,31 @@ The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, 
 
 Options, flags first, then environment, then stored settings:
 
-| Flag             | Environment                     | Meaning                                                       |
-| ---------------- | ------------------------------- | ------------------------------------------------------------- |
-| `--port <n>`     | `HINACODE_SERVE_PORT`           | Listener port, default 48081                                  |
-| `--host <host>`  | `HINACODE_SERVE_HOST`           | Bind host, default `0.0.0.0`                                  |
-| `--rotate-token` | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
-|                  | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |
+| Flag              | Environment                     | Meaning                                                       |
+| ----------------- | ------------------------------- | ------------------------------------------------------------- |
+| `--port <n>`      | `HINACODE_SERVE_PORT`           | Listener port, default 48081                                  |
+| `--host <host>`   | `HINACODE_SERVE_HOST`           | Bind host, default `0.0.0.0`                                  |
+| `--rotate-token`  | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
+| `--relay on\|off` | `HINACODE_SERVE_RELAY`          | Link the cloud to the HinaCode relay, or unlink it            |
+|                   | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |
 
 Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
+
+## Reach it from anywhere
+
+Without Tailscale, a cloud is reachable only on its LAN. The HinaCode relay gives it a public hostname through a Cloudflare tunnel, so the phone and the desktop reach it from any network. Design: `docs/features/2026-10-24-relay.md`.
+
+1. Run it once with the relay on:
+
+   ```sh
+   hinacode serve --relay on
+   ```
+
+2. It prints `Open <url> to link this cloud to your HinaCode account. The code is <code>.` Open the URL on any device, sign in, and approve the machine with that code. The link expires after 10 minutes.
+
+The cloud then prints the pairing block with its relay hostname in every URL, and clients use it when none of the direct addresses answers. Later boots keep the relay running without the flag and without calling the relay service. `HINACODE_RELAY_URL` points the cloud at another relay service, such as a local `wrangler dev`.
+
+`hinacode serve --relay off` unlinks the machine and deletes its tunnel. HinaCode uses the `cloudflared` on `PATH` when there is one. Otherwise it downloads the pinned release from Cloudflare's GitHub into `<data dir>/cloudflared/<version>/`, checks its SHA-256, and keeps it for later boots.
 
 ## Keep it running
 

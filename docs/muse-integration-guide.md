@@ -38,6 +38,7 @@ flowchart LR
 | `items.ts`, `approvals.ts`, `questions.ts` | Pure mappings from MSP items, approvals and questions                                                      |
 | `skills.ts`                                | Slash completions and typed skill invocations                                                              |
 | `usage.ts`                                 | Thread tokens from `view/page`, memoized per session                                                       |
+| `subagents.ts`                             | A parent session's `subagent` items as Agents tab rows                                                     |
 | `backgroundTasks.ts`                       | The background task set after a `toolCall` item changes                                                    |
 
 ## A turn
@@ -66,6 +67,7 @@ sequenceDiagram
 | `item/delta` field `summary.N`               | `reasoning_delta`, one paragraph per part                                    |
 | `toolCall` item started and completed        | `tool_call_started`, `tool_call_finished`                                    |
 | completed `write_file` or `edit_file`        | `file_changed` with the path                                                 |
+| `subagent` item started, updated, completed  | `subagent_updated` with the full row                                         |
 | `approval/request`                           | `approval_requested`; `approval/resolved` gives `approval_resolved`          |
 | `userInput/request`                          | `question_requested`; `userInput/settled` gives `question_resolved`          |
 | `turn/completed` `completed`                 | `turn_completed` with the turn's usage and the latest `session/contextUsage` |
@@ -88,15 +90,19 @@ Muse 1.4.7 rejects `skill` parts on `turn/steer` with `invalidParams`: `turn/ste
 
 ## Access modes and the sandbox
 
-| hinacode    | MSP approval mode | Behavior measured against `muse` 1.4.7                                                  |
-| ----------- | ----------------- | --------------------------------------------------------------------------------------- |
-| Supervised  | `promptUnmatched` | Asks before every shell command, even `ls`, one stage per `&&` segment                  |
-| Auto        | `onRequest`       | Runs freely in the sandbox, network included; asks before writing outside the workspace |
-| Full access | `onRequest`       | Like Auto, and hinacode allows every request without showing it                         |
+Each access mode is one of Muse's built-in permission profiles, and the composer shows Muse's own name and description for it on a Muse thread. A profile sets the filesystem sandbox, the network and the approval mode together.
 
-Full access cannot use `allowAll`. The `bash` tool tells the model to retry a command the sandbox blocked with `sandbox_permissions: "require_escalated"`, and only a human may allow that. `allowAll` turns asking off, so Muse 1.4.10 refuses the call with `tool denied: unsandboxed execution requires human approval, but approval prompts are disabled`. Under `onRequest` the same call arrives as an `approval/request` whose only allow choice is `allow_once`, and allowing it runs the command outside the sandbox.
+| hinacode    | Muse profile                   | Behavior measured against `muse` 1.4.13                                                        |
+| ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Supervised  | `:ask-me` (Ask me)             | Runs freely in the sandbox; asks before writing outside the workspace and before each new host |
+| Auto        | `:auto-review` (Auto-review)   | Same access as Ask me; an AI reviewer decides the requests a human would see                   |
+| Full access | `:unrestricted` (Unrestricted) | No sandbox, `allowAll`, network enabled; writes anywhere and reaches any host without asking   |
 
-Host flags fix the sandbox posture for the host's lifetime. The approval mode belongs to each session, and `session/setApprovalMode` changes it live. hinacode starts the host with `--sandbox-network enabled`. Under the default `proxy-only`, `allowAll` never asks about a new host and blocks the connection instead, so `curl` gets `HTTP 000` and Full access could not reach the network. A second host with `--disable-sandbox` for Full access does not work either. A session stays loaded in the host that opened it, and any other host gets `sessionInUse` until the first one exits.
+`session/start` and `session/resume` take the profile as `permissionProfile`, and `session/setPermissionProfile` (experimental) changes it on a loaded session, so a running turn takes the new profile at once. `permissionProfile/list` serves the catalog with the labels and descriptions Muse's TUI picker shows. Muse also has `:read-only`, which hinacode does not offer yet.
+
+Under `:unrestricted` Muse refuses a call that still asks for `sandbox_permissions: "require_escalated"` with `tool denied: unsandboxed execution requires human approval, but approval prompts are disabled`. With the sandbox off a command never needs to ask, so this only happens when a model asks anyway.
+
+The profile overrides the host's `--sandbox-network` flag, so hinacode starts the host with Muse's defaults.
 
 `--trust-workspace` loads the project's skills and rules, because importing a project trusts it ([ADR 0008](adr/0008-import-trusts-the-project.md)).
 
