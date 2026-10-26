@@ -671,7 +671,7 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconTyp
   unseen_failed: { label: m.thread_status_unseen_failed, ...toIcon(rowStatusIndicator.unseen_failed) },
 }
 
-function StatusIndicator({ state }: { state: RowState }): ReactNode {
+export function StatusIndicator({ state }: { state: RowState }): ReactNode {
   const status = statusIcons[state]
   if (!status) return null
   const { label, Icon, className } = status
