@@ -119,9 +119,10 @@ final class WalkTests: XCTestCase {
         sleep(3)
         shot("09-terminal")
 
-        // Pull requests: none linked yet.
+        // Pull requests: none linked yet. The terminal's keyboard must not follow onto this tab.
         segment(app, "PRs")
         sleep(3)
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "terminal keyboard left up over PRs")
         shot("10-pull-requests")
 
         // Overview from the sidebar.
