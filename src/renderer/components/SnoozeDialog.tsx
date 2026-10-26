@@ -54,6 +54,12 @@ export async function snoozeThread(thread: Thread, until: Date | null) {
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 const close = () => useUi.getState().setSnoozeThreadId(null)
 
+// Checked once the popup has unmounted and again once the snoozed row has moved to its new list, since either
+// can take the element focus went back to.
+const keepFocus = () => {
+  if (document.activeElement === document.body) useUi.getState().requestComposerFocus()
+}
+
 function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: Date | null) => void }) {
   const [text, setText] = useState("")
   const problemId = useId()
@@ -161,8 +167,7 @@ export function SnoozeDialog() {
       open={thread !== undefined}
       onOpenChange={(open) => (open ? undefined : close())}
       onOpenChangeComplete={(open) => {
-        // A row snoozed from its menu has moved to another list, taking the focus target with it.
-        if (!open && document.activeElement === document.body) useUi.getState().requestComposerFocus()
+        if (!open) requestAnimationFrame(keepFocus)
       }}
     >
       <DialogPortal>
@@ -175,7 +180,7 @@ export function SnoozeDialog() {
                 thread={thread}
                 onChoose={(until) => {
                   close()
-                  void snoozeThread(thread, until)
+                  void snoozeThread(thread, until).then(() => requestAnimationFrame(keepFocus))
                 }}
               />
             )}
