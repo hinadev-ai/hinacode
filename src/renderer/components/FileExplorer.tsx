@@ -8,7 +8,6 @@ import {
   type RefObject,
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -105,7 +104,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const collapseAll = useExplorer((state) => state.collapseAll)
   const select = useExplorer((state) => state.select)
   const openFile = useExplorer((state) => state.open)
-  const rows = useMemo(() => flattenTree(tree), [tree])
+  const rows = flattenTree(tree)
   const selectedIndex = rows.findIndex((row) => row.entry.path === tree.selected)
   const [announcement, setAnnouncement] = useState("")
   const treeRef = useRef<HTMLDivElement>(null)
@@ -119,13 +118,10 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     void refresh(root)
   }, [refresh, root])
 
-  const watched = useMemo(
-    () => [...new Set(["", ...tree.expanded, ...(tree.opened === null ? [] : [parentOf(tree.opened)])])],
-    [tree.expanded, tree.opened],
-  )
   useEffect(() => {
+    const watched = [...new Set(["", ...tree.expanded, ...(tree.opened === null ? [] : [parentOf(tree.opened)])])]
     callPromise("fs.watch", { root, paths: watched }).catch(() => undefined)
-  }, [root, watched])
+  }, [root, tree.expanded, tree.opened])
   useEffect(() => () => void callPromise("fs.watch", { root, paths: [] }).catch(() => undefined), [root])
 
   useEffect(
