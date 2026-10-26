@@ -565,6 +565,18 @@ export const Opener = Schema.Struct({
 export type Opener = typeof Opener.Type
 
 /** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
+export const SidebarGroup = Schema.Struct({ id: Schema.String, name: Schema.String, collapsed: Schema.Boolean })
+export type SidebarGroup = typeof SidebarGroup.Type
+
+/** Named headings the Threads tab files project rows under. */
+export const SidebarGroups = Schema.Struct({
+  /** In sidebar order. */
+  groups: Schema.Array(SidebarGroup),
+  /** Group id by project row key (`ProjectGroup.key` in the renderer). A row in no group has no entry. */
+  groupOf: Schema.Record(Schema.String, Schema.String),
+})
+export type SidebarGroups = typeof SidebarGroups.Type
+
 export const ClientSettings = Schema.Struct({
   locale: Locale,
   /** The app "Open with" used last, which the thread header opens in one click. */
@@ -573,6 +585,7 @@ export const ClientSettings = Schema.Struct({
   keybindings: Schema.Record(Schema.String, Schema.String),
   appearance: Appearance,
   notifications: NotificationSettings,
+  sidebarGroups: SidebarGroups,
 })
 export type ClientSettings = typeof ClientSettings.Type
 
@@ -582,6 +595,7 @@ export const defaultClientSettings: ClientSettings = {
   keybindings: {},
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  sidebarGroups: { groups: [], groupOf: {} },
 }
 
 /**
