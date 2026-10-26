@@ -54,6 +54,9 @@ export function parseSnoozeTime(text: string, now: Date, locale: Locale): Parsed
     const date = result.start.date()
     // chrono puts a bare day at noon. "tonight" and "in 2 days" imply other hours, which stay.
     if (!result.start.isCertain("hour") && date.getHours() === 12) date.setHours(MORNING, 0, 0, 0)
+    // chrono reads a bare weekday as today until noon, so its 9:00 can already be past. It means next week's then.
+    if (date <= now && result.start.isCertain("weekday") && !result.start.isCertain("day"))
+      date.setDate(date.getDate() + 7)
     return { status: date.getTime() > now.getTime() ? "ok" : "past", at: date }
   }
   return { status: "unreadable" }
