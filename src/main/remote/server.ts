@@ -223,7 +223,13 @@ const make = Effect.gen(function* () {
     Effect.acquireRelease(
       Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
-        const wss = new WebSocketServer({ server, path: REMOTE_PATH, maxPayload: MAX_PAYLOAD_BYTES })
+        // Transcripts are JSON that deflates to about a seventh, which is most of a slow link's wait.
+        const wss = new WebSocketServer({
+          server,
+          path: REMOTE_PATH,
+          maxPayload: MAX_PAYLOAD_BYTES,
+          perMessageDeflate: true,
+        })
         wss.on("connection", accept)
         // ws re-emits the http server's errors on wss, and an unhandled emit throws before any server listener runs.
         wss.on("error", (error) => resume(Effect.fail(error)))

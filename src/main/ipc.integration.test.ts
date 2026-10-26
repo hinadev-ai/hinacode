@@ -1314,6 +1314,13 @@ describe("remote mode", () => {
     proved.socket.close()
   })
 
+  test("compresses frames for a client that offers permessage-deflate", async () => {
+    const client = phone(port)
+    await client.opened
+    expect(client.socket.extensions).toContain("permessage-deflate")
+    client.socket.close()
+  })
+
   test("a wrong proof is refused like a wrong token", async () => {
     const forged = phone(port)
     const challenge = await forged.challenge()
