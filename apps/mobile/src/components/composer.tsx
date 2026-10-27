@@ -1,7 +1,16 @@
-import { type AgentCommand, type ModelInfo, ProviderId, unlistedModel } from "@shared/agent.ts"
+import {
+  type AccountLimits,
+  type AgentCommand,
+  type AgentProfile,
+  type ModelInfo,
+  presetModels,
+  ProviderId,
+  unlistedModel,
+} from "@shared/agent.ts"
 import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerSyntax.ts"
 import type { RpcRequest } from "@shared/contract.ts"
-import { AccessMode, isThreadBusy, type Thread, toCheckoutTarget } from "@shared/domain.ts"
+import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
+import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { useEffect, useRef, useState } from "react"
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
@@ -13,6 +22,7 @@ import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
 import { ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
+import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
@@ -477,6 +487,56 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
+/** Muse Code has no way to leave out the user's own skills. */
+const hidesUserSkills: Record<ProviderId, boolean> = { claude: true, codex: true, muse: false }
+
+interface ServerOptions {
+  readonly profiles: readonly AgentProfile[]
+  readonly limits: readonly AccountLimits[]
+  readonly settings: Pick<Settings, "defaultAccountName" | "modelPresets">
+}
+
+/**
+ * The accounts, plan limits and model presets of the thread's server, read each time the sheet opens since
+ * limits move with every turn. A server that cannot read its limits still lists its accounts.
+ */
+function useServerOptions(server: string | undefined, open: boolean, onError: OnError) {
+  const [options, setOptions] = useState<ServerOptions | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let current = true
+    Promise.all([
+      call("accounts.list", undefined, { server }),
+      call("limits.list", undefined, { server }).catch((): readonly AccountLimits[] => []),
+      call("settings.get", undefined, { server }),
+    ]).then(
+      ([profiles, limits, settings]) => current && setOptions({ profiles, limits, settings }),
+      (cause: unknown) => current && onError(errorText(cause)),
+    )
+    return () => {
+      current = false
+    }
+  }, [server, open, onError])
+  return options
+}
+
+const accountHint = (option: AccountOption, now: number) =>
+  option.spent !== undefined
+    ? option.spent.resetsAt === null
+      ? copy("mobile_thread_account_limit_reached_no_reset")
+      : copy("mobile_thread_account_limit_reached", { duration: formatResetIn(option.spent.resetsAt, now, "en") })
+    : option.mostUsed !== undefined
+      ? copy("mobile_thread_account_used", { percent: String(Math.round(option.mostUsed.usedPercent)) })
+      : undefined
+
+const switchAccount = async (thread: Thread, accountId: string | null, onError: OnError) => {
+  try {
+    useThreads.getState().upsert(await call("threads.switchAccount", { id: thread.id, accountId }))
+  } catch (cause) {
+    onError(errorText(cause))
+  }
+}
+
 /**
  * The one chip the narrow toolbar has room for: the agent's mark and the model name. It opens a
  * full-height sheet with every setting the desktop composer spreads across its toolbar.
@@ -524,8 +584,20 @@ function SettingsSheet({
   onError: OnError
 }) {
   const theme = useTheme()
+  const now = useNow()
   const { models, current } = useThreadModels(thread)
   const unstarted = useUnstarted(thread)
+  const options = useServerOptions(useThreadServer(thread.id)?.id, open, onError)
+  const shownModels = presetModels(models, options?.settings.modelPresets[thread.provider] ?? [], thread.model)
+  const accounts =
+    options === null
+      ? []
+      : accountOptions(
+          thread,
+          options.settings.defaultAccountName[thread.provider] ?? copy("mobile_thread_account_default"),
+          options.profiles,
+          options.limits,
+        )
 
   // Effort and fast mode the next model cannot honor go back to its defaults.
   const changeModel = (id: string) => {
@@ -560,7 +632,7 @@ function SettingsSheet({
             </Section>
           )}
           <Section title="Model">
-            {models.map((model) => (
+            {shownModels.map((model) => (
               <OptionRow
                 key={model.id}
                 label={model.label}
@@ -569,6 +641,21 @@ function SettingsSheet({
               />
             ))}
           </Section>
+          {accounts.length > 1 && (
+            <Section title={copy("mobile_thread_account")}>
+              {accounts.map((account) => (
+                <OptionRow
+                  key={account.id ?? "cli"}
+                  label={account.name}
+                  hint={accountHint(account, now)}
+                  selected={account.id === thread.accountId}
+                  // The running turn is still writing the transcript the switch copies.
+                  disabled={isThreadBusy(thread.status)}
+                  onPress={() => account.id !== thread.accountId && void switchAccount(thread, account.id, onError)}
+                />
+              ))}
+            </Section>
+          )}
           {current !== undefined && current.efforts.length > 0 && (
             <Section title="Effort">
               {[
@@ -595,20 +682,24 @@ function SettingsSheet({
           )}
           {current?.fastMode && (
             <Section title="Speed">
-              <View style={sheetStyles.option}>
-                <Icon name="RiFlashlightLine" size={18} color={theme.text} />
-                <View style={sheetStyles.optionText}>
-                  <Text style={[sheetStyles.optionLabel, { color: theme.text }]}>Fast mode</Text>
-                  <Text style={[sheetStyles.optionHint, { color: theme.textMuted }]}>
-                    Faster responses that use more of your plan
-                  </Text>
-                </View>
-                <Toggle
-                  accessibilityLabel="Fast mode"
-                  value={thread.fastMode}
-                  onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
-                />
-              </View>
+              <ToggleRow
+                icon="RiFlashlightLine"
+                label="Fast mode"
+                hint="Faster responses that use more of your plan"
+                value={thread.fastMode}
+                onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
+              />
+            </Section>
+          )}
+          {hidesUserSkills[thread.provider] && (
+            <Section title={copy("mobile_thread_conversation")}>
+              <ToggleRow
+                icon="RiChat1Line"
+                label={copy("mobile_thread_conversation_mode")}
+                hint={copy("mobile_thread_conversation_mode_hint")}
+                value={!thread.userSkills}
+                onValueChange={(on) => void update({ id: thread.id, userSkills: !on }, onError)}
+              />
             </Section>
           )}
           <Section title="Access">
@@ -625,6 +716,32 @@ function SettingsSheet({
             ))}
           </Section>
     </Sheet>
+  )
+}
+
+function ToggleRow({
+  icon,
+  label,
+  hint,
+  value,
+  onValueChange,
+}: {
+  icon: IconName
+  label: string
+  hint: string
+  value: boolean
+  onValueChange: (value: boolean) => void
+}) {
+  const theme = useTheme()
+  return (
+    <View style={sheetStyles.option}>
+      <Icon name={icon} size={18} color={theme.text} />
+      <View style={sheetStyles.optionText}>
+        <Text style={[sheetStyles.optionLabel, { color: theme.text }]}>{label}</Text>
+        <Text style={[sheetStyles.optionHint, { color: theme.textMuted }]}>{hint}</Text>
+      </View>
+      <Toggle accessibilityLabel={label} value={value} onValueChange={onValueChange} />
+    </View>
   )
 }
 
