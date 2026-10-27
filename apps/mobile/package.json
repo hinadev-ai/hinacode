@@ -9,6 +9,7 @@
     "@xterm/xterm": "^6.0.0",
     "effect": "4.0.3",
     "expo": "~57.0.27",
+    "expo-build-properties": "~57.0.22",
     "expo-camera": "~57.0.6",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.21",
@@ -50,7 +51,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "build:terminal": "node ./scripts/build-terminal-html.mts",
-    "build:icons": "./scripts/build-app-icons.sh"
+    "build:icons": "./scripts/build-app-icons.sh",
+    "install:android": "./scripts/install-android.sh"
   },
   "private": true,
   "enriched-markdown": {

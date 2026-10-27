@@ -31,6 +31,18 @@ npx expo run:android
 
 Pair with a URL whose host is `127.0.0.1`.
 
+### Install a standalone build on Android
+
+To run the latest code without Metro, plug in the phone with USB debugging on and run:
+
+```sh
+pnpm install:android        # or: pnpm install:android <adb serial>
+```
+
+`scripts/install-android.sh` regenerates `android/` with `expo prebuild`, builds a Release APK, installs it as `com.hinadev.hinacode` over the previous build, and opens it. You need the Android SDK in `~/Library/Android/sdk` (or set `ANDROID_HOME`) and a JDK 17+ (Android Studio's bundled one, Homebrew's `openjdk@21`, or set `JAVA_HOME`).
+
+The phone reaches the desktop over plain `ws://`, which Android blocks in Release builds unless the manifest opts in. `expo-build-properties` in `app.json` sets `usesCleartextTraffic`, and the script refuses to install an APK without it, since that app would install fine and then stay on Reconnecting. The APK is signed with the debug key. If `adb install` reports a signature mismatch, uninstall the old app first, which also removes its pairing.
+
 The bundle runs on Hermes, which has none of the ES2023 array methods such as `toSorted`. `tsconfig.json` pins `lib` to ES2022 so `npx tsc --noEmit` catches them; `src/hermes.d.ts` adds back the two Hermes does have.
 
 ## Pair
