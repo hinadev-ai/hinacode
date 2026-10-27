@@ -6,6 +6,7 @@ import type {
   QuestionAnswers,
   QuestionRequest,
 } from "@shared/agent.ts"
+import { toolSummary } from "@shared/compactTranscript.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
@@ -44,10 +45,11 @@ export function Chat({ thread }: { thread: Thread }) {
   }, [connected, history, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
-  // Messages that arrive after the transcript loads rise in; the ones it opened with stay put.
-  const [loadedIds, setLoadedIds] = useState<ReadonlySet<string>>()
-  if (messages !== undefined && loadedIds === undefined) setLoadedIds(new Set(messages.map((message) => message.id)))
+  const [openedNewest, setOpenedNewest] = useState<string | null>()
+  if (messages !== undefined && openedNewest === undefined) setOpenedNewest(messages.at(-1)?.id ?? null)
+  const openedAt = messages?.findIndex((message) => message.id === openedNewest) ?? -1
   const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
+  const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
 
   return (
     <View style={styles.flex}>
@@ -67,8 +69,11 @@ export function Chat({ thread }: { thread: Thread }) {
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
-          renderItem={({ item }) => (
-            <motion.View initial={loadedIds?.has(item.id) === false && risesInFlippedCell} animate={rise.animate}>
+          renderItem={({ item, index }) => (
+            <motion.View
+              initial={arrivedAfterOpening(index) && risesInFlippedCell}
+              animate={rise.animate}
+            >
               <MessageView message={item} root={root} />
             </motion.View>
           )}
@@ -79,6 +84,18 @@ export function Chat({ thread }: { thread: Thread }) {
           windowSize={9}
           contentContainerStyle={styles.transcript}
           keyboardShouldPersistTaps="handled"
+          // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
+          onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
+          onEndReachedThreshold={1}
+          ListFooterComponent={
+            history.loadingEarlier ? (
+              <ActivityIndicator
+                style={styles.earlier}
+                color={theme.textMuted}
+                accessibilityLabel={copy("mobile_chat_loading")}
+              />
+            ) : null
+          }
           ListEmptyComponent={
             <Text style={[styles.empty, { color: theme.textMuted }]}>{copy("mobile_chat_empty")}</Text>
           }
@@ -272,17 +289,19 @@ function PartView({ part }: { part: MessagePart }) {
       )
     case "reasoning":
       return <Reasoning text={part.text} />
-    case "tool_call":
+    case "tool_call": {
+      const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
           <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.toolName, { color: theme.text }]}>
             {part.name}
-            {summarize(part.input) && <Text style={{ color: theme.textMuted }}> {summarize(part.input)}</Text>}
+            {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
           </Text>
           <ToolStatus status={part.status} />
         </View>
       )
+    }
     case "file_change":
       return (
         <View style={styles.fileChange}>
@@ -329,17 +348,6 @@ function ToolStatus({ status }: { status: ToolCallStatus }) {
       <Pill label={copy(label)} tone={tone} />
     </View>
   )
-}
-
-/** The one field that says what a tool call touched, when its input has one. */
-function summarize(input: unknown) {
-  if (typeof input !== "object" || input === null) return ""
-  const record = input as Record<string, unknown>
-  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
-    const value = record[key]
-    if (typeof value === "string") return value.split("\n")[0]
-  }
-  return ""
 }
 
 function Reasoning({ text }: { text: string }) {
@@ -552,6 +560,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
+  earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   message: { gap: 6, borderRadius: radius.lg, padding: 12 },
   user: { borderWidth: StyleSheet.hairlineWidth },

@@ -1016,6 +1016,15 @@ describe("compact transcripts over rpc", () => {
       { type: "text", text: "Listed and edited." },
     ])
     expect(compact?.[0]).not.toHaveProperty("output")
+
+    const all = result(await invoke("threads.transcript", { threadId: thread.id })).messages.map((m) => m.id)
+    const newest = result(await invoke("threads.transcript", { threadId: thread.id, compact: true, page: {} }))
+    expect(newest.messages.map((m) => m.id)).toStrictEqual(all)
+    expect(newest.hasEarlier).toBe(false)
+    const older = result(
+      await invoke("threads.transcript", { threadId: thread.id, compact: true, page: { before: all.at(-1)! } }),
+    )
+    expect(older.messages.map((m) => m.id)).toStrictEqual(all.slice(0, -1))
   })
 })
 
@@ -1383,6 +1392,13 @@ describe("remote mode", () => {
     expect((await proved.ready()).proof).toBe(serverProof(token, nonce, challenge.nonce))
     expect(result(await proved.call("projects.list", undefined))).toBeInstanceOf(Array)
     proved.socket.close()
+  })
+
+  test("compresses frames for a client that offers permessage-deflate", async () => {
+    const client = phone(port)
+    await client.opened
+    expect(client.socket.extensions).toContain("permessage-deflate")
+    client.socket.close()
   })
 
   test("a wrong proof is refused like a wrong token", async () => {

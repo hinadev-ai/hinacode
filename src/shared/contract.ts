@@ -376,13 +376,19 @@ export const RpcMethods = {
 
   /**
    * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
-   * reflects every transcript push up to and including `seq`, and none after. `compact` leaves out tool outputs
-   * and file diffs, for clients that never show them.
+   * reflects every transcript push up to and including `seq`, and none after. `compact` keeps only what the
+   * phone shows, see `compactMessage`. `page` returns only the newest messages, or those older than `page.before`,
+   * up to `TRANSCRIPT_PAGE_BYTES`, with `hasEarlier` set; servers that predate it send every message without it.
    */
   "threads.transcript": rpc(
-    Schema.Struct({ threadId: Schema.String, compact: Schema.optional(Schema.Boolean) }),
+    Schema.Struct({
+      threadId: Schema.String,
+      compact: Schema.optional(Schema.Boolean),
+      page: Schema.optional(Schema.Struct({ before: Schema.optional(Schema.String) })),
+    }),
     Schema.Struct({
       messages: Schema.Array(Message),
+      hasEarlier: Schema.optional(Schema.Boolean),
       approvals: Schema.Array(ApprovalRequest),
       questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),

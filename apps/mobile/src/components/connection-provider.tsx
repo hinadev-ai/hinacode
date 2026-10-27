@@ -3,8 +3,17 @@ import { useURL } from "expo-linking"
 import { type ReactNode, useEffect, useState } from "react"
 import { AppState } from "react-native"
 import { parsePairingUrl, type PairingTarget } from "@shared/remote.ts"
-import { networkChanged, onEvent, setForeground, setServers, storedServers, useConnection } from "@/lib/connection"
-import { loadServers, saveServers } from "@/lib/storage"
+import {
+  networkChanged,
+  onEvent,
+  onRemembered,
+  restoreAnswers,
+  setForeground,
+  setServers,
+  storedServers,
+  useConnection,
+} from "@/lib/connection"
+import { clearAnswers, loadAnswers, loadServers, saveAnswers, saveServers } from "@/lib/storage"
 import { addPairing, newServerId } from "@/lib/stored-target"
 import { isTranscriptPush, useMessages } from "@/stores/messages"
 import { usePreferences } from "@/stores/preferences"
@@ -43,14 +52,23 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     let unsubscribe = () => {}
     void Promise.all([loadServers(), usePreferences.getState().restore()]).then(([servers]) => {
       if (cancelled) return
-      if (useConnection.getState().servers.length === 0) setServers(servers)
-      let saved = JSON.stringify(storedServers())
-      unsubscribe = useConnection.subscribe(() => {
+      if (useConnection.getState().servers.length === 0) {
+        setServers(servers)
+        void showLastLists(servers.map((server) => server.id))
+      }
+      let saved = storedServers()
+      const unsubscribeServers = useConnection.subscribe(() => {
         const next = storedServers()
-        if (JSON.stringify(next) === saved) return
-        saved = JSON.stringify(next)
+        if (JSON.stringify(next) === JSON.stringify(saved)) return
+        for (const { id } of saved) if (!next.some((server) => server.id === id)) void clearAnswers(id)
+        saved = next
         void saveServers(next)
       })
+      const unsubscribeAnswers = onRemembered((serverId, answers) => void saveAnswers(serverId, answers))
+      unsubscribe = () => {
+        unsubscribeServers()
+        unsubscribeAnswers()
+      }
       setRestored(true)
       void useRelayAccount.getState().restore()
     })
@@ -105,6 +123,17 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => useMessages.getState().reset(), [paired])
 
   return restored ? children : null
+}
+
+async function showLastLists(serverIds: readonly string[]) {
+  const saved = await Promise.all(serverIds.map(loadAnswers))
+  serverIds.forEach((id, index) => {
+    const answers = saved[index]
+    if (answers) restoreAnswers(id, answers)
+  })
+  if (!saved.some(Boolean) || useThreads.getState().status === "ready") return
+  void useThreads.getState().load()
+  void usePullRequests.getState().load()
 }
 
 const networkIdentity = (state: NetInfoState) =>
