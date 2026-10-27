@@ -266,16 +266,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
-  const state = rowState(
-    thread.status,
-    useUnseen((unseen) => unseen.byThreadId[thread.id]),
-    useAtomValue(
-      pullRequestAttentionAtom(
-        environment,
-        meta.links.map((link) => link.url),
-      ),
-    ),
-  )
+  const state = useThreadRowState(thread)
 
   // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
   const moveOut = (updated: Thread) => {
@@ -687,7 +678,23 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconTyp
   },
 }
 
-function StatusIndicator({ state }: { state: RowState }): ReactNode {
+/** The status a thread shows wherever it is listed: its turn, an unseen result, or a pull request needing action. */
+export function useThreadRowState(thread: Thread): RowState {
+  const environment = useThreadEnvironment(thread.id)
+  const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
+  return rowState(
+    thread.status,
+    useUnseen((unseen) => unseen.byThreadId[thread.id]),
+    useAtomValue(
+      pullRequestAttentionAtom(
+        environment,
+        links.map((link) => link.url),
+      ),
+    ),
+  )
+}
+
+export function StatusIndicator({ state }: { state: RowState }): ReactNode {
   const status = statusIcons[state]
   if (!status) return null
   const { label, Icon, className } = status
