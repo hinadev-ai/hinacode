@@ -370,6 +370,8 @@
   "activity_background_label": "背景工作",
   "activity_background_shell": "背景 shell",
   "activity_background_workflow": "背景工作流程",
+  "activity_background_wakeup": "排定的喚醒",
+  "activity_background_wakes_at": "{time} 喚醒",
   "activity_background_other": "背景工作",
   "activity_background_stop": "停止 {label}",
   "activity_background_stop_failed": "無法停止背景工作：{message}",

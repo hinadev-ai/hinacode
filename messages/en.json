@@ -370,6 +370,8 @@
   "activity_background_label": "Background tasks",
   "activity_background_shell": "Background shell",
   "activity_background_workflow": "Background workflow",
+  "activity_background_wakeup": "Scheduled wakeup",
+  "activity_background_wakes_at": "Wakes at {time}",
   "activity_background_other": "Background task",
   "activity_background_stop": "Stop {label}",
   "activity_background_stop_failed": "Could not stop the background task: {message}",
