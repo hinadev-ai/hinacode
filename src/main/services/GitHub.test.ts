@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Sink, Stream } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import {
   GitHub,
@@ -210,6 +210,46 @@ describe("pull request actions", () => {
         expect(error._tag).toBe("PullRequestUrlInvalidError")
       }
     }).pipe(Effect.provide(github)),
+  )
+
+  const ghFails = (stderr: string) =>
+    layer.pipe(
+      Layer.provide(
+        Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.succeed(
+              ChildProcessSpawner.makeHandle({
+                pid: ChildProcessSpawner.ProcessId(1),
+                exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
+                isRunning: Effect.succeed(false),
+                kill: () => Effect.void,
+                stdin: Sink.drain,
+                stdout: Stream.empty,
+                stderr: Stream.make(new TextEncoder().encode(stderr)),
+                all: Stream.empty,
+                getInputFd: () => Sink.drain,
+                getOutputFd: () => Stream.empty,
+                unref: Effect.succeed(Effect.void),
+              }),
+            ),
+          ),
+        ),
+      ),
+    )
+
+  it.effect("a diff GitHub refuses to serve fails as too large, not as a gh command", () =>
+    Effect.gen(function* () {
+      const gh = yield* GitHub
+      const error = yield* Effect.flip(gh.pullRequestDiff("https://github.com/o/r/pull/24"))
+      expect(error._tag).toBe("PullRequestDiffTooLargeError")
+    }).pipe(
+      Effect.provide(
+        ghFails(
+          "could not find pull request diff: HTTP 406: Sorry, the diff exceeded the maximum number of lines (20000) (https://api.github.com/repos/o/r/pulls/24)\nPullRequest.diff too_large\n",
+        ),
+      ),
+    ),
   )
 })
 
