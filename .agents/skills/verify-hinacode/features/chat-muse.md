@@ -14,8 +14,6 @@ No e2e scenario drives Muse. `src/main/agents/muse/index.integration.test.ts` ru
 - `approval` in Supervised asks once for a compound command (`echo a && echo b`); `Allow` runs every stage.
 - `deny` ends the command row in error with `approval aborted`, and the turn goes on.
 - `interrupt` stops a running command; the row ends in error and the turn shows `Turn interrupted`.
-- `usage` shows the thread's tokens in the status bar, with reminder agents counted as sub-agents.
-- `limits` shows a Muse Code group with the 5-hour and weekly windows after the first turn since launch.
 - `account` lists the CLI login in Settings > Models, with no `Add account`.
 - `restore` and `resume` after a relaunch.
 
