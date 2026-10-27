@@ -239,6 +239,44 @@ export function backgroundTasksOf(
     }))
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+export interface WakeupCall {
+  readonly id: string
+  readonly reason: string
+}
+
+/** A main-thread `ScheduleWakeup` call in `message`. Its result says when the wakeup fires. */
+export function wakeupCallOf(message: SDKMessage): WakeupCall | null {
+  if (message.type !== "assistant" || message.parent_tool_use_id !== null) return null
+  for (const block of message.message.content) {
+    if (block.type !== "tool_use" || block.name !== "ScheduleWakeup" || !isRecord(block.input)) continue
+    const reason = block.input["reason"]
+    return { id: block.id, reason: typeof reason === "string" ? reason : "" }
+  }
+  return null
+}
+
+/**
+ * The wakeup `call` left pending, read from its result: the turn the agent starts by itself at `scheduledFor`,
+ * or null when the call ended the loop. Undefined when `message` is not that result.
+ */
+export function wakeupOf(message: SDKMessage, call: WakeupCall, now: string): BackgroundTask | null | undefined {
+  if (message.type !== "user" || !Array.isArray(message.message.content)) return undefined
+  const answers = message.message.content.some((block) => block.type === "tool_result" && block.tool_use_id === call.id)
+  if (!answers) return undefined
+  const result = message.tool_use_result
+  if (!isRecord(result) || result["stopped"] === true || typeof result["scheduledFor"] !== "number") return null
+  return {
+    id: call.id,
+    kind: "wakeup",
+    label: call.reason,
+    startedAt: now,
+    firesAt: new Date(result["scheduledFor"]).toISOString(),
+  }
+}
+
 const limitErrorText =
   /^(?:error:\s*)?(?:you['’]ve hit your (?:(?:usage )?limit|org['’]s monthly spend limit)|usage limit reached|(?:claude(?: api)? )?rate limit reached|api error:\s*429\b)/i
 const orgSpendLimitText = /^(?:error:\s*)?you['’]ve hit your org['’]s monthly spend limit/i

@@ -367,6 +367,8 @@
   "activity_background_label": "バックグラウンドタスク",
   "activity_background_shell": "バックグラウンドのシェル",
   "activity_background_workflow": "バックグラウンドのワークフロー",
+  "activity_background_wakeup": "予約された再開",
+  "activity_background_wakes_at": "{time} に再開",
   "activity_background_other": "バックグラウンドタスク",
   "activity_background_stop": "{label} を停止",
   "activity_background_stop_failed": "バックグラウンドタスクを停止できませんでした: {message}",
