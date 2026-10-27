@@ -215,8 +215,9 @@ export const sbxClient = (login: SbxLogin) => {
     Effect.map((body) => ({ sandboxes: body.sandboxes, maxSandboxes: body.max_sandboxes })),
   )
 
-  const create = (template: string) =>
-    request("POST", "/v1/sandboxes", { body: { template } }).pipe(
+  /** `env` applies to every command sbx runs in the sandbox. */
+  const create = (template: string, env: Readonly<Record<string, string>> = {}) =>
+    request("POST", "/v1/sandboxes", { body: { template, env } }).pipe(
       Effect.flatMap(json(Sandbox)),
       within(REQUEST_TIMEOUT_SECONDS),
     )

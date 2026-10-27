@@ -554,6 +554,10 @@ export const ExperimentalSettings = Schema.Struct({
    * and the result goes back to the VM page. Needs the fingerprint button in the VM view per thread before use.
    */
   tinyVmPasskeys: Schema.Boolean,
+  /** Set for every command in every new tiny VM, the agent's `vm_exec` and the setup script included. */
+  tinyVmEnv: Schema.Record(Schema.String, Schema.String),
+  /** A bash script each new tiny VM runs before any tool reaches it. A failing script fails the start. */
+  tinyVmSetupScript: Schema.String,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -710,7 +714,14 @@ export const defaultSettings: Settings = {
   pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
+  experimental: {
+    tinyVm: false,
+    tinyVmTemplate: "default",
+    tinyVmProfile: false,
+    tinyVmPasskeys: false,
+    tinyVmEnv: {},
+    tinyVmSetupScript: "",
+  },
   worktreeRoot: null,
 }
 
