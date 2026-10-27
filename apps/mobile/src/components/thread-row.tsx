@@ -7,7 +7,7 @@ import { Icon } from "@/components/icon"
 import { AttentionRing } from "@/components/motion"
 import { ServerMark, serverLabel } from "@/components/server-mark"
 import { ProjectIcon } from "@/components/project-icon"
-import { PullRequestMark, usePullRequestSummary } from "@/components/pull-request-badge"
+import { PullRequestMark, usePullRequestAttention, usePullRequestSummary } from "@/components/pull-request-badge"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
@@ -50,6 +50,9 @@ const statusLabel: Record<IndicatedState, string> = {
   limited: copy("mobile_status_limited"),
   unseen_completed: copy("mobile_status_unseen_completed"),
   unseen_failed: copy("mobile_status_unseen_failed"),
+  pr_conflicting: copy("mobile_status_pr_conflicting"),
+  pr_checksFailing: copy("mobile_status_pr_checks_failing"),
+  pr_changesRequested: copy("mobile_status_pr_changes_requested"),
 }
 
 const isIndicated = (state: RowState): state is IndicatedState => state in rowStatusIndicator
@@ -61,10 +64,6 @@ const isIndicated = (state: RowState): state is IndicatedState => state in rowSt
 export function ThreadRow({ thread, showProject }: { thread: Thread; showProject: boolean }) {
   const theme = useTheme()
   const now = useNow()
-  const state = rowState(
-    thread.status,
-    useUnseen((unseen) => unseen.byThreadId[thread.id]),
-  )
   const project = useThreads((threads) =>
     showProject ? threads.projects.find((candidate) => candidate.id === thread.projectId)?.name : undefined,
   )
@@ -74,6 +73,11 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   const rootBranch = useThreads((threads) => threads.branches[thread.projectId])
   const branch = threadBranch(worktree, rootBranch)
   const links = usePullRequests((pullRequests) => pullRequests.linksByThread[thread.id]) ?? noLinks
+  const state = rowState(
+    thread.status,
+    useUnseen((unseen) => unseen.byThreadId[thread.id]),
+    usePullRequestAttention(links),
+  )
   const latest = links.at(-1)
   const number = latest === undefined ? null : pullRequestNumber(latest.url)
   const summary = usePullRequestSummary(latest?.url ?? null)

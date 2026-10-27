@@ -72,13 +72,7 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
         <Button type="submit" size="sm" disabled={isPending || value.trim() === ""}>
           {exists ? m.secret_request_replace() : m.secret_request_save()}
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={isPending}
-          onClick={() => startTransition(() => respond(null))}
-        >
+        <Button type="button" size="sm" variant="outline" disabled={isPending} action={() => respond(null)}>
           {m.secret_request_decline()}
         </Button>
       </form>

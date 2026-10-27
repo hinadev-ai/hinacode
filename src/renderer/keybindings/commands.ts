@@ -64,6 +64,11 @@ const goToSiblingThread = (ctx: CommandContext, step: 1 | -1) => {
   if (target) void ctx.navigate({ to: "/thread/$threadId", params: { threadId: target.id } })
 }
 
+const cycleRecentThreads = (ctx: CommandContext, step: 1 | -1) => {
+  const { byId } = useThreads.getState()
+  useUi.getState().cycleThreadSwitcher(ctx.threadId, step, (id) => id in byId)
+}
+
 /** Switches the side panel to `view` and focuses it, or hides the panel when it already shows `view`. */
 const showView = (ctx: CommandContext, view: SidePanelViewId) => {
   if (ctx.threadId) useUi.getState().toggleView(ctx.threadId, view, { focus: true })
@@ -222,6 +227,27 @@ export const commands = [
     defaultKeys: "mod+shift+[",
     title: m.command_thread_previous,
     run: (ctx) => goToSiblingThread(ctx, -1),
+  },
+  {
+    id: "thread.snooze",
+    defaultKeys: "mod+shift+s",
+    title: m.command_thread_snooze,
+    run: (ctx) => {
+      if (ctx.threadId) useUi.getState().setSnoozeThreadId(ctx.threadId)
+    },
+  },
+  // Control on every platform, because macOS keeps Cmd+Tab for switching apps.
+  {
+    id: "thread.switchRecent",
+    defaultKeys: "Control+Tab",
+    title: m.command_thread_switch_recent,
+    run: (ctx) => cycleRecentThreads(ctx, 1),
+  },
+  {
+    id: "thread.switchRecentBack",
+    defaultKeys: "Control+Shift+Tab",
+    title: m.command_thread_switch_recent_back,
+    run: (ctx) => cycleRecentThreads(ctx, -1),
   },
   // Ctrl+[ is Escape to a terminal, so these keep out of it.
   {

@@ -3,6 +3,7 @@ import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
@@ -342,6 +343,18 @@ export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, u
   call("github.pullRequest", { url }, { environment }),
 )
 
+/** Why any of a thread's linked pull requests waits on the developer, or undefined while none does. */
+export const pullRequestAttentionAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
+  Atom.make((get) =>
+    pullRequestAttention(
+      urls.map((url) => {
+        const lookup = get(pullRequestStatusAtom(environment, url))
+        return AsyncResult.isSuccess(lookup) ? lookup.value : undefined
+      }),
+    ),
+  ),
+)
+
 /** Everything the PR tab shows about one pull request. */
 export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
   call("github.pullRequestDetail", { url }, { environment }),
@@ -445,6 +458,20 @@ export const threadUsageAtom = Atom.family((threadId: string) =>
       }),
     )
     return call("threads.usage", { threadId })
+  }),
+)
+
+/** What fills the thread's context window, asked again when a turn ends. */
+export const contextBreakdownAtom = Atom.family((threadId: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent((event) => {
+        if (event.type === "thread.event" && event.threadId === threadId && turnEnds.has(event.event.type)) {
+          get.refreshSelf()
+        }
+      }),
+    )
+    return call("threads.contextBreakdown", { threadId })
   }),
 )
 

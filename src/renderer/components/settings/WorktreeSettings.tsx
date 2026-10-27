@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { startTransition, useActionState, useState } from "react"
+import { useActionState, useState } from "react"
 import { RiChat3Line, RiDeleteBinLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import { type CheckoutState, isThreadBusy, type Project, type Thread, type Worktree } from "../../../shared/domain.ts"
@@ -221,7 +221,7 @@ function RemoveWorktreeDialog({ row, open, onOpenChange }: RemoveWorktreeDialogP
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(remove)}>
+          <AlertDialogAction variant="destructive" disabled={isPending} action={remove}>
             {m.worktree_remove_confirm()}
           </AlertDialogAction>
         </AlertDialogFooter>

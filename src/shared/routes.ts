@@ -25,6 +25,10 @@ const project = owner("project", "id")
 const root = owner("root", "root")
 
 export const routes: Record<RpcMethod, Route> = {
+  "browser.open": thread,
+  "browser.command": thread,
+  "browser.frame": thread,
+  "browser.close": thread,
   "app.ready": client,
   "app.focus": client,
   "dialog.pickFolder": client,
@@ -125,6 +129,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.unqueue": thread,
   "threads.interrupt": thread,
   "threads.usage": thread,
+  "threads.contextBreakdown": thread,
   "commands.list": thread,
   "files.list": thread,
   "search.files": thread,

@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { TerminalSession } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { loadSize, saveSize, TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { attachTerminalOutput, disposeTerminal } from "../lib/terminalScreens.ts"
 
@@ -12,7 +13,7 @@ interface ThreadTerminals {
 
 interface TerminalsState {
   readonly byThreadId: Readonly<Record<string, ThreadTerminals>>
-  /** Drawer height in px, shared by every thread like the side panel's state. */
+  /** Drawer height in px, shared by every thread like the side panel's state, and kept across restarts. */
   readonly height: number
   readonly error: string | null
   readonly setHeight: (height: number) => void
@@ -26,6 +27,8 @@ interface TerminalsState {
   readonly attach: (id: string) => Promise<void>
   readonly markExited: (id: string, exitCode: number | null) => void
 }
+
+const HEIGHT_KEY = "hinacode.terminalHeight"
 
 const EMPTY: ThreadTerminals = { sessions: [], activeId: null, open: false }
 
@@ -79,9 +82,12 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
 
   return {
     byThreadId: {},
-    height: 280,
+    height: loadSize(HEIGHT_KEY, TERMINAL_HEIGHT_BOUNDS) ?? 280,
     error: null,
-    setHeight: (height) => set({ height }),
+    setHeight: (height) => {
+      saveSize(HEIGHT_KEY, height)
+      set({ height })
+    },
     setActive: (threadId, id) => update(threadId, () => ({ activeId: id })),
     toggle: async (threadId) => {
       const current = get().byThreadId[threadId] ?? EMPTY

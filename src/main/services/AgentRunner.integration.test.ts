@@ -234,6 +234,7 @@ const withPreparingThread = async (
                   headRef: "fix/pending",
                   head: "abc1234",
                   mergeable: "mergeable",
+                  changedFiles: 1,
                   checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
                 }),
             }),

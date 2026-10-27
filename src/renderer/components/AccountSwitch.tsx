@@ -1,7 +1,7 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live notice holds a button and its error, which <output> cannot.
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { startTransition, useActionState } from "react"
+import { useActionState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { AccountLimits } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
@@ -92,14 +92,7 @@ export function SwitchAccountButton({
   }, null)
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={isPending}
-        aria-busy={isPending}
-        onClick={() => startTransition(run)}
-      >
+      <Button type="button" variant="outline" size="sm" disabled={isPending} aria-busy={isPending} action={run}>
         {label}
       </Button>
       {error && <FieldError>{error}</FieldError>}
@@ -116,7 +109,7 @@ export function AccountLimitNotice({ thread }: { thread: AccountThread }) {
   return (
     <div
       role="status"
-      className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
+      className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
     >
       <RiErrorWarningLine aria-hidden className="size-4 shrink-0 text-attention" />
       <span className="min-w-0 flex-1">

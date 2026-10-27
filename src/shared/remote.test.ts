@@ -33,6 +33,21 @@ describe("remote frames", () => {
     expect(Schema.decodeUnknownSync(ServerFrame)(ready)).toEqual(ready)
     expect(Schema.decodeUnknownSync(ServerFrame)({ type: "ready", version: 1 })).toEqual({ type: "ready", version: 1 })
   })
+
+  it("lets a cloud ask a desktop for thread reads and nothing else", () => {
+    const ask = { type: "ask", id: 1, method: "threads.transcript", payload: { threadId: "t" } }
+    expect(Schema.decodeUnknownSync(ServerFrame)(ask)).toEqual(ask)
+    expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "threads.send" })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "fs.write" })._tag).toBe("None")
+  })
+
+  it("decodes the desktop's hub offer and its answers", () => {
+    expect(Schema.decodeUnknownSync(ClientFrame)({ type: "hub" })).toEqual({ type: "hub" })
+    const answered = { type: "answer", id: 1, envelope: { result: [] } }
+    expect(Schema.decodeUnknownSync(ClientFrame)(answered)).toEqual(answered)
+    const failed = { type: "answer", id: 2, envelope: { error: { tag: "NotFoundError", message: "gone" } } }
+    expect(Schema.decodeUnknownSync(ClientFrame)(failed)).toEqual(failed)
+  })
 })
 
 describe("isPortInUse", () => {

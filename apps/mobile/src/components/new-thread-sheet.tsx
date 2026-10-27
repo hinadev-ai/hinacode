@@ -9,10 +9,11 @@ import { openThread } from "@/lib/navigation"
 import { Notice } from "@/components/ui"
 import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call, useConnection } from "@/lib/connection"
+import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { groupByRepository, projectsByActivity } from "@/lib/projects"
+import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
 import { useThreads } from "@/stores/threads"
 
@@ -60,8 +61,7 @@ export function NewThreadSheet({
     setCreating(project.id)
     setError(null)
     try {
-      const thread = await call("threads.create", { projectId: project.id })
-      useThreads.getState().upsert(thread)
+      const thread = await createThread(project)
       if (draft !== undefined) useDrafts.getState().setText(thread.id, draft)
       close()
       openThread(thread.id)

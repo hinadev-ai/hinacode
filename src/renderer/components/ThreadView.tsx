@@ -1,7 +1,7 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react"
+import { type ReactNode, type RefObject, useEffect, useRef } from "react"
 import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
@@ -77,7 +77,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </div>
         {overlay}
         <div ref={dockRef} className="absolute inset-x-0 bottom-0 flex max-h-full flex-col">
-          <div className="flex min-h-0 flex-col bg-background">
+          <Composer thread={thread}>
             <PendingRequests thread={thread} />
             {thread.status === "limited" && thread.usageLimit !== null ? (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
@@ -85,8 +85,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
               <AccountLimitNotice key={thread.id} thread={thread} />
             )}
             <CloudNotice threadId={thread.id} />
-          </div>
-          <Composer thread={thread} />
+          </Composer>
         </div>
       </div>
     </div>
@@ -105,7 +104,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
     useUi((state) => state.findQuery),
     FIND_DEBOUNCE_MS,
   )
-  const pattern = useMemo(() => (findOpen ? findPattern(findQuery) : null), [findOpen, findQuery])
+  const pattern = findOpen ? findPattern(findQuery) : null
   const listRef = useRef<LegendListRef>(null)
 
   useEffect(() => {
@@ -181,7 +180,7 @@ function PendingRequests({ thread }: { thread: Thread }) {
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null
   return (
-    <div className="min-h-0 shrink overflow-auto px-4 empty:hidden">
+    <div className="min-h-0 shrink overflow-auto empty:hidden">
       {history.approvals.map((request) => (
         <ApprovalCard key={request.id} request={request} providerLabel={label} />
       ))}

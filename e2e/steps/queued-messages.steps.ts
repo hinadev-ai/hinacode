@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite"
 import type { QueuedMessage } from "../../src/shared/domain.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
+import { SEEDED_AT } from "../support/seed.ts"
 
 const queuedText = "Queued follow-up"
 const attachmentName = "queued-note.txt"
@@ -21,7 +22,7 @@ Given(
     writeFileSync(path, "Context kept with the queued message.")
     const attachment = await rpc(app.page, "attachments.stage", { threadId, source: { path } })
     const queued: QueuedMessage = { id: randomUUID(), text: queuedText, attachments: [attachment] }
-    const now = new Date().toISOString()
+    const now = SEEDED_AT
     const db = new DatabaseSync(app.dbPath)
     try {
       db.prepare("UPDATE thread SET status = 'archived', queue = ? WHERE id = ?").run(

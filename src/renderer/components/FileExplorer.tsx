@@ -8,7 +8,6 @@ import {
   type RefObject,
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -33,6 +32,7 @@ import {
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
+import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -48,8 +48,7 @@ import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
-const DEFAULT_TREE_HEIGHT = 240
-const MIN_PANE_HEIGHT = 96
+const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
 
 const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
   image: RiImageLine,
@@ -105,27 +104,25 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const collapseAll = useExplorer((state) => state.collapseAll)
   const select = useExplorer((state) => state.select)
   const openFile = useExplorer((state) => state.open)
-  const rows = useMemo(() => flattenTree(tree), [tree])
+  const rows = flattenTree(tree)
   const selectedIndex = rows.findIndex((row) => row.entry.path === tree.selected)
   const [announcement, setAnnouncement] = useState("")
   const treeRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<LegendListRef>(null)
   const typeahead = useRef({ text: "", at: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
-  const [treeHeight, setTreeHeight] = useState(DEFAULT_TREE_HEIGHT)
+  const treeHeight = useUi((state) => state.fileTreeHeight)
+  const setTreeHeight = useUi((state) => state.setFileTreeHeight)
   const rowId = `${useId()}-row-`
 
   useEffect(() => {
     void refresh(root)
   }, [refresh, root])
 
-  const watched = useMemo(
-    () => [...new Set(["", ...tree.expanded, ...(tree.opened === null ? [] : [parentOf(tree.opened)])])],
-    [tree.expanded, tree.opened],
-  )
   useEffect(() => {
+    const watched = [...new Set(["", ...tree.expanded, ...(tree.opened === null ? [] : [parentOf(tree.opened)])])]
     callPromise("fs.watch", { root, paths: watched }).catch(() => undefined)
-  }, [root, watched])
+  }, [root, tree.expanded, tree.opened])
   useEffect(() => () => void callPromise("fs.watch", { root, paths: [] }).catch(() => undefined), [root])
 
   useEffect(
@@ -463,8 +460,8 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
       aria-describedby={description ? `${id}-status` : undefined}
       onClick={() => onClick(entry)}
       onContextMenu={() => onContextMenu(entry)}
-      style={{ paddingLeft: 8 + depth * INDENT }}
-      className="relative mx-1 flex h-6 cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
+      style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
+      className="relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
     >
       {Array.from({ length: depth }, (_, level) => (
         <span

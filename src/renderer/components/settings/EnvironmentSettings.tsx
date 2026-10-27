@@ -5,7 +5,6 @@ import { AsyncResult } from "effect/reactivity"
 import {
   type FormEvent,
   type KeyboardEvent,
-  startTransition,
   useActionState,
   useEffect,
   useId,
@@ -294,7 +293,7 @@ function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(run)}>
+            <AlertDialogAction variant="destructive" disabled={isPending} action={run}>
               {m.environment_relay_remove()}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -421,7 +420,7 @@ function RelaySignOutButton() {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(run)}>
+            <AlertDialogAction variant="destructive" disabled={isPending} action={run}>
               {m.environment_relay_sign_out()}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -661,7 +660,7 @@ function RemoveEnvironmentButton({ cloud }: { cloud: Cloud }) {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isPending} onClick={() => startTransition(remove)}>
+            <AlertDialogAction variant="destructive" disabled={isPending} action={remove}>
               {m.environment_remove()}
             </AlertDialogAction>
           </AlertDialogFooter>

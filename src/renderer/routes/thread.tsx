@@ -25,6 +25,10 @@ function useMarkSeen(threadId: string) {
   }, [threadId])
 }
 
+function useVisit(threadId: string) {
+  useEffect(() => useUi.getState().visitThread(threadId), [threadId])
+}
+
 export function ThreadRoute() {
   const { threadId } = route.useParams()
   const { agent } = route.useSearch()
@@ -35,6 +39,7 @@ export function ThreadRoute() {
   const docked = usePanelLayout() === "wide"
   const toggleRef = useRef<HTMLButtonElement>(null)
   useMarkSeen(threadId)
+  useVisit(threadId)
 
   if (!thread) {
     return <p className="m-auto text-sm text-muted-foreground">{m.thread_not_found()}</p>

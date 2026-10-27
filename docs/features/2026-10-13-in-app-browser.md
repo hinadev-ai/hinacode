@@ -27,7 +27,7 @@ Claude's desktop app puts a browser next to the conversation and lets the user c
 
 ### Browser
 
-The view is an Electron `<webview>` (see `docs/adr/0014-webview-for-the-in-app-browser.md`). It lives in the renderer's DOM, so it lays out with the panel and popovers draw over it.
+Local threads use an Electron `<webview>` (see `docs/adr/0014-webview-for-the-in-app-browser.md`). It lives in the renderer's DOM, so it lays out with the panel and popovers draw over it. Cloud threads use a [browser on their remote host](2026-10-26-remote-browser.md).
 
 - The page runs in its own sandboxed process in the `persist:browser` session, apart from the app's session. Logins to the dev app survive restart.
 - `will-attach-webview` strips any preload, forces `sandbox`, `contextIsolation` and no node integration, pins the partition, and refuses a `src` that is not http(s). The pure check lives in `security.ts` with a test.
@@ -41,7 +41,7 @@ The view is an Electron `<webview>` (see `docs/adr/0014-webview-for-the-in-app-b
 
 ### Picking
 
-`src/renderer/lib/elementPicker.ts` holds a self-contained function that the view injects with `webview.executeJavaScript`. It draws its overlay in a closed shadow root, swallows the pointer events of the click, and resolves with `{ element, rect }`, or null on Escape or cancel. The renderer decodes the result with a schema, because it comes from the page.
+`src/shared/browserPicker.ts` holds a self-contained function that the view injects with `webview.executeJavaScript`. The remote host injects the same function in its Chromium page. It draws its overlay in a closed shadow root, swallows the pointer events of the click, and resolves with `{ element, rect }`, or null on Escape or cancel. Both paths decode the result with a schema, because it comes from the page.
 
 The renderer crops with `webview.capturePage(rect)`, scaling the rect by the page's zoom factor, stages the PNG with the existing `attachments.stage`, and adds `{ ...staged, element }` to the draft. A navigation aborts a pick in flight, so a late result never captures the next page.
 

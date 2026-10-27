@@ -107,6 +107,14 @@ jobs:
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - if: needs.changes.outputs.app == 'true'
+        name: Install and select the pinned Chromium
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
+      - if: needs.changes.outputs.app == 'true'
+        name: Allow Chromium sandbox namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - if: needs.changes.outputs.app == 'true'
         run: pnpm test
 
   mobile:

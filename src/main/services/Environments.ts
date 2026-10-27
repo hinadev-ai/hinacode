@@ -79,6 +79,8 @@ export class Environments extends Context.Service<
     readonly gather: (call: ForwardedCall) => Effect.Effect<ReadonlyArray<unknown>>
     /** The cloud that owns `id`, or undefined when it is this desktop's. */
     readonly owner: (entity: Entity, id: string) => string | undefined
+    /** Answers the `ask` frames of every cloud from now on. Until then, they get an error. */
+    readonly answerAsks: (answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>) => Effect.Effect<void>
   }
 >()("hinacode/Environments") {}
 
@@ -107,6 +109,9 @@ const incompatible = (name: string): RpcEnvelope<never> => ({
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
+const notAnswering: RpcEnvelope<never> = {
+  error: { tag: "NotReady", message: "The desktop is still starting." },
+}
 
 const decodeServerFrame = Schema.decodeUnknownOption(ServerFrame)
 
@@ -392,6 +397,10 @@ interface SessionEnd {
   readonly connectedMs: number
 }
 
+const sendFrame = (socket: WebSocket, frame: ClientFrame) => {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
+}
+
 const send = (live: Live, call: Pending) => {
   const key = live.dedupesCalls ? call.key : undefined
   call.sent = true
@@ -413,6 +422,7 @@ const make = Effect.gen(function* () {
   const owners = makeOwners()
   const clouds = new Map<string, Cloud>()
   let nextCallId = 1
+  let answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>> = () => Effect.succeed(notAnswering)
   const now = () => clock.currentTimeMillisUnsafe()
 
   const findAll = SqlSchema.findAll({
@@ -526,6 +536,7 @@ const make = Effect.gen(function* () {
                 learnRelay(cloud, frame.relay ?? null)
                 const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                 cloud.live = live
+                if (frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
                 for (const call of cloud.outbox.values()) {
                   pauseOfflineTimer(call)
                   if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
@@ -547,6 +558,12 @@ const make = Effect.gen(function* () {
                 return runFork(windows.send(frame.event))
               case "pong":
                 return
+              case "ask":
+                return runFork(
+                  answer({ method: frame.method, payload: frame.payload }).pipe(
+                    Effect.map((envelope) => sendFrame(socket, { type: "answer", id: frame.id, envelope })),
+                  ),
+                )
             }
           },
           onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
@@ -899,6 +916,10 @@ const make = Effect.gen(function* () {
     forward,
     gather,
     owner: owners.owner,
+    answerAsks: (answerWith) =>
+      Effect.sync(() => {
+        answer = answerWith
+      }),
   })
 })
 

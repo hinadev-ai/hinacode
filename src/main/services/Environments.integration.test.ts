@@ -314,6 +314,45 @@ describe("desktop environments", () => {
     expect(here.map((thread) => thread.title)).toStrictEqual(["renamed here"])
   })
 
+  test("browser sessions and frames run on the thread's paired cloud", async () => {
+    const page = createHttpServer((_request, response) => {
+      response.setHeader("content-type", "text/html")
+      response.end("<title>Cloud browser</title><h1>Served on the cloud</h1>")
+    })
+    await new Promise<void>((resolve) => page.listen(0, "127.0.0.1", resolve))
+    const address = page.address()
+    if (address === null || typeof address === "string") throw new Error("No browser test port")
+    let sessionId: string | undefined
+    try {
+      const opened = result(
+        await invoke("browser.open", {
+          threadId: cloudThread,
+          url: `http://127.0.0.1:${address.port}/`,
+          width: 800,
+          height: 600,
+        }),
+      )
+      sessionId = opened.sessionId
+      const session = { threadId: cloudThread, sessionId }
+      await expect
+        .poll(async () => result(await invoke("browser.frame", { ...session, after: 0, visible: true })).state.title)
+        .toBe("Cloud browser")
+      const snapshot = result(await invoke("browser.frame", { ...session, after: 0, visible: true }))
+      expect(snapshot.frame?.jpeg).toMatch(/^\/9j\//)
+      expect(snapshot.frame).toMatchObject({ width: 800, height: 600 })
+      const misplaced = await invoke("browser.frame", { threadId: localThread, sessionId, after: 0, visible: true })
+      expect(failure(misplaced).tag).toBe("BrowserError")
+      const unsafe = await invoke("browser.command", {
+        ...session,
+        commands: [{ kind: "navigate", url: "file:///etc/passwd" }],
+      })
+      expect(failure(unsafe).tag).toBe("SchemaError")
+    } finally {
+      if (sessionId !== undefined) result(await invoke("browser.close", { threadId: cloudThread, sessionId }))
+      await new Promise<void>((resolve, reject) => page.close((error) => (error ? reject(error) : resolve())))
+    }
+  })
+
   test("a file staged on a cloud thread travels as bytes, and the cloud reads back only staged files", async () => {
     const picked = join(dir, "picked.png")
     writeFileSync(picked, "png bytes")

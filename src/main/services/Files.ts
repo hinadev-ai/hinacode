@@ -3,7 +3,13 @@ import { open, readdir, readFile, realpath, stat, writeFile } from "node:fs/prom
 import { isAbsolute, join } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import type { ChangedFileStatus, FsEntry, FsEntryKind, FsFileContent } from "../../shared/domain.ts"
+import {
+  type ChangedFileStatus,
+  chatFolder,
+  type FsEntry,
+  type FsEntryKind,
+  type FsFileContent,
+} from "../../shared/domain.ts"
 import { mimeOf } from "../../shared/media.ts"
 import { SLOW_CONSUMER_BYTES } from "../../shared/remote.ts"
 import { isInside } from "../security.ts"
@@ -12,7 +18,7 @@ import { Events } from "./Events.ts"
 import { Git, parseNameStatus } from "./Git.ts"
 
 const reasons = {
-  unknownRoot: "is not a project root or worktree",
+  unknownRoot: "is not a project root, worktree or chat folder",
   outsideRoot: "is not inside",
   unreadable: "cannot be read in",
   unwritable: "cannot be written in",
@@ -177,6 +183,13 @@ const readEntries = (root: string, path: string, dir: string) =>
     ),
   )
 
+/** The chats root and thread id `root` is the `chatFolder` of, or nulls when it can't be one. */
+const chatFolderParts = (root: string) => {
+  const cut = Math.max(root.lastIndexOf("/"), root.lastIndexOf("\\"))
+  const parts = { chatsRoot: root.slice(0, cut), threadId: root.slice(cut + 1) }
+  return cut > 0 && chatFolder(parts.chatsRoot, parts.threadId) === root ? parts : { chatsRoot: null, threadId: null }
+}
+
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const git = yield* Git
@@ -185,14 +198,21 @@ const make = Effect.gen(function* () {
   const findRoot = SqlSchema.findAll({
     Request: Schema.String,
     Result: Schema.Struct({ baseRef: Schema.NullOr(Schema.String) }),
-    execute: (root) => sql`
-      SELECT NULL AS base_ref FROM project WHERE root_path = ${root}
-      UNION ALL
-      SELECT base_ref FROM worktree WHERE path = ${root} AND status != 'removed'
-    `,
+    execute: (root) => {
+      const { chatsRoot, threadId } = chatFolderParts(root)
+      return sql`
+        SELECT NULL AS base_ref FROM project WHERE root_path = ${root}
+        UNION ALL
+        SELECT base_ref FROM worktree WHERE path = ${root} AND status != 'removed'
+        UNION ALL
+        SELECT NULL AS base_ref FROM thread JOIN project ON project.id = thread.project_id
+        WHERE project.kind = 'chats' AND project.root_path = ${chatsRoot} AND thread.id = ${threadId}
+          AND thread.status != 'archived'
+      `
+    },
   })
 
-  /** The base ref to diff a worktree against, or null for a project root. Fails for any other folder. */
+  /** The base ref to diff a worktree against, or null for a project root or chat folder. Fails for any other folder. */
   const knownRoot = (root: string) =>
     Effect.gen(function* () {
       const rows = yield* findRoot(root).pipe(Effect.mapError(persistence("files.root")))

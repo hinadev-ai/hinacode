@@ -21,17 +21,15 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  memo,
-  startTransition,
   useActionState,
-  useCallback,
   useId,
-  useMemo,
   useRef,
   useState,
 } from "react"
 import { flushSync } from "react-dom"
 import {
+  RiAlarmLine,
+  RiAlarmSnoozeLine,
   RiArchiveLine,
   RiDeleteBinLine,
   RiDraggable,
@@ -54,7 +52,15 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
-import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { formatSnoozeTime } from "../lib/snooze.ts"
+import {
+  callPromise,
+  currentBranchAtom,
+  type EnvironmentId,
+  projectsAtom,
+  pullRequestAttentionAtom,
+  pullRequestStatusAtom,
+} from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -63,7 +69,8 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
-import { useThreads } from "../stores/threads.ts"
+import { lastActivity, useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -86,6 +93,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
+import { snoozeThread } from "./SnoozeDialog.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -113,6 +121,11 @@ const accessibility = () =>
       },
     },
   })
+
+const plugins: DragDropPlugins = (defaults) => [
+  ...defaults.filter((plugin) => plugin !== Accessibility),
+  accessibility(),
+]
 
 /**
  * Rows drag by the whole row with the mouse (after a few pixels, so clicks still navigate) and by
@@ -161,15 +174,8 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
-  const focusAfterRemoval = useCallback(
-    () => firstRowRef.current ?? newThreadButtonRef?.current ?? null,
-    [newThreadButtonRef],
-  )
+  const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
-  const plugins = useMemo<DragDropPlugins>(
-    () => (defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility()],
-    [],
-  )
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 
@@ -244,16 +250,7 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-// Memoized so a push for one thread re-renders only its row, and the rows whose index moved.
-const ThreadRow = memo(function ThreadRow({
-  thread,
-  index,
-  group,
-  reorderable,
-  showProject,
-  linkRef,
-  focusAfterRemoval,
-}: ThreadRowProps) {
+function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -269,10 +266,7 @@ const ThreadRow = memo(function ThreadRow({
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
-  const state = rowState(
-    thread.status,
-    useUnseen((unseen) => unseen.byThreadId[thread.id]),
-  )
+  const state = useThreadRowState(thread)
 
   // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
   const moveOut = (updated: Thread) => {
@@ -444,6 +438,18 @@ const ThreadRow = memo(function ThreadRow({
                   {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                 </DropdownMenuItem>
               )}
+              {!archived && (
+                <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                  <RiAlarmSnoozeLine aria-hidden />
+                  {m.sidebar_thread_snooze()}
+                </DropdownMenuItem>
+              )}
+              {!archived && meta.snoozedUntil !== null && (
+                <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                  <RiAlarmLine aria-hidden />
+                  {m.sidebar_thread_unsnooze()}
+                </DropdownMenuItem>
+              )}
               {watched.length === 0 ? (
                 <DropdownMenuItem disabled>
                   <RiEyeOffLine aria-hidden />
@@ -494,7 +500,7 @@ const ThreadRow = memo(function ThreadRow({
       )}
     </li>
   )
-})
+}
 
 /** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
@@ -639,12 +645,7 @@ function DeleteThreadPopover({
         )}
         {/* Confirm comes first, the nearest button to the trash icon the pointer just clicked. */}
         <div className="flex gap-2">
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={isPending || offline}
-            onClick={() => startTransition(remove)}
-          >
+          <Button variant="destructive" size="sm" disabled={isPending || offline} action={remove}>
             {m.delete_dialog_confirm()}
           </Button>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
@@ -669,9 +670,31 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconTyp
   limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited) },
   unseen_completed: { label: m.thread_status_unseen_completed, ...toIcon(rowStatusIndicator.unseen_completed) },
   unseen_failed: { label: m.thread_status_unseen_failed, ...toIcon(rowStatusIndicator.unseen_failed) },
+  pr_conflicting: { label: m.thread_status_pr_conflicting, ...toIcon(rowStatusIndicator.pr_conflicting) },
+  pr_checksFailing: { label: m.thread_status_pr_checks_failing, ...toIcon(rowStatusIndicator.pr_checksFailing) },
+  pr_changesRequested: {
+    label: m.thread_status_pr_changes_requested,
+    ...toIcon(rowStatusIndicator.pr_changesRequested),
+  },
 }
 
-function StatusIndicator({ state }: { state: RowState }): ReactNode {
+/** The status a thread shows wherever it is listed: its turn, an unseen result, or a pull request needing action. */
+export function useThreadRowState(thread: Thread): RowState {
+  const environment = useThreadEnvironment(thread.id)
+  const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
+  return rowState(
+    thread.status,
+    useUnseen((unseen) => unseen.byThreadId[thread.id]),
+    useAtomValue(
+      pullRequestAttentionAtom(
+        environment,
+        links.map((link) => link.url),
+      ),
+    ),
+  )
+}
+
+export function StatusIndicator({ state }: { state: RowState }): ReactNode {
   const status = statusIcons[state]
   if (!status) return null
   const { label, Icon, className } = status
@@ -696,8 +719,15 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     removed: worktree?.status === "removed",
     links,
     threadId: thread.id,
-    updatedAt: thread.updatedAt,
+    updatedAt: lastActivity(thread),
+    snoozedUntil: useSnoozedUntil(thread),
   }
+}
+
+/** When the thread wakes, or null when it is not snoozed. */
+function useSnoozedUntil(thread: Thread) {
+  const now = useNow()
+  return thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now ? thread.snoozedUntil : null
 }
 
 const noLinks: ReadonlyArray<PullRequestLink> = []
@@ -709,6 +739,7 @@ function ThreadMeta({
   links,
   threadId,
   updatedAt,
+  snoozedUntil,
   cloud,
   environment,
 }: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
@@ -738,7 +769,7 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      <LastActive updatedAt={updatedAt} />
+      {snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />}
     </div>
   )
 }
@@ -754,6 +785,24 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
       className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
     >
       {formatRelativeTime(updatedAt, now, locale)}
+    </time>
+  )
+}
+
+/** Where the last activity would be, so a snoozed row says when it comes back instead. */
+function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
+  const now = useNow()
+  const locale = getLocale()
+  const time = formatSnoozeTime(new Date(snoozedUntil), new Date(now), locale)
+  return (
+    <time
+      dateTime={snoozedUntil}
+      title={m.sidebar_snoozed_until({ time })}
+      className="ml-auto flex shrink-0 items-center gap-1 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+    >
+      <RiAlarmSnoozeLine aria-hidden className="size-3" />
+      <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
+      <span aria-hidden>{time}</span>
     </time>
   )
 }
@@ -801,7 +850,7 @@ function PullRequestNumber({
       {checks && <ChecksIndicator checks={checks} className="-ml-1 size-3" />}
       {pullRequestRef && (
         <HoverCardContent align="start" className="w-80">
-          <PullRequestCard pullRequest={pullRequestRef} environment={environment} />
+          <PullRequestCard pullRequest={pullRequestRef} href={href} environment={environment} />
         </HoverCardContent>
       )}
     </HoverCard>

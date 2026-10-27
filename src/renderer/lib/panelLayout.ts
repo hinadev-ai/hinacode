@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react"
-import { SIDE_PANEL_BOUNDS } from "./panelWidth.ts"
+import { SIDE_PANEL_BOUNDS } from "./panelSize.ts"
 
 // Leave a 200px message field after the form and composer-bar padding and borders.
 const MIN_MESSAGE_WIDTH = 200

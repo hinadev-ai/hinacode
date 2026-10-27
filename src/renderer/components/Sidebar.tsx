@@ -6,34 +6,44 @@ import { AsyncResult } from "effect/reactivity"
 import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import {
   RiAddLine,
+  RiArrowDownLine,
   RiArrowRightSLine,
+  RiArrowUpLine,
   RiChat3Line,
   RiChatNewLine,
+  RiDeleteBinLine,
   RiFilter3Fill,
   RiFilter3Line,
   RiFolder3Line,
   RiFolderAddLine,
+  RiMoreFill,
+  RiPencilLine,
 } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
-import type { Project, Thread } from "../../shared/domain.ts"
+import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
 import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
 import { groupProjects, type ProjectGroup as Group } from "../lib/projectGroups.ts"
 import { projectsAtom } from "../lib/rpc.ts"
+import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
+import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
-import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelWidth.ts"
+import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelSize.ts"
 import { startThread } from "../lib/startThread.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import {
   selectArchivedThreads,
   selectInboxThreads,
   selectPinnedThreads,
   selectProjectThreads,
+  selectSnoozedThreads,
   selectUnpinnedProjectThreads,
   type ThreadsState,
   useThreads,
 } from "../stores/threads.ts"
 import { type SidebarTab, useUi } from "../stores/ui.ts"
 import { CloudMark } from "./CloudMark.tsx"
+import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
@@ -230,15 +240,33 @@ function PinnedThreads({ query }: { query: Query }) {
   )
 }
 
-/** Active threads of every project in one list, the most recently updated on top. */
+/** Active threads of every project in one list, the most recently updated on top, then the snoozed ones. */
 function InboxList({ query }: { query: Query }) {
-  const threads = useMatchingThreads(selectInboxThreads, query)
-  return threads.length === 0 ? (
-    <p className="px-3 py-2 text-xs text-muted-foreground">
-      {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
-    </p>
-  ) : (
-    <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+  const now = useNow()
+  const threads = useMatchingThreads(selectInboxThreads(now), query)
+  const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
+  return (
+    <>
+      {threads.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
+        </p>
+      ) : (
+        <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+      )}
+      {snoozed.length > 0 && (
+        <section aria-label={m.sidebar_snoozed()} className="border-t border-sidebar-border pt-1">
+          <h2 className="px-3.5 pt-1 text-xs font-medium text-muted-foreground">{m.sidebar_snoozed()}</h2>
+          <SidebarThreadList
+            group="snoozed"
+            threads={snoozed}
+            reorderable={false}
+            showProject
+            className="px-1.5 pb-3"
+          />
+        </section>
+      )}
+    </>
   )
 }
 
@@ -337,6 +365,32 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
     ),
   )
   const shown = groups.filter((group) => shownKeys.includes(group.key))
+  const [sidebarGroups] = useSidebarGroups()
+  const { grouped, ungrouped } = arrangeRows(shown, sidebarGroups)
+  const projectRow = (group: Group, nested = false) => (
+    <ProjectGroup key={group.key} group={group} query={query} nested={nested} focusAfterDelete={focusAfterDelete} />
+  )
+  const groupItems = (group: SidebarGroup, rows: ReadonlyArray<Group>) => {
+    const open = !group.collapsed || query !== ""
+    const header = <GroupHeader key={group.id} group={group} open={open} />
+    if (!open) return [header]
+    if (rows.length === 0) {
+      return [
+        header,
+        <li key={`${group.id}-empty`} className="px-3.5 py-1 text-xs text-muted-foreground">
+          {m.sidebar_group_empty()}
+        </li>,
+      ]
+    }
+    return [header, ...rows.map((row) => projectRow(row, true))]
+  }
+  // One array, so a row moved between groups keeps its key in the same list and stays mounted with its focus.
+  const items = [
+    ...grouped
+      .filter(({ rows }) => isFullList(query) || rows.length > 0)
+      .flatMap(({ group, rows }) => groupItems(group, rows)),
+    ...ungrouped.map((row) => projectRow(row)),
+  ]
 
   return AsyncResult.builder(projects)
     .onInitial(() => <p className="animate-reveal px-3 py-2 text-xs text-muted-foreground">{m.sidebar_loading()}</p>)
@@ -356,9 +410,7 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
           {shown.length === 0 && (
             <li className="px-1.5 py-2 text-xs text-muted-foreground">{m.sidebar_no_matches()}</li>
           )}
-          {shown.map((group) => (
-            <ProjectGroup key={group.key} group={group} query={query} focusAfterDelete={focusAfterDelete} />
-          ))}
+          {items}
         </ul>
       </>
     ))
@@ -372,13 +424,123 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
     ))
 }
 
+interface GroupHeaderProps {
+  readonly group: SidebarGroup
+  readonly open: boolean
+}
+
+function GroupHeader({ group, open }: GroupHeaderProps) {
+  const [, update] = useSidebarGroups()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <li className="pt-1">
+      <div
+        data-menu-open={menuOpen}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          setMenuOpen(true)
+        }}
+        className="group/sidebar-group flex items-center gap-0.5 rounded-md"
+      >
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={m.sidebar_group_toggle({ group: group.name })}
+          onClick={() => void update((state) => setGroupCollapsed(state, group.id, open))}
+          className="group/trigger flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        >
+          <RiArrowRightSLine
+            aria-hidden
+            className="size-4 shrink-0 transition-transform group-aria-expanded/trigger:rotate-90 motion-reduce:transition-none"
+          />
+          <span className="truncate" title={group.name}>
+            {group.name}
+          </span>
+        </button>
+        <GroupMenu group={group} open={menuOpen} onOpenChange={setMenuOpen} />
+      </div>
+    </li>
+  )
+}
+
+interface GroupMenuProps {
+  readonly group: SidebarGroup
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
+}
+
+function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
+  const [state, update] = useSidebarGroups()
+  const index = state.groups.findIndex((candidate) => candidate.id === group.id)
+  const [renaming, setRenaming] = useState(false)
+  // Rename opens its dialog once the menu has closed and handed focus back to the trigger.
+  const [renameQueued, setRenameQueued] = useState(false)
+
+  return (
+    <>
+      <DropdownMenu
+        open={open}
+        onOpenChange={onOpenChange}
+        onOpenChangeComplete={(menuOpen) => {
+          if (menuOpen || !renameQueued) return
+          setRenaming(true)
+          setRenameQueued(false)
+        }}
+      >
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="opacity-0 group-hover/sidebar-group:opacity-100 group-data-[menu-open=true]/sidebar-group:opacity-100 focus:opacity-100"
+              aria-label={m.sidebar_group_actions({ group: group.name })}
+            />
+          }
+        >
+          <RiMoreFill aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onClick={() => setRenameQueued(true)}>
+            <RiPencilLine aria-hidden />
+            {m.sidebar_group_rename()}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={index <= 0} onClick={() => void update((next) => moveGroup(next, group.id, -1))}>
+            <RiArrowUpLine aria-hidden />
+            {m.sidebar_group_move_up()}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={index === state.groups.length - 1}
+            onClick={() => void update((next) => moveGroup(next, group.id, 1))}
+          >
+            <RiArrowDownLine aria-hidden />
+            {m.sidebar_group_move_down()}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => void update((next) => deleteGroup(next, group.id))}>
+            <RiDeleteBinLine aria-hidden />
+            {m.sidebar_group_delete()}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <GroupNameDialog
+        name={group.name}
+        open={renaming}
+        onOpenChange={setRenaming}
+        onSubmit={(name) => void update((next) => renameGroup(next, group.id, name))}
+      />
+    </>
+  )
+}
+
 interface ProjectGroupProps {
   readonly group: Group
   readonly query: Query
+  readonly nested: boolean
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-function ProjectGroup({ group, query, focusAfterDelete }: ProjectGroupProps) {
+function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupProps) {
   const { projects } = group
   const [first] = projects
   const navigate = useNavigate()
@@ -395,7 +557,7 @@ function ProjectGroup({ group, query, focusAfterDelete }: ProjectGroupProps) {
   const cloudMarkId = useId()
 
   return (
-    <li>
+    <li className={nested ? "pl-2" : undefined}>
       {/* A query opens every project, so a match is never hidden in a collapsed one. */}
       <Collapsible open={open || query !== ""} onOpenChange={setOpen}>
         <div
@@ -430,6 +592,7 @@ function ProjectGroup({ group, query, focusAfterDelete }: ProjectGroupProps) {
           <NewThreadButton projects={projects} buttonRef={newThreadButtonRef} onNewThread={newThread} />
           {first.kind === "folder" && (
             <ProjectMenu
+              rowKey={group.key}
               projects={projects}
               open={menuOpen}
               onOpenChange={setMenuOpen}

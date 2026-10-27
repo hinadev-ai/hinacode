@@ -16,6 +16,7 @@ import {
   ProviderId,
   Subagent,
   BackgroundTask,
+  ContextBreakdown,
   QuestionAnswers,
   QuestionRequest,
   SecretRequest,
@@ -65,6 +66,7 @@ import {
   TerminalOffset,
   TerminalSession,
   Thread,
+  Timestamp,
   ThreadSearchHit,
   UpdateStatus,
   ThreadStatus,
@@ -80,6 +82,7 @@ import {
 } from "./domain.ts"
 import { GitHubRepository } from "./github.ts"
 import { PendingLink, RelayHost } from "./relayMachines.ts"
+import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 
 const AutomationInput = Schema.Struct({
   projectId: Schema.String,
@@ -102,6 +105,26 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "browser.open": rpc(
+    Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
+    Schema.Struct({ sessionId: Schema.String }),
+  ),
+  "browser.command": rpc(
+    Schema.Struct({
+      ...BrowserSession.fields,
+      commands: Schema.Array(BrowserCommand).check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    }),
+    Schema.Void,
+  ),
+  "browser.frame": rpc(
+    Schema.Struct({
+      ...BrowserSession.fields,
+      after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      visible: Schema.Boolean,
+    }),
+    BrowserSnapshot,
+  ),
+  "browser.close": rpc(BrowserSession, Schema.Void),
   "projects.list": rpc(Schema.Void, Schema.Array(Project)),
   "projects.create": rpc(
     Schema.Struct({
@@ -150,6 +173,8 @@ export const RpcMethods = {
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),
       pinned: Schema.optional(Schema.Boolean),
+      /** Null wakes the thread. */
+      snoozedUntil: Schema.optional(Schema.NullOr(Timestamp)),
     }),
     Thread,
   ),
@@ -352,13 +377,19 @@ export const RpcMethods = {
 
   /**
    * The thread's live transcript and pending approvals, questions and secret requests as of push `seq`: it
-   * reflects every transcript push up to and including `seq`, and none after. `compact` leaves out tool outputs
-   * and file diffs, for clients that never show them.
+   * reflects every transcript push up to and including `seq`, and none after. `compact` keeps only what the
+   * phone shows, see `compactMessage`. `page` returns only the newest messages, or those older than `page.before`,
+   * up to `TRANSCRIPT_PAGE_BYTES`, with `hasEarlier` set; servers that predate it send every message without it.
    */
   "threads.transcript": rpc(
-    Schema.Struct({ threadId: Schema.String, compact: Schema.optional(Schema.Boolean) }),
+    Schema.Struct({
+      threadId: Schema.String,
+      compact: Schema.optional(Schema.Boolean),
+      page: Schema.optional(Schema.Struct({ before: Schema.optional(Schema.String) })),
+    }),
     Schema.Struct({
       messages: Schema.Array(Message),
+      hasEarlier: Schema.optional(Schema.Boolean),
       approvals: Schema.Array(ApprovalRequest),
       questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
@@ -394,6 +425,8 @@ export const RpcMethods = {
   "backgroundTasks.stop": rpc(Schema.Struct({ threadId: Schema.String, taskId: Schema.String }), Schema.Void),
   /** Tokens the thread spent, read from its agent's transcripts. Null before the first turn or once they are gone. */
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
+  /** What fills the context window of the thread's open agent session. Null when none is open. */
+  "threads.contextBreakdown": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ContextBreakdown)),
   /** Answers an agent's `request_secret`. `value: null` declines; otherwise it is stored under the request's name. */
   "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
   "pullRequests.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(PullRequestLink)),
@@ -588,6 +621,10 @@ export type RpcMethod = keyof typeof RpcMethods
 
 /** Reads rerun after a reconnect; mutations retain one call key for the whole action. */
 export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
+  "browser.open": "mutation",
+  "browser.command": "mutation",
+  "browser.frame": "read",
+  "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "projects.list": "read",
@@ -679,6 +716,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "backgroundTasks.list": "read",
   "backgroundTasks.stop": "mutation",
   "threads.usage": "read",
+  "threads.contextBreakdown": "read",
   "secrets.respond": "mutation",
   "pullRequests.list": "read",
   "pullRequests.all": "read",

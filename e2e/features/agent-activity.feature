@@ -12,3 +12,10 @@ Feature: Agent activity above the composer
     Then only the background task "Watch the unit tests" is left
     When I stop the turn
     Then the background task "Watch the unit tests" is still running
+
+  Scenario: The commands list opens over the tray
+    Given an isolated thread with a simulated agent that starts background shells
+    When I send a message to the activity thread
+    Then the activity tray shows the plan, the sub-agent and the shells "Start the dev server" and "Watch the unit tests"
+    When I type "/" in the activity thread's message
+    Then the commands list covers the activity tray
