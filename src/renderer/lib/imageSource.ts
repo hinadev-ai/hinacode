@@ -1,4 +1,4 @@
-import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
+import { attachmentUrl, githubAssetUrl, projectFileUrl } from "../../shared/channels.ts"
 
 interface ImageContext {
   readonly environment: string | null
@@ -9,12 +9,19 @@ interface ImageContext {
 }
 
 /**
- * The URL an agent's Markdown image loads from. Agents embed files they saved on this machine, like `vm_screenshot`
- * captures, by absolute path. Markdown percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
+ * The URL an agent's Markdown image loads from. Agents embed files by path: screenshots they saved into their
+ * folder, absolute or relative to it, and `vm_screenshot` captures, which land in the attachments dir. Markdown
+ * percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
  */
-export const imageSource = (src: string, { environment, baseUrl }: ImageContext) => {
+export const imageSource = (src: string, { environment, baseUrl, root }: ImageContext) => {
   const asset = githubAssetUrl(src)
   if (asset !== null) return asset
-  if (src.startsWith("/")) return attachmentUrl(decodeURI(src), environment)
-  return baseUrl === null ? src : new URL(src, baseUrl).href
+  if (src.startsWith("/")) {
+    const path = decodeURI(src)
+    return root !== null && path.startsWith(`${root}/`)
+      ? projectFileUrl(root, path.slice(root.length + 1))
+      : attachmentUrl(path, environment)
+  }
+  const base = baseUrl ?? (root === null ? null : projectFileUrl(root, ""))
+  return base === null ? src : new URL(src, base).href
 }

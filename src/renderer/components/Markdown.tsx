@@ -10,6 +10,7 @@ import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { ThreadFolder } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
@@ -30,9 +31,10 @@ const BaseUrl = createContext<string | null>(null)
 function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   const environment = useOpenThreadEnvironment()
   const baseUrl = use(BaseUrl)
+  const root = use(ThreadFolder)
   return (
     <img
-      src={src === undefined ? undefined : imageSource(src, { environment, baseUrl, root: null })}
+      src={src === undefined ? undefined : imageSource(src, { environment, baseUrl, root })}
       alt={alt}
       loading="lazy"
       className="inline-block max-w-full rounded-md"
