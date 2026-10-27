@@ -266,10 +266,38 @@ describe("thread tools across machines", () => {
     expect(read).toStrictEqual({ isError: true, text: `Thread ${otherRepoThread} no longer exists.` })
   })
 
-  test("send_to_thread stays on its own machine", async () => {
-    const sent = await callAs(cloud, cloudThread, "send_to_thread", { threadId: desktopThread, prompt: "hi" })
-    expect(sent.isError).toBe(true)
-    expect(sent.text).toContain(`Thread ${desktopThread} no longer exists.`)
+  test("a cloud thread sends to a desktop thread through the hub, with a model and effort", async () => {
+    const sent = await callAs(cloud, cloudThread, "send_to_thread", {
+      threadId: desktopThread,
+      prompt: "hi from the cloud",
+      model: "claude-other",
+      effort: "high",
+    })
+    expect(sent).toStrictEqual({ isError: false, text: `Started a new turn on thread ${desktopThread}.` })
+    const transcript = result(await invoke("threads.transcript", { threadId: desktopThread }))
+    expect(JSON.stringify(transcript.messages)).toContain("hi from the cloud")
+    const threads = result(await invoke("threads.list", undefined))
+    expect(threads.find((thread) => thread.id === desktopThread)).toMatchObject({
+      model: "claude-other",
+      effort: "high",
+    })
+  })
+
+  test("a desktop thread sends to a cloud thread, and stops it", async () => {
+    const sent = await callAs(desktop, desktopThread, "send_to_thread", {
+      threadId: cloudThread,
+      prompt: "hi from the desktop",
+    })
+    expect(sent).toStrictEqual({ isError: false, text: `Started a new turn on thread ${cloudThread}.` })
+    const transcript = result(await invoke("threads.transcript", { threadId: cloudThread }))
+    expect(JSON.stringify(transcript.messages)).toContain("hi from the desktop")
+    const stopped = await callAs(desktop, desktopThread, "stop_thread", { threadId: cloudThread })
+    expect(stopped).toStrictEqual({ isError: false, text: `Interrupted thread ${cloudThread}.` })
+  })
+
+  test("a cloud thread cannot send to a desktop thread of another repository", async () => {
+    const sent = await callAs(cloud, cloudThread, "send_to_thread", { threadId: otherRepoThread, prompt: "hi" })
+    expect(sent).toStrictEqual({ isError: true, text: `Thread ${otherRepoThread} no longer exists.` })
   })
 
   test("a cloud with no desktop connected says so instead of calling the thread gone", async () => {

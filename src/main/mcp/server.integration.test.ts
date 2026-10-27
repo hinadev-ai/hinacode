@@ -503,6 +503,53 @@ layer(testLayer)("thread controls", (it) => {
     }),
   )
 
+  it.effect("send_to_thread sets the model and effort of a thread that has not started", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Configured child")
+      const sent = yield* callFrom(a, "send_to_thread", {
+        threadId: child,
+        prompt: "Begin",
+        model: "m2",
+        effort: "low",
+      })
+      expect(sent.isError).toBe(false)
+      expect(yield* threads.get(child)).toMatchObject({ model: "m2", effort: "low" })
+      yield* (yield* AgentRunner).interrupt(child)
+    }),
+  )
+
+  it.effect("send_to_thread only changes the effort of a thread that has started", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Started child")
+      yield* threads.update({ id: child, providerSessionId: "session-1" })
+      const refused = yield* callFrom(a, "send_to_thread", { threadId: child, prompt: "x", model: "m2" })
+      expect(refused).toStrictEqual({
+        text: `Thread ${child} has started, so its model stays m. Pass only \`effort\`.`,
+        isError: true,
+        images: [],
+      })
+      const sent = yield* callFrom(a, "send_to_thread", { threadId: child, prompt: "Again", effort: "max" })
+      expect(sent.isError).toBe(false)
+      expect(yield* threads.get(child)).toMatchObject({ model: "m", effort: "max" })
+      yield* (yield* AgentRunner).interrupt(child)
+    }),
+  )
+
+  it.effect("create_thread sets the effort", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const created = yield* callFrom(a, "create_thread", { title: "Effortful", prompt: "Go", effort: "high" })
+      const id = /Created thread (\S+) /.exec(created.text)![1]!
+      expect(yield* threads.get(id)).toMatchObject({ effort: "high" })
+      yield* (yield* AgentRunner).interrupt(id)
+    }),
+  )
+
   it.effect("a thread of another project or a deleted one is out of reach", () =>
     Effect.gen(function* () {
       const { a, b } = yield* Seeded
