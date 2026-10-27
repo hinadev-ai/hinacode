@@ -77,7 +77,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </div>
         {overlay}
         <div ref={dockRef} className="absolute inset-x-0 bottom-0 flex max-h-full flex-col">
-          <div className="flex min-h-0 flex-col bg-background">
+          <Composer thread={thread}>
             <PendingRequests thread={thread} />
             {thread.status === "limited" && thread.usageLimit !== null ? (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
@@ -85,8 +85,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
               <AccountLimitNotice key={thread.id} thread={thread} />
             )}
             <CloudNotice threadId={thread.id} />
-          </div>
-          <Composer thread={thread} />
+          </Composer>
         </div>
       </div>
     </div>
@@ -181,7 +180,7 @@ function PendingRequests({ thread }: { thread: Thread }) {
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null
   return (
-    <div className="min-h-0 shrink overflow-auto px-4 empty:hidden">
+    <div className="min-h-0 shrink overflow-auto empty:hidden">
       {history.approvals.map((request) => (
         <ApprovalCard key={request.id} request={request} providerLabel={label} />
       ))}

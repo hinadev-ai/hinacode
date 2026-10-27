@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useEffect,
   useEffectEvent,
   useRef,
@@ -95,7 +96,8 @@ const sourceOf = async (file: File): Promise<StageSource> => {
   return { dataUrl: await readAsDataUrl(file), name: file.name || "pasted.png" }
 }
 
-export function Composer({ thread }: { thread: Thread }) {
+/** `children` are the notices and pending requests stacked above the input. */
+export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
   const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
   // Agent and workspace stay open to change until the first message.
   const unstarted = useMessages((state) => {
@@ -218,85 +220,90 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col px-3 pb-3">
-      <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
-        <ActivityIndicator thread={thread}>
-          <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
-        </ActivityIndicator>
-        <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
-          {comments.length > 0 && (
-            <ul
-              aria-label={m.comment_pending_label()}
-              className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
-            >
-              {comments.map((comment) => (
-                <li key={comment.id}>
-                  <PendingLineComment
-                    comment={comment}
-                    onRemove={() => useDrafts.getState().removeComment(thread.id, comment.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-          {attachments.length > 0 && (
-            <ul
-              aria-label={m.attachment_pending_label()}
-              className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
-            >
-              {attachments.map((attachment) => (
-                <li key={attachment.id}>
-                  <PendingAttachment
-                    attachment={attachment}
-                    onRemove={() => useDrafts.getState().removeAttachment(thread.id, attachment.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-          <ComposerInput
-            ref={textareaRef}
-            aria-label={m.thread_composer_label()}
-            placeholder={
-              busy
-                ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-                : m.thread_composer_placeholder()
-            }
-            value={text}
-            onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
-            commands={commands}
-            files={files}
-            threads={otherThreads}
-            projectId={thread.projectId}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            rows={2}
-            className="min-h-[calc(1lh+1rem)]"
-          />
-          <ComposerToolbar className="shrink-0 gap-2">
-            <ComposerActions className="min-w-0 flex-1">
-              <AttachButton onClick={pickFiles} disabled={isStaging} />
-              <ModelPicker thread={thread} canSwitchAgent={unstarted} onError={setError} />
-              <ThreadOptions thread={thread} onError={setError} />
-            </ComposerActions>
-            <ContextRing threadId={thread.id} />
-            <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
-            <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
-          </ComposerToolbar>
-        </ComposerBar>
-      </ComposerRoot>
-      {unstarted &&
-        (isChat ? (
-          <div className="mx-auto mt-1 flex w-full max-w-3xl items-center px-1 empty:hidden">
-            <EnvironmentPicker thread={thread} onError={setError} />
-          </div>
-        ) : (
-          <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />
-        ))}
-      {(error ?? commandsError) && <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>}
-    </form>
+    <div className="flex min-h-0 flex-col px-3 pb-3">
+      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col bg-background empty:hidden">{children}</div>
+      <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col">
+        <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
+          <ActivityIndicator thread={thread}>
+            <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
+          </ActivityIndicator>
+          <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
+            {comments.length > 0 && (
+              <ul
+                aria-label={m.comment_pending_label()}
+                className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+              >
+                {comments.map((comment) => (
+                  <li key={comment.id}>
+                    <PendingLineComment
+                      comment={comment}
+                      onRemove={() => useDrafts.getState().removeComment(thread.id, comment.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {attachments.length > 0 && (
+              <ul
+                aria-label={m.attachment_pending_label()}
+                className="flex max-h-20 min-h-0 flex-wrap gap-2 overflow-y-auto px-1 pt-1.5"
+              >
+                {attachments.map((attachment) => (
+                  <li key={attachment.id}>
+                    <PendingAttachment
+                      attachment={attachment}
+                      onRemove={() => useDrafts.getState().removeAttachment(thread.id, attachment.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ComposerInput
+              ref={textareaRef}
+              aria-label={m.thread_composer_label()}
+              placeholder={
+                busy
+                  ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                  : m.thread_composer_placeholder()
+              }
+              value={text}
+              onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+              commands={commands}
+              files={files}
+              threads={otherThreads}
+              projectId={thread.projectId}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              rows={2}
+              className="min-h-[calc(1lh+1rem)]"
+            />
+            <ComposerToolbar className="shrink-0 gap-2">
+              <ComposerActions className="min-w-0 flex-1">
+                <AttachButton onClick={pickFiles} disabled={isStaging} />
+                <ModelPicker thread={thread} canSwitchAgent={unstarted} onError={setError} />
+                <ThreadOptions thread={thread} onError={setError} />
+              </ComposerActions>
+              <ContextRing threadId={thread.id} />
+              <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
+              <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
+            </ComposerToolbar>
+          </ComposerBar>
+        </ComposerRoot>
+        {unstarted &&
+          (isChat ? (
+            <div className="mx-auto mt-1 flex w-full max-w-3xl items-center px-1 empty:hidden">
+              <EnvironmentPicker thread={thread} onError={setError} />
+            </div>
+          ) : (
+            <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />
+          ))}
+        {(error ?? commandsError) && (
+          <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>
+        )}
+      </form>
+    </div>
   )
 }
 
