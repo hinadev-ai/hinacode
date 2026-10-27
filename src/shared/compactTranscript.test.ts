@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { Message } from "./domain.ts"
-import { compactMessage, toolSummary, transcriptPage } from "./compactTranscript.ts"
+import { compactMessage, TRANSCRIPT_PAGE_BYTES, toolSummary, transcriptPage } from "./compactTranscript.ts"
 
 const message = (parts: Message["parts"]): Message => ({
   id: "m",
@@ -64,27 +64,46 @@ describe("toolSummary", () => {
   })
 })
 
-const sized = (id: string, chars: number): Message => ({ ...message([{ type: "text", text: "x".repeat(chars) }]), id })
+const sized = (id: string, chars: number, char = "x"): Message => ({
+  ...message([{ type: "text", text: char.repeat(chars) }]),
+  id,
+})
 const ids = (page: { messages: ReadonlyArray<Message> }) => page.messages.map((m) => m.id)
+const utf8Bytes = (messages: ReadonlyArray<Message>) => new TextEncoder().encode(JSON.stringify(messages)).length
 
 describe("transcriptPage", () => {
   const transcript = ["a", "b", "c", "d"].map((id) => sized(id, 400))
-  const one = JSON.stringify(transcript[0]).length
+  const two = utf8Bytes(transcript.slice(2))
 
   test("takes the newest messages that fit and says older ones remain", () => {
-    const page = transcriptPage(transcript, undefined, one * 2)
+    const page = transcriptPage(transcript, undefined, two)
     expect(ids(page)).toStrictEqual(["c", "d"])
     expect(page.hasEarlier).toBe(true)
   })
 
+  test("counts the array's brackets and commas", () => {
+    expect(ids(transcriptPage(transcript, undefined, two - 1))).toStrictEqual(["d"])
+  })
+
   test("continues before a message, down to the first", () => {
-    expect(ids(transcriptPage(transcript, "c", one * 2))).toStrictEqual(["a", "b"])
-    expect(transcriptPage(transcript, "c", one * 2).hasEarlier).toBe(false)
-    expect(transcriptPage(transcript, "a", one * 2)).toStrictEqual({ messages: [], hasEarlier: false })
+    expect(ids(transcriptPage(transcript, "c", two))).toStrictEqual(["a", "b"])
+    expect(transcriptPage(transcript, "c", two).hasEarlier).toBe(false)
+    expect(transcriptPage(transcript, "a", two)).toStrictEqual({ messages: [], hasEarlier: false })
+  })
+
+  test.each([
+    ["CJK", "漢"],
+    ["emoji", "😀"],
+  ])("fits a page of %s text in the budget by its UTF-8 bytes", (_name, char) => {
+    const wide = ["a", "b", "c", "d", "e", "f", "g"].map((id) => sized(id, 10_000, char))
+    const page = transcriptPage(wide, undefined)
+    expect(utf8Bytes(page.messages)).toBeLessThanOrEqual(TRANSCRIPT_PAGE_BYTES)
+    expect(utf8Bytes(wide.slice(-page.messages.length - 1))).toBeGreaterThan(TRANSCRIPT_PAGE_BYTES)
+    expect(page.hasEarlier).toBe(true)
   })
 
   test("always returns one message, however large", () => {
-    expect(ids(transcriptPage([...transcript, sized("huge", 10_000)], undefined, one))).toStrictEqual(["huge"])
+    expect(ids(transcriptPage([...transcript, sized("huge", 30_000, "😀")], undefined))).toStrictEqual(["huge"])
   })
 
   test("an unknown message gives an empty page", () => {

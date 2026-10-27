@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { Message } from "@shared/domain.ts"
 import { flush, message, type PendingCall } from "./testing"
 
 const calls = vi.hoisted((): PendingCall[] => [])
@@ -17,6 +18,27 @@ const history = () => useMessages.getState().byThread.t1
 const ids = () => {
   const current = history()
   return current?.status === "ready" ? current.messages.map((existing) => existing.id) : current?.status
+}
+
+const assistant = (id: string): Message => ({ ...message(id), role: "assistant" })
+const tool = (status: "running" | "done" | "error") =>
+  ({ type: "tool_call", callId: "tool", name: "Bash", input: {}, status }) as const
+const finished = (seq: number, output: string) => ({
+  type: "thread.event" as const,
+  threadId: "t1",
+  seq,
+  event: { type: "tool_call_finished" as const, callId: "tool", output, isError: false },
+})
+const toolStatus = (id: string) => {
+  const current = history()
+  const part = current?.status === "ready" ? current.messages.find((existing) => existing.id === id)?.parts[0] : undefined
+  return part?.type === "tool_call" ? part.status : undefined
+}
+
+async function loadReadyPage(seq: number, messages: readonly Message[], hasEarlier: boolean) {
+  const loading = useMessages.getState().load("t1")
+  calls.shift()!.resolve({ ...snapshot(seq, []), messages, hasEarlier })
+  await loading
 }
 
 async function loadReady(seq: number, messageIds: readonly string[]) {
@@ -168,7 +190,7 @@ describe("earlier pages", () => {
     expect(calls).toHaveLength(0)
   })
 
-  it("keeps the earlier pages in front of a reloaded newest page", async () => {
+  it("drops the earlier pages when a reload reads the newest page again", async () => {
     const loading = useMessages.getState().load("t1")
     calls.shift()!.resolve(page(["c", "d"], true))
     await loading
@@ -179,8 +201,81 @@ describe("earlier pages", () => {
     useMessages.getState().reload()
     calls.shift()!.resolve(page(["d", "e"], true))
     await flush()
-    expect(ids()).toEqual(["a", "b", "c", "d", "e"])
+    expect(ids()).toEqual(["d", "e"])
     const current = history()
-    expect(current?.status === "ready" && current.hasEarlier).toBe(false)
+    expect(current?.status === "ready" && current.hasEarlier).toBe(true)
+  })
+
+  it("recovers a tool that finished while offline in a message before the reloaded newest page", async () => {
+    await loadReadyPage(1, [{ ...assistant("a"), parts: [tool("running")] }, message("b")], false)
+    useMessages.getState().reload()
+    calls.shift()!.resolve({ ...snapshot(5, ["b", "c"]), hasEarlier: true })
+    await flush()
+    expect(ids()).toEqual(["b", "c"])
+
+    const earlier = useMessages.getState().loadEarlier("t1")
+    calls.shift()!.resolve({ ...snapshot(5, []), messages: [{ ...assistant("a"), parts: [tool("done")] }], hasEarlier: false })
+    await earlier
+    expect(toolStatus("a")).toBe("done")
+  })
+
+  it("replays a tool result that arrives while an earlier page is read", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    const earlier = useMessages.getState().loadEarlier("t1")
+    const request = calls.shift()!
+    useMessages.getState().receive(finished(3, "done"))
+    request.resolve({ ...snapshot(2, []), messages: [{ ...assistant("a"), parts: [tool("running")] }], hasEarlier: false })
+    await earlier
+    expect(toolStatus("a")).toBe("done")
+  })
+
+  it("replays only the pushes newer than the earlier page, and none onto the newer messages", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    const earlier = useMessages.getState().loadEarlier("t1")
+    const request = calls.shift()!
+    useMessages.getState().receive(finished(2, "failed"))
+    useMessages.getState().receive(created(4, "c"))
+    request.resolve({ ...snapshot(3, []), messages: [{ ...assistant("a"), parts: [tool("done")] }], hasEarlier: false })
+    await earlier
+    expect(ids()).toEqual(["a", "b", "c"])
+    expect(toolStatus("a")).toBe("done")
+  })
+
+  it("ignores an earlier page asked for before a reset", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    void useMessages.getState().loadEarlier("t1")
+    const previousDesktop = calls.shift()!
+    useMessages.getState().reset()
+    await loadReadyPage(1, [message("b")], true)
+
+    previousDesktop.resolve({ ...snapshot(1, ["stale"]), hasEarlier: false })
+    await flush()
+    expect(ids()).toEqual(["b"])
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(1)
+  })
+
+  it("drops an earlier page that a reload overtook, and can ask again", async () => {
+    await loadReadyPage(1, [message("c")], true)
+    void useMessages.getState().loadEarlier("t1")
+    const overtaken = calls.shift()!
+    useMessages.getState().reload()
+    calls.shift()!.resolve({ ...snapshot(5, ["d"]), hasEarlier: true })
+    await flush()
+
+    overtaken.resolve({ ...snapshot(2, ["a", "b"]), hasEarlier: false })
+    await flush()
+    expect(ids()).toEqual(["d"])
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true, page: { before: "d" } }])
+  })
+
+  it("can ask again after an earlier page fails", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    const failing = useMessages.getState().loadEarlier("t1")
+    calls.shift()!.reject(new Error("Timeout"))
+    await failing
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(1)
   })
 })
