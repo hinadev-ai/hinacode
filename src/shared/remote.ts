@@ -14,13 +14,16 @@ export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 
-/** The reads a cloud may `ask` a desktop for, to see threads on the user's other machines. Nothing that writes. */
+/** The calls a cloud may `ask` a desktop for, to read and drive threads on the user's other machines. */
 export const AskableMethod = Schema.Literals([
   "threads.list",
   "projects.list",
   "worktrees.list",
   "threads.transcript",
   "pullRequests.list",
+  "threads.update",
+  "threads.steer",
+  "threads.interrupt",
 ] satisfies ReadonlyArray<RpcMethod>)
 export type AskableMethod = typeof AskableMethod.Type
 

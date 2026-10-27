@@ -44,6 +44,7 @@ const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) 
     `status: ${thread.status}`,
     `provider: ${thread.provider}`,
     `model: ${thread.model}`,
+    `effort: ${thread.effort ?? "default"}`,
     `created_by: ${thread.createdBy}`,
     `created_at: ${thread.createdAt}`,
     `updated_at: ${thread.updatedAt}`,
@@ -63,17 +64,21 @@ const renderEnvironment = (worktree: Worktree | null, here: boolean) =>
     "</environment>",
   ].join("\n")
 
-const TargetThreadId = Schema.String.annotate({ description: "Id of a thread in this project." })
+const TargetThreadId = Schema.String.annotate({
+  description: "Id of a thread in this project, on this machine or on another of the user's machines.",
+})
+const Effort = Schema.String.annotate({ description: "Reasoning effort, such as low, medium or high." })
 
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
     description:
-      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model. Pass `worktree` to run it in a new git worktree. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
+      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. Pass `worktree` to run it in a new git worktree. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "Shown in the sidebar." }),
       prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
       provider: Schema.optionalKey(ProviderId),
       model: Schema.optionalKey(Schema.String.annotate({ description: "Model id for that provider." })),
+      effort: Schema.optionalKey(Effort),
       worktree: Schema.optionalKey(
         Schema.Struct({
           branch: Schema.String.annotate({ description: "Branch to create for the worktree." }),
@@ -100,14 +105,17 @@ export const ThreadTools = Toolkit.make(
   }),
   McpTool.make("send_to_thread", {
     description:
-      "Send a message to another thread of this project. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it.",
+      "Send a message to another thread of this project, on this machine or on another of the user's machines. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it. `effort` applies from this message on. `model` can only change before the thread's first turn starts.",
     parameters: Schema.Struct({
       threadId: TargetThreadId,
       prompt: Schema.String.annotate({ description: "The user message to send." }),
+      model: Schema.optionalKey(Schema.String.annotate({ description: "Model id for the thread's provider." })),
+      effort: Schema.optionalKey(Effort),
     }),
   }),
   McpTool.make("stop_thread", {
-    description: "Interrupt the running turn of another thread in this project. Does nothing if it is idle.",
+    description:
+      "Interrupt the running turn of another thread in this project, on this machine or on another of the user's machines. Does nothing if it is idle.",
     parameters: Schema.Struct({ threadId: TargetThreadId }),
   }),
 )
@@ -153,7 +161,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
       })
 
     /** A thread of the caller's project on this machine, else one of its repository on another machine. */
-    const readableThread = (targetId: string) =>
+    const locate = (targetId: string) =>
       Effect.gen(function* () {
         const here = yield* threads
           .get(targetId)
@@ -176,11 +184,11 @@ export const threadToolsLayer = ThreadTools.toLayer(
       Effect.flatMap(McpTool.CallingThread, (callerId) =>
         targetId === callerId
           ? Effect.fail({ message: "That is this thread. Use your own turn instead." })
-          : projectThread(targetId),
+          : locate(targetId),
       )
 
     return ThreadTools.of({
-      create_thread: ({ title, prompt, provider, model, worktree }) =>
+      create_thread: ({ title, prompt, provider, model, effort, worktree }) =>
         Effect.gen(function* () {
           const threadId = yield* McpTool.CallingThread
           const caller = yield* threads.get(threadId)
@@ -193,6 +201,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
             title,
             provider: provider ?? caller.provider,
             model: model ?? caller.model,
+            effort,
             worktree,
             createdBy: `thread:${threadId}`,
           })
@@ -246,7 +255,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
         }),
       read_thread: ({ threadId: targetId, limit }) =>
         Effect.gen(function* () {
-          const { thread: target, here } = yield* readableThread(targetId)
+          const { thread: target, here } = yield* locate(targetId)
           const { worktreeId } = target
           const [transcript, worktree, links] = here
             ? yield* Effect.all([
@@ -288,21 +297,33 @@ export const threadToolsLayer = ThreadTools.toLayer(
             messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
           ].join("\n")
         }),
-      send_to_thread: ({ threadId: targetId, prompt }) =>
+      send_to_thread: ({ threadId: targetId, prompt, model, effort }) =>
         Effect.gen(function* () {
-          const target = yield* peerThread(targetId)
-          if (isThreadBusy(target.status)) {
-            yield* runner.steer(targetId, prompt, [])
-            return `Steered the running turn of thread ${targetId}.`
+          const { thread: target, here } = yield* peerThread(targetId)
+          if (model !== undefined && model !== target.model && target.providerSessionId !== null) {
+            return yield* Effect.fail({
+              message: `Thread ${targetId} has started, so its model stays ${target.model}. Pass only \`effort\`.`,
+            })
           }
-          yield* runner.send(targetId, prompt, [])
-          return `Started a new turn on thread ${targetId}.`
+          if (model !== undefined || effort !== undefined) {
+            const patch = { id: targetId, model, effort }
+            yield* here
+              ? threads.update(patch).pipe(Effect.tap((thread) => events.publish({ type: "thread.updated", thread })))
+              : peers.ask("threads.update", patch)
+          }
+          yield* here
+            ? runner.steer(targetId, prompt, [])
+            : peers.ask("threads.steer", { threadId: targetId, text: prompt })
+          return isThreadBusy(target.status)
+            ? `Steered the running turn of thread ${targetId}.`
+            : `Started a new turn on thread ${targetId}.`
         }),
       stop_thread: ({ threadId: targetId }) =>
-        peerThread(targetId).pipe(
-          Effect.andThen(runner.interrupt(targetId)),
-          Effect.as(`Interrupted thread ${targetId}.`),
-        ),
+        Effect.gen(function* () {
+          const { here } = yield* peerThread(targetId)
+          yield* here ? runner.interrupt(targetId) : peers.ask("threads.interrupt", { threadId: targetId })
+          return `Interrupted thread ${targetId}.`
+        }),
     })
   }),
 )

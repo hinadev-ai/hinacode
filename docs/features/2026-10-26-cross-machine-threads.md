@@ -9,7 +9,7 @@ An agent on a cloud cannot see threads on the desktop or on other clouds. `read_
 
 ## User flow
 
-Mention a thread from any machine in a thread on any other machine, or ask the agent to check it. `read_thread` returns the same metadata, workspace and messages it does for a local thread, marked as being on another machine. `list_threads` lists the threads of the same repository on every machine the user connected.
+Mention a thread from any machine in a thread on any other machine, or ask the agent to check it. `read_thread` returns the same metadata, workspace and messages it does for a local thread, marked as being on another machine. `list_threads` lists the threads of the same repository on every machine the user connected. `send_to_thread` and `stop_thread` drive a thread on another machine the same way they drive a local one, including a new `model` before its first turn and a new `effort` at any time.
 
 ## Design
 
@@ -20,13 +20,13 @@ The desktop is the hub. It is the one machine that has a connection to every clo
 
 `Peers` (`src/main/remote/peers.ts`) hides both paths behind one `ask`. It uses a connected desktop when there is one, and its own clouds otherwise.
 
-An `ask` frame names its method from a closed list of five reads: `threads.list`, `projects.list`, `worktrees.list`, `threads.transcript` and `pullRequests.list`. The desktop decodes the frame against that list, so a cloud cannot reach any other method, and in particular nothing that writes.
+An `ask` frame names its method from a closed list: the reads `threads.list`, `projects.list`, `worktrees.list`, `threads.transcript` and `pullRequests.list`, and the writes `threads.update`, `threads.steer` and `threads.interrupt` that `send_to_thread` and `stop_thread` need. The desktop decodes the frame against that list, so a cloud cannot reach any other method. The asking machine checks that the thread is in the same repository before it writes, the same check `read_thread` makes.
 
 Project ids are per machine, so "the same project" across machines means the same GitHub repository, `Project.repository`. A project with no GitHub `origin` only sees its own machine's threads.
 
 ## Out of scope
 
-- `send_to_thread`, `stop_thread` and `create_thread` across machines. They would let one machine's agent drive another machine's agents, which deserves its own decision.
+- `create_thread` on another machine. It needs a way to name the machine, and an agent can ask the user to start the thread there.
 - A cloud reaching other machines while no desktop is connected. Clouds do not pair with each other.
 
 ## Checkpoints and verification
@@ -35,4 +35,4 @@ Project ids are per machine, so "the same project" across machines means the sam
 2. Both directions. `src/main/mcp/crossMachine.integration.test.ts` pairs a real cloud runtime with a real desktop runtime. A desktop thread reads a cloud thread, and a cloud thread reads a desktop thread over the hub. A thread in another repository is refused, and a cloud with no desktop says so instead of calling the thread gone.
 3. The real app. An isolated Electron desktop paired with an isolated `hinacode serve`, each with a project on the same repository and a scripted turn.
 
-Verified in that pair through each machine's own MCP server, the way an agent calls it. The cloud thread read the desktop thread, and the desktop thread read the cloud thread, both marked as on another machine. `list_threads` on the cloud listed both threads once, and `send_to_thread` stayed local. The hub came back by itself after both processes restarted. With the desktop stopped, the cloud answered that it is not connected to any other machine.
+Verified in that pair through each machine's own MCP server, the way an agent calls it. The cloud thread read the desktop thread, and the desktop thread read the cloud thread, both marked as on another machine. `list_threads` on the cloud listed both threads once. The hub came back by itself after both processes restarted. With the desktop stopped, the cloud answered that it is not connected to any other machine.

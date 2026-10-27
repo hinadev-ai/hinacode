@@ -463,6 +463,7 @@ layer(testLayer)("thread controls", (it) => {
             "status: running",
             "provider: claude",
             "model: m",
+            "effort: default",
             "created_by: user",
             "created_at: \\S+",
             "updated_at: \\S+",
