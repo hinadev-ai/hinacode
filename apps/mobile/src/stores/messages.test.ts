@@ -255,19 +255,22 @@ describe("earlier pages", () => {
     expect(calls).toHaveLength(1)
   })
 
-  it("drops an earlier page that a reload overtook, and can ask again", async () => {
+  it.each([
+    ["a newer message", "d"],
+    ["the same message", "c"],
+  ])("drops an earlier page that a reload starting at %s overtook, and can ask again", async (_name, first) => {
     await loadReadyPage(1, [message("c")], true)
     void useMessages.getState().loadEarlier("t1")
     const overtaken = calls.shift()!
     useMessages.getState().reload()
-    calls.shift()!.resolve({ ...snapshot(5, ["d"]), hasEarlier: true })
+    calls.shift()!.resolve({ ...snapshot(5, [first]), hasEarlier: true })
     await flush()
 
     overtaken.resolve({ ...snapshot(2, ["a", "b"]), hasEarlier: false })
     await flush()
-    expect(ids()).toEqual(["d"])
+    expect(ids()).toEqual([first])
     void useMessages.getState().loadEarlier("t1")
-    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true, page: { before: "d" } }])
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true, page: { before: first } }])
   })
 
   it("can ask again after an earlier page fails", async () => {
