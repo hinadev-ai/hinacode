@@ -19,6 +19,45 @@ Replies render through `react-native-enriched-markdown`, a native Fabric compone
 
 The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and keep the remote listener on its default `0.0.0.0` bind.
 
+### Run on an iOS simulator with Xcode 27
+
+Xcode 27 uses [Device Hub](https://developer.apple.com/documentation/xcode/pairing-your-devices-with-your-mac) to display simulators. Open it with `open -a DeviceHub`, or choose **Xcode > Open Developer Tool > Device Hub**. Select your simulator in the sidebar. Use **Start** if it is shut down.
+
+To choose a simulator from the terminal, list its UDID, then boot it if it is shut down:
+
+```sh
+xcrun simctl list devices available
+IOS_UDID=<simulator-udid>
+xcrun simctl boot "$IOS_UDID"
+open "devices://device/open?id=$IOS_UDID"
+```
+
+From `apps/mobile`, build and install the native app with `pnpm exec expo run:ios --device "$IOS_UDID"`. After the first build, `pnpm exec expo start --localhost` serves JavaScript to the installed app. [Expo also documents the Device Hub workflow](https://docs.expo.dev/workflow/ios-simulator/).
+
+To connect to an isolated local server, run this in another terminal from the repository root:
+
+```sh
+pnpm build
+HINACODE_USER_DATA=/tmp/kk-ios-local node out/main/daemon.js serve --host 127.0.0.1 --port 48082
+```
+
+Paste the server's pairing URL into the app. The simulator can reach the Mac at `127.0.0.1`. Keep both the server and Metro running while you check the app.
+
+To capture the simulator with Xcode 27, save to `/tmp` first, then copy into `.context/` from the repository root. This also works when the simulator cannot write directly to the checkout's volume:
+
+```sh
+xcrun devicectl device capture screenshot --device "$IOS_UDID" --destination "/tmp/hinacode-$IOS_UDID.png"
+mkdir -p .context/shots
+cp "/tmp/hinacode-$IOS_UDID.png" .context/shots/mobile.png
+```
+
+Check these native iOS cases after a cold launch:
+
+- On Home, the filter tabs and first row appear below the large title. Check populated, loading, empty, and failed connections.
+- Search results stay below the navigation bar, with the keyboard both open and dismissed.
+- Before pairing, the form starts below the large title and its Connect button remains reachable with the keyboard open.
+- Workspace, thread settings, and thread actions use readable theme surfaces in light and dark mode. Scroll a long option list, select an option, and close the popup.
+
 ### Run on a phone over USB
 
 With USB debugging on, `adb reverse` makes the desktop's ports reachable as `127.0.0.1` on the phone, so no network is needed:
