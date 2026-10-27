@@ -461,6 +461,21 @@
   --destructive: #f07178;
 }
 
+/* Ours, not a port: a sakura light theme. Muted text is 5.1:1 on --muted, white on --primary 4.6:1. */
+[data-theme="pinky"] {
+  --background: #fff5f8;
+  --palette-foreground: #4a1f33;
+  --surface: #ffeaf1;
+  --muted: #fcdce7;
+  --palette-muted-foreground: #8c4867;
+  --border: #f7d0de;
+  --input: #f0bcd0;
+  --primary: #d6336c;
+  --primary-foreground: #ffffff;
+  --ring: #e8598a;
+  --destructive: #c0262d;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
