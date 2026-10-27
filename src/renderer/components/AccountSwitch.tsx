@@ -5,19 +5,40 @@ import { useActionState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { AccountLimits } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import type { LimitWindow } from "../../shared/limits.ts"
+import type { LimitWindow, LimitWindowKind } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
-import { formatResetIn, mostUsed, spentWindow } from "../lib/planLimits.ts"
+import { formatMinutes, formatResetIn, mostUsed, spentWindow } from "../lib/planLimits.ts"
 import { accountLimitsAtom, callPromise } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
-import { resetLabel, windowLabel } from "./PlanLimits.tsx"
 import { useDefaultAccountName, useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
+
+const windowLabel = (window: LimitWindowKind) => {
+  switch (window.kind) {
+    case "session":
+      return m.limits_session()
+    case "weekly":
+      return m.limits_weekly()
+    case "model":
+      return window.name
+    case "minutes":
+      return formatMinutes(window.minutes, getLocale())
+  }
+}
+
+/** "Resets in 2h 10m, Mon 3:40 PM". */
+const resetLabel = (resetsAt: string, now: number, locale: string) =>
+  m.limits_resets_in({
+    duration: formatResetIn(resetsAt, now, locale),
+    time: new Intl.DateTimeFormat(locale, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(
+      Date.parse(resetsAt),
+    ),
+  })
 
 type AccountThread = Pick<Thread, "id" | "provider" | "accountId" | "model">
 

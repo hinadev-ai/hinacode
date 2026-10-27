@@ -21,10 +21,6 @@ export function formatMinutes(total: number, locale: string): string {
 export const formatResetIn = (resetsAt: string, now: number, locale: string) =>
   formatMinutes(Math.max(0, Math.floor((Date.parse(resetsAt) - now) / minuteMs)), locale)
 
-/** A window is amber from 80% used and red once it is spent. */
-export const limitLevel = (usedPercent: number) =>
-  usedPercent >= 100 ? "exhausted" : usedPercent >= 80 ? "warning" : "normal"
-
 export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
   windows.reduce<LimitWindow | undefined>(
     (top, window) => (top === undefined || window.usedPercent > top.usedPercent ? window : top),
@@ -32,7 +28,7 @@ export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
   )
 
 const blocks = (window: LimitWindow, model: string) =>
-  limitLevel(window.usedPercent) === "exhausted" &&
+  window.usedPercent >= 100 &&
   (window.window.kind !== "model" || model.toLowerCase().includes(window.window.name.toLowerCase()))
 
 /** An unknown reset sorts last, since nothing says the account recovers sooner. */
