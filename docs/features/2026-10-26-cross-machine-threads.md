@@ -9,7 +9,7 @@ An agent on a cloud cannot see threads on the desktop or on other clouds. `read_
 
 ## User flow
 
-Mention a thread from any machine in a thread on any other machine, or ask the agent to check it. `read_thread` returns the same metadata, workspace and messages it does for a local thread, marked as being on another machine. `list_threads` lists the threads of the same repository on every machine the user connected. `send_to_thread` and `stop_thread` drive a thread on another machine the same way they drive a local one, including a new `model` before its first turn and a new `effort` at any time.
+Mention a thread from any machine in a thread on any other machine, or ask the agent to check it. `read_thread` returns the same metadata, workspace and messages it does for a local thread, and names the machine it runs on. `list_threads` lists the threads of the same repository on every machine the user connected. `send_to_thread` and `stop_thread` drive a thread on another machine the same way they drive a local one, including a new `model` before its first turn and a new `effort` at any time.
 
 ## Design
 
@@ -20,7 +20,9 @@ The desktop is the hub. It is the one machine that has a connection to every clo
 
 `Peers` (`src/main/remote/peers.ts`) hides both paths behind one `ask`. It uses a connected desktop when there is one, and its own clouds otherwise.
 
-An `ask` frame names its method from a closed list: the reads `threads.list`, `projects.list`, `worktrees.list`, `threads.transcript` and `pullRequests.list`, and the writes `threads.update`, `threads.steer` and `threads.interrupt` that `send_to_thread` and `stop_thread` need. The desktop decodes the frame against that list, so a cloud cannot reach any other method. The asking machine checks that the thread is in the same repository before it writes, the same check `read_thread` makes.
+An `ask` frame names its method from a closed list: the reads `threads.list`, `projects.list`, `worktrees.list`, `threads.transcript`, `pullRequests.list` and `machines.list`, and the writes `threads.update`, `threads.steer` and `threads.interrupt` that `send_to_thread` and `stop_thread` need. The desktop decodes the frame against that list, so a cloud cannot reach any other method. The asking machine checks that the thread is in the same repository before it writes, the same check `read_thread` makes.
+
+Each machine already has a stable id, `RemoteAccess.identity`, which is also the id the desktop pairs a cloud under. `machines.list` is gathered like `threads.list`: every machine answers with its id, its hostname and its project ids, and the desktop renames each cloud's answer to the name the user gave it. A thread's machine is the one that holds its project. A machine on an older version answers nothing, and its threads show as on another machine with no name.
 
 Project ids are per machine, so "the same project" across machines means the same GitHub repository, `Project.repository`. A project with no GitHub `origin` only sees its own machine's threads.
 

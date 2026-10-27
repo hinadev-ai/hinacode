@@ -166,9 +166,11 @@ const seedMessage = (runtime: Runtime, threadId: string, text: string) =>
     ),
   )
 
-const otherMachine = "machine: another one, so its paths are not on this machine"
+const onMachine = (machine: { id: string; name: string }) =>
+  `machine: ${machine.name} (${machine.id}), not this one, so its paths are not here`
 
 let cloudId = ""
+let desktopMachine = { id: "", name: "" }
 let desktopThread = ""
 let cloudThread = ""
 let otherRepoThread = ""
@@ -195,6 +197,7 @@ beforeAll(async () => {
   )
   desktop = ManagedRuntime.make(makeDesktop(join(dir, "desktop", "hinacode.sqlite")))
   registerIpc(desktop, appUrl)
+  desktopMachine = await desktop.runPromise(RemoteAccess.use((remote) => Effect.succeed(remote.identity)))
 
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
   const url = pairingUrl({ hosts: ["127.0.0.1"], port: pairing.port, token: pairing.token, relay: null })
@@ -235,7 +238,7 @@ describe("thread tools across machines", () => {
     const read = await callAs(desktop, desktopThread, "read_thread", { threadId: cloudThread })
     expect(read.isError).toBe(false)
     expect(read.text).toContain(`thread_id: ${cloudThread}`)
-    expect(read.text).toContain(otherMachine)
+    expect(read.text).toContain(onMachine({ id: cloudId, name: "cloud" }))
     expect(read.text).toContain("hello from the cloud")
   })
 
@@ -243,22 +246,22 @@ describe("thread tools across machines", () => {
     const read = await callAs(cloud, cloudThread, "read_thread", { threadId: desktopThread })
     expect(read.isError).toBe(false)
     expect(read.text).toContain(`thread_id: ${desktopThread}`)
-    expect(read.text).toContain(otherMachine)
+    expect(read.text).toContain(onMachine(desktopMachine))
     expect(read.text).toContain("hello from the desktop")
   })
 
   test("a cloud thread lists the desktop's threads of the same repository and itself once", async () => {
     const listed = await callAs(cloud, cloudThread, "list_threads")
     expect(listed.isError).toBe(false)
-    const threads = JSON.parse(listed.text) as Array<{ id: string; self?: true; otherMachine?: true }>
+    const threads = JSON.parse(listed.text) as Array<{ id: string; self?: true; machine?: unknown }>
     expect(threads.toSorted((a, b) => a.id.localeCompare(b.id))).toMatchObject(
       [
         { id: cloudThread, self: true },
-        { id: desktopThread, otherMachine: true },
+        { id: desktopThread, machine: desktopMachine },
       ].toSorted((a, b) => a.id.localeCompare(b.id)),
     )
     expect(threads).toHaveLength(2)
-    expect(threads.find((thread) => thread.id === cloudThread)).not.toHaveProperty("otherMachine")
+    expect(threads.find((thread) => thread.id === cloudThread)).not.toHaveProperty("machine")
   })
 
   test("a cloud thread cannot read a desktop thread of another repository", async () => {

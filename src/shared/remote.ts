@@ -21,6 +21,7 @@ export const AskableMethod = Schema.Literals([
   "worktrees.list",
   "threads.transcript",
   "pullRequests.list",
+  "machines.list",
   "threads.update",
   "threads.steer",
   "threads.interrupt",

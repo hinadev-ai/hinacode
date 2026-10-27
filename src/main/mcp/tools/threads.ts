@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../../shared/agent.ts"
-import { isThreadBusy, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
+import { isThreadBusy, type Machine, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
 import { Peers } from "../../remote/peers.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
 import { Events } from "../../services/Events.ts"
@@ -54,10 +54,21 @@ const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) 
     "</metadata>",
   ].join("\n")
 
-const renderEnvironment = (worktree: Worktree | null, here: boolean) =>
+/** Where a thread runs: this machine, or another one, unnamed when it predates `machines.list`. */
+type Place = { readonly here: true } | { readonly here: false; readonly machine: MachineRef | undefined }
+type MachineRef = Pick<Machine, "id" | "name">
+const HERE: Place = { here: true }
+
+const renderEnvironment = (worktree: Worktree | null, place: Place) =>
   [
     "<environment>",
-    ...(here ? [] : ["machine: another one, so its paths are not on this machine"]),
+    ...(place.here
+      ? []
+      : [
+          place.machine === undefined
+            ? "machine: another one, so its paths are not on this machine"
+            : `machine: ${place.machine.name} (${place.machine.id}), not this one, so its paths are not here`,
+        ]),
     ...(worktree === null
       ? ["workspace: project root"]
       : ["workspace: worktree", `branch: ${worktree.branch}`, `path: ${worktree.path}`]),
@@ -89,7 +100,7 @@ export const ThreadTools = Toolkit.make(
   }),
   McpTool.make("list_threads", {
     description:
-      "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread. Threads of the same GitHub repository on the user's other machines are included and marked `otherMachine`.",
+      "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread. Threads of the same GitHub repository on the user's other machines are included, with the `machine` they run on.",
   }),
   McpTool.make("read_thread", {
     description:
@@ -152,12 +163,21 @@ export const threadToolsLayer = ThreadTools.toLayer(
     /** Threads of `repository` on the user's other machines, which can repeat this machine's own. */
     const elsewhere = (repository: string) =>
       Effect.gen(function* () {
-        const [known, all] = yield* Effect.all(
-          [peers.ask("projects.list", undefined), peers.ask("threads.list", undefined)],
+        const [known, all, machines] = yield* Effect.all(
+          [
+            peers.ask("projects.list", undefined),
+            peers.ask("threads.list", undefined),
+            peers.ask("machines.list", undefined).pipe(Effect.orElseSucceed(() => [])),
+          ],
           { concurrency: "unbounded" },
         )
         const same = new Set(known.filter((project) => project.repository === repository).map((project) => project.id))
-        return all.filter((thread) => same.has(thread.projectId))
+        const machineOf = new Map(
+          machines.flatMap(({ id, name, projectIds }) => projectIds.map((projectId) => [projectId, { id, name }])),
+        )
+        return all
+          .filter((thread) => same.has(thread.projectId))
+          .map((thread) => ({ thread, machine: machineOf.get(thread.projectId) }))
       })
 
     /** A thread of the caller's project on this machine, else one of its repository on another machine. */
@@ -166,7 +186,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
         const here = yield* threads
           .get(targetId)
           .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(undefined)))
-        if (here !== undefined) return { thread: yield* projectThread(targetId), here: true }
+        if (here !== undefined) return { thread: yield* projectThread(targetId), place: HERE }
         const caller = yield* threads.get(yield* McpTool.CallingThread)
         const repository = yield* repositoryOf(caller.projectId)
         const gone = { message: `Thread ${targetId} no longer exists.` }
@@ -175,9 +195,10 @@ export const threadToolsLayer = ThreadTools.toLayer(
           Effect.mapError((error) => ({
             message: `Thread ${targetId} is not on this machine, and the other machines are out of reach: ${error.message}`,
           })),
-        )).find((thread) => thread.id === targetId)
+        )).find(({ thread }) => thread.id === targetId)
         if (found === undefined) return yield* Effect.fail(gone)
-        return { thread: found, here: false }
+        const place: Place = { here: false, machine: found.machine }
+        return { thread: found.thread, place }
       })
 
     const peerThread = (targetId: string) =>
@@ -236,28 +257,33 @@ export const threadToolsLayer = ThreadTools.toLayer(
           )
           const localIds = new Set(all.map((thread) => thread.id))
           const listed = [
-            ...local.map((thread) => ({ thread, here: true })),
-            ...others.filter((thread) => !localIds.has(thread.id)).map((thread) => ({ thread, here: false })),
+            ...local.map((thread) => ({ thread, place: HERE })),
+            ...others
+              .filter(({ thread }) => !localIds.has(thread.id))
+              .map(({ thread, machine }): { thread: Thread; place: Place } => ({
+                thread,
+                place: { here: false, machine },
+              })),
           ]
             .filter(({ thread }) => thread.status !== "archived")
-            .map(({ thread, here }) => ({
+            .map(({ thread, place }) => ({
               id: thread.id,
               title: thread.title,
               status: thread.status,
               provider: thread.provider,
               model: thread.model,
               createdBy: thread.createdBy,
-              branch: (thread.worktreeId && (here ? branches : otherBranches).get(thread.worktreeId)) ?? null,
+              branch: (thread.worktreeId && (place.here ? branches : otherBranches).get(thread.worktreeId)) ?? null,
               ...(thread.id === threadId ? { self: true } : {}),
-              ...(here ? {} : { otherMachine: true }),
+              ...(place.here ? {} : { machine: place.machine ?? "another machine" }),
             }))
           return JSON.stringify(listed)
         }),
       read_thread: ({ threadId: targetId, limit }) =>
         Effect.gen(function* () {
-          const { thread: target, here } = yield* locate(targetId)
+          const { thread: target, place } = yield* locate(targetId)
           const { worktreeId } = target
-          const [transcript, worktree, links] = here
+          const [transcript, worktree, links] = place.here
             ? yield* Effect.all([
                 runner.transcript(targetId),
                 worktreeId === null
@@ -291,7 +317,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
               target,
               links.map((link) => link.url),
             ),
-            renderEnvironment(worktree, here),
+            renderEnvironment(worktree, place),
             ...(waiting.length > 0 ? ["Waiting on the user for:", ...waiting] : []),
             "",
             messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
@@ -299,7 +325,10 @@ export const threadToolsLayer = ThreadTools.toLayer(
         }),
       send_to_thread: ({ threadId: targetId, prompt, model, effort }) =>
         Effect.gen(function* () {
-          const { thread: target, here } = yield* peerThread(targetId)
+          const {
+            thread: target,
+            place: { here },
+          } = yield* peerThread(targetId)
           if (model !== undefined && model !== target.model && target.providerSessionId !== null) {
             return yield* Effect.fail({
               message: `Thread ${targetId} has started, so its model stays ${target.model}. Pass only \`effort\`.`,
@@ -320,7 +349,9 @@ export const threadToolsLayer = ThreadTools.toLayer(
         }),
       stop_thread: ({ threadId: targetId }) =>
         Effect.gen(function* () {
-          const { here } = yield* peerThread(targetId)
+          const {
+            place: { here },
+          } = yield* peerThread(targetId)
           yield* here ? runner.interrupt(targetId) : peers.ask("threads.interrupt", { threadId: targetId })
           return `Interrupted thread ${targetId}.`
         }),

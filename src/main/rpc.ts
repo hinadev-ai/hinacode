@@ -435,6 +435,12 @@ const handlers: Handlers = {
       const paths = [homedir(), ...projects.map((project) => project.rootPath), ...(worktreeRoot ? [worktreeRoot] : [])]
       return yield* SystemResources.use((resources) => resources.read(paths))
     }),
+  "machines.list": () =>
+    Effect.gen(function* () {
+      const { identity } = yield* RemoteAccess
+      const projects = yield* Projects.use((service) => service.list)
+      return [{ ...identity, projectIds: projects.map((project) => project.id) }]
+    }),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
