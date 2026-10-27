@@ -1,6 +1,6 @@
 # Mobile hub
 
-Status: Building
+Status: Shipped
 Date: 2026-10-27
 
 ## Problem
@@ -113,3 +113,8 @@ A stalled stream (no frame for 5 s while the device is booted and the screen is 
 ## Verification
 
 Tests cover the contract decoding, the command mapping to Indigo and gRPC calls, and the `thread_devices` cleanup on archive against a real SQLite database. The streams and HID only run on real devices, so the slices above are checked in the real app with `verify-hinacode`, including the remote path.
+
+Verified with an isolated Electron instance driven over CDP, and with that instance paired to a plain Node `hinacode serve` daemon on the same Mac. Locally, a slim iOS 27 simulator and an Android 16 emulator streamed inside their device frames. Taps, drags, Home, Back, dark appearance and rotation reached them, and a picked Settings row arrived in the composer with its crop. Over MCP, `device_launch`, `device_describe_ui` and `device_tap` drove Settings. A `device_tap` sent while the user had control waited with the amber notice and returned without acting on hand back. Archiving a thread deleted the simulator HinaCode had created for it within one sweep, about 6 s, and left every other device running. Through the daemon, the list was the daemon's, the screen helper ran as the daemon's child, compiled into its own data directory, and the desktop drove the simulator at 25 to 40 fps on loopback. Any panel input takes control, the toolbar buttons included, because the user is acting on the device either way.
+
+Not verified yet: a Linux daemon's `notMac` state, a cold Android boot from HinaCode, and an emulator started without gRPC.
+
