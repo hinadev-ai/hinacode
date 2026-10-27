@@ -90,7 +90,9 @@ function Preparing({ step }: { step: PrepareStep }) {
           )
         })}
       </ol>
-      <p className="text-xs text-muted-foreground">{m.devices_first_boot_hint()}</p>
+      <p className="max-w-64 text-center text-xs text-pretty text-muted-foreground">
+        {step === "connecting" ? m.devices_compiling_hint() : m.devices_first_boot_hint()}
+      </p>
     </div>
   )
 }

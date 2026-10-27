@@ -1912,5 +1912,8 @@
         "countPlural=other": "{count} 個のバックグラウンドサービスを停止済み"
       }
     }
-  ]
+  ],
+  "devices_show_shutdown": "シャットダウン中の {count} 台を表示",
+  "devices_hide_shutdown": "シャットダウン中を隠す",
+  "devices_compiling_hint": "マシンで初めて接続するときは画面ヘルパーをビルドするため、10 秒ほどかかります。"
 }

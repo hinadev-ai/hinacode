@@ -1,6 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
+import { useState } from "react"
 import { RiAddLine, RiRefreshLine } from "react-icons/ri"
 import type { Device, DeviceHost, DevicePlatform, PlatformSupport } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
@@ -113,6 +114,10 @@ function PlatformSection({ platform, host, threadId, pending, onAttach }: Platfo
   const support = host[platform]
   const unavailable = supportMessage(support)
   const devices = host.devices.filter((device) => device.platform === platform).toSorted(byState)
+  const running = devices.filter((device) => device.state !== "shutdown")
+  const shutdown = devices.filter((device) => device.state === "shutdown")
+  const [showShutdown, setShowShutdown] = useState(false)
+  const shown = showShutdown || running.length === 0 ? devices : running
   const titleId = `devices-${platform}-${threadId}`
 
   return (
@@ -127,17 +132,30 @@ function PlatformSection({ platform, host, threadId, pending, onAttach }: Platfo
           {platform === "ios" ? m.devices_ios_empty() : m.devices_android_empty()}
         </p>
       ) : (
-        <ul className="flex flex-col">
-          {devices.map((device) => (
-            <DeviceRow
-              key={device.id}
-              device={device}
-              threadId={threadId}
-              pending={pending}
-              onAttach={() => onAttach(device)}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col">
+            {shown.map((device) => (
+              <DeviceRow
+                key={device.id}
+                device={device}
+                threadId={threadId}
+                pending={pending}
+                onAttach={() => onAttach(device)}
+              />
+            ))}
+          </ul>
+          {running.length > 0 && shutdown.length > 0 && (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="mx-2 self-start text-muted-foreground"
+              aria-expanded={showShutdown}
+              onClick={() => setShowShutdown((open) => !open)}
+            >
+              {showShutdown ? m.devices_hide_shutdown() : m.devices_show_shutdown({ count: shutdown.length })}
+            </Button>
+          )}
+        </>
       )}
     </section>
   )

@@ -1930,5 +1930,8 @@
         "countPlural=other": "已關閉 {count} 個背景服務"
       }
     }
-  ]
+  ],
+  "devices_show_shutdown": "顯示 {count} 台已關機的裝置",
+  "devices_hide_shutdown": "隱藏已關機的裝置",
+  "devices_compiling_hint": "在一台電腦上第一次連線時會建置畫面輔助程式，大約需要 10 秒。"
 }

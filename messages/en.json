@@ -1958,5 +1958,8 @@
         "countPlural=other": "{count} background services off"
       }
     }
-  ]
+  ],
+  "devices_show_shutdown": "Show {count} shut down",
+  "devices_hide_shutdown": "Hide shut down",
+  "devices_compiling_hint": "The first connection on a machine builds the screen helper, which takes about 10 seconds."
 }
