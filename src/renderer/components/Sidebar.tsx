@@ -111,7 +111,7 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
           aria-label={m.sidebar_filter_label()}
           placeholder={m.sidebar_filter_placeholder()}
-          className="mr-1 h-7 min-w-0 flex-1 text-sm"
+          className="mr-1 h-7 min-w-0 flex-1 text-sm glass:glass-field"
         />
         <ProjectFilterMenu />
         <NewChatButton />
