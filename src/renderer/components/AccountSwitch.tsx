@@ -109,7 +109,7 @@ export function AccountLimitNotice({ thread }: { thread: AccountThread }) {
   return (
     <div
       role="status"
-      className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
+      className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
     >
       <RiErrorWarningLine aria-hidden className="size-4 shrink-0 text-attention" />
       <span className="min-w-0 flex-1">
