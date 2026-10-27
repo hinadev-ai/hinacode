@@ -16,6 +16,7 @@ Nothing to turn on. On macOS, the title bar, the sidebar and the status bar are 
 - `electron-liquid-glass` puts an `NSGlassEffectView` behind the window's web contents. Below macOS 26 it falls back to `NSVisualEffectView`. It is an optional, darwin-only dependency, like `node-mac-permissions`, so `src/main/liquidGlass.ts` loads it with `require` and is undefined elsewhere.
 - When it loads, main creates the window `transparent` and adds the glass view. Main also passes `--hinacode-liquid-glass` to the renderer, and the preload exposes it as `window.hinacode.liquidGlass`. The renderer sets `data-glass` on `<html>`.
 - The `glass:` Tailwind variant applies under `[data-glass]` and `prefers-reduced-transparency: no-preference`. The body turns transparent, `<main>` keeps `bg-background`, and the three chrome surfaces use `bg-sidebar/80`. The 80% tint keeps the theme's color and keeps muted text near 4.5:1 even over a saturated backdrop.
+- The sidebar Filter field uses `glass:glass-field`, a raised capsule like macOS 26 search fields. Its border and shadow drop on focus, so the input's own ring shows. The icon buttons stay bare: capsules around them would add chrome, and they could only be CSS imitation, because the library draws one glass view per window.
 - The glass follows the native appearance, not the page. `app.setColorScheme` sets `nativeTheme.themeSource` to the theme's scheme (`dark`, `light` or `system`), so a dark theme on a light Mac gets dark glass. Native menus and dialogs now follow the theme too.
 
 ## Out of scope
