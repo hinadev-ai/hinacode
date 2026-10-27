@@ -27,6 +27,7 @@ import type {
   QuestionRequest,
   Subagent,
   BackgroundTask,
+  ContextBreakdown,
   SecretRequest,
   ThreadUsage,
 } from "../../shared/agent.ts"
@@ -172,6 +173,10 @@ export class AgentRunner extends Context.Service<
     readonly usage: (
       threadId: string,
     ) => Effect.Effect<ThreadUsage | null, AgentError | PersistenceError | NotFoundError>
+    /** What fills the context window of the thread's open agent session. Null when none is open. */
+    readonly contextBreakdown: (
+      threadId: string,
+    ) => Effect.Effect<ContextBreakdown | null, AgentError | PersistenceError | NotFoundError>
     /** Sub-agents the thread's agent spawned since the app started, newest first. */
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
     /** Stops one running sub-agent; the turn that spawned it keeps going. */
@@ -984,6 +989,12 @@ const make = Effect.gen(function* () {
         if (thread.providerSessionId === null) return null
         const home = yield* accounts.home(thread.accountId)
         return yield* providers[thread.provider].usage(thread.providerSessionId, home)
+      }),
+    contextBreakdown: (threadId) =>
+      Effect.gen(function* () {
+        const { provider: id } = yield* threads.get(threadId)
+        const read = providers[id].contextBreakdown
+        return read === undefined ? null : yield* read(threadId)
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     stopSubagent: (threadId, subagentId) =>

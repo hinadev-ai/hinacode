@@ -182,6 +182,22 @@ export type SecretRequest = typeof SecretRequest.Type
 export const ContextWindow = Schema.Struct({ usedTokens: Schema.Number, maxTokens: Schema.Number })
 export type ContextWindow = typeof ContextWindow.Type
 
+/** What fills the context window, by category, as the agent's `/context` reports it. */
+export const ContextBreakdown = Schema.Struct({
+  usedTokens: Schema.Number,
+  maxTokens: Schema.Number,
+  categories: Schema.Array(
+    Schema.Struct({
+      /** The agent's own English label, such as "MCP tools". */
+      name: Schema.String,
+      tokens: Schema.Number,
+      /** `buffer` is the compaction reserve. */
+      kind: Schema.Literals(["used", "free", "buffer"]),
+    }),
+  ),
+})
+export type ContextBreakdown = typeof ContextBreakdown.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,

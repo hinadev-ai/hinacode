@@ -285,7 +285,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 <ModelPicker thread={thread} canSwitchAgent={unstarted} onError={setError} />
                 <ThreadOptions thread={thread} onError={setError} />
               </ComposerActions>
-              <ContextRing threadId={thread.id} />
+              <ContextRing threadId={thread.id} provider={thread.provider} />
               <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
               <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
             </ComposerToolbar>

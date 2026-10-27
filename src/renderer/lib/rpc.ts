@@ -461,6 +461,20 @@ export const threadUsageAtom = Atom.family((threadId: string) =>
   }),
 )
 
+/** What fills the thread's context window, asked again when a turn ends. */
+export const contextBreakdownAtom = Atom.family((threadId: string) =>
+  Atom.make((get) => {
+    get.addFinalizer(
+      onPushEvent((event) => {
+        if (event.type === "thread.event" && event.threadId === threadId && turnEnds.has(event.event.type)) {
+          get.refreshSelf()
+        }
+      }),
+    )
+    return call("threads.contextBreakdown", { threadId })
+  }),
+)
+
 /** Plan limits of every signed-in account. Re-read every 2 minutes while subscribed and whenever a turn ends. */
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(

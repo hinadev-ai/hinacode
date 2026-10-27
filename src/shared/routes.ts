@@ -129,6 +129,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.unqueue": thread,
   "threads.interrupt": thread,
   "threads.usage": thread,
+  "threads.contextBreakdown": thread,
   "commands.list": thread,
   "files.list": thread,
   "search.files": thread,
