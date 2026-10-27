@@ -2,10 +2,10 @@ import { cn } from "cn"
 import { createContext, isValidElement, type ReactNode, use, useEffect, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
+import { githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
-import type { EnvironmentId } from "../lib/rpc.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
+import { imageSource } from "../lib/imageSource.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { useClientSettings } from "../lib/settings.ts"
@@ -25,17 +25,6 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
   return text?.type === "text" && text.value === href ? githubAssetUrl(href) : null
 }
 
-/**
- * Agents embed files they saved on this machine, like `vm_screenshot` captures, by absolute path. Markdown
- * percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
- */
-const imageSrc = (src: string, environment: EnvironmentId, baseUrl: string | null) => {
-  const asset = githubAssetUrl(src)
-  if (asset !== null) return asset
-  if (src.startsWith("/")) return attachmentUrl(decodeURI(src), environment)
-  return baseUrl === null ? src : new URL(src, baseUrl).href
-}
-
 const BaseUrl = createContext<string | null>(null)
 
 function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
@@ -43,7 +32,7 @@ function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   const baseUrl = use(BaseUrl)
   return (
     <img
-      src={src === undefined ? undefined : imageSrc(src, environment, baseUrl)}
+      src={src === undefined ? undefined : imageSource(src, { environment, baseUrl, root: null })}
       alt={alt}
       loading="lazy"
       className="inline-block max-w-full rounded-md"
