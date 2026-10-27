@@ -88,6 +88,8 @@
   "thread_context_tokens": "{used} / {max} tokens",
   "thread_context_value": "已使用 {percent}%，{used} / {max} tokens",
   "thread_context_as_of": "截至上一輪",
+  "thread_context_breakdown_unavailable": "代理的工作階段開啟時才會回報內容組成。傳送訊息後即可查看。",
+  "thread_context_breakdown_failed": "無法讀取內容組成：{error}",
   "thread_model_picker": "模型",
   "message_you": "你",
   "message_thinking": "思考中…",

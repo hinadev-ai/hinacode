@@ -88,6 +88,8 @@
   "thread_context_tokens": "{used} / {max} tokens",
   "thread_context_value": "{percent}% used, {used} of {max} tokens",
   "thread_context_as_of": "As of the last turn",
+  "thread_context_breakdown_unavailable": "The agent reports what fills it while its session is open. Send a message to see it.",
+  "thread_context_breakdown_failed": "Couldn't read the breakdown: {error}",
   "thread_model_picker": "Model",
   "message_you": "You",
   "message_thinking": "Thinking…",
