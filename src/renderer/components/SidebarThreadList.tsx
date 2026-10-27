@@ -277,10 +277,10 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
     ),
   )
 
-  // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
+  // The row leaves this tab's list; once it is gone, keep focus in the sidebar without scrolling to the first row.
   const moveOut = (updated: Thread) => {
     flushSync(() => useThreads.getState().upsert(updated))
-    if (document.activeElement === document.body) focusAfterRemoval()?.focus()
+    if (document.activeElement === document.body) focusAfterRemoval()?.focus({ preventScroll: true })
   }
   const archive = async () => {
     try {
