@@ -46,6 +46,10 @@ import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
+import { makeAndroidDriver } from "./services/devices/android.ts"
+import { devicesLayer } from "./services/devices/Devices.ts"
+import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
+import { simhelperSources } from "./services/devices/simhelperSources.ts"
 
 /** Where the app keeps its database, attachments and VM state, and what differs between the desktop and a cloud. */
 export interface AppOptions {
@@ -115,6 +119,13 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
+  const devices = devicesLayer({
+    drivers: {
+      ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
+      android: makeAndroidDriver(),
+    },
+    simslimAvailable: () => simslimAvailable(),
+  })
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -126,6 +137,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     tinyVm,
     passkeys,
     peers,
+    devices,
     linearLayer(process.env),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))

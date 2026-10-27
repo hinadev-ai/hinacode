@@ -205,6 +205,13 @@ export const commands = [
     experiment: "tinyVm",
   },
   {
+    id: "view.devices",
+    defaultKeys: "",
+    title: m.command_view_devices,
+    run: (ctx) => showView(ctx, "devices"),
+    experiment: "devices",
+  },
+  {
     id: "turn.interrupt",
     defaultKeys: "mod+shift+c",
     title: m.command_turn_interrupt,

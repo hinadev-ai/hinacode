@@ -47,6 +47,15 @@ export function ExperimentalSettings() {
     }
   }
 
+  const setDevices = async (devices: boolean) => {
+    setError(null)
+    try {
+      await updateSettings({ experimental: { ...experimental, devices } })
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
   const setTemplate = async (tinyVmTemplate: string) => {
     setError(null)
     try {
@@ -100,6 +109,17 @@ export function ExperimentalSettings() {
             />
           </Field>
         )}
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor="settings-experimental-devices">{m.settings_devices()}</FieldLabel>
+            <FieldDescription>{m.settings_devices_hint()}</FieldDescription>
+          </FieldContent>
+          <Switch
+            id="settings-experimental-devices"
+            checked={experimental.devices}
+            onCheckedChange={(checked) => void setDevices(checked)}
+          />
+        </Field>
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>

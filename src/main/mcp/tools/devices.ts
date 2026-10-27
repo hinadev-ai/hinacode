@@ -65,7 +65,6 @@ export const DeviceTools = Toolkit.make(
   }),
   McpTool.make("device_describe_ui", {
     description: `List the accessibility elements on screen, one per line with role, label, identifier, value and frame in points. Cheaper than a screenshot for finding what to tap. ${STARTS}`,
-    parameters: Schema.Struct({}),
   }),
 )
 

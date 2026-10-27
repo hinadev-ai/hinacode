@@ -1,10 +1,14 @@
 import type { PagePick } from "../../shared/browser.ts"
+import type { DeviceElement } from "../../shared/device.ts"
 import { elementLabel } from "../../shared/browserPicker.ts"
 import { useDrafts } from "../stores/drafts.ts"
 import { callPromise } from "./rpc.ts"
 
 export { PagePick } from "../../shared/browser.ts"
 export { CANCEL_PICK_SCRIPT, elementLabel, PICK_ELEMENT_SCRIPT } from "../../shared/browserPicker.ts"
+
+/** Names a device element the way its screen reader would, falling back to what identifies it. */
+export const deviceElementLabel = (element: DeviceElement) => element.label || element.identifier || element.role
 
 /** The part of a `<webview>` the browser view uses. */
 export interface WebviewElement extends HTMLElement {

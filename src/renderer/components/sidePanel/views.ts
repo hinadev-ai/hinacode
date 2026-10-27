@@ -9,6 +9,7 @@ import {
   RiFileEditLine,
   RiGlobalLine,
   RiComputerLine,
+  RiSmartphoneLine,
 } from "react-icons/ri"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
@@ -21,6 +22,7 @@ import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { BrowserView } from "./BrowserView.tsx"
 import { ChangesView } from "./ChangesView.tsx"
+import { DevicesView } from "./devices/DevicesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { FilesView } from "./FilesView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
@@ -83,6 +85,14 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     commandId: "view.tinyVm",
     component: TinyVmView,
     experiment: "tinyVm",
+  },
+  {
+    id: "devices",
+    icon: RiSmartphoneLine,
+    title: m.panel_tab_devices,
+    commandId: "view.devices",
+    component: DevicesView,
+    experiment: "devices",
   },
 ]
 

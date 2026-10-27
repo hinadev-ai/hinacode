@@ -53,14 +53,17 @@ export interface DevicesOptions {
   readonly leaseMs?: number
 }
 
-interface Live {
-  readonly deviceId: DeviceId
-  readonly link: Promise<DeviceLink>
+interface Screen {
   latest: DeviceFrame | null
   sequence: number
-  lease: number
   readonly waiters: Set<() => void>
   closed: boolean
+}
+
+interface Live extends Screen {
+  readonly deviceId: DeviceId
+  readonly link: Promise<DeviceLink>
+  lease: number
 }
 
 interface Row {
@@ -97,10 +100,10 @@ const make = (options: DevicesOptions) =>
     const readRow = (threadId: string) =>
       run(
         sql<{
-          device_id: string
+          deviceId: string
           owned: number
         }>`SELECT device_id, owned FROM thread_device WHERE thread_id = ${threadId}`.pipe(
-          Effect.map(([row]): Row | null => (row ? { deviceId: row.device_id, owned: row.owned === 1 } : null)),
+          Effect.map(([row]): Row | null => (row ? { deviceId: row.deviceId, owned: row.owned === 1 } : null)),
         ),
       )
     const writeRow = (threadId: string, row: Row) =>
@@ -110,7 +113,7 @@ const make = (options: DevicesOptions) =>
       )
     const deleteRow = (threadId: string) => run(sql`DELETE FROM thread_device WHERE thread_id = ${threadId}`)
     const ownedRows = () =>
-      run(sql<{ thread_id: string; device_id: string }>`SELECT thread_id, device_id FROM thread_device WHERE owned = 1`)
+      run(sql<{ threadId: string; deviceId: string }>`SELECT thread_id, device_id FROM thread_device WHERE owned = 1`)
 
     const driverOf = (deviceId: DeviceId) => options.drivers[devicePlatformOf(deviceId)]
 
@@ -155,28 +158,27 @@ const make = (options: DevicesOptions) =>
         existing.lease = Date.now()
         return existing
       }
-      const live: Live = {
-        deviceId,
-        latest: null,
-        sequence: 0,
-        lease: Date.now(),
-        waiters: new Set(),
-        closed: false,
-        link: driverOf(deviceId).connect(deviceId, (frame: Frame) => {
-          if (live.closed) return
-          live.latest = {
-            sequence: ++live.sequence,
-            mime: frame.mime,
-            data: frame.data.toString("base64"),
-            width: frame.width,
-            height: frame.height,
-            orientation: frame.orientation,
-          }
-          const waiters = [...live.waiters]
-          live.waiters.clear()
-          waiters.forEach((wake) => wake())
-        }),
+      // The frame callback holds `screen`, not `live`, because a driver may call it before connect returns.
+      const screen: Screen = { latest: null, sequence: 0, waiters: new Set(), closed: false }
+      const onFrame = (frame: Frame) => {
+        if (screen.closed) return
+        screen.latest = {
+          sequence: ++screen.sequence,
+          mime: frame.mime,
+          data: frame.data.toString("base64"),
+          width: frame.width,
+          height: frame.height,
+          orientation: frame.orientation,
+        }
+        const waiters = [...screen.waiters]
+        screen.waiters.clear()
+        waiters.forEach((wake) => wake())
       }
+      const live: Live = Object.assign(screen, {
+        deviceId,
+        lease: Date.now(),
+        link: driverOf(deviceId).connect(deviceId, onFrame),
+      })
       links.set(deviceId, live)
       void live.link.then(
         (link) =>
@@ -335,7 +337,7 @@ const make = (options: DevicesOptions) =>
           options.simslimAvailable(),
           ownedRows(),
         ])
-        const owners = new Map(rows.map((row) => [row.device_id, row.thread_id]))
+        const owners = new Map(rows.map((row) => [row.deviceId, row.threadId]))
         const devices = (
           await Promise.all([
             ios.kind === "ready" ? options.drivers.ios.list() : [],
@@ -407,11 +409,11 @@ const make = (options: DevicesOptions) =>
       for (const live of links.values()) if (Date.now() - live.lease > expiry) closeLive(live)
     })
     // A sweep rather than a call from archive, so archives from any path, and ones before a crash, converge.
-    const releaseArchived = sql<{ thread_id: string }>`
+    const releaseArchived = sql<{ threadId: string }>`
       SELECT thread_device.thread_id FROM thread_device JOIN thread ON thread.id = thread_device.thread_id
       WHERE thread.status = 'archived'
     `.pipe(
-      Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.thread_id), { discard: true })),
+      Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.threadId), { discard: true })),
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
     )
     yield* Effect.all([expireLeases, releaseArchived]).pipe(
