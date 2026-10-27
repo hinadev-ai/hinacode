@@ -44,6 +44,16 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
   }
 }
 
+/** GitHub's lines limit counts context lines too, so a diff can pass `diffTooLarge` and still get this. */
+export class PullRequestDiffTooLargeError extends Schema.TaggedError<PullRequestDiffTooLargeError>()(
+  "PullRequestDiffTooLargeError",
+  {},
+) {
+  override get message(): string {
+    return "GitHub does not serve diffs over 20,000 lines or 300 files."
+  }
+}
+
 /** The canonical pull request URL, safe to pass to `gh` as an argument: it can never be read as a flag. */
 export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
   const url = parseGitHubPullRequestUrl(raw.trim())
@@ -103,13 +113,14 @@ const PullRequestFields = Schema.Struct({
 })
 const PullRequestJson = Schema.fromJsonString(PullRequestFields)
 
-const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,headRefOid`
+const PULL_REQUEST_DETAIL_FIELDS = `${PULL_REQUEST_FIELDS},body,headRefOid,changedFiles`
 
 const PullRequestDetailJson = Schema.fromJsonString(
   Schema.Struct({
     ...PullRequestFields.fields,
     body: Schema.String,
     headRefOid: Schema.String,
+    changedFiles: Schema.Number,
   }),
 )
 
@@ -184,6 +195,7 @@ export const toPullRequestDetail = (json: typeof PullRequestDetailJson.Type): Pu
   baseRef: json.baseRefName,
   headRef: json.headRefName,
   head: json.headRefOid,
+  changedFiles: json.changedFiles,
   checkRuns: json.statusCheckRollup
     .map(toCheckRun)
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
@@ -270,7 +282,9 @@ export class GitHub extends Context.Service<
     readonly pullRequestDetail: (
       url: string,
     ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
-    readonly pullRequestDiff: (url: string) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError>
+    readonly pullRequestDiff: (
+      url: string,
+    ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | PullRequestDiffTooLargeError>
     /** Never deletes the branch: it is usually checked out in a local worktree. */
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
@@ -382,7 +396,13 @@ const make = Effect.gen(function* () {
         Effect.flatMap(decodePullRequestDetail),
         Effect.map(toPullRequestDetail),
       ),
-    pullRequestDiff: (raw) => ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]),
+    pullRequestDiff: (raw) =>
+      ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(
+        Effect.catchIf(
+          (error) => error._tag === "CommandError" && error.stderr.includes("too_large"),
+          () => Effect.fail(new PullRequestDiffTooLargeError()),
+        ),
+      ),
     merge: (raw, method) => ghByUrl(raw, (url) => ["pr", "merge", url, `--${method}`]).pipe(Effect.asVoid),
     close: (raw) => ghByUrl(raw, (url) => ["pr", "close", url]).pipe(Effect.asVoid),
     branchPullRequest,

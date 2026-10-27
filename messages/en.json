@@ -295,6 +295,7 @@
   "error_project_root_invalid": "That path is a file or not a full path. Enter a folder path such as ~/code/app.",
   "error_project_folder_not_empty": "That folder already has other files. Pick an empty folder or a new path.",
   "error_pull_request_url_invalid": "That is not a GitHub pull request link. Use https://github.com/owner/repo/pull/123.",
+  "error_pull_request_diff_too_large": "GitHub does not serve diffs over 20,000 lines or 300 files. Open the pull request on GitHub to read it.",
   "error_linear_request": "The Linear request failed. Check the API key in Settings > Integrations.",
   "error_schema": "HinaCode got data in an unexpected shape. Restart the app, and report a bug if it happens again.",
   "error_agent": "The agent failed: {detail}",
@@ -1728,6 +1729,7 @@
   "mobile_pr_code_loading": "Loading changes",
   "mobile_pr_code_failed": "Could not load changes: {message}",
   "mobile_pr_code_empty": "No changes.",
+  "mobile_pr_code_too_large": "This pull request is too large to show here. GitHub does not serve diffs over 20,000 lines or 300 files, so there are no files or guide for it.",
   "mobile_pr_code_update_desktop": "Update HinaCode on the desktop to read the code here.",
   "mobile_pr_file_added": "Added",
   "mobile_pr_file_removed": "Deleted",
@@ -1788,6 +1790,7 @@
   "pr_code_view_label": "List the changes by",
   "pr_code_view_files": "Files",
   "pr_code_view_guide": "Guide",
+  "pr_code_too_large": "This pull request is too large to show here. GitHub does not serve diffs over 20,000 lines or 300 files, so there are no files or guide for it.",
   "pr_code_summary": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
