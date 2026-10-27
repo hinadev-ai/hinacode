@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useHotkey } from "@tanstack/react-hotkeys"
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import type { ComponentType } from "react"
+import { type ComponentType, lazy, Suspense } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArchiveLine,
@@ -108,6 +108,21 @@ const pages: ReadonlyArray<SettingsPage> = [
     icon: RiFlaskLine,
     component: ExperimentalSettings,
   },
+  ...(import.meta.env.DEV
+    ? [
+        {
+          id: "deviceFrames",
+          scope: "app",
+          label: m.settings_device_frames,
+          icon: RiSmartphoneLine,
+          component: lazy(() =>
+            import("../components/deviceFrame/DeviceFrameHarness.tsx").then((module) => ({
+              default: module.DeviceFrameHarness,
+            })),
+          ),
+        } satisfies SettingsPage,
+      ]
+    : []),
 ]
 
 export function SettingsRoute() {
@@ -195,7 +210,11 @@ export function SettingsRoute() {
               // Keyed by environment so drafts in the page's fields never carry over to another machine.
               <EnvironmentPage key={environment ?? ""} environment={environment} page={page} />
             ) : (
-              page && <page.component />
+              page && (
+                <Suspense fallback={null}>
+                  <page.component />
+                </Suspense>
+              )
             )}
           </div>
         </div>
