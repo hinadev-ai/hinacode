@@ -68,8 +68,10 @@ function PlaceholderScreen() {
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
-    const draw = () => {
-      const { width, height } = canvas.getBoundingClientRect()
+    // contentRect ignores the transform DeviceFrame applies mid-turn, which getBoundingClientRect would include.
+    const draw = ([entry]: ReadonlyArray<ResizeObserverEntry>) => {
+      if (!entry) return
+      const { width, height } = entry.contentRect
       const dpr = window.devicePixelRatio
       canvas.width = Math.round(width * dpr)
       canvas.height = Math.round(height * dpr)
