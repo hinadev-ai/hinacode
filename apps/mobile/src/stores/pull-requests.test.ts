@@ -24,7 +24,15 @@ const link = (id: string, threadId: string, url: string, watched = false) =>
   }) as unknown as PullRequestLink
 
 const pullRequest = (url: string, checks: PullRequest["checks"] = "passing") =>
-  ({ url, number: 1, title: "Fix", status: "open", checks, review: "approved" }) as PullRequest
+  ({
+    url,
+    number: 1,
+    title: "Fix",
+    status: "open",
+    checks,
+    review: "approved",
+    mergeable: "conflicting",
+  }) as PullRequest
 
 const requests = (method: string) => calls.filter((pending) => pending.method === method)
 const answer = async (method: string, value: unknown) => {
@@ -78,7 +86,7 @@ it("takes a watched link's summary from its snapshot without asking GitHub", () 
   expect(calls).toEqual([])
   expect(usePullRequests.getState().summaries[URL_A]).toMatchObject({
     status: "ready",
-    value: { status: "open", checks: "failing", review: null },
+    value: { status: "open", checks: "failing", review: null, mergeable: "mergeable" },
   })
 })
 
@@ -93,7 +101,7 @@ it("shares one read between concurrent requests for the same pull request", asyn
   await card
   expect(usePullRequests.getState().summaries[URL_A]).toMatchObject({
     status: "ready",
-    value: { status: "open", checks: "passing", review: "approved" },
+    value: { status: "open", checks: "passing", review: "approved", mergeable: "conflicting" },
   })
 })
 

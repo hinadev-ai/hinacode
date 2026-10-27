@@ -1,5 +1,5 @@
-import type { Thread } from "@shared/domain.ts"
-import { checksIndicator, openChecks } from "@shared/threadStatus.ts"
+import type { PullRequestLink, Thread } from "@shared/domain.ts"
+import { checksIndicator, openChecks, type PullRequestAttention, pullRequestAttention } from "@shared/threadStatus.ts"
 import { useFocusEffect } from "expo-router"
 import { useCallback } from "react"
 import { type StyleProp, StyleSheet, Text, type TextStyle, View } from "react-native"
@@ -25,6 +25,29 @@ export function usePullRequestSummary(url: string | null): PullRequestSummary | 
     }, [url, generation]),
   )
   return remote?.status === "ready" ? remote.value : null
+}
+
+/**
+ * The most urgent reason any of `links` waits on the developer, read again like `usePullRequestSummary`. The row
+ * only re-renders when that reason changes, not on every summary a read writes.
+ */
+export function usePullRequestAttention(links: readonly PullRequestLink[]): PullRequestAttention | undefined {
+  const attention = usePullRequests((state) =>
+    pullRequestAttention(
+      links.map((link) => {
+        const remote = state.summaries[link.url]
+        return remote?.status === "ready" ? remote.value : undefined
+      }),
+    ),
+  )
+  const generation = useConnection((state) => state.generation)
+  useFocusEffect(
+    useCallback(() => {
+      if (generation === 0) return
+      for (const link of links) usePullRequests.getState().ensureSummary(link.url)
+    }, [links, generation]),
+  )
+  return attention
 }
 
 /**

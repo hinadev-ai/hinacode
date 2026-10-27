@@ -86,6 +86,7 @@ const thread = (id: string, projectId: string) => ({
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  snoozedUntil: null,
   queue: [],
   createdBy: "user",
   createdAt: "2026-10-24T00:00:00.000Z",

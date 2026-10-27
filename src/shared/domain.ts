@@ -32,6 +32,17 @@ export const Project = Schema.Struct({
 })
 export type Project = typeof Project.Type
 
+/**
+ * A chat's own folder inside the chats root. It is derived, never stored, and exists while the chat is not archived.
+ * It joins with the root's own separator, because the renderer derives it too, for a chat on a machine of any OS.
+ */
+export const chatFolder = (chatsRoot: string, threadId: string) =>
+  `${chatsRoot.replace(/[\\/]+$/, "")}${chatsRoot.includes("\\") ? "\\" : "/"}${threadId}`
+
+/** Where a thread works when it has no live worktree: the project root, or a chat's own folder. */
+export const threadFolder = (project: Pick<Project, "kind" | "rootPath">, threadId: string) =>
+  project.kind === "chats" ? chatFolder(project.rootPath, threadId) : project.rootPath
+
 export const WorktreeStatus = Schema.Literals(["preparing", "ready", "failed", "removed"])
 export type WorktreeStatus = typeof WorktreeStatus.Type
 
@@ -145,6 +156,10 @@ export type ChecksStatus = typeof ChecksStatus.Type
 export const ReviewStatus = Schema.Literals(["approved", "changesRequested", "reviewRequired"])
 export type ReviewStatus = typeof ReviewStatus.Type
 
+/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
+export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
+export type Mergeable = typeof Mergeable.Type
+
 /** A GitHub pull request as `gh pr view` reports it. */
 export const PullRequest = Schema.Struct({
   url: Schema.String,
@@ -155,6 +170,8 @@ export const PullRequest = Schema.Struct({
   checks: Schema.NullOr(ChecksStatus),
   /** Null when the repository requires no review and nobody reviewed. */
   review: Schema.NullOr(ReviewStatus),
+  /** Defaults for a desktop or cloud from before the sidebar read it. */
+  mergeable: Mergeable.pipe(Schema.withDecodingDefaultKey(Effect.succeed("unknown" as const))),
   /** The author's login. */
   author: Schema.String,
   headRefName: Schema.String,
@@ -176,10 +193,6 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
-/** `unknown` while GitHub is still computing it, which it does lazily after a push. */
-export const Mergeable = Schema.Literals(["mergeable", "conflicting", "unknown"])
-export type Mergeable = typeof Mergeable.Type
-
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -188,7 +201,6 @@ export const PullRequestDetail = Schema.Struct({
   headRef: Schema.String,
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
-  mergeable: Mergeable,
   checkRuns: Schema.Array(CheckRun),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
@@ -410,6 +422,11 @@ export const Thread = Schema.Struct({
   sortIndex: Schema.Number,
   /** When the user pinned the thread to the top of the sidebar, or null when it is not pinned. */
   pinnedAt: Schema.NullOr(Timestamp),
+  /**
+   * Until when the thread is out of the Inbox. A past time is when it woke, and sorts the Inbox like an update.
+   * Activity clears it. Clouds on an older version leave it out.
+   */
+  snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   /** Oldest first. */
   queue: Schema.Array(QueuedMessage),
   /**
@@ -565,6 +582,17 @@ export const Opener = Schema.Struct({
 })
 export type Opener = typeof Opener.Type
 
+export const SidebarGroup = Schema.Struct({ id: Schema.String, name: Schema.String, collapsed: Schema.Boolean })
+export type SidebarGroup = typeof SidebarGroup.Type
+
+export const SidebarGroups = Schema.Struct({
+  /** In sidebar order. */
+  groups: Schema.Array(SidebarGroup),
+  /** Group id by project row key (`ProjectGroup.key` in the renderer). A row in no group has no entry. */
+  groupOf: Schema.Record(Schema.String, Schema.String),
+})
+export type SidebarGroups = typeof SidebarGroups.Type
+
 /** Settings of this desktop, whichever machine a thread runs on. Only the renderer reads them. */
 export const ClientSettings = Schema.Struct({
   locale: Locale,
@@ -574,6 +602,7 @@ export const ClientSettings = Schema.Struct({
   keybindings: Schema.Record(Schema.String, Schema.String),
   appearance: Appearance,
   notifications: NotificationSettings,
+  sidebarGroups: SidebarGroups,
 })
 export type ClientSettings = typeof ClientSettings.Type
 
@@ -583,6 +612,7 @@ export const defaultClientSettings: ClientSettings = {
   keybindings: {},
   appearance: { theme: "system", fontSize: 16, uiFont: null, monoFont: null, contrast: 0 },
   notifications: { completed: true, needsInput: true, failed: true, sound: true },
+  sidebarGroups: { groups: [], groupOf: {} },
 }
 
 /**
@@ -593,12 +623,26 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+/**
+ * The `default*` keys are what a new thread starts with. Picking an option on a thread before its first message
+ * saves it here, so the next new thread starts the way the last one was set up.
+ */
 export const Settings = Schema.Struct({
+  defaultProvider: ProviderId,
   defaultModel: Schema.Struct({
     claude: Schema.NullOr(Schema.String),
     codex: Schema.NullOr(Schema.String),
     muse: Schema.NullOr(Schema.String),
   }),
+  /** Null is the model's own default effort. */
+  defaultEffort: Schema.Struct({
+    claude: Schema.NullOr(Schema.String),
+    codex: Schema.NullOr(Schema.String),
+    muse: Schema.NullOr(Schema.String),
+  }),
+  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  /** Whether the first turn of a new thread in a repository runs in a new worktree or in the project root. */
+  defaultWorkspaceMode: WorkspaceChoice.fields.mode,
   /** Model ids the thread model picker lists per agent, in any order. Empty lists every model the agent has. */
   modelPresets: Schema.Struct({
     claude: Schema.Array(Schema.String),
@@ -651,7 +695,11 @@ export const Settings = Schema.Struct({
 export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
+  defaultProvider: "claude",
   defaultModel: { claude: null, codex: null, muse: null },
+  defaultEffort: { claude: null, codex: null, muse: null },
+  defaultFastMode: { claude: false, codex: false, muse: false },
+  defaultWorkspaceMode: "local",
   modelPresets: { claude: [], codex: [], muse: [] },
   defaultAccount: { claude: null, codex: null, muse: null },
   defaultAccountName: { claude: null, codex: null, muse: null },

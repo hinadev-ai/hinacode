@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { type Duration, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
 import { WebSocket } from "ws"
@@ -15,7 +15,7 @@ import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
-import type { Project, Thread, Worktree } from "../shared/domain.ts"
+import { defaultSettings, type Project, type Thread, type Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
@@ -413,6 +413,21 @@ describe("rpc contract", () => {
 })
 
 describe("projects, threads and settings over rpc", () => {
+  afterEach(async () => {
+    const { defaultProvider, defaultModel, defaultEffort, defaultFastMode, defaultAccessMode, defaultWorkspaceMode } =
+      defaultSettings
+    result(
+      await invoke("settings.set", {
+        defaultProvider,
+        defaultModel,
+        defaultEffort,
+        defaultFastMode,
+        defaultAccessMode,
+        defaultWorkspaceMode,
+      }),
+    )
+  })
+
   test("a created project is listed and can be read back", async () => {
     const project = await createProject("repo")
     expect(project).toMatchObject({ name: "repo", rootPath: repo, setupScript: null } satisfies Partial<Project>)
@@ -517,6 +532,28 @@ describe("projects, threads and settings over rpc", () => {
     expect(listed?.accessMode).toBe("supervised")
   })
 
+  test("a new thread starts as the last new thread was set up, ignoring changes after its first message", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const first = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.update", { id: first.id, provider: "codex" }))
+    result(await invoke("threads.update", { id: first.id, effort: "high", fastMode: true, accessMode: "auto" }))
+    result(await invoke("settings.set", { defaultWorkspaceMode: "worktree" }))
+    result(await invoke("threads.send", { threadId: first.id, prompt: "hi" }))
+
+    const second = result(await invoke("threads.create", { projectId: project.id }))
+    expect(second).toMatchObject({
+      provider: "codex",
+      model: "codex-model",
+      effort: "high",
+      fastMode: true,
+      accessMode: "auto",
+    } satisfies Partial<Thread>)
+    expect(result(await invoke("settings.get", undefined)).defaultWorkspaceMode).toBe("local")
+
+    result(await invoke("threads.update", { id: first.id, accessMode: "supervised" }))
+    expect(result(await invoke("threads.create", { projectId: project.id })).accessMode).toBe("auto")
+  })
+
   test("reordering a thread keeps its updatedAt", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const created = result(await invoke("threads.create", { projectId: project.id }))
@@ -549,6 +586,28 @@ describe("projects, threads and settings over rpc", () => {
     expect(unpinned.pinnedAt).toBeNull()
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
     expect(listed).toMatchObject({ pinnedAt: null, updatedAt: thread.updatedAt })
+  })
+
+  test("snoozing keeps a thread's updatedAt, and activity wakes it", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.snoozedUntil).toBeNull()
+
+    const until = "2026-11-02T08:00:00.000Z"
+    const snoozed = result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+    expect(snoozed).toMatchObject({ snoozedUntil: until, updatedAt: thread.updatedAt })
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed?.snoozedUntil).toBe(until)
+
+    const pinned = result(await invoke("threads.update", { id: thread.id, pinned: true }))
+    expect(pinned.snoozedUntil).toBe(until)
+
+    const active = result(await invoke("threads.update", { id: thread.id, status: "idle" }))
+    expect(active.snoozedUntil).toBeNull()
+
+    result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+    const woken = result(await invoke("threads.update", { id: thread.id, snoozedUntil: null }))
+    expect(woken.snoozedUntil).toBeNull()
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
@@ -629,6 +688,18 @@ describe("projects, threads and settings over rpc", () => {
 
     const malformed = await invoke("clientSettings.set", { notifications: { ...notifications, sound: "yes" } } as never)
     expect(malformed).toMatchObject({ error: { tag: "SchemaError" } })
+    expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
+  })
+
+  test("sidebar groups persist through the client settings patch", async () => {
+    const before = result(await invoke("clientSettings.get", undefined))
+    expect(before.sidebarGroups).toStrictEqual({ groups: [], groupOf: {} })
+    const sidebarGroups = {
+      groups: [{ id: "work", name: "Work", collapsed: true }],
+      groupOf: { "acme/web": "work" },
+    }
+    const saved = result(await invoke("clientSettings.set", { sidebarGroups }))
+    expect(saved).toStrictEqual({ ...before, sidebarGroups })
     expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
   })
 

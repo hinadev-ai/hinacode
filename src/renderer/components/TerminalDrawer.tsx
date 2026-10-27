@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef } from "react"
 import { RiAddLine, RiArrowDownSLine, RiCloseLine, RiTerminalBoxLine } from "react-icons/ri"
 import type { TerminalSession } from "../../shared/domain.ts"
+import { TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { attachTerminal, focusTerminal, showTerminal } from "../lib/terminalScreens.ts"
 import { m } from "../paraglide/messages.js"
 import { useTerminals } from "../stores/terminals.ts"
@@ -8,7 +9,7 @@ import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
-const MIN_HEIGHT = 120
+const MIN_HEIGHT = TERMINAL_HEIGHT_BOUNDS.min
 /** Room the transcript and composer keep above the drawer. */
 const RESERVED_HEIGHT = 200
 const KEYBOARD_STEP = 24

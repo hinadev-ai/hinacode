@@ -28,6 +28,8 @@ import {
 } from "react"
 import { flushSync } from "react-dom"
 import {
+  RiAlarmLine,
+  RiAlarmSnoozeLine,
   RiArchiveLine,
   RiDeleteBinLine,
   RiDraggable,
@@ -50,7 +52,15 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
-import { callPromise, currentBranchAtom, type EnvironmentId, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { formatSnoozeTime } from "../lib/snooze.ts"
+import {
+  callPromise,
+  currentBranchAtom,
+  type EnvironmentId,
+  projectsAtom,
+  pullRequestAttentionAtom,
+  pullRequestStatusAtom,
+} from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -59,7 +69,8 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
-import { useThreads } from "../stores/threads.ts"
+import { lastActivity, useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -82,6 +93,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
+import { snoozeThread } from "./SnoozeDialog.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -257,6 +269,12 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const state = rowState(
     thread.status,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
+    useAtomValue(
+      pullRequestAttentionAtom(
+        environment,
+        meta.links.map((link) => link.url),
+      ),
+    ),
   )
 
   // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
@@ -427,6 +445,18 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 <DropdownMenuItem onClick={() => void togglePin()}>
                   {pinned ? <RiUnpinLine aria-hidden /> : <RiPushpinLine aria-hidden />}
                   {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+                </DropdownMenuItem>
+              )}
+              {!archived && (
+                <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                  <RiAlarmSnoozeLine aria-hidden />
+                  {m.sidebar_thread_snooze()}
+                </DropdownMenuItem>
+              )}
+              {!archived && meta.snoozedUntil !== null && (
+                <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                  <RiAlarmLine aria-hidden />
+                  {m.sidebar_thread_unsnooze()}
                 </DropdownMenuItem>
               )}
               {watched.length === 0 ? (
@@ -649,6 +679,12 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconTyp
   limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited) },
   unseen_completed: { label: m.thread_status_unseen_completed, ...toIcon(rowStatusIndicator.unseen_completed) },
   unseen_failed: { label: m.thread_status_unseen_failed, ...toIcon(rowStatusIndicator.unseen_failed) },
+  pr_conflicting: { label: m.thread_status_pr_conflicting, ...toIcon(rowStatusIndicator.pr_conflicting) },
+  pr_checksFailing: { label: m.thread_status_pr_checks_failing, ...toIcon(rowStatusIndicator.pr_checksFailing) },
+  pr_changesRequested: {
+    label: m.thread_status_pr_changes_requested,
+    ...toIcon(rowStatusIndicator.pr_changesRequested),
+  },
 }
 
 function StatusIndicator({ state }: { state: RowState }): ReactNode {
@@ -676,8 +712,15 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     removed: worktree?.status === "removed",
     links,
     threadId: thread.id,
-    updatedAt: thread.updatedAt,
+    updatedAt: lastActivity(thread),
+    snoozedUntil: useSnoozedUntil(thread),
   }
+}
+
+/** When the thread wakes, or null when it is not snoozed. */
+function useSnoozedUntil(thread: Thread) {
+  const now = useNow()
+  return thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now ? thread.snoozedUntil : null
 }
 
 const noLinks: ReadonlyArray<PullRequestLink> = []
@@ -689,6 +732,7 @@ function ThreadMeta({
   links,
   threadId,
   updatedAt,
+  snoozedUntil,
   cloud,
   environment,
 }: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
@@ -718,7 +762,7 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      <LastActive updatedAt={updatedAt} />
+      {snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />}
     </div>
   )
 }
@@ -734,6 +778,24 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
       className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
     >
       {formatRelativeTime(updatedAt, now, locale)}
+    </time>
+  )
+}
+
+/** Where the last activity would be, so a snoozed row says when it comes back instead. */
+function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
+  const now = useNow()
+  const locale = getLocale()
+  const time = formatSnoozeTime(new Date(snoozedUntil), new Date(now), locale)
+  return (
+    <time
+      dateTime={snoozedUntil}
+      title={m.sidebar_snoozed_until({ time })}
+      className="ml-auto flex shrink-0 items-center gap-1 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+    >
+      <RiAlarmSnoozeLine aria-hidden className="size-3" />
+      <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
+      <span aria-hidden>{time}</span>
     </time>
   )
 }

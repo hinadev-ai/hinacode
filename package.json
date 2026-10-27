@@ -85,6 +85,7 @@
     "@wterm/dom": "0.5.4",
     "@wterm/ghostty": "0.5.4",
     "babel-plugin-react-compiler": "1.0.0",
+    "chrono-node": "2.10.3",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "electron": "44.9.3",

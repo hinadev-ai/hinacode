@@ -9,6 +9,8 @@ import type {
   OpenerId,
   PermissionRequestOutcome,
   PullRequestDetail,
+  Thread,
+  WorkspaceChoice,
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
@@ -110,14 +112,42 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
-/** The model a new thread starts with: the user's default for the agent, else the first one it lists. */
-const defaultModel = (provider: ProviderId) =>
+/** What a new thread of `provider` starts with: the options last picked for one, else the agent's first model. */
+const newThreadOptions = (provider: ProviderId) =>
   Effect.gen(function* () {
-    const { defaultModel: preferredModels } = yield* Settings.use((settings) => settings.get)
-    const preferred = preferredModels[provider]
-    if (preferred !== null) return preferred
-    const models = yield* AgentRunner.use((runner) => runner.listModels(provider))
-    return models[0]?.id ?? ""
+    const settings = yield* Settings.use((service) => service.get)
+    const model =
+      settings.defaultModel[provider] ?? (yield* AgentRunner.use((runner) => runner.listModels(provider)))[0]?.id ?? ""
+    return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
+  })
+
+/** A thread's options become the next new thread's defaults while it is still being set up, before its first message. */
+const rememberNewThreadOptions = (thread: Thread) =>
+  Effect.gen(function* () {
+    if (yield* Threads.use((threads) => threads.started(thread.id))) return
+    const settings = yield* Settings.use((service) => service.get)
+    const provider = thread.provider
+    yield* Settings.use((service) =>
+      service.set({
+        defaultProvider: provider,
+        defaultModel: { ...settings.defaultModel, [provider]: thread.model },
+        defaultEffort: { ...settings.defaultEffort, [provider]: thread.effort },
+        defaultFastMode: { ...settings.defaultFastMode, [provider]: thread.fastMode },
+        defaultAccessMode: thread.accessMode,
+        defaultAccount: { ...settings.defaultAccount, [provider]: thread.accountId },
+      }),
+    )
+  })
+
+/** Where a repository thread's first turn runs becomes where the next new one starts. Returns the save to run once it sent. */
+const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) =>
+  Effect.gen(function* () {
+    const thread = yield* Threads.use((threads) => threads.get(threadId))
+    const project = yield* Projects.use((projects) => projects.get(thread.projectId))
+    const first = thread.worktreeId === null && !(yield* Threads.use((threads) => threads.started(threadId)))
+    return first && project.kind === "folder"
+      ? Settings.use((service) => service.set({ defaultWorkspaceMode: mode })).pipe(Effect.asVoid)
+      : Effect.void
   })
 
 /** Git history is only read from a checkout hinacode recorded, never from a path the renderer made up. */
@@ -162,9 +192,10 @@ const handlers: Handlers = {
   // Thread changes are pushed as well as returned, so a phone and the desktop window stay in step.
   "threads.create": ({ projectId }) =>
     Effect.gen(function* () {
-      const model = yield* defaultModel("claude")
+      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
-        threads.create({ projectId, title: randomName(), provider: "claude", model }),
+        threads.create({ projectId, title: randomName(), provider, ...options }),
       )
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
@@ -172,18 +203,14 @@ const handlers: Handlers = {
   // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
-      const patch =
-        input.provider === undefined
-          ? input
-          : {
-              ...input,
-              model: input.model ?? (yield* defaultModel(input.provider)),
-              effort: input.effort ?? null,
-              fastMode: input.fastMode ?? false,
-            }
+      const patch = input.provider === undefined ? input : { ...(yield* newThreadOptions(input.provider)), ...input }
       const thread = yield* Threads.use((threads) => threads.update(patch))
       if (input.accessMode !== undefined) {
         yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
+      }
+      const { provider, model, effort, fastMode, accessMode } = input
+      if ([provider, model, effort, fastMode, accessMode].some((option) => option !== undefined)) {
+        yield* rememberNewThreadOptions(thread)
       }
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
@@ -196,7 +223,9 @@ const handlers: Handlers = {
 
   "threads.resumeAtReset": ({ id, enabled }) => AgentRunner.use((runner) => runner.resumeAtReset(id, enabled)),
   "threads.switchAccount": ({ id, accountId, resend }) =>
-    AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })),
+    AgentRunner.use((runner) => runner.switchAccount(id, accountId, { resend: resend ?? false })).pipe(
+      Effect.tap(rememberNewThreadOptions),
+    ),
 
   "worktrees.list": () => Worktrees.use((worktrees) => worktrees.list),
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
@@ -297,7 +326,11 @@ const handlers: Handlers = {
       }),
     ),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
-    AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace })),
+    Effect.gen(function* () {
+      const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
+      yield* AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace }))
+      yield* remember
+    }),
   "threads.steer": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.steer(threadId, text, attachments)),
   "threads.queue": ({ threadId, text, attachments = [] }) =>
