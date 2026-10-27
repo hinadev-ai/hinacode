@@ -24,7 +24,7 @@ import type { ConnectionStatus } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { motion } from "@/lib/motion"
 
-type Variant = "primary" | "secondary" | "danger" | "ghost"
+type Variant = "primary" | "secondary" | "danger" | "ghost" | "dangerGhost"
 
 type ButtonProps = Omit<PressableProps, "children" | "style"> & { style?: StyleProp<ViewStyle> }
 
@@ -117,6 +117,7 @@ const buttonColors = (theme: Palette) => ({
   secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
   danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
   ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
+  dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
 })
 
 export type Tone = "neutral" | "attention" | "running" | "danger"
