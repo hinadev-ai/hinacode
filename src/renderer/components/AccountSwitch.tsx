@@ -5,10 +5,9 @@ import { useActionState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { AccountLimits } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import type { LimitWindow } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
-import { formatResetIn, mostUsed, spentWindow } from "../lib/planLimits.ts"
+import { type AccountOption, accountOptions, formatResetIn } from "../../shared/planLimits.ts"
 import { accountLimitsAtom, callPromise } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -21,29 +20,12 @@ import { FieldError } from "./ui/field.tsx"
 
 type AccountThread = Pick<Thread, "id" | "provider" | "accountId" | "model">
 
-export interface AccountOption {
-  /** Null is the CLI's own login. */
-  readonly id: string | null
-  readonly name: string
-  /** Undefined when the plan limits are unknown, such as for an API key or a remote environment's account. */
-  readonly mostUsed: LimitWindow | undefined
-  /** The window that keeps the account from running the thread's model. */
-  readonly spent: LimitWindow | undefined
-}
-
 export function useAccountOptions(thread: AccountThread) {
   const environment = useThreadEnvironment(thread.id)
   const added = useProviderAccounts(environment, thread.provider)
   const defaultName = useDefaultAccountName(environment, thread.provider)
   const limits = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), (): ReadonlyArray<AccountLimits> => [])
-  const windowsOf = (id: string | null) =>
-    environment === null
-      ? (limits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? [])
-      : []
-  const options = [{ id: null, name: defaultName }, ...added].map(({ id, name }): AccountOption => {
-    const windows = windowsOf(id)
-    return { id, name, mostUsed: mostUsed(windows), spent: spentWindow(windows, thread.model) }
-  })
+  const options = accountOptions(thread, defaultName, added, environment === null ? limits : [])
   const current = options.find((option) => option.id === thread.accountId)
   const suggestion = options
     .filter((option) => option !== current && option.mostUsed !== undefined && option.spent === undefined)

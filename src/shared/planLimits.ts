@@ -1,4 +1,5 @@
-import type { LimitWindow } from "../../shared/limits.ts"
+import type { AccountLimits, AgentProfile, ProviderId } from "./agent.ts"
+import type { LimitWindow } from "./limits.ts"
 
 const minuteMs = 60_000
 const hourMinutes = 60
@@ -50,3 +51,28 @@ export const spentWindow = (windows: ReadonlyArray<LimitWindow>, model: string) 
       (last, window) => (last === undefined || resetsLater(window, last) ? window : last),
       undefined,
     )
+
+export interface AccountOption {
+  /** Null is the CLI's own login. */
+  readonly id: string | null
+  readonly name: string
+  /** Undefined when the plan limits are unknown, such as for an API key or a remote environment's account. */
+  readonly mostUsed: LimitWindow | undefined
+  /** The window that keeps the account from running the thread's model. */
+  readonly spent: LimitWindow | undefined
+}
+
+/** The CLI's own login, named `defaultName`, then every account added for the thread's agent. */
+export const accountOptions = (
+  thread: { readonly provider: ProviderId; readonly model: string },
+  defaultName: string,
+  profiles: ReadonlyArray<AgentProfile>,
+  limits: ReadonlyArray<AccountLimits>,
+): ReadonlyArray<AccountOption> =>
+  [{ id: null, name: defaultName }, ...profiles.filter((profile) => profile.provider === thread.provider)].map(
+    ({ id, name }) => {
+      const windows =
+        limits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? []
+      return { id, name, mostUsed: mostUsed(windows), spent: spentWindow(windows, thread.model) }
+    },
+  )
