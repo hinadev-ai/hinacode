@@ -8,6 +8,7 @@ import {
   query,
   type Options,
   type Query,
+  type SDKControlGetContextUsageResponse,
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
@@ -18,6 +19,7 @@ import {
   type AgentEvent,
   type BackgroundTask,
   CLAUDE_EFFORT_LEVELS,
+  type ContextBreakdown,
   type ModelInfo,
   type RunTurnInput,
 } from "../../../shared/agent.ts"
@@ -117,6 +119,15 @@ interface Session extends MapState, ApprovalSession {
   expiry: Fiber.Fiber<void> | null
   closed: boolean
 }
+
+/** Deferred tools sit outside the window until the agent loads one, so they are left out. */
+const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBreakdown => ({
+  usedTokens: usage.totalTokens,
+  maxTokens: usage.rawMaxTokens,
+  categories: usage.categories.flatMap(({ name, tokens, kind }) =>
+    kind === "deferred" || tokens === 0 ? [] : [{ name, tokens, kind }],
+  ),
+})
 
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
@@ -872,6 +883,17 @@ export const layer = Layer.effect(
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
+      contextBreakdown: (threadId) =>
+        Effect.suspend(() => {
+          const session = sessions.get(threadId)
+          if (session === undefined) return Effect.succeed(null)
+          return lease(session, (leased) =>
+            Effect.tryPromise({
+              try: () => leased.query.getContextUsage(),
+              catch: agentError("Failed to read the context usage"),
+            }),
+          ).pipe(Effect.map(toContextBreakdown))
+        }),
       // A sub-agent's id is its CLI task id.
       stopSubagent: (threadId, subagentId) =>
         Effect.suspend(() => {

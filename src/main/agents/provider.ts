@@ -8,6 +8,7 @@ import type {
   AgentEvent,
   ApprovalDecision,
   BackgroundTask,
+  ContextBreakdown,
   ModelInfo,
   ProviderId,
   QuestionAnswers,
@@ -92,6 +93,11 @@ export interface AgentProvider {
     readonly changes: Stream.Stream<BackgroundTasksChange>
     readonly stop: (threadId: string, taskId: string) => Effect.Effect<void, AgentError>
   }
+  /**
+   * What fills the context window of the thread's open session. Null when no session is open. A provider
+   * whose agent cannot report it leaves it out.
+   */
+  readonly contextBreakdown?: (threadId: string) => Effect.Effect<ContextBreakdown | null, AgentError>
   /** Stops one sub-agent of the thread by its `Subagent.id`. A provider that cannot leaves it out. */
   readonly stopSubagent?: (threadId: string, subagentId: string) => Effect.Effect<void, AgentError>
   readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>

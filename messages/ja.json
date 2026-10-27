@@ -88,6 +88,8 @@
   "thread_context_tokens": "{used} / {max} トークン",
   "thread_context_value": "{percent}% 使用（{max} トークン中 {used} トークン）",
   "thread_context_as_of": "前回のターン時点",
+  "thread_context_breakdown_unavailable": "内訳はエージェントのセッションが開いている間だけ取得できます。メッセージを送ると表示されます。",
+  "thread_context_breakdown_failed": "内訳を取得できませんでした: {error}",
   "thread_model_picker": "モデル",
   "message_you": "あなた",
   "message_thinking": "思考中…",
