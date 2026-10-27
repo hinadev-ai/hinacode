@@ -936,4 +936,6 @@ export interface HinacodeBridge {
   readonly onEvent: (listener: (event: typeof PushEvent.Encoded) => void) => () => void
   /** Absolute path of a dropped or picked `File`; sandboxed renderers have no `File.path`. */
   readonly pathForFile: (file: File) => string
+  /** Whether macOS glass sits behind the page, so the window chrome can let it through. */
+  readonly liquidGlass: boolean
 }

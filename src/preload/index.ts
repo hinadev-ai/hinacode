@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from "electron"
-import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
+import { EVENT_CHANNEL, LIQUID_GLASS_ARGUMENT, RPC_CHANNEL } from "../shared/channels.ts"
 import type { HinacodeBridge } from "../shared/contract.ts"
 
 const bridge: HinacodeBridge = {
@@ -10,6 +10,7 @@ const bridge: HinacodeBridge = {
     return () => ipcRenderer.off(EVENT_CHANNEL, handler)
   },
   pathForFile: (file) => webUtils.getPathForFile(file),
+  liquidGlass: process.argv.includes(LIQUID_GLASS_ARGUMENT),
 }
 
 contextBridge.exposeInMainWorld("hinacode", bridge)

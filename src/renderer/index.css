@@ -20,6 +20,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* macOS glass sits behind the page (src/main/liquidGlass.ts). The chrome lets it through unless transparency is reduced. */
+@custom-variant glass {
+  @media (prefers-reduced-transparency: no-preference) {
+    &:is([data-glass] *) {
+      @slot;
+    }
+  }
+}
+
 /* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
 @custom-variant hover {
   @media (hover: hover) and (pointer: fine) {
@@ -469,7 +478,7 @@
   }
   body {
     /* macOS thickens light text on dark backgrounds unless smoothing is set to grayscale. */
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased glass:bg-transparent;
   }
   html {
     @apply font-sans;

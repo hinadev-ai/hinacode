@@ -27,7 +27,7 @@ export function StatusBar() {
   return (
     <footer
       aria-label={m.status_bar_label()}
-      className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-sidebar-border bg-sidebar px-2 text-xs text-muted-foreground"
+      className="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-sidebar-border bg-sidebar glass:bg-sidebar/80 px-2 text-xs text-muted-foreground"
     >
       <div className="flex h-full min-w-0 items-center gap-3 overflow-hidden">
         <PlanLimits

@@ -26,6 +26,8 @@ import { useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
+if (window.hinacode.liquidGlass) document.documentElement.dataset.glass = ""
+
 function App() {
   const locale = useLocale((state) => state.locale)
   const { appearance } = useClientSettings()
