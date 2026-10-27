@@ -9,7 +9,7 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "@shared/contract.ts"
-import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "@shared/owners.ts"
+import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampProjects } from "@shared/owners.ts"
 import { dialPlan } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import type { StoredServer } from "./stored-target"
@@ -92,9 +92,9 @@ const listeners = new Set<(event: PushEvent) => void>()
 export function restoreAnswers(serverId: string, answers: RememberedAnswers) {
   if (remembered.has(serverId) || !useConnection.getState().servers.some((server) => server.id === serverId)) return
   remembered.set(serverId, answers)
-  const unclaimed = {
+  const unclaimed: Owners = {
     ...owners,
-    teach: (environmentId: string, entity: Entity, id: string) => {
+    teach: (environmentId, entity, id) => {
       if (owners.owner(entity, id) === undefined) owners.teach(environmentId, entity, id)
     },
   }
