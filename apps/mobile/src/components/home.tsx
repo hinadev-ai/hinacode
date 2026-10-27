@@ -1,7 +1,7 @@
 import type { Project, Thread } from "@shared/domain.ts"
 import { router, Stack } from "expo-router"
-import { useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { type ReactNode, useState } from "react"
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
@@ -134,57 +134,75 @@ export function HomeContent({
 
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects
+  const status = loading ? (
+    <Reveal style={styles.loading}>
+      <Spinner size={20} color={theme.textMuted} />
+      <Text style={{ color: theme.textMuted }}>{copy("mobile_home_loading")}</Text>
+    </Reveal>
+  ) : noProjects ? (
+    <EmptyState
+      icon="RiFolderAddLine"
+      title={copy("mobile_home_no_projects")}
+      hint={copy("mobile_home_no_projects_hint")}
+      action={
+        <Button
+          testID="add-project-button"
+          label={copy("mobile_home_add_project")}
+          icon="RiFolderAddLine"
+          variant="primary"
+          onPress={() => router.push("/project/new")}
+        />
+      }
+    />
+  ) : null
+  const notice = loadStatus === "error" && loadError !== null && (
+    <View style={styles.notice}>
+      <Notice text={loadError} tone="danger" />
+      <Button
+        label={copy("mobile_home_retry")}
+        icon="RiRefreshLine"
+        style={styles.retry}
+        onPress={() => void useThreads.getState().load()}
+      />
+    </View>
+  )
+
+  if (search !== undefined) {
+    if (!hasProjects)
+      return (
+        <ScrollView
+          style={[styles.screen, { backgroundColor: theme.background }]}
+          contentInsetAdjustmentBehavior="automatic"
+        >
+          {notice}
+          {status}
+        </ScrollView>
+      )
+
+    return query.trim() === "" ? (
+      <HomeList selectedId={selectedId} nativeHeader header={notice} />
+    ) : (
+      <SearchResults query={query} nativeHeader header={notice} />
+    )
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: transparent ? "transparent" : theme.background }]}>
-      {loadStatus === "error" && loadError !== null && (
-        <View style={styles.notice}>
-          <Notice text={loadError} tone="danger" />
-          <Button
-            label={copy("mobile_home_retry")}
-            icon="RiRefreshLine"
-            style={styles.retry}
-            onPress={() => void useThreads.getState().load()}
-          />
-        </View>
-      )}
-      {loading ? (
-        <Reveal style={styles.loading}>
-          <Spinner size={20} color={theme.textMuted} />
-          <Text style={{ color: theme.textMuted }}>{copy("mobile_home_loading")}</Text>
-        </Reveal>
-      ) : noProjects ? (
-        <EmptyState
-          icon="RiFolderAddLine"
-          title={copy("mobile_home_no_projects")}
-          hint={copy("mobile_home_no_projects_hint")}
-          action={
-            <Button
-              testID="add-project-button"
-              label={copy("mobile_home_add_project")}
-              icon="RiFolderAddLine"
-              variant="primary"
-              onPress={() => router.push("/project/new")}
+      {notice}
+      {status}
+      {hasProjects && (
+        <>
+          <View style={styles.search}>
+            <SearchField
+              testID="thread-search"
+              value={query}
+              onChange={setQuery}
+              placeholder={copy("mobile_search_placeholder")}
+              clearLabel={copy("mobile_search_clear")}
             />
-          }
-        />
-      ) : (
-        hasProjects && (
-          <>
-            {search === undefined && (
-              <View style={styles.search}>
-                <SearchField
-                  testID="thread-search"
-                  value={query}
-                  onChange={setQuery}
-                  placeholder={copy("mobile_search_placeholder")}
-                  clearLabel={copy("mobile_search_clear")}
-                />
-              </View>
-            )}
-            {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
-          </>
-        )
+          </View>
+          {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
+        </>
       )}
     </View>
   )
@@ -257,7 +275,16 @@ function homeItems(
   return items
 }
 
-function HomeList({ selectedId }: { selectedId?: string }) {
+function HomeList({
+  selectedId,
+  nativeHeader = false,
+  header,
+}: {
+  selectedId?: string
+  nativeHeader?: boolean
+  header?: ReactNode
+}) {
+  const theme = useTheme()
   const tab = usePreferences((state) => state.homeTab)
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
@@ -275,6 +302,8 @@ function HomeList({ selectedId }: { selectedId?: string }) {
     <LayoutAnimationConfig key={tab} skipEntering>
       <Animated.FlatList
         testID="home-list"
+        style={nativeHeader ? { backgroundColor: theme.background } : undefined}
+        contentInsetAdjustmentBehavior={nativeHeader ? "automatic" : "never"}
         data={items}
         extraData={selectedId}
         keyExtractor={(item) => item.key}
@@ -282,6 +311,7 @@ function HomeList({ selectedId }: { selectedId?: string }) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
+        ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => (
           <HomeRow item={item} tab={tab} selectedId={selectedId} onToggleProject={toggle} />
         )}
