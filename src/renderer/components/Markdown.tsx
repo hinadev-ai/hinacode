@@ -15,6 +15,7 @@ import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
+import { ImageMenu, LinkMenu } from "./MarkdownMenus.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
 /** The proxied URL when the paragraph is nothing but a bare GitHub attachment link, which GitHub embeds. */
@@ -32,12 +33,16 @@ function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   const environment = useOpenThreadEnvironment()
   const baseUrl = use(BaseUrl)
   const root = use(ThreadFolder)
+  const className = "inline-block max-w-full rounded-md"
+  if (src === undefined) return <img alt={alt} className={className} />
+  const url = imageSource(src, { environment, baseUrl, root })
+  const path = src.startsWith("/") ? decodeURI(src) : null
   return (
-    <img
-      src={src === undefined ? undefined : imageSource(src, { environment, baseUrl, root })}
-      alt={alt}
-      loading="lazy"
-      className="inline-block max-w-full rounded-md"
+    <ImageMenu
+      image={<img src={url} alt={alt} loading="lazy" className={className} />}
+      url={url}
+      address={path ?? src}
+      path={environment === null ? path : null}
     />
   )
 }
@@ -54,13 +59,19 @@ const components: Components = {
   },
   img: ({ src, alt }) => <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt ?? ""} />,
   a: ({ children, href }) =>
-    isWebUrl(href) ? (
-      <WebLink href={href}>{children}</WebLink>
+    href === undefined ? (
+      children
     ) : (
-      // target=_blank routes the click through the main process, which opens it in the system browser.
-      <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
-        {children}
-      </a>
+      <LinkMenu href={href}>
+        {isWebUrl(href) ? (
+          <WebLink href={href}>{children}</WebLink>
+        ) : (
+          // target=_blank routes the click through the main process, which opens it in the system browser.
+          <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+            {children}
+          </a>
+        )}
+      </LinkMenu>
     ),
   // GFM marks a task list with `contains-task-list`; its checkboxes take the place of the bullets.
   ul: ({ children, className }) => (

@@ -260,6 +260,8 @@ export const RpcMethods = {
   "shell.openers": rpc(Schema.Void, Schema.Array(Opener)),
   /** Opens a folder or file in the app. Fails when the app is not installed. */
   "shell.openWith": rpc(Schema.Struct({ path: Schema.String, opener: OpenerId }), Schema.Void),
+  /** Puts an image the window shows on the clipboard. Fails for a format other than PNG or JPEG. */
+  "clipboard.copyImage": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
 
   "settings.get": rpc(Schema.Void, Settings),
   "notifications.permission": rpc(Schema.Void, NotificationPermission),
@@ -660,6 +662,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "shell.reveal": "mutation",
   "shell.openers": "read",
   "shell.openWith": "mutation",
+  "clipboard.copyImage": "mutation",
   "settings.get": "read",
   "notifications.permission": "read",
   "notifications.askPermission": "mutation",
@@ -796,6 +799,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
+  "clipboard.copyImage",
   "notifications.permission",
   "notifications.askPermission",
   "fs.watch",
