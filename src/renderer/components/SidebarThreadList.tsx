@@ -843,7 +843,7 @@ function PullRequestNumber({
       {checks && <ChecksIndicator checks={checks} className="-ml-1 size-3" />}
       {pullRequestRef && (
         <HoverCardContent align="start" className="w-80">
-          <PullRequestCard pullRequest={pullRequestRef} environment={environment} />
+          <PullRequestCard pullRequest={pullRequestRef} href={href} environment={environment} />
         </HoverCardContent>
       )}
     </HoverCard>
