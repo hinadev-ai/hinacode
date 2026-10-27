@@ -105,6 +105,8 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  /** The appearance of native UI (glass, menus, dialogs), which follows the app theme rather than the system. */
+  "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
     Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
     Schema.Struct({ sessionId: Schema.String }),
@@ -627,6 +629,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "app.setColorScheme": "mutation",
   "projects.list": "read",
   "projects.create": "mutation",
   "projects.clone": "mutation",
@@ -791,6 +794,7 @@ export const mutations: ReadonlySet<string> = new Set(
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",
