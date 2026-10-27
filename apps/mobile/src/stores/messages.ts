@@ -34,7 +34,7 @@ interface MessagesState {
   /**
    * Reads every loaded history again after a reconnect, since pushes sent while the socket was down are lost.
    * The last known history stays on screen until its newest page replaces it in one step. Earlier pages are
-   * dropped too, as they may have changed meanwhile, and load again on request.
+   * dropped too, along with one still loading, as they may have changed meanwhile, and load again on request.
    */
   readonly reload: () => void
   /** Forgets every history, when the phone disconnects or unpairs. */
@@ -114,12 +114,20 @@ export const useMessages = create<MessagesState>()((set, get) => {
           ({ seq, messages, hasEarlier = false, approvals, questions }) => {
             if (pushesDuringReload.get(threadId) !== reload) return
             pushesDuringReload.delete(threadId)
+            pushesDuringEarlier.delete(threadId)
             takePending(threadId)
             setHistory(threadId, (current) =>
               current?.status === "ready"
                 ? reload.pushes
                     .filter((push) => push.seq > seq)
-                    .reduce<ReadyHistory>(applyPush, { ...current, messages, hasEarlier, approvals, questions })
+                    .reduce<ReadyHistory>(applyPush, {
+                      ...current,
+                      messages,
+                      hasEarlier,
+                      loadingEarlier: false,
+                      approvals,
+                      questions,
+                    })
                 : current,
             )
           },
