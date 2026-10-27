@@ -26,11 +26,15 @@ interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
   /** Loads the newest page of a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
-  /** Prepends the page before the oldest loaded message, when there is one and none is loading. */
+  /**
+   * Prepends the page before the oldest loaded message, when there is one and none is loading. Pushes that arrive
+   * meanwhile and are newer than the page are replayed onto it.
+   */
   readonly loadEarlier: (threadId: string) => Promise<void>
   /**
    * Reads every loaded history again after a reconnect, since pushes sent while the socket was down are lost.
-   * The last known history stays on screen until its new snapshot replaces it in one step.
+   * The last known history stays on screen until its newest page replaces it in one step. Earlier pages are
+   * dropped too, as they may have changed meanwhile, and load again on request.
    */
   readonly reload: () => void
   /** Forgets every history, when the phone disconnects or unpairs. */
@@ -56,6 +60,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
   }
   const currentLoadToken = new Map<string, object>()
   const pushesDuringReload = new Map<string, { pushes: TranscriptPush[] }>()
+  const pushesDuringEarlier = new Map<string, { pushes: TranscriptPush[] }>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
     set((state) => {
       const history = state.byThread[threadId]
@@ -114,12 +119,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
               current?.status === "ready"
                 ? reload.pushes
                     .filter((push) => push.seq > seq)
-                    .reduce<ReadyHistory>(applyPush, {
-                      ...current,
-                      ...mergeNewestPage(current, messages, hasEarlier),
-                      approvals,
-                      questions,
-                    })
+                    .reduce<ReadyHistory>(applyPush, { ...current, messages, hasEarlier, approvals, questions })
                 : current,
             )
           },
@@ -135,21 +135,38 @@ export const useMessages = create<MessagesState>()((set, get) => {
       if (history?.status !== "ready" || !history.hasEarlier || history.loadingEarlier) return
       const before = history.messages[0]?.id
       if (before === undefined) return
-      const settle = (update: (history: ReadyHistory) => Partial<ReadyHistory>) =>
+      const request = { pushes: [] as TranscriptPush[] }
+      pushesDuringEarlier.set(threadId, request)
+      const finishIfCurrent = () => {
+        if (pushesDuringEarlier.get(threadId) !== request) return false
+        pushesDuringEarlier.delete(threadId)
+        return true
+      }
+      const settle = (update: (history: ReadyHistory) => ReadyHistory) =>
         setHistory(threadId, (current) =>
-          current?.status === "ready" ? { ...current, loadingEarlier: false, ...update(current) } : current,
+          current?.status === "ready" ? update({ ...current, loadingEarlier: false }) : current,
         )
-      settle(() => ({ loadingEarlier: true }))
+      setHistory(threadId, (current) => (current?.status === "ready" ? { ...current, loadingEarlier: true } : current))
       try {
         const page = await call("threads.transcript", { threadId, compact: true, page: { before } })
-        const stillStartsAtBefore = (current: ReadyHistory) => current.messages[0]?.id === before
-        settle((current) =>
-          stillStartsAtBefore(current)
-            ? { messages: [...page.messages, ...current.messages], hasEarlier: page.hasEarlier ?? false }
-            : {},
-        )
+        if (!finishIfCurrent()) return
+        const live = takePending(threadId)
+        settle((current) => {
+          const latest = live.reduce(applyPush, current)
+          if (latest.messages[0]?.id !== before) return latest
+          // Folded over the whole transcript so each push finds its message as it did live, but only the page
+          // keeps the result: the newer messages already show it, including the ones pushes created.
+          const replayed = request.pushes
+            .filter((push) => push.seq > page.seq && push.type !== "message.created")
+            .reduce(applyPush, { ...latest, messages: [...page.messages, ...latest.messages] })
+          return {
+            ...latest,
+            messages: [...replayed.messages.slice(0, page.messages.length), ...latest.messages],
+            hasEarlier: page.hasEarlier ?? false,
+          }
+        })
       } catch {
-        settle(() => ({}))
+        if (finishIfCurrent()) settle((current) => current)
       }
     },
 
@@ -157,12 +174,14 @@ export const useMessages = create<MessagesState>()((set, get) => {
       for (const threadId of [...pendingDeltas.keys()]) takePending(threadId)
       currentLoadToken.clear()
       pushesDuringReload.clear()
+      pushesDuringEarlier.clear()
       set({ byThread: {} })
     },
 
     receive: (push) => {
       const threadId = pushThreadId(push)
       pushesDuringReload.get(threadId)?.pushes.push(push)
+      pushesDuringEarlier.get(threadId)?.pushes.push(push)
       const type = deltaType(push)
       const pending = pendingDeltas.get(threadId)
       if (get().byThread[threadId]?.status === "ready" && type !== undefined) {
@@ -200,13 +219,6 @@ export const useMessages = create<MessagesState>()((set, get) => {
 })
 
 const readPage = (threadId: string) => call("threads.transcript", { threadId, compact: true, page: {} })
-
-function mergeNewestPage(current: ReadyHistory, page: readonly Message[], hasEarlier: boolean) {
-  const at = page[0] === undefined ? -1 : current.messages.findIndex((message) => message.id === page[0]!.id)
-  return at <= 0
-    ? { messages: page, hasEarlier }
-    : { messages: [...current.messages.slice(0, at), ...page], hasEarlier: current.hasEarlier }
-}
 
 export const isTranscriptPush = (event: { readonly type: string }): event is TranscriptPush =>
   event.type === "thread.event" || event.type === "message.created" || event.type === "message.updated"

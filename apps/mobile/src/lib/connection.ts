@@ -85,9 +85,21 @@ const remembered = new Map<string, RememberedAnswers>()
 const rememberListeners = new Set<(serverId: string, answers: RememberedAnswers) => void>()
 const listeners = new Set<(event: PushEvent) => void>()
 
-/** Lists `answers` for a server until it answers itself, such as the ones saved before the app last closed. */
+/**
+ * Lists `answers` for a paired server until it answers itself, such as the ones saved before the app last closed,
+ * and routes calls on the ids in them to that server. An id another server has already answered with stays its.
+ */
 export function restoreAnswers(serverId: string, answers: RememberedAnswers) {
-  if (!remembered.has(serverId)) remembered.set(serverId, answers)
+  if (remembered.has(serverId) || !useConnection.getState().servers.some((server) => server.id === serverId)) return
+  remembered.set(serverId, answers)
+  const unclaimed = {
+    ...owners,
+    teach: (environmentId: string, entity: Entity, id: string) => {
+      if (owners.owner(entity, id) === undefined) owners.teach(environmentId, entity, id)
+    },
+  }
+  for (const method of ["projects.list", "threads.list", "worktrees.list"] as const)
+    learnFromAnswer(unclaimed, serverId, method, undefined, answers[method]?.result)
 }
 
 /** Called whenever a server's remembered answers change, so they can be saved for the next launch. */

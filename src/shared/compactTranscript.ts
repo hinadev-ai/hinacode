@@ -39,9 +39,13 @@ export const compactMessage = (message: Message): Message => ({
 
 export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
 
+const encoder = new TextEncoder()
+const utf8Bytes = (message: Message) => encoder.encode(JSON.stringify(message)).length
+
 /**
- * The newest of `messages` older than the message `before` (or the newest overall) whose JSON fits in `budget`,
- * always at least one. `hasEarlier` says whether older messages remain. An unknown `before` gives an empty page.
+ * The newest of `messages` older than the message `before` (or the newest overall) whose JSON array fits in
+ * `budget` UTF-8 bytes, always at least one. `hasEarlier` says whether older messages remain. An unknown `before`
+ * gives an empty page.
  */
 export function transcriptPage(
   messages: ReadonlyArray<Message>,
@@ -51,9 +55,9 @@ export function transcriptPage(
   const end = before === undefined ? messages.length : messages.findIndex((message) => message.id === before)
   if (end <= 0) return { messages: [], hasEarlier: false }
   let start = end - 1
-  let bytes = JSON.stringify(messages[start]).length
+  let bytes = "[]".length + utf8Bytes(messages[start]!)
   while (start > 0) {
-    bytes += JSON.stringify(messages[start - 1]).length
+    bytes += ",".length + utf8Bytes(messages[start - 1]!)
     if (bytes > budget) break
     start--
   }
