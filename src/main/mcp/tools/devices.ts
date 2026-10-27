@@ -3,7 +3,6 @@ import { type McpSchema, Toolkit } from "effect/ai"
 import { DeviceButton, type DeviceCommand, type DeviceElement } from "../../../shared/device.ts"
 import { Attachments } from "../../services/Attachments.ts"
 import { Devices, DevicesError } from "../../services/devices/Devices.ts"
-import { SETTLE_MS } from "./tinyVm.ts"
 import * as McpTool from "./tool.ts"
 
 const Point = (what: string) =>
@@ -15,6 +14,8 @@ const SHOWS = "Returns a screenshot taken just after acting."
 const HANDED_BACK =
   "The user had control and has handed it back. The screen may have changed, so this action was not performed. Look at the screenshot before you continue."
 const SWIPE_STEPS = 12
+/** Mobile UI waits about 150 ms to recognize a tap, then animates for about 350 ms. */
+const SETTLE_MS = 1000
 
 export const DeviceTools = Toolkit.make(
   McpTool.make("device_screenshot", {

@@ -435,7 +435,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
               id: `ios:${row.udid}`,
               platform: "ios",
               name: row.name,
-              osVersion,
+              osVersion: `iOS ${osVersion}`,
               state: deviceState(row.state),
               slim:
                 slimRow?.managedTotal === undefined

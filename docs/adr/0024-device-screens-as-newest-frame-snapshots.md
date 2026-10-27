@@ -11,7 +11,7 @@ The remote browser (ADR 0023) already moves a screen over the authenticated rpc 
 
 ## Decision
 
-Device screens travel as newest-frame snapshots on the existing rpc: JPEG from iOS, PNG from Android, with one long-poll request in flight per viewer. On iOS, a small Swift helper on CoreSimulator and SimulatorKit reads the display's IOSurface on each frame callback and sends Indigo HID input. It is compiled from source with `xcrun swiftc` on first use. On Android, HinaCode uses the emulator's own gRPC stream and input calls, with token auth.
+Device screens travel as newest-frame snapshots on the existing rpc: JPEG from iOS, PNG from Android, with one long-poll request in flight per viewer. On iOS, a small Swift helper on CoreSimulator and SimulatorKit reads the display's IOSurface on each frame callback and sends input to the guest's HID daemon. It is compiled from source with `xcrun swiftc` on first use. On Android, HinaCode uses the emulator's own gRPC stream and input calls, with token auth.
 
 ## Consequences
 
