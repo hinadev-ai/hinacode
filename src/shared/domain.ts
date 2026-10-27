@@ -202,6 +202,8 @@ export const PullRequestDetail = Schema.Struct({
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
   checkRuns: Schema.Array(CheckRun),
+  /** Defaults for a desktop or cloud from before the Code tab read it. */
+  changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 

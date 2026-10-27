@@ -3,9 +3,16 @@ import type {
   GuideFileNote,
   GuideGroup,
   GuideLineNote,
+  PullRequestDetail,
   PullRequestFile,
   PullRequestGuide,
 } from "./domain.ts"
+
+/** GitHub refuses to serve a pull request's diff past these sizes. */
+export const DIFF_LIMITS = { lines: 20_000, files: 300 }
+
+export const diffTooLarge = ({ additions, deletions, changedFiles }: PullRequestDetail) =>
+  additions + deletions > DIFF_LIMITS.lines || changedFiles > DIFF_LIMITS.files
 
 export interface GuideFile {
   readonly file: PullRequestFile

@@ -118,6 +118,7 @@ describe("toPullRequestDetail", () => {
     baseRefName: "main",
     headRefName: "feat/pr-tab",
     headRefOid: "abc1234",
+    changedFiles: 4,
     mergeable: "CONFLICTING",
     statusCheckRollup: [
       {
@@ -154,6 +155,7 @@ describe("toPullRequestDetail", () => {
       baseRef: "main",
       headRef: "feat/pr-tab",
       head: "abc1234",
+      changedFiles: 4,
       checkRuns: [
         { name: "CI / test", status: "failing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2" },
         { name: "vercel", status: "pending", url: "https://vercel.com/hinadev-ai/hinacode/abc" },
@@ -189,6 +191,32 @@ describe("parseGitHubPullRequestUrl", () => {
   })
 })
 
+const ghFails = (stderr: string) =>
+  layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make(() =>
+          Effect.succeed(
+            ChildProcessSpawner.makeHandle({
+              pid: ChildProcessSpawner.ProcessId(1),
+              exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
+              isRunning: Effect.succeed(false),
+              kill: () => Effect.void,
+              stdin: Sink.drain,
+              stdout: Stream.empty,
+              stderr: Stream.make(new TextEncoder().encode(stderr)),
+              all: Stream.empty,
+              getInputFd: () => Sink.drain,
+              getOutputFd: () => Stream.empty,
+              unref: Effect.succeed(Effect.void),
+            }),
+          ),
+        ),
+      ),
+    ),
+  )
+
 describe("pull request actions", () => {
   const ghMustNotRun = Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
@@ -211,32 +239,6 @@ describe("pull request actions", () => {
       }
     }).pipe(Effect.provide(github)),
   )
-
-  const ghFails = (stderr: string) =>
-    layer.pipe(
-      Layer.provide(
-        Layer.succeed(
-          ChildProcessSpawner.ChildProcessSpawner,
-          ChildProcessSpawner.make(() =>
-            Effect.succeed(
-              ChildProcessSpawner.makeHandle({
-                pid: ChildProcessSpawner.ProcessId(1),
-                exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
-                isRunning: Effect.succeed(false),
-                kill: () => Effect.void,
-                stdin: Sink.drain,
-                stdout: Stream.empty,
-                stderr: Stream.make(new TextEncoder().encode(stderr)),
-                all: Stream.empty,
-                getInputFd: () => Sink.drain,
-                getOutputFd: () => Stream.empty,
-                unref: Effect.succeed(Effect.void),
-              }),
-            ),
-          ),
-        ),
-      ),
-    )
 
   it.effect("a diff GitHub refuses to serve fails as too large, not as a gh command", () =>
     Effect.gen(function* () {

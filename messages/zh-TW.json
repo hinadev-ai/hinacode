@@ -293,6 +293,7 @@
   "error_project_root_invalid": "這個路徑是檔案，或不是完整路徑。請輸入資料夾路徑，例如 ~/code/app。",
   "error_project_folder_not_empty": "這個資料夾裡已經有其他檔案，請選擇空的資料夾或新的路徑。",
   "error_pull_request_url_invalid": "這不是 GitHub 合併請求連結，請使用 https://github.com/owner/repo/pull/123 的格式。",
+  "error_pull_request_diff_too_large": "GitHub 不提供超過 20,000 行或 300 個檔案的差異，請到 GitHub 開啟合併請求查看。",
   "error_linear_request": "Linear 請求失敗，請到「設定 > 整合」檢查 API 金鑰。",
   "error_schema": "HinaCode 收到格式不符的資料。請重新啟動應用程式，若再次發生請回報問題。",
   "error_agent": "代理執行失敗：{detail}",
@@ -1699,6 +1700,7 @@
   "mobile_pr_code_loading": "正在載入變更",
   "mobile_pr_code_failed": "無法載入變更：{message}",
   "mobile_pr_code_empty": "沒有變更。",
+  "mobile_pr_code_too_large": "這個合併請求太大，無法在這裡顯示。GitHub 不提供超過 20,000 行或 300 個檔案的差異，所以沒有檔案列表和導覽。",
   "mobile_pr_code_update_desktop": "請更新桌面版 HinaCode，才能在這裡閱讀程式碼。",
   "mobile_pr_file_added": "新增",
   "mobile_pr_file_removed": "刪除",
@@ -1759,6 +1761,7 @@
   "pr_code_view_label": "變更的列出方式",
   "pr_code_view_files": "檔案",
   "pr_code_view_guide": "導覽",
+  "pr_code_too_large": "這個合併請求太大，無法在這裡顯示。GitHub 不提供超過 20,000 行或 300 個檔案的差異，所以沒有檔案列表和導覽。",
   "pr_code_summary": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
