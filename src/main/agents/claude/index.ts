@@ -33,7 +33,7 @@ import { hideUserCommands, toCommand } from "./commands.ts"
 import { backgroundTasksOf, isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
-import { elementContext } from "../elementContext.ts"
+import { attachmentContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
 
@@ -252,7 +252,8 @@ const attachmentBlocks = (attachment: Attachment) =>
       type: "image",
       source: { type: "base64", media_type: attachment.mime, data },
     }
-    return attachment.element ? [block, { type: "text" as const, text: elementContext(attachment.element) }] : [block]
+    const context = attachmentContext(attachment)
+    return context === null ? [block] : [block, { type: "text" as const, text: context }]
   })
 
 const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, priority?: SDKUserMessage["priority"]) =>

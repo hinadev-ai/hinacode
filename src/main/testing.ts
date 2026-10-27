@@ -40,6 +40,7 @@ import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
+import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
@@ -98,6 +99,7 @@ export const makeTestAppLayer = (
     passkeys,
     linear,
     peers,
+    unavailableDevicesLayer,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),

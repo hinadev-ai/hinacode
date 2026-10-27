@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 import { EntrySource } from "./relayMachines.ts"
@@ -386,6 +387,8 @@ export const Attachment = Schema.Struct({
   bytes: Schema.Number,
   /** Set when the image is a screenshot of an element picked in the in-app browser. */
   element: Schema.optional(PickedElement),
+  /** Set when the image is a crop of a device screen the user picked an element on. */
+  deviceElement: Schema.optional(PickedDeviceElement),
 })
 export type Attachment = typeof Attachment.Type
 
@@ -554,6 +557,8 @@ export const ExperimentalSettings = Schema.Struct({
    * and the result goes back to the VM page. Needs the fingerprint button in the VM view per thread before use.
    */
   tinyVmPasskeys: Schema.Boolean,
+  /** The Devices side panel view and the `device_*` MCP tools: stream and drive iOS simulators and Android emulators. */
+  devices: Schema.Boolean,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -710,7 +715,7 @@ export const defaultSettings: Settings = {
   pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
+  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false, devices: false },
   worktreeRoot: null,
 }
 
