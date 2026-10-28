@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
 
-type Check = { name: string; size: number; sizeLimit: number; passed: boolean }
+// A check named "<name> (gzip)" is the gzipped size of "<name>", shown next to it with no budget of its own.
+type Check = { name: string; size: number; sizeLimit?: number; passed?: boolean }
 
 const [basePath, headPath] = process.argv.slice(2)
 if (!basePath || !headPath) {
@@ -28,19 +29,30 @@ const change = (before: number, after: number) => {
   return `${sign}${format(Math.abs(diff))} (${sign}${((Math.abs(diff) / before) * 100).toFixed(1)}%)`
 }
 
+const GZIP = " (gzip)"
 const base = new Map(read(basePath).map((check) => [check.name, check.size]))
-const rows = read(headPath).map(({ name, size, sizeLimit, passed }) => {
+const head = read(headPath)
+const headSizes = new Map(head.map((check) => [check.name, check.size]))
+
+const compare = (name: string, after: number) => {
   const before = base.get(name)
-  const budget = `${passed ? "✅" : "❌"} ${format(sizeLimit)}`
-  return before === undefined
-    ? `| ${name} | | ${format(size)} | new | ${budget} |`
-    : `| ${name} | ${format(before)} | ${format(size)} | ${change(before, size)} | ${budget} |`
-})
+  return before === undefined ? ["", format(after), "new"] : [format(before), format(after), change(before, after)]
+}
 
-console.log(`### Bundle size
+const rows = head
+  .filter((check) => !check.name.endsWith(GZIP))
+  .map(({ name, size, sizeLimit, passed }) => {
+    const gzip = headSizes.get(name + GZIP)
+    const [, gzipSize, gzipChange] = gzip === undefined ? [] : compare(name + GZIP, gzip)
+    const budget = sizeLimit === undefined ? "" : `${passed ? "✅" : "❌"} ${format(sizeLimit)}`
+    return `| ${[name, ...compare(name, size), gzipSize ?? "", gzipChange ?? "", budget].join(" | ")} |`
+  })
 
-| | Base | This PR | Change | Budget |
-| --- | --: | --: | --: | --: |
+console.log(`<!-- bundle-size -->
+### Bundle size
+
+| | Base | This PR | Change | Gzipped | Gzip change | Budget |
+| --- | --: | --: | --: | --: | --: | --: |
 ${rows.join("\n")}
 
-Measured from a Linux build of both commits. Budgets live in \`.size-limit.json\`.`)
+Measured from a Linux build of both commits. Budgets apply to the raw size and live in \`.size-limit.json\`.`)

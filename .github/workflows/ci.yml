@@ -181,11 +181,20 @@ jobs:
           pnpm exec size-limit --json > ../head.json || true
           node scripts/bundle-size.ts ../base.json ../head.json | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
       # A fork's pull request gets a read-only token, so it only has the job summary.
+      # The marker finds this job's own comment, since React Doctor posts as the same bot.
       - if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: bundle-size
-          path: comment.md
+        name: Post the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- bundle-size -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
       - name: Check the budgets
         working-directory: head
         run: pnpm exec size-limit
