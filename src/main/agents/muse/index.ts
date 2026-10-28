@@ -35,6 +35,8 @@ import {
   ModelList,
   type SessionCompactResult,
   type SessionContextUsageParams,
+  type SessionLeaveCompletedParams,
+  type SessionLeaveResult,
   type SessionResumeResult,
   type SessionStartResult,
   SkillList,
@@ -1034,7 +1036,10 @@ const make = Effect.gen(function* () {
         : stop
     }).pipe(Effect.asVoid)
 
-  /** `session/leave` with `stop` cancels the session's turns and background shells and unloads it from the host. */
+  /**
+   * `session/leave` with `stop` cancels the session's turns and background shells and unloads it from the host. Its
+   * answer only admits the leave, and `session/leaveCompleted` reports when the host let go.
+   */
   const closeSession = (threadId: string) =>
     Effect.gen(function* () {
       const sessionId = threadSessions.get(threadId)
@@ -1045,10 +1050,22 @@ const make = Effect.gen(function* () {
       grants.delete(threadId)
       if (!entry?.host.isAlive()) return
       entry.sessions.delete(sessionId)
-      yield* entry.host
-        .command("session/leave", { sessionId, stop: true })
-        .pipe(Effect.catch((error) => Effect.logWarning("session/leave failed", error.message)))
-    })
+      const inbox = yield* Queue.unbounded<Incoming>()
+      yield* entry.host.subscribe((message) => Queue.offerUnsafe(inbox, message))
+      const { commandId } = yield* entry.host.command<SessionLeaveResult>("session/leave", { sessionId, stop: true })
+      while (true) {
+        const message = yield* Queue.take(inbox)
+        if (message.kind === "exit") return
+        if (message.kind !== "notification" || message.method !== "session/leaveCompleted") continue
+        const completed = message.params as SessionLeaveCompletedParams
+        if (completed.commandId !== commandId) continue
+        if (completed.outcome !== "released") yield* Effect.logWarning("session/leave failed", completed.reason)
+        return
+      }
+    }).pipe(
+      Effect.catch((error) => Effect.logWarning("session/leave failed", error.message)),
+      Effect.scoped,
+    )
 
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {

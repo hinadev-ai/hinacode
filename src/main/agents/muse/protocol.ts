@@ -12,6 +12,8 @@ export type {
   ItemUpdatedParams,
   SessionCompactResult,
   SessionContextUsageParams,
+  SessionLeaveCompletedParams,
+  SessionLeaveResult,
   SessionResumeResult,
   SessionStartResult,
   TurnCompletedParams,
