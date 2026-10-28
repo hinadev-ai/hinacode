@@ -183,6 +183,7 @@ export function DeviceScreen({
       </DeviceFrame>
       <textarea
         ref={inputRef}
+        data-device-keyboard
         aria-label={m.devices_input({ name })}
         aria-describedby={hintId}
         autoCapitalize="off"

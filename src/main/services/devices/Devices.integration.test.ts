@@ -17,6 +17,7 @@ const SECOND_DEVICE: DeviceId = "ios:33333333-3333-3333-3333-333333333333"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
+let failingRemovals = 0
 const sent: Array<{ readonly deviceId: DeviceId; readonly command: DeviceCommand }> = []
 const devices = new Map<DeviceId, Device>([
   [
@@ -39,11 +40,16 @@ const ios: DevicePlatformDriver = {
   ...unavailableDriver({ kind: "ready" }),
   list: () => Promise.resolve([...devices.values()]),
   boot: () => Promise.resolve(),
-  create: (name) => {
+  create: async (name, _onStep, onCreated) => {
     devices.set(CREATED_DEVICE, { ...devices.get(USERS_DEVICE)!, id: CREATED_DEVICE, name })
-    return Promise.resolve(CREATED_DEVICE)
+    await onCreated(CREATED_DEVICE)
+    return CREATED_DEVICE
   },
   remove: (id) => {
+    if (failingRemovals > 0) {
+      failingRemovals -= 1
+      return Promise.reject(new Error("simctl delete failed"))
+    }
     removed.push(id)
     devices.delete(id)
     return Promise.resolve()
@@ -104,6 +110,24 @@ describe("Devices", () => {
         yield* eventually(() => removed.length > 0)
         expect(removed).toEqual([CREATED_DEVICE])
         expect(yield* service.get(created.threadId)).toEqual([])
+      }),
+    )
+
+    it.effect("deletes a deleted thread's simulator, retrying a removal that failed", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-deleted" })
+        expect((yield* service.create(threadId)).phase).toBe("ready")
+        removed.length = 0
+        failingRemovals = 1
+        yield* SqlClient.SqlClient.use((sql) => sql`DELETE FROM thread WHERE id = ${threadId}`)
+
+        yield* TestClock.adjust("6 seconds")
+        yield* eventually(() => failingRemovals === 0)
+        expect(removed).toEqual([])
+        yield* TestClock.adjust("6 seconds")
+        yield* eventually(() => removed.length > 0)
+        expect(removed).toEqual([CREATED_DEVICE])
       }),
     )
 

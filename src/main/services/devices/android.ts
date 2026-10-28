@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { promisify } from "node:util"
 import * as grpc from "@grpc/grpc-js"
 import * as protoLoader from "@grpc/proto-loader"
-import type { Device, DeviceCommand, DeviceId, PlatformSupport } from "../../../shared/device.ts"
+import type { Device, DeviceCommand, DeviceId, PlatformSupport, PrepareStep } from "../../../shared/device.ts"
 import {
   androidVersionOf,
   panelPoint,
@@ -42,6 +42,7 @@ interface DisplayConfigurations {
 type Unary<Request, Response> = (
   request: Request,
   metadata: grpc.Metadata,
+  options: grpc.CallOptions,
   callback: (error: grpc.ServiceError | null, response: Response) => void,
 ) => grpc.ClientUnaryCall
 
@@ -69,6 +70,8 @@ const BOOT_TIMEOUT_MS = 4 * 60 * 1000
 const FRAME_SHORT_SIDE = 540
 const MAX_STREAM_RESTARTS = 3
 const FIRST_GRPC_PORT = 8600
+/** A stalled emulator never answers, and input runs in order, so one stuck call would hold every later one. */
+const CALL_TIMEOUT_MS = 10_000
 /** About one wheel notch on Android, which scrolls by 64 dp. Wheel deltas are CSS pixels of a screen drawn near 1 dp per pixel. */
 const PIXELS_PER_SCROLL_UNIT = 64
 const NO_GRPC = "This emulator was started without its gRPC endpoint. Close it and attach it again from HinaCode."
@@ -249,6 +252,7 @@ const refuseCreate = () => Promise.reject(new DeviceError(CREATE_UNSUPPORTED))
 
 export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePlatformDriver => {
   const sdk = sdkRootOf(options.sdkRoot)
+  let nextGrpcPort = FIRST_GRPC_PORT
   const emulatorBinary = join(sdk, "emulator", "emulator")
   const adbBinary = join(sdk, "platform-tools", "adb")
 
@@ -272,7 +276,9 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     if (emulator.grpcToken) metadata.set("authorization", `Bearer ${emulator.grpcToken}`)
     const unary = <Request, Response>(method: Unary<Request, Response>, request: Request) =>
       new Promise<Response>((resolve, reject) =>
-        method.call(client, request, metadata, (error, response) => (error ? reject(error) : resolve(response))),
+        method.call(client, request, metadata, { deadline: Date.now() + CALL_TIMEOUT_MS }, (error, response) =>
+          error ? reject(error) : resolve(response),
+        ),
       )
     return { client, metadata, unary }
   }
@@ -300,7 +306,9 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
    * Studio: a cold boot costs a minute, and the next session or the user's own tools pick the emulator back up.
    */
   const startEmulator = async (name: string) => {
-    const grpcPort = await freePort(FIRST_GRPC_PORT)
+    // The port is only bound once the emulator starts, so boots running together each start past the last one handed out.
+    const grpcPort = await freePort(nextGrpcPort)
+    nextGrpcPort = grpcPort + 1 < FIRST_GRPC_PORT + 100 ? grpcPort + 1 : FIRST_GRPC_PORT
     // A headless Linux daemon usually has no GPU, so it renders in software there.
     const gpu = process.platform === "darwin" ? "host" : "swiftshader_indirect"
     const child = spawn(
@@ -355,8 +363,21 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     )
   }
 
-  const boot: DevicePlatformDriver["boot"] = async (id, onStep) => {
+  /** One boot per AVD, since a second emulator on the same AVD refuses to start. */
+  const booting = new Map<string, Promise<void>>()
+  const boot: DevicePlatformDriver["boot"] = (id, onStep) => {
     const name = avdNameOf(id)
+    const running = booting.get(name)
+    if (running) {
+      onStep("booting")
+      return running
+    }
+    const run = bootOnce(name, onStep).finally(() => booting.delete(name))
+    booting.set(name, run)
+    return run
+  }
+
+  const bootOnce = async (name: string, onStep: (step: PrepareStep) => void) => {
     const existing = (await running()).get(name)
     if (existing && (await bootCompleted(existing))) return
     onStep("booting")
@@ -440,11 +461,10 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       await shell(emulator, "input", "keyevent", ...keys.map(String))
     }
 
+    // Wheel ticks that arrive while one scroll runs merge into the next, so the wheel never queues up behind adb.
     let pendingScroll: { x: number; y: number; deltaX: number; deltaY: number } | null = null
-    let scrolling = false
+    let scrollRun: Promise<void> | null = null
     const flushScroll = async () => {
-      if (scrolling) return
-      scrolling = true
       try {
         while (pendingScroll) {
           const { x, y, deltaX, deltaY } = pendingScroll
@@ -465,12 +485,13 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
           ).catch(() => undefined)
         }
       } finally {
-        scrolling = false
+        scrollRun = null
       }
     }
 
     const typeText = async (text: string) => {
-      if (/^[\x20-\x7e\n]*$/.test(text)) {
+      // `input text` reads `%s` as a space, so text with a literal `%` goes through the clipboard too.
+      if (/^[\x20-\x24\x26-\x7e\n]*$/.test(text)) {
         const lines = text.split("\n")
         for (const [index, line] of lines.entries()) {
           if (index > 0) await shell(emulator, "input", "keyevent", String(KEYCODE_ENTER))
@@ -500,6 +521,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
         return
       }
       await flushKeys()
+      if (command.kind !== "scroll" && scrollRun) await scrollRun
       switch (command.kind) {
         case "touch":
           await unary(client.sendTouch, {
@@ -515,7 +537,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
             deltaX: (pendingScroll?.deltaX ?? 0) + command.deltaX,
             deltaY: (pendingScroll?.deltaY ?? 0) + command.deltaY,
           }
-          void flushScroll()
+          scrollRun ??= flushScroll()
           return
         case "text":
           await typeText(command.text)

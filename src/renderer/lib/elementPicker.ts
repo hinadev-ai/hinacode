@@ -54,3 +54,7 @@ export const attachPick = async (threadId: string, view: WebviewElement, pick: P
   useDrafts.getState().addAttachments(threadId, [attachment])
   return attachment
 }
+
+/** Whether `target` is in a device screen's keyboard (`data-device-keyboard`), which sends every key to the device. */
+export const isInDeviceKeyboard = (target: EventTarget | null) =>
+  target instanceof Element && target.closest("[data-device-keyboard]") !== null

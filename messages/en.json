@@ -1909,6 +1909,8 @@
   "devices_delete_tab": "Delete {name}",
   "devices_show": "Show",
   "devices_show_label": "Show {name}",
+  "devices_owned_elsewhere": "Another thread created this simulator, and archiving that thread deletes it.",
+  "devices_detach_failed": "Could not detach {name}: {message}",
   "devices_attach": "Attach",
   "devices_attach_label": "Attach {name}",
   "devices_preparing": "Preparing the device",

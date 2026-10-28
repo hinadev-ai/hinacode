@@ -30,8 +30,15 @@ export interface DevicePlatformDriver {
   readonly list: () => Promise<ReadonlyArray<Device>>
   /** Boots a shut-down device and resolves once it can take input. Resolves at once for a booted one. */
   readonly boot: (id: DeviceId, onStep: (step: PrepareStep) => void) => Promise<void>
-  /** Creates, slims when it can, and boots a device for a thread. Platforms without per-thread devices reject. */
-  readonly create: (name: string, onStep: (step: PrepareStep) => void) => Promise<DeviceId>
+  /**
+   * Creates, slims when it can, and boots a device for a thread. Platforms without per-thread devices reject.
+   * `onCreated` runs once the device exists, before the slow steps, so the caller can record it for cleanup.
+   */
+  readonly create: (
+    name: string,
+    onStep: (step: PrepareStep) => void,
+    onCreated: (id: DeviceId) => Promise<void>,
+  ) => Promise<DeviceId>
   /** Deletes a device HinaCode created. The service never calls it for any other device. */
   readonly remove: (id: DeviceId) => Promise<void>
   readonly connect: (id: DeviceId, onFrame: (frame: Frame) => void) => Promise<DeviceLink>

@@ -34,7 +34,11 @@ const SCROLL_IDLE_MS = 120
 const INPUT_SPACING_MS = 16
 /** Shorter presses are sometimes taken for nothing by table cells. */
 const MIN_PRESS_MS = 60
-const HELPER_READY_TIMEOUT_MS = 15_000
+/** Above the helper's worst case: four HID attempts of a 4 s reply wait and a 4 s pause each. */
+const HELPER_READY_TIMEOUT_MS = 40_000
+/** Matches the rpc's frame limit; anything larger means the stream lost its framing. */
+const MAX_FRAME_BYTES = 4 * 1024 * 1024
+const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/
 
 /** UIDeviceOrientation. Landscape is landscapeLeft, the device's top turned to the left, as the device frame draws it. */
 const PORTRAIT = 1
@@ -206,13 +210,23 @@ const flattenAxe = (nodes: ReadonlyArray<unknown>, into: Array<DeviceElement> = 
 const sourceHash = (sources: SimhelperSources) =>
   createHash("sha256").update(JSON.stringify(sources)).digest("hex").slice(0, 16)
 
-/** Splits the helper's stdout into frames: a u32 length, then width u16, height u16, orientation u8 and the JPEG. */
-const frameReader = (onFrame: (frame: Frame) => void) => {
+/**
+ * Splits the helper's stdout into frames: a u32 length, then width u16, height u16, orientation u8 and the JPEG.
+ * Calls `onCorrupt` once and stops reading when a length cannot be a frame.
+ */
+const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => {
   let pending: Buffer = Buffer.alloc(0)
+  let corrupt = false
   return (chunk: Buffer) => {
+    if (corrupt) return
     pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk])
     while (pending.length >= 4) {
       const length = pending.readUInt32BE(0)
+      if (length < 5 || length > MAX_FRAME_BYTES) {
+        corrupt = true
+        pending = Buffer.alloc(0)
+        return onCorrupt()
+      }
       if (pending.length < 4 + length) return
       const orientation = pending.readUInt8(8)
       onFrame({
@@ -231,8 +245,15 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
   let developerDir: Promise<string> | undefined
   let helper: Promise<string> | undefined
 
+  /** Asked once; a failure is asked again, in case Xcode was installed meanwhile. */
   const xcodeDeveloperDir = () =>
-    (developerDir ??= run("xcode-select", ["-p"]).then((stdout) => stdout.toString().trim()))
+    (developerDir ??= run("xcode-select", ["-p"]).then(
+      (stdout) => stdout.toString().trim(),
+      (error: unknown) => {
+        developerDir = undefined
+        throw error
+      },
+    ))
 
   const compileHelper = async () => {
     const dir = join(options.cacheDir, `simhelper-${sourceHash(options.sources)}`)
@@ -266,7 +287,10 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       stdio: ["pipe", "pipe", "pipe"],
     })
     child.stdin.on("error", () => {})
-    child.stdout.on("data", frameReader(onFrame))
+    child.stdout.on(
+      "data",
+      frameReader(onFrame, () => child.kill()),
+    )
     let stderr = ""
     child.stderr.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-4000)))
 
@@ -301,8 +325,10 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     // which UIKit ignores. Spacing them like a finger keeps taps, key presses and drags real.
     let lastInput = 0
     let lastTouchDown = 0
+    let closed = false
     const input = async (...lines: ReadonlyArray<string>) => {
       for (const line of lines) {
+        if (closed) throw new DeviceError("The simulator screen was closed.")
         const lift = line.startsWith("touch up")
         const wait = Math.max(lastInput + INPUT_SPACING_MS, lift ? lastTouchDown + MIN_PRESS_MS : 0) - performance.now()
         if (wait > 0) await sleep(wait)
@@ -340,7 +366,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       await input(`touch move ${clamped.x} ${clamped.y}`)
       // At an edge the finger can go no further, so the next tick starts a fresh drag from the pointer.
       if (clamped.x !== target.x || clamped.y !== target.y) await endScroll()
-      else scroll.timer = setTimeout(() => void enqueue(endScroll), SCROLL_IDLE_MS)
+      else scroll.timer = setTimeout(() => void enqueue(endScroll).catch(() => {}), SCROLL_IDLE_MS)
     }
 
     const apply = async (command: DeviceCommand) => {
@@ -394,7 +420,9 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
           for (const command of commands) await apply(command)
         }),
       close: async () => {
-        await enqueue(endScroll).catch(() => {})
+        // Queued input stops at its next line, so a long text does not hold the close.
+        closed = true
+        clearTimeout(scroll?.timer)
         child.stdin.end()
         const timer = setTimeout(() => child.kill("SIGKILL"), 1000)
         await ended
@@ -454,7 +482,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       await simctl(["bootstatus", udidOf(id), "-b"], 600_000)
     },
 
-    create: async (name, onStep) => {
+    create: async (name, onStep, onCreated) => {
       onStep("creating")
       const { runtimes } = decode(SimctlRuntimes, await simctl(["list", "runtimes", "--json"]), "simctl list runtimes")
       const runtime = runtimes
@@ -464,6 +492,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       if (!runtime || !deviceType) throw new DeviceError("No iOS simulator runtime is installed. Add one in Xcode.")
       const udid = (await simctl(["create", name, deviceType.identifier, runtime.identifier])).toString().trim()
       const id: DeviceId = `ios:${udid}`
+      await onCreated(id)
       const simslim = await findSimslim(options.simslimPath)
       if (simslim) {
         onStep("slimming")
@@ -511,6 +540,8 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     },
 
     launch: async (id, app) => {
+      if (!BUNDLE_ID.test(app))
+        throw new DeviceError(`${JSON.stringify(app)} is not a bundle id, such as com.example.app.`)
       await simctl(["launch", udidOf(id), app])
     },
   }

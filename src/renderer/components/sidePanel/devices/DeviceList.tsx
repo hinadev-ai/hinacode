@@ -212,6 +212,8 @@ interface DeviceRowProps {
 
 function DeviceRow({ device, threadId, attached, pending, onAttach }: DeviceRowProps) {
   const { slim } = device
+  // Archiving the thread that created it deletes it, so another thread cannot lean on it.
+  const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
   const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
   return (
     <li className="flex items-center gap-3 px-3 py-1.5">
@@ -251,7 +253,8 @@ function DeviceRow({ device, threadId, attached, pending, onAttach }: DeviceRowP
       <Button
         variant="outline"
         size="xs"
-        disabled={pending}
+        disabled={pending || anotherThreads}
+        title={anotherThreads ? m.devices_owned_elsewhere() : undefined}
         aria-label={
           attached ? m.devices_show_label({ name: device.name }) : m.devices_attach_label({ name: device.name })
         }

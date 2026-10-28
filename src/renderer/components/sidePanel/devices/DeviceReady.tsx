@@ -77,7 +77,7 @@ function cropScreen(canvas: HTMLCanvasElement, screen: Screen, shape: FrameShape
 interface DeviceReadyProps {
   readonly threadId: string
   readonly device: ReadyDevice
-  /** Called as the user detaches or deletes the device, to show another tab. */
+  /** Called once the user detached or deleted the device, to show another tab. */
   readonly onDetach: () => void
 }
 
@@ -85,6 +85,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const { device, screen, control, agentWaiting } = ready
   const { pending, error, run } = useVmAction()
   const [commandError, setCommandError] = useState<string | null>(null)
+  const [frameError, setFrameError] = useState<string | null>(null)
   const [shape, setShape] = useState<FrameShape | null>(null)
   const [stalled, setStalled] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -105,6 +106,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
       onShape: setShape,
       onStalled: setStalled,
       onCommandError: setCommandError,
+      onFrameError: setFrameError,
     })
     session.setCanvas(canvasRef.current)
     sessionRef.current = session
@@ -169,17 +171,18 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
       }
     })
 
-  const detach = () => {
-    onDetach()
-    run(() => callPromise("device.detach", { threadId, deviceId }))
-  }
+  const detach = () =>
+    run(async () => {
+      await callPromise("device.detach", { threadId, deviceId })
+      onDetach()
+    })
   const waiting = control === "user" && agentWaiting
   const status = waiting
     ? m.devices_agent_waiting()
     : control === "user"
       ? m.devices_control_user()
       : m.devices_control_agent()
-  const shownError = error ?? commandError
+  const shownError = error ?? commandError ?? frameError
 
   return (
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col motion-reduce:animate-none">

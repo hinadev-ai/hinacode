@@ -10,11 +10,14 @@ interface DeviceCallbacks {
   /** No frame request has succeeded for a while, or one has again after that. */
   readonly onStalled: (stalled: boolean) => void
   readonly onCommandError: (message: string) => void
+  /** Why frames keep failing, after a few in a row, or null once one arrives again. */
+  readonly onFrameError: (message: string | null) => void
 }
 
 const HIDDEN_POLL_MS = 2000
 const STALL_MS = 5000
 const MAX_BATCH = 128
+const FAILURES_SHOWN_AFTER = 3
 
 /**
  * Streams one of a thread's devices into a canvas and sends its input. One `device.frame` request is in flight at a time,
@@ -123,6 +126,7 @@ export class DeviceSession {
         visible: this.visible,
       })
       if (this.disposed) return
+      if (this.failures >= FAILURES_SHOWN_AFTER) this.callbacks.onFrameError(null)
       this.failures = 0
       this.lastSuccess = performance.now()
       this.checkStall()
@@ -132,8 +136,9 @@ export class DeviceSession {
         if (this.canvas === canvas) this.sequence = frame.sequence
       }
       if (!this.visible) delay = HIDDEN_POLL_MS
-    } catch {
+    } catch (cause) {
       this.failures += 1
+      if (this.failures === FAILURES_SHOWN_AFTER && !this.disposed) this.callbacks.onFrameError(errorMessage(cause))
       delay = Math.min(2000, 250 * 2 ** (this.failures - 1))
     } finally {
       this.polling = false

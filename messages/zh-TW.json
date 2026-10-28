@@ -1882,6 +1882,8 @@
   "devices_delete_tab": "刪除 {name}",
   "devices_show": "顯示",
   "devices_show_label": "顯示 {name}",
+  "devices_owned_elsewhere": "這台模擬器是另一個執行緒建立的，封存該執行緒時會刪除它。",
+  "devices_detach_failed": "無法中斷連接 {name}：{message}",
   "devices_attach": "連接",
   "devices_attach_label": "連接 {name}",
   "devices_preparing": "正在準備裝置",

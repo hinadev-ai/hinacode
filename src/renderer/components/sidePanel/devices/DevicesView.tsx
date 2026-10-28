@@ -10,6 +10,7 @@ import { m } from "../../../paraglide/messages.js"
 import { DEVICE_LIST_TAB, deviceTabKey, selectAfterClosing, useShownDeviceTab } from "../../../stores/deviceTabs.ts"
 import { Button } from "../../ui/button.tsx"
 import { useVmAction } from "../TinyVmView.tsx"
+import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
@@ -59,7 +60,7 @@ function ShownTab({ thread, devices }: { thread: Thread; devices: ThreadDevices 
 interface DeviceStateProps {
   readonly threadId: string
   readonly device: ThreadDevice
-  /** Called as the user detaches the device, to show another tab. */
+  /** Called once the user detached the device, to show another tab. */
   readonly onDetach: () => void
 }
 
@@ -133,7 +134,15 @@ interface FailedProps {
 
 function Failed({ threadId, device, onDetach }: FailedProps) {
   const { pending, error, run } = useVmAction()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const { deviceId } = device
+  // A simulator that failed before it was created has nothing to delete.
+  const deletes = device.owned && deviceId !== null
+  const detach = () =>
+    run(async () => {
+      await callPromise("device.detach", { threadId, deviceId })
+      onDetach()
+    })
   const retry = () =>
     run(() =>
       deviceId === null
@@ -150,14 +159,19 @@ function Failed({ threadId, device, onDetach }: FailedProps) {
           variant="ghost"
           size="sm"
           disabled={pending}
-          onClick={() => {
-            onDetach()
-            run(() => callPromise("device.detach", { threadId, deviceId }))
-          }}
+          onClick={() => (deletes ? setConfirmingDelete(true) : detach())}
         >
-          {m.devices_remove()}
+          {deletes ? m.devices_delete() : m.devices_remove()}
         </Button>
       </div>
+      <DeleteDeviceDialog
+        name={confirmingDelete ? device.name : null}
+        onCancel={() => setConfirmingDelete(false)}
+        onDelete={() => {
+          setConfirmingDelete(false)
+          detach()
+        }}
+      />
     </Failure>
   )
 }

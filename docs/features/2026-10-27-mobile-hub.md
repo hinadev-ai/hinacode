@@ -19,7 +19,7 @@ Running many agents in parallel makes it worse. Every agent that needs a simulat
 6. The screen is live. Clicking and dragging becomes touch, the wheel scrolls, typing reaches the focused field, and pasting types the clipboard. The toolbar has Home, Lock, Volume, Rotate, Light/Dark and Open link, plus Back and Recents on Android.
 7. **Pick element** turns the cursor into a crosshair. Clicking attaches a crop of the screen and the accessibility element under the pointer (label, identifier, role and frame) to the composer.
 8. The agent calls `device_screenshot`, `device_tap` and the rest, naming the device once the thread has more than one. Control is per device. The first user input takes control, and the view says "You have control" with Hand back. While the user has control, the agent's input tools wait, and the view turns amber when one is waiting. Handing back returns the current screen to the waiting tool without acting.
-9. Archiving the thread deletes the simulators HinaCode created for it.
+9. Archiving or deleting the thread deletes the simulators HinaCode created for it.
 
 Everything above works the same when the thread lives on a paired `hinacode serve` daemon. Devices are listed, booted, streamed and driven on that machine.
 
@@ -61,7 +61,7 @@ A simulator being created has no id until `simctl create` returns, so it is the 
 - `DeviceCommand` is a closed union: `touch` (down, move, up), `scroll`, `key` (DOM `code`, down or up), `text`, `button` (home, lock, volumeUp, volumeDown, back, recents), `rotate`, `appearance` (light or dark) and `openUrl` (any URL with a scheme, since deep links are the point). Coordinates are fractions of the screen, from 0 to 1. Input mapping stays a flat rect whatever scale the frame was encoded at.
 - `DeviceFrame` is `{ sequence, mime, data, width, height }`. `mime` is `image/jpeg` for iOS and `image/png` for Android, because the emulator already encodes PNG and the daemon has no image encoder.
 
-The `thread_device` table holds one row per device a thread drives: `thread_id` and `device_id` (together the primary key) and `owned`. `owned` decides whether archiving deletes it. The row survives restarts, so a thread archived after a crash still cleans up.
+The `thread_device` table holds one row per device a thread drives: `thread_id` and `device_id` (together the primary key) and `owned`. `owned` decides whether archiving deletes it. The row is written as soon as `simctl create` returns, before the slow slim and boot, and is deleted only after the simulator is, so a crash or a failed delete leaves it for the next sweep. There is no foreign key to `thread`: a sweep every 5 s deletes the devices of archived threads and of deleted ones. Another thread cannot attach a simulator a thread created, because archiving its creator deletes it.
 
 ### RPC and routing
 

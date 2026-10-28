@@ -36,9 +36,14 @@ final class HID {
       let endpoint = unsafeBitCast(endpointFromPort, to: EndpointFromPort.self)(lookupPort(device, HID.service), 0, 0)
       let candidate = xpc_connection_create_from_endpoint(endpoint)
       unsafeBitCast(enableSimToHost, to: EnableSimToHost.self)(candidate)
-      xpc_connection_set_event_handler(candidate) { _ in }
+      // Only the connection kept reports errors, since cancelling the ones that did not answer raises one too.
+      let kept = Flag()
+      xpc_connection_set_event_handler(candidate) { event in
+        if kept.on && xpc_get_type(event) == XPC_TYPE_ERROR { fail("the simulator's HID service went away") }
+      }
       xpc_connection_resume(candidate)
       if HID.answers(candidate) {
+        kept.on = true
         connection = candidate
         return
       }
@@ -123,4 +128,8 @@ final class HID {
     }
     if result != KERN_SUCCESS { fail("rotate: \(String(cString: mach_error_string(result)))") }
   }
+}
+
+final class Flag {
+  var on = false
 }

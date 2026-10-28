@@ -201,7 +201,8 @@ const make = (options: DevicesOptions) =>
       for (const [threadId, entries] of states) {
         const entry = entries.get(deviceId)
         if (entry?.phase === "ready") {
-          setState(threadId, { phase: "failed", deviceId, name: entry.device.name, message })
+          const owned = entry.device.ownerThreadId === threadId
+          setState(threadId, { phase: "failed", deviceId, name: entry.device.name, owned, message })
         }
       }
     }
@@ -246,63 +247,80 @@ const make = (options: DevicesOptions) =>
       return live
     }
 
-    /** Boots when needed and connects, moving the device through `preparing` to `ready`. Concurrent calls share one run. */
+    /**
+     * Boots when needed and connects, moving the device through `preparing` to `ready`. Concurrent calls share one run.
+     * A run owns its slot while `preparing` maps the slot to it. Detaching drops that entry, and the run stops placing.
+     */
     const prepare = (
       threadId: string,
       initial: DeviceId | null,
       name: string,
+      owned: boolean,
       start: (onStep: (step: PrepareStep) => void) => Promise<DeviceId>,
     ) => {
-      const key = keyOf(threadId, initial ?? NEW)
+      let key = keyOf(threadId, initial ?? NEW)
       const running = preparing.get(key)
       if (running) return running
-      const pending = (async (): Promise<ThreadDevice> => {
-        let deviceId = initial
-        let slot: Slot = initial ?? NEW
-        let placed = false
-        const detached = () => placed && !current(threadId, slot)
-        const place = (state: ThreadDevice) => {
-          if (detached()) return state
-          placed = true
-          setState(threadId, state, slot)
+      const DETACHED = new DevicesError({ message: "The device was detached." })
+      let deviceId = initial
+      let slot: Slot = initial ?? NEW
+      const detached = () => preparing.get(key) !== pending
+      const place = (state: ThreadDevice) => {
+        if (detached()) return state
+        setState(threadId, state, slot)
+        if (slotOf(state) !== slot) {
+          preparing.delete(key)
           slot = slotOf(state)
-          return state
+          key = keyOf(threadId, slot)
+          preparing.set(key, pending)
         }
-        const onStep = (step: PrepareStep) => place({ phase: "preparing", deviceId, name, step })
-        const DETACHED = new DevicesError({ message: "The device was detached." })
+        return state
+      }
+      const onStep = (step: PrepareStep) => place({ phase: "preparing", deviceId, name, owned, step })
+      // Started on the next tick, so `preparing` holds the run before its first step places anything.
+      const pending: Promise<ThreadDevice> = Promise.resolve().then(async () => {
         try {
           deviceId = await start(onStep)
-          // Detaching while the device prepares leaves nothing behind, including a simulator created meanwhile.
           if (detached()) throw DETACHED
           onStep("connecting")
           const link = await connect(deviceId).link
           const device = await findDevice(deviceId)
-          const row = await readRow(threadId, deviceId)
           if (detached()) throw DETACHED
           return place({
             phase: "ready",
-            device: { ...device, ownerThreadId: row?.owned ? threadId : null },
+            device: { ...device, ownerThreadId: owned ? threadId : null },
             screen: link.screen,
             control: "agent",
             agentWaiting: false,
           })
         } catch (cause) {
-          if (cause === DETACHED && deviceId !== null) await detachNow(threadId, deviceId).catch(() => undefined)
-          return place({ phase: "failed", deviceId, name, message: messageOf(cause) })
+          const failed: ThreadDevice = { phase: "failed", deviceId, name, owned, message: messageOf(cause) }
+          // Nobody sees a simulator created for a run that was detached, so it goes too.
+          if (cause === DETACHED && initial === null && deviceId !== null) {
+            await detachNow(threadId, deviceId).catch(() => undefined)
+          }
+          return place(failed)
         } finally {
-          preparing.delete(key)
+          if (preparing.get(key) === pending) preparing.delete(key)
         }
-      })()
+      })
       preparing.set(key, pending)
       return pending
     }
 
-    /** `found` is the device when the caller looked it up already, or null when it is gone. */
-    const attachExisting = async (threadId: string, deviceId: DeviceId, found?: Device | null) => {
+    /** `known` is what the caller looked up already: the device, or null when it is gone, and whether it is owned. */
+    const attachExisting = async (
+      threadId: string,
+      deviceId: DeviceId,
+      known?: { readonly device: Device | null; readonly owned: boolean },
+    ) => {
       const running = preparing.get(keyOf(threadId, deviceId))
       if (running) return running
-      const device = found === undefined ? await findDevice(deviceId).catch(() => null) : found
-      return prepare(threadId, deviceId, device?.name ?? deviceId, async (onStep) => {
+      const { device, owned } = known ?? {
+        device: await findDevice(deviceId).catch(() => null),
+        owned: (await readRow(threadId, deviceId))?.owned ?? false,
+      }
+      return prepare(threadId, deviceId, device?.name ?? deviceId, owned, async (onStep) => {
         if (!device) throw new DevicesError({ message: "This device no longer exists on the machine." })
         onStep("booting")
         await driverOf(deviceId).boot(deviceId, onStep)
@@ -323,20 +341,34 @@ const make = (options: DevicesOptions) =>
       const running = preparing.get(keyOf(threadId, NEW))
       if (running) return running
       const name = await nameFor(threadId)
-      return prepare(threadId, null, name, async (onStep) => {
+      return prepare(threadId, null, name, true, async (onStep) => {
         onStep("creating")
-        const deviceId = await options.drivers.ios.create(name, onStep)
-        await writeRow(threadId, { deviceId, owned: true })
-        return deviceId
+        let created: DeviceId | null = null
+        try {
+          return await options.drivers.ios.create(name, onStep, async (deviceId) => {
+            // Recorded before it slims and boots, so a failure or a quit midway still leaves it to clean up.
+            created = deviceId
+            await writeRow(threadId, { deviceId, owned: true })
+          })
+        } catch (cause) {
+          if (created !== null) await detachNow(threadId, created).catch(() => undefined)
+          throw cause
+        }
       })
     }
 
     /** Starts reconnecting the devices the thread had before a restart. */
     const restore = async (threadId: string) => {
       const missing = (await readRows(threadId)).filter((row) => !current(threadId, row.deviceId))
+      if (missing.length === 0) return listOf(threadId)
       // Looked up before any is placed, so the tabs come back in the order they were attached.
       const found = await Promise.all(missing.map((row) => findDevice(row.deviceId).catch(() => null)))
-      missing.forEach((row, index) => void attachExisting(threadId, row.deviceId, found[index]))
+      // Read again, so a device detached during the lookup stays detached.
+      const kept = new Set((await readRows(threadId)).map((row) => row.deviceId))
+      missing.forEach((row, index) => {
+        if (!kept.has(row.deviceId) || current(threadId, row.deviceId)) return
+        void attachExisting(threadId, row.deviceId, { device: found[index] ?? null, owned: row.owned })
+      })
       return listOf(threadId)
     }
 
@@ -425,15 +457,25 @@ const make = (options: DevicesOptions) =>
       }
     }
 
-    const waitForHandBack = async (threadId: string, deviceId: DeviceId) => {
+    /** Resolves on hand back, and stops waiting when the agent's call is interrupted. */
+    const waitForHandBack = async (threadId: string, deviceId: DeviceId, signal: AbortSignal) => {
       const key = keyOf(threadId, deviceId)
       waiting.set(key, (waiting.get(key) ?? 0) + 1)
       refreshWaiting(threadId, deviceId)
       try {
-        await new Promise<void>((resolve) => {
+        await new Promise<void>((resolve, reject) => {
+          const handBack = () => resolve()
           const resolvers = handBacks.get(key) ?? new Set()
-          resolvers.add(resolve)
+          resolvers.add(handBack)
           handBacks.set(key, resolvers)
+          signal.addEventListener(
+            "abort",
+            () => {
+              handBacks.get(key)?.delete(handBack)
+              reject(signal.reason)
+            },
+            { once: true },
+          )
         })
       } finally {
         const count = (waiting.get(key) ?? 1) - 1
@@ -447,11 +489,11 @@ const make = (options: DevicesOptions) =>
       if (!enabled) throw new DevicesError({ message: "Devices are off. Turn them on in Settings > Experimental." })
     }
 
-    const attempt = <A>(work: () => Promise<A>) =>
+    const attempt = <A>(work: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({
-        try: async () => {
+        try: async (signal) => {
           ensureEnabled()
-          return await work()
+          return await work(signal)
         },
         catch: failure,
       })
@@ -480,28 +522,37 @@ const make = (options: DevicesOptions) =>
       })
 
     const detachNow = async (threadId: string, deviceId: DeviceId | null) => {
+      preparing.delete(keyOf(threadId, deviceId ?? NEW))
       if (deviceId === null) return removeState(threadId, NEW)
       const row = await readRow(threadId, deviceId)
       removeState(threadId, deviceId)
-      await deleteRow(threadId, deviceId)
       const stillUsed = [...states.values()].some((entries) => entries.get(deviceId)?.phase === "ready")
       const live = links.get(deviceId)
       if (live && !stillUsed) closeLive(live)
+      // The row goes only after the device, so a failed removal is retried instead of leaving it to look like the user's.
       if (row?.owned) await driverOf(deviceId).remove(deviceId)
+      await deleteRow(threadId, deviceId)
     }
 
     const releaseThread = (threadId: string) =>
-      Effect.tryPromise(async () => {
-        const rows = await readRows(threadId)
-        for (const row of rows) await detachNow(threadId, row.deviceId)
-        for (const entry of listOf(threadId)) await detachNow(threadId, threadDeviceId(entry))
-      }).pipe(Effect.catchCause((cause) => Effect.logWarning("could not release the thread's devices", cause)))
+      Effect.promise(async () => {
+        const slots = new Set<DeviceId | null>([
+          ...(await readRows(threadId)).map((row) => row.deviceId),
+          ...listOf(threadId).map(threadDeviceId),
+        ])
+        const results = await Promise.allSettled([...slots].map((deviceId) => detachNow(threadId, deviceId)))
+        return results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+      }).pipe(
+        Effect.flatMap((failures) =>
+          failures.length === 0 ? Effect.void : Effect.logWarning("could not release a thread's device", ...failures),
+        ),
+      )
 
     const act = (threadId: string, device: string | undefined, commands: ReadonlyArray<DeviceCommand>) =>
-      attempt(async (): Promise<AgentInput> => {
+      attempt(async (signal): Promise<AgentInput> => {
         const { state, live } = await chosen(threadId, device)
         if (state.control === "user") {
-          await waitForHandBack(threadId, state.device.id)
+          await waitForHandBack(threadId, state.device.id, signal)
           return "handedBack"
         }
         await (await live.link).send(commands)
@@ -535,10 +586,10 @@ const make = (options: DevicesOptions) =>
       const expiry = options.leaseMs ?? 15000
       for (const live of links.values()) if (Date.now() - live.lease > expiry) closeLive(live)
     })
-    // A sweep rather than a call from archive, so archives from any path, and ones before a crash, converge.
+    // A sweep rather than a call from archive or delete, so threads ended from any path, and before a crash, converge.
     const releaseArchived = sql<{ threadId: string }>`
-      SELECT DISTINCT thread_device.thread_id FROM thread_device JOIN thread ON thread.id = thread_device.thread_id
-      WHERE thread.status = 'archived'
+      SELECT DISTINCT thread_device.thread_id FROM thread_device LEFT JOIN thread ON thread.id = thread_device.thread_id
+      WHERE thread.id IS NULL OR thread.status = 'archived'
     `.pipe(
       Effect.flatMap((rows) => Effect.forEach(rows, (row) => releaseThread(row.threadId), { discard: true })),
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
@@ -567,6 +618,12 @@ const make = (options: DevicesOptions) =>
         attempt(async () => {
           const existing = current(threadId, deviceId)
           if (existing && existing.phase !== "failed") return existing
+          const owner = (await ownedRows()).find((row) => row.deviceId === deviceId)
+          if (owner && owner.threadId !== threadId) {
+            throw new DevicesError({
+              message: "Another thread created this simulator, and archiving that thread deletes it. Create one here.",
+            })
+          }
           await writeRow(threadId, { deviceId, owned: false })
           return attachExisting(threadId, deviceId)
         }),

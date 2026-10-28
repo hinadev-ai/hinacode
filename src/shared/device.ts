@@ -59,6 +59,8 @@ export const ThreadDevice = Schema.Union([
     phase: Schema.Literal("preparing"),
     deviceId: Schema.NullOr(DeviceId),
     name: Schema.String,
+    /** HinaCode created it for this thread, so detaching deletes it. */
+    owned: Schema.Boolean,
     step: PrepareStep,
   }),
   Schema.Struct({
@@ -73,6 +75,7 @@ export const ThreadDevice = Schema.Union([
     phase: Schema.Literal("failed"),
     deviceId: Schema.NullOr(DeviceId),
     name: Schema.String,
+    owned: Schema.Boolean,
     message: Schema.String,
   }),
 ])
@@ -82,6 +85,10 @@ export const threadDeviceId = (entry: ThreadDevice): DeviceId | null =>
   entry.phase === "ready" ? entry.device.id : entry.deviceId
 
 export const threadDeviceName = (entry: ThreadDevice) => (entry.phase === "ready" ? entry.device.name : entry.name)
+
+/** Whether detaching deletes the device, because HinaCode created it for the thread. */
+export const threadDeviceOwned = (entry: ThreadDevice) =>
+  entry.phase === "ready" ? entry.device.ownerThreadId !== null : entry.owned
 
 /** A thread's devices in the order they were attached. At most one has a null id. */
 export const ThreadDevices = Schema.Array(ThreadDevice)
@@ -93,6 +100,12 @@ const Delta = Schema.Number.check(Schema.isBetween({ minimum: -10000, maximum: 1
 
 export const DeviceButton = Schema.Literals(["home", "lock", "volumeUp", "volumeDown", "back", "recents"])
 export type DeviceButton = typeof DeviceButton.Type
+
+/** Deep links are the point, so any scheme is allowed. The device's OS decides what opens it. */
+export const DeviceUrl = Schema.String.check(
+  Schema.isMaxLength(2048),
+  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9+.-]*:\S+$/),
+)
 
 export const DeviceCommand = Schema.Union([
   Schema.Struct({
@@ -113,11 +126,7 @@ export const DeviceCommand = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("button"), button: DeviceButton }),
   Schema.Struct({ kind: Schema.Literal("rotate") }),
   Schema.Struct({ kind: Schema.Literal("appearance"), mode: Schema.Literals(["light", "dark"]) }),
-  /** Deep links are the point, so any scheme is allowed. The device's OS decides what opens it. */
-  Schema.Struct({
-    kind: Schema.Literal("openUrl"),
-    url: Schema.String.check(Schema.isMaxLength(2048), Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9+.-]*:\S+$/)),
-  }),
+  Schema.Struct({ kind: Schema.Literal("openUrl"), url: DeviceUrl }),
 ])
 export type DeviceCommand = typeof DeviceCommand.Type
 

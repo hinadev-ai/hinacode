@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import { type ThreadDevices, threadDeviceId } from "../../shared/device.ts"
+import { type ThreadDevices, threadDeviceId, threadDeviceOwned } from "../../shared/device.ts"
 
 /** A device's tab: its id, or `new` for the simulator still being created. */
 export const deviceTabKey = (entry: ThreadDevices[number]) => threadDeviceId(entry) ?? "new"
@@ -20,11 +20,14 @@ export const useDeviceTabs = create<DeviceTabsState>()((set) => ({
 
 /**
  * The chosen tab, or the first device before the thread chose one. A chosen device that is not in the list yet,
- * because it is still being attached, keeps the list showing until it arrives.
+ * because it is still being attached, keeps the list showing until it arrives. A new simulator keeps its tab once
+ * it gets an id, as the newest device the thread owns.
  */
 export const shownDeviceTab = (devices: ThreadDevices, chosen: string | undefined) => {
   if (chosen !== undefined && (chosen === DEVICE_LIST_TAB || devices.some((entry) => deviceTabKey(entry) === chosen)))
     return chosen
+  const created = chosen === "new" ? devices.findLast(threadDeviceOwned) : undefined
+  if (created) return deviceTabKey(created)
   const [first] = devices
   return chosen === undefined && first ? deviceTabKey(first) : DEVICE_LIST_TAB
 }

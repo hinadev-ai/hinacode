@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { RiAddLine, RiAndroidLine, RiAppleLine, RiCloseLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri"
 import {
   devicePlatformOf,
@@ -9,8 +10,10 @@ import {
   type ThreadDevices,
   threadDeviceId,
   threadDeviceName,
+  threadDeviceOwned,
 } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
+import { errorMessage } from "../../../lib/errorMessage.ts"
 import { callPromise, threadDevicesAtom } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
 import {
@@ -27,10 +30,6 @@ const NO_DEVICES: ThreadDevices = []
 
 export const deviceTabId = (threadId: string, tab: string) => `device-tab-${threadId}-${tab}`
 export const devicePanelId = (threadId: string, tab: string) => `device-panel-${threadId}-${tab}`
-
-/** Whether closing the tab deletes the simulator, because HinaCode created it for this thread. */
-const deletes = (entry: ThreadDevice, threadId: string) =>
-  entry.phase === "ready" ? entry.device.ownerThreadId === threadId : threadDeviceId(entry) === null
 
 /**
  * The Devices view's header: a tab per device the thread drives, and a button that lists the machine's devices to
@@ -52,12 +51,19 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
 
   const select = (tab: string) => useDeviceTabs.getState().select(threadId, tab)
   const detach = (entry: ThreadDevice) => {
-    if (deviceTabKey(entry) === shown) selectAfterClosing(threadId, devices, shown)
-    void callPromise("device.detach", { threadId, deviceId: threadDeviceId(entry) }).catch(() => {})
+    const name = threadDeviceName(entry)
+    callPromise("device.detach", { threadId, deviceId: threadDeviceId(entry) })
+      .then(() => {
+        if (deviceTabKey(entry) === shown) selectAfterClosing(threadId, devices, shown)
+      })
+      .catch((cause: unknown) => toast.error(m.devices_detach_failed({ name, message: errorMessage(cause) })))
   }
   const close = (entry: ThreadDevice) => {
-    if (deletes(entry, threadId) && entry.phase === "ready") setDeleting(entry)
-    else detach(entry)
+    if (threadDeviceOwned(entry)) setDeleting(entry)
+    else {
+      keyboardMove.current = true
+      detach(entry)
+    }
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -65,7 +71,6 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
     const entry = devices[index]
     if (event.key === "Delete" && entry) {
       event.preventDefault()
-      keyboardMove.current = true
       close(entry)
       return
     }
@@ -93,12 +98,14 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
           onKeyDown={onKeyDown}
           className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
         >
-          {devices.map((entry) => (
+          {devices.map((entry, index) => (
             <DeviceTab
               key={deviceTabKey(entry)}
               threadId={threadId}
               entry={entry}
               selected={deviceTabKey(entry) === shown}
+              // While the list shows, no tab is selected, and the first still takes Tab into the row.
+              focusable={deviceTabKey(entry) === shown || (shown === DEVICE_LIST_TAB && index === 0)}
               onSelect={() => select(deviceTabKey(entry))}
               onClose={() => close(entry)}
             />
@@ -131,16 +138,17 @@ interface DeviceTabProps {
   readonly threadId: string
   readonly entry: ThreadDevice
   readonly selected: boolean
+  readonly focusable: boolean
   readonly onSelect: () => void
   readonly onClose: () => void
 }
 
-function DeviceTab({ threadId, entry, selected, onSelect, onClose }: DeviceTabProps) {
+function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: DeviceTabProps) {
   const tab = deviceTabKey(entry)
   const name = threadDeviceName(entry)
   const id = threadDeviceId(entry)
   const PlatformIcon = id !== null && devicePlatformOf(id) === "android" ? RiAndroidLine : RiAppleLine
-  const label = deletes(entry, threadId) ? m.devices_delete_tab({ name }) : m.devices_close_tab({ name })
+  const label = threadDeviceOwned(entry) ? m.devices_delete_tab({ name }) : m.devices_close_tab({ name })
   return (
     <div
       className={cn(
@@ -154,7 +162,7 @@ function DeviceTab({ threadId, entry, selected, onSelect, onClose }: DeviceTabPr
         id={deviceTabId(threadId, tab)}
         aria-selected={selected}
         aria-controls={devicePanelId(threadId, tab)}
-        tabIndex={selected ? 0 : -1}
+        tabIndex={focusable ? 0 : -1}
         title={name}
         onClick={onSelect}
         onAuxClick={(event) => {

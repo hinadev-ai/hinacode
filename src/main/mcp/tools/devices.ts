@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect"
 import { type McpSchema, Toolkit } from "effect/ai"
-import { DeviceButton, type DeviceCommand, type DeviceElement } from "../../../shared/device.ts"
+import { DeviceButton, type DeviceCommand, type DeviceElement, DeviceUrl } from "../../../shared/device.ts"
 import { Attachments } from "../../services/Attachments.ts"
 import { Devices } from "../../services/devices/Devices.ts"
 import * as McpTool from "./tool.ts"
@@ -72,7 +72,10 @@ export const DeviceTools = Toolkit.make(
   }),
   McpTool.make("device_open_url", {
     description: `Open a URL on the device, such as a deep link like myapp://settings or an Expo dev server URL. ${STARTS} ${SHOWS}`,
-    parameters: Schema.Struct({ device: Target, url: Schema.String.check(Schema.isMaxLength(2048)) }),
+    parameters: Schema.Struct({
+      device: Target,
+      url: DeviceUrl.annotate({ description: "A URL with a scheme, such as myapp://settings or https://example.com." }),
+    }),
   }),
   McpTool.make("device_describe_ui", {
     description: `List the accessibility elements on screen, one per line with role, label, identifier, value and frame in points. Cheaper than a screenshot for finding what to tap. ${STARTS}`,
@@ -121,18 +124,23 @@ export const deviceToolsLayer = DeviceTools.toLayer(
         y: Math.min(1, Math.max(0, y / state.screen.height)),
       }))
 
+    /** `release` runs when the user takes control after the first step, so a gesture never leaves a finger down. */
     const actAndLook = (
       threadId: string,
       device: string | undefined,
       steps: ReadonlyArray<ReadonlyArray<DeviceCommand>>,
       done: string,
       gapMs = 0,
+      release: ReadonlyArray<DeviceCommand> = [],
     ) =>
       Effect.gen(function* () {
         for (const [index, commands] of steps.entries()) {
           if (index > 0 && gapMs > 0) yield* Effect.sleep(gapMs)
           const outcome = yield* devices.act(threadId, device, commands)
-          if (outcome === "handedBack") return yield* screen(threadId, device, HANDED_BACK)
+          if (outcome === "handedBack") {
+            if (index > 0 && release.length > 0) yield* devices.act(threadId, device, release)
+            return yield* screen(threadId, device, HANDED_BACK)
+          }
         }
         yield* Effect.sleep(SETTLE_MS)
         return yield* screen(threadId, device, done)
@@ -173,6 +181,7 @@ export const deviceToolsLayer = DeviceTools.toLayer(
               [[{ kind: "touch", phase: "down", ...from }], ...moves, [{ kind: "touch", phase: "up", ...to }]],
               `Swiped from ${x}, ${y} to ${toX}, ${toY} on`,
               durationMs / (SWIPE_STEPS + 1),
+              [{ kind: "touch", phase: "up", ...to }],
             )
           }),
         ),

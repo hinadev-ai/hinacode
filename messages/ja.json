@@ -1864,6 +1864,8 @@
   "devices_delete_tab": "{name} を削除",
   "devices_show": "表示",
   "devices_show_label": "{name} を表示",
+  "devices_owned_elsewhere": "このシミュレータは別のスレッドが作成したもので、そのスレッドをアーカイブすると削除されます。",
+  "devices_detach_failed": "{name} の接続を解除できませんでした: {message}",
   "devices_attach": "接続",
   "devices_attach_label": "{name} に接続",
   "devices_preparing": "デバイスを準備中",
@@ -1919,7 +1921,7 @@
       }
     }
   ],
-  "devices_show_shutdown": "シャットダウン中の {count} 台を表示",
-  "devices_hide_shutdown": "シャットダウン中を隠す",
+  "devices_show_shutdown": "停止中の {count} 台を表示",
+  "devices_hide_shutdown": "停止中を隠す",
   "devices_compiling_hint": "マシンで初めて接続するときは画面ヘルパーをビルドするため、10 秒ほどかかります。"
 }
