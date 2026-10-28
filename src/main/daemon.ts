@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
 import type { RemotePairing } from "../shared/domain.ts"
+import { connectLink } from "../shared/links.ts"
 import { isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
@@ -76,7 +77,7 @@ const lockDataDir = (dir: string) => {
 
 /** The pairing block `hinacode serve` and `hinacode pair` print. Stdout is how systemd or launchd keeps it. */
 const pairingText = async (userData: string, pairing: RemotePairing) => {
-  const phoneUrl = pairingUrl(pairing)
+  const phoneUrl = connectLink(pairing)
   const qr = await QRCode.toString(phoneUrl, { type: "terminal", small: true })
   return [
     `HinaCode cloud ${version}`,

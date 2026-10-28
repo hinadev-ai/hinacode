@@ -4,7 +4,8 @@ import { AsyncResult } from "effect/reactivity"
 import QRCode from "qrcode"
 import { type FormEvent, useEffect, useId, useRef, useState, useTransition } from "react"
 import type { RelayStatus, RemotePairing } from "../../../shared/domain.ts"
-import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
+import { connectLink } from "../../../shared/links.ts"
+import { isPortInUse } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -407,7 +408,7 @@ interface PairingDetailsProps {
 function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
-  const url = pairingUrl(pairing)
+  const url = connectLink(pairing)
   const hostsId = useId()
 
   const rotate = () =>
