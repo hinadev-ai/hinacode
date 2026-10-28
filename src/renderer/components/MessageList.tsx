@@ -5,12 +5,8 @@ import { createContext, type ReactElement, use, type Ref, useState } from "react
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
-import {
-  assistantPresentation,
-  collapsedParts,
-  type IndexedMessagePart,
-  presentationBlocks,
-} from "../lib/assistantPresentation.ts"
+import { collapsedParts } from "../../shared/activityFold.ts"
+import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
