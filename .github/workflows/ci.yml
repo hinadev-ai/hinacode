@@ -174,12 +174,15 @@ jobs:
           done
       - name: Measure
         working-directory: head
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         # size-limit exits 1 over budget. The last step fails the job after the comment is posted.
         run: |
           cp .size-limit.ts ../base/
           pnpm exec size-limit --json --config ../base/.size-limit.ts > ../base.json || true
           pnpm exec size-limit --json > ../head.json || true
-          node scripts/bundle-size.ts ../base.json ../head.json | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
+          node scripts/bundle-size.ts ../base.json ../head.json "$BASE_SHA" "$HEAD_SHA" | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
       # A fork's pull request gets a read-only token, so it only has the job summary.
       # The marker finds this job's own comment, since React Doctor posts as the same bot.
       - if: github.event.pull_request.head.repo.full_name == github.repository

@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs"
 // A check named "<name> (gzip)" is the gzipped size of "<name>", shown next to it with no budget of its own.
 type Check = { name: string; size: number; sizeLimit?: number; passed?: boolean }
 
-const [basePath, headPath] = process.argv.slice(2)
-if (!basePath || !headPath) {
-  console.error("Usage: node scripts/bundle-size.ts <base.json> <head.json>")
+const [basePath, headPath, baseSha, headSha] = process.argv.slice(2)
+if (!basePath || !headPath || !baseSha || !headSha) {
+  console.error("Usage: node scripts/bundle-size.ts <base.json> <head.json> <base-sha> <head-sha>")
   process.exit(1)
 }
 
@@ -55,4 +55,4 @@ console.log(`<!-- bundle-size -->
 | --- | --: | --: | --: | --: | --: | --: |
 ${rows.join("\n")}
 
-Measured from a Linux build of both commits. Budgets apply to the raw size and live in \`.size-limit.ts\`.`)
+Measured from Linux builds of ${baseSha.slice(0, 7)} (base) and ${headSha.slice(0, 7)} (this PR). Budgets apply to the raw size and live in \`.size-limit.ts\`.`)
