@@ -40,7 +40,8 @@ Feature: Command palette
 
   Scenario: A number chord in the new thread picker starts a thread in that project
     When I press "ControlOrMeta+n"
-    And I press "ControlOrMeta+1"
+    Then the new thread picker lists the projects
+    When I press "ControlOrMeta+1"
     Then a new thread is open with the composer focused
     And the open thread belongs to the first project
 
