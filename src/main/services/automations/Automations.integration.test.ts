@@ -1,4 +1,7 @@
+import { mkdtempSync } from "node:fs"
 import { createServer } from "node:net"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
@@ -29,6 +32,7 @@ import * as ThreadNaming from "../ThreadNaming.ts"
 import * as Threads from "../Threads.ts"
 import * as Worktrees from "../Worktrees.ts"
 import * as Terminals from "../Terminals.ts"
+import * as Scratch from "../Scratch.ts"
 import { Automations, layer as automationsLayer } from "./Automations.ts"
 import type { LinearIssueFilter, LinearIssueNode } from "./pollers.ts"
 
@@ -78,6 +82,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   const secrets = Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-automations-scratch-")))),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),

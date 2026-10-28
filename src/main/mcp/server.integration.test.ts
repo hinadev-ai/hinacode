@@ -41,6 +41,7 @@ import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
+import * as Scratch from "../services/Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
@@ -103,6 +104,7 @@ const stubs = Layer.mergeAll(
 
 const core = Layer.mergeAll(
   threadsLayer.pipe(
+    Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),

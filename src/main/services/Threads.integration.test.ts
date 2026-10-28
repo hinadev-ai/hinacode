@@ -19,8 +19,10 @@ import * as Terminals from "./Terminals.ts"
 import { layer as threadsLayerBase, Threads } from "./Threads.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const threadsLayer = threadsLayerBase.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
@@ -177,6 +179,25 @@ describe("Threads", () => {
 
       yield* threads.remove(second.id)
       expect(existsSync(other.cwd)).toBe(false)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("deletes a thread's scratch folder when it is archived or deleted", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const archived = yield* threads.get((yield* seedThread({ rootPath: "/repo" })).threadId)
+      const deleted = yield* threads.get((yield* seedThread({ rootPath: "/other" })).threadId)
+      const [archivedFolder, deletedFolder] = [yield* scratch.ensure(archived), yield* scratch.ensure(deleted)]
+      writeFileSync(join(archivedFolder, "experiment.py"), "print(1)")
+
+      yield* threads.archive(archived.id)
+      expect(existsSync(archivedFolder)).toBe(false)
+      expect(existsSync(deletedFolder)).toBe(true)
+
+      yield* threads.remove(deleted.id)
+      expect(existsSync(deletedFolder)).toBe(false)
+      yield* threads.remove(archived.id)
     }).pipe(Effect.provide(threadsLayer)),
   )
 })

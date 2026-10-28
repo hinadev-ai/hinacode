@@ -22,6 +22,7 @@ import { Settings, layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 interface Query {
   readonly prompt: string
@@ -104,6 +105,7 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-guides-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),

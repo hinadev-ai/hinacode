@@ -32,6 +32,7 @@ import * as SystemResources from "./services/SystemResources.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
+import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -63,6 +64,7 @@ export const makeTestAppLayer = (
 ) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(join(dirname(dbPath), "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),

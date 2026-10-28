@@ -10,9 +10,10 @@ const environment = {
   rootPath: "/repo",
   remote: "git@github.com:o/r.git",
   platform: "darwin",
+  scratchDirectory: "/data/scratch/20261029-080509-fix-login-t1",
 } as const
 
-test("names the thread's repository, branch, paths, remote and platform", () => {
+test("names the thread's repository, branch, paths, remote, platform and scratch directory", () => {
   expect(agentInstructions(experimental, environment)).toContain(`<environment>
   is a git repository: true
   git branch: \`feat/x\`
@@ -20,6 +21,7 @@ test("names the thread's repository, branch, paths, remote and platform", () => 
   root project path: \`/repo\`
   remote: \`git@github.com:o/r.git\`
   platform: darwin
+  scratch directory: \`/data/scratch/20261029-080509-fix-login-t1\`
 </environment>`)
 })
 

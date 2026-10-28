@@ -35,6 +35,7 @@ import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
+import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -87,6 +88,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(chats),
+      Layer.provideMerge(Scratch.layer(join(userData, "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),

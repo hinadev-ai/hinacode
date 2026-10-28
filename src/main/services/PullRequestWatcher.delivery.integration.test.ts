@@ -27,6 +27,7 @@ import * as Terminals from "./Terminals.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-watch-delivery-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
@@ -128,6 +129,7 @@ const observedWorktrees = Layer.effect(
 ).pipe(Layer.provide(Worktrees.layer))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(observedTerminals),
   Layer.provideMerge(observedWorktrees),
   Layer.provideMerge(Projects.layer),

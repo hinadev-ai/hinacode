@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
@@ -27,6 +27,7 @@ import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.
 import { Secrets } from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
+import * as Scratch from "./Scratch.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
@@ -100,6 +101,7 @@ const withPreparingThread = async (
   const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
@@ -583,7 +585,28 @@ it("tells the agent the branch and paths it works in", async () => {
   root project path: \`${probe.root}\`
   remote: \`(none)\`
   platform: ${process.platform}
-</environment>`)
+`)
+  })
+})
+
+const scratchDirectoryOf = (input: RunTurnInput | undefined) =>
+  /scratch directory: `([^`]+)`/.exec(input?.instructions ?? "")?.[1]
+
+it("names a scratch folder that exists and keeps its path after the title changes", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, turns, idle, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    const first = scratchDirectoryOf(turns[0]?.input)
+    expect(first).toBeDefined()
+    expect(existsSync(first!)).toBe(true)
+
+    await Effect.runPromise(threads.update({ id: thread.id, title: "Renamed by auto titling" }))
+    await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+
+    expect(scratchDirectoryOf(turns[1]?.input)).toBe(first)
+    expect(readdirSync(dirname(first!))).toHaveLength(1)
   })
 })
 
