@@ -100,6 +100,23 @@ describe("load", () => {
 describe("reload", () => {
   onScreen()
 
+  it.each(["snapshot", "error"])("replaces an initial load after missed pushes and ignores its stale %s", async (outcome) => {
+    void useMessages.getState().load("t1")
+    const stale = calls.shift()!
+    useMessages.getState().reload()
+    expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
+    const fresh = calls.shift()!
+    useMessages.getState().receive(created(3, "included"))
+    useMessages.getState().receive(created(4, "live"))
+    fresh.resolve(snapshot(3, ["missed", "included"]))
+    await flush()
+    expect(ids()).toEqual(["missed", "included", "live"])
+    if (outcome === "snapshot") stale.resolve(snapshot(0, []))
+    else stale.reject(new Error("old request failed"))
+    await flush()
+    expect(ids()).toEqual(["missed", "included", "live"])
+  })
+
   it("keeps the last known history on screen until the new snapshot swaps in", async () => {
     await loadReady(1, ["a"])
     const before = history()
