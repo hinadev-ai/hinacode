@@ -73,6 +73,7 @@
     "@pierre/diffs": "1.5.2",
     "@playwright/test": "1.64.0",
     "@pulls.review/core": "0.3.4",
+    "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-hotkeys": "0.13.0",
     "@tanstack/react-router": "1.170.42",
@@ -115,6 +116,7 @@
     "zustand": "5.0.15"
   },
   "optionalDependencies": {
+    "electron-liquid-glass": "1.1.1",
     "node-mac-permissions": "github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37"
   },
   "engines": {

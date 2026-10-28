@@ -58,6 +58,13 @@ Feature: Threads
     Then the sidebar lists the thread "Done"
     And the thread "Done" is stored as "idle"
 
+  Scenario: Archiving a thread far down the sidebar keeps the sidebar scrolled there
+    Given the project "demo" has 40 threads named "Task"
+    When I scroll the sidebar to the thread "Task 40"
+    And I archive the thread "Task 40" from its row
+    Then the sidebar does not list the thread "Task 40"
+    And the thread "Task 39" is in view in the sidebar
+
   Scenario: The Inbox lists every project's threads, most recently updated first
     Given the project "demo" has a thread "Fix login"
     And another project "tools" has a thread "Bump deps"

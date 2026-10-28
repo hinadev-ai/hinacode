@@ -91,7 +91,10 @@ export function ThreadActionsSheet({
       <Animated.View
         entering={rise}
         accessibilityViewIsModal
-        style={[styles.sheet, { paddingBottom: 8 + insets.bottom, backgroundColor: theme.background }]}
+        style={[
+          styles.sheet,
+          { paddingBottom: 8 + insets.bottom, backgroundColor: theme.background },
+        ]}
       >
         <Text accessibilityRole="header" numberOfLines={2} style={[styles.title, { color: theme.textMuted }]}>
           {title}

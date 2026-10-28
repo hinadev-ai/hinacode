@@ -23,9 +23,9 @@ export default defineConfig({
     build: {
       // `daemon` is `hinacode serve`, the same services as plain Node with no Electron (see `bin/hinacode.mjs`).
       rollupOptions: { input: { index: "src/main/index.ts", daemon: "src/main/daemon.ts" } },
-      // Optional dependencies are bundled by default, which breaks this native module's binding lookup.
+      // Optional dependencies are bundled by default, which breaks these native modules' binding lookup.
       externalizeDeps: {
-        include: ["node-mac-permissions"],
+        include: ["node-mac-permissions", "electron-liquid-glass"],
         exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node"],
       },
     },

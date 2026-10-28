@@ -181,7 +181,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap wrap-break-word text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) whitespace-pre-wrap wrap-break-word text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} />
             </FindPartContext>
@@ -214,7 +214,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-normal"
+      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
     >
       {presentation.kind === "completed" && (
         <WorkedFor
@@ -279,11 +279,7 @@ function QuestionsPart({ message, part }: { message: Message; part: Extract<Mess
 function ReplyText({ text, done }: { text: string; done: boolean }) {
   const [finishedOnScreen] = useState(!done)
   if (!done) return null
-  return (
-    <div className={finishedOnScreen ? "animate-fade-in" : undefined}>
-      <Markdown text={text} />
-    </div>
-  )
+  return <Markdown text={text} className={finishedOnScreen ? "animate-fade-in" : undefined} />
 }
 
 export function EmptyThread({ hint }: { hint: string }) {
