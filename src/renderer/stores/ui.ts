@@ -2,6 +2,7 @@ import { create } from "zustand"
 import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 import type { EnvironmentId } from "../lib/rpc.ts"
+import { cycleSwitcher, type ThreadSwitcher, visitRecent } from "../lib/threadSwitcher.ts"
 import {
   clampSize,
   FILE_TREE_HEIGHT_BOUNDS,
@@ -43,6 +44,7 @@ let findRevealRequests = 0
 const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
 const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
+const RECENT_THREADS_KEY = "hinacode.recentThreads"
 const PULL_REQUEST_CODE_VIEW_KEY = "hinacode.pullRequestCodeView"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "hinacode.collapsedPullRequestSections"
 const VM_FLOATING_WIDTH_KEY = "hinacode.vmFloatingWidth"
@@ -166,6 +168,14 @@ interface UiState {
   readonly setSidebarWidth: (width: number) => void
   /** Clamps, applies and persists the docked side panel width for one size. Null restores its default. */
   readonly setSidePanelWidth: (size: SidePanelSize, width: number | null) => void
+  /** Threads the user opened, most recent first, kept across restarts. */
+  readonly recentThreadIds: ReadonlyArray<string>
+  readonly visitThread: (threadId: string) => void
+  /** The Ctrl+Tab switcher while it is open. */
+  readonly threadSwitcher: ThreadSwitcher | null
+  /** Opens the switcher, or moves its highlight. `existing` drops threads deleted since the user opened them. */
+  readonly cycleThreadSwitcher: (openThreadId: string | null, step: 1 | -1, existing: (id: string) => boolean) => void
+  readonly closeThreadSwitcher: () => void
 }
 
 /** Whether the side panel shows its content in the current layout, docked or as an overlay. */
@@ -310,4 +320,16 @@ export const useUi = create<UiState>()((set, get) => ({
     saveSize(sidePanelWidthKeys[size], clamped)
     set((state) => ({ sidePanelWidths: { ...state.sidePanelWidths, [size]: clamped } }))
   },
+  recentThreadIds: loadStrings(RECENT_THREADS_KEY),
+  visitThread: (threadId) => {
+    const recentThreadIds = visitRecent(get().recentThreadIds, threadId)
+    localStorage.setItem(RECENT_THREADS_KEY, JSON.stringify(recentThreadIds))
+    set({ recentThreadIds })
+  },
+  threadSwitcher: null,
+  cycleThreadSwitcher: (openThreadId, step, existing) =>
+    set((state) => ({
+      threadSwitcher: cycleSwitcher(state.threadSwitcher, state.recentThreadIds.filter(existing), openThreadId, step),
+    })),
+  closeThreadSwitcher: () => set({ threadSwitcher: null }),
 }))

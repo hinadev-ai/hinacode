@@ -797,6 +797,24 @@ describe("Claude sub-agents", () => {
   )
 })
 
+const scheduleWakeup = (input: Readonly<Record<string, unknown>>, result: Readonly<Record<string, unknown>>) => [
+  {
+    type: "assistant",
+    parent_tool_use_id: null,
+    message: {
+      model: "claude-sonnet-5-5",
+      usage: { input_tokens: 1, output_tokens: 1 },
+      content: [{ type: "tool_use", id: "toolu-wake", name: "ScheduleWakeup", input }],
+    },
+  },
+  {
+    type: "user",
+    parent_tool_use_id: null,
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu-wake", content: "Scheduled" }] },
+    tool_use_result: result,
+  },
+]
+
 describe("Claude background tasks", () => {
   it.effect(
     "reports the shells it runs after the turn, stops one by its task id, and clears them when the CLI exits",
@@ -829,6 +847,83 @@ describe("Claude background tasks", () => {
           expect(ended).toStrictEqual({ threadId: "thread-1", tasks: [] })
         }),
       ),
+  )
+
+  it.effect("keeps the CLI alive for a scheduled wakeup and reports it until it fires", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        const tasks = provider.backgroundTasks
+        if (tasks === undefined) return yield* Effect.die("backgroundTasks is missing")
+        const changes = yield* tasks.changes.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild)
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup(
+              { delaySeconds: 1800, reason: "Waiting for CI", prompt: "Check CI" },
+              { scheduledFor: 1_800_000, clampedDelaySeconds: 1800, wasClamped: false },
+            ),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* TestClock.adjust("30 minutes")
+        expect(latestCli().close).not.toHaveBeenCalled()
+        latestCli().push(sessionState("running"))
+        yield* settle
+
+        const [scheduled, fired] = yield* Fiber.join(changes)
+        expect(scheduled?.tasks).toStrictEqual([
+          {
+            id: "toolu-wake",
+            kind: "wakeup",
+            label: "Waiting for CI",
+            startedAt: expect.any(String),
+            firesAt: new Date(1_800_000).toISOString(),
+          },
+        ])
+        expect(fired).toStrictEqual({ threadId: "thread-1", tasks: [] })
+      }),
+    ),
+  )
+
+  it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup({ delaySeconds: 60, reason: "Poll", prompt: "Poll" }, { scheduledFor: 60_000 }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* TestClock.adjust("119 seconds")
+        expect(latestCli().close).not.toHaveBeenCalled()
+        yield* TestClock.adjust("1 second")
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+
+  it.effect("drops the wakeup when the agent stops its loop", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup({ delaySeconds: 600, reason: "Poll", prompt: "Poll" }, { scheduledFor: 600_000 }),
+            ...scheduleWakeup({ stop: true }, { scheduledFor: 0, stopped: true, cancelledWakeups: 1 }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
   )
 })
 

@@ -95,6 +95,7 @@ export interface HandlerError {
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
+  readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
@@ -176,6 +177,7 @@ const handlers: Handlers = {
   "browser.close": (input) => Browser.use((browser) => browser.close(input)),
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
+  "app.setColorScheme": (scheme, desktop) => desktop?.setColorScheme(scheme) ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
@@ -355,6 +357,7 @@ const handlers: Handlers = {
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
+  "threads.contextBreakdown": ({ threadId }) => AgentRunner.use((runner) => runner.contextBreakdown(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
   "pullRequests.all": () => PullRequests.use((pullRequests) => pullRequests.listAll),
   "pullRequests.unlink": ({ threadId, url }) => PullRequests.use((pullRequests) => pullRequests.unlink(threadId, url)),
@@ -446,6 +449,12 @@ const handlers: Handlers = {
       const { worktreeRoot } = yield* Settings.use((settings) => settings.get)
       const paths = [homedir(), ...projects.map((project) => project.rootPath), ...(worktreeRoot ? [worktreeRoot] : [])]
       return yield* SystemResources.use((resources) => resources.read(paths))
+    }),
+  "machines.list": () =>
+    Effect.gen(function* () {
+      const { identity } = yield* RemoteAccess
+      const projects = yield* Projects.use((service) => service.list)
+      return [{ ...identity, projectIds: projects.map((project) => project.id) }]
     }),
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),

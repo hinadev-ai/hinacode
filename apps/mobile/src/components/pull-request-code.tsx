@@ -7,7 +7,13 @@ import type {
   PullRequestFileStatus,
   PullRequestGuideState,
 } from "@shared/domain.ts"
-import { type GuideFile, groupFiles, type ResolvedGroup, resolveGuide } from "@shared/pullRequestGuide.ts"
+import {
+  diffTooLarge,
+  type GuideFile,
+  groupFiles,
+  type ResolvedGroup,
+  resolveGuide,
+} from "@shared/pullRequestGuide.ts"
 import { useEffect, useState } from "react"
 import { Platform, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
@@ -68,10 +74,11 @@ export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
   const connected = useConnection((state) => state.status === "connected")
   const view = usePullRequests((state) => state.codeView)
   const remote = usePullRequests((state) => state.files[filesKey(detail.url, detail.head)])
+  const tooLarge = diffTooLarge(detail)
 
   useEffect(() => {
-    if (connected) void usePullRequests.getState().loadFiles(detail.url, detail.head)
-  }, [connected, detail.url, detail.head])
+    if (connected && !tooLarge) void usePullRequests.getState().loadFiles(detail.url, detail.head)
+  }, [connected, tooLarge, detail.url, detail.head])
 
   return (
     <View style={styles.code}>
@@ -81,7 +88,11 @@ export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
         onChange={(next) => usePullRequests.getState().setCodeView(next)}
         accessibilityLabel={copy("mobile_pr_code_view_label")}
       />
-      {remote === undefined || remote.status === "loading" ? (
+      {tooLarge ? (
+        <Text style={[styles.muted, { color: theme.textMuted }]}>
+          {copy("mobile_pr_code_too_large")}
+        </Text>
+      ) : remote === undefined || remote.status === "loading" ? (
         <Loading label={copy("mobile_pr_code_loading")} />
       ) : remote.status === "error" ? (
         <View style={styles.stack}>

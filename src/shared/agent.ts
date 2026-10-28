@@ -93,6 +93,19 @@ export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
 })
 
 /**
+ * The agent's preset models, plus `keep`, such as the thread's own. A preset none of whose models the agent still
+ * lists falls back to every model, so an agent never vanishes from the picker.
+ */
+export const presetModels = (
+  listed: ReadonlyArray<ModelInfo>,
+  preset: ReadonlyArray<string>,
+  keep: string | null,
+): ReadonlyArray<ModelInfo> => {
+  const picked = listed.filter((model) => preset.includes(model.id) || model.id === keep)
+  return preset.length === 0 || !picked.some((model) => model.id !== keep) ? listed : picked
+}
+
+/**
  * Something the composer can complete: a Claude slash command or skill typed as `/name`, or a Codex
  * skill typed as `$name`.
  */
@@ -182,6 +195,22 @@ export type SecretRequest = typeof SecretRequest.Type
 export const ContextWindow = Schema.Struct({ usedTokens: Schema.Number, maxTokens: Schema.Number })
 export type ContextWindow = typeof ContextWindow.Type
 
+/** What fills the context window, by category, as the agent's `/context` reports it. */
+export const ContextBreakdown = Schema.Struct({
+  usedTokens: Schema.Number,
+  maxTokens: Schema.Number,
+  categories: Schema.Array(
+    Schema.Struct({
+      /** The agent's own English label, such as "MCP tools". */
+      name: Schema.String,
+      tokens: Schema.Number,
+      /** `buffer` is the compaction reserve. */
+      kind: Schema.Literals(["used", "free", "buffer"]),
+    }),
+  ),
+})
+export type ContextBreakdown = typeof ContextBreakdown.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
@@ -241,12 +270,13 @@ export const Subagent = Schema.Struct({
 })
 export type Subagent = typeof Subagent.Type
 
-export const BackgroundTaskKind = Schema.Literals(["shell", "workflow", "other"])
+export const BackgroundTaskKind = Schema.Literals(["shell", "workflow", "wakeup", "other"])
 export type BackgroundTaskKind = typeof BackgroundTaskKind.Type
 
 /**
- * Work the agent left running on its own, such as a shell it started with `run_in_background`. It outlives the
- * tool call and the turn that started it. Sub-agents are not background tasks; they are `Subagent`s.
+ * Work the agent left running on its own, such as a shell it started with `run_in_background` or a turn it
+ * scheduled for later. It outlives the tool call and the turn that started it. Sub-agents are not background
+ * tasks; they are `Subagent`s.
  */
 export const BackgroundTask = Schema.Struct({
   id: Schema.String,
@@ -255,6 +285,8 @@ export const BackgroundTask = Schema.Struct({
   label: Schema.String,
   /** When HinaCode first saw it running. */
   startedAt: Schema.String,
+  /** When a `wakeup` starts the agent's next turn. */
+  firesAt: Schema.optional(Schema.String),
 })
 export type BackgroundTask = typeof BackgroundTask.Type
 

@@ -13,7 +13,8 @@ globalThis.hinacodeStartupAppearance = new Promise((done, fail) => {
             const snapshot = () => ({
               scheme: document.documentElement.classList.contains("dark") ? "dark" : "light",
               rendered: (document.getElementById("root")?.childElementCount ?? 0) > 0,
-              background: getComputedStyle(document.body).backgroundColor
+              // On macOS the body is clear so the glass shows through; <main> paints the theme background.
+              background: getComputedStyle(document.querySelector("main") ?? document.body).backgroundColor
             })
             const firstVisible = snapshot()
             return new Promise(done => {

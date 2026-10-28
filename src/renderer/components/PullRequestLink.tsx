@@ -17,6 +17,7 @@ import {
   statusIndicator,
 } from "./ThreadPullRequests.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
+import { WithLinkIcon } from "./LinkIcon.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 
 /**
@@ -43,11 +44,10 @@ export function PullRequestLink({
         delay={300}
         className="text-primary underline underline-offset-2"
       >
-        <RiGithubFill aria-hidden className="mr-1 inline-block size-3.5 align-[-0.125em]" />
-        {children}
+        <WithLinkIcon icon={<RiGithubFill className="block size-full" />}>{children}</WithLinkIcon>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-80">
-        <PullRequestCard pullRequest={pullRequest} environment={environment} />
+        <PullRequestCard pullRequest={pullRequest} href={href} environment={environment} />
       </HoverCardContent>
     </HoverCard>
   )
@@ -55,9 +55,12 @@ export function PullRequestLink({
 
 export function PullRequestCard({
   pullRequest: { owner, name, number },
+  href,
   environment,
 }: {
   pullRequest: PullRequestRef
+  /** Where the number links to, from `usePullRequestHref`, so it follows the project's linear.review setting. */
+  href: string
   environment: EnvironmentId
 }) {
   // The canonical url, so links to a pull request's files or comments share one lookup.
@@ -65,7 +68,15 @@ export function PullRequestCard({
   return (
     <div className="flex flex-col gap-1.5 text-xs">
       <p className="text-muted-foreground">
-        {owner}/{name} #{number}
+        {owner}/{name}{" "}
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-sm underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          #{number}
+        </a>
       </p>
       {AsyncResult.builder(status)
         .onSuccess((details) => <PullRequestDetails pullRequest={details} />)

@@ -5,45 +5,49 @@ import { useActionState } from "react"
 import { RiErrorWarningLine } from "react-icons/ri"
 import type { AccountLimits } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import type { LimitWindow } from "../../shared/limits.ts"
+import type { LimitWindowKind } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
-import { formatResetIn, mostUsed, spentWindow } from "../lib/planLimits.ts"
+import { type AccountOption, accountOptions, formatMinutes, formatResetIn } from "../../shared/planLimits.ts"
 import { accountLimitsAtom, callPromise } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
-import { resetLabel, windowLabel } from "./PlanLimits.tsx"
 import { useDefaultAccountName, useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 
-type AccountThread = Pick<Thread, "id" | "provider" | "accountId" | "model">
-
-export interface AccountOption {
-  /** Null is the CLI's own login. */
-  readonly id: string | null
-  readonly name: string
-  /** Undefined when the plan limits are unknown, such as for an API key or a remote environment's account. */
-  readonly mostUsed: LimitWindow | undefined
-  /** The window that keeps the account from running the thread's model. */
-  readonly spent: LimitWindow | undefined
+const windowLabel = (window: LimitWindowKind) => {
+  switch (window.kind) {
+    case "session":
+      return m.limits_session()
+    case "weekly":
+      return m.limits_weekly()
+    case "model":
+      return window.name
+    case "minutes":
+      return formatMinutes(window.minutes, getLocale())
+  }
 }
+
+/** "Resets in 2h 10m, Mon 3:40 PM". */
+const resetLabel = (resetsAt: string, now: number, locale: string) =>
+  m.limits_resets_in({
+    duration: formatResetIn(resetsAt, now, locale),
+    time: new Intl.DateTimeFormat(locale, { weekday: "short", hour: "numeric", minute: "2-digit" }).format(
+      Date.parse(resetsAt),
+    ),
+  })
+
+type AccountThread = Pick<Thread, "id" | "provider" | "accountId" | "model">
 
 export function useAccountOptions(thread: AccountThread) {
   const environment = useThreadEnvironment(thread.id)
   const added = useProviderAccounts(environment, thread.provider)
   const defaultName = useDefaultAccountName(environment, thread.provider)
   const limits = AsyncResult.getOrElse(useAtomValue(accountLimitsAtom), (): ReadonlyArray<AccountLimits> => [])
-  const windowsOf = (id: string | null) =>
-    environment === null
-      ? (limits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? [])
-      : []
-  const options = [{ id: null, name: defaultName }, ...added].map(({ id, name }): AccountOption => {
-    const windows = windowsOf(id)
-    return { id, name, mostUsed: mostUsed(windows), spent: spentWindow(windows, thread.model) }
-  })
+  const options = accountOptions(thread, defaultName, added, environment === null ? limits : [])
   const current = options.find((option) => option.id === thread.accountId)
   const suggestion = options
     .filter((option) => option !== current && option.mostUsed !== undefined && option.spent === undefined)
@@ -109,7 +113,7 @@ export function AccountLimitNotice({ thread }: { thread: AccountThread }) {
   return (
     <div
       role="status"
-      className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
+      className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-attention/30 bg-attention/10 px-3 py-2 text-sm"
     >
       <RiErrorWarningLine aria-hidden className="size-4 shrink-0 text-attention" />
       <span className="min-w-0 flex-1">

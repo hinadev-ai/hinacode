@@ -2,7 +2,12 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import { RiCheckboxCircleFill } from "react-icons/ri"
-import type { VmHostStatus, VmTemplate } from "../../../shared/domain.ts"
+import type {
+  ExperimentalSettings as ExperimentalSettingsValue,
+  VmHostStatus,
+  VmTemplate,
+} from "../../../shared/domain.ts"
+import { formatEnvLines, parseEnvLines } from "../../lib/envLines.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -11,6 +16,7 @@ import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
+import { Textarea } from "../ui/textarea.tsx"
 import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
@@ -20,46 +26,10 @@ export function ExperimentalSettings() {
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
 
-  const setTinyVm = async (tinyVm: boolean) => {
+  const setExperimental = async (patch: Partial<ExperimentalSettingsValue>) => {
     setError(null)
     try {
-      await updateSettings({ experimental: { ...experimental, tinyVm } })
-    } catch (cause) {
-      setError(errorMessage(cause))
-    }
-  }
-
-  const setProfile = async (tinyVmProfile: boolean) => {
-    setError(null)
-    try {
-      await updateSettings({ experimental: { ...experimental, tinyVmProfile } })
-    } catch (cause) {
-      setError(errorMessage(cause))
-    }
-  }
-
-  const setPasskeys = async (tinyVmPasskeys: boolean) => {
-    setError(null)
-    try {
-      await updateSettings({ experimental: { ...experimental, tinyVmPasskeys } })
-    } catch (cause) {
-      setError(errorMessage(cause))
-    }
-  }
-
-  const setDevices = async (devices: boolean) => {
-    setError(null)
-    try {
-      await updateSettings({ experimental: { ...experimental, devices } })
-    } catch (cause) {
-      setError(errorMessage(cause))
-    }
-  }
-
-  const setTemplate = async (tinyVmTemplate: string) => {
-    setError(null)
-    try {
-      await updateSettings({ experimental: { ...experimental, tinyVmTemplate } })
+      await updateSettings({ experimental: { ...experimental, ...patch } })
     } catch (cause) {
       setError(errorMessage(cause))
     }
@@ -76,12 +46,15 @@ export function ExperimentalSettings() {
           <Switch
             id="settings-experimental-tiny-vm"
             checked={experimental.tinyVm}
-            onCheckedChange={(checked) => void setTinyVm(checked)}
+            onCheckedChange={(checked) => void setExperimental({ tinyVm: checked })}
           />
         </Field>
         {experimental.tinyVm && <VmHost />}
         {experimental.tinyVm && (
-          <VmTemplateField value={experimental.tinyVmTemplate} onChange={(name) => void setTemplate(name)} />
+          <VmTemplateField
+            value={experimental.tinyVmTemplate}
+            onChange={(name) => void setExperimental({ tinyVmTemplate: name })}
+          />
         )}
         {experimental.tinyVm && (
           <Field orientation="horizontal">
@@ -92,7 +65,7 @@ export function ExperimentalSettings() {
             <Switch
               id="settings-experimental-tiny-vm-profile"
               checked={experimental.tinyVmProfile}
-              onCheckedChange={(checked) => void setProfile(checked)}
+              onCheckedChange={(checked) => void setExperimental({ tinyVmProfile: checked })}
             />
           </Field>
         )}
@@ -105,9 +78,18 @@ export function ExperimentalSettings() {
             <Switch
               id="settings-experimental-tiny-vm-passkeys"
               checked={experimental.tinyVmPasskeys}
-              onCheckedChange={(checked) => void setPasskeys(checked)}
+              onCheckedChange={(checked) => void setExperimental({ tinyVmPasskeys: checked })}
             />
           </Field>
+        )}
+        {experimental.tinyVm && (
+          <VmSetupScriptField
+            value={experimental.tinyVmSetupScript}
+            onChange={(tinyVmSetupScript) => void setExperimental({ tinyVmSetupScript })}
+          />
+        )}
+        {experimental.tinyVm && (
+          <VmEnvField value={experimental.tinyVmEnv} onChange={(tinyVmEnv) => void setExperimental({ tinyVmEnv })} />
         )}
         <Field orientation="horizontal">
           <FieldContent>
@@ -117,7 +99,7 @@ export function ExperimentalSettings() {
           <Switch
             id="settings-experimental-devices"
             checked={experimental.devices}
-            onCheckedChange={(checked) => void setDevices(checked)}
+            onCheckedChange={(checked) => void setExperimental({ devices: checked })}
           />
         </Field>
       </SettingsGroup>
@@ -145,6 +127,62 @@ function VmTemplateField({ value, onChange }: { value: string; onChange: (name: 
         value={value}
         onChange={onChange}
       />
+    </Field>
+  )
+}
+
+function VmSetupScriptField({ value, onChange }: { value: string; onChange: (script: string) => void }) {
+  return (
+    <Field>
+      <FieldLabel htmlFor="settings-experimental-tiny-vm-setup">{m.settings_tiny_vm_setup()}</FieldLabel>
+      <Textarea
+        id="settings-experimental-tiny-vm-setup"
+        rows={4}
+        defaultValue={value}
+        className="font-mono text-xs"
+        placeholder={m.settings_tiny_vm_setup_placeholder()}
+        spellCheck={false}
+        onBlur={(event) => event.target.value !== value && onChange(event.target.value)}
+      />
+      <FieldDescription>{m.settings_tiny_vm_setup_hint()}</FieldDescription>
+    </Field>
+  )
+}
+
+function VmEnvField({
+  value,
+  onChange,
+}: {
+  value: Readonly<Record<string, string>>
+  onChange: (env: Record<string, string>) => void
+}) {
+  const [invalidLine, setInvalidLine] = useState<number | null>(null)
+  const saved = formatEnvLines(value)
+  const save = (text: string) => {
+    const parsed = parseEnvLines(text)
+    if ("invalidLine" in parsed) return setInvalidLine(parsed.invalidLine)
+    setInvalidLine(null)
+    if (formatEnvLines(parsed.env) !== saved) onChange(parsed.env)
+  }
+
+  return (
+    <Field data-invalid={invalidLine !== null || undefined}>
+      <FieldLabel htmlFor="settings-experimental-tiny-vm-env">{m.settings_tiny_vm_env()}</FieldLabel>
+      <Textarea
+        id="settings-experimental-tiny-vm-env"
+        rows={3}
+        defaultValue={saved}
+        className="font-mono text-xs"
+        placeholder={m.settings_tiny_vm_env_placeholder()}
+        spellCheck={false}
+        aria-invalid={invalidLine !== null || undefined}
+        onBlur={(event) => save(event.target.value)}
+      />
+      {invalidLine === null ? (
+        <FieldDescription>{m.settings_tiny_vm_env_hint()}</FieldDescription>
+      ) : (
+        <FieldError>{m.settings_tiny_vm_env_invalid({ line: String(invalidLine) })}</FieldError>
+      )}
     </Field>
   )
 }

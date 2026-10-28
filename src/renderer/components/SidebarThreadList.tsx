@@ -41,16 +41,14 @@ import {
   RiMoreFill,
   RiPencilLine,
   RiPushpinLine,
-  RiStackLine,
   RiUnpinLine,
 } from "react-icons/ri"
 import type { IconType } from "react-icons"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread } from "../../shared/domain.ts"
-import { openChecks, type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
+import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
-import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { formatSnoozeTime } from "../lib/snooze.ts"
 import {
@@ -59,10 +57,8 @@ import {
   type EnvironmentId,
   projectsAtom,
   pullRequestAttentionAtom,
-  pullRequestStatusAtom,
 } from "../lib/rpc.ts"
-import { cn } from "../lib/utils.ts"
-import { type Cloud, isStale, useCloud, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
+import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
@@ -74,15 +70,13 @@ import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { PullRequestCard } from "./PullRequestLink.tsx"
-import { ChecksIndicator, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
+import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Input } from "./ui/input.tsx"
 import {
   Popover,
@@ -266,21 +260,12 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
-  const state = rowState(
-    thread.status,
-    useUnseen((unseen) => unseen.byThreadId[thread.id]),
-    useAtomValue(
-      pullRequestAttentionAtom(
-        environment,
-        meta.links.map((link) => link.url),
-      ),
-    ),
-  )
+  const state = useThreadRowState(thread)
 
-  // The row leaves this tab's list; once it is gone, keep focus in the sidebar.
+  // The row leaves this tab's list; once it is gone, keep focus in the sidebar without scrolling to the first row.
   const moveOut = (updated: Thread) => {
     flushSync(() => useThreads.getState().upsert(updated))
-    if (document.activeElement === document.body) focusAfterRemoval()?.focus()
+    if (document.activeElement === document.body) focusAfterRemoval()?.focus({ preventScroll: true })
   }
   const archive = async () => {
     try {
@@ -687,7 +672,23 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconTyp
   },
 }
 
-function StatusIndicator({ state }: { state: RowState }): ReactNode {
+/** The status a thread shows wherever it is listed: its turn, an unseen result, or a pull request needing action. */
+export function useThreadRowState(thread: Thread): RowState {
+  const environment = useThreadEnvironment(thread.id)
+  const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
+  return rowState(
+    thread.status,
+    useUnseen((unseen) => unseen.byThreadId[thread.id]),
+    useAtomValue(
+      pullRequestAttentionAtom(
+        environment,
+        links.map((link) => link.url),
+      ),
+    ),
+  )
+}
+
+export function StatusIndicator({ state }: { state: RowState }): ReactNode {
   const status = statusIcons[state]
   if (!status) return null
   const { label, Icon, className } = status
@@ -736,7 +737,6 @@ function ThreadMeta({
   cloud,
   environment,
 }: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
-  const latest = links.at(-1)
   const watching = links.some((link) => link.watch !== null)
   // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
   // collapsing row would slide out from under the pointer and flicker.
@@ -753,9 +753,7 @@ function ThreadMeta({
           <span className="truncate font-mono">{branch}</span>
         </span>
       )}
-      {latest && (
-        <PullRequestNumber threadId={threadId} latest={latest} count={links.length} environment={environment} />
-      )}
+      {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
           <RiEyeLine aria-hidden className="size-3" />
@@ -797,55 +795,5 @@ function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
       <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
       <span aria-hidden>{time}</span>
     </time>
-  )
-}
-
-/** The newest linked pull request, with a stack icon when the thread linked several. */
-function PullRequestNumber({
-  threadId,
-  latest,
-  count,
-  environment,
-}: {
-  threadId: string
-  latest: PullRequestLink
-  count: number
-  environment: EnvironmentId
-}) {
-  const number = pullRequestNumber(latest.url)
-  const pullRequestRef = parsePullRequestUrl(latest.url)
-  const href = usePullRequestHref(threadId, latest.url)
-  const lookup = useAtomValue(pullRequestStatusAtom(environment, latest.url))
-  const pullRequest = AsyncResult.isSuccess(lookup) ? lookup.value : undefined
-  const status = pullRequest?.status
-  const checks = openChecks(pullRequest)
-  return (
-    <HoverCard>
-      <HoverCardTrigger
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        delay={300}
-        aria-label={
-          count > 1
-            ? m.sidebar_pull_request_stack({ number, count: String(count) })
-            : m.sidebar_pull_request({ number })
-        }
-        // Above the row link's ::after, so it opens the pull request instead of the thread.
-        className={cn(
-          "relative z-10 flex shrink-0 items-center gap-0.5 rounded-sm font-mono underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-          status ? statusIndicator[status].className : "hover:text-foreground",
-        )}
-      >
-        {count > 1 && <RiStackLine aria-hidden className="size-3" />}
-        <StatusIcon status={status} className="size-3" />#{number}
-      </HoverCardTrigger>
-      {checks && <ChecksIndicator checks={checks} className="-ml-1 size-3" />}
-      {pullRequestRef && (
-        <HoverCardContent align="start" className="w-80">
-          <PullRequestCard pullRequest={pullRequestRef} environment={environment} />
-        </HoverCardContent>
-      )}
-    </HoverCard>
   )
 }

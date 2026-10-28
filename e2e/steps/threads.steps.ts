@@ -61,6 +61,22 @@ When("I archive the thread {string} from its menu", async ({ app, names }, title
   await threadMenu(app.page, names.of(title), "Archive")
 })
 
+When("I scroll the sidebar to the thread {string}", async ({ app, names }, title: string) => {
+  await sidebar(app.page)
+    .getByRole("link", { name: names.of(title) })
+    .scrollIntoViewIfNeeded()
+})
+
+When("I archive the thread {string} from its row", async ({ app, names }, title: string) => {
+  const archive = sidebar(app.page).getByRole("button", { name: `Archive ${names.of(title)}`, exact: true })
+  await archive.locator("xpath=ancestor::li[1]").hover()
+  await archive.click()
+})
+
+Then("the thread {string} is in view in the sidebar", async ({ app, names }, title: string) => {
+  await expect(sidebar(app.page).getByRole("link", { name: names.of(title) })).toBeInViewport()
+})
+
 When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await sidebar(app.page).getByRole("tab", { name: tab, exact: true }).click()
 })

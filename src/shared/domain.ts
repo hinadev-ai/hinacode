@@ -203,6 +203,8 @@ export const PullRequestDetail = Schema.Struct({
   /** The head commit oid, so a watcher can tell a push apart from the code it already reported on. */
   head: Schema.String,
   checkRuns: Schema.Array(CheckRun),
+  /** Defaults for a desktop or cloud from before the Code tab read it. */
+  changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 
@@ -494,6 +496,7 @@ export const ThemeId = Schema.Literals([
   "one-dark-pro",
   "dracula",
   "material-theme",
+  "pinky",
 ])
 export type ThemeId = typeof ThemeId.Type
 
@@ -557,6 +560,10 @@ export const ExperimentalSettings = Schema.Struct({
    * and the result goes back to the VM page. Needs the fingerprint button in the VM view per thread before use.
    */
   tinyVmPasskeys: Schema.Boolean,
+  /** Set for every command in every new tiny VM, the agent's `vm_exec` and the setup script included. */
+  tinyVmEnv: Schema.Record(Schema.String, Schema.String),
+  /** A bash script each new tiny VM runs before any tool reaches it. A failing script fails the start. */
+  tinyVmSetupScript: Schema.String,
   /** The Devices side panel view and the `device_*` MCP tools: stream and drive iOS simulators and Android emulators. */
   devices: Schema.Boolean,
 })
@@ -721,6 +728,8 @@ export const defaultSettings: Settings = {
     tinyVmProfile: false,
     tinyVmPasskeys: false,
     devices: false,
+    tinyVmEnv: {},
+    tinyVmSetupScript: "",
   },
   worktreeRoot: null,
 }
@@ -730,6 +739,15 @@ export const defaultSettings: Settings = {
  * `environment.<id>.token`. `relay` is its tunnel hostname, dialed when `host` does not answer. `source` says whether it was
  * paired by URL or listed by the relay the desktop signed in to.
  */
+/** A HinaCode install: the desktop or a cloud. `id` is the same on every machine that knows it. */
+export const Machine = Schema.Struct({
+  id: Schema.String,
+  /** The name the desktop gave a cloud when it paired, else the machine's hostname. */
+  name: Schema.String,
+  projectIds: Schema.Array(Schema.String),
+})
+export type Machine = typeof Machine.Type
+
 export const Environment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

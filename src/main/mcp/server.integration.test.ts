@@ -11,6 +11,7 @@ import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream 
 import { TestClock } from "effect/testing"
 import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
+import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -465,6 +466,7 @@ layer(testLayer)("thread controls", (it) => {
             "status: running",
             "provider: claude",
             "model: m",
+            "effort: default",
             "created_by: user",
             "created_at: \\S+",
             "updated_at: \\S+",
@@ -505,6 +507,53 @@ layer(testLayer)("thread controls", (it) => {
     }),
   )
 
+  it.effect("send_to_thread sets the model and effort of a thread that has not started", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Configured child")
+      const sent = yield* callFrom(a, "send_to_thread", {
+        threadId: child,
+        prompt: "Begin",
+        model: "m2",
+        effort: "low",
+      })
+      expect(sent.isError).toBe(false)
+      expect(yield* threads.get(child)).toMatchObject({ model: "m2", effort: "low" })
+      yield* (yield* AgentRunner).interrupt(child)
+    }),
+  )
+
+  it.effect("send_to_thread only changes the effort of a thread that has started", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const child = yield* childOf(a, "Started child")
+      yield* threads.update({ id: child, providerSessionId: "session-1" })
+      const refused = yield* callFrom(a, "send_to_thread", { threadId: child, prompt: "x", model: "m2" })
+      expect(refused).toStrictEqual({
+        text: `Thread ${child} has started, so its model stays m. Pass only \`effort\`.`,
+        isError: true,
+        images: [],
+      })
+      const sent = yield* callFrom(a, "send_to_thread", { threadId: child, prompt: "Again", effort: "max" })
+      expect(sent.isError).toBe(false)
+      expect(yield* threads.get(child)).toMatchObject({ model: "m", effort: "max" })
+      yield* (yield* AgentRunner).interrupt(child)
+    }),
+  )
+
+  it.effect("create_thread sets the effort", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const created = yield* callFrom(a, "create_thread", { title: "Effortful", prompt: "Go", effort: "high" })
+      const id = /Created thread (\S+) /.exec(created.text)![1]!
+      expect(yield* threads.get(id)).toMatchObject({ effort: "high" })
+      yield* (yield* AgentRunner).interrupt(id)
+    }),
+  )
+
   it.effect("a thread of another project or a deleted one is out of reach", () =>
     Effect.gen(function* () {
       const { a, b } = yield* Seeded
@@ -533,11 +582,23 @@ const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = fals
   Effect.gen(function* () {
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
-    yield* settings.set({ experimental: { tinyVm: on, tinyVmTemplate, tinyVmProfile, tinyVmPasskeys: false, devices: false } })
+    yield* settings.set({
+      experimental: { ...defaultSettings.experimental, tinyVm: on, tinyVmTemplate, tinyVmProfile },
+    })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
 
-const VM_TOOLS = ["vm_screenshot", "vm_click", "vm_move", "vm_drag", "vm_scroll", "vm_type", "vm_key", "vm_exec"]
+const VM_TOOLS = [
+  "vm_screenshot",
+  "vm_click",
+  "vm_move",
+  "vm_drag",
+  "vm_scroll",
+  "vm_type",
+  "vm_key",
+  "vm_exec",
+  "vm_pull_file",
+]
 
 layer(testLayer)("tiny vm tools while the toggle is off", (it) => {
   it.effect("are not listed and cannot be called", () =>
@@ -772,6 +833,53 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(first.text).toContain("The user dropped files into the VM: ~/Downloads/notes")
       const second = yield* callAs(connection, "vm_exec", { command: "ls ~/Downloads" })
       expect(second.text).not.toContain("dropped files")
+    }),
+  )
+
+  it.effect("vm_pull_file copies a VM folder into a new folder on this machine", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const started = yield* vm.start(a)
+      if (started.status !== "running") throw new Error(`VM is ${started.status}`)
+      fake.seedFile(
+        started.sandboxId,
+        "Downloads/report",
+        encodeTar([
+          { type: "dir", path: "report", mode: 0o755, mtime: 1700000000 },
+          { type: "file", path: "report/q3.csv", data: new TextEncoder().encode("a,b\n"), mode: 0o755, mtime: 0 },
+          { type: "symlink", path: "report/home", target: "/home/user", mode: 0o777, mtime: 0 },
+        ]),
+      )
+      const connection = yield* mcp.connectionFor(a)
+
+      const result = yield* callAs(connection, "vm_pull_file", { path: "~/Downloads/report" })
+      expect(result.isError).toBe(false)
+      const landed = /to (\S+) \(1 file, 0\.0 MB\)/.exec(result.text)?.[1]
+      expect(landed).toMatch(new RegExp(`^${join(vmProfileDir, "pulled", a)}/[0-9a-f-]{36}/report$`))
+      expect(yield* Effect.promise(() => readFile(join(landed!, "q3.csv"), "utf8"))).toBe("a,b\n")
+      expect(result.text).toContain("Skipped symlinks: report/home")
+
+      const again = yield* callAs(connection, "vm_pull_file", { path: "~/Downloads/report" })
+      expect(again.text).not.toContain(landed!)
+    }),
+  )
+
+  it.effect("vm_pull_file on a missing path says so and keeps the VM", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const started = yield* vm.start(a)
+
+      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_pull_file", { path: "~/nope.txt" })
+      expect(result.isError).toBe(true)
+      expect(result.text).toContain("Nothing exists at ~/nope.txt in the VM.")
+      expect(yield* vm.get(a)).toStrictEqual(started)
     }),
   )
 

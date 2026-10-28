@@ -11,8 +11,9 @@ A cell says yes when the provider maps the capability today. A cell says no when
 | Capability                       | Contract                                                    | Claude             | Codex                    | Muse               | What the UI shows                              |
 | -------------------------------- | ----------------------------------------------------------- | ------------------ | ------------------------ | ------------------ | ---------------------------------------------- |
 | Models                           | `listModels`                                                | yes                | yes                      | yes                | Model picker in the composer                   |
-| Account and plan limits          | `account`, `planLimits`                                     | yes                | yes                      | yes                | Account settings and the limits list           |
+| Account and plan limits          | `account`, `planLimits`                                     | yes                | yes                      | yes                | Account settings and the account picker        |
 | Token usage                      | `usage`, `turn_completed.usage`                             | yes                | yes                      | yes                | Thread usage and context meter                 |
+| Context breakdown                | `contextBreakdown`                                          | yes                | no                       | no                 | Categories in the context meter popover        |
 | Commands and skills              | `listCommands`                                              | yes                | yes                      | yes                | Slash and dollar completion in the composer    |
 | Streaming text and reasoning     | `text_delta`, `reasoning_delta`                             | yes                | yes                      | yes                | Streaming reply in the transcript              |
 | Tool calls and file changes      | `tool_call_started`, `tool_call_finished`, `file_changed`   | yes                | yes                      | yes                | Tool rows and the changes view                 |
@@ -101,5 +102,6 @@ Every other field is required. A provider that cannot do a required thing still 
 ## Gaps
 
 - Claude maps every capability in the matrix. It has no `questions_posted` path. Its questions always block the turn.
+- Codex and Muse report only used and window tokens, so their context popover shows totals without categories. Claude reports categories only while its session is open, up to 60 seconds after a turn.
 - Codex polls background terminals of the parent thread only, not of its sub-agent threads. Codex exposes no `wakes` stream. Codex compaction reports no token counts, so the UI cannot show before and after sizes. Codex applies access mode changes only on the next turn.
 - Muse cannot stop one of two or more shells it backgrounded itself, and does not track registry-only tasks such as `monitor`. Muse does not map `session/todoListChanged`. Its todos reach the UI only through `write_todos` tool calls. Muse has no `copySession` and no added accounts.

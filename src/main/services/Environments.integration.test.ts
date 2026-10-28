@@ -39,6 +39,7 @@ import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
+import { unusedLoopbackPort } from "../remote/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { ClientSettings } from "./ClientSettings.ts"
 import { Environments, type ForwardedCall } from "./Environments.ts"
@@ -221,7 +222,7 @@ beforeAll(async () => {
   execFileSync("git", ["-C", cloudRepo, "remote", "add", "origin", "git@github.com:Acme/Web.git"])
   mkdirSync(join(dir, "cloud"))
   mkdirSync(join(dir, "desktop"))
-  cloudPort = 40000 + Math.floor(Math.random() * 20000)
+  cloudPort = await unusedLoopbackPort()
   cloud = ManagedRuntime.make(makeCloud(join(dir, "cloud", "hinacode.sqlite")))
   await setCloudRemote(true)
   await vi.waitFor(async () =>

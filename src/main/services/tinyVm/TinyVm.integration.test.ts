@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime } from "effect"
+import { defaultSettings, type ExperimentalSettings } from "../../../shared/domain.ts"
 import * as Db from "../../db/client.ts"
 import { Events } from "../Events.ts"
 import * as Settings from "../Settings.ts"
@@ -13,13 +14,13 @@ import { encodeTar } from "./tar.ts"
 import { type FakeSbx, startFakeSbx } from "./testing.ts"
 import { TinyVm, layer } from "./TinyVm.ts"
 
-const makeRuntime = (fake: FakeSbx, profileDir: string) =>
+const makeRuntime = (fake: FakeSbx, profileDir: string, experimental: Partial<ExperimentalSettings> = {}) =>
   ManagedRuntime.make(
     Layer.unwrap(
       Effect.gen(function* () {
         const settings = yield* Settings.Settings
         yield* settings.set({
-          experimental: { tinyVm: true, tinyVmTemplate: "default", tinyVmProfile: true, tinyVmPasskeys: false, devices: false },
+          experimental: { ...defaultSettings.experimental, tinyVm: true, tinyVmProfile: true, ...experimental },
         })
         return layer({ configPath: fake.configPath, env: {} }, profileDir)
       }),
@@ -117,6 +118,48 @@ it.effect("stageArchive uploads one archive to the guest path and openTunnel rea
           : (yield* Effect.promise(() => once(tunnel.socket, "data")))[0]
       expect(String(greeting)).toContain("RFB")
       tunnel.socket.destroy()
+    }),
+  ),
+)
+
+it.effect("a new VM gets the configured environment and runs the setup script before it is running", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          makeRuntime(fake, dir, {
+            tinyVmProfile: false,
+            tinyVmEnv: { NODE_ENV: "development" },
+            tinyVmSetupScript: "sudo apt-get install -y jq",
+          }),
+        ),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const vm = yield* Effect.promise(() => runtime.runPromise(TinyVm.use((tinyVm) => tinyVm.start("thread"))))
+
+      expect(vm).toMatchObject({ status: "running" })
+      expect(fake.createdEnvs).toEqual([{ NODE_ENV: "development" }])
+      expect(fake.execs.map((exec) => exec.script)).toEqual(["sudo apt-get install -y jq"])
+    }),
+  ),
+)
+
+it.effect("a failing setup script fails the start and destroys the sandbox", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeSbx
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-vm-profile-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir, { tinyVmSetupScript: "exit 3" })),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const vm = yield* Effect.promise(() => runtime.runPromise(TinyVm.use((tinyVm) => tinyVm.start("thread"))))
+
+      expect(vm).toEqual({ status: "failed", message: "The setup script exited with code 3.\nexit 3" })
+      expect(fake.created()).toBe(1)
+      expect(fake.sandboxes.size).toBe(0)
     }),
   ),
 )

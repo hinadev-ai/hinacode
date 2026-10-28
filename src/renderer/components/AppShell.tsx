@@ -6,7 +6,7 @@ import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { SnoozeDialog } from "./SnoozeDialog.tsx"
 import { Sidebar } from "./Sidebar.tsx"
-import { StatusBar } from "./StatusBar.tsx"
+import { ThreadSwitcher } from "./ThreadSwitcher.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
 /** The mouse's back and forward side buttons walk the router history, as they do in a browser. */
@@ -30,16 +30,16 @@ export function AppShell() {
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
+    <div className="flex h-dvh flex-col text-foreground">
       <TitleBar compact={compact} sidebarButtonRef={sidebarButtonRef} />
       <div className="flex min-h-0 flex-1">
         <Sidebar compact={compact} finalFocus={sidebarButtonRef} />
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-w-0 flex-1 flex-col bg-background">
           <Outlet />
         </main>
       </div>
-      <StatusBar />
       <CommandPalette />
+      <ThreadSwitcher />
       <SnoozeDialog />
     </div>
   )

@@ -26,6 +26,7 @@ export const themes: Record<ThemeId, Theme> = {
   "one-dark-pro": { label: () => "One Dark Pro", scheme: "dark", codeTheme: "one-dark-pro" },
   dracula: { label: () => "Dracula", scheme: "dark", codeTheme: "dracula" },
   "material-theme": { label: () => "Material Theme", scheme: "dark", codeTheme: "material-theme" },
+  pinky: { label: () => "Pinky", scheme: "light", codeTheme: "rose-pine-dawn" },
 }
 
 const systemAppearance = window.matchMedia("(prefers-color-scheme: dark)")
