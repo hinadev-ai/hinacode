@@ -16,6 +16,7 @@ const USERS_DEVICE: DeviceId = "ios:11111111-1111-1111-1111-111111111111"
 const SECOND_DEVICE: DeviceId = "ios:33333333-3333-3333-3333-333333333333"
 const SPARE_DEVICE: DeviceId = "ios:44444444-4444-4444-4444-444444444444"
 const RACE_DEVICE: DeviceId = "ios:55555555-5555-5555-5555-555555555555"
+const REMEMBERED_DEVICE: DeviceId = "ios:66666666-6666-6666-6666-666666666666"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
@@ -40,6 +41,7 @@ const devices = new Map<DeviceId, Device>([
   ],
 ])
 devices.set(SECOND_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SECOND_DEVICE, name: "Someone's iPad" })
+devices.set(REMEMBERED_DEVICE, { ...devices.get(USERS_DEVICE)!, id: REMEMBERED_DEVICE, name: "Remembered iPhone" })
 devices.set(SPARE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SPARE_DEVICE, name: "Someone's spare iPhone" })
 
 devices.set(RACE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: RACE_DEVICE, name: "Race fixture" })
@@ -276,6 +278,23 @@ describe("Devices", () => {
         yield* service.detach(using.threadId, SPARE_DEVICE)
         yield* service.delete(deleting.threadId, SPARE_DEVICE)
         expect(removed).toEqual([SPARE_DEVICE])
+      }),
+    )
+
+    it.effect("drives the device a thread had before a restart instead of creating one", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-restart" })
+        yield* SqlClient.SqlClient.use(
+          (sql) =>
+            sql`INSERT INTO thread_device (thread_id, device_id, owned) VALUES (${threadId}, ${REMEMBERED_DEVICE}, 0)`,
+        )
+        sent.length = 0
+        const created = devices.has(CREATED_DEVICE)
+
+        expect(yield* service.act(threadId, undefined, [touch])).toBe("done")
+        expect(sent).toEqual([{ deviceId: REMEMBERED_DEVICE, command: touch }])
+        expect(devices.has(CREATED_DEVICE)).toBe(created)
       }),
     )
   })
