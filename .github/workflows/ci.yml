@@ -141,6 +141,55 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx expo lint
 
+  bundle-size:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Sibling checkouts, because Tailwind scans every file under the project for class names.
+      - uses: actions/checkout@v7
+        with:
+          path: head
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: head/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: head/pnpm-lock.yaml
+      # The base builds with this pull request's commands and budgets, so both sides measure the same files.
+      - name: Build both commits
+        run: |
+          for dir in base head; do
+            (cd "$dir" && pnpm install --frozen-lockfile && pnpm build && pnpm exec electron-builder --linux AppImage --publish never)
+          done
+      - name: Measure
+        working-directory: head
+        # size-limit exits 1 over budget. The last step fails the job after the comment is posted.
+        run: |
+          cp .size-limit.json ../base/
+          pnpm exec size-limit --json --config ../base/.size-limit.json > ../base.json || true
+          pnpm exec size-limit --json > ../head.json || true
+          node scripts/bundle-size.ts ../base.json ../head.json | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
+      # A fork's pull request gets a read-only token, so it only has the job summary.
+      - if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: bundle-size
+          path: comment.md
+      - name: Check the budgets
+        working-directory: head
+        run: pnpm exec size-limit
+
   e2e-linux:
     name: e2e (linux ${{ matrix.shard }}/4)
     needs: changes
