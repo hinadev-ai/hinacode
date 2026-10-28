@@ -761,7 +761,6 @@ export const layer = Layer.effect(
     const wake = (session: Session) =>
       Effect.gen(function* () {
         const { sessionId } = session
-        // Only a CLI that reported its session has a turn to start, after the one that started it.
         if (sessionId === null) return
         const turn: TurnQueue = yield* Queue.unbounded<AgentEvent, AgentError | Cause.Done>()
         session.reportsState = true

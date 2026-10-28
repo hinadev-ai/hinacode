@@ -47,9 +47,7 @@ interface Probe {
   readonly idle: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
-  /** Sessions the runner closed and turns it interrupted, by the agent it asked. */
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
-  /** Has `provider` start a turn by itself in `sessionId`. Resolves when the runner discards it. */
   readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
   readonly release: () => void
   readonly deliver: () => void

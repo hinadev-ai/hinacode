@@ -863,8 +863,7 @@ const make = Effect.gen(function* () {
 
   /**
    * A turn the agent started by itself, with no user message before its reply. It waits for a turn that
-   * was already starting, which the provider turns away since this one holds the session. A wake from a
-   * session the thread has left, by switching agents, is discarded.
+   * was already starting, which the provider turns away since this one holds the session.
    */
   const startWake = (source: AgentProvider, { threadId, sessionId, events, discard }: Wake) =>
     Effect.suspend(() => {

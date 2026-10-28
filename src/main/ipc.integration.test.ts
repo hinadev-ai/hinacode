@@ -1043,7 +1043,6 @@ const assistantTexts = async (threadId: string) =>
     .messages.filter((message) => message.role === "assistant")
     .map((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""))
 
-/** A wake in the session "simulate a session" binds. */
 const wake = (threadId: string, text: string) =>
   Effect.runSync(
     Queue.offer(claudeWakes, {

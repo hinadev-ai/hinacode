@@ -334,7 +334,6 @@ const make = Effect.gen(function* () {
         .pipe(Effect.andThen(refreshTerminals(threadId, terminals)), Effect.asVoid)
     })
 
-  /** Background terminals are the only work Codex keeps running for a thread between turns. */
   const closeSession = (threadId: string) =>
     Effect.gen(function* () {
       const terminals = terminalsByThread.get(threadId)
