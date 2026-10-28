@@ -76,8 +76,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
   /** Reads the newest page of a history again, keeping the last known one on screen until it swaps in. */
   const refresh = (threadId: string, history: ThreadHistory) => {
-    if (history.status === "loading") return
-    if (history.status === "error") {
+    if (history.status !== "ready") {
       void get().load(threadId)
       return
     }
@@ -115,7 +114,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
     load: async (threadId) => {
       const current = get().byThread[threadId]
-      if (current !== undefined && current.status !== "error") return
+      if (current?.status === "ready" || (current?.status === "loading" && currentLoadToken.has(threadId))) return
       setHistory(threadId, () => ({ status: "loading", pending: [] }))
       const load = {}
       currentLoadToken.set(threadId, load)
@@ -165,6 +164,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
         const remaining = (screens.get(threadId) ?? 1) - 1
         if (remaining > 0) return void screens.set(threadId, remaining)
         screens.delete(threadId)
+        currentLoadToken.delete(threadId)
         set((state) => ({ watched: new Set([...state.watched].filter((id) => id !== threadId)) }))
       }
     },
