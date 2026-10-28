@@ -309,7 +309,15 @@ export const Compaction = Schema.Union([
 export type Compaction = typeof Compaction.Type
 
 /** Where a fork can pick up a session: the agent's own id for the end of one turn, such as Codex's turn id. */
-export const ForkPoint = Schema.Struct({ sessionId: Schema.String, checkpoint: Schema.String })
+export const ForkPoint = Schema.Struct({
+  sessionId: Schema.String,
+  checkpoint: Schema.String,
+  /**
+   * The agent and account whose home holds the session, stamped by HinaCode once the turn ends. Points saved
+   * before it was recorded leave it out, and belong to the thread's own agent and account.
+   */
+  owner: Schema.optional(Schema.Struct({ provider: ProviderId, accountId: Schema.NullOr(Schema.String) })),
+})
 export type ForkPoint = typeof ForkPoint.Type
 
 export const AgentEvent = Schema.Union([

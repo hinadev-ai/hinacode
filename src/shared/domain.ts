@@ -419,7 +419,7 @@ export const Thread = Schema.Struct({
   accountId: Schema.NullOr(Schema.String),
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
-  /** Set on a fork. Its first turn starts the session from there, then `providerSessionId` takes over. */
+  /** Set on a fork until its first turn binds `providerSessionId`, which starts the session from there. */
   forkedFrom: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),

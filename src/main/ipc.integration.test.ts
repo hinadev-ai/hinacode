@@ -838,6 +838,7 @@ describe("forking over rpc", () => {
       .toStrictEqual({
         sessionId: "source-session",
         checkpoint: "turn-1",
+        owner: { provider: "claude", accountId: null },
       })
     const reply = (await transcript(source.id)).at(-1)!
 

@@ -431,7 +431,14 @@ const make = Effect.gen(function* () {
     const handle = (received: AgentEvent) =>
       Effect.gen(function* () {
         const event: AgentEvent =
-          received.type === "tool_call_finished" ? { ...received, output: withoutImageData(received.output) } : received
+          received.type === "tool_call_finished"
+            ? { ...received, output: withoutImageData(received.output) }
+            : received.type === "turn_completed" && received.forkPoint !== undefined
+              ? {
+                  ...received,
+                  forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
+                }
+              : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
@@ -793,11 +800,12 @@ const make = Effect.gen(function* () {
         if (accountId !== null && (yield* accounts.get(accountId)).provider !== current.provider) {
           return yield* new NotFoundError({ entity: "account", id: accountId })
         }
-        if (current.providerSessionId !== null) {
+        const sessionId = current.providerSessionId ?? current.forkedFrom?.sessionId ?? null
+        if (sessionId !== null) {
           const provider = providers[current.provider]
           if (provider.copySession === undefined) return yield* new ThreadStartedError({ id: threadId })
           yield* provider.copySession(
-            current.providerSessionId,
+            sessionId,
             yield* accounts.home(current.accountId),
             yield* accounts.home(accountId),
           )

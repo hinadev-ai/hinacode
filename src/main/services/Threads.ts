@@ -302,14 +302,20 @@ const make = Effect.gen(function* () {
       const source = yield* get(threadId)
       const found = yield* findForkPoint({ threadId, messageId }).pipe(Effect.mapError(persistence("threads.fork")))
       if (Option.isNone(found)) return yield* new NotFoundError({ entity: "fork point", id: messageId })
+      const { owner, ...forkedFrom } = found.value.forkPoint
+      const { provider, accountId } = owner ?? source
+      // The thread's model belongs to its current agent, and a session cannot move to another agent.
+      if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
+      if (accountId !== null) yield* accounts.get(accountId)
       const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
       const now = yield* nowIso
       const thread: Thread = {
         ...source,
         id: randomUUID(),
         title: `${source.title} (fork)`,
+        accountId,
         providerSessionId: null,
-        forkedFrom: found.value.forkPoint,
+        forkedFrom,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
@@ -390,6 +396,11 @@ const make = Effect.gen(function* () {
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
+        // A fork's first session replaces the point it started from, and another agent cannot start from it.
+        forkedFrom:
+          input.providerSessionId !== undefined || (input.provider ?? current.provider) !== current.provider
+            ? null
+            : current.forkedFrom,
         queue: input.queue ?? current.queue,
         updatedAt: arranges ? current.updatedAt : now,
       }
@@ -400,6 +411,7 @@ const make = Effect.gen(function* () {
             access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil},
             provider_session_id = ${next.providerSessionId},
+            forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
             queue = ${JSON.stringify(next.queue)}
         WHERE id = ${next.id}
