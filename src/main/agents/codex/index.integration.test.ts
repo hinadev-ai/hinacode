@@ -557,6 +557,25 @@ describe("Codex closed sessions", () => {
   )
 })
 
+describe("Codex closed sessions, sub-agents", () => {
+  it.live("interrupts a sub-agent turn that outlived its parent when the thread leaves the session", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, subagentPending: true })
+        const turn = yield* startTurn("leaving-parent-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(received().filter((message) => message.method === "turn/interrupt")).toStrictEqual([])
+
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-parent-thread", null)
+        expect(received().filter((message) => message.method === "turn/interrupt")).toMatchObject([
+          { params: { threadId: "codex-child-thread", turnId: "child-turn" } },
+        ])
+      }),
+    ),
+  )
+})
+
 describe("Codex questions", () => {
   it.live("maps blocking questions and returns option and typed answers on the request id", () =>
     withProvider(
