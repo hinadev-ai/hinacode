@@ -1,9 +1,14 @@
-import { createMemoryHistory, createRootRoute, createRoute, createRouter } from "@tanstack/react-router"
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+} from "@tanstack/react-router"
 import { AppShell } from "./components/AppShell.tsx"
 import { registry } from "./lib/registry.ts"
 import { settingsAtom } from "./lib/rpc.ts"
 import { HomeRoute } from "./routes/home.tsx"
-import { SettingsRoute } from "./routes/settings.tsx"
 import { ThreadRoute } from "./routes/thread.tsx"
 
 const rootRoute = createRootRoute({ component: AppShell })
@@ -22,7 +27,8 @@ export const threadRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
-  component: SettingsRoute,
+  // Settings pages and their dependencies stay out of the startup bundle until the page opens.
+  component: lazyRouteComponent(() => import("./routes/settings.tsx"), "SettingsRoute"),
   /** `page` opens one settings page, such as `environments`. `environment` picks the cloud the Environment pages edit. */
   validateSearch: (search: Record<string, unknown>): { page?: string; environment?: string } => ({
     ...(typeof search.page === "string" ? { page: search.page } : {}),
