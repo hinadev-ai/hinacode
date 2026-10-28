@@ -17,6 +17,7 @@ import {
   statusIndicator,
 } from "./ThreadPullRequests.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
+import { WithLinkIcon } from "./LinkIcon.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 
 /**
@@ -43,8 +44,7 @@ export function PullRequestLink({
         delay={300}
         className="text-primary underline underline-offset-2"
       >
-        <RiGithubFill aria-hidden className="mr-1 inline-block size-3.5 align-[-0.125em]" />
-        {children}
+        <WithLinkIcon icon={<RiGithubFill className="block size-full" />}>{children}</WithLinkIcon>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-80">
         <PullRequestCard pullRequest={pullRequest} href={href} environment={environment} />

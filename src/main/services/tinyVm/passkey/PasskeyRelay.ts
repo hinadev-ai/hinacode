@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { Context, Deferred, Effect, Fiber, Layer, Semaphore, Stream } from "effect"
-import type { VmPasskey } from "../../../../shared/domain.ts"
+import { defaultSettings, type VmPasskey } from "../../../../shared/domain.ts"
 import { Events } from "../../Events.ts"
 import { Settings } from "../../Settings.ts"
 import { TinyVm } from "../TinyVm.ts"
@@ -255,12 +255,7 @@ const make = (baseDir: string) =>
 
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
-      Effect.orElseSucceed(() => ({
-        tinyVm: false,
-        tinyVmTemplate: "default",
-        tinyVmProfile: false,
-        tinyVmPasskeys: false,
-      })),
+      Effect.orElseSucceed(() => defaultSettings.experimental),
     )
     let enabled = experimental.tinyVm && experimental.tinyVmPasskeys
 

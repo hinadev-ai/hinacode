@@ -323,9 +323,7 @@ function GuideView({ environment, url, currentHead, status, files }: GuideViewPr
       {guide.head !== currentHead && (
         <GuideJobNotice environment={environment} url={url} currentHead={currentHead} status={status} state={state} />
       )}
-      <div className="text-sm">
-        <Markdown text={guide.summary} />
-      </div>
+      <Markdown text={guide.summary} />
       <ol className="flex flex-col divide-y divide-border">
         {groups.map((group) => (
           <li key={group.key} className="py-4 first:pt-0">
@@ -372,11 +370,7 @@ function GuideGroupView({ group }: { group: ResolvedGroup }) {
           />
         </p>
       </header>
-      {group.summary && (
-        <div className="pl-6 text-xs text-muted-foreground">
-          <Markdown text={group.summary} />
-        </div>
-      )}
+      {group.summary && <Markdown text={group.summary} className="pl-6 text-xs text-muted-foreground" />}
       {group.files.length > 0 && (
         <ul className="flex flex-col gap-0.5">
           {group.files.map((entry) => (

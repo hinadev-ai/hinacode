@@ -1,14 +1,21 @@
+import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import type { Socket } from "node:net"
 import { join } from "node:path"
 import { Context, Deferred, Effect, Exit, Layer, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
-import type { ThreadVm, VmControl, VmHostStatus, VmProfile } from "../../../shared/domain.ts"
+import {
+  defaultSettings,
+  type ThreadVm,
+  type VmControl,
+  type VmHostStatus,
+  type VmProfile,
+} from "../../../shared/domain.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
 import { type ExecResult, type LoginSource, readLogin, type SbxClient, sbxClient } from "./sbx.ts"
-import { decodeTar, encodeTar, readTree } from "./tar.ts"
+import { decodeTar, encodeTar, readTree, type WrittenTree, writeTree } from "./tar.ts"
 
 export class VmError extends Schema.TaggedError<VmError>()("VmError", { message: Schema.String }) {}
 
@@ -64,6 +71,12 @@ export class TinyVm extends Context.Service<
      */
     readonly stageArchive: (threadId: string, guestPath: string, tar: Uint8Array) => Effect.Effect<void, VmError>
     /**
+     * Copies a file or folder out of the running VM into a new folder of its own on this machine, starting the
+     * VM if needed. A relative `guestPath`, or one starting with `~/`, resolves against the desktop user's home.
+     * The guest names the entries but never where they land; see `writeTree` for what it is allowed to write.
+     */
+    readonly pullFiles: (threadId: string, guestPath: string) => Effect.Effect<WrittenTree, VmError>
+    /**
      * Opens a raw TCP stream to `port` in the running VM, starting it if needed. The caller owns the socket
      * and destroys it. `head` holds guest bytes that arrived with the upgrade response.
      */
@@ -92,6 +105,10 @@ const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
 const PROFILE_SCRIPT_TIMEOUT_SECONDS = 120
+/** Installing packages can take minutes; a start that waits longer than this is stuck. */
+const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
+/** The end of a failed setup script's output is where its error usually is. */
+const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
   "chromium/*/Cache",
   "chromium/*/Code Cache",
@@ -136,8 +153,9 @@ const PROFILE_RESTORE_SCRIPT = [
 ].join("\n")
 
 const DROP_DIR = "Downloads"
-/** One drop is held in memory as tar archives, so it has a size the user's machine can always spare. */
-const MAX_DROP_BYTES = 200 * 1024 * 1024
+/** One drop or pull is held in memory as tar archives, so it has a size the user's machine can always spare. */
+export const MAX_TRANSFER_BYTES = 200 * 1024 * 1024
+const PULLED_DIR = "pulled"
 const SCREENSHOT_SCRIPT = "import -window root png:-"
 const SCREENSHOT_TIMEOUT_SECONDS = 30
 /** About one frame, like terminal output. */
@@ -165,7 +183,29 @@ const endGracefully = (socket: Socket) =>
     socket.end()
   }).pipe(Effect.timeoutOrElse({ duration: "2 seconds", orElse: () => Effect.void }))
 
-const make = (source: LoginSource, profileDir?: string) =>
+const writeStoredProfile = (dataDir: string, bytes: Uint8Array, template: string): Effect.Effect<void, VmError> =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(dataDir, { recursive: true })
+      const temp = join(dataDir, `${PROFILE_STORE}.${process.pid}.tmp`)
+      await writeFile(temp, bytes, { mode: 0o600 })
+      await rename(temp, join(dataDir, PROFILE_STORE))
+      await writeFile(join(dataDir, PROFILE_META), JSON.stringify({ savedAt: new Date().toISOString(), template }), {
+        mode: 0o600,
+      })
+    },
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new VmError({
+          message: `Could not store the browser profile on this machine: ${cause instanceof Error ? cause.message : String(cause)}`,
+        }),
+    ),
+  )
+
+/** `dataDir` holds the stored browser profile and the files pulled out of VMs. */
+const make = (source: LoginSource, dataDir: string) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const events = yield* Events
@@ -183,16 +223,13 @@ const make = (source: LoginSource, profileDir?: string) =>
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
-      Effect.orElseSucceed(() => ({
-        tinyVm: false,
-        tinyVmTemplate: "default",
-        tinyVmProfile: false,
-        tinyVmPasskeys: false,
-      })),
+      Effect.orElseSucceed(() => defaultSettings.experimental),
     )
     let enabled = experimental.tinyVm
     let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"
-    let profileEnabled = experimental.tinyVmProfile && profileDir !== undefined
+    let configuredEnv = experimental.tinyVmEnv
+    let setupScript = experimental.tinyVmSetupScript
+    let profileEnabled = experimental.tinyVmProfile
     /** The thread whose running VM saves the shared Chromium profile back; everyone else holds a copy. */
     let profileOwner: string | undefined
     const profileSaves = yield* Semaphore.make(1)
@@ -221,45 +258,17 @@ const make = (source: LoginSource, profileDir?: string) =>
       if (profileOwner === threadId) profileOwner = undefined
     }
 
-    const readStoredProfile: Effect.Effect<Uint8Array | undefined> =
-      profileDir === undefined
-        ? Effect.succeed(undefined)
-        : Effect.tryPromise({ try: () => readFile(join(profileDir, PROFILE_STORE)), catch: (cause) => cause }).pipe(
-            Effect.map((bytes) => bytes as Uint8Array),
-            Effect.catch((cause) =>
-              (cause as NodeJS.ErrnoException).code === "ENOENT"
-                ? Effect.succeed(undefined)
-                : Effect.as(
-                    Effect.logWarning("tiny vm: cannot read the stored browser profile", String(cause)),
-                    undefined,
-                  ),
-            ),
-          )
-
-    const writeStoredProfile = (bytes: Uint8Array, template: string): Effect.Effect<void, VmError> =>
-      profileDir === undefined
-        ? Effect.void
-        : Effect.tryPromise({
-            try: async () => {
-              await mkdir(profileDir, { recursive: true })
-              const temp = join(profileDir, `${PROFILE_STORE}.${process.pid}.tmp`)
-              await writeFile(temp, bytes, { mode: 0o600 })
-              await rename(temp, join(profileDir, PROFILE_STORE))
-              await writeFile(
-                join(profileDir, PROFILE_META),
-                JSON.stringify({ savedAt: new Date().toISOString(), template }),
-                { mode: 0o600 },
-              )
-            },
-            catch: (cause) => cause,
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new VmError({
-                  message: `Could not store the browser profile on this machine: ${cause instanceof Error ? cause.message : String(cause)}`,
-                }),
-            ),
-          )
+    const readStoredProfile: Effect.Effect<Uint8Array | undefined> = Effect.tryPromise({
+      try: () => readFile(join(dataDir, PROFILE_STORE)),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.map((bytes) => bytes as Uint8Array),
+      Effect.catch((cause) =>
+        (cause as NodeJS.ErrnoException).code === "ENOENT"
+          ? Effect.succeed(undefined)
+          : Effect.as(Effect.logWarning("tiny vm: cannot read the stored browser profile", String(cause)), undefined),
+      ),
+    )
 
     /** Restores the stored profile into a fresh sandbox. Nothing stored yet is also a success. */
     const restoreProfile = (sbx: SbxClient, sandboxId: string): Effect.Effect<boolean> =>
@@ -335,7 +344,7 @@ const make = (source: LoginSource, profileDir?: string) =>
           const entry = entries.find((candidate) => candidate.type === "file")
           if (entry === undefined || entry.type !== "file")
             return yield* new VmError({ message: "The VM did not return a browser profile archive" })
-          yield* writeStoredProfile(entry.data, template)
+          yield* writeStoredProfile(dataDir, entry.data, template)
         }),
       )
 
@@ -377,11 +386,26 @@ const make = (source: LoginSource, profileDir?: string) =>
         return live
       })
 
+    const runSetupScript = (sbx: SbxClient, sandboxId: string) =>
+      Effect.gen(function* () {
+        if (setupScript.trim() === "") return
+        const result = yield* sbx
+          .exec(sandboxId, { script: setupScript, timeoutSeconds: SETUP_SCRIPT_TIMEOUT_SECONDS })
+          .pipe(Effect.mapError(toVmError))
+        if (result.exitCode === 0) return
+        const output = Buffer.concat([result.stdout, result.stderr]).toString().trim().slice(-SETUP_OUTPUT_TAIL)
+        return yield* new VmError({
+          message: `The setup script exited with code ${result.exitCode}.${output ? `\n${output}` : ""}`,
+        })
+      })
+
     const create = (threadId: string, done: Deferred.Deferred<ThreadVm>, template: string) =>
       Effect.gen(function* () {
         if (!enabled) return yield* new VmError({ message: "Tiny VM is off. Turn it on in Settings > Experimental." })
         const sbx = yield* client
-        return { sbx, sandbox: yield* sbx.create(template).pipe(Effect.mapError(toVmError)) }
+        const sandbox = yield* sbx.create(template, configuredEnv).pipe(Effect.mapError(toVmError))
+        yield* runSetupScript(sbx, sandbox.id).pipe(Effect.tapError(() => Effect.ignore(sbx.remove(sandbox.id))))
+        return { sbx, sandbox }
       }).pipe(
         Effect.matchEffect({
           onFailure: (error) => settle(threadId, done, { status: "failed", message: error.message }),
@@ -580,7 +604,7 @@ const make = (source: LoginSource, profileDir?: string) =>
         Effect.gen(function* () {
           if (hostPaths.length === 0) return [] as ReadonlyArray<string>
           const archives: Array<{ readonly base: string; readonly tar: Uint8Array }> = []
-          let remaining = MAX_DROP_BYTES
+          let remaining = MAX_TRANSFER_BYTES
           for (const hostPath of hostPaths) {
             const entries = yield* readTree(hostPath, remaining).pipe(Effect.mapError(toVmError))
             remaining -= entries.reduce((sum, entry) => sum + (entry.type === "file" ? entry.data.length : 0), 0)
@@ -614,6 +638,28 @@ const make = (source: LoginSource, profileDir?: string) =>
 
     const stageArchive = (threadId: string, guestPath: string, tar: Uint8Array) =>
       withSandbox(threadId, (sbx, sandboxId) => sbx.putFiles(sandboxId, guestPath, tar))
+
+    const pullFiles = (threadId: string, guestPath: string) =>
+      withSandbox(threadId, (sbx, sandboxId) =>
+        Effect.gen(function* () {
+          const tar = yield* sbx.getFiles(sandboxId, guestPath.replace(/^~(\/|$)/, ""), MAX_TRANSFER_BYTES).pipe(
+            // A missing path and a destroyed sandbox are both 404; asking for the sandbox tells them apart.
+            Effect.catchTag("SandboxGoneError", () =>
+              Effect.andThen(sbx.get(sandboxId), new VmError({ message: `Nothing exists at ${guestPath} in the VM.` })),
+            ),
+            Effect.mapError((error) =>
+              error._tag === "SbxError"
+                ? new VmError({ message: `Cannot copy ${guestPath}: ${error.message}` })
+                : error,
+            ),
+          )
+          const entries = yield* Effect.try({
+            try: () => decodeTar(tar),
+            catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
+          })
+          return yield* writeTree(join(dataDir, PULLED_DIR, threadId, randomUUID()), entries)
+        }),
+      )
 
     const openTunnel = (threadId: string, port: number) =>
       withSandbox(threadId, (sbx, sandboxId) => sbx.tunnel(sandboxId, port))
@@ -731,7 +777,9 @@ const make = (source: LoginSource, profileDir?: string) =>
           const was = enabled
           enabled = value.experimental.tinyVm
           configuredTemplate = value.experimental.tinyVmTemplate.trim() || "default"
-          profileEnabled = value.experimental.tinyVmProfile && profileDir !== undefined
+          configuredEnv = value.experimental.tinyVmEnv
+          setupScript = value.experimental.tinyVmSetupScript
+          profileEnabled = value.experimental.tinyVmProfile
           return was && !enabled ? stopAll : Effect.void
         }),
       ),
@@ -776,6 +824,7 @@ const make = (source: LoginSource, profileDir?: string) =>
       dropFiles,
       takeDropped,
       stageArchive,
+      pullFiles,
       openTunnel,
       saveProfile,
       openScreen,
@@ -784,4 +833,4 @@ const make = (source: LoginSource, profileDir?: string) =>
     })
   })
 
-export const layer = (source: LoginSource, profileDir?: string) => Layer.effect(TinyVm, make(source, profileDir))
+export const layer = (source: LoginSource, dataDir: string) => Layer.effect(TinyVm, make(source, dataDir))

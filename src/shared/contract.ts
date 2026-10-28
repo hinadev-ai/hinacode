@@ -42,6 +42,7 @@ import {
   FsFileContent,
   CommitDiff,
   GitCommit,
+  Machine,
   MergeMethod,
   NotificationPermission,
   PermissionRequestOutcome,
@@ -105,6 +106,8 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  /** The appearance of native UI (glass, menus, dialogs), which follows the app theme rather than the system. */
+  "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
     Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
     Schema.Struct({ sessionId: Schema.String }),
@@ -274,6 +277,8 @@ export const RpcMethods = {
   "clientSettings.set": rpc(ClientSettings.mapFields(Struct.map(Schema.optional)), ClientSettings),
 
   "environments.list": rpc(Schema.Void, Environments),
+  /** Each machine answers for itself, so the gathered list says which machine holds which project. */
+  "machines.list": rpc(Schema.Void, Schema.Array(Machine)),
   /**
    * Connects once with the pairing URL's token before saving, so a typo or a rotated token fails here. Pairing a
    * cloud that is already listed updates its address and token instead of adding it again.
@@ -629,6 +634,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "app.setColorScheme": "mutation",
   "projects.list": "read",
   "projects.create": "mutation",
   "projects.clone": "mutation",
@@ -670,6 +676,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "clientSettings.get": "read",
   "clientSettings.set": "mutation",
   "environments.list": "read",
+  "machines.list": "read",
   "environments.add": "mutation",
   "environments.remove": "mutation",
   "environments.reconnect": "mutation",
@@ -794,6 +801,7 @@ export const mutations: ReadonlySet<string> = new Set(
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",
@@ -936,4 +944,6 @@ export interface HinacodeBridge {
   readonly onEvent: (listener: (event: typeof PushEvent.Encoded) => void) => () => void
   /** Absolute path of a dropped or picked `File`; sandboxed renderers have no `File.path`. */
   readonly pathForFile: (file: File) => string
+  /** Whether macOS glass sits behind the page, so the window chrome can let it through. */
+  readonly liquidGlass: boolean
 }

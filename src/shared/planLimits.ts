@@ -1,4 +1,5 @@
-import type { LimitWindow } from "../../shared/limits.ts"
+import type { AccountLimits, AgentProfile, ProviderId } from "./agent.ts"
+import type { LimitWindow } from "./limits.ts"
 
 const minuteMs = 60_000
 const hourMinutes = 60
@@ -21,10 +22,6 @@ export function formatMinutes(total: number, locale: string): string {
 export const formatResetIn = (resetsAt: string, now: number, locale: string) =>
   formatMinutes(Math.max(0, Math.floor((Date.parse(resetsAt) - now) / minuteMs)), locale)
 
-/** A window is amber from 80% used and red once it is spent. */
-export const limitLevel = (usedPercent: number) =>
-  usedPercent >= 100 ? "exhausted" : usedPercent >= 80 ? "warning" : "normal"
-
 export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
   windows.reduce<LimitWindow | undefined>(
     (top, window) => (top === undefined || window.usedPercent > top.usedPercent ? window : top),
@@ -32,7 +29,7 @@ export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
   )
 
 const blocks = (window: LimitWindow, model: string) =>
-  limitLevel(window.usedPercent) === "exhausted" &&
+  window.usedPercent >= 100 &&
   (window.window.kind !== "model" || model.toLowerCase().includes(window.window.name.toLowerCase()))
 
 /** An unknown reset sorts last, since nothing says the account recovers sooner. */
@@ -50,3 +47,28 @@ export const spentWindow = (windows: ReadonlyArray<LimitWindow>, model: string) 
       (last, window) => (last === undefined || resetsLater(window, last) ? window : last),
       undefined,
     )
+
+export interface AccountOption {
+  /** Null is the CLI's own login. */
+  readonly id: string | null
+  readonly name: string
+  /** Undefined when the plan limits are unknown, such as for an API key or a remote environment's account. */
+  readonly mostUsed: LimitWindow | undefined
+  /** The window that keeps the account from running the thread's model. */
+  readonly spent: LimitWindow | undefined
+}
+
+/** The CLI's own login, named `defaultName`, then every account added for the thread's agent. */
+export const accountOptions = (
+  thread: { readonly provider: ProviderId; readonly model: string },
+  defaultName: string,
+  profiles: ReadonlyArray<AgentProfile>,
+  limits: ReadonlyArray<AccountLimits>,
+): ReadonlyArray<AccountOption> =>
+  [{ id: null, name: defaultName }, ...profiles.filter((profile) => profile.provider === thread.provider)].map(
+    ({ id, name }) => {
+      const windows =
+        limits.find((entry) => entry.provider === thread.provider && entry.accountId === id)?.limits?.windows ?? []
+      return { id, name, mostUsed: mostUsed(windows), spent: spentWindow(windows, thread.model) }
+    },
+  )

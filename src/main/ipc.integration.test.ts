@@ -27,6 +27,7 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import { MAX_CALL_KEYS } from "./remote/server.ts"
+import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -1365,9 +1366,10 @@ const phone = (port: number, options?: { autoPong: boolean }) => {
 }
 
 describe("remote mode", () => {
-  const port = 40000 + Math.floor(Math.random() * 20000)
+  let port = 0
 
   beforeAll(async () => {
+    port = await unusedLoopbackPort()
     result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
   })
@@ -1601,7 +1603,7 @@ describe("remote mode", () => {
 })
 
 describe("remote mode under a test clock", () => {
-  const port = 40000 + Math.floor(Math.random() * 20000)
+  let port = 0
   let clocked: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeLayer>> | TestClock.TestClock, unknown>
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
   const pairedPhone = async (options?: { autoPong: boolean }) => {
@@ -1615,6 +1617,7 @@ describe("remote mode under a test clock", () => {
   }
 
   beforeAll(async () => {
+    port = await unusedLoopbackPort()
     clocked = ManagedRuntime.make(
       makeLayer(join(dir, "clocked.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
     ) as typeof clocked

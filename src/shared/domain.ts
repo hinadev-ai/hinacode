@@ -557,6 +557,10 @@ export const ExperimentalSettings = Schema.Struct({
    * and the result goes back to the VM page. Needs the fingerprint button in the VM view per thread before use.
    */
   tinyVmPasskeys: Schema.Boolean,
+  /** Set for every command in every new tiny VM, the agent's `vm_exec` and the setup script included. */
+  tinyVmEnv: Schema.Record(Schema.String, Schema.String),
+  /** A bash script each new tiny VM runs before any tool reaches it. A failing script fails the start. */
+  tinyVmSetupScript: Schema.String,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -713,7 +717,14 @@ export const defaultSettings: Settings = {
   pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
+  experimental: {
+    tinyVm: false,
+    tinyVmTemplate: "default",
+    tinyVmProfile: false,
+    tinyVmPasskeys: false,
+    tinyVmEnv: {},
+    tinyVmSetupScript: "",
+  },
   worktreeRoot: null,
 }
 
@@ -722,6 +733,15 @@ export const defaultSettings: Settings = {
  * `environment.<id>.token`. `relay` is its tunnel hostname, dialed when `host` does not answer. `source` says whether it was
  * paired by URL or listed by the relay the desktop signed in to.
  */
+/** A HinaCode install: the desktop or a cloud. `id` is the same on every machine that knows it. */
+export const Machine = Schema.Struct({
+  id: Schema.String,
+  /** The name the desktop gave a cloud when it paired, else the machine's hostname. */
+  name: Schema.String,
+  projectIds: Schema.Array(Schema.String),
+})
+export type Machine = typeof Machine.Type
+
 export const Environment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

@@ -47,15 +47,10 @@ function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   )
 }
 
-// Spacing, heading scale and block shapes follow the Lettera editor, in em so they scale with the surrounding text.
-const block = "my-[0.8em] wrap-break-word first:mt-0 last:mb-0"
-const heading = "leading-[1.4] font-medium text-balance wrap-break-word first:mt-0"
-const list = cn(block, "pl-[2.13em] marker:text-primary [li>&]:my-0")
-
 const components: Components = {
   p: ({ children, node }) => {
     const asset = bareGitHubAsset(node)
-    return asset ? <GitHubAttachment src={asset} /> : <p className={block}>{children}</p>
+    return asset ? <GitHubAttachment src={asset} /> : <p>{children}</p>
   },
   img: ({ src, alt }) => <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt ?? ""} />,
   a: ({ children, href }) =>
@@ -67,96 +62,45 @@ const components: Components = {
           <WebLink href={href}>{children}</WebLink>
         ) : (
           // target=_blank routes the click through the main process, which opens it in the system browser.
-          <a href={href} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+          <a href={href} target="_blank" rel="noreferrer">
             {children}
           </a>
         )}
       </LinkMenu>
     ),
-  // GFM marks a task list with `contains-task-list`; its checkboxes take the place of the bullets.
-  ul: ({ children, className }) => (
-    <ul className={cn(list, className === "contains-task-list" ? "list-none" : "list-disc")}>{children}</ul>
-  ),
-  ol: ({ children, start }) => (
-    <ol start={start} className={cn(list, "list-decimal")}>
-      {children}
-    </ol>
-  ),
-  li: ({ children }) => <li className="mb-[0.3em]">{children}</li>,
   input: ({ type, checked }) => (
     <input
       type={type}
       checked={checked}
       disabled
       aria-label={checked ? m.markdown_task_done() : m.markdown_task_open()}
-      className="mr-[0.5em] -ml-[1.5em] translate-y-px accent-primary"
+      className="mr-[0.5em] translate-y-px accent-primary"
     />
   ),
-  // `className` carries `sr-only` on the heading GFM puts above footnotes.
-  h1: ({ children, className }) => (
-    <h1 className={cn("mt-[0.8em] mb-[0.33em] text-[2em]", heading, className)}>{children}</h1>
-  ),
-  h2: ({ children, className }) => (
-    <h2 className={cn("mt-[0.66em] mb-[0.27em] text-[1.6em]", heading, className)}>{children}</h2>
-  ),
-  h3: ({ children, className }) => (
-    <h3 className={cn("mt-[0.53em] mb-[0.27em] text-[1.27em]", heading, className)}>{children}</h3>
-  ),
-  h4: ({ children }) => <h4 className={cn("mt-[0.4em] mb-[0.27em] text-[1.1em]", heading)}>{children}</h4>,
-  h5: ({ children }) => <h5 className={cn("mt-[0.4em] mb-[0.27em]", heading)}>{children}</h5>,
-  h6: ({ children }) => <h6 className={cn("mt-[0.4em] mb-[0.27em] text-muted-foreground", heading)}>{children}</h6>,
-  hr: () => <hr className="my-[1.5em] border-border" />,
-  blockquote: ({ children }) => (
-    <blockquote
-      className={cn(
-        block,
-        "relative pl-[2.13em] before:absolute before:top-[0.2em] before:left-[1em] before:h-[calc(100%-0.4em)] before:w-[0.13em] before:rounded-full before:bg-primary",
-      )}
-    >
-      {children}
-    </blockquote>
-  ),
-  // A fenced block arrives as <pre><code class="language-x">, so the block is built here and `code` below is only ever inline.
   pre: ({ children }) => {
     if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
     const language = /language-(\S+)/.exec(children.props.className ?? "")?.[1]
     const code = String(children.props.children ?? "").replace(/\n$/, "")
     return language === "mermaid" ? <MermaidDiagram code={code} /> : <CodeBlock language={language} code={code} />
   },
-  code: ({ children }) => (
-    <code className="rounded-[0.25em] bg-muted px-[0.3em] py-[0.1em] font-mono text-[0.91em]">{children}</code>
-  ),
-  kbd: ({ children }) => (
-    <kbd className="rounded-[0.25em] border border-b-2 border-border bg-muted px-[0.35em] font-mono text-[0.85em]">
-      {children}
-    </kbd>
-  ),
-  // Rows are told apart by alternating fills, so only columns get rules.
+  // The scroller takes the table's margin; inside it the margin would no longer collapse with the text around it.
   table: ({ children }) => (
-    <div className={cn(block, "overflow-x-auto rounded-[0.33em] border border-border")}>
-      <table className="w-full border-separate border-spacing-0">{children}</table>
+    <div className="my-[2em] overflow-x-auto [&>table]:my-0">
+      <table>{children}</table>
     </div>
-  ),
-  thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
-  tr: ({ children }) => <tr className="even:bg-muted">{children}</tr>,
-  // GFM column alignment arrives as an inline `text-align`.
-  th: ({ children, style }) => (
-    <th
-      style={style}
-      className="border-r border-border px-[0.75em] py-[0.37em] text-left font-semibold last:border-r-0"
-    >
-      {children}
-    </th>
-  ),
-  td: ({ children, style }) => (
-    <td style={style} className="border-r border-border px-[0.75em] py-[0.37em] align-top last:border-r-0">
-      {children}
-    </td>
   ),
 }
 
 /** Agent markdown with GFM. `baseUrl` resolves relative image paths, for a file shown from disk. */
-export function Markdown({ text, baseUrl = null }: { text: string; baseUrl?: string | null }) {
+export function Markdown({
+  text,
+  baseUrl = null,
+  className,
+}: {
+  text: string
+  baseUrl?: string | null
+  className?: string
+}) {
   const pattern = useFindPattern()
   const part = use(FindPartContext)
   const rehypePlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
@@ -164,9 +108,11 @@ export function Markdown({ text, baseUrl = null }: { text: string; baseUrl?: str
   const remarkPlugins = repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]
   return (
     <BaseUrl value={baseUrl}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-        {text}
-      </ReactMarkdown>
+      <div className={cn("prose prose-sm max-w-none prose-hina", className)}>
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+          {text}
+        </ReactMarkdown>
+      </div>
     </BaseUrl>
   )
 }
@@ -192,7 +138,7 @@ function GitHubAttachment({ src }: { src: string }) {
 
 function CodeFigure({ label, code, children }: { label?: string; code: string; children: ReactNode }) {
   return (
-    <figure className={cn(block, "overflow-hidden rounded-[0.25em] bg-muted")}>
+    <figure className="not-prose my-4 overflow-hidden rounded-[0.25em] bg-muted">
       <figcaption className="flex h-8 items-center justify-between pr-1 pl-[0.8em]">
         <span className="truncate font-mono text-xs text-muted-foreground">{label}</span>
         <CopyButton value={code} label={m.markdown_copy_code()} />
