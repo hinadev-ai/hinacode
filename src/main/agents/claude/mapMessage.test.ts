@@ -121,6 +121,70 @@ describe("mapMessage usage limits", () => {
     ])
   })
 
+  test("keeps the reset on a repeated rejection without another rate-limit change event", () => {
+    const state = newState()
+    const now = "2026-10-28T15:55:35.007Z"
+    const rate_limit_info = {
+      status: "rejected",
+      resetsAt: 1793215800,
+      rateLimitType: "five_hour",
+      overageStatus: "rejected",
+      overageDisabledReason: "org_level_disabled",
+      isUsingOverage: false,
+    }
+    const message = "You've hit your 5-hour limit · resets 4:30am (Asia/Tokyo)"
+    const assistant = {
+      ...usageLimitAssistant,
+      message: { ...usageLimitAssistant.message, content: [{ type: "text" as const, text: message, citations: [] }] },
+      api_error: "usage_limit_reached",
+      api_error_params: { rate_limit_info },
+    }
+    const result = { ...limitResult, result: message }
+    mapMessage(
+      { ...rejectedRateLimit, rate_limit_info: { ...rejectedRateLimit.rate_limit_info, resetsAt: 1793215800 } },
+      state,
+      now,
+    )
+    mapMessage(assistant, state, now)
+    const expected = [
+      {
+        type: "turn_limited",
+        limit: {
+          kind: "usage",
+          message: result.result,
+          reset: { at: "2026-10-28T19:30:00.000Z", autoResume: false },
+        },
+      },
+    ]
+    expect(mapMessage(result, state, now)).toEqual(expected)
+    mapMessage(assistant, state, now)
+    expect(mapMessage(result, state, now)).toEqual(expected)
+  })
+
+  test("ignores malformed reset metadata and reset metadata from subagent errors", () => {
+    const now = "2026-10-28T15:55:35.007Z"
+    for (const rate_limit_info of [
+      null,
+      { status: "rejected", resetsAt: "1793215800" },
+      { status: "rejected", resetsAt: 1e20 },
+      { status: "allowed", resetsAt: 1793215800 },
+      { status: "rejected", resetsAt: 1793215800, isUsingOverage: true },
+    ]) {
+      const state = newState()
+      const assistant = { ...usageLimitAssistant, api_error_params: { rate_limit_info } }
+      expect(() => mapMessage(assistant, state, now)).not.toThrow()
+      expect(mapMessage(limitResult, state, now)[0]).toMatchObject({ type: "turn_limited", limit: { reset: null } })
+    }
+    const state = newState()
+    const subagent = {
+      ...usageLimitAssistant,
+      parent_tool_use_id: "subagent-tool",
+      api_error_params: { rate_limit_info: { status: "rejected", resetsAt: 1793215800 } },
+    }
+    mapMessage(subagent, state, now)
+    expect(mapMessage(limitResult, state, now)[0]).toMatchObject({ type: "turn_limited", limit: { reset: null } })
+  })
+
   test("the recorded org spend error keeps the session reset for resuming", () => {
     const state = newState()
     mapMessage(rejectedRateLimit, state, "now")
