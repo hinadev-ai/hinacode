@@ -142,11 +142,21 @@ jobs:
       - run: npx expo lint
 
   e2e-linux:
-    name: e2e (linux)
+    name: e2e (linux ${{ matrix.name }})
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: w4, run: "pnpm test:e2e --workers=4" }
+          - { name: s1of3-w2, run: "E2E_SHARD=1/3 E2E_WORKERS=2 sh .context-e2e.sh" }
+          - { name: s2of3-w2, run: "E2E_SHARD=2/3 E2E_WORKERS=2 sh .context-e2e.sh" }
+          - { name: s3of3-w2, run: "E2E_SHARD=3/3 E2E_WORKERS=2 sh .context-e2e.sh" }
+          - { name: s1of2-w3, run: "E2E_SHARD=1/2 E2E_WORKERS=3 sh .context-e2e.sh" }
+          - { name: s2of2-w3, run: "E2E_SHARD=2/2 E2E_WORKERS=3 sh .context-e2e.sh" }
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -157,11 +167,11 @@ jobs:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & ${{ matrix.run }}'
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-report-linux
+          name: e2e-report-linux-${{ matrix.name }}
           path: |
             e2e/playwright-report
             e2e/test-results
