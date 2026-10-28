@@ -57,6 +57,15 @@ Then("the background task {string} is still running", async ({ activityApp: app 
   await expect(backgroundTasks(app).getByRole("button", { name: `Stop ${label}`, exact: true })).toBeVisible()
 })
 
+Then("the sidebar shows the thread working in the background", async ({ activityApp: app }) => {
+  await expect(
+    app.page
+      .getByRole("navigation", { name: "Projects and threads" })
+      .getByRole("listitem")
+      .filter({ hasText: "Shells" }),
+  ).toContainText("Working in the background")
+})
+
 When("I type {string} in the activity thread's message", async ({ activityApp: app }, text: string) => {
   await app.page.getByRole("combobox", { name: "Message", exact: true }).pressSequentially(text)
 })
