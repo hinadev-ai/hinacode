@@ -481,6 +481,28 @@ describe("Transport", () => {
     })
   })
 
+  describe("watched threads", () => {
+    const watchFrames = () => latest().sent.filter((frame) => frame.type === "watch")
+
+    it("tells a desktop that offers it which transcripts to send, again after each handshake", () => {
+      const transport = setup()
+      handshake(["heartbeat", "watch"])
+      expect(watchFrames()).toEqual([{ type: "watch", threadIds: [] }])
+      transport.setWatching(["t1"])
+      expect(watchFrames().at(-1)).toEqual({ type: "watch", threadIds: ["t1"] })
+      transport.networkChanged()
+      handshake(["heartbeat", "watch"])
+      expect(watchFrames()).toEqual([{ type: "watch", threadIds: ["t1"] }])
+    })
+
+    it("sends nothing new to a desktop without it", () => {
+      const transport = setup()
+      handshake(["heartbeat"])
+      transport.setWatching(["t1"])
+      expect(watchFrames()).toEqual([])
+    })
+  })
+
   describe("immediate reconnect", () => {
     it("replaces a socket that looks open when the network changes", () => {
       const transport = setup()

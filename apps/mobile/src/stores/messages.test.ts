@@ -161,6 +161,42 @@ describe("reload", () => {
   })
 })
 
+describe("threads on screen", () => {
+  it("reads a thread again when it is opened after being left, showing the old messages meanwhile", async () => {
+    const leave = useMessages.getState().watch("t1")
+    await loadReady(1, ["a"])
+    leave()
+    useMessages.getState().watch("t1")
+    expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
+    expect(ids()).toEqual(["a"])
+    calls.shift()!.resolve(snapshot(3, ["a", "b"]))
+    await flush()
+    expect(ids()).toEqual(["a", "b"])
+  })
+
+  it("reads only the threads on screen again after a reconnect", async () => {
+    const leave = useMessages.getState().watch("t1")
+    await loadReady(1, ["a"])
+    leave()
+    const leaveOther = useMessages.getState().watch("t2")
+    const loading = useMessages.getState().load("t2")
+    calls.shift()!.resolve(snapshot(1, []))
+    await loading
+    useMessages.getState().reload()
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t2", compact: true, page: {} }])
+    leaveOther()
+  })
+
+  it("lists a thread as watched until every screen showing it leaves", () => {
+    const leaveFirst = useMessages.getState().watch("t1")
+    const leaveSecond = useMessages.getState().watch("t1")
+    leaveFirst()
+    expect([...useMessages.getState().watched]).toEqual(["t1"])
+    leaveSecond()
+    expect([...useMessages.getState().watched]).toEqual([])
+  })
+})
+
 describe("earlier pages", () => {
   const page = (ids: readonly string[], hasEarlier: boolean) => ({ ...snapshot(1, ids), hasEarlier })
 
