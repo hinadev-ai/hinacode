@@ -1,5 +1,5 @@
 Feature: Worked for
-  Completed responses show elapsed time and fold their tool activity behind it, keeping the answer and progress visible.
+  Completed responses show elapsed time and fold their tool activity and progress notes behind it, keeping the answer visible.
 
   Background:
     Given a project "demo" for my repository
@@ -10,7 +10,6 @@ Feature: Worked for
     And the thread "Timed response" has a finished response that took 485 seconds
     When I open the thread "Timed response" from the sidebar
     Then the worked-for row shows "08:05" with its activity hidden
-    And the response progress is visible
     And the finished answer stays visible
     When I toggle the worked-for row with "Enter"
     Then the response progress and tool are visible
@@ -48,7 +47,6 @@ Feature: Worked for
     And the response has no worked-for row
     When the timed response completes
     Then the worked-for row shows "08:05" with its activity hidden
-    And the response progress is visible
     And the finished answer stays visible
 
   Scenario: Activity revealed by Find stays available after closing Find
