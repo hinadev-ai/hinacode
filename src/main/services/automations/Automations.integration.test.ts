@@ -109,7 +109,8 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
         Layer.succeed(ClaudeProvider, provider("claude")),
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
-        Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
+      ).pipe(
+        Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),
     ),
     Layer.provideMerge(database),

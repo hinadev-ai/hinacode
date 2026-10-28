@@ -8,7 +8,10 @@ import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
+import { Events } from "./Events.ts"
 import { Projects, layer } from "./Projects.ts"
+
+const noEvents = Layer.succeed(Events, { publish: () => Effect.void })
 
 const dirs: Array<string> = []
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })))
@@ -25,7 +28,7 @@ const repoWith = (files: Record<string, string | Buffer>) => {
 }
 
 const projectsLayer = layer.pipe(
-  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Db.layer(":memory:"))),
+  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer.pipe(Layer.provide(noEvents)), Db.layer(":memory:"))),
   Layer.provide(NodeServices.layer),
 )
 

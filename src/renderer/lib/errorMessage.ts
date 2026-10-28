@@ -15,6 +15,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   PullRequestUrlInvalidError: () => m.error_pull_request_url_invalid(),
   PullRequestDiffTooLargeError: () => m.error_pull_request_diff_too_large(),
   GitHubRateLimitedError: () => m.error_github_rate_limited(),
+  GitHubApiError: (detail) => m.error_github_api({ detail }),
   LinearRequestError: () => m.error_linear_request(),
   SchemaError: () => m.error_schema(),
   AgentError: (detail) => m.error_agent({ detail }),

@@ -26,7 +26,11 @@ const threadsLayer = threadsLayerBase.pipe(
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(AgentAccounts.layer),
   Layer.provideMerge(Settings.layer),
-  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, { publish: () => Effect.void }))),
+  Layer.provide(
+    Layer.mergeAll(Git.layer, GitHub.layer).pipe(
+      Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
+    ),
+  ),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
 )
