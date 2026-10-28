@@ -10,6 +10,7 @@ const message = (id: string, role: Message["role"], parts: ReadonlyArray<Message
   createdAt: "2026-10-28T00:00:00.000Z",
   completedAt: "2026-10-28T00:00:00.000Z",
   usage: null,
+  forkPoint: null,
 })
 
 test("hands Claude's transcript to Codex ahead of the prompt", () => {
