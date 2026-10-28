@@ -1,6 +1,6 @@
 import { expect, test } from "@effect/vitest"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { assistantPresentation, formatWorkDuration, isActivity } from "./assistantPresentation.ts"
+import { assistantPresentation, collapsedParts, formatWorkDuration, isActivity } from "./assistantPresentation.ts"
 
 const message = (
   parts: ReadonlyArray<MessagePart>,
@@ -132,6 +132,28 @@ test("reasoning, tools and file changes are activity, while text, questions and 
   ]
   expect(reply.map(isActivity)).toEqual([false, false])
   expect(activity.map(isActivity)).toEqual([true, true, true])
+})
+
+test("collapsed responses hide the progress notes written between tool calls and keep the answer", () => {
+  const questions: MessagePart = { type: "questions", text: "Which approach?", questions: [] }
+  const parts = [
+    { type: "reasoning", text: "Find the compact handling." },
+    tool,
+    { type: "text", text: "Short status: checking each protocol's compact call now." },
+    tool,
+    questions,
+    { type: "text", text: "Now the Codex fix." },
+    { type: "file_change", path: "README.md", diff: "+Done" },
+    { type: "text", text: "/compact now works on Codex and Muse." },
+    { type: "text", text: "Limits: it has to be the whole prompt." },
+  ] satisfies ReadonlyArray<MessagePart>
+  const indexed = parts.map((part, index) => ({ part, index }))
+  expect(collapsedParts(indexed)).toEqual([indexed[4], indexed[7], indexed[8]])
+})
+
+test("collapsing a response without activity keeps all of it", () => {
+  const indexed = [{ part: { type: "text", text: "Hello." } satisfies MessagePart, index: 0 }]
+  expect(collapsedParts(indexed)).toEqual(indexed)
 })
 
 test("an agent switch stays inline without a Worked for row", () => {
