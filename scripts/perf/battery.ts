@@ -10,9 +10,16 @@ import { connect, createServer, type Socket } from "node:net"
 import { loadavg } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import WebSocket from "ws"
+import { WebSocket } from "ws"
 
-type Phase = { cpuMs: number; seconds: number; bytesDown: number; bytesUp: number; activeSeconds: number }
+type Phase = {
+  cpuMs: number
+  seconds: number
+  bytesDown: number
+  bytesUp: number
+  framesDown: number
+  activeSeconds: number
+}
 type Result = { label: string; platform: string; streams: number; loadavg: number[]; phases: Record<string, Phase> }
 
 interface Device {
@@ -38,6 +45,13 @@ const run = (command: string, ...args: string[]) => execFileSync(command, args, 
 const between = (buckets: Map<number, number>, from: number, to: number) =>
   [...buckets].filter(([second]) => second >= from && second < to)
 const median = (values: number[]) => values.toSorted((a, b) => a - b)[Math.floor(values.length / 2)] ?? NaN
+
+const add = (buckets: Map<number, number>, count: number) => {
+  const second = Math.floor(performance.now() / 1000)
+  buckets.set(second, (buckets.get(second) ?? 0) + count)
+}
+const perMinute = (results: Result[], phase: string, key: keyof Phase) =>
+  median(results.map(({ phases }) => (phases[phase]![key] * 60) / phases[phase]!.seconds))
 
 function android(serial: string, port: number): Device {
   const app = "com.hinadev.hinacode"
@@ -80,20 +94,45 @@ function ios(udid: string, bundleId: string): Device {
   }
 }
 
-/** Forwards `listen` to `target` and counts the bytes each way, per second. */
+/**
+ * Counts the WebSocket frames in a server's byte stream after its upgrade response. Server frames are unmasked, and
+ * their headers stay readable when permessage-deflate compresses the payload.
+ */
+function frameCounter(onFrame: () => void) {
+  let buffer = Buffer.alloc(0)
+  let upgraded = false
+  return (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk])
+    if (!upgraded) {
+      const end = buffer.indexOf("\r\n\r\n")
+      if (end === -1) return
+      upgraded = true
+      buffer = buffer.subarray(end + 4)
+    }
+    while (buffer.length >= 2) {
+      const short = buffer[1]! & 0x7f
+      const header = short === 126 ? 4 : short === 127 ? 10 : 2
+      if (buffer.length < header) return
+      const length = short === 126 ? buffer.readUInt16BE(2) : short === 127 ? Number(buffer.readBigUInt64BE(2)) : short
+      if (buffer.length < header + length) return
+      buffer = buffer.subarray(header + length)
+      onFrame()
+    }
+  }
+}
+
+/** Forwards `listen` to `target` and counts the bytes each way and the frames down, per second. */
 function proxy(listen: number, target: number) {
   const down = new Map<number, number>()
   const up = new Map<number, number>()
-  const add = (buckets: Map<number, number>, bytes: number) => {
-    const second = Math.floor(performance.now() / 1000)
-    buckets.set(second, (buckets.get(second) ?? 0) + bytes)
-  }
+  const frames = new Map<number, number>()
   const sockets = new Set<Socket>()
   const server = createServer((phone) => {
     const desktop = connect(target, "127.0.0.1")
     sockets.add(phone).add(desktop)
     phone.on("data", (chunk) => add(up, chunk.length))
-    desktop.on("data", (chunk) => add(down, chunk.length))
+    const countFrames = frameCounter(() => add(frames, 1))
+    desktop.on("data", (chunk: Buffer) => (add(down, chunk.length), countFrames(chunk)))
     phone.pipe(desktop).pipe(phone)
     const end = () => (phone.destroy(), desktop.destroy(), sockets.delete(phone), sockets.delete(desktop))
     phone.on("close", end).on("error", end)
@@ -104,7 +143,7 @@ function proxy(listen: number, target: number) {
       const [from, to] = [Math.floor(fromMs / 1000), Math.floor(toMs / 1000)]
       const sum = (buckets: Map<number, number>) => between(buckets, from, to).reduce((total, [, n]) => total + n, 0)
       const active = new Set([...between(down, from, to), ...between(up, from, to)].map(([second]) => second))
-      return { bytesDown: sum(down), bytesUp: sum(up), activeSeconds: active.size }
+      return { bytesDown: sum(down), bytesUp: sum(up), framesDown: sum(frames), activeSeconds: active.size }
     },
     connected: () => sockets.size > 0,
     close() {
@@ -211,12 +250,10 @@ function compare(before: string, after: string) {
     readdirSync(resultsDir)
       .filter((file) => new RegExp(`^${prefix}-\\d+\\.json$`).test(file))
       .map((file) => JSON.parse(readFileSync(join(resultsDir, file), "utf8")) as Result)
-  const perMinute = (results: Result[], phase: string, key: keyof Phase) =>
-    median(results.map(({ phases }) => (phases[phase]![key] * 60) / phases[phase]!.seconds))
   const [a, b] = [runs(before), runs(after)]
   assert(a.length > 0 && b.length > 0, `no runs for ${a.length === 0 ? before : after} in ${resultsDir}`)
   const rows = ["foreground", "background"].flatMap((phase) =>
-    (["cpuMs", "bytesDown", "bytesUp", "activeSeconds"] as const).map((key) => {
+    (["cpuMs", "bytesDown", "bytesUp", "framesDown", "activeSeconds"] as const).map((key) => {
       const [x, y] = [perMinute(a, phase, key), perMinute(b, phase, key)]
       return {
         metric: `${phase} ${key}/min`,
