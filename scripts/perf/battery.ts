@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// Usage: battery.ts run <label>
-//        battery.ts compare <before-label> <after-label>
-// Measures what the phone app spends while agents stream on the desktop: its CPU time and the bytes on its socket,
-// in the foreground on Home and in the background. See "Battery" in scripts/perf/README.md.
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -10,22 +6,35 @@ import { connect, createServer, type Socket } from "node:net"
 import { loadavg } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { Effect, Schema } from "effect"
 import { WebSocket } from "ws"
+import { ServerFrame } from "../../src/shared/remote.ts"
 
-type Phase = {
-  cpuMs: number
-  seconds: number
-  bytesDown: number
-  bytesUp: number
-  framesDown: number
-  activeSeconds: number
-}
-type Result = { label: string; platform: string; streams: number; loadavg: number[]; phases: Record<string, Phase> }
+const Phase = Schema.Struct({
+  cpuMs: Schema.Number,
+  seconds: Schema.Number,
+  bytesDown: Schema.Number,
+  bytesUp: Schema.Number,
+  framesDown: Schema.Number,
+  activeSeconds: Schema.Number,
+  completedTurns: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
+})
+type Phase = typeof Phase.Type
+const Result = Schema.Struct({
+  label: Schema.String,
+  platform: Schema.Literals(["android", "ios"]),
+  streams: Schema.Int,
+  loadavg: Schema.Array(Schema.Number),
+  phases: Schema.Record(Schema.String, Phase),
+})
+type Result = typeof Result.Type
+const decodeResult = Schema.decodeUnknownSync(Result)
+const decodeFrame = Schema.decodeUnknownSync(ServerFrame)
+const decodeProjects = Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ id: Schema.String, kind: Schema.String })))
+const decodeThread = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.String }))
 
 interface Device {
-  /** Points the app at the proxy and opens it. */
   open(pairingUrl: string): void
-  /** The app's CPU time so far, in milliseconds. */
   cpuMs(): number
   background(): void
   foreground(): void
@@ -85,9 +94,10 @@ function ios(udid: string, bundleId: string): Device {
   return {
     open: (pairingUrl) => void run("xcrun", "simctl", "openurl", udid, pairingUrl),
     cpuMs() {
-      // `ps` prints [[dd-]hh:]mm:ss.cc.
-      const parts = run("ps", "-o", "cputime=", "-p", pid()).trim().split(/[-:]/).map(Number)
-      return parts.reduce((total, part) => total * 60 + part, 0) * 1000
+      const [first, clock] = run("ps", "-o", "cputime=", "-p", pid()).trim().split("-")
+      const days = clock === undefined ? 0 : Number(first)
+      const parts = (clock ?? first!).split(":").map(Number)
+      return days * 86_400_000 + parts.reduce((total, part) => total * 60 + part, 0) * 1000
     },
     background: () => void run("xcrun", "simctl", "launch", udid, "com.apple.Preferences"),
     foreground: () => void run("xcrun", "simctl", "launch", udid, bundleId),
@@ -121,7 +131,6 @@ function frameCounter(onFrame: () => void) {
   }
 }
 
-/** Forwards `listen` to `target` and counts the bytes each way and the frames down, per second. */
 function proxy(listen: number, target: number) {
   const down = new Map<number, number>()
   const up = new Map<number, number>()
@@ -153,40 +162,55 @@ function proxy(listen: number, target: number) {
   }
 }
 
-/** Keeps `count` mocked Claude threads busy: each sends its next prompt `gapMs` after its turn completes. */
 async function load(port: number, token: string, count: number, gapMs: number) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/remote`)
   const pending = new Map<number, (result: unknown) => void>()
   const completed = new Set<(threadId: string) => void>()
+  const completions = new Map<string, number>()
   let nextId = 1
   let stopped = false
   const ready = new Promise<void>((resolve) =>
     ws.on("message", (raw) => {
-      const frame = JSON.parse(String(raw))
+      const frame = decodeFrame(JSON.parse(String(raw)))
       if (frame.type === "challenge") ws.send(JSON.stringify({ type: "auth", token }))
       else if (frame.type === "ready") resolve()
-      else if (frame.type === "result") pending.get(frame.id)?.(frame.envelope.result)
-      else if (
-        frame.type === "event" &&
-        frame.event.type === "thread.event" &&
-        frame.event.event.type === "turn_completed"
-      )
-        for (const listener of completed) listener(frame.event.threadId)
+      else if (frame.type === "result") {
+        const complete = pending.get(frame.id)
+        pending.delete(frame.id)
+        if ("error" in frame.envelope) throw new Error(`load RPC failed: ${JSON.stringify(frame.envelope.error)}`)
+        complete?.(frame.envelope.result)
+      } else if (frame.type === "event" && frame.event.type === "thread.event") {
+        const { threadId, event } = frame.event
+        if (!completions.has(threadId)) return
+        assert(
+          event.type !== "turn_failed" && event.type !== "turn_limited",
+          `mock workload ${event.type}: ${threadId}`,
+        )
+        if (event.type === "turn_completed") {
+          completions.set(threadId, completions.get(threadId)! + 1)
+          for (const listener of completed) listener(threadId)
+        }
+      }
     }),
   )
-  const call = <T>(method: string, payload?: unknown) =>
-    new Promise<T>((resolve) => {
+  ws.on("error", (error) => {
+    throw error
+  })
+  ws.on("close", () => assert(stopped, "mock workload lost its daemon connection"))
+  const call = (method: string, payload?: unknown) =>
+    new Promise<unknown>((resolve) => {
       const id = nextId++
-      pending.set(id, resolve as (result: unknown) => void)
+      pending.set(id, resolve)
       ws.send(JSON.stringify({ type: "call", id, method, ...(payload !== undefined && { payload }) }))
     })
   await ready
-  const projects = await call<{ id: string; kind: string }[]>("projects.list")
+  const projects = decodeProjects(await call("projects.list"))
   const project = projects.find((candidate) => candidate.kind === "chats") ?? projects[0]
   assert(project !== undefined, "the desktop has no project to start threads in")
   const threads = await Promise.all(
-    Array.from({ length: count }, () => call<{ id: string }>("threads.create", { projectId: project.id })),
+    Array.from({ length: count }, async () => decodeThread(await call("threads.create", { projectId: project.id }))),
   )
+  for (const { id } of threads) completions.set(id, 0)
   const send = (threadId: string) => {
     if (!stopped) void call("threads.send", { threadId, prompt: "go" })
   }
@@ -194,20 +218,26 @@ async function load(port: number, token: string, count: number, gapMs: number) {
     if (threads.some((thread) => thread.id === threadId)) setTimeout(() => send(threadId), gapMs)
   })
   for (const thread of threads) send(thread.id)
-  return () => {
-    stopped = true
-    ws.close()
+  return {
+    completions,
+    stop() {
+      stopped = true
+      ws.close()
+    },
   }
 }
 
 async function measure(runLabel: string) {
   const platform = env("BATTERY_PLATFORM")
+  assert(platform === "android" || platform === "ios", "BATTERY_PLATFORM must be android or ios")
   const daemonPort = Number(env("BATTERY_DAEMON_PORT"))
   const proxyPort = Number(env("BATTERY_PROXY_PORT", "48199"))
   const token = env("BATTERY_TOKEN")
   const streams = Number(env("BATTERY_STREAMS", "3"))
   const foregroundMs = Number(env("BATTERY_FOREGROUND_MS", "60000"))
   const backgroundMs = Number(env("BATTERY_BACKGROUND_MS", "120000"))
+  assert(Number.isInteger(streams) && streams >= 0, "BATTERY_STREAMS must be a nonnegative integer")
+  assert(foregroundMs > 0 && backgroundMs > 0, "measurement durations must be positive")
   const settleMs = 10_000
   const device =
     platform === "android"
@@ -215,43 +245,81 @@ async function measure(runLabel: string) {
       : ios(env("BATTERY_UDID"), env("BATTERY_BUNDLE_ID", "com.hinadev.hinacode"))
 
   const counter = proxy(proxyPort, daemonPort)
-  device.open(`hinacode://connect?host=127.0.0.1&port=${proxyPort}&token=${token}`)
-  for (let waited = 0; !counter.connected(); waited += 500) {
-    assert(waited < 90_000, "the app did not connect to the proxy")
-    await pause(500)
-  }
-  const stopLoad = await load(daemonPort, token, streams, Number(env("BATTERY_GAP_MS", "4000")))
-  await pause(settleMs)
-
   const phases: Record<string, Phase> = {}
+  let workload: Awaited<ReturnType<typeof load>> | undefined
   const window = async (name: string, ms: number) => {
+    assert(workload !== undefined)
+    const completedBefore = new Map(workload.completions)
+    console.log(`${name}: sampling ${ms / 1000} seconds`)
     const [cpu, at] = [device.cpuMs(), performance.now()]
     await pause(ms)
     const [cpuEnd, end] = [device.cpuMs(), performance.now()]
-    phases[name] = { cpuMs: cpuEnd - cpu, seconds: (end - at) / 1000, ...counter.window(at, end) }
+    let completedTurns = 0
+    for (const [threadId, completed] of workload.completions) {
+      const turns = completed - completedBefore.get(threadId)!
+      assert(turns > 0, `${threadId} completed no mock turns during ${name}; reject this capture`)
+      completedTurns += turns
+    }
+    phases[name] = { cpuMs: cpuEnd - cpu, seconds: (end - at) / 1000, completedTurns, ...counter.window(at, end) }
     console.log(name, phases[name])
   }
-  await window("foreground", foregroundMs)
-  device.background()
-  await pause(settleMs)
-  await window("background", backgroundMs)
-  device.foreground()
-  stopLoad()
-  counter.close()
+  try {
+    console.log(`${runLabel}: pairing ${platform}`)
+    device.open(`hinacode://connect?host=127.0.0.1&port=${proxyPort}&token=${token}`)
+    for (let waited = 0; !counter.connected(); waited += 500) {
+      assert(waited < 90_000, "the app did not connect to the proxy")
+      await pause(500)
+    }
+    workload = await load(daemonPort, token, streams, Number(env("BATTERY_GAP_MS", "4000")))
+    await pause(settleMs)
+    await window("foreground", foregroundMs)
+    assert(phases.foreground!.framesDown > 0, "no frames received; verify pairing before comparing this run")
+    device.background()
+    await pause(settleMs)
+    await window("background", backgroundMs)
+    device.foreground()
+  } finally {
+    workload?.stop()
+    counter.close()
+  }
 
   const result: Result = { label: runLabel, platform, streams, loadavg: loadavg(), phases }
   mkdirSync(resultsDir, { recursive: true })
   writeFileSync(join(resultsDir, `${runLabel}.json`), JSON.stringify(result, null, 2))
 }
 
-/** Pools every `<label>-<n>.json` and prints the median of each phase per minute. */
-function compare(before: string, after: string) {
+function compare(before: string, after: string, checkBudget: boolean) {
+  const manifest = process.env.BATTERY_RESULTS_FILE
+  const saved =
+    manifest === undefined
+      ? undefined
+      : Schema.decodeUnknownSync(Schema.Struct({ captures: Schema.Array(Result) }))(
+          JSON.parse(readFileSync(manifest, "utf8")),
+        ).captures
   const runs = (prefix: string) =>
-    readdirSync(resultsDir)
-      .filter((file) => new RegExp(`^${prefix}-\\d+\\.json$`).test(file))
-      .map((file) => JSON.parse(readFileSync(join(resultsDir, file), "utf8")) as Result)
+    (
+      saved?.filter((capture) => new RegExp(`^${prefix}-\\d+$`).test(capture.label)) ??
+      readdirSync(resultsDir)
+        .filter((file) => new RegExp(`^${prefix}-\\d+\\.json$`).test(file))
+        .map((file) => decodeResult(JSON.parse(readFileSync(join(resultsDir, file), "utf8"))))
+    ).map((capture) => {
+      for (const phase of ["foreground", "background"]) {
+        const sample = capture.phases[phase]
+        assert(sample !== undefined && sample.seconds > 0, `${capture.label}: invalid ${phase} duration`)
+        assert(
+          Object.values(sample).every((value) => Number.isFinite(value) && value >= 0),
+          `${capture.label}: invalid sample`,
+        )
+      }
+      return capture
+    })
   const [a, b] = [runs(before), runs(after)]
   assert(a.length > 0 && b.length > 0, `no runs for ${a.length === 0 ? before : after} in ${resultsDir}`)
+  const baseline = a[0]!
+  assert(
+    [...a, ...b].every((capture) => capture.platform === baseline.platform && capture.streams === baseline.streams),
+    "compare the same platform and stream count",
+  )
   const rows = ["foreground", "background"].flatMap((phase) =>
     (["cpuMs", "bytesDown", "bytesUp", "framesDown", "activeSeconds"] as const).map((key) => {
       const [x, y] = [perMinute(a, phase, key), perMinute(b, phase, key)]
@@ -265,9 +333,54 @@ function compare(before: string, after: string) {
   )
   console.log(`${before}: ${a.length} runs, ${after}: ${b.length} runs`)
   console.table(rows)
+  for (const [name, results] of [
+    [before, a],
+    [after, b],
+  ] as const) {
+    const hostLoads = results.map((result) => result.loadavg[0]!)
+    console.log(`${name}: host load ${Math.min(...hostLoads).toFixed(1)} to ${Math.max(...hostLoads).toFixed(1)}`)
+    for (const phase of ["foreground", "background"]) {
+      const cpu = results.map(({ phases }) => (phases[phase]!.cpuMs * 60) / phases[phase]!.seconds)
+      console.log(`${name} ${phase}: CPU ${Math.round(Math.min(...cpu))} to ${Math.round(Math.max(...cpu))} ms/min`)
+    }
+  }
+  if (!checkBudget) return
+  assert(a.length >= 3 && b.length >= 3, "the budget check requires at least three runs per build")
+  const budgets: Array<{ phase: string; key: keyof Phase }> = [
+    { phase: "foreground", key: "framesDown" },
+    { phase: "background", key: "bytesDown" },
+  ]
+  if (baseline.platform === "android") budgets.push({ phase: "background", key: "cpuMs" })
+  for (const { phase, key } of budgets) {
+    const [beforeValue, afterValue] = [perMinute(a, phase, key), perMinute(b, phase, key)]
+    assert(beforeValue > 0 && Number.isFinite(afterValue), `${phase} ${key}: no measurable baseline or candidate`)
+    assert(afterValue <= beforeValue * 0.1, `${phase} ${key}: reduction is below the 90% budget`)
+    console.log(`PASS ${phase} ${key}: ${Math.round((1 - afterValue / beforeValue) * 100)}% reduction`)
+  }
+  if (baseline.platform === "ios")
+    console.log("iOS background CPU requires a physical device; simulator CPU is suspended")
 }
 
-if (mode === "run" && label) await measure(label)
-else if (mode === "compare" && label && other) compare(label, other)
-else throw new Error("usage: battery.ts run <label> | battery.ts compare <before> <after>")
+if (mode === "load") {
+  const workload = await load(
+    Number(env("BATTERY_DAEMON_PORT")),
+    env("BATTERY_TOKEN"),
+    Number(env("BATTERY_STREAMS", "3")),
+    Number(env("BATTERY_GAP_MS", "4000")),
+  )
+  console.log("Mock workload running. Stop with Ctrl-C after collecting the device traces.")
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      workload.stop()
+      resolve()
+    }
+    process.once("SIGINT", finish)
+    process.once("SIGTERM", finish)
+  })
+} else if (mode === "run" && label) await measure(label)
+else if ((mode === "compare" || mode === "check") && label && other) compare(label, other, mode === "check")
+else
+  throw new Error(
+    "usage: battery.ts run <label> | battery.ts compare <before> <after> | battery.ts check <before> <after> | battery.ts load",
+  )
 process.exit(0)
