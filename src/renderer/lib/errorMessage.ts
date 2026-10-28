@@ -13,6 +13,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   ProjectRootInvalidError: () => m.error_project_root_invalid(),
   ProjectFolderNotEmptyError: () => m.error_project_folder_not_empty(),
   PullRequestUrlInvalidError: () => m.error_pull_request_url_invalid(),
+  PullRequestDiffTooLargeError: () => m.error_pull_request_diff_too_large(),
   LinearRequestError: () => m.error_linear_request(),
   SchemaError: () => m.error_schema(),
   AgentError: (detail) => m.error_agent({ detail }),

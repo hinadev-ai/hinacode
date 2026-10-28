@@ -33,6 +33,7 @@ import type {
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
+  diffTooLarge,
   type GuideFile,
   groupFiles,
   noteAnnotations,
@@ -116,15 +117,19 @@ export function PullRequestCode({ url }: { url: string }) {
         </TabsList>
       </Tabs>
       {AsyncResult.builder(detail)
-        .onSuccess((pullRequest) => (
-          <ChangedFiles
-            environment={environment}
-            url={url}
-            head={pullRequest.head}
-            status={pullRequest.status}
-            view={view}
-          />
-        ))
+        .onSuccess((pullRequest) =>
+          diffTooLarge(pullRequest) ? (
+            <p className="text-xs text-muted-foreground">{m.pr_code_too_large()}</p>
+          ) : (
+            <ChangedFiles
+              environment={environment}
+              url={url}
+              head={pullRequest.head}
+              status={pullRequest.status}
+              view={view}
+            />
+          ),
+        )
         .onError((error) => (
           <p role="alert" className="text-xs wrap-anywhere text-destructive">
             {m.pr_detail_failed({ message: errorMessage(error) })}

@@ -8,16 +8,18 @@ import {
   query,
   type Options,
   type Query,
+  type SDKControlGetContextUsageResponse,
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import { Cache, Cause, Clock, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 import {
   type AccountHome,
   type AgentAccount,
   type AgentEvent,
   type BackgroundTask,
   CLAUDE_EFFORT_LEVELS,
+  type ContextBreakdown,
   type ModelInfo,
   type RunTurnInput,
 } from "../../../shared/agent.ts"
@@ -30,7 +32,16 @@ import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
 import { hideUserCommands, toCommand } from "./commands.ts"
-import { backgroundTasksOf, isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
+import {
+  backgroundTasksOf,
+  isTerminal,
+  mapMessage,
+  resetTurnLimits,
+  wakeupCallOf,
+  wakeupOf,
+  type MapState,
+  type WakeupCall,
+} from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
 import { elementContext } from "../elementContext.ts"
@@ -109,6 +120,10 @@ interface Session extends MapState, ApprovalSession {
   taskSnapshots: boolean
   /** What the latest snapshot showed as background tasks. Only CLIs that send snapshots fill it. */
   backgroundTasks: ReadonlyArray<BackgroundTask>
+  /** The `ScheduleWakeup` call whose result has not arrived yet. */
+  wakeupCall: WakeupCall | null
+  /** The turn the agent scheduled for later. The CLI fires it only while its process lives. */
+  wakeup: BackgroundTask | null
   /** The CLI sends `session_state_changed`, so a turn ends when it goes idle instead of at its result. */
   reportsState: boolean
   /** The event that ends the turn once the CLI goes idle, mapped from the turn's latest result. */
@@ -117,6 +132,15 @@ interface Session extends MapState, ApprovalSession {
   expiry: Fiber.Fiber<void> | null
   closed: boolean
 }
+
+/** Deferred tools sit outside the window until the agent loads one, so they are left out. */
+const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBreakdown => ({
+  usedTokens: usage.totalTokens,
+  maxTokens: usage.rawMaxTokens,
+  categories: usage.categories.flatMap(({ name, tokens, kind }) =>
+    kind === "deferred" || tokens === 0 ? [] : [{ name, tokens, kind }],
+  ),
+})
 
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
@@ -379,17 +403,26 @@ export const layer = Layer.effect(
       session.expiry = null
     }
 
-    const setBackgroundTasks = (session: Session, tasks: ReadonlyArray<BackgroundTask>) => {
-      if (session.backgroundTasks.length === 0 && tasks.length === 0) return
+    const setBackgroundTasks = (
+      session: Session,
+      tasks: ReadonlyArray<BackgroundTask>,
+      wakeup: BackgroundTask | null = session.wakeup,
+    ) => {
+      const hadTasks = session.backgroundTasks.length > 0 || session.wakeup !== null
+      if (!hadTasks && tasks.length === 0 && wakeup === null) return
       session.backgroundTasks = tasks
-      Queue.offerUnsafe(backgroundTaskChanges, { threadId: session.threadId, tasks })
+      session.wakeup = wakeup
+      Queue.offerUnsafe(backgroundTaskChanges, {
+        threadId: session.threadId,
+        tasks: wakeup === null ? tasks : [...tasks, wakeup],
+      })
     }
 
     const closeSessionUnsafe = (session: Session) => {
       if (session.closed) return
       session.closed = true
-      // The CLI's background shells end with its process.
-      setBackgroundTasks(session, [])
+      // The CLI's background shells and scheduled wakeups end with its process.
+      setBackgroundTasks(session, [], null)
       cancelExpiry(session)
       if (sessions.get(session.threadId) === session) sessions.delete(session.threadId)
       Queue.shutdownUnsafe(session.prompts)
@@ -400,14 +433,20 @@ export const layer = Layer.effect(
     const closeSession = (session: Session) => Effect.sync(() => closeSessionUnsafe(session))
 
     const armExpiry = (session: Session) =>
-      Effect.suspend(() => {
-        if (session.closed) return Effect.void
+      Effect.gen(function* () {
+        if (session.closed) return
+        const now = yield* Clock.currentTimeMillis
+        const firesAt = session.wakeup?.firesAt
+        const untilWakeup = firesAt === undefined ? 0 : Date.parse(firesAt) - now
+        // A due wakeup has fired or is about to, and the idle grace covers a CLI that fires it late.
+        if (firesAt !== undefined && untilWakeup <= 0) setBackgroundTasks(session, session.backgroundTasks, null)
         if (!isIdle(session)) {
           cancelExpiry(session)
-          return Effect.void
+          return
         }
-        if (session.expiry !== null) return Effect.void
-        const expire = Effect.sleep(IDLE_SESSION_TTL).pipe(
+        if (session.expiry !== null) return
+        // The CLI fires a wakeup only while its process lives.
+        const expire = Effect.sleep(Duration.sum(Duration.millis(Math.max(0, untilWakeup)), IDLE_SESSION_TTL)).pipe(
           Effect.andThen(
             Effect.sync(() => {
               session.expiry = null
@@ -415,9 +454,7 @@ export const layer = Layer.effect(
             }),
           ),
         )
-        return Effect.map(Effect.forkIn(expire, layerScope), (fiber) => {
-          session.expiry = fiber
-        })
+        session.expiry = yield* Effect.forkIn(expire, layerScope)
       })
 
     const claim = (session: Session) => {
@@ -445,7 +482,21 @@ export const layer = Layer.effect(
       return runId !== undefined && current !== undefined && runId < current
     }
 
+    const trackWakeup = (session: Session, message: SDKMessage) => {
+      const call = wakeupCallOf(message)
+      if (call !== null) {
+        session.wakeupCall = call
+        return
+      }
+      if (session.wakeupCall === null) return
+      const wakeup = wakeupOf(message, session.wakeupCall, new Date().toISOString())
+      if (wakeup === undefined) return
+      session.wakeupCall = null
+      setBackgroundTasks(session, session.backgroundTasks, wakeup)
+    }
+
     const trackTask = (session: Session, message: SDKMessage) => {
+      trackWakeup(session, message)
       if (message.type !== "system") return
       if (message.subtype === "background_tasks_changed") {
         session.taskSnapshots = true
@@ -642,6 +693,8 @@ export const layer = Layer.effect(
           tasks: new Map(),
           taskSnapshots: false,
           backgroundTasks: [],
+          wakeupCall: null,
+          wakeup: null,
           reportsState: false,
           heldEnd: null,
           claims: 1,
@@ -872,6 +925,17 @@ export const layer = Layer.effect(
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
+      contextBreakdown: (threadId) =>
+        Effect.suspend(() => {
+          const session = sessions.get(threadId)
+          if (session === undefined) return Effect.succeed(null)
+          return lease(session, (leased) =>
+            Effect.tryPromise({
+              try: () => leased.query.getContextUsage(),
+              catch: agentError("Failed to read the context usage"),
+            }),
+          ).pipe(Effect.map(toContextBreakdown))
+        }),
       // A sub-agent's id is its CLI task id.
       stopSubagent: (threadId, subagentId) =>
         Effect.suspend(() => {

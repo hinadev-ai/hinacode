@@ -460,8 +460,8 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
       aria-describedby={description ? `${id}-status` : undefined}
       onClick={() => onClick(entry)}
       onContextMenu={() => onContextMenu(entry)}
-      style={{ paddingLeft: 8 + depth * INDENT }}
-      className="relative mx-1 flex h-6 cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
+      style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
+      className="relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
     >
       {Array.from({ length: depth }, (_, level) => (
         <span

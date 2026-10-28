@@ -11,7 +11,7 @@ hinacode ships as a downloaded app, and main moves fast. Today a developer has t
 
 1. The developer installs HinaCode once from the DMG on this repository's GitHub releases page.
 2. While hinacode runs, it checks for a newer release at launch and every four hours, and downloads it in the background. Nothing on screen changes while that happens.
-3. Once the zip downloads, the status bar shows a quiet `Restart to update` button with the new version in its tooltip. An updater error clears readiness and hides the button.
+3. Once the zip downloads, Settings, General offers `Restart to update`. An updater error clears readiness and hides the button.
 4. Clicking it quits hinacode, swaps in the new version and relaunches. Running turns get the same five-second quit window as a normal quit.
 5. If the developer ignores the button, the update installs the next time they quit hinacode.
 6. Settings, General shows the running version and what the updater is doing. `Check for updates` checks right away, and becomes `Restart to update` once a release has downloaded.

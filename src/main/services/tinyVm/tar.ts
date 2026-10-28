@@ -1,5 +1,5 @@
-import { lstat, readdir, readFile, readlink } from "node:fs/promises"
-import { basename, join } from "node:path"
+import { lstat, mkdir, readdir, readFile, readlink, rm, writeFile } from "node:fs/promises"
+import { basename, dirname, join } from "node:path"
 import { Effect, Schema } from "effect"
 
 /** One entry of a tar archive. `path` is relative, slash-separated, with no leading slash. */
@@ -130,7 +130,36 @@ export const readTree = (topPath: string, maxBytes: number): Effect.Effect<Reado
     return entries
   })
 
-/** Reads back an archive `encodeTar` wrote, and archives in the same plain ustar shape. */
+/** The pax keys `decodeTar` applies; any other record is skipped. */
+const PAX_KEYS = new Set(["path", "linkpath", "size"])
+/** Go's archive/tar refuses larger pax headers too, which bounds the work an untrusted archive can cause. */
+const MAX_PAX_BYTES = 1024 * 1024
+
+/** Reads the records `decodeTar` uses from a pax extended header of `length key=value\n` records. */
+const paxRecords = (data: Uint8Array) => {
+  if (data.length > MAX_PAX_BYTES) throw new TarError({ message: "pax header in tar archive is too large" })
+  const records = new Map<string, string>()
+  const decoder = new TextDecoder()
+  for (let offset = 0; offset < data.length;) {
+    const space = data.indexOf(0x20, offset)
+    const length = Number(decoder.decode(data.subarray(offset, space)))
+    const end = offset + length
+    if (space < 0 || !Number.isInteger(length) || end <= space || end > data.length || data[end - 1] !== 0x0a)
+      throw new TarError({ message: "malformed pax header in tar archive" })
+    const record = decoder.decode(data.subarray(space + 1, end - 1))
+    const equals = record.indexOf("=")
+    if (equals < 0) throw new TarError({ message: "malformed pax header in tar archive" })
+    const key = record.slice(0, equals)
+    if (PAX_KEYS.has(key)) records.set(key, record.slice(equals + 1))
+    offset = end
+  }
+  return records
+}
+
+/**
+ * Reads back an archive `encodeTar` wrote, and the ustar and pax archives Go's `archive/tar` writes in the
+ * guest. Throws on a truncated archive, so a transfer that broke midway never passes for a whole one.
+ */
 export const decodeTar = (bytes: Uint8Array): ReadonlyArray<TarEntry> => {
   const readText = (offset: number, width: number) => {
     const slice = bytes.subarray(offset, offset + width)
@@ -139,30 +168,123 @@ export const decodeTar = (bytes: Uint8Array): ReadonlyArray<TarEntry> => {
   }
   const readOctal = (offset: number, width: number) => {
     const text = readText(offset, width).trim()
+    if (!/^[0-7]*$/.test(text)) throw new TarError({ message: `bad number "${text}" in tar header` })
     return text === "" ? 0 : Number.parseInt(text, 8)
   }
   const entries: Array<TarEntry> = []
+  let pax = new Map<string, string>()
   for (let offset = 0; offset + BLOCK <= bytes.length;) {
     const block = bytes.subarray(offset, offset + BLOCK)
-    if (block.every((byte) => byte === 0)) break
+    if (block.every((byte) => byte === 0)) return entries
     const name = readText(offset, 100)
     const prefix = readText(offset + 345, 155)
-    const path = prefix ? `${prefix}/${name}` : name
+    const path = pax.get("path") ?? (prefix ? `${prefix}/${name}` : name)
     const mode = readOctal(offset + 100, 8)
-    const size = readOctal(offset + 124, 12)
+    const paxSize = pax.get("size")
+    const size = paxSize === undefined ? readOctal(offset + 124, 12) : Number(paxSize)
     const mtime = readOctal(offset + 136, 12)
     const typeflag = String.fromCharCode(block[156] ?? 0)
+    const linkTarget = pax.get("linkpath") ?? readText(offset + 157, 100)
     offset += BLOCK
+    if (!Number.isSafeInteger(size) || size < 0 || offset + size > bytes.length)
+      throw new TarError({ message: `tar archive is truncated at "${path}"` })
+    const data = bytes.subarray(offset, offset + size)
+    offset += Math.ceil(size / BLOCK) * BLOCK
+    if (typeflag === "x") {
+      pax = paxRecords(data)
+      continue
+    }
+    pax = new Map()
+    if (typeflag === "g") {
+      if (size > MAX_PAX_BYTES) throw new TarError({ message: "pax header in tar archive is too large" })
+      continue
+    }
     if (typeflag === "5") {
       entries.push({ type: "dir", path: path.replace(/\/$/, ""), mode, mtime })
     } else if (typeflag === "2") {
-      entries.push({ type: "symlink", path, target: readText(offset - BLOCK + 157, 100), mode, mtime })
+      entries.push({ type: "symlink", path, target: linkTarget, mode, mtime })
     } else if (typeflag === "0" || typeflag === "\0") {
-      entries.push({ type: "file", path, data: bytes.slice(offset, offset + size), mode, mtime })
-      offset += Math.ceil(size / BLOCK) * BLOCK
+      entries.push({ type: "file", path, data, mode, mtime })
     } else {
       throw new TarError({ message: `unsupported tar entry type "${typeflag}" for "${path}"` })
     }
   }
-  return entries
+  throw new TarError({ message: "tar archive is truncated" })
 }
+
+/** What `writeTree` put on disk. */
+export interface WrittenTree {
+  /** Absolute path of the archive's top-level entry. */
+  readonly path: string
+  readonly files: number
+  readonly bytes: number
+  /** Archive paths of the symlinks it skipped. */
+  readonly skippedLinks: ReadonlyArray<string>
+}
+
+/** The path's segments, or undefined when one is empty, `.`, `..` or holds a backslash or NUL. */
+const segmentsOf = (path: string) => {
+  const segments = path.split("/")
+  const safe = segments.every(
+    (segment) => segment !== "" && segment !== "." && segment !== ".." && !/[\\\0]/.test(segment),
+  )
+  return safe ? segments : undefined
+}
+
+const writeEntries = (dir: string, entries: ReadonlyArray<TarEntry>) =>
+  Effect.gen(function* () {
+    let files = 0
+    let bytes = 0
+    const skippedLinks: Array<string> = []
+    for (const entry of entries) {
+      const target = join(dir, entry.path)
+      if (entry.type === "symlink") {
+        skippedLinks.push(entry.path)
+      } else if (entry.type === "dir") {
+        yield* Effect.tryPromise({
+          try: () => mkdir(target, { recursive: true, mode: 0o755 }),
+          catch: toTarError(target),
+        })
+      } else {
+        yield* Effect.tryPromise({
+          try: async () => {
+            await mkdir(dirname(target), { recursive: true, mode: 0o755 })
+            await writeFile(target, entry.data, { flag: "wx", mode: 0o644 })
+          },
+          catch: toTarError(target),
+        })
+        files++
+        bytes += entry.data.length
+      }
+    }
+    return { files, bytes, skippedLinks: skippedLinks as ReadonlyArray<string> }
+  })
+
+/**
+ * Writes the files and directories of an archive with one top-level entry into `dir`, which this creates and
+ * which must not exist yet. It never writes a symlink and refuses any path that could leave `dir`, so an
+ * archive from an untrusted source can only add new files under `dir`. Files are written 0644 and
+ * directories 0755, whatever the archive says. If writing fails partway, `dir` is removed again.
+ */
+export const writeTree = (dir: string, entries: ReadonlyArray<TarEntry>): Effect.Effect<WrittenTree, TarError> =>
+  Effect.gen(function* () {
+    const top = entries[0]
+    if (top === undefined) return yield* new TarError({ message: "The archive is empty" })
+    if (top.type === "symlink" && !top.path.includes("/"))
+      return yield* new TarError({ message: `${top.path} is a symlink to ${top.target}. Copy its target instead.` })
+    const root = segmentsOf(top.path)?.[0]
+    const unsafe = entries.find((entry) => root === undefined || segmentsOf(entry.path)?.[0] !== root)
+    if (root === undefined || unsafe !== undefined)
+      return yield* new TarError({ message: `The archive holds an unsafe path: "${(unsafe ?? top).path}"` })
+    yield* Effect.tryPromise({
+      try: async () => {
+        await mkdir(dirname(dir), { recursive: true })
+        await mkdir(dir)
+      },
+      catch: toTarError(dir),
+    })
+    return yield* writeEntries(dir, entries).pipe(
+      Effect.map((written) => ({ path: join(dir, root), ...written })),
+      Effect.tapError(() => Effect.promise(() => rm(dir, { recursive: true, force: true }).catch(() => undefined))),
+    )
+  })

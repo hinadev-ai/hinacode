@@ -101,7 +101,7 @@ const checkRunIndicator = {
   skipped: { Icon: RiIndeterminateCircleLine, className: "text-muted-foreground", label: m.pr_check_skipped },
 } satisfies Record<CheckRunStatus, { Icon: IconType; className: string; label: () => string }>
 
-const mergeLabel = {
+export const mergeLabel = {
   squash: m.pr_merge_squash,
   merge: m.pr_merge_commit,
   rebase: m.pr_merge_rebase,

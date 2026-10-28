@@ -150,10 +150,28 @@ const json =
       ),
     )
 
-const readBody = (response: Response) =>
+class BodyTooLarge extends Error {}
+
+/** Reads the whole body, giving up as soon as it passes `maxBytes`, so a huge response never sits in memory. */
+const readBody = (response: Response, maxBytes = Number.POSITIVE_INFINITY) =>
   Effect.tryPromise({
-    try: async () => Buffer.from(await response.arrayBuffer()),
-    catch: (cause) => new SbxError({ message: `The connection to sbx broke: ${describeCause(cause)}` }),
+    try: async () => {
+      const chunks: Array<Uint8Array> = []
+      let total = 0
+      for await (const chunk of response.body ?? []) {
+        total += chunk.length
+        if (total > maxBytes) throw new BodyTooLarge()
+        chunks.push(chunk)
+      }
+      return Buffer.concat(chunks)
+    },
+    catch: (cause) =>
+      new SbxError({
+        message:
+          cause instanceof BodyTooLarge
+            ? `the archive is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`
+            : `The connection to sbx broke: ${describeCause(cause)}`,
+      }),
   })
 
 const filesPath = (id: string, guestPath: string) =>
@@ -253,10 +271,13 @@ export const sbxClient = (login: SbxLogin) => {
       within(FILES_TIMEOUT_SECONDS),
     )
 
-  /** Tars the file or directory at `guestPath` in the guest and returns the archive bytes. */
-  const getFiles = (id: string, guestPath: string) =>
+  /**
+   * Tars the file or directory at `guestPath` in the guest and returns the archive bytes, failing once the
+   * archive passes `maxBytes`. A missing path is a 404 too, so it fails as `SandboxGoneError` like a gone sandbox.
+   */
+  const getFiles = (id: string, guestPath: string, maxBytes?: number) =>
     request("GET", filesPath(id, guestPath), { sandboxId: id }).pipe(
-      Effect.flatMap(readBody),
+      Effect.flatMap((response) => readBody(response, maxBytes)),
       within(FILES_TIMEOUT_SECONDS),
     )
 

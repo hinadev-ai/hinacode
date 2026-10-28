@@ -182,6 +182,22 @@ export type SecretRequest = typeof SecretRequest.Type
 export const ContextWindow = Schema.Struct({ usedTokens: Schema.Number, maxTokens: Schema.Number })
 export type ContextWindow = typeof ContextWindow.Type
 
+/** What fills the context window, by category, as the agent's `/context` reports it. */
+export const ContextBreakdown = Schema.Struct({
+  usedTokens: Schema.Number,
+  maxTokens: Schema.Number,
+  categories: Schema.Array(
+    Schema.Struct({
+      /** The agent's own English label, such as "MCP tools". */
+      name: Schema.String,
+      tokens: Schema.Number,
+      /** `buffer` is the compaction reserve. */
+      kind: Schema.Literals(["used", "free", "buffer"]),
+    }),
+  ),
+})
+export type ContextBreakdown = typeof ContextBreakdown.Type
+
 export const TokenUsage = Schema.Struct({
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
@@ -241,12 +257,13 @@ export const Subagent = Schema.Struct({
 })
 export type Subagent = typeof Subagent.Type
 
-export const BackgroundTaskKind = Schema.Literals(["shell", "workflow", "other"])
+export const BackgroundTaskKind = Schema.Literals(["shell", "workflow", "wakeup", "other"])
 export type BackgroundTaskKind = typeof BackgroundTaskKind.Type
 
 /**
- * Work the agent left running on its own, such as a shell it started with `run_in_background`. It outlives the
- * tool call and the turn that started it. Sub-agents are not background tasks; they are `Subagent`s.
+ * Work the agent left running on its own, such as a shell it started with `run_in_background` or a turn it
+ * scheduled for later. It outlives the tool call and the turn that started it. Sub-agents are not background
+ * tasks; they are `Subagent`s.
  */
 export const BackgroundTask = Schema.Struct({
   id: Schema.String,
@@ -255,6 +272,8 @@ export const BackgroundTask = Schema.Struct({
   label: Schema.String,
   /** When HinaCode first saw it running. */
   startedAt: Schema.String,
+  /** When a `wakeup` starts the agent's next turn. */
+  firesAt: Schema.optional(Schema.String),
 })
 export type BackgroundTask = typeof BackgroundTask.Type
 
