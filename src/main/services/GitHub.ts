@@ -1,7 +1,7 @@
 import { homedir } from "node:os"
 import { dirname } from "node:path"
 import { parsePatch } from "@pulls.review/core/patch-parser"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Cache, Clock, Context, Effect, Exit, Layer, Schema, Semaphore } from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import type {
   CheckRun,
@@ -33,7 +33,15 @@ export class GitHubSignedOutError extends Schema.TaggedError<GitHubSignedOutErro
   }
 }
 
-export type GitHubError = GitHubCliMissingError | GitHubSignedOutError | CommandError
+export class GitHubRateLimitedError extends Schema.TaggedError<GitHubRateLimitedError>()("GitHubRateLimitedError", {
+  resetsAt: Schema.Number,
+}) {
+  override get message(): string {
+    return `GitHub's API rate limit is used up. HinaCode asks again after ${new Date(this.resetsAt).toISOString()}.`
+  }
+}
+
+export type GitHubError = GitHubCliMissingError | GitHubSignedOutError | GitHubRateLimitedError | CommandError
 
 export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUrlInvalidError>()(
   "PullRequestUrlInvalidError",
@@ -224,6 +232,14 @@ export const pullRequestFiles = (diff: string): Effect.Effect<ReadonlyArray<Pull
       ),
   ).pipe(Effect.map((files) => files.flat()))
 
+const RateLimitBucket = Schema.Struct({ remaining: Schema.Number, reset: Schema.Number })
+/** `gh api rate_limit`, which GitHub does not count against the primary limit. */
+const decodeRateLimit = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({ resources: Schema.Struct({ core: RateLimitBucket, graphql: RateLimitBucket }) }),
+  ),
+)
+
 const decodeAuthStatus = Schema.decodeUnknownEffect(AuthStatusJson)
 const decodePullRequest = Schema.decodeUnknownEffect(PullRequestJson)
 const decodePullRequestDetail = Schema.decodeUnknownEffect(PullRequestDetailJson)
@@ -271,7 +287,7 @@ const decodePullRequestMatches = Schema.decodeUnknownEffect(
 export class GitHub extends Context.Service<
   GitHub,
   {
-    readonly auth: Effect.Effect<GitHubAuth, CommandError | Schema.SchemaError>
+    readonly auth: Effect.Effect<GitHubAuth, CommandError | GitHubRateLimitedError | Schema.SchemaError>
     /** The signed-in account's token for github.com. Stays in main: never log it or send it to the renderer. */
     readonly token: Effect.Effect<string, GitHubError>
     /** Runs `gh ...args` in `cwd` and returns stdout. */
@@ -325,10 +341,19 @@ export class GitHub extends Context.Service<
 // gh exits with 4 when a command needs authentication.
 const SIGNED_OUT_EXIT_CODE = 4
 
+// gh passes GitHub's own wording through: "API rate limit exceeded", "secondary rate limit".
+const RATE_LIMITED = /rate limit/i
+// GitHub asks for at least a minute after a secondary limit, then exponentially longer while it keeps refusing.
+const SECONDARY_PAUSE_MS = 60_000
+const MAX_SECONDARY_PAUSE_MS = 15 * 60_000
+
+const OPEN_PULL_REQUEST_TTL = "30 seconds"
+const FINISHED_PULL_REQUEST_TTL = "10 minutes"
+
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
 
-  const gh = (cwd: string, args: ReadonlyArray<string>) =>
+  const ghUnpaused = (cwd: string, args: ReadonlyArray<string>) =>
     exec("gh", args, cwd, { env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
       Effect.mapError((error): GitHubError => {
         if (error.exitCode === -1) return new GitHubCliMissingError()
@@ -336,6 +361,49 @@ const make = Effect.gen(function* () {
         return error
       }),
     )
+
+  // Every gh call shares one GitHub budget, so a rate limit pauses all of them, not only the command that hit it.
+  let pausedUntil = 0
+  let secondaryHits = 0
+  const pausing = Semaphore.makeUnsafe(1)
+
+  const pause = Semaphore.withPermit(
+    pausing,
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      if (now < pausedUntil) return pausedUntil
+      const limits = yield* ghUnpaused(homedir(), ["api", "rate_limit"]).pipe(
+        Effect.flatMap(decodeRateLimit),
+        Effect.option,
+      )
+      const usedUp =
+        limits._tag === "Some"
+          ? [limits.value.resources.core, limits.value.resources.graphql].filter((bucket) => bucket.remaining === 0)
+          : []
+      if (usedUp.length > 0) {
+        pausedUntil = Math.max(...usedUp.map((bucket) => bucket.reset * 1000))
+      } else {
+        pausedUntil = now + Math.min(SECONDARY_PAUSE_MS * 2 ** secondaryHits, MAX_SECONDARY_PAUSE_MS)
+        secondaryHits += 1
+      }
+      return pausedUntil
+    }),
+  )
+
+  const gh = (cwd: string, args: ReadonlyArray<string>): Effect.Effect<string, GitHubError> =>
+    Effect.gen(function* () {
+      if ((yield* Clock.currentTimeMillis) < pausedUntil) {
+        return yield* new GitHubRateLimitedError({ resetsAt: pausedUntil })
+      }
+      const stdout = yield* ghUnpaused(cwd, args).pipe(
+        Effect.catchIf(
+          (error) => error._tag === "CommandError" && RATE_LIMITED.test(error.stderr),
+          () => Effect.flatMap(pause, (resetsAt) => Effect.fail(new GitHubRateLimitedError({ resetsAt }))),
+        ),
+      )
+      secondaryHits = 0
+      return stdout
+    })
 
   const auth = gh(homedir(), ["auth", "status", "--json", "hosts"]).pipe(
     Effect.flatMap(decodeAuthStatus),
@@ -371,7 +439,11 @@ const make = Effect.gen(function* () {
     const url = `https://github.com/${owner}/${name}.git`
     const gitClone = () => exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), { env: REMOTE_GIT_ENV })
     return gh(dirname(dest), ["repo", "clone", url, dest]).pipe(
-      Effect.catchTags({ GitHubCliMissingError: gitClone, GitHubSignedOutError: gitClone }),
+      Effect.catchTags({
+        GitHubCliMissingError: gitClone,
+        GitHubSignedOutError: gitClone,
+        GitHubRateLimitedError: gitClone,
+      }),
       Effect.asVoid,
     )
   }
@@ -379,6 +451,34 @@ const make = Effect.gen(function* () {
   // Run from the home directory so gh acts on the URL alone, never on a local checkout of the repository.
   const ghByUrl = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
     Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
+
+  // The last answer per pull request, served while GitHub is rate limited instead of an error.
+  const lastRead = new Map<string, typeof PullRequestDetailJson.Type>()
+
+  // Shared by every window, device and background sweep asking about the same pull request.
+  const reads = yield* Cache.makeWith(
+    (url: string) =>
+      gh(homedir(), ["pr", "view", url, "--json", PULL_REQUEST_DETAIL_FIELDS]).pipe(
+        Effect.flatMap(decodePullRequestDetail),
+        Effect.tap((json) => Effect.sync(() => lastRead.set(url, json))),
+        Effect.catchTag("GitHubRateLimitedError", (error) => {
+          const last = lastRead.get(url)
+          return last === undefined ? Effect.fail(error) : Effect.succeed(last)
+        }),
+      ),
+    {
+      capacity: 1000,
+      timeToLive: (exit) =>
+        Exit.isFailure(exit) ? 0 : exit.value.state === "OPEN" ? OPEN_PULL_REQUEST_TTL : FINISHED_PULL_REQUEST_TTL,
+    },
+  )
+
+  const read = (raw: string) => Effect.flatMap(requirePullRequestUrl(raw), (url) => Cache.get(reads, url))
+
+  const ghWrite = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
+    Effect.flatMap(requirePullRequestUrl(raw), (url) =>
+      gh(homedir(), args(url)).pipe(Effect.andThen(Cache.invalidate(reads, url)), Effect.asVoid),
+    )
 
   const repository = (cwd: string) =>
     exec("git", ["-C", cwd, "remote", "get-url", "origin"], cwd).pipe(
@@ -388,14 +488,12 @@ const make = Effect.gen(function* () {
 
   return GitHub.of({
     auth,
-    token: gh(homedir(), ["auth", "token", "--hostname", "github.com"]).pipe(Effect.map((stdout) => stdout.trim())),
+    token: ghUnpaused(homedir(), ["auth", "token", "--hostname", "github.com"]).pipe(
+      Effect.map((stdout) => stdout.trim()),
+    ),
     run: gh,
-    pullRequest: (raw) => Effect.flatMap(requirePullRequestUrl(raw), (url) => view(homedir(), url)),
-    pullRequestDetail: (raw) =>
-      ghByUrl(raw, (url) => ["pr", "view", url, "--json", PULL_REQUEST_DETAIL_FIELDS]).pipe(
-        Effect.flatMap(decodePullRequestDetail),
-        Effect.map(toPullRequestDetail),
-      ),
+    pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
+    pullRequestDetail: (raw) => Effect.map(read(raw), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(
         Effect.catchIf(
@@ -403,8 +501,8 @@ const make = Effect.gen(function* () {
           () => Effect.fail(new PullRequestDiffTooLargeError()),
         ),
       ),
-    merge: (raw, method) => ghByUrl(raw, (url) => ["pr", "merge", url, `--${method}`]).pipe(Effect.asVoid),
-    close: (raw) => ghByUrl(raw, (url) => ["pr", "close", url]).pipe(Effect.asVoid),
+    merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`]),
+    close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
     branchPullRequest,
     pullRequestHead: (cwd, selector) =>
       gh(cwd, ["pr", "view", selector, "--json", "url,number,headRefName,baseRefName,isCrossRepository"]).pipe(

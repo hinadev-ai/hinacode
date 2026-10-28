@@ -308,6 +308,7 @@
   "error_project_folder_not_empty": "That folder already has other files. Pick an empty folder or a new path.",
   "error_pull_request_url_invalid": "That is not a GitHub pull request link. Use https://github.com/owner/repo/pull/123.",
   "error_pull_request_diff_too_large": "GitHub does not serve diffs over 20,000 lines or 300 files. Open the pull request on GitHub to read it.",
+  "error_github_rate_limited": "GitHub's API rate limit is used up. HinaCode asks again once it resets.",
   "error_linear_request": "The Linear request failed. Check the API key in Settings > Integrations.",
   "error_schema": "HinaCode got data in an unexpected shape. Restart the app, and report a bug if it happens again.",
   "error_agent": "The agent failed: {detail}",
