@@ -11,7 +11,7 @@ export const REMOTE_PROTOCOL_VERSION = 1
 /** The listener closes a socket whose unsent output grows past this, so no single answer may be larger. */
 export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 
-export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks"] as const
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "quiet"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 
 /** The calls a cloud may `ask` a desktop for, to read and drive threads on the user's other machines. */
@@ -54,6 +54,8 @@ export const ClientFrame = Schema.Union([
   /** Sent by a desktop after a `ready` that lists `asks`: it answers `ask` frames from then on. */
   Schema.Struct({ type: Schema.Literal("hub") }),
   Schema.Struct({ type: Schema.Literal("answer"), id: Schema.Int, envelope: Envelope }),
+  /** Sent by a phone going to the background (true) and coming back (false), after a `ready` that lists `quiet`. */
+  Schema.Struct({ type: Schema.Literal("quiet"), quiet: Schema.Boolean }),
 ])
 export type ClientFrame = typeof ClientFrame.Type
 
@@ -89,6 +91,24 @@ export const ServerFrame = Schema.Union([
   }),
 ])
 export type ServerFrame = typeof ServerFrame.Type
+
+/** The agent events that raise a notification or mark how a turn ended on the phone. */
+const noticeEvents: ReadonlySet<string> = new Set([
+  "turn_completed",
+  "turn_failed",
+  "turn_limited",
+  "approval_requested",
+  "question_requested",
+  "secret_requested",
+])
+
+/**
+ * Whether a quiet socket still gets `event`. A phone out of sight only raises notifications and keeps its thread
+ * list current. Every other push waits for its return, when it reloads what it shows, so streaming a reply token by
+ * token to a phone in a pocket keeps neither its radio nor its CPU awake.
+ */
+export const reachesQuietPhone = (event: typeof PushEvent.Encoded) =>
+  event.type === "thread.updated" || (event.type === "thread.event" && noticeEvents.has(event.event.type))
 
 /**
  * A pairing reaches one desktop on any of `hosts`, tried in order, or from any network through `relay`, the

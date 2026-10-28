@@ -67,6 +67,8 @@ export interface TransportOptions {
     environment: ServerIdentity | undefined,
     relay: string | null,
   ) => void
+  /** Pushes were held back while the app was in the background, so what it shows must be read again. */
+  readonly onMissed: () => void
   readonly onEvent: (event: PushEvent) => void
   readonly createSocket?: (url: string) => SocketLike
   readonly random?: () => number
@@ -151,6 +153,8 @@ export class Transport {
   private attempt = 0
   private nextCallId = 1
   private foreground = true
+  /** Back from a quiet stretch on this socket; the next frame proves the desktop is sending everything again. */
+  private missedPushes = false
   private stopped = false
   private route: Dial["route"] | null = null
   private sentAuth: SentAuth = null
@@ -218,10 +222,17 @@ export class Transport {
     this.redial()
   }
 
-  /** The app moved to or from the foreground. Timers do not run reliably in the background, so they stop. */
+  /**
+   * The app moved to or from the foreground. Timers do not run reliably in the background, so they stop, and a
+   * desktop that can goes quiet until the app returns.
+   */
   setForeground(foreground: boolean) {
     if (this.foreground === foreground) return
     this.foreground = foreground
+    if (this.status === "connected" && this.features.has("quiet")) {
+      this.sendFrame({ type: "quiet", quiet: !foreground })
+      this.missedPushes = foreground
+    }
     if (!foreground) {
       this.stopHeartbeat()
       this.stopDirectChecks()
@@ -351,6 +362,10 @@ export class Transport {
       return
     }
     if (this.status === "connected") this.closeIfSilentFor(IDLE_TIMEOUT_MS)
+    if (this.missedPushes) {
+      this.missedPushes = false
+      this.options.onMissed()
+    }
     const frame = Option.getOrNull(decodeFrame(json))
     if (frame === null) return
     switch (frame.type) {
@@ -403,6 +418,7 @@ export class Transport {
       this.closeIfSilentFor(IDLE_TIMEOUT_MS)
     }
     if (this.checksDirect() && this.foreground) this.startDirectChecks()
+    if (this.features.has("quiet") && !this.foreground) this.sendFrame({ type: "quiet", quiet: true })
     this.options.onReady(this.features, environment, relay)
   }
 
@@ -515,6 +531,7 @@ export class Transport {
     clearTimeout(this.connectTimer)
     clearTimeout(this.challengeTimer)
     this.sentAuth = null
+    this.missedPushes = false
     this.stopHeartbeat()
     this.stopDirectChecks()
     this.cancelRace?.()

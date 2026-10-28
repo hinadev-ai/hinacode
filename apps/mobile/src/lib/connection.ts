@@ -142,6 +142,10 @@ function open(server: StoredServer) {
             .map((other) => (other.id === server.id ? { ...other, relay } : other)),
         )
     },
+    onMissed: () => {
+      if (transports.get(server.id) === transport)
+        updateServer(server.id, (current) => ({ generation: current.generation + 1 }))
+    },
     onEvent: (event) => {
       learnFromPush(owners, server.id, event)
       for (const listener of listeners) listener(event)
