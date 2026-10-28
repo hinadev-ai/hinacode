@@ -318,6 +318,8 @@ const make = (options: DevicesOptions) =>
         }
       })
       preparing.set(key, pending)
+      // Placed now, so a caller that lists the thread's devices right after sees this one, as restore needs.
+      onStep(initial === null ? "creating" : "booting")
       return pending
     }
 
