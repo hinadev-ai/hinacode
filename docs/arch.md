@@ -82,6 +82,12 @@ A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
 
+Phones negotiate `watch` to limit pushes. The focused chat tab watches its transcript; other cached histories
+refresh when reopened. Backgrounding closes the sockets and stops client heartbeats, direct-address probes, and
+reconnect attempts. Foregrounding opens the connections and refreshes snapshots through `ready`. Socket-delivered
+background notifications require a future platform push path. See
+`features/2026-10-29-mobile-battery.md`.
+
 ```mermaid
 flowchart LR
   renderer["renderer: rpc(method, payload, environment?)"] --> route["environments/route.ts route"]
