@@ -1479,6 +1479,7 @@
   "mobile_search_searching": "正在搜尋訊息",
   "mobile_search_empty": "沒有結果",
   "mobile_search_empty_hint": "換個關鍵字試試。",
+  "mobile_thread_actions": "對話串操作",
   "mobile_thread_actions_hint": "長按可釘選或歸檔",
   "mobile_thread_actions_pin": "釘選",
   "mobile_thread_actions_unpin": "取消釘選",
