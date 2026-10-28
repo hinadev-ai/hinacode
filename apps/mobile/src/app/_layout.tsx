@@ -1,7 +1,8 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router"
 import { StatusBar } from "expo-status-bar"
-import { useEffect } from "react"
+import { type ReactNode, useEffect } from "react"
 import { Appearance, Platform, StyleSheet, View } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
 import { ConnectionProvider } from "@/components/connection-provider"
 import { isIOS } from "@/components/glass"
 import { Notifier } from "@/components/notifier"
@@ -57,7 +58,7 @@ function Routes() {
     <View style={styles.split}>
       {split && <ThreadSidebar />}
       <View style={styles.detail}>
-        <Stack screenOptions={{ headerShadowVisible: false }}>
+        <Stack screenOptions={{ headerShadowVisible: false }} screenLayout={SideSafeArea}>
           <Stack.Protected guard={paired}>
             <Stack.Screen
               name="index"
@@ -89,6 +90,15 @@ function Routes() {
         </Stack>
       </View>
     </View>
+  )
+}
+
+/** iPhone Duo's outer display puts the status bar and the header buttons in a column at the side, over the content. */
+function SideSafeArea({ children }: { children: ReactNode }) {
+  return (
+    <SafeAreaView edges={["left", "right"]} style={styles.detail}>
+      {children}
+    </SafeAreaView>
   )
 }
 
