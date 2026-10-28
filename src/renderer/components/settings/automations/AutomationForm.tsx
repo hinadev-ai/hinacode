@@ -354,7 +354,7 @@ interface TriggerFieldsProps {
 function TriggerFields({ draft, patch }: TriggerFieldsProps) {
   switch (draft.triggerType) {
     case "webhook":
-      return <p className="text-sm text-muted-foreground">{m.automations_webhook_hint()}</p>
+      return <FieldDescription>{m.automations_webhook_hint()}</FieldDescription>
     case "github.issue":
       return (
         <>

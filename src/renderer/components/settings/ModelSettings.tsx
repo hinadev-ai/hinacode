@@ -200,9 +200,13 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
-      <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-2">
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
+        <FieldDescription>{m.settings_auto_compact_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
+      <form onSubmit={onSubmit} className="flex flex-wrap items-center justify-end gap-2">
         <Input
           ref={inputRef}
           id={inputId}
@@ -214,7 +218,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={m.settings_auto_compact_default()}
-          className="w-56 shrink-0 tabular-nums"
+          className="w-36 shrink-0 tabular-nums"
         />
         <span className="text-sm whitespace-nowrap text-muted-foreground">{m.settings_auto_compact_unit()}</span>
         <Button type="submit" variant="outline" disabled={next === current || pending}>
@@ -226,8 +230,6 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
           </Button>
         )}
       </form>
-      <FieldDescription>{m.settings_auto_compact_hint()}</FieldDescription>
-      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }
