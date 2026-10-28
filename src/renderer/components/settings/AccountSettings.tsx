@@ -14,6 +14,7 @@ import {
   type EnvironmentId,
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
+import { useDefaultAccountName, useProviderAccounts } from "../../lib/accounts.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
@@ -65,17 +66,6 @@ const loginCommand = (account: AgentProfile) =>
     shellQuote(account.binary),
     ...(account.provider === "claude" ? ["auth", "login"] : ["login"]),
   ].join(" ")
-
-/** The provider's added accounts, in the order they were added. */
-export function useProviderAccounts(environment: EnvironmentId, provider: ProviderId): ReadonlyArray<AgentProfile> {
-  const all = AsyncResult.getOrElse(useAtomValue(accountsAtom(environment)), (): ReadonlyArray<AgentProfile> => [])
-  return all.filter((account) => account.provider === provider)
-}
-
-/** What the agent's own login is called: the user's name for it, or "Default". */
-export function useDefaultAccountName(environment: EnvironmentId, provider: ProviderId): string {
-  return useSettings(environment).defaultAccountName[provider] ?? m.account_default()
-}
 
 /** The CLI's own login, then every account added for `provider`, each with who it is signed in as. */
 export function AccountList({ provider }: { provider: ProviderId }) {
