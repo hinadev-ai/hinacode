@@ -55,11 +55,15 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   useDockHeight(regionRef, dockRef)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+      <header className="@container flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
         <ThreadBreadcrumb thread={thread} agent={agent} />
-        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <span
+          title={providerLabel[thread.provider]()}
+          className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+        >
           <ProviderIcon provider={thread.provider} />
-          {providerLabel[thread.provider]()}
+          {/* A narrow column keeps its width for the title; the icon still names the agent. */}
+          <span className="sr-only @md:not-sr-only">{providerLabel[thread.provider]()}</span>
         </span>
         <span
           data-status={thread.status}
