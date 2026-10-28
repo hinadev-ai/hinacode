@@ -73,6 +73,7 @@
     "@pierre/diffs": "1.5.2",
     "@playwright/test": "1.64.0",
     "@pulls.review/core": "0.3.4",
+    "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-hotkeys": "0.13.0",
     "@tanstack/react-router": "1.170.42",
