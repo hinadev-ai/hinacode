@@ -1,9 +1,9 @@
 import type { LinearIssue } from "@shared/domain.ts"
+import { sortIssues } from "@shared/linear.ts"
 import { create } from "zustand"
 import { call, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
-import { sortIssues } from "@/lib/overview"
 import type { Remote } from "@/stores/pull-requests"
 
 /** Each read is a Linear API call on the server, so the list is read at most this often unless forced. */
