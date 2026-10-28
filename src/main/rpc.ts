@@ -93,7 +93,7 @@ export interface HandlerError {
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
-  readonly setBadgeCount: (count: number) => Effect.Effect<void>;
+  readonly setBadgeCount: (count: number) => Effect.Effect<void>
   readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
