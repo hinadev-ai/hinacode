@@ -11,9 +11,9 @@ const startupScripts = [
 // Budgets apply to the raw size, which is what Electron reads from disk. A check named "<name> (gzip)" shows the
 // gzipped size of "<name>" next to it.
 export default [
-  { name: "Renderer startup JS", path: startupScripts, brotli: false, limit: "9.5 MB" },
+  { name: "Renderer startup JS", path: startupScripts, brotli: false, limit: "3.2 MB" },
   { name: "Renderer startup JS (gzip)", path: startupScripts, gzip: true },
-  { name: "Renderer JS, all chunks", path: "out/renderer/assets/*.js", brotli: false, limit: "22 MB" },
+  { name: "Renderer JS, all chunks", path: "out/renderer/assets/*.js", brotli: false, limit: "16 MB" },
   { name: "Renderer JS, all chunks (gzip)", path: "out/renderer/assets/*.js", gzip: true },
   { name: "Renderer CSS", path: "out/renderer/assets/*.css", brotli: false, limit: "500 kB" },
   { name: "Renderer CSS (gzip)", path: "out/renderer/assets/*.css", gzip: true },

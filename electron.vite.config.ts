@@ -38,6 +38,7 @@ export default defineConfig({
   },
   renderer: {
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
+    build: { minify: true },
     plugins: [react({ babel: { plugins: ["babel-plugin-react-compiler"] } }), tailwindcss(), paraglide()],
   },
 })

@@ -1,4 +1,4 @@
-import type { ComponentType } from "react"
+import { type ComponentType, lazy } from "react"
 import type { IconType } from "react-icons"
 import {
   RiFileCopy2Line,
@@ -16,15 +16,17 @@ import type { EnvironmentId } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
-import { GitGraphView } from "../GitGraphView.tsx"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { BrowserView } from "./BrowserView.tsx"
-import { ChangesView } from "./ChangesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
-import { FilesView } from "./FilesView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 import { TinyVmView } from "./TinyVmView.tsx"
+
+// These views render with @pierre/diffs, which stays out of the startup bundle until one of them opens.
+const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
+const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
+const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
