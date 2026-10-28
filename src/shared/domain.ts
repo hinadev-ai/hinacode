@@ -204,6 +204,18 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
+/** A comment on a pull request: on the conversation, a review's summary, or inline on a line of the diff. */
+export const PullRequestComment = Schema.Struct({
+  id: Schema.String,
+  author: Schema.String,
+  body: Schema.String,
+  createdAt: Schema.String,
+  url: Schema.String,
+  /** Where an inline comment sits. `line` is null once the line is gone from the diff. */
+  location: Schema.NullOr(Schema.Struct({ path: Schema.String, line: Schema.NullOr(Schema.Number) })),
+})
+export type PullRequestComment = typeof PullRequestComment.Type
+
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -215,6 +227,8 @@ export const PullRequestDetail = Schema.Struct({
   checkRuns: Schema.Array(CheckRun),
   /** Defaults for a desktop or cloud from before the Code tab read it. */
   changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
+  /** Oldest first, without resolved review threads. Defaults for a desktop or cloud from before the tab showed them. */
+  comments: Schema.Array(PullRequestComment).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 

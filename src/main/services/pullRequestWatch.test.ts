@@ -21,6 +21,7 @@ const detail = (overrides: Partial<PullRequestDetail> = {}): PullRequestDetail =
   head: "abc1234",
   mergeable: "mergeable",
   changedFiles: 1,
+  comments: [],
   checkRuns: [],
   ...overrides,
 })

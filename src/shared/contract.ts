@@ -458,6 +458,7 @@ export const RpcMethods = {
   "github.pullRequestFiles": rpc(Schema.Struct({ url: Schema.String }), Schema.Array(PullRequestFile)),
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
+  "github.comment": rpc(Schema.Struct({ url: Schema.String, body: Schema.String }), Schema.Void),
   "pullRequestGuides.get": rpc(Schema.Struct({ url: Schema.String }), PullRequestGuideState),
   "pullRequestGuides.retry": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   /** Open Linear issues assigned to the owner of this machine's Linear key. Empty when it has none. */
@@ -744,6 +745,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "github.pullRequestFiles": "read",
   "github.merge": "mutation",
   "github.close": "mutation",
+  "github.comment": "mutation",
   "pullRequestGuides.get": "read",
   "pullRequestGuides.retry": "mutation",
   "github.repository": "read",

@@ -91,6 +91,7 @@ export const routes: Record<RpcMethod, Route> = {
   "pullRequestGuides.retry": named,
   "github.merge": named,
   "github.close": named,
+  "github.comment": named,
   "vm.host": named,
   "network.addresses": named,
   "system.resources": named,

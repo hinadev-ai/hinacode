@@ -88,6 +88,7 @@ const detailFor = (url: string, overrides: Partial<PullRequestDetail> = {}): Pul
   head: "abc1234",
   mergeable: "mergeable",
   changedFiles: 1,
+  comments: [],
   checkRuns: [],
   ...overrides,
 })
