@@ -37,12 +37,6 @@ export function forgetServer(id: string) {
   void usePullRequests.getState().load()
 }
 
-/**
- * Restores the paired servers and preferences, syncs with the relay account at launch and on every return to the
- * foreground, saves the server list whenever it changes, accepts `hinacode://connect` links, tells every server which
- * threads are on screen, and keeps the thread, message and pull request stores in step with every server's socket.
- * Renders nothing until storage has been read.
- */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
   const generation = useConnection((state) => state.generation)

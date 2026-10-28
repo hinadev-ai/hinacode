@@ -52,8 +52,7 @@ beforeEach(() => {
   useMessages.getState().reset()
 })
 
-/** Puts t1 on screen for each test in the describe that calls it, as the tests that reconnect need. */
-const onScreen = () => {
+const watchThreadInEachTest = () => {
   let leave = () => {}
   beforeEach(() => (leave = useMessages.getState().watch("t1")))
   afterEach(() => leave())
@@ -98,7 +97,7 @@ describe("load", () => {
 })
 
 describe("reload", () => {
-  onScreen()
+  watchThreadInEachTest()
 
   it.each(["snapshot", "error"])("replaces an initial load after missed pushes and ignores its stale %s", async (outcome) => {
     void useMessages.getState().load("t1")
@@ -265,7 +264,7 @@ describe("threads on screen", () => {
 })
 
 describe("earlier pages", () => {
-  onScreen()
+  watchThreadInEachTest()
 
   const page = (ids: readonly string[], hasEarlier: boolean) => ({ ...snapshot(1, ids), hasEarlier })
 

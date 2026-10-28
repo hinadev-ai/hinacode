@@ -46,11 +46,6 @@ interface MessagesState {
   readonly receive: (push: TranscriptPush) => void
 }
 
-/**
- * Transcript, pending approvals and questions per thread, mirroring the desktop's `stores/messages.ts`.
- * Threads that were never opened ignore pushes: their first `load` reads a snapshot instead. A thread left keeps its
- * history to show at once when it is opened again, which then reads its newest page.
- */
 export const useMessages = create<MessagesState>()((set, get) => {
   const pendingDeltas = new Map<
     string,
@@ -74,7 +69,6 @@ export const useMessages = create<MessagesState>()((set, get) => {
       return next === undefined || next === history ? state : { byThread: { ...state.byThread, [threadId]: next } }
     })
 
-  /** Reads the newest page of a history again, keeping the last known one on screen until it swaps in. */
   const refresh = (threadId: string, history: ThreadHistory) => {
     if (history.status !== "ready") {
       void get().load(threadId)
