@@ -117,11 +117,15 @@ export const deviceToolsLayer = DeviceTools.toLayer(
         return blocks
       })
 
-    /** Points to fractions of the screen, which is what device input takes. Also settles which device is meant. */
+    /**
+     * Points to fractions of the screen, which is what device input takes, and the id of the device meant. A gesture
+     * sends every step to that id, so a device attached or detached meanwhile never takes over halfway.
+     */
     const at = (threadId: string, device: string | undefined, x: number, y: number) =>
       Effect.map(devices.screenshot(threadId, device), ({ state }) => ({
         x: Math.min(1, Math.max(0, x / state.screen.width)),
         y: Math.min(1, Math.max(0, y / state.screen.height)),
+        deviceId: state.device.id,
       }))
 
     /** `release` runs when the user takes control after the first step, so a gesture never leaves a finger down. */
@@ -152,10 +156,10 @@ export const deviceToolsLayer = DeviceTools.toLayer(
       device_tap: ({ device, x, y }) =>
         McpTool.CallingThread.use((threadId) =>
           Effect.gen(function* () {
-            const point = yield* at(threadId, device, x, y)
+            const { deviceId, ...point } = yield* at(threadId, device, x, y)
             return yield* actAndLook(
               threadId,
-              device,
+              deviceId,
               [
                 [
                   { kind: "touch", phase: "down", ...point },
@@ -169,15 +173,16 @@ export const deviceToolsLayer = DeviceTools.toLayer(
       device_swipe: ({ device, x, y, toX, toY, durationMs = 300 }) =>
         McpTool.CallingThread.use((threadId) =>
           Effect.gen(function* () {
-            const from = yield* at(threadId, device, x, y)
-            const to = yield* at(threadId, device, toX, toY)
+            const { deviceId, ...from } = yield* at(threadId, device, x, y)
+            const end = yield* at(threadId, deviceId, toX, toY)
+            const to = { x: end.x, y: end.y }
             const along = (t: number) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t })
             const moves = Array.from({ length: SWIPE_STEPS }, (_, index): ReadonlyArray<DeviceCommand> => [
               { kind: "touch", phase: "move", ...along((index + 1) / SWIPE_STEPS) },
             ])
             return yield* actAndLook(
               threadId,
-              device,
+              deviceId,
               [[{ kind: "touch", phase: "down", ...from }], ...moves, [{ kind: "touch", phase: "up", ...to }]],
               `Swiped from ${x}, ${y} to ${toX}, ${toY} on`,
               durationMs / (SWIPE_STEPS + 1),

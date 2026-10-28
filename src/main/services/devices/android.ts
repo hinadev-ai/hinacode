@@ -580,8 +580,12 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       screen: { width: panel.width / display.scale, height: panel.height / display.scale, scale: display.scale },
       send: (commands) => {
         const next = queue.then(async () => {
-          for (const command of commands) await apply(command)
-          await flushKeys()
+          for (const command of commands) {
+            // Queued input stops once the link closes, so a detached device never gets the rest of it.
+            if (closed) throw new DeviceError("The emulator screen was closed.")
+            await apply(command)
+          }
+          if (!closed) await flushKeys()
         })
         queue = next.catch(() => undefined)
         return next

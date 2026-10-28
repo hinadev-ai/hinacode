@@ -80,7 +80,6 @@ export interface DevicesOptions {
 
 interface Screen {
   latest: DeviceFrame | null
-  sequence: number
   readonly waiters: Set<() => void>
   closed: boolean
 }
@@ -122,6 +121,8 @@ const make = (options: DevicesOptions) =>
     /** Per thread, its devices by slot, in the order they were attached. */
     const states = new Map<string, Map<Slot, ThreadDevice>>()
     const links = new Map<DeviceId, Live>()
+    // One count for every stream, so a stream rebuilt after its lease ran out still numbers past what viewers saw.
+    let frameSequence = 0
     /** The maps below are keyed by `keyOf(thread, slot)`. */
     const preparing = new Map<string, Promise<ThreadDevice>>()
     const handBacks = new Map<string, Set<() => void>>()
@@ -227,11 +228,11 @@ const make = (options: DevicesOptions) =>
         return existing
       }
       // The frame callback holds `screen`, not `live`, because a driver may call it before connect returns.
-      const screen: Screen = { latest: null, sequence: 0, waiters: new Set(), closed: false }
+      const screen: Screen = { latest: null, waiters: new Set(), closed: false }
       const onFrame = (frame: Frame) => {
         if (screen.closed) return
         screen.latest = {
-          sequence: ++screen.sequence,
+          sequence: ++frameSequence,
           mime: frame.mime,
           data: frame.data.toString("base64"),
           width: frame.width,
@@ -323,6 +324,14 @@ const make = (options: DevicesOptions) =>
       return pending
     }
 
+    /** The device and its row, read last so a detach during the lookup is seen. */
+    const lookUp = async (threadId: string, deviceId: DeviceId) => {
+      const device = await findDevice(deviceId).catch(() => null)
+      const row = await readRow(threadId, deviceId)
+      if (!row) throw new DevicesError({ message: "The device was detached." })
+      return { device, owned: row.owned }
+    }
+
     /** `known` is what the caller looked up already: the device, or null when it is gone, and whether it is owned. */
     const attachExisting = async (
       threadId: string,
@@ -331,10 +340,7 @@ const make = (options: DevicesOptions) =>
     ) => {
       const running = preparing.get(keyOf(threadId, deviceId))
       if (running) return running
-      const { device, owned } = known ?? {
-        device: await findDevice(deviceId).catch(() => null),
-        owned: (await readRow(threadId, deviceId))?.owned ?? false,
-      }
+      const { device, owned } = known ?? (await lookUp(threadId, deviceId))
       return prepare(threadId, deviceId, device?.name ?? deviceId, owned, async (onStep) => {
         if (!device) throw new DevicesError({ message: "This device no longer exists on the machine." })
         onStep("booting")
@@ -612,7 +618,15 @@ const make = (options: DevicesOptions) =>
 
     const expireLeases = Effect.sync(() => {
       const expiry = options.leaseMs ?? 15000
-      for (const live of links.values()) if (Date.now() - live.lease > expiry) closeLive(live)
+      for (const live of links.values()) {
+        if (Date.now() - live.lease <= expiry) continue
+        closeLive(live)
+        // Nobody is watching, so a viewer that vanished without handing back cannot leave the agent waiting.
+        const holder = userControl.get(live.deviceId)
+        if (holder === undefined) continue
+        if (current(holder, live.deviceId)) setControl(holder, live.deviceId, "agent")
+        else userControl.delete(live.deviceId)
+      }
     })
     // A sweep rather than a call from archive or delete, so threads ended from any path, and before a crash, converge.
     const releaseArchived = sql<{ threadId: string }>`
