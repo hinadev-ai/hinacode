@@ -15,7 +15,7 @@ import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
-import { defaultSettings, type Project, type Thread, type Worktree } from "../shared/domain.ts"
+import { defaultSettings, type Message, type Project, type Thread, type Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
@@ -1659,6 +1659,135 @@ describe("remote mode", () => {
     expect(types).not.toContain("vm.screen.closed")
     expect(types).not.toContain("fs.changed")
     paired.socket.close()
+  })
+
+  test.each(["token", "proof"])("compacts live events only for a client requesting it with %s auth", async (auth) => {
+    const { token } = result(await invoke("remote.pairing", undefined))
+    const compact = phone(port)
+    const full = phone(port)
+    const explicitlyFull = phone(port)
+    try {
+      if (auth === "proof") {
+        const challenge = await compact.challenge()
+        const nonce = newNonce()
+        await compact.send(
+          JSON.stringify({
+            type: "auth",
+            nonce,
+            proof: clientProof(token, challenge.nonce, nonce),
+            compactEvents: true,
+          }),
+        )
+      } else await compact.send(JSON.stringify({ type: "auth", token, compactEvents: true }))
+      await full.send({ type: "auth", token })
+      await explicitlyFull.send(JSON.stringify({ type: "auth", token, compactEvents: false }))
+      await Promise.all([compact.ready(), full.ready(), explicitlyFull.ready()])
+
+      const message: Message = {
+        id: "compact-live-message",
+        threadId: "compact-live-thread",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Edited the file." },
+          {
+            type: "tool_call",
+            callId: "write",
+            name: "Write",
+            input: { file_path: "a.ts", content: "large input" },
+            output: "large output",
+            status: "done",
+          },
+          {
+            type: "tool_call",
+            callId: "child",
+            parentCallId: "agent",
+            name: "Read",
+            input: { file_path: "b.ts" },
+            output: "child output",
+            status: "done",
+          },
+          { type: "file_change", path: "a.ts", diff: "large diff" },
+        ],
+        createdAt: "2026-10-29T00:00:00.000Z",
+        completedAt: null,
+        usage: null,
+        forkPoint: null,
+      }
+      const pushes: ReadonlyArray<PushEvent> = [
+        { type: "message.created", seq: 1, message },
+        { type: "message.updated", seq: 2, message: { ...message, completedAt: "2026-10-29T00:00:01.000Z" } },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 3,
+          event: {
+            type: "tool_call_started",
+            callId: "write",
+            name: "Write",
+            input: { file_path: "a.ts", content: "large input" },
+          },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 4,
+          event: { type: "tool_call_finished", callId: "write", output: "large output", isError: true },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 5,
+          event: { type: "file_changed", path: "a.ts", diff: "large diff" },
+        },
+        { type: "thread.event", threadId: message.threadId, seq: 6, event: { type: "text_delta", text: "Done." } },
+        { type: "thread.subagents", threadId: message.threadId, subagents: [subagent] },
+        { type: "thread.removed", id: "compact-live-marker" },
+      ]
+      await runtime.runPromise(Events.use((events) => Effect.forEach(pushes, events.publish, { discard: true })))
+      await Promise.all(
+        [compact, full, explicitlyFull].map((client) =>
+          client.event((event) => event.type === "thread.removed" && event.id === "compact-live-marker"),
+        ),
+      )
+      const received = (client: ReturnType<typeof phone>) =>
+        client.frames.flatMap((frame) => (frame.type === "event" ? [frame.event] : []))
+      expect(received(full)).toEqual(pushes)
+      expect(received(explicitlyFull)).toEqual(pushes)
+      const compactMessage = {
+        ...message,
+        parts: [
+          { type: "text", text: "Edited the file." },
+          { type: "tool_call", callId: "write", name: "Write", input: { file_path: "a.ts" }, status: "done" },
+          { type: "file_change", path: "a.ts", diff: "" },
+        ],
+      }
+      expect(received(compact)).toEqual([
+        { type: "message.created", seq: 1, message: compactMessage },
+        { type: "message.updated", seq: 2, message: { ...compactMessage, completedAt: "2026-10-29T00:00:01.000Z" } },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 3,
+          event: { type: "tool_call_started", callId: "write", name: "Write", input: { file_path: "a.ts" } },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 4,
+          event: { type: "tool_call_finished", callId: "write", output: "", isError: true },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 5,
+          event: { type: "file_changed", path: "a.ts", diff: "" },
+        },
+        ...pushes.slice(5),
+      ])
+      expect(electron.pushes.slice(-pushes.length).map((push) => push.payload)).toEqual(pushes)
+    } finally {
+      for (const client of [compact, full, explicitlyFull]) client.socket.close()
+    }
   })
 
   test("rotating the token disconnects every phone and the old token stops working", async () => {
