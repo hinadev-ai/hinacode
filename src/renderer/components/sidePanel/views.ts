@@ -21,12 +21,13 @@ import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { BrowserView } from "./BrowserView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
-import { TinyVmView } from "./TinyVmView.tsx"
 
 // These views render with @pierre/diffs, which stays out of the startup bundle until one of them opens.
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
+// The tiny VM is an experiment few turn on, and its view brings motion along.
+const TinyVmView = lazy(() => import("./TinyVmView.tsx").then((module) => ({ default: module.TinyVmView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
