@@ -839,7 +839,7 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.update(input)
       if (thread.provider === current.provider) return thread
       const closeSession = providers[current.provider].closeSession
-      if (closeSession !== undefined) yield* closeSession(thread.id)
+      if (closeSession !== undefined) yield* closeSession(thread.id, yield* accounts.home(current.accountId))
       if (started) {
         const now = yield* nowIso
         yield* insertMessage({

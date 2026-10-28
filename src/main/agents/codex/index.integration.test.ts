@@ -543,7 +543,7 @@ describe("Codex closed sessions", () => {
         yield* finishesSoon(turn.fiber)
         expect(yield* Queue.take(changes)).toMatchObject({ threadId: "leaving-thread", tasks: [{ id: "1001" }] })
 
-        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-thread")
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-thread", null)
         expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toMatchObject(
           [{ params: { threadId: "codex-thread", processId: "1001" } }],
         )

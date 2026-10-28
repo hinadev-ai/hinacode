@@ -904,7 +904,7 @@ describe("Claude background tasks", () => {
             )
           yield* runTurn()
 
-          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("thread-1")
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("thread-1", null)
           expect(latestCli().close).toHaveBeenCalledOnce()
           const [, ended] = yield* Fiber.join(changes)
           expect(ended).toStrictEqual({ threadId: "thread-1", tasks: [] })

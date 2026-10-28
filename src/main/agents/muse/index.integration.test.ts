@@ -465,7 +465,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           yield* Fiber.join(turn.fiber)
           expect(processesRunning(shell)).toBe(true)
 
-          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(turn.threadId)
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(turn.threadId, null)
           expect(processesRunning(shell)).toBe(false)
           expect(tasks.changes.filter((change) => change.threadId === turn.threadId).at(-1)?.tasks).toStrictEqual([])
           expect(yield* Queue.size(wakes)).toBe(0)

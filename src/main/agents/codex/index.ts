@@ -334,8 +334,24 @@ const make = Effect.gen(function* () {
         .pipe(Effect.andThen(refreshTerminals(threadId, terminals)), Effect.asVoid)
     })
 
-  const closeSession = (threadId: string) =>
+  /** Sub-agents only report through their parent's turn, so one that outlived it is stopped by its last turn id. */
+  const stopSubagents = (threadId: string, home: AccountHome | null) =>
     Effect.gen(function* () {
+      const subagents = subagentsByThread.get(threadId)
+      if (subagents === undefined) return
+      subagentsByThread.delete(threadId)
+      const client = clients.get(JSON.stringify(home))?.client
+      for (const [childThreadId, subagent] of subagents) {
+        const turnId = subagentTurns.get(childThreadId)
+        subagentTurns.delete(childThreadId)
+        if (client === undefined || turnId === undefined || subagent.status !== "running") continue
+        yield* interruptTurn(client, { threadId: childThreadId, turnId }).pipe(Effect.ignore)
+      }
+    })
+
+  const closeSession = (threadId: string, home: AccountHome | null) =>
+    Effect.gen(function* () {
+      yield* stopSubagents(threadId, home)
       const terminals = terminalsByThread.get(threadId)
       if (terminals === undefined) return
       if (terminals.poll) yield* Fiber.interrupt(terminals.poll)
