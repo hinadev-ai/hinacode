@@ -88,10 +88,11 @@ export interface AgentProvider {
   readonly interrupt: (threadId: string) => Effect.Effect<void>
   /**
    * Stops the thread's live session, with its background work and any turn it started by itself, and forgets it,
-   * so the thread's next turn starts a new session. Called when the thread moves to another agent. A provider that
-   * keeps nothing running between turns, and resumes only `RunTurnInput.resumeSessionId`, leaves it out.
+   * so the thread's next turn starts a new session. Called before the thread moves to another agent, which stays
+   * refused while this fails. `home` is the thread's account. A provider that keeps nothing running between turns,
+   * and resumes only `RunTurnInput.resumeSessionId`, leaves it out.
    */
-  readonly closeSession?: (threadId: string, home: AccountHome | null) => Effect.Effect<void>
+  readonly closeSession?: (threadId: string, home: AccountHome | null) => Effect.Effect<void, AgentError>
   /**
    * Work the agent keeps running between tool calls and turns, such as Claude's `run_in_background` shells. A
    * provider whose agent cannot list and stop them leaves it out.

@@ -12,8 +12,6 @@ export type {
   ItemUpdatedParams,
   SessionCompactResult,
   SessionContextUsageParams,
-  SessionLeaveCompletedParams,
-  SessionLeaveResult,
   SessionResumeResult,
   SessionStartResult,
   TurnCompletedParams,
@@ -25,6 +23,14 @@ export type {
   UserInputRequestParams,
   UserInputSettledParams,
 } from "@muse-code/sdk/dist/src/msp.js"
+
+/** The parts of the `session/leave` answer and of its `session/leaveCompleted` that hinacode reads. */
+export const SessionLeaveAck = Schema.Struct({ commandId: Schema.String })
+export const SessionLeaveCompleted = Schema.Struct({
+  commandId: Schema.String,
+  outcome: Schema.String,
+  reason: Schema.optional(Schema.String),
+})
 
 /** `account/read`, an experimental method: which credential the host signs model calls with. */
 export const AccountState = Schema.Struct({

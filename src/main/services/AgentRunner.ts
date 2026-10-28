@@ -835,11 +835,11 @@ const make = Effect.gen(function* () {
         return yield* new AgentError({ provider: "hinacode", message: "Wait for the turn to end to switch agents" })
       }
       const current = yield* threads.get(input.id)
+      if (input.provider === current.provider) return yield* threads.update(input)
+      const closeSession = providers[current.provider].closeSession
+      if (closeSession !== undefined) yield* closeSession(current.id, yield* accounts.home(current.accountId))
       const started = yield* threads.started(input.id)
       const thread = yield* threads.update(input)
-      if (thread.provider === current.provider) return thread
-      const closeSession = providers[current.provider].closeSession
-      if (closeSession !== undefined) yield* closeSession(thread.id, yield* accounts.home(current.accountId))
       if (started) {
         const now = yield* nowIso
         yield* insertMessage({
