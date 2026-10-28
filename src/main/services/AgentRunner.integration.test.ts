@@ -12,7 +12,7 @@ import type { Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
-import type { AgentProvider, Wake } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -49,6 +49,7 @@ interface Probe {
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
   readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
+  readonly failClose: () => void
   readonly release: () => void
   readonly deliver: () => void
   readonly snapshot: () => void
@@ -94,6 +95,7 @@ const withPreparingThread = async (
   const turns: Probe["turns"] = []
   const decisions: Probe["decisions"] = []
   const calls: Probe["calls"] = []
+  let closeFails = false
   const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -154,7 +156,10 @@ const withPreparingThread = async (
         return Stream.concat(Stream.make(requested), Stream.never)
       }),
     wakes: Stream.fromQueue(wakes[id]),
-    closeSession: () => Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
+    closeSession: () =>
+      closeFails
+        ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
+        : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
     steer: () => Effect.void,
     interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
     setAccessMode: () => Effect.void,
@@ -301,6 +306,9 @@ const withPreparingThread = async (
             discard: Effect.sync(() => discarded.resolve()),
           })
           return discarded.promise
+        },
+        failClose: () => {
+          closeFails = true
         },
         release,
         deliver,
@@ -687,5 +695,22 @@ it("retires the agent a thread leaves and turns away its wakes, even after switc
     await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
     await Effect.runPromise(runner.interrupt(thread.id))
     expect(calls.at(-1)).toStrictEqual({ provider: "claude", call: "interrupt" })
+  })
+})
+
+it("keeps a thread on its agent when that agent's session does not close", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, failClose }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    failClose()
+    const exit = await Effect.runPromiseExit(runner.switchAgent({ id: thread.id, provider: "codex", model: "m" }))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(await Effect.runPromise(threads.get(thread.id))).toMatchObject({
+      provider: "claude",
+      providerSessionId: "claude-session-1",
+    })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.flatMap((message) => message.parts).some((part) => part.type === "agent_switch")).toBe(false)
   })
 })
