@@ -167,7 +167,7 @@ const pair = async (userData: string) => {
   if (!existsSync(database)) return noCloud()
   const runtime = ManagedRuntime.make(
     RemoteAccessLayer.pipe(
-      Layer.provideMerge(Layer.mergeAll(SettingsLayer, SecretsLayer)),
+      Layer.provideMerge(Layer.mergeAll(SettingsLayer(userData), SecretsLayer)),
       Layer.provideMerge(Layer.mergeAll(Db.layer(database), noKeyring)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, "Warn")),
     ),

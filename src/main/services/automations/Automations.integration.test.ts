@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs"
+import { mkdtempSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -79,6 +79,8 @@ const unusedPort = Effect.promise(async () => {
 })
 
 const makeLayer = (pushes: Array<PushEvent>, port: number) => {
+  const dataDir = mkdtempSync(join(tmpdir(), "kk-automations-"))
+  writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ automations: { bindHost: "127.0.0.1", port } }))
   const secrets = Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -87,7 +89,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dataDir)),
     ),
     Messages.layer,
     secrets,
@@ -99,12 +101,6 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
     Layer.provideMerge(PullRequests.layer.pipe(Layer.provide(domain))),
     Layer.provideMerge(domain),
   )
-  const database = Layer.effectDiscard(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient
-      yield* sql`INSERT INTO setting (key, value) VALUES ('automations', ${JSON.stringify({ bindHost: "127.0.0.1", port })})`
-    }),
-  ).pipe(Layer.provideMerge(Db.layer(":memory:")))
   return automationsLayer.pipe(
     Layer.provideMerge(agents),
     Layer.provide(
@@ -118,7 +114,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
         Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),
     ),
-    Layer.provideMerge(database),
+    Layer.provideMerge(Db.layer(":memory:")),
     Layer.provide(NodeServices.layer),
   )
 }

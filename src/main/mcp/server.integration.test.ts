@@ -109,7 +109,7 @@ const core = Layer.mergeAll(
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
-    Layer.provideMerge(Settings.layer),
+    Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),

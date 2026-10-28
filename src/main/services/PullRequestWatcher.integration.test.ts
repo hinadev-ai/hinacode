@@ -61,7 +61,7 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-watcher-settings-")))),
 )
 const testLayer = watcherLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),

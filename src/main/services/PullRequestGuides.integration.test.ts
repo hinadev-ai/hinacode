@@ -110,11 +110,11 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(base)),
 )
 const testLayer = guidesLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
-  Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer)),
+  Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer(base))),
   Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),

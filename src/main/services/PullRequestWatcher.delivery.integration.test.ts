@@ -134,7 +134,7 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(observedWorktrees),
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-delivery-settings-")))),
 )
 const core = Layer.mergeAll(observedMessages, pullRequestsLayer.pipe(Layer.provideMerge(domain)), McpCredentials.layer)
 const agents = runnerLayer.pipe(

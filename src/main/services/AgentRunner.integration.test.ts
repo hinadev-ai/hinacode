@@ -106,7 +106,7 @@ const withPreparingThread = async (
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dir)),
     ),
     Messages.layer,
   ).pipe(

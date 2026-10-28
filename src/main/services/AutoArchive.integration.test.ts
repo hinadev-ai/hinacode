@@ -56,7 +56,7 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-auto-archive-settings-")))),
 )
 const testLayer = autoArchiveLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),

@@ -27,7 +27,7 @@ const threadsLayer = threadsLayerBase.pipe(
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(AgentAccounts.layer),
-  Layer.provideMerge(Settings.layer),
+  Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-threads-settings-")))),
   Layer.provide(
     Layer.mergeAll(Git.layer, GitHub.layer).pipe(
       Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),

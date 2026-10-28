@@ -105,7 +105,7 @@ The visible thread owns its renderer history. Leaving it unloads the transcript 
 
 Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
 
-The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in SQLite.
+The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in `client-settings.json`.
 
 ## Main-process layers
 
@@ -454,8 +454,8 @@ erDiagram
   }
 ```
 
-- `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
-- `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
+- `setting` holds secrets and a few internal rows (`environment.id`, `relay.tunnel`). Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
+- Settings are JSON files in the data dir, not rows: `settings.json` holds `Settings` (the environment: models, archive, worktree root, ...), `client-settings.json` holds `ClientSettings` (this desktop: locale, appearance, notifications), and `keybindings.json` holds its keybindings as a bare `{ commandId: chord }` record. Each file holds only the keys that were set, laid over the defaults on every read, so a hand edit applies on the next read. A cloud only reads `Settings`. Migration 0027 moved the old rows into the files.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
 - `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.

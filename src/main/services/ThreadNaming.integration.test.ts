@@ -114,7 +114,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dirname(dbPath))),
     ),
     Messages.layer,
     Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),

@@ -51,11 +51,12 @@ const withLogins = <A, E>(
     claude: ReturnType<typeof fakeClaude>["state"],
   ) => Effect.Effect<A, E, AgentLogins | AgentAccounts | Settings>,
 ) => {
-  const cacheDir = join(mkdtempSync(join(tmpdir(), "kk-logins-test-")), "cache")
+  const dataDir = mkdtempSync(join(tmpdir(), "kk-logins-test-"))
+  const cacheDir = join(dataDir, "cache")
   const claude = fakeClaude()
   const layer = loginsLayer(cacheDir).pipe(
     Layer.provideMerge(accountsLayer),
-    Layer.provideMerge(settingsLayer),
+    Layer.provideMerge(settingsLayer(dataDir)),
     Layer.provide(claude.layer),
     Layer.provide(Db.layer(":memory:")),
     Layer.provide(NodeServices.layer),

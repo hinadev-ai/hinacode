@@ -22,7 +22,7 @@ const testLayer = threadsLayer.pipe(
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(projectsLayer),
   Layer.provideMerge(accountsLayer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(Layer.suspend(() => settingsLayer(mkdtempSync(join(tmpdir(), "kk-accounts-settings-"))))),
   Layer.provide(
     Layer.mergeAll(Git.layer, GitHub.layer).pipe(
       Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
