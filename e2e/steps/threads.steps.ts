@@ -1,5 +1,5 @@
-import { expect, type Page } from "@playwright/test"
-import { Then, When } from "../support/fixtures.ts"
+import { expect, type Locator, type Page } from "@playwright/test"
+import { type Names, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 import { sidebar, threadMenu } from "../support/ui.ts"
 
@@ -79,6 +79,8 @@ Then("the thread {string} is in view in the sidebar", async ({ app, names }, tit
 
 When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await sidebar(app.page).getByRole("tab", { name: tab, exact: true }).click()
+  // The panel being left stays visible while it closes, with its own rows for the same threads.
+  await expect(openTab(app.page)).toHaveCount(1)
 })
 
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
@@ -153,26 +155,30 @@ Then("the clipboard holds the ID of the thread {string}", async ({ app, threadId
   await expect.poll(() => app.clipboardText()).toBe(threadIds.get(title))
 })
 
+/** The titles of this scenario's threads in `region`. Threads an earlier scenario pinned or snoozed stay in the shared app. */
+const ownTitles = async (region: Locator, names: Names) =>
+  (await region.getByRole("link").allTextContents()).filter((text) => text.includes(names.of("")))
+
 const pinned = (page: Page) => sidebar(page).getByRole("region", { name: "Pinned", exact: true })
 
 Then("the pinned threads are {string}", async ({ app, names }, titles: string) => {
   const expected = titles.split(",").map((title) => names.of(title.trim()))
-  await expect(pinned(app.page).getByRole("link")).toHaveText(expected)
+  await expect.poll(() => ownTitles(pinned(app.page), names)).toStrictEqual(expected)
 })
 
-Then("no thread is pinned", async ({ app }) => {
-  await expect(pinned(app.page)).toBeHidden()
+Then("no thread is pinned", async ({ app, names }) => {
+  await expect.poll(() => ownTitles(pinned(app.page), names)).toStrictEqual([])
 })
 
 const snoozed = (page: Page) => sidebar(page).getByRole("region", { name: "Snoozed", exact: true })
 
 Then("the snoozed threads are {string}", async ({ app, names }, titles: string) => {
   const expected = titles.split(",").map((title) => names.of(title.trim()))
-  await expect(snoozed(app.page).getByRole("link")).toHaveText(expected)
+  await expect.poll(() => ownTitles(snoozed(app.page), names)).toStrictEqual(expected)
 })
 
-Then("no thread is snoozed", async ({ app }) => {
-  await expect(snoozed(app.page)).toBeHidden()
+Then("no thread is snoozed", async ({ app, names }) => {
+  await expect.poll(() => ownTitles(snoozed(app.page), names)).toStrictEqual([])
 })
 
 // Hidden tab panels stay mounted, so only the open one's rows count.

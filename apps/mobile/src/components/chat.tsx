@@ -6,6 +6,7 @@ import type {
   QuestionAnswers,
   QuestionRequest,
 } from "@shared/agent.ts"
+import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { type ReactNode, useEffect, useMemo, useState } from "react"
@@ -134,10 +135,6 @@ function MessageView({ message, root }: { message: Message; root: string | null 
 /** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
 const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
-/** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
-const isActivity = (part: MessagePart) =>
-  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
-
 const twoDigits = (value: number) => String(value).padStart(2, "0")
 
 /** `mm:ss`, or `h:mm:ss` past an hour, like the desktop. */
@@ -162,6 +159,7 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
+  const collapsed = new Set(collapsedParts(parts.map((part, index) => ({ part, index }))).map(({ index }) => index))
   return (
     <View accessibilityState={{ busy: streaming }} style={styles.message}>
       <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_agent")}</Text>
@@ -169,19 +167,12 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
         <WorkedFor
           durationMs={durationMs}
           expanded={activityShown}
-          onToggle={parts.some(isActivity) ? () => setActivityShown(!activityShown) : undefined}
+          onToggle={collapsed.size < parts.length ? () => setActivityShown(!activityShown) : undefined}
         />
       )}
       {parts.map((part, index) => {
-        if (folded && isActivity(part)) {
-          return activityShown ? (
-            <FadeIn key={index}>
-              <PartView part={part} />
-            </FadeIn>
-          ) : null
-        }
-        if (part.type === "text") {
-          return (
+        const view =
+          part.type === "text" ? (
             <ReplyText
               key={index}
               text={part.text}
@@ -189,9 +180,11 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
               root={root}
               threadId={message.threadId}
             />
+          ) : (
+            <PartView key={index} part={part} />
           )
-        }
-        return <PartView key={index} part={part} />
+        if (!folded || collapsed.has(index)) return view
+        return activityShown ? <FadeIn key={index}>{view}</FadeIn> : null
       })}
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
         <Pulse text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")} />
