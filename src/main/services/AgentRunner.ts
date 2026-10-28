@@ -579,7 +579,7 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
   }
 
-  /** A started thread without a session hands its transcript to the new one, after a switch or a turn that never bound one. */
+  /** Pass history only when neither a resumed session nor a native fork can carry it forward. */
   const promptForSession = (thread: Thread, prompt: string) =>
     Effect.gen(function* () {
       if (thread.providerSessionId !== null || thread.forkedFrom !== null) return prompt

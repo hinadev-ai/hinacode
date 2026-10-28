@@ -8,7 +8,7 @@ import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, 
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
-import type { Thread } from "../../shared/domain.ts"
+import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -55,13 +55,14 @@ interface Probe {
   readonly snapshot: () => void
   readonly pauseSnapshot: () => void
   readonly turnBase: () => Promise<string | null>
+  readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
 }
 
 const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
 
 const withPreparingThread = async (
   run: (probe: Probe) => Promise<void>,
-  options: { readonly pauseInsertion?: boolean; readonly pauseSnapshot?: boolean } = {},
+  options: { readonly pauseInsertion?: boolean; readonly pauseSnapshot?: boolean; readonly forkable?: boolean } = {},
 ) => {
   const dir = mkdtempSync(join(tmpdir(), "kk-runner-preparation-"))
   const root = join(dir, "repo")
@@ -134,7 +135,10 @@ const withPreparingThread = async (
     runTurn: (input) =>
       Stream.suspend((): Stream.Stream<AgentEvent> => {
         turns.push({ provider: id, input })
-        const completed: AgentEvent = { type: "turn_completed" }
+        const completed: AgentEvent = {
+          type: "turn_completed",
+          ...(options.forkable && { forkPoint: { sessionId: `${id}-session`, checkpoint: "turn-1" } }),
+        }
         // A turn on a switched thread gets the handoff ahead of the prompt.
         if (input.prompt.endsWith("accepted input")) {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
@@ -316,6 +320,7 @@ const withPreparingThread = async (
         pauseSnapshot: () => {
           holdSnapshot = true
         },
+        storedMessages: (threadId) => domainRuntime.runPromise(messages.list(threadId)),
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -628,8 +633,8 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
   })
 })
 
-it("moves a started thread to another agent, which gets the conversation so far", async () => {
-  await withPreparingThread(async ({ runner, threads, thread, release, idle, turns }) => {
+it("moves a started thread to another agent and persists its marker without a fork point", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, turns, storedMessages }) => {
     release()
     await Effect.runPromise(runner.send(thread.id, "accepted input", []))
     await idle
@@ -641,6 +646,10 @@ it("moves a started thread to another agent, which gets the conversation so far"
     expect(switched).toMatchObject({ provider: "codex", model: "codex-model", providerSessionId: null })
     const { messages } = await Effect.runPromise(runner.transcript(thread.id))
     expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "claude", to: "codex" }])
+    expect((await storedMessages(thread.id)).at(-1)).toMatchObject({
+      parts: [{ type: "agent_switch", from: "claude", to: "codex" }],
+      forkPoint: null,
+    })
 
     await Effect.runPromise(runner.send(thread.id, "accepted input", []))
     await vi.waitFor(async () =>
@@ -655,6 +664,42 @@ it("moves a started thread to another agent, which gets the conversation so far"
     expect(handoff.input.prompt).toContain("## user\naccepted input\n\n## assistant\n[the conversation moved")
     expect(handoff.input.prompt).toMatch(/<\/conversation_handoff>\n\naccepted input$/)
   })
+})
+
+it("keeps a native fork's first prompt explicit while preserving its session checkpoint", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, turns, storedMessages }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      await vi.waitFor(async () =>
+        expect((await storedMessages(thread.id)).at(-1)?.forkPoint).toMatchObject({
+          sessionId: "claude-session",
+          checkpoint: "turn-1",
+          owner: { provider: "claude", accountId: null },
+        }),
+      )
+      const reply = (await storedMessages(thread.id)).at(-1)!
+      const fork = await Effect.runPromise(threads.fork(thread.id, reply.id))
+      expect(fork).toMatchObject({
+        providerSessionId: null,
+        forkedFrom: { sessionId: "claude-session", checkpoint: "turn-1" },
+      })
+
+      await Effect.runPromise(runner.send(fork.id, "accepted input", []))
+      await vi.waitFor(() => expect(turns).toHaveLength(2))
+      expect(turns[1]).toMatchObject({
+        provider: "claude",
+        input: {
+          threadId: fork.id,
+          prompt: "accepted input",
+          resumeSessionId: "claude-session",
+          forkAt: "turn-1",
+        },
+      })
+    },
+    { forkable: true },
+  )
 })
 
 it("refuses to switch agents while a turn runs", async () => {
