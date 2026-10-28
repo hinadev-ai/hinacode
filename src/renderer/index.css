@@ -483,8 +483,7 @@
     scrollbar-color: var(--input) transparent;
   }
   body {
-    /* macOS thickens light text on dark backgrounds unless smoothing is set to grayscale. */
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
