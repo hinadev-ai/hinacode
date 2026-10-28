@@ -1,6 +1,6 @@
 import { expect, test } from "@effect/vitest"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { assistantPresentation, formatWorkDuration, isActivity } from "./assistantPresentation.ts"
+import { assistantPresentation, formatWorkDuration } from "./assistantPresentation.ts"
 
 const message = (
   parts: ReadonlyArray<MessagePart>,
@@ -118,20 +118,6 @@ test("formats whole elapsed seconds as mm:ss or h:mm:ss", () => {
   ] as const) {
     expect(formatWorkDuration(ms)).toBe(expected)
   }
-})
-
-test("reasoning, tools and file changes are activity, while text, questions and attachments are the reply", () => {
-  const reply: ReadonlyArray<MessagePart> = [
-    { type: "text", text: "Done." },
-    { type: "questions", text: "Which approach?", questions: [] },
-  ]
-  const activity: ReadonlyArray<MessagePart> = [
-    { type: "reasoning", text: "Look first." },
-    tool,
-    { type: "file_change", path: "README.md", diff: "+Done" },
-  ]
-  expect(reply.map(isActivity)).toEqual([false, false])
-  expect(activity.map(isActivity)).toEqual([true, true, true])
 })
 
 test("an agent switch stays inline without a Worked for row", () => {

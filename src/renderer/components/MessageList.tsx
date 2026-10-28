@@ -5,12 +5,8 @@ import { createContext, type ReactElement, use, type Ref, useState } from "react
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
-import {
-  assistantPresentation,
-  type IndexedMessagePart,
-  isActivity,
-  presentationBlocks,
-} from "../lib/assistantPresentation.ts"
+import { collapsedParts } from "../../shared/activityFold.ts"
+import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
@@ -198,20 +194,21 @@ function MessageBody({ message }: { message: Message }) {
 function AssistantBody({ message, showElapsedTime }: { message: Message; showElapsedTime: boolean }) {
   const presentation = assistantPresentation(message, showElapsedTime)
   const { parts } = presentation
+  const collapsed = collapsedParts(parts)
   const reveal = useUi((state) => state.findReveal)
-  const revealsActivity =
+  const revealsHidden =
     reveal !== null &&
     reveal.match.messageId === message.id &&
-    parts.some(({ part, index }) => index === reveal.match.partIndex && isActivity(part))
-  const [activityShown, setActivityShown] = useFindDisclosure(revealsActivity ? reveal : null)
+    parts.some(({ index }) => index === reveal.match.partIndex) &&
+    !collapsed.some(({ index }) => index === reveal.match.partIndex)
+  const [activityShown, setActivityShown] = useFindDisclosure(revealsHidden ? reveal : null)
   const streaming = message.completedAt === null
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const last = parts.at(-1)
   const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
-  const hasActivity = parts.some(({ part }) => isActivity(part))
-  const shownParts =
-    presentation.kind === "completed" && !activityShown ? parts.filter(({ part }) => !isActivity(part)) : parts
+  const hasActivity = collapsed.length < parts.length
+  const shownParts = presentation.kind === "completed" && !activityShown ? collapsed : parts
   return (
     <article
       aria-busy={streaming}

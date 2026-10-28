@@ -1,7 +1,11 @@
 import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
 import type { RouterHistory, useNavigate } from "@tanstack/react-router"
+import { Effect } from "effect"
+import { AtomRegistry } from "effect/reactivity"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { type ClientSettings, type ExperimentalSettings, Locale, type Project } from "../../shared/domain.ts"
+import { registry } from "../lib/registry.ts"
+import { projectsAtom } from "../lib/rpc.ts"
 import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useBrowserTabs } from "../stores/browserTabs.ts"
@@ -103,10 +107,14 @@ export const commands = [
     id: "thread.new",
     defaultKeys: "mod+n",
     title: m.command_thread_new,
-    run: (ctx) => {
-      if (ctx.projects.length > 0) usePalette.getState().show(NEW_THREAD_PREFIX)
-      else useUi.getState().setAddProjectOpen(true)
-    },
+    // Waits for the projects rather than reading ctx, which is still empty while they load right after launch.
+    run: () =>
+      void Effect.runPromise(AtomRegistry.getResult(registry, projectsAtom).pipe(Effect.orElseSucceed(() => []))).then(
+        (projects) =>
+          projects.length > 0
+            ? usePalette.getState().show(NEW_THREAD_PREFIX)
+            : useUi.getState().setAddProjectOpen(true),
+      ),
     when: "!terminalFocus",
   },
   {

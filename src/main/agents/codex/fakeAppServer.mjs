@@ -202,6 +202,19 @@ const reply = ({ id, method, params }) => {
       terminals.set(params.threadId, rest)
       return send({ id, result: { terminated: rest.length < running.length } })
     }
+    case "thread/compact/start": {
+      // Codex answers at once and runs the compaction as a turn of its own.
+      const turnId = `turn-${++turns}`
+      send({ id, result: {} })
+      send({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } })
+      for (const event of ["item/started", "item/completed"]) {
+        send({
+          method: event,
+          params: { threadId: params.threadId, turnId, item: { type: "contextCompaction", id: "c1" } },
+        })
+      }
+      return completeTurn(params.threadId, turnId, "completed")
+    }
     case "turn/interrupt":
       send({ id, result: {} })
       return completeTurn(params.threadId, params.turnId, "interrupted")

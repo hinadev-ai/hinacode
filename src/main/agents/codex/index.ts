@@ -31,6 +31,7 @@ import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { installedBinary } from "../binary.ts"
+import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
@@ -74,6 +75,7 @@ import type {
   ThreadBackgroundTerminalsListParams,
   ThreadBackgroundTerminalsTerminateParams,
   TurnSteerParams,
+  ThreadCompactStartParams,
   UserInput,
 } from "./protocol.ts"
 
@@ -435,8 +437,9 @@ const make = Effect.gen(function* () {
 
   const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: AccountHome | null }) =>
     listSkills(cwd, home).pipe(
-      Effect.map((skills) =>
-        skills
+      Effect.map((skills) => [
+        COMPACT_COMMAND,
+        ...skills
           .filter((skill) => skill.enabled)
           .map((skill): AgentCommand => {
             const scope = commandScopes[skill.scope]
@@ -448,7 +451,7 @@ const make = Effect.gen(function* () {
               ...(scope && { scope }),
             }
           }),
-      ),
+      ]),
     )
 
   const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
@@ -514,19 +517,35 @@ const make = Effect.gen(function* () {
           loadedCompactLimits.set(thread.id, input.autoCompactTokens)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
-          const skills = input.prompt.includes("$")
-            ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
-            : []
-          const turnStart: TurnStartParams = {
-            threadId: thread.id,
-            input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
-            cwd: input.cwd,
-            ...(input.effort === null ? {} : { effort: input.effort }),
-            serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
-            ...turnAccess(input.accessMode, sandbox),
-          }
-          run.turnStart = yield* client.request<TurnStartResponse>("turn/start", turnStart).pipe(
-            Effect.map(({ turn }): RemoteTurn => ({ threadId: thread.id, turnId: turn.id })),
+          const compacting = isCompactCommand(input.prompt)
+          const startTurn = Effect.gen(function* () {
+            const skills = input.prompt.includes("$")
+              ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
+              : []
+            const turnStart: TurnStartParams = {
+              threadId: thread.id,
+              input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
+              cwd: input.cwd,
+              ...(input.effort === null ? {} : { effort: input.effort }),
+              serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
+              ...turnAccess(input.accessMode, sandbox),
+            }
+            const { turn } = yield* client.request<TurnStartResponse>("turn/start", turnStart)
+            return turn.id
+          })
+          // thread/compact/start answers with nothing, and Codex runs the compaction as a turn it announces itself.
+          const startCompaction = Effect.gen(function* () {
+            yield* client.request("thread/compact/start", { threadId: thread.id } satisfies ThreadCompactStartParams)
+            while (true) {
+              const message = yield* Queue.take(inbox)
+              if (message.kind === "exit") return yield* Effect.fail(message.error)
+              if (message.kind !== "notification" || message.method !== "turn/started") continue
+              const params = message.params as ServerNotificationParams["turn/started"]
+              if (params.threadId === thread.id) return params.turn.id
+            }
+          })
+          run.turnStart = yield* (compacting ? startCompaction : startTurn).pipe(
+            Effect.map((turnId): RemoteTurn => ({ threadId: thread.id, turnId })),
             Effect.forkIn(providerScope),
           )
           const turn = yield* Fiber.join(run.turnStart)
@@ -790,8 +809,13 @@ const make = Effect.gen(function* () {
                   if (params.item.type === "contextCompaction") {
                     yield* emit({
                       type: "compaction_updated",
-                      // Codex starts compaction only by itself, and its item carries no token counts.
-                      compaction: { status: "done", trigger: "auto", preTokens: null, postTokens: null },
+                      // Codex's item carries no token counts.
+                      compaction: {
+                        status: "done",
+                        trigger: compacting ? "manual" : "auto",
+                        preTokens: null,
+                        postTokens: null,
+                      },
                     })
                   }
                   yield* finishTool(params.item)

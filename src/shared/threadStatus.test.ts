@@ -3,17 +3,24 @@ import type { AgentEvent } from "./agent.ts"
 import { openChecks, outcomeOf, pullRequestAttention, rowState } from "./threadStatus.ts"
 
 it("shows an unopened result only on an idle thread", () => {
-  expect(rowState("idle", "completed", undefined)).toBe("unseen_completed")
-  expect(rowState("idle", "failed", undefined)).toBe("unseen_failed")
-  expect(rowState("idle", undefined, undefined)).toBe("idle")
-  expect(rowState("running", "completed", undefined)).toBe("running")
+  expect(rowState("idle", false, "completed", undefined)).toBe("unseen_completed")
+  expect(rowState("idle", false, "failed", undefined)).toBe("unseen_failed")
+  expect(rowState("idle", false, undefined, undefined)).toBe("idle")
+  expect(rowState("running", false, "completed", undefined)).toBe("running")
 })
 
 it("shows a pull request waiting on the developer after the thread's own status and unopened result", () => {
-  expect(rowState("idle", undefined, "checksFailing")).toBe("pr_checksFailing")
-  expect(rowState("idle", "completed", "checksFailing")).toBe("unseen_completed")
-  expect(rowState("awaiting_approval", undefined, "conflicting")).toBe("awaiting_approval")
-  expect(rowState("archived", undefined, "conflicting")).toBe("archived")
+  expect(rowState("idle", false, undefined, "checksFailing")).toBe("pr_checksFailing")
+  expect(rowState("idle", false, "completed", "checksFailing")).toBe("unseen_completed")
+  expect(rowState("awaiting_approval", false, undefined, "conflicting")).toBe("awaiting_approval")
+  expect(rowState("archived", false, undefined, "conflicting")).toBe("archived")
+})
+
+it("shows background work instead of a finished turn, but not instead of a failed one", () => {
+  expect(rowState("idle", true, "completed", undefined)).toBe("background")
+  expect(rowState("idle", true, undefined, "checksFailing")).toBe("background")
+  expect(rowState("idle", true, "failed", undefined)).toBe("unseen_failed")
+  expect(rowState("running", true, undefined, undefined)).toBe("running")
 })
 
 const fine = { status: "open", checks: "passing", review: null, mergeable: "mergeable" } as const

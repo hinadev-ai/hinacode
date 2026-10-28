@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react"
 import { useKeybindings } from "../keybindings/useKeybindings.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
+import { useGitHubRateLimitNotices } from "./GitHubRateLimitNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { SnoozeDialog } from "./SnoozeDialog.tsx"
 import { Sidebar } from "./Sidebar.tsx"
@@ -26,6 +27,7 @@ export function AppShell() {
   useKeybindings()
   useMouseHistoryButtons()
   useAgentUpdateNotices()
+  useGitHubRateLimitNotices()
   const compact = usePanelLayout() === "compact"
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
 

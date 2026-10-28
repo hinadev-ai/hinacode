@@ -58,6 +58,12 @@ Check these native iOS cases after a cold launch:
 - Before pairing, the form starts below the large title and its Connect button remains reachable with the keyboard open.
 - Workspace, thread settings, and thread actions use readable theme surfaces in light and dark mode. Scroll a long option list, select an option, and close the popup.
 
+#### iPhone Duo
+
+The iPhone Duo simulator needs Xcode 27.1 and the iOS 27.1 runtime (`xcodebuild -downloadPlatform iOS -buildVersion 27.1`), then `xcrun simctl create "iPhone Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-1`. Open and close it with the controls in Device Hub; `simctl` cannot fold it.
+
+On the closed phone the status bar, and the header buttons with it, sit in a column on the right. Check that rows, the composer, sheets and banners stay to the left of it.
+
 ### Run on a phone over USB
 
 With USB debugging on, `adb reverse` makes the desktop's ports reachable as `127.0.0.1` on the phone, so no network is needed:

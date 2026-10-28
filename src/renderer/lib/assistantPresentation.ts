@@ -29,10 +29,6 @@ export function assistantPresentation(message: Message, showElapsedTime = true):
   return { kind: "completed", durationMs, parts }
 }
 
-/** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
-export const isActivity = (part: MessagePart) =>
-  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
-
 export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
   let start = 0

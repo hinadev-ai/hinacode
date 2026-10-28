@@ -29,6 +29,7 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { elementContext } from "../elementContext.ts"
+import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
@@ -538,7 +539,7 @@ const make = Effect.gen(function* () {
       const sessionId =
         own !== undefined && entry.sessions.has(own) ? own : (inWorkspace ?? (yield* probeSession(entry, cwd)))
       const skills = yield* listSkills(entry.host, sessionId)
-      return skills.map(toCommand)
+      return [COMPACT_COMMAND, ...skills.map(toCommand)]
     })
 
   /** Starts the thread's session or loads it into the host, then brings its model and permission profile up to date. */
@@ -629,8 +630,8 @@ const make = Effect.gen(function* () {
       /** Calls whose row closed when they went to the background; the tray follows them from there. */
       const backgroundedTools = new Set<string>()
       let context: ContextWindow | undefined
-      /** `running` is true while the compaction hinacode asked for before the turn runs. */
-      const requestedCompaction = { running: false }
+      /** How the compaction hinacode asked for started, while it runs. */
+      const requestedCompaction: { trigger: "auto" | "manual" | null } = { trigger: null }
       /**
        * Muse retries a 429 without a reset time as a rate limit, and its giving up carries no `quota`. It is the
        * same wall to the user, so the turn ends limited, as a Claude 429 does.
@@ -860,8 +861,8 @@ const make = Effect.gen(function* () {
 
       /** A noop leaves the context as small as Muse can make it, which reads as done rather than failed. */
       const finishCompaction = (item: Item) => {
-        const trigger = requestedCompaction.running || item.trigger !== "manual" ? "auto" : "manual"
-        requestedCompaction.running = false
+        const trigger = requestedCompaction.trigger ?? (item.trigger === "manual" ? "manual" : "auto")
+        requestedCompaction.trigger = null
         const compaction: Compaction =
           item.outcome === "compacted" || item.outcome === "noop"
             ? {
@@ -1029,24 +1030,38 @@ const make = Effect.gen(function* () {
         // MSP takes no compaction threshold, so hinacode compacts before the turn. Muse rejects a turn/start that
         // arrives during a compaction with `runtime_busy` and has no call that cancels one, so the turn waits for
         // the compaction item to settle, including one a stopped turn left running.
+        const compacting = isCompactCommand(input.prompt)
         const loaded = entry.sessions.get(sessionId)
         const usedTokens = loaded?.usedTokens ?? null
         if (loaded?.compacting) {
-          requestedCompaction.running = true
+          requestedCompaction.trigger = "auto"
           yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+        } else if (compacting) {
+          const ack = yield* host
+            .command<SessionCompactResult>("session/compact", { sessionId })
+            .pipe(Effect.mapError(toAgentError))
+          if (ack.status === "accepted") requestedCompaction.trigger = "manual"
+          else {
+            // A noop means there is nothing left to summarize.
+            yield* emit({
+              type: "compaction_updated",
+              compaction: { status: "done", trigger: "manual", preTokens: null, postTokens: null },
+            })
+          }
         } else if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
           const ack = yield* host.command<SessionCompactResult>("session/compact", { sessionId }).pipe(
             Effect.map((result) => result.status),
             Effect.catch((error) => Effect.logWarning("session/compact failed", error.message).pipe(Effect.as(null))),
           )
-          requestedCompaction.running = ack === "accepted"
+          if (ack === "accepted") requestedCompaction.trigger = "auto"
         }
-        if (requestedCompaction.running) {
+        if (requestedCompaction.trigger !== null) {
           yield* Queue.take(inbox).pipe(
             Effect.flatMap(handle),
-            Effect.repeat({ while: () => requestedCompaction.running }),
+            Effect.repeat({ while: () => requestedCompaction.trigger !== null }),
           )
         }
+        if (compacting) return yield* emit({ type: "turn_completed" })
 
         // MSP has no developer instructions, so hinacode's ride in front of the prompt.
         const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)

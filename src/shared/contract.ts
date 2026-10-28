@@ -52,6 +52,7 @@ import {
   OpenerId,
   Project,
   GitHubAuth,
+  GitHubRateLimit,
   PullRequest,
   PullRequestDetail,
   PullRequestFile,
@@ -106,6 +107,8 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  /** The number on the Dock icon. Zero clears it. */
+  "app.setBadgeCount": rpc(Schema.Struct({ count: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) }), Schema.Void),
   /** The appearance of native UI (glass, menus, dialogs), which follows the app theme rather than the system. */
   "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
@@ -634,6 +637,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "app.setBadgeCount": "mutation",
   "app.setColorScheme": "mutation",
   "projects.list": "read",
   "projects.create": "mutation",
@@ -801,6 +805,7 @@ export const mutations: ReadonlySet<string> = new Set(
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "app.setBadgeCount",
   "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
@@ -885,6 +890,12 @@ export const PushEvent = Schema.Union([
     links: Schema.Array(PullRequestLink),
   }),
   Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
+  /** The GitHub budget dropped below a fifth (`low`) or ran out (`exhausted`). Sent once per level per window. */
+  Schema.Struct({
+    type: Schema.Literal("github.rateLimit"),
+    level: Schema.Literals(["low", "exhausted"]),
+    rateLimit: GitHubRateLimit,
+  }),
   /** Every sub-agent of the thread, newest first, sent whenever one of them changes. */
   Schema.Struct({
     type: Schema.Literal("thread.subagents"),

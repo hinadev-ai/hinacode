@@ -146,8 +146,8 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer)),
-    Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
+    Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
     Layer.provide(NodeServices.layer),
   )

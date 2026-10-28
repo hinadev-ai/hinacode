@@ -2,11 +2,11 @@ import "@xterm/xterm/css/xterm.css"
 import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react"
-import { View } from "react-native"
+import { View, type ViewInstance } from "react-native"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
 
 export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
-  const container = useRef<View>(null)
+  const container = useRef<ViewInstance>(null)
   const terminal = useRef<Terminal | null>(null)
   const input = useEffectEvent(onInput)
   const sized = useEffectEvent(onSize)
