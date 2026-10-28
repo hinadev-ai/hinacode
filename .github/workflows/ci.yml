@@ -237,9 +237,9 @@ jobs:
   e2e-macos:
     name: e2e (macos)
     needs: changes
-    # The home runner must never run code from a fork's pull request.
+    # Fork pull requests skip macOS, where a minute costs twenty Linux ones.
     if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, home]
+    runs-on: blacksmith-6vcpu-macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -247,14 +247,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Check the screen is unlocked
-        run: |
-          if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
-            echo "::error::Unlock the runner's screen. Electron never reports a window as shown while it is locked."
-            exit 1
-          fi
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e
+      # The config's CI default of 2 workers fits ubuntu-latest. This runner has 6 vCPUs.
+      - run: pnpm test:e2e --workers 4
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -285,9 +280,9 @@ jobs:
   resource-monitor-macos:
     name: resource monitor (macos)
     needs: changes
-    # The home runner must never run code from a fork's pull request.
+    # Fork pull requests skip macOS, where a minute costs twenty Linux ones.
     if: needs.changes.outputs.resource-monitor == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, home]
+    runs-on: blacksmith-6vcpu-macos-latest
     defaults:
       run:
         working-directory: tools/resource-monitor
