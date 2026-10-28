@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
-import { Effect, Predicate, PubSub, Schema, type Scope, Semaphore, Stream } from "effect"
+import { Effect, Exit, Predicate, PubSub, Schema, type Scope, Semaphore, Stream } from "effect"
 import { type PersistenceError, persistence } from "./errors.ts"
 
 export interface SettingStore<A> {
@@ -50,12 +50,15 @@ const readObject = (path: string) =>
       : Effect.fail(persistence(`read ${path}`)(new Error("Expected a JSON object"))),
   )
 
+const broken = (error: PersistenceError) => Effect.logWarning(`${error.message}, using defaults`, error.cause)
+
 /**
  * Settings kept as JSON files that hold only the keys that were set, so a later change to a default still applies.
- * Every `get` reads the files, so a hand edit shows up on the next read.
+ * Every `get` reads the files, so a hand edit shows up on the next read. A file or value a hand edit broke reads as
+ * its default, and `set` refuses to write over a broken file so the edit is not lost.
  */
 export const makeSettingStore = <A extends Record<string, unknown>>(
-  schema: Schema.Codec<A, unknown>,
+  schema: Schema.Codec<A, unknown> & { readonly fields: { readonly [key: string]: Schema.Codec<unknown, unknown> } },
   defaults: A,
   { path, own = {} }: SettingFiles<A>,
 ) =>
@@ -68,22 +71,28 @@ export const makeSettingStore = <A extends Record<string, unknown>>(
     const files = [path, ...ownFiles.map(([, file]) => file)].join(" and ")
     const decode = Schema.decodeUnknownEffect(schema)
 
+    const decodes = (key: string, value: unknown) =>
+      Effect.map(Effect.exit(Schema.decodeUnknownEffect(schema.fields[key]!)(value)), Exit.isSuccess)
+
     const get = Effect.gen(function* () {
-      const stored = yield* readObject(path)
+      const stored = yield* readObject(path).pipe(
+        Effect.catch((error) => Effect.as(broken(error), {} as Record<string, unknown>)),
+      )
       for (const [key, file] of ownFiles) {
-        const value = yield* readJson(file)
+        const value = yield* readJson(file).pipe(Effect.catch((error) => Effect.as(broken(error), undefined)))
         if (value !== undefined) stored[key] = value
       }
       // A file written before a key existed lacks it, so a stored object is laid over its default instead of replacing it.
-      const merged = Object.fromEntries(
-        Object.entries(defaults).map(([key, fallback]) => {
+      const merged = yield* Effect.forEach(Object.entries(defaults), ([key, fallback]) =>
+        Effect.gen(function* () {
           const value = stored[key]
-          return [
-            key,
-            Predicate.isObject(fallback) && Predicate.isObject(value) ? { ...fallback, ...value } : (value ?? fallback),
-          ]
+          if (value === undefined) return [key, fallback] as const
+          const laid = Predicate.isObject(fallback) && Predicate.isObject(value) ? { ...fallback, ...value } : value
+          if (yield* decodes(key, laid)) return [key, laid] as const
+          yield* Effect.logWarning(`${files}: ${key} is not a valid value, using its default`)
+          return [key, fallback] as const
         }),
-      )
+      ).pipe(Effect.map(Object.fromEntries))
       return yield* decode(merged).pipe(Effect.mapError(persistence(`decode ${files}`)))
     })
 
@@ -96,7 +105,9 @@ export const makeSettingStore = <A extends Record<string, unknown>>(
           yield* writeJson(path, { ...stored, ...Object.fromEntries(shared) })
         }
         for (const [key, file] of ownFiles) {
-          if (key in patch && patch[key] !== undefined) yield* writeJson(file, patch[key])
+          if (patch[key] === undefined) continue
+          yield* readJson(file)
+          yield* writeJson(file, patch[key])
         }
         const next = yield* get
         yield* PubSub.publish(written, next)
