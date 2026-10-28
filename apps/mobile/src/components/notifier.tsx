@@ -13,8 +13,10 @@ import {
   presentNotification,
   requestNotificationPermission,
 } from "@/lib/notifications"
-import { threadAlert } from "@/lib/thread-alerts"
+import { shouldPresentLocal } from "@/lib/push"
+import { type ThreadAlert, threadAlert } from "@/lib/thread-alerts"
 import { usePreferences } from "@/stores/preferences"
+import { pushRegistered, useRelayAccount } from "@/stores/relay-account"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 
@@ -29,14 +31,16 @@ export function Notifier() {
   const paired = useConnection((state) => state.paired)
   const [notice, setNotice] = useState<BannerNotice | null>(null)
 
-  const receive = useEffectEvent((threadId: string, alert: NonNullable<ReturnType<typeof threadAlert>>) => {
+  const receive = useEffectEvent((serverId: string, threadId: string, alert: ThreadAlert) => {
     if (!usePreferences.getState().notifications[alert.kind]) return
     const thread = useThreads.getState().byId[threadId]
     // A finished turn with messages queued behind it is not the end of the thread's work.
     if (alert.kind === "completed" && (thread?.queue.length ?? 0) > 0) return
     const title = thread === undefined || thread.title === "" ? copy("mobile_notify_untitled") : thread.title
     if (AppState.currentState !== "active") {
-      void presentNotification({ threadId, title, body: alert.body })
+      const server = useConnection.getState().servers.find((candidate) => candidate.id === serverId)
+      if (shouldPresentLocal({ pushRegistered: pushRegistered(), server }))
+        void presentNotification({ threadId, title, body: alert.body })
     } else if (!isViewing(pathname, threadId)) {
       noticeCount += 1
       setNotice({ id: noticeCount, threadId, kind: alert.kind, title, body: alert.body })
@@ -58,11 +62,11 @@ export function Notifier() {
 
   useEffect(
     () =>
-      onEvent((event) => {
+      onEvent((event, serverId) => {
         if (event.type !== "thread.event") return
         recordOutcome(event.threadId, event.event)
         const alert = threadAlert(event.event)
-        if (alert !== null) receive(event.threadId, alert)
+        if (alert !== null) receive(serverId, event.threadId, alert)
       }),
     [],
   )
@@ -73,7 +77,10 @@ export function Notifier() {
     // Browsers only show the prompt after a tap, so the web asks from Settings instead.
     if (!paired || Platform.OS === "web") return
     void getNotificationPermission().then((permission) => {
-      if (permission === "undetermined") void requestNotificationPermission()
+      if (permission !== "undetermined") return
+      void requestNotificationPermission().then((answer) => {
+        if (answer === "granted") void useRelayAccount.getState().registerPush()
+      })
     })
   }, [paired])
 

@@ -1,6 +1,8 @@
 import * as Notifications from "expo-notifications"
 import { Platform } from "react-native"
+import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { pushProjectId, shouldShowPush } from "@/lib/push"
 
 export type NotificationPermission = "granted" | "denied" | "undetermined" | "unsupported"
 
@@ -12,13 +14,14 @@ export interface ThreadNotification {
 
 const CHANNEL_ID = "threads"
 
+const quiet = { shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false }
+
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async ({ request }) => {
+    const remote = request.trigger !== null && "type" in request.trigger && request.trigger.type === "push"
+    if (remote && !shouldShowPush(request.content.data, useConnection.getState().servers)) return quiet
+    return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: remote, shouldSetBadge: false }
+  },
 })
 
 let channel: Promise<unknown> | null = null
@@ -48,6 +51,20 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   await ensureChannel()
   return toPermission(await Notifications.requestPermissionsAsync())
+}
+
+/** The token the relay pushes to, or null without permission, an EAS project id, or Expo's answer. */
+export async function getPushToken(): Promise<string | null> {
+  const projectId = pushProjectId()
+  if (projectId === null || (await getNotificationPermission()) !== "granted") return null
+  // Pushes name the "threads" channel, so it has to exist before the first one arrives.
+  await ensureChannel()
+  try {
+    return (await Notifications.getExpoPushTokenAsync({ projectId })).data
+  } catch {
+    // Android throws until FCM credentials are set up for the EAS project.
+    return null
+  }
 }
 
 /** Shows a system notification right away. A newer one for the same thread replaces the older. */

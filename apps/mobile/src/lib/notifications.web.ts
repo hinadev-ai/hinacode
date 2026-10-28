@@ -23,6 +23,11 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return supported() ? toPermission(await Notification.requestPermission()) : "unsupported"
 }
 
+/** The web gets no pushes. */
+export async function getPushToken(): Promise<string | null> {
+  return null
+}
+
 /** Shows a browser notification when allowed. A newer one for the same thread replaces the older. */
 export async function presentNotification({ threadId, title, body }: ThreadNotification) {
   if (!supported() || Notification.permission !== "granted") return
