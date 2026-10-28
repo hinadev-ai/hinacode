@@ -4,7 +4,13 @@ import type { Socket } from "node:net"
 import { join } from "node:path"
 import { Context, Deferred, Effect, Exit, Layer, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
-import type { ThreadVm, VmControl, VmHostStatus, VmProfile } from "../../../shared/domain.ts"
+import {
+  defaultSettings,
+  type ThreadVm,
+  type VmControl,
+  type VmHostStatus,
+  type VmProfile,
+} from "../../../shared/domain.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
@@ -99,6 +105,10 @@ const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
 const PROFILE_SCRIPT_TIMEOUT_SECONDS = 120
+/** Installing packages can take minutes; a start that waits longer than this is stuck. */
+const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
+/** The end of a failed setup script's output is where its error usually is. */
+const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
   "chromium/*/Cache",
   "chromium/*/Code Cache",
@@ -213,15 +223,12 @@ const make = (source: LoginSource, dataDir: string) =>
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
-      Effect.orElseSucceed(() => ({
-        tinyVm: false,
-        tinyVmTemplate: "default",
-        tinyVmProfile: false,
-        tinyVmPasskeys: false,
-      })),
+      Effect.orElseSucceed(() => defaultSettings.experimental),
     )
     let enabled = experimental.tinyVm
     let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"
+    let configuredEnv = experimental.tinyVmEnv
+    let setupScript = experimental.tinyVmSetupScript
     let profileEnabled = experimental.tinyVmProfile
     /** The thread whose running VM saves the shared Chromium profile back; everyone else holds a copy. */
     let profileOwner: string | undefined
@@ -379,11 +386,26 @@ const make = (source: LoginSource, dataDir: string) =>
         return live
       })
 
+    const runSetupScript = (sbx: SbxClient, sandboxId: string) =>
+      Effect.gen(function* () {
+        if (setupScript.trim() === "") return
+        const result = yield* sbx
+          .exec(sandboxId, { script: setupScript, timeoutSeconds: SETUP_SCRIPT_TIMEOUT_SECONDS })
+          .pipe(Effect.mapError(toVmError))
+        if (result.exitCode === 0) return
+        const output = Buffer.concat([result.stdout, result.stderr]).toString().trim().slice(-SETUP_OUTPUT_TAIL)
+        return yield* new VmError({
+          message: `The setup script exited with code ${result.exitCode}.${output ? `\n${output}` : ""}`,
+        })
+      })
+
     const create = (threadId: string, done: Deferred.Deferred<ThreadVm>, template: string) =>
       Effect.gen(function* () {
         if (!enabled) return yield* new VmError({ message: "Tiny VM is off. Turn it on in Settings > Experimental." })
         const sbx = yield* client
-        return { sbx, sandbox: yield* sbx.create(template).pipe(Effect.mapError(toVmError)) }
+        const sandbox = yield* sbx.create(template, configuredEnv).pipe(Effect.mapError(toVmError))
+        yield* runSetupScript(sbx, sandbox.id).pipe(Effect.tapError(() => Effect.ignore(sbx.remove(sandbox.id))))
+        return { sbx, sandbox }
       }).pipe(
         Effect.matchEffect({
           onFailure: (error) => settle(threadId, done, { status: "failed", message: error.message }),
@@ -755,6 +777,8 @@ const make = (source: LoginSource, dataDir: string) =>
           const was = enabled
           enabled = value.experimental.tinyVm
           configuredTemplate = value.experimental.tinyVmTemplate.trim() || "default"
+          configuredEnv = value.experimental.tinyVmEnv
+          setupScript = value.experimental.tinyVmSetupScript
           profileEnabled = value.experimental.tinyVmProfile
           return was && !enabled ? stopAll : Effect.void
         }),

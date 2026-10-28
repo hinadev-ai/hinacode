@@ -11,6 +11,7 @@ import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream 
 import { TestClock } from "effect/testing"
 import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
+import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -579,7 +580,9 @@ const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = fals
   Effect.gen(function* () {
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
-    yield* settings.set({ experimental: { tinyVm: on, tinyVmTemplate, tinyVmProfile, tinyVmPasskeys: false } })
+    yield* settings.set({
+      experimental: { ...defaultSettings.experimental, tinyVm: on, tinyVmTemplate, tinyVmProfile },
+    })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
 

@@ -1,7 +1,8 @@
 import { expect, test } from "@effect/vitest"
 import { agentInstructions } from "./instructions.ts"
+import { defaultSettings } from "../../shared/domain.ts"
 
-const experimental = { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false }
+const { experimental } = defaultSettings
 const environment = {
   gitRepository: true,
   branch: "feat/x",

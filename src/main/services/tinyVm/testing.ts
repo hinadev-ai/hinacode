@@ -124,6 +124,9 @@ export interface FakeSbx {
   readonly created: () => number
   /** The template each sandbox creation asked for, in order. */
   readonly createdTemplates: Array<string>
+  /** The environment each sandbox creation asked for, in order. */
+  readonly createdEnvs: Array<Readonly<Record<string, string>>>
+  /** Scripts run and echo themselves on stdout, except `exit N`, which prints to stderr and exits with N. */
   readonly execs: Array<{ readonly sandboxId: string; readonly script: string; readonly detach: boolean }>
   /** Every file archive uploaded through the `/files` endpoints, in arrival order. */
   readonly uploads: Array<{ readonly sandboxId: string; readonly path: string; readonly bytes: Buffer }>
@@ -161,6 +164,7 @@ export const startFakeSbx = Effect.acquireRelease(
     const inputs: Array<FakeSbx["inputs"][number]> = []
     const uploads: Array<FakeSbx["uploads"][number]> = []
     const createdTemplates: Array<string> = []
+    const createdEnvs: Array<Readonly<Record<string, string>>> = []
     const files = new Map<string, Buffer>()
     const sockets = new Set<Socket>()
     let created = 0
@@ -179,11 +183,13 @@ export const startFakeSbx = Effect.acquireRelease(
         ])
       }
       if (request.method === "POST" && path === "/v1/sandboxes") {
-        const requested = (JSON.parse(body.toString() || "{}") as { template?: string }).template ?? "default"
+        const createBody = JSON.parse(body.toString() || "{}") as { template?: string; env?: Record<string, string> }
+        const requested = createBody.template ?? "default"
         if (requested !== "default" && requested !== "browser") {
           return json(response, 404, { error: `template ${requested} not found` })
         }
         createdTemplates.push(requested)
+        createdEnvs.push(createBody.env ?? {})
         const id = `sb-${randomUUID().slice(0, 8)}`
         sandboxes.add(id)
         created++
@@ -221,6 +227,14 @@ export const startFakeSbx = Effect.acquireRelease(
       response.writeHead(200, { "content-type": "application/octet-stream" })
       if (detach) {
         response.end(frame(3, Buffer.from(JSON.stringify({ exit_code: 0, pid: 4242, log: "/tmp/sbx-4242.log" }))))
+      } else if (/^exit \d+$/.test(script)) {
+        const exitCode = Number(script.slice("exit ".length))
+        response.end(
+          Buffer.concat([
+            frame(2, Buffer.from(script)),
+            frame(3, Buffer.from(JSON.stringify({ exit_code: exitCode }))),
+          ]),
+        )
       } else if (script === SCREENSHOT_SCRIPT) {
         response.end(Buffer.concat([frame(1, FAKE_PNG), frame(3, Buffer.from(JSON.stringify({ exit_code: 0 })))]))
       } else {
@@ -263,6 +277,7 @@ export const startFakeSbx = Effect.acquireRelease(
             sandboxes,
             created: () => created,
             createdTemplates,
+            createdEnvs,
             execs,
             uploads,
             seedFile: (sandboxId, path, bytes) => void files.set(fileKey(sandboxId, path), Buffer.from(bytes)),
