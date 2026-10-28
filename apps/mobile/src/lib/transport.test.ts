@@ -428,6 +428,74 @@ describe("Transport", () => {
   describe("quiet in the background", () => {
     const quietFrames = () => latest().sent.filter((frame) => frame.type === "quiet")
 
+    it("makes no connection attempts for a minute after its background socket drops", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "quiet"])
+      transport.setForeground(false)
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      expect(statuses.at(-1)).toBe("offline")
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      expect(statuses.at(-1)).toBe("connecting")
+    })
+
+    it("cancels a scheduled retry when the app leaves", async () => {
+      const transport = setup()
+      latest().drop()
+      transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+    })
+
+    it("ends a connection race when the app leaves and resumes it once on return", async () => {
+      const transport = setup([direct("ws://desktop/remote"), relay("wss://relay/remote")])
+      transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      expect(sockets[0]!.closed).toBe(true)
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      handshake(["heartbeat", "quiet"])
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("defers network changes and queued calls until the foreground", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "quiet", "call-keys"])
+      transport.setForeground(false)
+      transport.networkChanged()
+      const send = track(transport.call("threads.send", { prompt: "hi" }))
+      transport.networkChanged()
+      transport.reconnectNow()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(sockets).toHaveLength(1)
+      expect(send.error).toBeUndefined()
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      handshake(["heartbeat", "quiet", "call-keys"])
+      expect(latest().calls()).toEqual([
+        { type: "call", id: 1, method: "threads.send", payload: { prompt: "hi" }, key: "key-1" },
+      ])
+      latest().result(1)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(send.value).toEqual({ result: null })
+    })
+
+    it("still expires an offline call while background retries are paused", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "quiet", "call-keys"])
+      const send = track(transport.call("threads.send", { prompt: "hi" }))
+      transport.setForeground(false)
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MAY_HAVE_RUN_MESSAGE })
+      expect(sockets).toHaveLength(1)
+    })
+
     it("asks a desktop that offers it to hold back pushes until the app returns", () => {
       const transport = setup()
       handshake(["heartbeat", "quiet"])
