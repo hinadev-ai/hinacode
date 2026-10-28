@@ -6,6 +6,7 @@ import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import {
+  attachmentRequest,
   BROWSER_PARTITION,
   externalUrl,
   githubAssetId,
@@ -79,9 +80,9 @@ const sandboxed = (response: Response) => {
 /** Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
 const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
   protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {
-    const url = new URL(request.url)
-    const path = decodeURIComponent(url.pathname.slice(1))
-    const environment = url.searchParams.get("environment")
+    const target = attachmentRequest(request.url)
+    if (target === null) return new Response(null, { status: 404 })
+    const { path, environment } = target
     if (environment !== null)
       return fetchFromCloud(runtime, environment, { method: "attachments.read", payload: { path } })
     if (!isInside(attachmentsRoot, path)) return new Response(null, { status: 403 })

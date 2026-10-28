@@ -1,5 +1,5 @@
 import { isAbsolute, relative, sep } from "node:path"
-import { GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
+import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
 
 const EXTERNAL_PROTOCOLS = new Set(["https:", "http:"])
 
@@ -79,6 +79,20 @@ export const projectFileRequest = (url: string): { root: string; path: string } 
   const [root, ...segments] = parsed.pathname.slice(1).split("/")
   try {
     return root ? { root: decodeURIComponent(root), path: segments.map(decodeURIComponent).join("/") } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The absolute path a `hinacode-attachment://file/<encoded path>` request names, and the cloud it lives on, or
+ * null when it is malformed. Says nothing about whether the path stays inside the attachments dir.
+ */
+export const attachmentRequest = (url: string): { path: string; environment: string | null } | null => {
+  const parsed = URL.parse(url)
+  if (parsed?.protocol !== `${ATTACHMENT_PROTOCOL}:` || parsed.host !== "file") return null
+  try {
+    return { path: decodeURIComponent(parsed.pathname.slice(1)), environment: parsed.searchParams.get("environment") }
   } catch {
     return null
   }
