@@ -23,6 +23,8 @@ pnpm test         # node --test, *.test.ts next to source
 pnpm check:specs  # TLC over specs/*.cfg, needs Java 11+ (see specs/README.md)
 ```
 
+`pnpm install` points git at `.githooks/`, whose pre-commit runs `pnpm format --check` and `pnpm typecheck`. If a commit fails there, fix what it reports instead of skipping the hook.
+
 Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on `ubuntu-latest`, and on the self-hosted home Mac for branches in this repo (never for forks), and React Doctor comments on the ones that touch React code.
 
 ## Architecture
