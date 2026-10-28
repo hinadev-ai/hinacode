@@ -18,4 +18,6 @@ hinacode called `gh` from three places and ignored its errors. A linked PR showe
 ## Consequences
 
 - The user's existing `gh` login and config just work, with no tokens to store.
-- Each linked PR polls `gh` every 60 s on its own. That's fine for a handful of PRs per thread. Batch through GraphQL if it ever isn't.
+- Every window, paired device and background sweep asks about the same PRs, and they all share the user's GitHub budget with the agents' own `gh` runs. Reads of one PR therefore share one `gh pr view`, fresh for 30 s while it is open and 10 min once it has merged or closed.
+- `gh` reports no rate limit headers, so a rate limit error is followed by `gh api rate_limit`, which costs nothing. Every `gh` call then pauses until the used-up bucket resets, or for a minute that doubles up to 15 min after a secondary limit. Reads answer with the last known state meanwhile.
+- If shared reads stop being enough, batch PRs into one GraphQL query with a token from `gh auth token`.
