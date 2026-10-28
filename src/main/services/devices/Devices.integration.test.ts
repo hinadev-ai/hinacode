@@ -197,12 +197,18 @@ describe("Devices", () => {
         sent.length = 0
         let outcome: string | undefined
         const agent = yield* Effect.forkChild(
-          service.act(second.threadId, undefined, [touch]).pipe(Effect.tap((value) => Effect.sync(() => (outcome = value)))),
+          service
+            .act(second.threadId, undefined, [touch])
+            .pipe(Effect.tap((value) => Effect.sync(() => (outcome = value)))),
         )
         yield* eventually(() => outcome !== undefined || sent.length > 0)
         expect(sent).toEqual([])
         const [state] = yield* service.get(second.threadId)
         expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toBe(true)
+        // Another view's cleanup must not hand back the device the first view is still using.
+        const refused = yield* Effect.flip(service.control(second.threadId, USERS_DEVICE, "agent"))
+        expect(refused.message).toContain("another thread")
+        expect(sent).toEqual([])
         yield* service.control(first.threadId, USERS_DEVICE, "agent")
         expect(yield* Fiber.join(agent)).toBe("handedBack")
         yield* service.detach(first.threadId, USERS_DEVICE)
@@ -219,7 +225,9 @@ describe("Devices", () => {
         launched.length = 0
         let finished = false
         const agent = yield* Effect.forkChild(
-          service.launch(threadId, undefined, "com.example.app").pipe(Effect.tap(() => Effect.sync(() => (finished = true)))),
+          service
+            .launch(threadId, undefined, "com.example.app")
+            .pipe(Effect.tap(() => Effect.sync(() => (finished = true)))),
         )
         yield* eventually(() => finished || launched.length > 0)
         expect(launched).toEqual([])

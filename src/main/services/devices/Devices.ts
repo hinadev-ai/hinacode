@@ -126,6 +126,10 @@ const make = (options: DevicesOptions) =>
     const preparing = new Map<string, Promise<ThreadDevice>>()
     const handBacks = new Map<string, Set<() => void>>()
     const waiting = new Map<string, number>()
+    const userControl = new Map<DeviceId, string>()
+    // Reserve before the first await: SQL checks alone leave a gap between checking and deleting.
+    const deleting = new Set<DeviceId>()
+    const attaching = new Map<DeviceId, number>()
 
     const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect)
 
@@ -178,12 +182,18 @@ const make = (options: DevicesOptions) =>
     }
 
     const removeState = (threadId: string, slot: Slot) => {
+      if (slot !== NEW && userControl.get(slot) === threadId) setControl(threadId, slot, "agent")
       const entries = states.get(threadId)
       entries?.delete(slot)
       if (entries?.size === 0) states.delete(threadId)
       releaseHandBacks(keyOf(threadId, slot))
       publish(threadId)
     }
+
+    const controlOf = (deviceId: DeviceId): DeviceControl => (userControl.has(deviceId) ? "user" : "agent")
+
+    const waitingOn = (deviceId: DeviceId) =>
+      [...states.keys()].some((threadId) => (waiting.get(keyOf(threadId, deviceId)) ?? 0) > 0)
 
     const findDevice = async (deviceId: DeviceId): Promise<Device> => {
       const device = (await driverOf(deviceId).list()).find((candidate) => candidate.id === deviceId)
@@ -200,6 +210,7 @@ const make = (options: DevicesOptions) =>
     }
 
     const failThreadsOn = (deviceId: DeviceId, message: string) => {
+      userControl.delete(deviceId)
       for (const [threadId, entries] of states) {
         const entry = entries.get(deviceId)
         if (entry?.phase === "ready") {
@@ -292,8 +303,8 @@ const make = (options: DevicesOptions) =>
             phase: "ready",
             device: { ...device, ownerThreadId: owned ? threadId : null },
             screen: link.screen,
-            control: "agent",
-            agentWaiting: false,
+            control: controlOf(deviceId),
+            agentWaiting: waitingOn(deviceId),
           })
         } catch (cause) {
           const failed: ThreadDevice = { phase: "failed", deviceId, name, owned, message: messageOf(cause) }
@@ -368,7 +379,7 @@ const make = (options: DevicesOptions) =>
       // Read again, so a device detached during the lookup stays detached.
       const kept = new Set((await readRows(threadId)).map((row) => row.deviceId))
       missing.forEach((row, index) => {
-        if (!kept.has(row.deviceId) || current(threadId, row.deviceId)) return
+        if (!kept.has(row.deviceId) || current(threadId, row.deviceId) || deleting.has(row.deviceId)) return
         void attachExisting(threadId, row.deviceId, { device: found[index] ?? null, owned: row.owned })
       })
       return listOf(threadId)
@@ -443,19 +454,31 @@ const make = (options: DevicesOptions) =>
     const setControl = (threadId: string, deviceId: DeviceId, control: DeviceControl) => {
       const state = current(threadId, deviceId)
       if (!state) throw new DevicesError({ message: "This device is not attached to the thread." })
-      if (state.phase !== "ready" || state.control === control) return state
-      return setState(threadId, {
-        ...state,
-        control,
-        agentWaiting: control === "user" && (waiting.get(keyOf(threadId, deviceId)) ?? 0) > 0,
-      })
+      if (state.phase !== "ready") return state
+      const owner = userControl.get(deviceId)
+      if (control === "agent" && owner !== undefined && owner !== threadId) {
+        throw new DevicesError({
+          message: "The user has control of this device in another thread. Hand it back there.",
+        })
+      }
+      if (control === "user") userControl.set(deviceId, threadId)
+      else userControl.delete(deviceId)
+      const agentWaiting = control === "user" && waitingOn(deviceId)
+      for (const [other, entries] of states) {
+        const entry = entries.get(deviceId)
+        if (entry?.phase !== "ready" || (entry.control === control && entry.agentWaiting === agentWaiting)) continue
+        setState(other, { ...entry, control, agentWaiting })
+      }
+      return current(threadId, deviceId)!
     }
 
-    const refreshWaiting = (threadId: string, deviceId: DeviceId) => {
-      const state = current(threadId, deviceId)
-      const agentWaiting = (waiting.get(keyOf(threadId, deviceId)) ?? 0) > 0
-      if (state?.phase === "ready" && state.control === "user" && state.agentWaiting !== agentWaiting) {
-        setState(threadId, { ...state, agentWaiting })
+    const refreshWaiting = (deviceId: DeviceId) => {
+      const agentWaiting = waitingOn(deviceId)
+      for (const [threadId, entries] of states) {
+        const state = entries.get(deviceId)
+        if (state?.phase === "ready" && state.control === "user" && state.agentWaiting !== agentWaiting) {
+          setState(threadId, { ...state, agentWaiting })
+        }
       }
     }
 
@@ -463,7 +486,7 @@ const make = (options: DevicesOptions) =>
     const waitForHandBack = async (threadId: string, deviceId: DeviceId, signal: AbortSignal) => {
       const key = keyOf(threadId, deviceId)
       waiting.set(key, (waiting.get(key) ?? 0) + 1)
-      refreshWaiting(threadId, deviceId)
+      refreshWaiting(deviceId)
       try {
         await new Promise<void>((resolve, reject) => {
           const handBack = () => resolve()
@@ -483,7 +506,7 @@ const make = (options: DevicesOptions) =>
         const count = (waiting.get(key) ?? 1) - 1
         if (count === 0) waiting.delete(key)
         else waiting.set(key, count)
-        refreshWaiting(threadId, deviceId)
+        refreshWaiting(deviceId)
       }
     }
 
@@ -619,16 +642,25 @@ const make = (options: DevicesOptions) =>
       get: (threadId) => attempt(() => restore(threadId)),
       attach: (threadId, deviceId) =>
         attempt(async () => {
-          const existing = current(threadId, deviceId)
-          if (existing && existing.phase !== "failed") return existing
-          const owner = (await ownedRows()).find((row) => row.deviceId === deviceId)
-          if (owner && owner.threadId !== threadId) {
-            throw new DevicesError({
-              message: "Another thread created this simulator, and archiving that thread deletes it. Create one here.",
-            })
+          if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
+          attaching.set(deviceId, (attaching.get(deviceId) ?? 0) + 1)
+          try {
+            const existing = current(threadId, deviceId)
+            if (existing && existing.phase !== "failed") return existing
+            const owner = (await ownedRows()).find((row) => row.deviceId === deviceId)
+            if (owner && owner.threadId !== threadId) {
+              throw new DevicesError({
+                message:
+                  "Another thread created this simulator, and archiving that thread deletes it. Create one here.",
+              })
+            }
+            await writeRow(threadId, { deviceId, owned: false })
+            return await attachExisting(threadId, deviceId)
+          } finally {
+            const count = (attaching.get(deviceId) ?? 1) - 1
+            if (count === 0) attaching.delete(deviceId)
+            else attaching.set(deviceId, count)
           }
-          await writeRow(threadId, { deviceId, owned: false })
-          return attachExisting(threadId, deviceId)
         }),
       create: (threadId) =>
         attempt(async () => {
@@ -638,16 +670,24 @@ const make = (options: DevicesOptions) =>
       detach: (threadId, deviceId) => attempt(() => detachNow(threadId, deviceId)),
       delete: (threadId, deviceId) =>
         attempt(async () => {
-          const rows = await run(
-            sql<{
-              threadId: string
-            }>`SELECT thread_id FROM thread_device WHERE device_id = ${deviceId} AND thread_id != ${threadId}`,
-          )
-          const elsewhere = [...states].some(([other, entries]) => other !== threadId && entries.has(deviceId))
-          if (rows.length > 0 || elsewhere) {
-            throw new DevicesError({ message: "Another thread has this device attached. Detach it there first." })
+          if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
+          if (attaching.has(deviceId))
+            throw new DevicesError({ message: "This device is still attaching. Try again once it is ready." })
+          deleting.add(deviceId)
+          try {
+            const rows = await run(
+              sql<{
+                threadId: string
+              }>`SELECT thread_id FROM thread_device WHERE device_id = ${deviceId} AND thread_id != ${threadId}`,
+            )
+            const elsewhere = [...states].some(([other, entries]) => other !== threadId && entries.has(deviceId))
+            if (rows.length > 0 || elsewhere) {
+              throw new DevicesError({ message: "Another thread has this device attached. Detach it there first." })
+            }
+            await detachNow(threadId, deviceId, true)
+          } finally {
+            deleting.delete(deviceId)
           }
-          await detachNow(threadId, deviceId, true)
         }),
       frame: (input) =>
         attempt(async () => {
@@ -673,8 +713,12 @@ const make = (options: DevicesOptions) =>
           return driverOf(state.device.id).describe(state.device.id)
         }),
       launch: (threadId, device, app) =>
-        attempt(async () => {
+        attempt(async (signal) => {
           const { state } = await chosen(threadId, device)
+          if (state.control === "user") {
+            await waitForHandBack(threadId, state.device.id, signal)
+            return
+          }
           await driverOf(state.device.id).launch(state.device.id, app)
         }),
     })
