@@ -630,6 +630,8 @@
   "message_worked_for": "{duration} 処理しました",
   "message_show_activity": "ツールの実行内容を表示",
   "message_hide_activity": "ツールの実行内容を折りたたむ",
+  "message_copy": "メッセージをコピー",
+  "message_fork": "ここから新しいスレッドに分岐",
   "sidebar_pull_request": "プルリクエスト #{number} を開く",
   "sidebar_pull_request_stack": "リンクされた {count} 件のプルリクエスト",
   "sidebar_pr_merge": "マージ",

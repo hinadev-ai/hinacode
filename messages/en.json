@@ -630,6 +630,8 @@
   "message_worked_for": "Worked for {duration}",
   "message_show_activity": "Show tool activity",
   "message_hide_activity": "Hide tool activity",
+  "message_copy": "Copy message",
+  "message_fork": "Fork into a new thread from here",
   "sidebar_pull_request": "Open pull request #{number}",
   "sidebar_pull_request_stack": "{count} linked pull requests",
   "sidebar_pr_merge": "Merge",

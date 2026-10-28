@@ -20,6 +20,7 @@ import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
+import { MessageActions } from "./MessageActions.tsx"
 import { MessagePartView, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
@@ -171,7 +172,7 @@ function MessageBody({ message }: { message: Message }) {
       <article
         aria-label={m.message_you()}
         data-message-id={message.id}
-        className="mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+        className="group/message mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
@@ -187,6 +188,7 @@ function MessageBody({ message }: { message: Message }) {
             </FindPartContext>
           </div>
         )}
+        <MessageActions message={message} className="-mt-1" />
       </article>
     )
   }
@@ -214,7 +216,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
+      className="group/message mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
     >
       {presentation.kind === "completed" && (
         <WorkedFor
@@ -229,6 +231,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
+      {!streaming && <MessageActions message={message} className="-ml-2" />}
     </article>
   )
 }
