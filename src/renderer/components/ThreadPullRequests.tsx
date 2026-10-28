@@ -335,9 +335,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           {pullRequest.body.trim() === "" ? (
             <p className="text-xs text-muted-foreground">{m.pr_description_empty()}</p>
           ) : (
-            <div className="text-sm">
-              <Markdown text={pullRequest.body} />
-            </div>
+            <Markdown text={pullRequest.body} />
           )}
         </Section>
       </article>
