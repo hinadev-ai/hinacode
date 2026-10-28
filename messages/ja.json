@@ -731,6 +731,17 @@
   "diff_file_missing": "差分なし",
   "diff_large": "大きな差分です（{lines} 行の変更）。動作が重くならないよう非表示にしています。",
   "diff_large_show": "差分を表示",
+  "diff_summary": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個のファイルを変更",
+        "countPlural=other": "{count} 個のファイルを変更"
+      }
+    }
+  ],
+  "diff_open_file": "{path} をファイルで開く",
   "pr_check_skipped": "スキップ",
   "pr_merge_squash": "スカッシュしてマージ (Squash and merge)",
   "pr_merge_commit": "マージコミットを作成 (Create a merge commit)",

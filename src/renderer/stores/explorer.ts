@@ -71,6 +71,8 @@ interface ExplorerState {
   readonly select: (root: string, path: string | null) => void
   /** Shows `path` in the file viewer, or closes the viewer. */
   readonly open: (root: string, path: string | null) => void
+  /** Expands the folders down to the file at `path`, then selects and opens it. */
+  readonly reveal: (root: string, path: string) => void
   /** Marks `path` as edited since `base`, or as saved when `base` is null. */
   readonly setUnsaved: (root: string, path: string, base: string | null) => void
 }
@@ -113,6 +115,14 @@ export const useExplorer = create<ExplorerState>()((set, get) => {
     collapseAll: (root) => update(root, () => ({ expanded: new Set() })),
     select: (root, selected) => update(root, () => ({ selected })),
     open: (root, opened) => update(root, () => ({ opened })),
+    reveal: (root, path) => {
+      const folders = path
+        .split("/")
+        .slice(0, -1)
+        .map((_, index, parts) => parts.slice(0, index + 1).join("/"))
+      update(root, (tree) => ({ expanded: new Set([...tree.expanded, ...folders]), selected: path, opened: path }))
+      for (const folder of folders) void get().load(root, folder)
+    },
     setUnsaved: (root, path, base) =>
       update(root, (tree) => {
         const { [path]: _previous, ...unsaved } = tree.unsaved

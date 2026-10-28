@@ -704,6 +704,17 @@
   "diff_file_missing": "沒有差異",
   "diff_large": "差異很大，共 {lines} 行變更。為了讓 app 保持流暢，先不顯示。",
   "diff_large_show": "顯示差異",
+  "diff_summary": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個檔案有變更",
+        "countPlural=other": "{count} 個檔案有變更"
+      }
+    }
+  ],
+  "diff_open_file": "在檔案中開啟 {path}",
   "pr_check_skipped": "已略過",
   "pr_merge_squash": "Squash 並合併",
   "pr_merge_commit": "建立合併 commit",
