@@ -51,7 +51,8 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "./plugins/with-scene-lifecycle.ts"
     ],
     "experiments": {
       "typedRoutes": true,
