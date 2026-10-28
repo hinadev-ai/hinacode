@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url"
 import { app, BrowserWindow, Menu, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
+import { handleContextMenu } from "./contextMenu.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import {
   attachmentRequest,
@@ -17,6 +18,7 @@ import {
 } from "./security.ts"
 import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
 import { RpcMethods } from "../shared/contract.ts"
+import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
 import * as GitHub from "./services/GitHub.ts"
@@ -59,7 +61,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
 ])
 
-type AppRuntime = ManagedRuntime.ManagedRuntime<GitHub.GitHub | Files.Files | Environments.Environments, unknown>
+type AppRuntime = ManagedRuntime.ManagedRuntime<
+  GitHub.GitHub | Files.Files | Environments.Environments | ClientSettings.ClientSettings,
+  unknown
+>
 
 const decodeCloudFile = Schema.decodeUnknownOption(RpcMethods["fs.preview"].response)
 
@@ -174,7 +179,7 @@ const limitBrowserPermissions = () => {
   browser.setPermissionCheckHandler((_page, permission) => permission === "clipboard-sanitized-write")
 }
 
-const createWindow = () => {
+const createWindow = (runtime: AppRuntime) => {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -207,6 +212,7 @@ const createWindow = () => {
     if (!lockDownWebview(preferences as Record<string, unknown>, params)) event.preventDefault()
   })
   window.webContents.on("did-attach-webview", (_event, page) => keepOnTheWeb(page))
+  handleContextMenu(window, runtime, appUrl)
 
   void window.loadURL(appUrl)
 }
@@ -282,14 +288,14 @@ app.whenReady().then(async () => {
   serveProjectFiles(runtime)
   limitBrowserPermissions()
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(runtime)
   })
   app.on("second-instance", () => {
     const [window] = BrowserWindow.getAllWindows()
     if (window) bringToFront(window)
-    else createWindow()
+    else createWindow(runtime)
   })
-  createWindow()
+  createWindow(runtime)
 })
 
 app.on("window-all-closed", () => {
