@@ -172,7 +172,7 @@ const dbRuntime = ManagedRuntime.make(
 )
 const histories = []
 for (const count of [200, 2000]) {
-  const threadId = await dbRuntime.runPromise(
+  const historyThreadId = await dbRuntime.runPromise(
     Effect.gen(function* () {
       const { threadId } = yield* seedThread({ rootPath: `/synthetic/remote-${count}` })
       const messages = yield* Messages.Messages
@@ -181,7 +181,7 @@ for (const count of [200, 2000]) {
       return threadId
     }),
   )
-  const read = () => dbRuntime.runPromise(Messages.Messages.use((messages) => messages.list(threadId)))
+  const read = () => dbRuntime.runPromise(Messages.Messages.use((messages) => messages.list(historyThreadId)))
   const dbRead = await measureAsync(read, 7)
   globalThis.gc?.()
   const beforeHeap = process.memoryUsage().heapUsed
