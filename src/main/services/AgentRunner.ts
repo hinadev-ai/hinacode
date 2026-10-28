@@ -228,6 +228,7 @@ const userMessage = (threadId: string, text: string, attachments: ReadonlyArray<
   createdAt: now,
   completedAt: now,
   usage: null,
+  forkPoint: null,
 })
 
 const openAssistantMessage = (threadId: string, now: string): Message => ({
@@ -238,6 +239,7 @@ const openAssistantMessage = (threadId: string, now: string): Message => ({
   createdAt: now,
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
@@ -545,7 +547,8 @@ const make = Effect.gen(function* () {
               autoCompactTokens: autoCompactTokens[provider.id],
               userSkills: thread.userSkills,
               accessMode: thread.accessMode,
-              resumeSessionId: thread.providerSessionId,
+              resumeSessionId: thread.providerSessionId ?? thread.forkedFrom?.sessionId ?? null,
+              forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
               home,
               mcpServer,
               instructions: agentInstructions(experimental, environment),

@@ -308,6 +308,10 @@ export const Compaction = Schema.Union([
 ])
 export type Compaction = typeof Compaction.Type
 
+/** Where a fork can pick up a session: the agent's own id for the end of one turn, such as Codex's turn id. */
+export const ForkPoint = Schema.Struct({ sessionId: Schema.String, checkpoint: Schema.String })
+export type ForkPoint = typeof ForkPoint.Type
+
 export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("session_bound"), providerSessionId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("text_delta"), text: Schema.String }),
@@ -343,7 +347,12 @@ export const AgentEvent = Schema.Union([
   /** Raised by the built-in MCP server, not the provider, while a turn runs. */
   Schema.Struct({ type: Schema.Literal("secret_requested"), request: SecretRequest }),
   Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
+  /** `forkPoint` is left out by an agent that cannot fork its session there. */
+  Schema.Struct({
+    type: Schema.Literal("turn_completed"),
+    usage: Schema.optional(TokenUsage),
+    forkPoint: Schema.optional(ForkPoint),
+  }),
   Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
@@ -365,6 +374,8 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
+  /** Starts a new session from `resumeSessionId` that keeps its conversation through this `ForkPoint.checkpoint`. */
+  readonly forkAt: string | null
   /** The added account to run as. Null uses the CLI's own login and home, the only one Muse Code has. */
   readonly home: AccountHome | null
   /** The built-in hinacode MCP server, authenticated as this thread. */

@@ -143,6 +143,7 @@ const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
+const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
 
 /** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
@@ -171,6 +172,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      turnResumes.push({ resumeSessionId: input.resumeSessionId, forkAt: input.forkAt })
       if (input.prompt === "simulate a held sub-agent") {
         return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
           Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
@@ -185,39 +187,50 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       return Stream.fromIterable(
         input.prompt === "simulate a session"
           ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
-          : input.prompt === "simulate unanswered question"
+          : input.prompt === "simulate a forkable turn"
             ? [
-                {
-                  type: "question_requested",
-                  request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
-                },
-                { type: "turn_failed", message: "Provider disconnected before the answer" },
+                { type: "session_bound", providerSessionId: "source-session" },
+                { type: "text_delta", text: "Here is a plan." },
+                { type: "turn_completed", forkPoint: { sessionId: "source-session", checkpoint: "turn-1" } },
               ]
-            : input.prompt === "simulate a tool call"
+            : input.prompt === "simulate unanswered question"
               ? [
-                  { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
-                  { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
-                  { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
-                  { type: "text_delta", text: "Listed and edited." },
-                  { type: "turn_completed" },
+                  {
+                    type: "question_requested",
+                    request: {
+                      id: `question-${input.threadId}`,
+                      threadId: input.threadId,
+                      provider: id,
+                      questions: [],
+                    },
+                  },
+                  { type: "turn_failed", message: "Provider disconnected before the answer" },
                 ]
-              : input.prompt === "simulate a crash mid sub-agent"
+              : input.prompt === "simulate a tool call"
                 ? [
-                    { type: "subagent_updated", subagent },
-                    { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
+                    { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+                    { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
+                    { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
+                    { type: "text_delta", text: "Listed and edited." },
+                    { type: "turn_completed" },
                   ]
-                : input.prompt === "simulate usage limit" && input.home === null
+                : input.prompt === "simulate a crash mid sub-agent"
                   ? [
-                      {
-                        type: "turn_limited",
-                        limit: {
-                          kind: "usage",
-                          message: "Usage limit reached",
-                          reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
-                        },
-                      },
+                      { type: "subagent_updated", subagent },
+                      { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
                     ]
-                  : scriptedTurn,
+                  : input.prompt === "simulate usage limit" && input.home === null
+                    ? [
+                        {
+                          type: "turn_limited",
+                          limit: {
+                            kind: "usage",
+                            message: "Usage limit reached",
+                            reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
+                          },
+                        },
+                      ]
+                    : scriptedTurn,
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
@@ -510,6 +523,7 @@ describe("projects, threads and settings over rpc", () => {
           createdAt: "2026-10-12T00:00:00.000Z",
           completedAt: "2026-10-12T00:00:00.000Z",
           usage: null,
+          forkPoint: null,
         }),
       ),
     )
@@ -810,6 +824,35 @@ describe("stopping a sub-agent over rpc", () => {
 
     heldTurn.resolve()
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+  })
+})
+
+describe("forking over rpc", () => {
+  test("goes on from the chosen turn in a new thread whose first turn forks the session", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect
+      .poll(async () => (await transcript(source.id)).at(-1)?.forkPoint)
+      .toStrictEqual({
+        sessionId: "source-session",
+        checkpoint: "turn-1",
+      })
+    const reply = (await transcript(source.id)).at(-1)!
+
+    const fork = result(await invoke("threads.fork", { threadId: source.id, messageId: reply.id }))
+    expect(fork.worktreeId).toBe(source.worktreeId)
+    expect((await transcript(fork.id)).map((message) => message.parts)).toStrictEqual(
+      (await transcript(source.id)).map((message) => message.parts),
+    )
+
+    turnResumes.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+    await expect.poll(async () => (await transcript(fork.id)).at(-1)?.completedAt).not.toBeNull()
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes.at(-1)).toStrictEqual({ resumeSessionId: boundSession, forkAt: null })
   })
 })
 

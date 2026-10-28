@@ -41,10 +41,16 @@ export type ThreadResumeParams = ThreadStartParams & {
   excludeTurns?: boolean
 }
 
+export type ThreadForkParams = ThreadResumeParams & {
+  /** The last turn the fork keeps. */
+  lastTurnId?: string | null
+}
+
 export type Thread = { id: string; sessionId: string }
 /** `sandbox` is the policy in effect, including the user's config. */
 export type ThreadStartResponse = { thread: Thread; sandbox: SandboxPolicy }
 export type ThreadResumeResponse = ThreadStartResponse
+export type ThreadForkResponse = ThreadStartResponse
 
 export type UserInput =
   | { type: "text"; text: string; text_elements: Array<unknown> }

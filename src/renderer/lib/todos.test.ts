@@ -20,6 +20,7 @@ const message = (...parts: Array<MessagePart>): Message => ({
   createdAt: "2026-10-13T00:00:00.000Z",
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 
 describe("latestTodos", () => {
