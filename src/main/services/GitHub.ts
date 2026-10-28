@@ -162,7 +162,7 @@ const PULL_REQUEST_QUERY = `query PullRequest($owner: String!, $name: String!, $
 }
 
 fragment Comment on Comment {
-  id body createdAt author { login }
+  id body createdAt viewerDidAuthor author { __typename login }
 }`
 
 const GraphQLCheck = Schema.Union([
@@ -194,7 +194,8 @@ const GraphQLComment = Schema.Struct({
   body: Schema.String,
   createdAt: Schema.String,
   url: Schema.String,
-  author: GraphQLAuthor,
+  viewerDidAuthor: Schema.Boolean,
+  author: Schema.NullOr(Schema.Struct({ __typename: Schema.String, login: Schema.String })),
 })
 
 const GraphQLReviewComment = Schema.Struct({
@@ -252,9 +253,17 @@ const toRollupEntry = (check: typeof GraphQLCheck.Type): RollupEntry => {
 }
 
 const toComment = (
-  { id, body, createdAt, url, author }: typeof GraphQLComment.Type,
+  { id, body, createdAt, url, author, viewerDidAuthor }: typeof GraphQLComment.Type,
   location: PullRequestComment["location"] = null,
-): PullRequestComment => ({ id, author: author?.login ?? "ghost", body, createdAt, url, location })
+): PullRequestComment => ({
+  id,
+  author: author?.login ?? "ghost",
+  authorKind: viewerDidAuthor ? "you" : author?.__typename === "Bot" ? "bot" : "human",
+  body,
+  createdAt,
+  url,
+  location,
+})
 
 /** Conversation comments, review summaries and unresolved inline comments, oldest first. */
 const toComments = ({

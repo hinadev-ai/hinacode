@@ -6,6 +6,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { PullRequestDetail, ThreadStatus } from "../../shared/domain.ts"
+import { allWatchEventKinds } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -246,7 +247,7 @@ describe("PullRequests watch persistence", () => {
 
         const restarted = yield* pullRequests.watch(threadId, url)
         expect(restarted.watch?.generation).not.toBe(firstWatch.generation)
-        expect(restarted.watch?.events).toHaveLength(5)
+        expect(restarted.watch?.events).toStrictEqual(allWatchEventKinds)
 
         const current = restarted.watch
         if (current === null) throw new Error("watch missing after restart")

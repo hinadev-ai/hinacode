@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import type { PullRequestDetail, PullRequestWatchSnapshot } from "../../shared/domain.ts"
+import type { PullRequestComment, PullRequestDetail, PullRequestWatchSnapshot } from "../../shared/domain.ts"
 import { allWatchEventKinds } from "../../shared/domain.ts"
 import { snapshotFromDetail, watchEvents, watchMessage, watchStoppedMessage } from "./pullRequestWatch.ts"
 
@@ -40,8 +40,22 @@ const snapshot = (overrides: Partial<PullRequestWatchSnapshot> = {}): PullReques
   mergeable: "mergeable",
   head: "abc1234",
   failingChecks: [],
+  comments: [],
   ...overrides,
 })
+
+const comment = (id: string, overrides: Partial<PullRequestComment> = {}): PullRequestComment => ({
+  id,
+  author: "reviewer",
+  authorKind: "human",
+  body: `Comment ${id}`,
+  createdAt: "2026-10-28T00:00:00Z",
+  url: `https://github.com/o/r/pull/7#issuecomment-${id}`,
+  location: null,
+  ...overrides,
+})
+
+const commented = (...comments: ReadonlyArray<PullRequestComment>) => detail({ comments: [...comments] })
 
 describe("snapshotFromDetail", () => {
   test("collects the failing check names and the head", () => {
@@ -115,6 +129,24 @@ describe("watchEvents", () => {
     expect(watchEvents(snapshot(), merged, allWatchEventKinds)).toStrictEqual(["mergedOrClosed"])
   })
 
+  test("a new comment from a human or a bot is news, the same comments again are not", () => {
+    const told = snapshotFromDetail(commented(comment("1")))
+    const next = snapshotFromDetail(commented(comment("1"), comment("2", { authorKind: "bot" })))
+    expect(watchEvents(told, next, allWatchEventKinds)).toStrictEqual(["commented"])
+    expect(watchEvents(next, next, allWatchEventKinds)).toStrictEqual([])
+  })
+
+  test("the thread's own comments never wake it, since the agent posts as the gh account", () => {
+    const next = snapshotFromDetail(commented(comment("1", { authorKind: "you" })))
+    expect(watchEvents(snapshot(), next, allWatchEventKinds)).toStrictEqual([])
+  })
+
+  test("a fresh watch, or one from before comments were watched, starts from the comments already there", () => {
+    const next = snapshotFromDetail(commented(comment("1")))
+    expect(watchEvents(null, next, allWatchEventKinds)).toStrictEqual([])
+    expect(watchEvents(snapshot({ comments: null }), next, allWatchEventKinds)).toStrictEqual([])
+  })
+
   test("the interest set filters what fires", () => {
     const now = snapshotFromDetail(failingDetail(["CI / test"], { review: "changesRequested" }))
     expect(watchEvents(null, now, ["reviewChanged"])).toStrictEqual(["reviewChanged"])
@@ -138,6 +170,23 @@ describe("watchMessage", () => {
     const message = watchMessage(found, told, ["checksFailed"])
     expect(message).toContain("CI / lint")
     expect(message).not.toContain("CI / test")
+  })
+
+  test("quotes only the new comments, marking bots and inline locations", () => {
+    const told = snapshotFromDetail(commented(comment("1")))
+    const found = commented(
+      comment("1"),
+      comment("2", {
+        author: "cursor",
+        authorKind: "bot",
+        body: "Possible leak.\nClose the handle.",
+        location: { path: "src/a.ts", line: 12 },
+      }),
+    )
+    const message = watchMessage(found, told, ["commented"])
+    expect(message).toContain("@cursor (bot) on src/a.ts:12, https://github.com/o/r/pull/7#issuecomment-2")
+    expect(message).toContain("  > Possible leak.\n  > Close the handle.")
+    expect(message).not.toContain("Comment 1")
   })
 
   test("a merged pull request says watching has ended", () => {

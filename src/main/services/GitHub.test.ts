@@ -414,7 +414,8 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
               body: "Ready for another look.",
               createdAt: "2026-10-02T00:00:00Z",
               url: "https://github.com/o/r/pull/7#issuecomment-2",
-              author: { login: "octocat" },
+              viewerDidAuthor: true,
+              author: { __typename: "User", login: "octocat" },
             },
           ],
         },
@@ -425,14 +426,16 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
               body: "Two things before this lands.",
               createdAt: "2026-10-01T00:00:00Z",
               url: "https://github.com/o/r/pull/7#pullrequestreview-1",
-              author: { login: "reviewer" },
+              viewerDidAuthor: false,
+              author: { __typename: "Bot", login: "copilot-pull-request-reviewer" },
             },
             {
               id: "PRR_3",
               body: "",
               createdAt: "2026-10-03T00:00:00Z",
               url: "https://github.com/o/r/pull/7#pullrequestreview-3",
-              author: { login: "reviewer" },
+              viewerDidAuthor: false,
+              author: { __typename: "User", login: "reviewer" },
             },
           ],
         },
@@ -447,6 +450,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
                     body: "This leaks the handle.",
                     createdAt: "2026-10-01T00:00:01Z",
                     url: "https://github.com/o/r/pull/7#discussion_r1",
+                    viewerDidAuthor: false,
                     author: null,
                     path: "src/a.ts",
                     line: 12,
@@ -463,7 +467,8 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
                     body: "Typo.",
                     createdAt: "2026-10-01T00:00:02Z",
                     url: "https://github.com/o/r/pull/7#discussion_r2",
-                    author: { login: "reviewer" },
+                    viewerDidAuthor: false,
+                    author: { __typename: "User", login: "reviewer" },
                     path: "src/b.ts",
                     line: 3,
                   },
@@ -579,14 +584,16 @@ describe("pull request reads", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
-  it.effect("reads conversation, review and unresolved inline comments, oldest first", () => {
+  it.effect("reads conversation, review and unresolved inline comments, oldest first, with who wrote them", () => {
     const gh = fakeGh(() => apiReply(graphqlPullRequest("Comments")))
     return Effect.gen(function* () {
       const { comments } = yield* (yield* GitHub).pullRequestDetail(PR_URL)
-      expect(comments.map(({ id, author, location }) => ({ id, author, location }))).toStrictEqual([
-        { id: "PRR_1", author: "reviewer", location: null },
-        { id: "PRRC_1", author: "ghost", location: { path: "src/a.ts", line: 12 } },
-        { id: "IC_2", author: "octocat", location: null },
+      expect(
+        comments.map(({ id, author, authorKind, location }) => ({ id, author, authorKind, location })),
+      ).toStrictEqual([
+        { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
+        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12 } },
+        { id: "IC_2", author: "octocat", authorKind: "you", location: null },
       ])
     }).pipe(Effect.provide(gh.layer))
   })
