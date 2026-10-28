@@ -46,6 +46,7 @@ type IndicatedState = keyof typeof rowStatusIndicator
 
 const statusLabel: Record<IndicatedState, string> = {
   running: copy("mobile_status_running"),
+  background: copy("mobile_status_background"),
   awaiting_approval: copy("mobile_status_awaiting"),
   limited: copy("mobile_status_limited"),
   unseen_completed: copy("mobile_status_unseen_completed"),
@@ -75,6 +76,8 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   const links = usePullRequests((pullRequests) => pullRequests.linksByThread[thread.id]) ?? noLinks
   const state = rowState(
     thread.status,
+    // The phone does not receive background tasks yet.
+    false,
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(links),
   )

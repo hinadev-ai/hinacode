@@ -53,6 +53,10 @@ export const selectInboxThreads = (now: number) => (state: Pick<ThreadsState, "b
     .filter((thread) => isActive(thread) && !isPinned(thread) && !isSnoozed(thread, now))
     .toSorted((a, b) => lastActivity(b).localeCompare(lastActivity(a)))
 
+/** Active threads not snoozed at `now`, pinned or not, in no particular order. */
+export const selectAwakeThreads = (now: number) => (state: Pick<ThreadsState, "byId">) =>
+  Object.values(state.byId).filter((thread) => isActive(thread) && !isSnoozed(thread, now))
+
 /** The Inbox's threads snoozed at `now`, the first to wake on top. */
 export const selectSnoozedThreads = (now: number) => (state: Pick<ThreadsState, "byId">) =>
   Object.values(state.byId)

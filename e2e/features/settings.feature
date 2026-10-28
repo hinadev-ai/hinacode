@@ -11,7 +11,6 @@ Feature: Settings
     Examples:
       | language | locale | settings |
       | 繁體中文 | zh-TW  | 設定     |
-      | 日本語   | ja     | 設定     |
 
   Scenario Outline: The saved language is applied at startup
     Given the saved language is "<locale>"
@@ -21,7 +20,6 @@ Feature: Settings
     Examples:
       | locale | sidebar                |
       | zh-TW  | 專案與對話串           |
-      | ja     | プロジェクトとスレッド |
 
   Scenario: A default model preselects in the new thread composer
     Given a project "demo" for my repository

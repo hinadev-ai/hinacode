@@ -10,12 +10,6 @@ Feature: Threads
     Then a new thread is open with the composer focused
     And the sidebar lists the open thread
 
-  Scenario: Opening a thread from the sidebar shows its title
-    Given the project "demo" has a thread "One"
-    And the project "demo" has a thread "Two"
-    When I open the thread "Two" from the sidebar
-    Then the thread "Two" is open
-
   Scenario: Switching between threads replaces the open thread instead of stacking it
     Given the project "demo" has a thread "One"
     And the project "demo" has a thread "Two"

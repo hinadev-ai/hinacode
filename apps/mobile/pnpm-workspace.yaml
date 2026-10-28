@@ -3,3 +3,5 @@ minimumReleaseAgeExclude:
 allowBuilds:
   react-native-enriched-markdown: true
   unrs-resolver: false
+patchedDependencies:
+  react-native-webview@14.0.1: patches/react-native-webview@14.0.1.patch

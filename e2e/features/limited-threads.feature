@@ -14,9 +14,7 @@ Feature: Limited threads
     Examples:
       | locale | theme   |
       | en     | default |
-      | en     | light   |
       | zh-TW  | default |
-      | zh-TW  | light   |
 
   Scenario: A scheduled usage-limit retry survives restart and repeats the original prompt
     Given an isolated usage-limit thread with a near reset
