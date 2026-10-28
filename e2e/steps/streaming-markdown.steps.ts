@@ -100,6 +100,7 @@ When("the agent starts streaming in {string}", async ({ app, names }, title: str
     createdAt: new Date().toISOString(),
     completedAt: null,
     usage: null,
+    forkPoint: null,
   }
   const stream: Stream = { thread, message, seq, text: "" }
   streams.set(app, stream)

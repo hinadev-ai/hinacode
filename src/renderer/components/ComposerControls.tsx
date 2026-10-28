@@ -19,7 +19,7 @@ import {
   RiShieldUserLine,
   RiUserLine,
 } from "react-icons/ri"
-import { type ModelInfo, ProviderId, unlistedModel } from "../../shared/agent.ts"
+import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
@@ -146,8 +146,8 @@ function usePickerOpen(picker: ComposerPicker | undefined) {
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
 /**
- * The thread's model, listed under its agent. Until the first message every agent is listed, so picking
- * another agent's model switches the agent in the same step.
+ * The thread's model, listed under its agent. Every agent is listed unless a turn runs, and picking another agent's
+ * model switches the agent; a started thread continues on it with the conversation handed over.
  */
 export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const environment = useThreadEnvironment(thread.id)
@@ -198,15 +198,12 @@ export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & 
   )
 }
 
-/**
- * The agent's preset models, plus the thread's own. A preset none of whose models the agent still lists
- * falls back to every model, so an agent never vanishes from the picker.
- */
 function usePickerModels(environment: EnvironmentId, provider: ProviderId, keep: string | null) {
-  const listed = useAgentModels(environment, provider, keep)
-  const preset = useSettings(environment).modelPresets[provider]
-  const picked = listed.filter((model) => preset.includes(model.id) || model.id === keep)
-  return preset.length === 0 || !picked.some((model) => model.id !== keep) ? listed : picked
+  return presetModels(
+    useAgentModels(environment, provider, keep),
+    useSettings(environment).modelPresets[provider],
+    keep,
+  )
 }
 
 interface ModelGroupProps {

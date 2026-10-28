@@ -41,10 +41,16 @@ export type ThreadResumeParams = ThreadStartParams & {
   excludeTurns?: boolean
 }
 
+export type ThreadForkParams = ThreadResumeParams & {
+  /** The last turn the fork keeps. */
+  lastTurnId?: string | null
+}
+
 export type Thread = { id: string; sessionId: string }
 /** `sandbox` is the policy in effect, including the user's config. */
 export type ThreadStartResponse = { thread: Thread; sandbox: SandboxPolicy }
 export type ThreadResumeResponse = ThreadStartResponse
+export type ThreadForkResponse = ThreadStartResponse
 
 export type UserInput =
   | { type: "text"; text: string; text_elements: Array<unknown> }
@@ -72,6 +78,7 @@ export type TurnStartResponse = { turn: Turn }
 export type TurnInterruptParams = { threadId: string; turnId: string }
 /** Fails unless `expectedTurnId` is the thread's active turn. */
 export type TurnSteerParams = { threadId: string; input: Array<UserInput>; expectedTurnId: string }
+export type ThreadCompactStartParams = { threadId: string }
 
 export type ModelListParams = { cursor?: string | null; limit?: number | null; includeHidden?: boolean | null }
 export type Model = {
@@ -210,6 +217,7 @@ export type ServerNotificationParams = {
     explanation: string | null
     plan: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>
   }
+  "turn/started": { threadId: string; turn: Turn }
   "turn/completed": { threadId: string; turn: Turn }
   error: { error: TurnError; willRetry: boolean; threadId: string; turnId: string }
 }

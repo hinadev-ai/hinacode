@@ -27,6 +27,7 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import { MAX_CALL_KEYS } from "./remote/server.ts"
+import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -142,6 +143,8 @@ const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
+const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
+const turnPrompts: Array<string> = []
 
 /** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
@@ -170,6 +173,8 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      turnResumes.push({ resumeSessionId: input.resumeSessionId, forkAt: input.forkAt })
+      turnPrompts.push(input.prompt)
       if (input.prompt === "simulate a held sub-agent") {
         return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
           Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
@@ -184,39 +189,50 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       return Stream.fromIterable(
         input.prompt === "simulate a session"
           ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
-          : input.prompt === "simulate unanswered question"
+          : input.prompt === "simulate a forkable turn"
             ? [
-                {
-                  type: "question_requested",
-                  request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
-                },
-                { type: "turn_failed", message: "Provider disconnected before the answer" },
+                { type: "session_bound", providerSessionId: "source-session" },
+                { type: "text_delta", text: "Here is a plan." },
+                { type: "turn_completed", forkPoint: { sessionId: "source-session", checkpoint: "turn-1" } },
               ]
-            : input.prompt === "simulate a tool call"
+            : input.prompt === "simulate unanswered question"
               ? [
-                  { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
-                  { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
-                  { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
-                  { type: "text_delta", text: "Listed and edited." },
-                  { type: "turn_completed" },
+                  {
+                    type: "question_requested",
+                    request: {
+                      id: `question-${input.threadId}`,
+                      threadId: input.threadId,
+                      provider: id,
+                      questions: [],
+                    },
+                  },
+                  { type: "turn_failed", message: "Provider disconnected before the answer" },
                 ]
-              : input.prompt === "simulate a crash mid sub-agent"
+              : input.prompt === "simulate a tool call"
                 ? [
-                    { type: "subagent_updated", subagent },
-                    { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
+                    { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+                    { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
+                    { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
+                    { type: "text_delta", text: "Listed and edited." },
+                    { type: "turn_completed" },
                   ]
-                : input.prompt === "simulate usage limit" && input.home === null
+                : input.prompt === "simulate a crash mid sub-agent"
                   ? [
-                      {
-                        type: "turn_limited",
-                        limit: {
-                          kind: "usage",
-                          message: "Usage limit reached",
-                          reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
-                        },
-                      },
+                      { type: "subagent_updated", subagent },
+                      { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
                     ]
-                  : scriptedTurn,
+                  : input.prompt === "simulate usage limit" && input.home === null
+                    ? [
+                        {
+                          type: "turn_limited",
+                          limit: {
+                            kind: "usage",
+                            message: "Usage limit reached",
+                            reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
+                          },
+                        },
+                      ]
+                    : scriptedTurn,
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
@@ -487,7 +503,7 @@ describe("projects, threads and settings over rpc", () => {
     expect(stored?.userSkills).toBe(false)
   })
 
-  test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
+  test("a thread switches agent, back to that agent's defaults, and marks a switch after its first message", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
     result(await invoke("threads.update", { id: thread.id, effort: "max", fastMode: true }))
@@ -509,12 +525,16 @@ describe("projects, threads and settings over rpc", () => {
           createdAt: "2026-10-12T00:00:00.000Z",
           completedAt: "2026-10-12T00:00:00.000Z",
           usage: null,
+          forkPoint: null,
         }),
       ),
     )
-    expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
-      "ThreadStartedError",
-    )
+    expect(result(await invoke("threads.update", { id: thread.id, provider: "claude" }))).toMatchObject({
+      provider: "claude",
+      providerSessionId: null,
+    } satisfies Partial<Thread>)
+    const { messages } = result(await invoke("threads.transcript", { threadId: thread.id }))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "codex", to: "claude" }])
   })
 
   test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
@@ -812,6 +832,104 @@ describe("stopping a sub-agent over rpc", () => {
   })
 })
 
+describe("forking over rpc", () => {
+  test("goes on from the chosen turn in a new thread whose first turn forks the session", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect
+      .poll(async () => (await transcript(source.id)).at(-1)?.forkPoint)
+      .toStrictEqual({
+        sessionId: "source-session",
+        checkpoint: "turn-1",
+        owner: { provider: "claude", accountId: null },
+      })
+    const reply = (await transcript(source.id)).at(-1)!
+
+    const fork = result(await invoke("threads.fork", { threadId: source.id, messageId: reply.id }))
+    expect(fork.worktreeId).toBe(source.worktreeId)
+    expect((await transcript(fork.id)).map((message) => message.parts)).toStrictEqual(
+      (await transcript(source.id)).map((message) => message.parts),
+    )
+
+    turnResumes.length = 0
+    turnPrompts.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+    expect(turnPrompts).toStrictEqual(["simulate a session"])
+    await expect.poll(async () => (await transcript(fork.id)).at(-1)?.completedAt).not.toBeNull()
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes.at(-1)).toStrictEqual({ resumeSessionId: boundSession, forkAt: null })
+  })
+
+  test("takes the session it forks from to the account an unsent fork switches to", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Fork spare")))
+    const spareHome = { dir: join(dir, "homes", "fork spare"), binary: "claude" }
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const fork = result(
+      await invoke("threads.fork", { threadId: source.id, messageId: (await transcript(source.id)).at(-1)!.id }),
+    )
+
+    copiedSessions.length = 0
+    turnHomes.length = 0
+    turnResumes.length = 0
+    result(await invoke("threads.switchAccount", { id: fork.id, accountId: spare.id }))
+    expect(copiedSessions).toStrictEqual([{ sessionId: "source-session", from: null, to: spareHome }])
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnHomes).toStrictEqual([spareHome])
+    expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
+
+  test("drops an unsent fork's source session when the fork switches agents", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const fork = result(
+      await invoke("threads.fork", { threadId: source.id, messageId: (await transcript(source.id)).at(-1)!.id }),
+    )
+
+    expect(result(await invoke("threads.update", { id: fork.id, provider: "codex" })).forkedFrom).toBeNull()
+    expect(result(await invoke("threads.update", { id: fork.id, provider: "claude" })).forkedFrom).toBeNull()
+    turnResumes.length = 0
+    turnPrompts.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: null, forkAt: null }])
+    expect(turnPrompts).toStrictEqual([
+      expect.stringMatching(/^<conversation_handoff>\n[\s\S]*\n\nsimulate a session$/),
+    ])
+  })
+
+  test("forks a copied turn in the account whose session ran it", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Later account")))
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const sourceReply = (await transcript(source.id)).at(-1)!
+    const middle = result(await invoke("threads.fork", { threadId: source.id, messageId: sourceReply.id }))
+    result(await invoke("threads.send", { threadId: middle.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await transcript(middle.id)).at(-1)?.completedAt ?? null).not.toBeNull()
+    result(await invoke("threads.switchAccount", { id: middle.id, accountId: spare.id }))
+
+    const copiedReply = (await transcript(middle.id)).find((message) => message.forkPoint !== null)!
+    const fork = result(await invoke("threads.fork", { threadId: middle.id, messageId: copiedReply.id }))
+    expect(fork.accountId).toBeNull()
+    turnHomes.length = 0
+    turnResumes.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnHomes).toStrictEqual([null])
+    expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
+})
+
 describe("token usage over rpc", () => {
   test("is null until a turn binds a session, then comes from that session's transcripts", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
@@ -1044,6 +1162,7 @@ const wake = (threadId: string, text: string) =>
   Effect.runSync(
     Queue.offer(claudeWakes, {
       threadId,
+      sessionId: boundSession,
       events: Stream.make({ type: "text_delta", text }, { type: "turn_completed" }),
       discard: Effect.void,
     }),
@@ -1075,6 +1194,7 @@ describe("turns the agent starts over rpc", () => {
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         events: Stream.never,
         discard: Effect.sync(discard),
       }),
@@ -1107,6 +1227,7 @@ describe("turns the agent starts over rpc", () => {
       Effect.runSync(
         Queue.offer(claudeWakes, {
           threadId: thread.id,
+          sessionId: boundSession,
           events: Stream.empty,
           discard: Effect.sync(discard),
         }),
@@ -1128,9 +1249,12 @@ describe("turns the agent starts over rpc", () => {
     const held = Promise.withResolvers<void>()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         discard: Effect.void,
         events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
           Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
@@ -1142,7 +1266,7 @@ describe("turns the agent starts over rpc", () => {
     expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual(["then the docs"])
 
     held.resolve()
-    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["then the docs"])
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["simulate a session", "then the docs"])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 
@@ -1150,15 +1274,17 @@ describe("turns the agent starts over rpc", () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
     wake(thread.id, "The sub-agent finished.")
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
-    expect(await assistantTexts(thread.id)).toStrictEqual([""])
+    expect(await assistantTexts(thread.id)).toStrictEqual(["", ""])
 
     heldTurn.resolve()
     await expect
       .poll(() => assistantTexts(thread.id))
-      .toStrictEqual(["Spawned one sub-agent.", "The sub-agent finished."])
+      .toStrictEqual(["", "Spawned one sub-agent.", "The sub-agent finished."])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 })
@@ -1365,9 +1491,10 @@ const phone = (port: number, options?: { autoPong: boolean }) => {
 }
 
 describe("remote mode", () => {
-  const port = 40000 + Math.floor(Math.random() * 20000)
+  let port = 0
 
   beforeAll(async () => {
+    port = await unusedLoopbackPort()
     result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
   })
@@ -1601,7 +1728,7 @@ describe("remote mode", () => {
 })
 
 describe("remote mode under a test clock", () => {
-  const port = 40000 + Math.floor(Math.random() * 20000)
+  let port = 0
   let clocked: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeLayer>> | TestClock.TestClock, unknown>
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
   const pairedPhone = async (options?: { autoPong: boolean }) => {
@@ -1615,6 +1742,7 @@ describe("remote mode under a test clock", () => {
   }
 
   beforeAll(async () => {
+    port = await unusedLoopbackPort()
     clocked = ManagedRuntime.make(
       makeLayer(join(dir, "clocked.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
     ) as typeof clocked

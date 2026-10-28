@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 import { EntrySource } from "./relayMachines.ts"
@@ -419,6 +419,8 @@ export const Thread = Schema.Struct({
   accountId: Schema.NullOr(Schema.String),
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
+  /** Set on a fork until its first turn binds `providerSessionId`, which starts the session from there. */
+  forkedFrom: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
@@ -459,6 +461,8 @@ export const MessagePart = Schema.Union([
   /** Questions the agent posted without waiting; `text` is how they read once answered. */
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
+  /** The thread moved to another agent. The turn after it starts a new session that gets the transcript above. */
+  Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
 ])
 export type MessagePart = typeof MessagePart.Type
 
@@ -473,6 +477,8 @@ export const Message = Schema.Struct({
   createdAt: Timestamp,
   completedAt: Schema.NullOr(Timestamp),
   usage: Schema.NullOr(TokenUsage),
+  /** Set on the message that ended a turn, when the agent can fork its session there. */
+  forkPoint: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type Message = typeof Message.Type
 
@@ -557,6 +563,10 @@ export const ExperimentalSettings = Schema.Struct({
    * and the result goes back to the VM page. Needs the fingerprint button in the VM view per thread before use.
    */
   tinyVmPasskeys: Schema.Boolean,
+  /** Set for every command in every new tiny VM, the agent's `vm_exec` and the setup script included. */
+  tinyVmEnv: Schema.Record(Schema.String, Schema.String),
+  /** A bash script each new tiny VM runs before any tool reaches it. A failing script fails the start. */
+  tinyVmSetupScript: Schema.String,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -713,7 +723,14 @@ export const defaultSettings: Settings = {
   pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false },
+  experimental: {
+    tinyVm: false,
+    tinyVmTemplate: "default",
+    tinyVmProfile: false,
+    tinyVmPasskeys: false,
+    tinyVmEnv: {},
+    tinyVmSetupScript: "",
+  },
   worktreeRoot: null,
 }
 

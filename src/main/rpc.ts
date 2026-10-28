@@ -93,7 +93,8 @@ export interface HandlerError {
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
-  readonly setBadgeCount: (count: number) => Effect.Effect<void>
+  readonly setBadgeCount: (count: number) => Effect.Effect<void>;
+  readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
@@ -176,6 +177,7 @@ const handlers: Handlers = {
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
   "app.setBadgeCount": ({ count }, desktop) => desktop?.setBadgeCount(count) ?? Effect.void,
+  "app.setColorScheme": (scheme, desktop) => desktop?.setColorScheme(scheme) ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
@@ -205,8 +207,15 @@ const handlers: Handlers = {
   // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
-      const patch = input.provider === undefined ? input : { ...(yield* newThreadOptions(input.provider)), ...input }
-      const thread = yield* Threads.use((threads) => threads.update(patch))
+      const { provider: switchTo } = input
+      const thread =
+        switchTo === undefined
+          ? yield* Threads.use((threads) => threads.update(input))
+          : yield* newThreadOptions(switchTo).pipe(
+              Effect.flatMap((defaults) =>
+                AgentRunner.use((runner) => runner.switchAgent({ ...defaults, ...input, provider: switchTo })),
+              ),
+            )
       if (input.accessMode !== undefined) {
         yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
       }
@@ -239,6 +248,10 @@ const handlers: Handlers = {
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.fork": ({ threadId, messageId }) =>
+    Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),

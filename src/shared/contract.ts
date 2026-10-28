@@ -108,6 +108,8 @@ export const RpcMethods = {
   "app.focus": rpc(Schema.Void, Schema.Void),
   /** The number on the Dock icon. Zero clears it. */
   "app.setBadgeCount": rpc(Schema.Struct({ count: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) }), Schema.Void),
+  /** The appearance of native UI (glass, menus, dialogs), which follows the app theme rather than the system. */
+  "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
     Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
     Schema.Struct({ sessionId: Schema.String }),
@@ -219,6 +221,8 @@ export const RpcMethods = {
   /** Null when the scope has no base: the thread has no live worktree, or no turn started in a git checkout. */
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
   /** Archives the thread, removing its worktree when `Settings.archive.removeWorktree` is on. */
+  /** A new thread that goes on from the turn `messageId` ended, in the same workspace. */
+  "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.archive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   /** Brings an archived thread back as idle. A removed worktree stays removed. */
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
@@ -633,6 +637,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "app.ready": "mutation",
   "app.focus": "mutation",
   "app.setBadgeCount": "mutation",
+  "app.setColorScheme": "mutation",
   "projects.list": "read",
   "projects.create": "mutation",
   "projects.clone": "mutation",
@@ -652,6 +657,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
+  "threads.fork": "mutation",
   "threads.archive": "mutation",
   "threads.unarchive": "mutation",
   "projects.currentBranch": "read",
@@ -799,6 +805,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
   "app.setBadgeCount",
+  "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",
@@ -940,4 +947,6 @@ export interface HinacodeBridge {
   readonly onEvent: (listener: (event: typeof PushEvent.Encoded) => void) => () => void
   /** Absolute path of a dropped or picked `File`; sandboxed renderers have no `File.path`. */
   readonly pathForFile: (file: File) => string
+  /** Whether macOS glass sits behind the page, so the window chrome can let it through. */
+  readonly liquidGlass: boolean
 }

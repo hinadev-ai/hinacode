@@ -1,6 +1,9 @@
 export const RPC_CHANNEL = "rpc"
 export const EVENT_CHANNEL = "event"
 
+/** Renderer argument main adds when macOS glass sits behind the window, which the preload exposes as `liquidGlass`. */
+export const LIQUID_GLASS_ARGUMENT = "--hinacode-liquid-glass"
+
 /** Custom scheme main serves staged attachments from, so the sandboxed renderer can show thumbnails. */
 export const ATTACHMENT_PROTOCOL = "hinacode-attachment"
 

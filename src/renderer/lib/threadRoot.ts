@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
+import { createContext } from "react"
 import { AsyncResult } from "effect/reactivity"
 import { type Thread, threadFolder } from "../../shared/domain.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -23,3 +24,6 @@ export function useThreadRoot(thread: Thread): ThreadRoot | undefined {
   if (path === undefined || (thread.worktreeId !== null && worktree === undefined)) return undefined
   return { path, worktreeId: live?.id ?? null }
 }
+
+/** The folder of the thread on screen, which paths in agent messages are relative to. Null outside a thread. */
+export const ThreadFolder = createContext<string | null>(null)

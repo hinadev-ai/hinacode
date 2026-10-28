@@ -4,12 +4,12 @@ import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { MotionConfig } from "motion/react"
-import { StrictMode, useLayoutEffect } from "react"
+import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { DockBadge } from "./components/DockBadge.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
-import { applyAppearance, useTheme } from "./lib/appearance.ts"
+import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
 import { registry } from "./lib/registry.ts"
 import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
@@ -27,11 +27,17 @@ import { useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
+if (window.hinacode.liquidGlass) document.documentElement.dataset.glass = ""
+
 function App() {
   const locale = useLocale((state) => state.locale)
   const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
   useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  const nativeScheme = themes[appearance.theme].scheme
+  useEffect(() => {
+    void callPromise("app.setColorScheme", nativeScheme)
+  }, [nativeScheme])
   useLayoutEffect(() => {
     void callPromise("app.ready", undefined)
   }, [])

@@ -93,6 +93,19 @@ export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
 })
 
 /**
+ * The agent's preset models, plus `keep`, such as the thread's own. A preset none of whose models the agent still
+ * lists falls back to every model, so an agent never vanishes from the picker.
+ */
+export const presetModels = (
+  listed: ReadonlyArray<ModelInfo>,
+  preset: ReadonlyArray<string>,
+  keep: string | null,
+): ReadonlyArray<ModelInfo> => {
+  const picked = listed.filter((model) => preset.includes(model.id) || model.id === keep)
+  return preset.length === 0 || !picked.some((model) => model.id !== keep) ? listed : picked
+}
+
+/**
  * Something the composer can complete: a Claude slash command or skill typed as `/name`, or a Codex
  * skill typed as `$name`.
  */
@@ -295,6 +308,18 @@ export const Compaction = Schema.Union([
 ])
 export type Compaction = typeof Compaction.Type
 
+/** Where a fork can pick up a session: the agent's own id for the end of one turn, such as Codex's turn id. */
+export const ForkPoint = Schema.Struct({
+  sessionId: Schema.String,
+  checkpoint: Schema.String,
+  /**
+   * The agent and account whose home holds the session, stamped by HinaCode once the turn ends. Points saved
+   * before it was recorded leave it out, and belong to the thread's own agent and account.
+   */
+  owner: Schema.optional(Schema.Struct({ provider: ProviderId, accountId: Schema.NullOr(Schema.String) })),
+})
+export type ForkPoint = typeof ForkPoint.Type
+
 export const AgentEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("session_bound"), providerSessionId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("text_delta"), text: Schema.String }),
@@ -330,7 +355,12 @@ export const AgentEvent = Schema.Union([
   /** Raised by the built-in MCP server, not the provider, while a turn runs. */
   Schema.Struct({ type: Schema.Literal("secret_requested"), request: SecretRequest }),
   Schema.Struct({ type: Schema.Literal("secret_resolved"), requestId: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("turn_completed"), usage: Schema.optional(TokenUsage) }),
+  /** `forkPoint` is left out by an agent that cannot fork its session there. */
+  Schema.Struct({
+    type: Schema.Literal("turn_completed"),
+    usage: Schema.optional(TokenUsage),
+    forkPoint: Schema.optional(ForkPoint),
+  }),
   Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
@@ -352,6 +382,8 @@ export interface RunTurnInput {
   readonly accessMode: AccessMode
   /** Provider session or thread id from a previous turn, for resume. */
   readonly resumeSessionId: string | null
+  /** Starts a new session from `resumeSessionId` that keeps its conversation through this `ForkPoint.checkpoint`. */
+  readonly forkAt: string | null
   /** The added account to run as. Null uses the CLI's own login and home, the only one Muse Code has. */
   readonly home: AccountHome | null
   /** The built-in hinacode MCP server, authenticated as this thread. */

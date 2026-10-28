@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron"
 import { Effect, type ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope } from "../shared/contract.ts"
@@ -26,6 +26,10 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
     if (window) bringToFront(window)
   }),
   setBadgeCount: (count) => Effect.sync(() => app.setBadgeCount(count)),
+  setColorScheme: (scheme) =>
+    Effect.sync(() => {
+      nativeTheme.themeSource = scheme
+    }),
   reveal: (path) => Effect.sync(() => shell.showItemInFolder(path)),
   openExternal: (url) => {
     const allowed = externalUrl(url)

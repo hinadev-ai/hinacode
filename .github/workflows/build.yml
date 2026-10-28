@@ -118,7 +118,8 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      # node-mac-permissions is the desktop's, a git dependency that npm would clone and compile on every Mac install.
+      # The optional dependencies are the desktop's. node-mac-permissions is a git dependency that npm would clone and
+      # compile on every Mac install, and electron-liquid-glass only draws the desktop window.
       - run: |
           npm pkg set version="${GITHUB_REF_NAME#v}"
           npm pkg delete optionalDependencies

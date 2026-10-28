@@ -17,7 +17,7 @@ export function SettingsSection({ title, description, action, children }: Settin
           <h2 id={headingId} className="text-base font-semibold">
             {title}
           </h2>
-          {description && <p className="text-sm text-pretty text-muted-foreground">{description}</p>}
+          {description && <p className="text-xs text-pretty text-muted-foreground/80">{description}</p>}
         </div>
         {action}
       </header>

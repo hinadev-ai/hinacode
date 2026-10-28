@@ -174,17 +174,23 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
     <div className="flex flex-col gap-4">
       {urls.length === 0 && <p className="text-xs text-muted-foreground">{m.pr_links_empty()}</p>}
       {urls.length > 1 && (
-        <ul aria-label={m.pr_links_title()} className="flex flex-col gap-0.5">
-          {urls.map((url) => (
-            <PullRequestRow
-              key={url}
-              url={url}
-              selected={url === selected}
-              watching={links.some((link) => link.url === url && link.watch !== null)}
-              onSelect={() => setPicked(url)}
-            />
-          ))}
-        </ul>
+        <Section
+          id="links"
+          title={m.pr_links_title()}
+          collapsedSummary={<span className="font-normal tabular-nums">{urls.length}</span>}
+        >
+          <ul className="flex flex-col gap-0.5">
+            {urls.map((url) => (
+              <PullRequestRow
+                key={url}
+                url={url}
+                selected={url === selected}
+                watching={links.some((link) => link.url === url && link.watch !== null)}
+                onSelect={() => setPicked(url)}
+              />
+            ))}
+          </ul>
+        </Section>
       )}
       {selected && (
         <SelectedPullRequest
