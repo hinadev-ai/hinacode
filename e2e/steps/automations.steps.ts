@@ -49,6 +49,8 @@ When(
     webhook.automations.set(name, { id: automation.id, secret, url })
     await ready.getByRole("button", { name: "Done", exact: true }).click()
     await expect(ready).toBeHidden()
+    // The list also re-polls every 15 s, so a longer wait would hide a create that skips the refresh.
+    await expect(page.getByRole("heading", { name: names.of(name), exact: true })).toBeVisible({ timeout: 2_000 })
   },
 )
 

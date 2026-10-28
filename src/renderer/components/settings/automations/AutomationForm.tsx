@@ -1,10 +1,10 @@
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
 import { ProviderId } from "../../../../shared/agent.ts"
 import type { Automation, AutomationTrigger, AutomationTriggerType, Project } from "../../../../shared/domain.ts"
-import { callPromise, modelsAtom } from "../../../lib/rpc.ts"
+import { automationsAtom, callPromise, modelsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
@@ -163,6 +163,7 @@ interface AutomationFormProps {
 function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormProps) {
   const environment = useSettingsEnvironment()
   const { defaultModel } = useSettings(environment)
+  const refreshList = useAtomRefresh(automationsAtom(environment))
   const editing = state.mode === "edit"
   const [draft, setDraft] = useState<Draft>(() =>
     editing ? draftFrom(state.automation) : emptyDraft(projects[0]?.id ?? "", defaultModel.claude ?? ""),
@@ -183,12 +184,14 @@ function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormPr
     try {
       if (editing) {
         await callPromise("automations.update", { id: state.automation.id, ...fields })
+        refreshList()
         onDone()
       } else {
         const { automation, secret } = await callPromise("automations.create", {
           projectId: input.projectId,
           ...fields,
         })
+        refreshList()
         onCreated(automation, secret)
       }
       return null
