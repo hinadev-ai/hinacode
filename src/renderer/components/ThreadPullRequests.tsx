@@ -798,7 +798,7 @@ function CommentsSection({
       {comments.length === 0 ? (
         <p className="text-xs text-muted-foreground">{m.pr_comments_empty()}</p>
       ) : (
-        <ol className="flex flex-col gap-2">
+        <ol className="flex flex-col gap-5">
           {comments.map((comment) => (
             <Comment key={comment.id} comment={comment} pullRequest={pullRequest} threadId={threadId} />
           ))}
@@ -830,11 +830,11 @@ function Comment({
   const where = location && `${location.path}${location.line === null ? "" : `:${location.line}`}`
 
   return (
-    <li className="flex flex-col gap-1.5 rounded-md border p-2.5">
+    <li className="flex flex-col gap-1.5">
       <header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span className="min-w-0 truncate font-medium text-foreground">{comment.author}</span>
         {comment.authorKind === "bot" && (
-          <Badge variant="outline" className="h-4 px-1.5 text-[0.625rem] text-muted-foreground">
+          <Badge variant="secondary" className="h-4 px-1.5 text-[0.625rem]">
             {m.pr_comment_bot()}
           </Badge>
         )}
