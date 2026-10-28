@@ -125,6 +125,8 @@ export const RpcMethods = {
    * A null id dismisses a simulator that failed before it was created.
    */
   "device.detach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: Schema.NullOr(DeviceId) }), Schema.Void),
+  /** Stops and deletes a device on the thread's machine, whoever created it. Refused while another thread uses it. */
+  "device.delete": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), Schema.Void),
   /** The newest frame after `after`, waiting up to a second for one. Each call renews the stream's lease. */
   "device.frame": rpc(
     Schema.Struct({
@@ -688,6 +690,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.attach": "mutation",
   "device.create": "mutation",
   "device.detach": "mutation",
+  "device.delete": "mutation",
   "device.frame": "read",
   "device.command": "mutation",
   "device.control": "mutation",

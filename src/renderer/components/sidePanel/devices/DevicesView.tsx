@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useState } from "react"
 import { RiCheckLine, RiCircleLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri"
-import { type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
+import { devicePlatformOf, type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
 import { callPromise, threadDevicesAtom } from "../../../lib/rpc.ts"
@@ -165,7 +165,11 @@ function Failed({ threadId, device, onDetach }: FailedProps) {
         </Button>
       </div>
       <DeleteDeviceDialog
-        name={confirmingDelete ? device.name : null}
+        device={
+          confirmingDelete && deviceId !== null
+            ? { name: device.name, platform: devicePlatformOf(deviceId), owned: true }
+            : null
+        }
         onCancel={() => setConfirmingDelete(false)}
         onDelete={() => {
           setConfirmingDelete(false)

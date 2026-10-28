@@ -34,7 +34,7 @@ import { Input } from "../../ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverTrigger } from "../../ui/popover.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
-import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
+import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
 
@@ -176,6 +176,12 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
       await callPromise("device.detach", { threadId, deviceId })
       onDetach()
     })
+  // Detaching deletes a simulator HinaCode created, so only the user's own devices need the delete call.
+  const remove = () =>
+    run(async () => {
+      await callPromise(owned ? "device.detach" : "device.delete", { threadId, deviceId })
+      onDetach()
+    })
   const waiting = control === "user" && agentWaiting
   const status = waiting
     ? m.devices_agent_waiting()
@@ -241,13 +247,10 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
             <TooltipContent>{m.devices_more()}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-44">
-            {owned ? (
-              <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
-                {m.devices_delete()}
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={detach}>{m.devices_detach()}</DropdownMenuItem>
-            )}
+            {!owned && <DropdownMenuItem onClick={detach}>{m.devices_detach()}</DropdownMenuItem>}
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
+              {deleteDeviceLabel(device.platform)}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -308,11 +311,11 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
         {announcement}
       </p>
       <DeleteDeviceDialog
-        name={confirmingDelete ? device.name : null}
+        device={confirmingDelete ? { name: device.name, platform: device.platform, owned } : null}
         onCancel={() => setConfirmingDelete(false)}
         onDelete={() => {
           setConfirmingDelete(false)
-          detach()
+          remove()
         }}
       />
     </div>

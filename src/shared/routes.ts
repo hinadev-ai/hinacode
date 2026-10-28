@@ -34,6 +34,7 @@ export const routes: Record<RpcMethod, Route> = {
   "device.attach": thread,
   "device.create": thread,
   "device.detach": thread,
+  "device.delete": thread,
   "device.frame": thread,
   "device.command": thread,
   "device.control": thread,

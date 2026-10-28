@@ -14,6 +14,7 @@ import { unavailableDriver } from "./unavailable.ts"
 
 const USERS_DEVICE: DeviceId = "ios:11111111-1111-1111-1111-111111111111"
 const SECOND_DEVICE: DeviceId = "ios:33333333-3333-3333-3333-333333333333"
+const SPARE_DEVICE: DeviceId = "ios:44444444-4444-4444-4444-444444444444"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
@@ -35,6 +36,7 @@ const devices = new Map<DeviceId, Device>([
   ],
 ])
 devices.set(SECOND_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SECOND_DEVICE, name: "Someone's iPad" })
+devices.set(SPARE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SPARE_DEVICE, name: "Someone's spare iPhone" })
 
 const ios: DevicePlatformDriver = {
   ...unavailableDriver({ kind: "ready" }),
@@ -172,6 +174,24 @@ describe("Devices", () => {
         sent.length = 0
         expect(yield* service.act(threadId, "someone's ipad", [touch])).toBe("done")
         expect(sent).toEqual([{ deviceId: SECOND_DEVICE, command: touch }])
+      }),
+    )
+
+    it.effect("deletes the user's own device on request, but not while another thread has it attached", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const using = yield* seedThread({ rootPath: "/tmp/kk-devices-using" })
+        const deleting = yield* seedThread({ rootPath: "/tmp/kk-devices-deleting" })
+        yield* service.attach(using.threadId, SPARE_DEVICE)
+        removed.length = 0
+
+        const refused = yield* Effect.flip(service.delete(deleting.threadId, SPARE_DEVICE))
+        expect(refused.message).toContain("Another thread")
+        expect(removed).toEqual([])
+
+        yield* service.detach(using.threadId, SPARE_DEVICE)
+        yield* service.delete(deleting.threadId, SPARE_DEVICE)
+        expect(removed).toEqual([SPARE_DEVICE])
       }),
     )
   })

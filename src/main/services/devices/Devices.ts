@@ -38,6 +38,8 @@ export class Devices extends Context.Service<
     readonly attach: (threadId: string, deviceId: DeviceId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly create: (threadId: string) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
+    /** Deletes any device on the machine, the user's own included, unless another thread has it attached. */
+    readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
     readonly frame: (input: RpcRequest<"device.frame">) => Effect.Effect<{ frame: DeviceFrame | null }, DevicesError>
     /** The user's input. It takes control of that device from the agent. */
     readonly command: (input: RpcRequest<"device.command">) => Effect.Effect<void, DevicesError>
@@ -521,7 +523,8 @@ const make = (options: DevicesOptions) =>
         }
       })
 
-    const detachNow = async (threadId: string, deviceId: DeviceId | null) => {
+    /** Deletes the device too when HinaCode created it for the thread, or when `remove` asks to. */
+    const detachNow = async (threadId: string, deviceId: DeviceId | null, remove = false) => {
       preparing.delete(keyOf(threadId, deviceId ?? NEW))
       if (deviceId === null) return removeState(threadId, NEW)
       const row = await readRow(threadId, deviceId)
@@ -530,7 +533,7 @@ const make = (options: DevicesOptions) =>
       const live = links.get(deviceId)
       if (live && !stillUsed) closeLive(live)
       // The row goes only after the device, so a failed removal is retried instead of leaving it to look like the user's.
-      if (row?.owned) await driverOf(deviceId).remove(deviceId)
+      if (row?.owned || remove) await driverOf(deviceId).remove(deviceId)
       await deleteRow(threadId, deviceId)
     }
 
@@ -633,6 +636,19 @@ const make = (options: DevicesOptions) =>
           return createFor(threadId)
         }),
       detach: (threadId, deviceId) => attempt(() => detachNow(threadId, deviceId)),
+      delete: (threadId, deviceId) =>
+        attempt(async () => {
+          const rows = await run(
+            sql<{
+              threadId: string
+            }>`SELECT thread_id FROM thread_device WHERE device_id = ${deviceId} AND thread_id != ${threadId}`,
+          )
+          const elsewhere = [...states].some(([other, entries]) => other !== threadId && entries.has(deviceId))
+          if (rows.length > 0 || elsewhere) {
+            throw new DevicesError({ message: "Another thread has this device attached. Detach it there first." })
+          }
+          await detachNow(threadId, deviceId, true)
+        }),
       frame: (input) =>
         attempt(async () => {
           if (!input.visible) return { frame: null }

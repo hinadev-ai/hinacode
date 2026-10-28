@@ -39,7 +39,7 @@ export interface DevicePlatformDriver {
     onStep: (step: PrepareStep) => void,
     onCreated: (id: DeviceId) => Promise<void>,
   ) => Promise<DeviceId>
-  /** Deletes a device HinaCode created. The service never calls it for any other device. */
+  /** Stops and deletes a device: one HinaCode created, or any the user chose to delete. */
   readonly remove: (id: DeviceId) => Promise<void>
   readonly connect: (id: DeviceId, onFrame: (frame: Frame) => void) => Promise<DeviceLink>
   /** A full-resolution PNG of the screen, for agent tools and picks. */

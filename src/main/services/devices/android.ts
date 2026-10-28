@@ -1,9 +1,9 @@
 import { execFile, spawn } from "node:child_process"
 import { once } from "node:events"
-import { access, readdir, readFile } from "node:fs/promises"
+import { access, readdir, readFile, rm } from "node:fs/promises"
 import { createServer } from "node:net"
 import { homedir, tmpdir, userInfo } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { promisify } from "node:util"
 import * as grpc from "@grpc/grpc-js"
 import * as protoLoader from "@grpc/proto-loader"
@@ -70,6 +70,7 @@ const BOOT_TIMEOUT_MS = 4 * 60 * 1000
 const FRAME_SHORT_SIDE = 540
 const MAX_STREAM_RESTARTS = 3
 const FIRST_GRPC_PORT = 8600
+const STOP_TIMEOUT_MS = 15_000
 /** A stalled emulator never answers, and input runs in order, so one stuck call would hold every later one. */
 const CALL_TIMEOUT_MS = 10_000
 /** About one wheel notch on Android, which scrolls by 64 dp. Wheel deltas are CSS pixels of a screen drawn near 1 dp per pixel. */
@@ -236,11 +237,14 @@ const memoryOf = (pid: number) =>
     () => null,
   )
 
-const avdConfig = async (name: string) => {
+/** The AVD's folder, as its `<name>.ini` pointer names it. */
+const avdDir = async (name: string) => {
   const pointer = parseIni(await readFile(join(avdHome(), `${name}.ini`), "utf8").catch(() => ""))
-  const dir = pointer.get("path") ?? join(avdHome(), `${name}.avd`)
-  return parseIni(await readFile(join(dir, "config.ini"), "utf8").catch(() => ""))
+  return pointer.get("path") ?? join(avdHome(), `${name}.avd`)
 }
+
+const avdConfig = async (name: string) =>
+  parseIni(await readFile(join(await avdDir(name), "config.ini"), "utf8").catch(() => ""))
 
 const runningEmulator = async (id: DeviceId) => {
   const emulator = (await running()).get(avdNameOf(id))
@@ -630,5 +634,22 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     await shell(emulator, "am", "start", "-n", quoteForRemoteShell(component))
   }
 
-  return { support, list, boot, create: refuseCreate, remove: refuseCreate, connect, screenshot, describe, launch }
+  /** Stops the emulator, then deletes the AVD the way `avdmanager delete avd` does: its folder and its pointer. */
+  const remove: DevicePlatformDriver["remove"] = async (id) => {
+    const name = avdNameOf(id)
+    const emulator = (await running()).get(name)
+    if (emulator) {
+      await adb(emulator, ["emu", "kill"], 10_000).catch(() => undefined)
+      const deadline = Date.now() + STOP_TIMEOUT_MS
+      while ((await running()).has(name) && Date.now() < deadline) await sleep(500)
+      if ((await running()).has(name)) process.kill(emulator.pid, "SIGKILL")
+    }
+    const dir = await avdDir(name)
+    // The pointer is a file anyone can edit, so only a folder named for this AVD is ever removed.
+    if (basename(dir) !== `${name}.avd`) throw new DeviceError(`The AVD ${name} points at ${dir}, so HinaCode left it.`)
+    await rm(dir, { recursive: true, force: true })
+    await rm(join(avdHome(), `${name}.ini`), { force: true })
+  }
+
+  return { support, list, boot, create: refuseCreate, remove, connect, screenshot, describe, launch }
 }

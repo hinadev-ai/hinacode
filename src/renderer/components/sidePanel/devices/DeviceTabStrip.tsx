@@ -28,6 +28,12 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 
 const NO_DEVICES: ThreadDevices = []
 
+/** A simulator still being created has no id yet, and HinaCode only creates iOS simulators. */
+const platformOf = (entry: ThreadDevice) => {
+  const id = threadDeviceId(entry)
+  return id === null ? "ios" : devicePlatformOf(id)
+}
+
 export const deviceTabId = (threadId: string, tab: string) => `device-tab-${threadId}-${tab}`
 export const devicePanelId = (threadId: string, tab: string) => `device-panel-${threadId}-${tab}`
 
@@ -123,7 +129,7 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
         <RiAddLine aria-hidden />
       </Button>
       <DeleteDeviceDialog
-        name={deleting && threadDeviceName(deleting)}
+        device={deleting && { name: threadDeviceName(deleting), platform: platformOf(deleting), owned: true }}
         onCancel={() => setDeleting(null)}
         onDelete={() => {
           if (deleting) detach(deleting)

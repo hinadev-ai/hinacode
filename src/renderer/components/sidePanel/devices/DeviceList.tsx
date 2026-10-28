@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
-import { RiAddLine, RiRefreshLine } from "react-icons/ri"
+import { RiAddLine, RiDeleteBinLine, RiRefreshLine } from "react-icons/ri"
 import {
   type Device,
   type DeviceHost,
@@ -21,6 +21,7 @@ import { Badge } from "../../ui/badge.tsx"
 import { Button } from "../../ui/button.tsx"
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
+import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 
 const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
 
@@ -49,6 +50,12 @@ export function DeviceList({ thread }: { thread: Thread }) {
     select(device.id)
     if (!attached.has(device.id)) run(() => callPromise("device.attach", { threadId: thread.id, deviceId: device.id }))
   }
+  const [deleting, setDeleting] = useState<Device | null>(null)
+  const remove = (device: Device) =>
+    run(async () => {
+      await callPromise("device.delete", { threadId: thread.id, deviceId: device.id })
+      refresh()
+    })
   const create = () => {
     select("new")
     run(async () => {
@@ -87,6 +94,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
               attached={attached}
               pending={pending}
               onAttach={attach}
+              onDelete={setDeleting}
             />
             <PlatformSection
               platform="android"
@@ -95,6 +103,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
               attached={attached}
               pending={pending}
               onAttach={attach}
+              onDelete={setDeleting}
             />
           </>
         ))
@@ -107,6 +116,16 @@ export function DeviceList({ thread }: { thread: Thread }) {
           </div>
         ))
         .orElse(() => null)}
+      <DeleteDeviceDialog
+        device={
+          deleting && { name: deleting.name, platform: deleting.platform, owned: deleting.ownerThreadId === thread.id }
+        }
+        onCancel={() => setDeleting(null)}
+        onDelete={() => {
+          if (deleting) remove(deleting)
+          setDeleting(null)
+        }}
+      />
     </div>
   )
 }
@@ -142,9 +161,10 @@ interface PlatformSectionProps {
   readonly attached: ReadonlySet<string>
   readonly pending: boolean
   readonly onAttach: (device: Device) => void
+  readonly onDelete: (device: Device) => void
 }
 
-function PlatformSection({ platform, host, threadId, attached, pending, onAttach }: PlatformSectionProps) {
+function PlatformSection({ platform, host, threadId, attached, pending, onAttach, onDelete }: PlatformSectionProps) {
   const support = host[platform]
   const unavailable = supportMessage(support)
   const devices = host.devices.filter((device) => device.platform === platform).toSorted(byState)
@@ -176,6 +196,7 @@ function PlatformSection({ platform, host, threadId, attached, pending, onAttach
                 attached={attached.has(device.id)}
                 pending={pending}
                 onAttach={() => onAttach(device)}
+                onDelete={() => onDelete(device)}
               />
             ))}
           </ul>
@@ -208,9 +229,10 @@ interface DeviceRowProps {
   readonly attached: boolean
   readonly pending: boolean
   readonly onAttach: () => void
+  readonly onDelete: () => void
 }
 
-function DeviceRow({ device, threadId, attached, pending, onAttach }: DeviceRowProps) {
+function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: DeviceRowProps) {
   const { slim } = device
   // Archiving the thread that created it deletes it, so another thread cannot lean on it.
   const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
@@ -262,6 +284,12 @@ function DeviceRow({ device, threadId, attached, pending, onAttach }: DeviceRowP
       >
         {attached ? m.devices_show() : m.devices_attach()}
       </Button>
+      <IconAction
+        icon={RiDeleteBinLine}
+        label={m.devices_delete_tab({ name: device.name })}
+        onClick={onDelete}
+        disabled={pending || anotherThreads}
+      />
     </li>
   )
 }
