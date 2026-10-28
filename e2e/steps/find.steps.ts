@@ -44,6 +44,7 @@ const finishTurn = async (
     createdAt: SEEDED_AT,
     completedAt: null,
     usage: null,
+    forkPoint: null,
   }
   const push = (event: AgentEvent): PushEvent => ({ type: "thread.event", threadId, seq: ++seq, event })
   const events: Array<PushEvent> = [{ type: "message.created", seq: ++seq, message }]

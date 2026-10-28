@@ -98,6 +98,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
+  forkAt: null,
   home,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: AGENT_INSTRUCTIONS,
@@ -157,6 +158,29 @@ describe("Codex app-server log", () => {
     writeFileSync(logPath, '{"method":"turn/start"\n')
     expect(received).toThrow(SyntaxError)
   })
+})
+
+describe("Codex fork", () => {
+  it.live("forks the thread through the given turn and offers each completed turn as a fork point", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const events = yield* provider
+          .runTurn({ ...input("fork"), resumeSessionId: "codex-thread", forkAt: "turn-1" })
+          .pipe(Stream.runCollect)
+        const forked = received().find((message) => message.method === "thread/fork")
+        expect(forked?.params).toMatchObject({ threadId: "codex-thread", lastTurnId: "turn-1" })
+        expect(countOf("thread/resume")).toBe(0)
+        expect(events.find((event) => event.type === "session_bound")).toStrictEqual({
+          type: "session_bound",
+          providerSessionId: "codex-fork",
+        })
+        const completed = events.find((event) => event.type === "turn_completed")
+        expect(completed?.type === "turn_completed" && completed.forkPoint?.sessionId).toBe("codex-fork")
+      }),
+    ),
+  )
 })
 
 describe("Codex auto-compact", () => {
@@ -354,6 +378,7 @@ describe("Codex token usage", () => {
         expect(turn.events.at(-1)).toStrictEqual({
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
+          forkPoint: { sessionId: "codex-thread", checkpoint: "turn-1" },
         })
       }),
     ),

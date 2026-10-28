@@ -12,6 +12,7 @@ const assistant = (text: string): Message => ({
   createdAt: "2026-10-12T00:00:00.000Z",
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 const approval: ApprovalRequest = {
   id: "a1",

@@ -114,6 +114,8 @@ const reply = ({ id, method, params }) => {
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
+    case "thread/fork":
+      return send({ id, result: { thread: { id: "codex-fork" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })

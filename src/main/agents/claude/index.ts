@@ -108,6 +108,8 @@ interface Session extends MapState, ApprovalSession {
   readonly autoCompactTokens: number | null
   permissionMode: PermissionMode
   sessionId: string | null
+  /** Uuid of the latest assistant message in the session's own chain, where a fork keeps the turn it ends. */
+  lastAssistantUuid: string | null
   turn: TurnQueue | null
   interrupted: boolean
   /** Uuids of the prompts sent during the current turn: the first one and every steer. */
@@ -386,6 +388,8 @@ export const layer = Layer.effect(
       if (session.turn === null) return
       if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
         event = { type: "turn_failed", message: "Interrupted" }
+      if (event.type === "turn_completed" && session.sessionId !== null && session.lastAssistantUuid !== null)
+        event = { ...event, forkPoint: { sessionId: session.sessionId, checkpoint: session.lastAssistantUuid } }
       Queue.offerUnsafe(session.turn, event)
       if (isTerminal(event)) {
         Queue.endUnsafe(session.turn)
@@ -554,6 +558,7 @@ export const layer = Layer.effect(
           return
         }
       } else if (stale) return
+      if (message.type === "assistant" && message.parent_tool_use_id === null) session.lastAssistantUuid = message.uuid
       if (message.type === "system" && message.subtype === "init") {
         session.sessionId = message.session_id
         resumable.set(session.threadId, {
@@ -635,6 +640,7 @@ export const layer = Layer.effect(
                   ...(hidden !== null && { skillOverrides: hidden }),
                 },
                 ...(resume === undefined ? {} : { resume }),
+                ...(input.forkAt !== null && { forkSession: true, resumeSessionAt: input.forkAt }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
                 systemPrompt: { type: "preset", preset: "claude_code", append: input.instructions },
@@ -685,6 +691,7 @@ export const layer = Layer.effect(
           subagents: new Map(),
           lastRequest: null,
           sessionId: resume ?? null,
+          lastAssistantUuid: null,
           turn: null,
           interrupted: false,
           turnPrompts: new Set(),

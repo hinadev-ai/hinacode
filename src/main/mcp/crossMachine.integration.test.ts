@@ -22,6 +22,7 @@ import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
 import { RemoteAccess } from "../remote/access.ts"
+import { unusedLoopbackPort } from "../remote/testing.ts"
 import { Peers } from "../remote/peers.ts"
 import { Events, PushBroadcast, WindowPush } from "../services/Events.ts"
 import { Messages } from "../services/Messages.ts"
@@ -162,6 +163,7 @@ const seedMessage = (runtime: Runtime, threadId: string, text: string) =>
         createdAt: "2026-10-26T00:00:00.000Z",
         completedAt: "2026-10-26T00:00:00.000Z",
         usage: null,
+        forkPoint: null,
       }),
     ),
   )
@@ -187,7 +189,7 @@ beforeAll(async () => {
   mkdirSync(join(dir, "cloud"))
   mkdirSync(join(dir, "desktop"))
 
-  const cloudPort = 40000 + Math.floor(Math.random() * 20000)
+  const cloudPort = await unusedLoopbackPort()
   cloud = ManagedRuntime.make(makeCloud(join(dir, "cloud", "hinacode.sqlite")))
   await cloud.runPromise(
     Settings.use((settings) => settings.set({ remote: { enabled: true, bindHost: "127.0.0.1", port: cloudPort } })),

@@ -61,6 +61,7 @@ export function SubagentTranscript({
             createdAt,
             completedAt: status === "running" ? null : createdAt,
             usage: null,
+            forkPoint: null,
           },
         ]
 

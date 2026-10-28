@@ -19,6 +19,7 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   accessMode: "supervised",
   accountId: null,
   providerSessionId: null,
+  forkedFrom: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,

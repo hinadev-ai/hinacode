@@ -49,6 +49,7 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
     userSkills: true,
     accessMode,
     resumeSessionId: null,
+    forkAt: null,
     home: null,
     mcpServer: { url: mcp!.url, headers: { authorization: "Bearer test" } },
     instructions: AGENT_INSTRUCTIONS,
@@ -799,6 +800,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               userSkills: true,
               accessMode: "supervised",
               resumeSessionId: null,
+              forkAt: null,
               home: null,
               mcpServer: { url: mcp!.url, headers: { authorization: "Bearer [REDACTED]" } },
             })

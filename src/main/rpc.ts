@@ -246,6 +246,10 @@ const handlers: Handlers = {
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.fork": ({ threadId, messageId }) =>
+    Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
