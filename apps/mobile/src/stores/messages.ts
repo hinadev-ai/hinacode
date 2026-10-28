@@ -144,7 +144,10 @@ export const useMessages = create<MessagesState>()((set, get) => {
 
     reload: () => {
       for (const [threadId, history] of Object.entries(get().byThread))
-        if (get().watched.has(threadId)) refresh(threadId, history)
+        if (get().watched.has(threadId)) {
+          currentLoadToken.delete(threadId)
+          refresh(threadId, history)
+        }
     },
 
     watched: new Set(),
