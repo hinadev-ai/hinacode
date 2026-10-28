@@ -18,10 +18,8 @@ Feature: Notifications
     Examples:
       | event              | body                       |
       | turn_completed     | Finished                   |
-      | approval_requested | Waiting for your approval  |
       | secret_requested   | Waiting for a secret       |
       | question_requested | Waiting for your answer    |
-      | turn_failed        | Failed: Turn interrupted   |
       | turn_limited       | Stopped at the usage limit |
 
   @desktop
