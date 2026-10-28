@@ -60,6 +60,8 @@ import type {
   SkillsListParams,
   SkillsListResponse,
   ThreadItem,
+  ThreadForkParams,
+  ThreadForkResponse,
   ThreadResumeParams,
   ThreadStartParams,
   ThreadStartResponse,
@@ -462,13 +464,21 @@ const make = Effect.gen(function* () {
             // Codex ignores thread/resume config for a thread it has loaded, so a new threshold needs it unloaded.
             yield* client.request("thread/unsubscribe", { threadId: resumed })
           }
-          const { thread, sandbox } = input.resumeSessionId
-            ? yield* client.request<ThreadStartResponse>("thread/resume", {
-                ...overrides,
-                threadId: input.resumeSessionId,
-                excludeTurns: true,
-              } satisfies ThreadResumeParams)
-            : yield* client.request<ThreadStartResponse>("thread/start", overrides)
+          const { thread, sandbox } =
+            input.resumeSessionId === null
+              ? yield* client.request<ThreadStartResponse>("thread/start", overrides)
+              : input.forkAt === null
+                ? yield* client.request<ThreadStartResponse>("thread/resume", {
+                    ...overrides,
+                    threadId: input.resumeSessionId,
+                    excludeTurns: true,
+                  } satisfies ThreadResumeParams)
+                : yield* client.request<ThreadForkResponse>("thread/fork", {
+                    ...overrides,
+                    threadId: input.resumeSessionId,
+                    lastTurnId: input.forkAt,
+                    excludeTurns: true,
+                  } satisfies ThreadForkParams)
           loadedCompactLimits.set(thread.id, input.autoCompactTokens)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
@@ -810,7 +820,7 @@ const make = Effect.gen(function* () {
                   openTools.clear()
                   yield* emit(
                     status === "completed"
-                      ? { type: "turn_completed", usage }
+                      ? { type: "turn_completed", usage, forkPoint: { sessionId: thread.id, checkpoint: turn.turnId } }
                       : { type: "turn_failed", message: error?.message ?? lastError ?? `Turn ${status}` },
                   )
                   return true

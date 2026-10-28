@@ -153,6 +153,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
+  forkAt: null,
   home: null,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: "Work in hinacode",

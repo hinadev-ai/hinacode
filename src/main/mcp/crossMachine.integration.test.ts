@@ -163,6 +163,7 @@ const seedMessage = (runtime: Runtime, threadId: string, text: string) =>
         createdAt: "2026-10-26T00:00:00.000Z",
         completedAt: "2026-10-26T00:00:00.000Z",
         usage: null,
+        forkPoint: null,
       }),
     ),
   )
