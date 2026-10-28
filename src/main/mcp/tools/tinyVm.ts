@@ -3,7 +3,8 @@ import { type McpSchema, Toolkit } from "effect/ai"
 import { Attachments } from "../../services/Attachments.ts"
 import type { VmAction } from "../../services/tinyVm/rfb.ts"
 import type { ExecResult } from "../../services/tinyVm/sbx.ts"
-import { TinyVm } from "../../services/tinyVm/TinyVm.ts"
+import type { WrittenTree } from "../../services/tinyVm/tar.ts"
+import { MAX_TRANSFER_BYTES, TinyVm } from "../../services/tinyVm/TinyVm.ts"
 import * as McpTool from "./tool.ts"
 
 /** Waits this long after acting before the screenshot, so the screen has reacted. */
@@ -32,6 +33,14 @@ const execReport = (result: ExecResult, timeoutSeconds: number, background: bool
     tail("stderr", result.stderr),
   ].join("\n\n")
 }
+
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
+
+const pullReport = (guestPath: string, pulled: WrittenTree) =>
+  [
+    `Copied ${guestPath} from the VM to ${pulled.path} (${pulled.files} ${pulled.files === 1 ? "file" : "files"}, ${megabytes(pulled.bytes)}).`,
+    ...(pulled.skippedLinks.length === 0 ? [] : [`Skipped symlinks: ${pulled.skippedLinks.join(", ")}`]),
+  ].join("\n")
 
 const Coordinate = (axis: "x" | "y", what: string) =>
   Schema.Int.annotate({
@@ -124,6 +133,15 @@ export const VmTools = Toolkit.make(
       ),
     }),
   }),
+  McpTool.make("vm_pull_file", {
+    description: `Copy a file or folder from the tiny VM to this machine, to hand back something made or downloaded there. It lands in a new folder HinaCode picks, and the result names the path; copy or move it from there yourself. At most ${MAX_TRANSFER_BYTES / 1024 / 1024} MB, so compress or split anything bigger first. Symlinks are skipped and files lose their execute bit. ${STARTS}`,
+    parameters: Schema.Struct({
+      path: Schema.String.annotate({
+        description:
+          "The file or folder in the VM, absolute or relative to the home folder, like `~/Downloads/report.pdf`.",
+      }),
+    }),
+  }),
 )
 
 const shown = (data: Uint8Array, caption: string): ReadonlyArray<McpSchema.ContentBlock> => [
@@ -194,6 +212,10 @@ export const vmToolsLayer = VmTools.toLayer(
             const report = execReport(output, timeoutSeconds, background)
             return notice === undefined ? report : `${report}\n\n${notice}`
           }),
+        ),
+      vm_pull_file: ({ path }) =>
+        McpTool.CallingThread.use((threadId) =>
+          Effect.map(tinyVm.pullFiles(threadId, path), (pulled) => pullReport(path, pulled)),
         ),
     })
   }),

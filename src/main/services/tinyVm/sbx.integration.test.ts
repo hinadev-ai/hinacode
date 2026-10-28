@@ -3,7 +3,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Redacted } from "effect"
-import { readLogin } from "./sbx.ts"
+import { readLogin, sbxClient } from "./sbx.ts"
+import { startFakeSbx } from "./testing.ts"
 
 const configFile = (contents: string) => {
   const path = join(mkdtempSync(join(tmpdir(), "kk-sbx-login-")), "config.json")
@@ -49,5 +50,21 @@ describe("readLogin", () => {
       const notJson = yield* Effect.flip(readLogin({ configPath: notJsonPath, env: {} }))
       expect(notJson.message).toContain(notJsonPath)
     }),
+  )
+})
+
+describe("getFiles", () => {
+  it.effect("stops reading an archive once it passes the cap", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fake = yield* startFakeSbx
+        const sbx = sbxClient({ url: fake.url, token: Redacted.make(fake.token) })
+        const { id } = yield* sbx.create("default")
+        fake.seedFile(id, "big", new Uint8Array(4096))
+        expect((yield* sbx.getFiles(id, "big", 4096)).length).toBe(4096)
+        const error = yield* Effect.flip(sbx.getFiles(id, "big", 4095))
+        expect(error.message).toContain("larger than")
+      }),
+    ),
   )
 })

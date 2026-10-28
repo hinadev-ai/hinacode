@@ -12,6 +12,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
+import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
@@ -50,6 +51,8 @@ export function Chat({ thread }: { thread: Thread }) {
   const openedAt = messages?.findIndex((message) => message.id === openedNewest) ?? -1
   const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
   const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
+  // With Liquid Glass the composer floats over the transcript, which pads itself clear of the dock's height.
+  const [dockHeight, setDockHeight] = useState(0)
 
   return (
     <View style={styles.flex}>
@@ -82,7 +85,7 @@ export function Chat({ thread }: { thread: Thread }) {
           initialNumToRender={4}
           maxToRenderPerBatch={2}
           windowSize={9}
-          contentContainerStyle={styles.transcript}
+          contentContainerStyle={[styles.transcript, liquidGlass && { paddingTop: dockHeight + 16 }]}
           keyboardShouldPersistTaps="handled"
           // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
           onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
@@ -101,17 +104,16 @@ export function Chat({ thread }: { thread: Thread }) {
           }
         />
       )}
-      {history?.status === "ready" && (
-        <>
-          {history.approvals.map((request) => (
-            <ApprovalCard key={request.id} request={request} />
-          ))}
-          {history.questions.map((request) => (
-            <QuestionCard key={request.id} request={request} />
-          ))}
-        </>
-      )}
-      <Composer thread={thread} />
+      <View
+        style={liquidGlass ? styles.dockStack : undefined}
+        onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
+      >
+        {history?.status === "ready" &&
+          history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
+        {history?.status === "ready" &&
+          history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+        <Composer thread={thread} />
+      </View>
     </View>
   )
 }
@@ -560,6 +562,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
+  dockStack: { position: "absolute", left: 0, right: 0, bottom: 0 },
   earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   message: { gap: 6, borderRadius: radius.lg, padding: 12 },

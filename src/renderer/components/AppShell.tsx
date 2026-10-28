@@ -6,7 +6,7 @@ import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { SnoozeDialog } from "./SnoozeDialog.tsx"
 import { Sidebar } from "./Sidebar.tsx"
-import { StatusBar } from "./StatusBar.tsx"
+import { ThreadSwitcher } from "./ThreadSwitcher.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
 /** The mouse's back and forward side buttons walk the router history, as they do in a browser. */
@@ -38,8 +38,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-      <StatusBar />
       <CommandPalette />
+      <ThreadSwitcher />
       <SnoozeDialog />
     </div>
   )

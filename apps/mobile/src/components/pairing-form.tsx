@@ -38,67 +38,78 @@ export function PairingForm({
   }
 
   const native = Platform.OS !== "web"
-  // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
+
+  const form = (
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={styles.container}
+      contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+      automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.mark, { backgroundColor: theme.primary }]}>
+        <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
+      </View>
+      <Text style={[styles.lead, { color: theme.textMuted }]}>
+        On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
+        the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.
+      </Text>
+      {refused !== null && <Notice text={refused} tone="danger" />}
+      {native && (
+        <Button
+          testID="scan-qr-button"
+          label="Scan QR code"
+          icon="RiQrScanLine"
+          variant="primary"
+          onPress={() => setScanning(true)}
+        />
+      )}
+      <View style={styles.field}>
+        <Text nativeID="pairing-url-label" style={[styles.label, { color: theme.text }]}>
+          Pairing URL
+        </Text>
+        <TextInput
+          testID="pairing-url-input"
+          accessibilityLabel="Pairing URL"
+          accessibilityLabelledBy="pairing-url-label"
+          value={text}
+          onChangeText={(value) => {
+            setText(value)
+            setInvalid(false)
+          }}
+          placeholder="hinacode://connect?host=...&port=...&token=..."
+          placeholderTextColor={theme.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          multiline
+          style={[
+            styles.input,
+            { color: theme.text, backgroundColor: theme.surface, borderColor: invalid ? theme.danger : theme.border },
+          ]}
+        />
+        {invalid && (
+          <Text accessibilityRole="alert" style={{ color: theme.danger }}>
+            This is not a HinaCode pairing URL. Copy it again from Settings, Remote.
+          </Text>
+        )}
+      </View>
+      <Button
+        testID="connect-button"
+        label="Connect"
+        variant={native ? "secondary" : "primary"}
+        onPress={() => void submit(text)}
+      />
+      {footer}
+      {scanning && <Scanner onClose={() => setScanning(false)} onScan={submit} />}
+    </ScrollView>
+  )
+
+  if (Platform.OS === "ios") return form
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={[styles.mark, { backgroundColor: theme.primary }]}>
-          <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
-        </View>
-        <Text style={[styles.lead, { color: theme.textMuted }]}>
-          On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
-          the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.
-        </Text>
-        {refused !== null && <Notice text={refused} tone="danger" />}
-        {native && (
-          <Button
-            testID="scan-qr-button"
-            label="Scan QR code"
-            icon="RiQrScanLine"
-            variant="primary"
-            onPress={() => setScanning(true)}
-          />
-        )}
-        <View style={styles.field}>
-          <Text nativeID="pairing-url-label" style={[styles.label, { color: theme.text }]}>
-            Pairing URL
-          </Text>
-          <TextInput
-            testID="pairing-url-input"
-            accessibilityLabel="Pairing URL"
-            accessibilityLabelledBy="pairing-url-label"
-            value={text}
-            onChangeText={(value) => {
-              setText(value)
-              setInvalid(false)
-            }}
-            placeholder="hinacode://connect?host=...&port=...&token=..."
-            placeholderTextColor={theme.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            multiline
-            style={[
-              styles.input,
-              { color: theme.text, backgroundColor: theme.surface, borderColor: invalid ? theme.danger : theme.border },
-            ]}
-          />
-          {invalid && (
-            <Text accessibilityRole="alert" style={{ color: theme.danger }}>
-              This is not a HinaCode pairing URL. Copy it again from Settings, Remote.
-            </Text>
-          )}
-        </View>
-        <Button
-          testID="connect-button"
-          label="Connect"
-          variant={native ? "secondary" : "primary"}
-          onPress={() => void submit(text)}
-        />
-        {footer}
-        {scanning && <Scanner onClose={() => setScanning(false)} onScan={submit} />}
-      </ScrollView>
+      {form}
     </KeyboardAvoidingView>
   )
 }
