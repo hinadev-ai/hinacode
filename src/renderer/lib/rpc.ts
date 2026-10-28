@@ -358,6 +358,12 @@ export const pullRequestAttentionAtom = familyOf((environment: EnvironmentId, ur
   Atom.make((get) => pullRequestAttention(get(pullRequestStatusesAtom(environment, urls)))),
 )
 
+/** `pullRequestAttentionAtom` for many threads at once, each named by its environment and linked URLs. */
+export const pullRequestAttentionsAtom = familyOf(
+  (threads: ReadonlyArray<readonly [EnvironmentId, ReadonlyArray<string>]>) =>
+    Atom.make((get) => threads.map(([environment, urls]) => get(pullRequestAttentionAtom(environment, urls)))),
+)
+
 /** Everything the PR tab shows about one pull request. */
 export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
   call("github.pullRequestDetail", { url }, { environment }),

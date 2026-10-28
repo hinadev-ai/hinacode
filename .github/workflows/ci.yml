@@ -142,11 +142,15 @@ jobs:
       - run: npx expo lint
 
   e2e-linux:
-    name: e2e (linux)
+    name: e2e (linux ${{ matrix.shard }}/4)
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -157,11 +161,14 @@ jobs:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
+      - run: pnpm exec bddgen -c e2e/playwright.config.ts
+      # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/4'
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-report-linux
+          name: e2e-report-linux-${{ matrix.shard }}
           path: |
             e2e/playwright-report
             e2e/test-results
