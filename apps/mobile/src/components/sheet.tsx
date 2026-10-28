@@ -51,7 +51,7 @@ export function Sheet({
     >
       {/* Android lays a Modal out without the system bars first, then corrects it while the entering animation owns
           the sheet's frame, which drops the correction. The window's size holds from the first frame. */}
-      <View style={{ height }}>
+      <View style={{ height, paddingLeft: insets.left, paddingRight: insets.right }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_sheet_close")}

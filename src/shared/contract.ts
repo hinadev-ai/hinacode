@@ -274,6 +274,8 @@ export const RpcMethods = {
   /** Null when the scope has no base: the thread has no live worktree, or no turn started in a git checkout. */
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
   /** Archives the thread, removing its worktree when `Settings.archive.removeWorktree` is on. */
+  /** A new thread that goes on from the turn `messageId` ended, in the same workspace. */
+  "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.archive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   /** Brings an archived thread back as idle. A removed worktree stays removed. */
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
@@ -717,6 +719,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
+  "threads.fork": "mutation",
   "threads.archive": "mutation",
   "threads.unarchive": "mutation",
   "projects.currentBranch": "read",

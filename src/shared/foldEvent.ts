@@ -58,7 +58,13 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
       }
     }
     case "turn_completed":
-      return { ...message, parts: failRunningParts(message.parts), completedAt: now, usage: event.usage ?? null }
+      return {
+        ...message,
+        parts: failRunningParts(message.parts),
+        completedAt: now,
+        usage: event.usage ?? null,
+        forkPoint: event.forkPoint ?? null,
+      }
     case "turn_failed":
       return {
         ...message,

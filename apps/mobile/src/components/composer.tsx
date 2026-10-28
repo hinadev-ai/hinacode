@@ -12,7 +12,16 @@ import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { useEffect, useRef, useState } from "react"
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import {
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  type TextInputInstance,
+  View,
+} from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
 import { GlassFill, liquidGlass } from "@/components/glass"
@@ -125,7 +134,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const [caret, setCaret] = useState(0)
   /** Set only right after a pick, to put the caret after the inserted command; any edit or move hands it back. */
   const [placedCaret, setPlacedCaret] = useState<{ start: number } | undefined>()
-  const inputRef = useRef<TextInput>(null)
+  const inputRef = useRef<TextInputInstance>(null)
   const [error, setError] = useState<string | null>(null)
   const unstarted = useUnstarted(thread)
   const server = useThreadServer(thread.id)?.id

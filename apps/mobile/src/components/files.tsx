@@ -1,7 +1,16 @@
 import type { FileSearchHit, FsEntry, Thread } from "@shared/domain.ts"
 import { router } from "expo-router"
 import { useEffect, useRef, useState } from "react"
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  type ScrollViewInstance,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native"
 import { Icon } from "@/components/icon"
 import { FadeIn, Reveal, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
@@ -179,7 +188,7 @@ function Breadcrumbs({
   onSelect: (depth: number) => void
 }) {
   const theme = useTheme()
-  const scroller = useRef<ScrollView>(null)
+  const scroller = useRef<ScrollViewInstance>(null)
   const rootName = root.split(/[\\/]/).findLast((part) => part !== "") ?? root
   return (
     <ScrollView
@@ -280,7 +289,7 @@ function PathSearch({
           <Failure message={files.error} onRetry={onRetryFiles} />
         ) : matches.length === 0 ? (
           <Text style={[styles.quiet, { color: theme.textMuted }]}>{copy("mobile_files_no_matches", { query })}</Text>
-        ) : null
+        ) : undefined
       }
       ListFooterComponent={
         searchContents ? (

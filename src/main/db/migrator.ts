@@ -23,7 +23,8 @@ import projectKind from "./migrations/0021_project_kind.ts"
 import environmentRelay from "./migrations/0022_environment_relay.ts"
 import environmentSource from "./migrations/0023_environment_source.ts"
 import threadSnooze from "./migrations/0025_thread_snooze.ts"
-import threadDevice from "./migrations/0026_thread_device.ts"
+import fork from "./migrations/0026_fork.ts"
+import threadDevice from "./migrations/0027_thread_device.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 
 const run = Migrator.make({})
@@ -58,7 +59,8 @@ export const runMigrations = run({
     "23_environment_source": environmentSource,
     "25_thread_snooze": threadSnooze,
     "24_archive_shared_chats": archiveSharedChats,
-    "26_thread_device": threadDevice,
+    "26_fork": fork,
+    "27_thread_device": threadDevice,
   }),
 }).pipe(
   Effect.tap((ran) =>

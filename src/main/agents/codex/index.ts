@@ -31,6 +31,7 @@ import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { installedBinary } from "../binary.ts"
+import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
@@ -60,6 +61,8 @@ import type {
   SkillsListParams,
   SkillsListResponse,
   ThreadItem,
+  ThreadForkParams,
+  ThreadForkResponse,
   ThreadResumeParams,
   ThreadStartParams,
   ThreadStartResponse,
@@ -72,6 +75,7 @@ import type {
   ThreadBackgroundTerminalsListParams,
   ThreadBackgroundTerminalsTerminateParams,
   TurnSteerParams,
+  ThreadCompactStartParams,
   UserInput,
 } from "./protocol.ts"
 
@@ -335,6 +339,38 @@ const make = Effect.gen(function* () {
         .pipe(Effect.andThen(refreshTerminals(threadId, terminals)), Effect.asVoid)
     })
 
+  const stopSubagents = (threadId: string, home: AccountHome | null) =>
+    Effect.gen(function* () {
+      const subagents = subagentsByThread.get(threadId)
+      if (subagents === undefined) return
+      subagentsByThread.delete(threadId)
+      const client = clients.get(JSON.stringify(home))?.client
+      for (const [childThreadId, subagent] of subagents) {
+        const turnId = subagentTurns.get(childThreadId)
+        subagentTurns.delete(childThreadId)
+        if (client === undefined || turnId === undefined || subagent.status !== "running") continue
+        yield* interruptTurn(client, { threadId: childThreadId, turnId }).pipe(Effect.ignore)
+      }
+    })
+
+  const closeSession = (threadId: string, home: AccountHome | null) =>
+    Effect.gen(function* () {
+      yield* stopSubagents(threadId, home)
+      const terminals = terminalsByThread.get(threadId)
+      if (terminals === undefined) return
+      if (terminals.poll) yield* Fiber.interrupt(terminals.poll)
+      const listed = yield* listTerminals(terminals).pipe(Effect.orElseSucceed(() => []))
+      yield* Effect.forEach(
+        listed,
+        ({ processId }) => {
+          const params: ThreadBackgroundTerminalsTerminateParams = { threadId: terminals.codexThreadId, processId }
+          return terminals.client.request("thread/backgroundTerminals/terminate", params).pipe(Effect.ignore)
+        },
+        { discard: true },
+      )
+      yield* refreshTerminals(threadId, terminals)
+    })
+
   const listModels = Effect.gen(function* () {
     const client = yield* getClient(null)
     const models: Array<ModelInfo> = []
@@ -402,8 +438,9 @@ const make = Effect.gen(function* () {
 
   const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: AccountHome | null }) =>
     listSkills(cwd, home).pipe(
-      Effect.map((skills) =>
-        skills
+      Effect.map((skills) => [
+        COMPACT_COMMAND,
+        ...skills
           .filter((skill) => skill.enabled)
           .map((skill): AgentCommand => {
             const scope = commandScopes[skill.scope]
@@ -415,7 +452,7 @@ const make = Effect.gen(function* () {
               ...(scope && { scope }),
             }
           }),
-      ),
+      ]),
     )
 
   const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
@@ -463,29 +500,53 @@ const make = Effect.gen(function* () {
             // Codex ignores thread/resume config for a thread it has loaded, so a new threshold needs it unloaded.
             yield* client.request("thread/unsubscribe", { threadId: resumed })
           }
-          const { thread, sandbox } = input.resumeSessionId
-            ? yield* client.request<ThreadStartResponse>("thread/resume", {
-                ...overrides,
-                threadId: input.resumeSessionId,
-                excludeTurns: true,
-              } satisfies ThreadResumeParams)
-            : yield* client.request<ThreadStartResponse>("thread/start", overrides)
+          const { thread, sandbox } =
+            input.resumeSessionId === null
+              ? yield* client.request<ThreadStartResponse>("thread/start", overrides)
+              : input.forkAt === null
+                ? yield* client.request<ThreadStartResponse>("thread/resume", {
+                    ...overrides,
+                    threadId: input.resumeSessionId,
+                    excludeTurns: true,
+                  } satisfies ThreadResumeParams)
+                : yield* client.request<ThreadForkResponse>("thread/fork", {
+                    ...overrides,
+                    threadId: input.resumeSessionId,
+                    lastTurnId: input.forkAt,
+                    excludeTurns: true,
+                  } satisfies ThreadForkParams)
           loadedCompactLimits.set(thread.id, input.autoCompactTokens)
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
-          const skills = input.prompt.includes("$")
-            ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
-            : []
-          const turnStart: TurnStartParams = {
-            threadId: thread.id,
-            input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
-            cwd: input.cwd,
-            ...(input.effort === null ? {} : { effort: input.effort }),
-            serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
-            ...turnAccess(input.accessMode, sandbox),
-          }
-          run.turnStart = yield* client.request<TurnStartResponse>("turn/start", turnStart).pipe(
-            Effect.map(({ turn }): RemoteTurn => ({ threadId: thread.id, turnId: turn.id })),
+          const compacting = isCompactCommand(input.prompt)
+          const startTurn = Effect.gen(function* () {
+            const skills = input.prompt.includes("$")
+              ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
+              : []
+            const turnStart: TurnStartParams = {
+              threadId: thread.id,
+              input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
+              cwd: input.cwd,
+              ...(input.effort === null ? {} : { effort: input.effort }),
+              serviceTier: input.fastMode ? FAST_SERVICE_TIER : null,
+              ...turnAccess(input.accessMode, sandbox),
+            }
+            const { turn } = yield* client.request<TurnStartResponse>("turn/start", turnStart)
+            return turn.id
+          })
+          // thread/compact/start answers with nothing, and Codex runs the compaction as a turn it announces itself.
+          const startCompaction = Effect.gen(function* () {
+            yield* client.request("thread/compact/start", { threadId: thread.id } satisfies ThreadCompactStartParams)
+            while (true) {
+              const message = yield* Queue.take(inbox)
+              if (message.kind === "exit") return yield* Effect.fail(message.error)
+              if (message.kind !== "notification" || message.method !== "turn/started") continue
+              const params = message.params as ServerNotificationParams["turn/started"]
+              if (params.threadId === thread.id) return params.turn.id
+            }
+          })
+          run.turnStart = yield* (compacting ? startCompaction : startTurn).pipe(
+            Effect.map((turnId): RemoteTurn => ({ threadId: thread.id, turnId })),
             Effect.forkIn(providerScope),
           )
           const turn = yield* Fiber.join(run.turnStart)
@@ -749,8 +810,13 @@ const make = Effect.gen(function* () {
                   if (params.item.type === "contextCompaction") {
                     yield* emit({
                       type: "compaction_updated",
-                      // Codex starts compaction only by itself, and its item carries no token counts.
-                      compaction: { status: "done", trigger: "auto", preTokens: null, postTokens: null },
+                      // Codex's item carries no token counts.
+                      compaction: {
+                        status: "done",
+                        trigger: compacting ? "manual" : "auto",
+                        preTokens: null,
+                        postTokens: null,
+                      },
                     })
                   }
                   yield* finishTool(params.item)
@@ -811,7 +877,7 @@ const make = Effect.gen(function* () {
                   openTools.clear()
                   yield* emit(
                     status === "completed"
-                      ? { type: "turn_completed", usage }
+                      ? { type: "turn_completed", usage, forkPoint: { sessionId: thread.id, checkpoint: turn.turnId } }
                       : { type: "turn_failed", message: error?.message ?? lastError ?? `Turn ${status}` },
                   )
                   return true
@@ -910,6 +976,7 @@ const make = Effect.gen(function* () {
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     steer,
     interrupt,
+    closeSession,
     stopSubagent,
     respondApproval,
     respondQuestion,

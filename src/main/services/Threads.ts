@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { ProviderId } from "../../shared/agent.ts"
+import { ForkPoint, ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
 import {
   type AccessMode,
@@ -51,6 +51,7 @@ const ThreadRow = Schema.Struct({
   fastMode: Schema.BooleanFromBit,
   userSkills: Schema.BooleanFromBit,
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
+  forkedFrom: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
 })
 
@@ -71,7 +72,10 @@ export interface CreateThread {
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
-  /** Refused once the thread has a message. Moves the thread to the new agent's default account unless `accountId` is given. */
+  /**
+   * Moves the thread to the new agent's default account unless `accountId` is given, and drops the session.
+   * A started thread must go through `AgentRunner.switchAgent`, which marks the switch in the transcript.
+   */
   readonly provider?: ProviderId | undefined
   /** Sets the account only. A started session must be copied to the new home first, as `AgentRunner.switchAccount` does. */
   readonly accountId?: string | null | undefined
@@ -105,9 +109,12 @@ export class Threads extends Context.Service<
     readonly create: (
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
-    readonly update: (
-      input: UpdateThread,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadStartedError>
+    readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    /**
+     * A new thread in the same workspace that goes on from the turn `messageId` ended. It copies the transcript
+     * up to that message, and its first turn forks the agent session there.
+     */
+    readonly fork: (threadId: string, messageId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     /** Files in the thread's working directory that git tracks or would track, for `@` mentions. */
     readonly listFiles: (
       id: string,
@@ -203,6 +210,13 @@ const make = Effect.gen(function* () {
       sql`SELECT COALESCE(MAX(sort_index) + 1, 0) AS next FROM thread WHERE project_id = ${projectId}`,
   })
 
+  const findForkPoint = SqlSchema.findOneOption({
+    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.String }),
+    Result: Schema.Struct({ forkPoint: Schema.fromJsonString(ForkPoint) }),
+    execute: ({ threadId, messageId }) =>
+      sql`SELECT fork_point FROM message WHERE id = ${messageId} AND thread_id = ${threadId} AND fork_point IS NOT NULL`,
+  })
+
   const findTurnBase = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: Schema.Struct({ turnBaseTree: Schema.NullOr(Schema.String) }),
@@ -267,6 +281,7 @@ const make = Effect.gen(function* () {
         accessMode: defaultAccessMode,
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
+        forkedFrom: null,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
@@ -283,13 +298,58 @@ const make = Effect.gen(function* () {
       return thread
     })
 
+  const fork = (threadId: string, messageId: string) =>
+    Effect.gen(function* () {
+      const source = yield* get(threadId)
+      const found = yield* findForkPoint({ threadId, messageId }).pipe(Effect.mapError(persistence("threads.fork")))
+      if (Option.isNone(found)) return yield* new NotFoundError({ entity: "fork point", id: messageId })
+      const { owner, ...forkedFrom } = found.value.forkPoint
+      const { provider, accountId } = owner ?? source
+      if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
+      if (accountId !== null) yield* accounts.get(accountId)
+      const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
+      const now = yield* nowIso
+      const thread: Thread = {
+        ...source,
+        id: randomUUID(),
+        title: `${source.title} (fork)`,
+        accountId,
+        providerSessionId: null,
+        forkedFrom,
+        status: "idle",
+        usageLimit: null,
+        sortIndex: next,
+        pinnedAt: null,
+        snoozedUntil: null,
+        queue: [],
+        createdBy: "user",
+        createdAt: now,
+        updatedAt: now,
+      }
+      const row = yield* encodeRow(thread).pipe(Effect.mapError(persistence("threads.fork")))
+      yield* sql
+        .withTransaction(
+          Effect.gen(function* () {
+            yield* sql`INSERT INTO thread ${sql.insert(row)}`
+            yield* sql`
+            INSERT INTO message (id, thread_id, role, parts, created_at, completed_at, usage, fork_point)
+            SELECT lower(hex(randomblob(16))), ${thread.id}, role, parts, created_at, completed_at, usage, fork_point
+            FROM message
+            WHERE thread_id = ${threadId}
+              AND (created_at, rowid) <= (SELECT created_at, rowid FROM message WHERE id = ${messageId})
+            ORDER BY created_at, rowid
+          `
+          }),
+        )
+        .pipe(Effect.mapError(persistence("threads.fork")))
+      yield* syncChatFolder(thread, true)
+      return thread
+    })
+
   const update = (input: UpdateThread) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
       const switchesAgent = input.provider !== undefined && input.provider !== current.provider
-      if (switchesAgent && (yield* started(input.id))) {
-        return yield* new ThreadStartedError({ id: input.id })
-      }
       const provider = input.provider ?? current.provider
       const accountId =
         input.accountId !== undefined
@@ -305,7 +365,12 @@ const make = Effect.gen(function* () {
       ) {
         return yield* new NotFoundError({ entity: "account", id: accountId })
       }
-      return yield* write(current, { ...input, accountId: accountId === current.accountId ? undefined : accountId })
+      return yield* write(current, {
+        ...input,
+        accountId: accountId === current.accountId ? undefined : accountId,
+        // The usage limit belonged to the agent the thread leaves.
+        ...(switchesAgent && current.status === "limited" && { status: "idle" }),
+      })
     })
 
   const write = (current: Thread, input: UpdateThread) =>
@@ -332,7 +397,15 @@ const make = Effect.gen(function* () {
         sortIndex: input.sortIndex ?? current.sortIndex,
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
-        providerSessionId: input.providerSessionId ?? current.providerSessionId,
+        // A session id belongs to one agent.
+        providerSessionId:
+          input.provider !== undefined && input.provider !== current.provider
+            ? null
+            : (input.providerSessionId ?? current.providerSessionId),
+        forkedFrom:
+          input.providerSessionId !== undefined || (input.provider ?? current.provider) !== current.provider
+            ? null
+            : current.forkedFrom,
         queue: input.queue ?? current.queue,
         updatedAt: arranges ? current.updatedAt : now,
       }
@@ -343,6 +416,7 @@ const make = Effect.gen(function* () {
             access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil},
             provider_session_id = ${next.providerSessionId},
+            forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
             queue = ${JSON.stringify(next.queue)}
         WHERE id = ${next.id}
@@ -490,6 +564,7 @@ const make = Effect.gen(function* () {
     get,
     create,
     update,
+    fork,
     started,
     prepareWorkspace,
     listFiles,

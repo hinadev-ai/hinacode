@@ -42,7 +42,12 @@ export function Banner({
 }) {
   const insets = useSafeAreaInsets()
   return (
-    <View style={[styles.layer, { paddingTop: insets.top + 8 }]}>
+    <View
+      style={[
+        styles.layer,
+        { paddingTop: insets.top + 8, paddingLeft: insets.left + 12, paddingRight: insets.right + 12 },
+      ]}
+    >
       {notice !== null && <Card key={notice.id} notice={notice} onOpen={onOpen} onDismiss={onDismiss} />}
     </View>
   )
@@ -116,7 +121,6 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 1000,
     alignItems: "center",
-    paddingHorizontal: 12,
     pointerEvents: "box-none",
   },
   card: {

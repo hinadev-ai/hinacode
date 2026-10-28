@@ -162,7 +162,6 @@ function ContrastField({ saved, onCommit }: { saved: number; onCommit: (contrast
     <Field orientation="horizontal">
       <FieldContent>
         <FieldLabel id={labelId}>{m.settings_contrast()}</FieldLabel>
-        <FieldDescription>{m.settings_contrast_hint()}</FieldDescription>
       </FieldContent>
       <div className="flex w-56 shrink-0 flex-col gap-2">
         <span className="self-end text-sm text-muted-foreground tabular-nums">{contrastLabel(contrast)}</span>

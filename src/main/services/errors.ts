@@ -10,7 +10,7 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account"]),
+  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account", "fork point"]),
   id: Schema.String,
 }) {
   override get message(): string {

@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, Compaction, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
 import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
@@ -422,6 +422,8 @@ export const Thread = Schema.Struct({
   accountId: Schema.NullOr(Schema.String),
   /** Claude session_id or Codex thread id, used to resume. */
   providerSessionId: Schema.NullOr(Schema.String),
+  /** Set on a fork until its first turn binds `providerSessionId`, which starts the session from there. */
+  forkedFrom: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
@@ -462,6 +464,8 @@ export const MessagePart = Schema.Union([
   /** Questions the agent posted without waiting; `text` is how they read once answered. */
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
+  /** The thread moved to another agent. The turn after it starts a new session that gets the transcript above. */
+  Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
 ])
 export type MessagePart = typeof MessagePart.Type
 
@@ -476,6 +480,8 @@ export const Message = Schema.Struct({
   createdAt: Timestamp,
   completedAt: Schema.NullOr(Timestamp),
   usage: Schema.NullOr(TokenUsage),
+  /** Set on the message that ended a turn, when the agent can fork its session there. */
+  forkPoint: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type Message = typeof Message.Type
 

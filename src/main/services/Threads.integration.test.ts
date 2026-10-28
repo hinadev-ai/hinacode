@@ -12,6 +12,7 @@ import * as AgentAccounts from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
+import { Messages, layer as messagesLayer } from "./Messages.ts"
 import * as Projects from "./Projects.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
@@ -31,6 +32,85 @@ const threadsLayer = threadsLayerBase.pipe(
 )
 
 describe("Threads", () => {
+  it.effect("forks a thread in its workspace with the transcript up to the chosen turn", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const messages = yield* Messages
+      const { threadId, worktreeId } = yield* seedThread({
+        rootPath: "/repo",
+        worktree: { path: "/repo-feature", baseRef: "main", status: "ready" },
+      })
+      const at = "2026-01-01T00:00:00.000Z"
+      const message = (role: "user" | "assistant", text: string, checkpoint: string | null) => ({
+        id: randomUUID(),
+        threadId,
+        role,
+        parts: [{ type: "text" as const, text }],
+        createdAt: at,
+        completedAt: at,
+        usage: null,
+        forkPoint: checkpoint === null ? null : { sessionId: "session-1", checkpoint },
+      })
+      const turns = [
+        message("user", "first", null),
+        message("assistant", "first reply", "turn-1"),
+        message("user", "second", null),
+        message("assistant", "second reply", "turn-2"),
+      ]
+      yield* Effect.forEach(turns, messages.insert, { discard: true })
+
+      const fork = yield* threads.fork(threadId, turns[1]!.id)
+
+      expect(fork.worktreeId).toBe(worktreeId)
+      expect(fork.providerSessionId).toBeNull()
+      expect(fork.forkedFrom).toStrictEqual({ sessionId: "session-1", checkpoint: "turn-1" })
+      expect((yield* threads.get(fork.id)).forkedFrom).toStrictEqual(fork.forkedFrom)
+      const copied = yield* messages.list(fork.id)
+      expect(copied.map((copy) => copy.parts)).toStrictEqual(turns.slice(0, 2).map((turn) => turn.parts))
+      expect(copied.some((copy) => turns.some((turn) => turn.id === copy.id))).toBe(false)
+      expect((yield* messages.list(threadId)).length).toBe(4)
+    }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
+  it.effect("refuses to fork at a message that ended no turn", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const error = yield* threads.fork(threadId, "missing").pipe(Effect.flip)
+      expect(error._tag).toBe("NotFoundError")
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("refuses to fork a turn another agent ran", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const messages = yield* Messages
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const at = "2026-01-01T00:00:00.000Z"
+      const reply = {
+        id: randomUUID(),
+        threadId,
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "from codex" }],
+        createdAt: at,
+        completedAt: at,
+        usage: null,
+        forkPoint: {
+          sessionId: "codex-thread",
+          checkpoint: "turn-1",
+          owner: { provider: "codex" as const, accountId: null },
+        },
+      }
+      yield* messages.insert(reply)
+      const before = (yield* threads.list).length
+
+      const error = yield* threads.fork(threadId, reply.id).pipe(Effect.flip)
+
+      expect(error._tag).toBe("NotFoundError")
+      expect((yield* threads.list).length).toBe(before)
+    }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
   it.effect("list skips threads whose provider this build does not know", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient

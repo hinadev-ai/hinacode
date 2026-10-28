@@ -114,6 +114,8 @@ const reply = ({ id, method, params }) => {
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
+    case "thread/fork":
+      return send({ id, result: { thread: { id: "codex-fork" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
@@ -199,6 +201,19 @@ const reply = ({ id, method, params }) => {
       const rest = running.filter((terminal) => terminal.processId !== params.processId)
       terminals.set(params.threadId, rest)
       return send({ id, result: { terminated: rest.length < running.length } })
+    }
+    case "thread/compact/start": {
+      // Codex answers at once and runs the compaction as a turn of its own.
+      const turnId = `turn-${++turns}`
+      send({ id, result: {} })
+      send({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } })
+      for (const event of ["item/started", "item/completed"]) {
+        send({
+          method: event,
+          params: { threadId: params.threadId, turnId, item: { type: "contextCompaction", id: "c1" } },
+        })
+      }
+      return completeTurn(params.threadId, turnId, "completed")
     }
     case "turn/interrupt":
       send({ id, result: {} })

@@ -9,8 +9,17 @@ import { defineConfig } from "electron-vite"
 // electron-vite 5 never calls, so `pnpm dev` failed with "Electron uninstall". See docs/operations/electron-binary.md.
 process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
 
+// Main builds first and labels native menus with the same catalogs, so it compiles them too.
+const paraglide = () =>
+  paraglideVitePlugin({
+    project: resolve(import.meta.dirname, "project.inlang"),
+    outdir: resolve(import.meta.dirname, "src/renderer/paraglide"),
+    strategy: ["globalVariable", "baseLocale"],
+  })
+
 export default defineConfig({
   main: {
+    plugins: [paraglide()],
     build: {
       // `daemon` is `hinacode serve`, the same services as plain Node with no Electron (see `bin/hinacode.mjs`).
       rollupOptions: { input: { index: "src/main/index.ts", daemon: "src/main/daemon.ts" } },
@@ -29,14 +38,6 @@ export default defineConfig({
   },
   renderer: {
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
-    plugins: [
-      react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
-      tailwindcss(),
-      paraglideVitePlugin({
-        project: resolve(import.meta.dirname, "project.inlang"),
-        outdir: resolve(import.meta.dirname, "src/renderer/paraglide"),
-        strategy: ["globalVariable", "baseLocale"],
-      }),
-    ],
+    plugins: [react({ babel: { plugins: ["babel-plugin-react-compiler"] } }), tailwindcss(), paraglide()],
   },
 })

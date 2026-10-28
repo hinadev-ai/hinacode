@@ -207,8 +207,15 @@ const handlers: Handlers = {
   // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
-      const patch = input.provider === undefined ? input : { ...(yield* newThreadOptions(input.provider)), ...input }
-      const thread = yield* Threads.use((threads) => threads.update(patch))
+      const { provider: switchTo } = input
+      const thread =
+        switchTo === undefined
+          ? yield* Threads.use((threads) => threads.update(input))
+          : yield* newThreadOptions(switchTo).pipe(
+              Effect.flatMap((defaults) =>
+                AgentRunner.use((runner) => runner.switchAgent({ ...defaults, ...input, provider: switchTo })),
+              ),
+            )
       if (input.accessMode !== undefined) {
         yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
       }
@@ -241,6 +248,10 @@ const handlers: Handlers = {
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.fork": ({ threadId, messageId }) =>
+    Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),

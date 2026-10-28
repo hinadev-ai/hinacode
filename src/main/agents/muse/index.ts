@@ -1,6 +1,20 @@
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import {
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import type {
   AccountHome,
   AgentEvent,
@@ -15,11 +29,12 @@ import type {
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
+import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
-import { type Incoming, makeMuseHost, type MuseHost, toAgentError } from "./host.ts"
+import { type Incoming, makeMuseHost, type MuseHost, REQUEST_TIMEOUT, toAgentError } from "./host.ts"
 import { editedPath, toolInput, toolName, toolResult } from "./items.ts"
 import { toPlanLimits } from "./limits.ts"
 import {
@@ -46,6 +61,8 @@ import {
   type TurnStartResult,
   type UserInputRequestParams,
   type UserInputSettledParams,
+  SessionLeaveAck,
+  SessionLeaveCompleted,
   ViewPage,
 } from "./protocol.ts"
 import { toAnswers, toQuestion } from "./questions.ts"
@@ -244,6 +261,39 @@ const interruptTurn = (host: MuseHost, sessionId: string, turnId: string) =>
       : Effect.void,
   )
 
+const decodeLeaveCompleted = Schema.decodeUnknownOption(SessionLeaveCompleted)
+
+/**
+ * `session/leave` with `stop` cancels the session's turns and background shells and unloads it from the host. Its
+ * answer only admits the leave, and `session/leaveCompleted` reports when the host let go. A host that exits
+ * takes its sessions with it.
+ */
+const leaveSession = (host: MuseHost, sessionId: string) =>
+  Effect.gen(function* () {
+    const inbox = yield* Queue.unbounded<Incoming>()
+    yield* host.subscribe((message) => Queue.offerUnsafe(inbox, message))
+    const ack = yield* host.command("session/leave", { sessionId, stop: true }).pipe(Effect.mapError(toAgentError))
+    const { commandId } = yield* Schema.decodeUnknownEffect(SessionLeaveAck)(ack).pipe(
+      Effect.mapError(() => museError("session/leave: invalid response")),
+    )
+    while (true) {
+      const message = yield* Queue.take(inbox)
+      if (message.kind === "exit") return
+      if (message.kind !== "notification" || message.method !== "session/leaveCompleted") continue
+      const completed = decodeLeaveCompleted(message.params)
+      if (Option.isNone(completed) || completed.value.commandId !== commandId) continue
+      const { outcome, reason } = completed.value
+      if (outcome === "released") return
+      return yield* museError(`session/leave: ${outcome}${reason === undefined ? "" : ` (${reason})`}`)
+    }
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: REQUEST_TIMEOUT,
+      orElse: () => Effect.fail(museError(`session/leave did not complete within ${Duration.format(REQUEST_TIMEOUT)}`)),
+    }),
+    Effect.scoped,
+  )
+
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
   const hostLock = yield* Semaphore.make(1)
@@ -391,6 +441,7 @@ const make = Effect.gen(function* () {
     )
     Queue.offerUnsafe(wakes, {
       threadId,
+      sessionId,
       events: events.pipe(Stream.ensuring(release)),
       discard: release.pipe(Effect.andThen(interruptTurn(entry.host, sessionId, turnId)), Effect.ignore),
     })
@@ -491,7 +542,7 @@ const make = Effect.gen(function* () {
       const sessionId =
         own !== undefined && entry.sessions.has(own) ? own : (inWorkspace ?? (yield* probeSession(entry, cwd)))
       const skills = yield* listSkills(entry.host, sessionId)
-      return skills.map(toCommand)
+      return [COMPACT_COMMAND, ...skills.map(toCommand)]
     })
 
   /** Starts the thread's session or loads it into the host, then brings its model and permission profile up to date. */
@@ -582,8 +633,8 @@ const make = Effect.gen(function* () {
       /** Calls whose row closed when they went to the background; the tray follows them from there. */
       const backgroundedTools = new Set<string>()
       let context: ContextWindow | undefined
-      /** `running` is true while the compaction hinacode asked for before the turn runs. */
-      const requestedCompaction = { running: false }
+      /** How the compaction hinacode asked for started, while it runs. */
+      const requestedCompaction: { trigger: "auto" | "manual" | null } = { trigger: null }
       /**
        * Muse retries a 429 without a reset time as a rate limit, and its giving up carries no `quota`. It is the
        * same wall to the user, so the turn ends limited, as a Claude 429 does.
@@ -813,8 +864,8 @@ const make = Effect.gen(function* () {
 
       /** A noop leaves the context as small as Muse can make it, which reads as done rather than failed. */
       const finishCompaction = (item: Item) => {
-        const trigger = requestedCompaction.running || item.trigger !== "manual" ? "auto" : "manual"
-        requestedCompaction.running = false
+        const trigger = requestedCompaction.trigger ?? (item.trigger === "manual" ? "manual" : "auto")
+        requestedCompaction.trigger = null
         const compaction: Compaction =
           item.outcome === "compacted" || item.outcome === "noop"
             ? {
@@ -982,24 +1033,38 @@ const make = Effect.gen(function* () {
         // MSP takes no compaction threshold, so hinacode compacts before the turn. Muse rejects a turn/start that
         // arrives during a compaction with `runtime_busy` and has no call that cancels one, so the turn waits for
         // the compaction item to settle, including one a stopped turn left running.
+        const compacting = isCompactCommand(input.prompt)
         const loaded = entry.sessions.get(sessionId)
         const usedTokens = loaded?.usedTokens ?? null
         if (loaded?.compacting) {
-          requestedCompaction.running = true
+          requestedCompaction.trigger = "auto"
           yield* emit({ type: "compaction_updated", compaction: { status: "running" } })
+        } else if (compacting) {
+          const ack = yield* host
+            .command<SessionCompactResult>("session/compact", { sessionId })
+            .pipe(Effect.mapError(toAgentError))
+          if (ack.status === "accepted") requestedCompaction.trigger = "manual"
+          else {
+            // A noop means there is nothing left to summarize.
+            yield* emit({
+              type: "compaction_updated",
+              compaction: { status: "done", trigger: "manual", preTokens: null, postTokens: null },
+            })
+          }
         } else if (input.autoCompactTokens !== null && usedTokens !== null && usedTokens >= input.autoCompactTokens) {
           const ack = yield* host.command<SessionCompactResult>("session/compact", { sessionId }).pipe(
             Effect.map((result) => result.status),
             Effect.catch((error) => Effect.logWarning("session/compact failed", error.message).pipe(Effect.as(null))),
           )
-          requestedCompaction.running = ack === "accepted"
+          if (ack === "accepted") requestedCompaction.trigger = "auto"
         }
-        if (requestedCompaction.running) {
+        if (requestedCompaction.trigger !== null) {
           yield* Queue.take(inbox).pipe(
             Effect.flatMap(handle),
-            Effect.repeat({ while: () => requestedCompaction.running }),
+            Effect.repeat({ while: () => requestedCompaction.trigger !== null }),
           )
         }
+        if (compacting) return yield* emit({ type: "turn_completed" })
 
         // MSP has no developer instructions, so hinacode's ride in front of the prompt.
         const prompt = yield* promptParts(host, sessionId, input.prompt, input.attachments, input.instructions)
@@ -1035,6 +1100,20 @@ const make = Effect.gen(function* () {
         ? interruptTurn(run.entry.host, run.sessionId, run.turnId).pipe(Effect.catch(() => stop))
         : stop
     }).pipe(Effect.asVoid)
+
+  const closeSession = (threadId: string) =>
+    Effect.gen(function* () {
+      const sessionId = threadSessions.get(threadId)
+      if (sessionId === undefined) return
+      const entry = current
+      if (entry?.host.isAlive()) yield* leaveSession(entry.host, sessionId)
+      if (entry !== undefined) {
+        setBackgroundTasks(entry, sessionId, [])
+        entry.sessions.delete(sessionId)
+      }
+      threadSessions.delete(threadId)
+      grants.delete(threadId)
+    })
 
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
@@ -1113,6 +1192,7 @@ const make = Effect.gen(function* () {
     steer,
     wakes: Stream.fromQueue(wakes),
     interrupt,
+    closeSession,
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     stopSubagent,
     respondApproval,

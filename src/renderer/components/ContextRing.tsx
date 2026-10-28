@@ -48,6 +48,8 @@ const latestContext =
     for (let index = history.messages.length - 1; index >= 0; index--) {
       const message = history.messages[index]
       if (message?.role !== "assistant") continue
+      // The window before a switch was the other agent's.
+      if (message.parts.some((part) => part.type === "agent_switch")) return null
       const context = message.usage?.context
       if (context !== undefined) return compactedTo === null ? context : { ...context, usedTokens: compactedTo }
       compactedTo ??= compactedTokens(message.parts)

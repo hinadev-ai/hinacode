@@ -98,6 +98,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
+  forkAt: null,
   home,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: AGENT_INSTRUCTIONS,
@@ -159,6 +160,29 @@ describe("Codex app-server log", () => {
   })
 })
 
+describe("Codex fork", () => {
+  it.live("forks the thread through the given turn and offers each completed turn as a fork point", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const events = yield* provider
+          .runTurn({ ...input("fork"), resumeSessionId: "codex-thread", forkAt: "turn-1" })
+          .pipe(Stream.runCollect)
+        const forked = received().find((message) => message.method === "thread/fork")
+        expect(forked?.params).toMatchObject({ threadId: "codex-thread", lastTurnId: "turn-1" })
+        expect(countOf("thread/resume")).toBe(0)
+        expect(events.find((event) => event.type === "session_bound")).toStrictEqual({
+          type: "session_bound",
+          providerSessionId: "codex-fork",
+        })
+        const completed = events.find((event) => event.type === "turn_completed")
+        expect(completed?.type === "turn_completed" && completed.forkPoint?.sessionId).toBe("codex-fork")
+      }),
+    ),
+  )
+})
+
 describe("Codex auto-compact", () => {
   it.live("passes the threshold to Codex and shows the compaction it runs", () =>
     withProvider(
@@ -206,6 +230,31 @@ describe("Codex auto-compact", () => {
           "thread/unsubscribe",
           "thread/resume",
         ])
+      }),
+    ),
+  )
+
+  it.live("compacts the thread when the prompt is /compact", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const commands = yield* provider.listCommands({ threadId: "manual-compact", cwd: tmpdir(), home: null })
+        expect(commands.map((command) => command.trigger + command.name)).toContain("/compact")
+
+        const events = yield* provider
+          .runTurn({ ...input("manual-compact"), prompt: "/compact" })
+          .pipe(Stream.runCollect)
+        expect(countOf("turn/start")).toBe(0)
+        expect(countOf("thread/compact/start")).toBe(1)
+        expect(events.filter((event) => event.type === "compaction_updated")).toStrictEqual([
+          { type: "compaction_updated", compaction: { status: "running" } },
+          {
+            type: "compaction_updated",
+            compaction: { status: "done", trigger: "manual", preTokens: null, postTokens: null },
+          },
+        ])
+        expect(events.at(-1)?.type).toBe("turn_completed")
       }),
     ),
   )
@@ -354,6 +403,7 @@ describe("Codex token usage", () => {
         expect(turn.events.at(-1)).toStrictEqual({
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
+          forkPoint: { sessionId: "codex-thread", checkpoint: "turn-1" },
         })
       }),
     ),
@@ -522,6 +572,55 @@ describe("Codex background terminals", () => {
           [{ params: { threadId: "codex-thread", processId: "1001" } }],
         )
         expect(yield* Queue.take(changes)).toStrictEqual({ threadId: "terminal-thread", tasks: [] })
+      }),
+    ),
+  )
+})
+
+describe("Codex closed sessions", () => {
+  it.live("terminates the background terminals of a session the thread leaves, and empties the set", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))
+        const changes = yield* Queue.unbounded<BackgroundTasksChange>()
+        yield* backgroundTasks.changes.pipe(
+          Stream.runForEach((change) => Queue.offer(changes, change)),
+          Effect.forkChild,
+        )
+        setControl({ backgroundTerminal: true })
+        const turn = yield* startTurn("leaving-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(yield* Queue.take(changes)).toMatchObject({ threadId: "leaving-thread", tasks: [{ id: "1001" }] })
+
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-thread", null)
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toMatchObject(
+          [{ params: { threadId: "codex-thread", processId: "1001" } }],
+        )
+        expect(yield* Queue.take(changes)).toStrictEqual({ threadId: "leaving-thread", tasks: [] })
+        yield* backgroundTasks.stop("leaving-thread", "1001")
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toHaveLength(
+          1,
+        )
+      }),
+    ),
+  )
+})
+
+describe("Codex closed sessions, sub-agents", () => {
+  it.live("interrupts a sub-agent turn that outlived its parent when the thread leaves the session", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, subagentPending: true })
+        const turn = yield* startTurn("leaving-parent-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(received().filter((message) => message.method === "turn/interrupt")).toStrictEqual([])
+
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-parent-thread", null)
+        expect(received().filter((message) => message.method === "turn/interrupt")).toMatchObject([
+          { params: { threadId: "codex-child-thread", turnId: "child-turn" } },
+        ])
       }),
     ),
   )
