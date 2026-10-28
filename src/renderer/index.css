@@ -518,7 +518,8 @@
    * shifts with their contents, so winning on order alone is not reliable.
    */
   &.prose {
-    --tw-prose-body: var(--foreground);
+    /* Body text one step under headings and bold, so the structure of a long reply reads at a glance. */
+    --tw-prose-body: color-mix(in oklab, var(--foreground) 80%, transparent);
     --tw-prose-headings: var(--foreground);
     --tw-prose-lead: var(--muted-foreground);
     --tw-prose-links: var(--primary);
@@ -538,7 +539,7 @@
     --tw-prose-td-borders: var(--border);
 
     & :where(code):not(:where(pre code)) {
-      @apply rounded-[0.25em] bg-muted px-[0.3em] py-[0.1em] font-normal;
+      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone;
     }
 
     & :where(code):not(:where(pre code))::before,
@@ -548,6 +549,38 @@
 
     & :where(ul.contains-task-list) {
       @apply list-none ps-0;
+    }
+
+    & :where(ul ul) {
+      @apply list-[circle];
+    }
+
+    & :where(ul ul ul) {
+      @apply list-[square];
+    }
+
+    & :where(ol ol) {
+      @apply list-[lower-alpha];
+    }
+
+    & :where(ol ol ol) {
+      @apply list-[lower-roman];
+    }
+
+    & :where(ol > li)::marker {
+      @apply tabular-nums;
+    }
+
+    & :where(a) {
+      @apply font-[inherit] underline underline-offset-2;
+    }
+
+    & :where(td, th) {
+      @apply align-top text-pretty;
+    }
+
+    & :where(thead th) {
+      @apply whitespace-nowrap;
     }
 
     line-height: inherit;
