@@ -25,6 +25,7 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
   focus: Effect.sync(() => {
     if (window) bringToFront(window)
   }),
+  setBadgeCount: (count) => Effect.sync(() => app.setBadgeCount(count)),
   setColorScheme: (scheme) =>
     Effect.sync(() => {
       nativeTheme.themeSource = scheme

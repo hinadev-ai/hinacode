@@ -1,13 +1,23 @@
 import type { AgentCommand } from "@shared/agent.ts"
 import type { KnownTokens } from "@shared/composerSyntax.ts"
 import { type Ref, useRef } from "react"
-import { Platform, StyleSheet, Text, type TextInputProps, type TextStyle, TextInput, View } from "react-native"
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  type TextInputInstance,
+  type TextInputProps,
+  type TextInstance,
+  type TextStyle,
+  TextInput,
+  View,
+} from "react-native"
 import type { Palette } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { type ComposerSpan, composerSpans } from "@/lib/composer-text"
 
 interface ComposerInputProps extends Omit<TextInputProps, "value" | "children"> {
-  readonly ref?: Ref<TextInput>
+  readonly ref?: Ref<TextInputInstance>
   readonly value: string
   readonly commands: readonly AgentCommand[]
   readonly known: KnownTokens
@@ -40,7 +50,7 @@ const spanStyle = (kind: ComposerSpan["kind"], theme: Palette): TextStyle => {
  */
 export function ComposerInput({ ref, value, commands, known, style, onScroll, ...props }: ComposerInputProps) {
   const theme = useTheme()
-  const copyRef = useRef<Text>(null)
+  const copyRef = useRef<TextInstance>(null)
   const spans = composerSpans(value, commands, known).map((span, index) => (
     <Text key={index} style={spanStyle(span.kind, theme)}>
       {span.text}

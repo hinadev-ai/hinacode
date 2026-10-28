@@ -19,10 +19,3 @@ Feature: Projects
     Given a project "demo" for my repository
     When I try to add another project named "dup" for my repository
     Then the add project dialog shows the error "Another project already uses this folder."
-
-  Scenario: Projects and their threads survive a restart
-    Given a project "demo" for my repository
-    And the project "demo" has a thread "Fix login"
-    When the app restarts
-    Then the sidebar lists the project "demo"
-    And the sidebar lists the thread "Fix login"

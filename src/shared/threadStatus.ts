@@ -44,16 +44,21 @@ export const pullRequestAttention = (
 
 /**
  * What a row shows. A thread that is not idle shows its status. An idle one shows a result the developer has not
- * opened yet, then a pull request waiting on them, since opening the thread is usually how they act on either.
+ * opened yet, then a pull request waiting on them, since opening the thread is usually how they act on either. A
+ * finished turn with background tasks still running is not done, since the agent wakes up when they end, so it
+ * reads as background work rather than a result. A failed turn still shows.
  */
-export type RowState = ThreadStatus | `unseen_${Outcome}` | `pr_${PullRequestAttention}`
+export type RowState = ThreadStatus | "background" | `unseen_${Outcome}` | `pr_${PullRequestAttention}`
 
 export const rowState = (
   status: ThreadStatus,
+  background: boolean,
   unseen: Outcome | undefined,
   pullRequest: PullRequestAttention | undefined,
 ): RowState => {
   if (status !== "idle") return status
+  if (unseen === "failed") return "unseen_failed"
+  if (background) return "background"
   if (unseen !== undefined) return `unseen_${unseen}`
   return pullRequest === undefined ? status : `pr_${pullRequest}`
 }
@@ -73,13 +78,17 @@ export const rowEmphasis = {
   idle: "resting",
   archived: "resting",
   running: "working",
+  background: "working",
 } as const satisfies Record<RowState, "attention" | "resting" | "working">
+
+export const needsAttention = (state: RowState) => rowEmphasis[state] === "attention"
 
 export type IndicatorTone = "muted" | "attention" | "success" | "danger" | "prOpen" | "prMerged"
 
 /** Idle and archived rows show no icon. A thread that starts waiting for approval also rings a few times. */
 export const rowStatusIndicator = {
   running: { icon: "RiPulseLine", tone: "muted" },
+  background: { icon: "RiTimeLine", tone: "muted" },
   awaiting_approval: { icon: "RiQuestionFill", tone: "attention" },
   limited: { icon: "RiHourglassFill", tone: "attention" },
   unseen_completed: { icon: "RiCheckboxCircleFill", tone: "success" },
