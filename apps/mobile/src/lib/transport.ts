@@ -293,7 +293,7 @@ export class Transport {
     this.challengeTimer = setTimeout(() => {
       if (route === "relay" || !this.hasRelay()) {
         this.sentAuth = "token"
-        this.sendFrame({ type: "auth", token: this.options.token })
+        this.sendFrame({ type: "auth", token: this.options.token, compactEvents: true })
       } else this.closed(CLOSE_UNAUTHORIZED, route)
     }, CHALLENGE_WAIT_MS)
     ws.onmessage = (message) => {
@@ -334,7 +334,12 @@ export class Transport {
     const { token } = this.options
     const clientNonce = newNonce()
     this.sentAuth = { expectedProof: serverProof(token, clientNonce, serverNonce) }
-    this.sendFrame({ type: "auth", nonce: clientNonce, proof: clientProof(token, serverNonce, clientNonce) })
+    this.sendFrame({
+      type: "auth",
+      nonce: clientNonce,
+      proof: clientProof(token, serverNonce, clientNonce),
+      compactEvents: true,
+    })
   }
 
   /** Whether a `ready` came from a server that holds the token. One that only received the token itself cannot say. */

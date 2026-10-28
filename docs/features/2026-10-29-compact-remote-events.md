@@ -17,7 +17,7 @@ Pair and open a thread as before. Running turns show the same text, tool summari
 
 Add optional `compactEvents` to both `ClientFrame` auth variants. The mobile transport sends `true` with its proof and legacy token auth. The server validates the boolean and retains the choice for that authenticated socket. Absence and `false` preserve full events. Older servers accept and discard the additional auth field.
 
-Project events only in the remote subscription. `message.created` and `message.updated` reuse `compactMessage`. Tool starts keep their summary input, tool completions keep `callId` and `isError` with an empty output, and file changes keep their path with an empty diff. Preserve event order, sequence numbers, and all other events. Reuse the compact transcript input summary logic.
+Project events only in the remote subscription. `message.created` and `message.updated` reuse the part projection from `compactMessage`. Tool starts keep their summary input, tool completions keep `callId` and `isError` with an empty output, and file changes keep their path with an empty diff. Preserve event order, sequence numbers, and all other events. Reuse the compact transcript input summary logic.
 
 Desktop window publication and desktop peers retain complete tool output. Authentication proofs, token rotation, mutation deduplication, and protocol version stay the same because the option is additive.
 
@@ -29,4 +29,4 @@ Thread subscriptions, delta batching, database pagination, reconnect policy, and
 
 Use the real remote listener integration fixture to connect a compact client beside clients with omitted and false options. Publish identical tool, text, and message events. Confirm only the opted-in socket loses undisplayed fields, including for proof auth. Check that desktop pushes remain complete. Schema tests reject non-boolean options, and mobile transport tests cover both auth paths.
 
-Rerun `.context/perf/remote-audit.ts` to compare event bytes and encoding costs on synthetic data. Real phone render and radio performance still need a Release app capture through `profile-hinacode`.
+Run `node --expose-gc scripts/perf/remote.ts .context/perf/remote.json` to compare event bytes and encoding costs on synthetic data. Real phone render and radio performance still need a Release app capture through `profile-hinacode`.

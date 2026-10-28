@@ -86,6 +86,29 @@ Deferring transcript updates with `useDeferredValue` was measured and left out. 
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
 
+## Measure remote payload and transcript costs
+
+```sh
+node --expose-gc scripts/perf/remote.ts .context/perf/remote.json
+```
+
+This standalone probe uses synthetic data and the production schemas, `compactPush`, `compactMessage`, Events
+layer, and Messages service. It creates an in-memory SQLite database with production migrations, so it needs no
+running app or user profile. It reports raw JSON bytes, an independent per-frame deflate estimate, parse and
+decode time, and publication plus serialization time for zero, one, and three clients. Full and compact fanout
+workloads alternate for nine measured runs after warmup. The stream has 20 tool calls with 12 KiB inputs,
+64 KiB outputs, 8 KiB diffs, and 100 text deltas.
+
+Histories contain 200 and 2,000 messages. Each report separates complete database reads and their retained heap
+increase from compacting, paging, encoding, and decoding the returned page. `--expose-gc` makes the retained heap
+comparison collect garbage before and after a read. Read time includes SQL and JSON schema decoding. The current
+handler reads the entire transcript before selecting its 64 KiB page, so a small response can still cost a large
+allocation. The report also measures proof CPU cost and records an oversized single-message page.
+
+These are Node CPU and byte measurements. They exclude transport, relay, TLS, compression context takeover,
+Hermes, phone memory, and React rendering. Raw bytes are stable for the deterministic stream. Timing and heap
+results depend on the machine. The report records CPU, Node version, load average, and sample counts.
+
 ## Profile the phone app
 
 `mobile.ts` measures `apps/mobile` on the iOS simulator against an isolated desktop, in a Release build. It times

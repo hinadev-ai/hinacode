@@ -1,4 +1,5 @@
 import type { Message, MessagePart } from "./domain.ts"
+import type { PushEvent } from "./contract.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
 
@@ -13,12 +14,16 @@ export function toolSummary(input: unknown): { readonly key: string; readonly li
   return null
 }
 
+function compactInput(input: unknown) {
+  const summary = toolSummary(input)
+  return summary === null ? {} : { [summary.key]: summary.line }
+}
+
 function compactPart(part: MessagePart): MessagePart {
   switch (part.type) {
     case "tool_call": {
       const { output: _output, input, ...rest } = part
-      const summary = toolSummary(input)
-      return { ...rest, input: summary === null ? {} : { [summary.key]: summary.line } }
+      return { ...rest, input: compactInput(input) }
     }
     case "file_change":
       return part.diff === "" ? part : { ...part, diff: "" }
@@ -34,8 +39,29 @@ function compactPart(part: MessagePart): MessagePart {
  */
 export const compactMessage = (message: Message): Message => ({
   ...message,
-  parts: message.parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart),
+  parts: compactParts(message.parts),
 })
+
+const compactParts = (parts: ReadonlyArray<MessagePart>) =>
+  parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart)
+
+/** The live counterpart of `compactMessage`, preserving event order, call ids, and statuses. */
+export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.Encoded {
+  if (push.type === "message.created" || push.type === "message.updated")
+    return { ...push, message: { ...push.message, parts: compactParts(push.message.parts) } }
+  if (push.type !== "thread.event") return push
+  const { event } = push
+  switch (event.type) {
+    case "tool_call_started":
+      return { ...push, event: { ...event, input: compactInput(event.input) } }
+    case "tool_call_finished":
+      return { ...push, event: { ...event, output: "" } }
+    case "file_changed":
+      return { ...push, event: { ...event, diff: "" } }
+    default:
+      return push
+  }
+}
 
 export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
 
