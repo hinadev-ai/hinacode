@@ -80,6 +80,7 @@ let sockets: FakeSocket[]
 let statuses: TransportStatus[]
 let ready: number
 let missed: number
+let received: number
 let keys: number
 let plan: readonly Dial[] = []
 
@@ -91,6 +92,7 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
   statuses = []
   ready = 0
   missed = 0
+  received = 0
   keys = 0
   plan = dials
   const transport = new Transport({
@@ -100,7 +102,7 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
     onMissed: () => missed++,
-    onEvent: () => {},
+    onEvent: () => received++,
     createSocket: (url) => {
       const socket = new FakeSocket(url)
       sockets.push(socket)
@@ -427,6 +429,65 @@ describe("Transport", () => {
 
   describe("quiet in the background", () => {
     const quietFrames = () => latest().sent.filter((frame) => frame.type === "quiet")
+
+    it("closes a healthy socket and does no socket work until the foreground", async () => {
+      const transport = setup()
+      handshake()
+      const backgroundSocket = latest()
+      backgroundSocket.receive({ type: "event", event: { type: "thread.removed", id: "visible" } })
+      expect(received).toBe(1)
+      const sent = backgroundSocket.sent.length
+      transport.setForeground(false)
+      expect(backgroundSocket.closed).toBe(true)
+      expect(statuses.at(-1)).toBe("offline")
+      expect(vi.getTimerCount()).toBe(0)
+      backgroundSocket.receive({ type: "event", event: { type: "thread.removed", id: "hidden" } })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(received).toBe(1)
+      expect(backgroundSocket.sent).toHaveLength(sent)
+      expect(sockets).toHaveLength(1)
+      expect(vi.getTimerCount()).toBe(0)
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      handshake()
+      expect(ready).toBe(2)
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "visible-again" } })
+      expect(received).toBe(2)
+    })
+
+    it("replays a pending mutation once with the same call key after returning", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "call-keys"])
+      const sending = track(transport.call("threads.send", { prompt: "hi" }))
+      const backgroundSocket = latest()
+      transport.setForeground(false)
+      backgroundSocket.result(1, "late")
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(sending.value).toBeUndefined()
+      expect(sending.error).toBeUndefined()
+      expect(sockets).toHaveLength(1)
+      transport.setForeground(true)
+      handshake(["heartbeat", "call-keys"])
+      expect(backgroundSocket.calls()).toEqual([
+        { type: "call", id: 1, method: "threads.send", payload: { prompt: "hi" }, key: "key-1" },
+      ])
+      expect(latest().calls()).toEqual(backgroundSocket.calls())
+      latest().result(1, "finished")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sending.value).toEqual({ result: "finished" })
+    })
+
+    it("fails an unkeyed pending mutation on background cutoff instead of replaying it", async () => {
+      const transport = setup()
+      handshake([])
+      const sending = track(transport.call("threads.send", { prompt: "hi" }))
+      transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sending.error).toMatchObject({ tag: "Offline", message: LOST_REPLY_MESSAGE })
+      transport.setForeground(true)
+      handshake([])
+      expect(latest().calls()).toEqual([])
+    })
 
     it("makes no connection attempts for a minute after its background socket drops", async () => {
       const transport = setup()
