@@ -8,6 +8,7 @@ import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
+import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -48,6 +49,7 @@ interface ThreadViewProps {
 
 export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps) {
   const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
+  const folder = useThreadRoot(thread)?.path ?? null
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
@@ -72,7 +74,9 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
       <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <ThreadRepository value={repository}>
-            <Transcript thread={thread} agent={agent} />
+            <ThreadFolder value={folder}>
+              <Transcript thread={thread} agent={agent} />
+            </ThreadFolder>
           </ThreadRepository>
         </div>
         {overlay}

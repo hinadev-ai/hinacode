@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron"
 import { Effect, type ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
+import { copyImage } from "./copyImage.ts"
 import type { PushEvent, RpcEnvelope } from "../shared/contract.ts"
 import { route } from "./environments/route.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
@@ -40,6 +41,7 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
   },
   openers: listOpeners,
   openWith,
+  copyImage,
   pickFolder: Effect.map(showOpenDialog(window, { properties: ["openDirectory", "createDirectory"] }), (result) =>
     result.canceled ? null : (result.filePaths[0] ?? null),
   ),

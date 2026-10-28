@@ -2,18 +2,20 @@ import { cn } from "cn"
 import { createContext, isValidElement, type ReactNode, use, useEffect, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { attachmentUrl, githubAssetUrl } from "../../shared/channels.ts"
+import { githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
-import type { EnvironmentId } from "../lib/rpc.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
+import { imageSource } from "../lib/imageSource.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { ThreadFolder } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
+import { ImageMenu, LinkMenu } from "./MarkdownMenus.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
 /** The proxied URL when the paragraph is nothing but a bare GitHub attachment link, which GitHub embeds. */
@@ -25,28 +27,22 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
   return text?.type === "text" && text.value === href ? githubAssetUrl(href) : null
 }
 
-/**
- * Agents embed files they saved on this machine, like `vm_screenshot` captures, by absolute path. Markdown
- * percent-encodes the path, as in `Application%20Support`, so it is decoded back first.
- */
-const imageSrc = (src: string, environment: EnvironmentId, baseUrl: string | null) => {
-  const asset = githubAssetUrl(src)
-  if (asset !== null) return asset
-  if (src.startsWith("/")) return attachmentUrl(decodeURI(src), environment)
-  return baseUrl === null ? src : new URL(src, baseUrl).href
-}
-
 const BaseUrl = createContext<string | null>(null)
 
 function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
   const environment = useOpenThreadEnvironment()
   const baseUrl = use(BaseUrl)
+  const root = use(ThreadFolder)
+  const className = "inline-block max-w-full rounded-md"
+  if (src === undefined) return <img alt={alt} className={className} />
+  const url = imageSource(src, { environment, baseUrl, root })
+  const path = src.startsWith("/") ? decodeURI(src) : null
   return (
-    <img
-      src={src === undefined ? undefined : imageSrc(src, environment, baseUrl)}
-      alt={alt}
-      loading="lazy"
-      className="inline-block max-w-full rounded-md"
+    <ImageMenu
+      image={<img src={url} alt={alt} loading="lazy" className={className} />}
+      url={url}
+      address={path ?? src}
+      path={environment === null ? path : null}
     />
   )
 }
@@ -58,13 +54,19 @@ const components: Components = {
   },
   img: ({ src, alt }) => <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt ?? ""} />,
   a: ({ children, href }) =>
-    isWebUrl(href) ? (
-      <WebLink href={href}>{children}</WebLink>
+    href === undefined ? (
+      children
     ) : (
-      // target=_blank routes the click through the main process, which opens it in the system browser.
-      <a href={href} target="_blank" rel="noreferrer">
-        {children}
-      </a>
+      <LinkMenu href={href}>
+        {isWebUrl(href) ? (
+          <WebLink href={href}>{children}</WebLink>
+        ) : (
+          // target=_blank routes the click through the main process, which opens it in the system browser.
+          <a href={href} target="_blank" rel="noreferrer">
+            {children}
+          </a>
+        )}
+      </LinkMenu>
     ),
   input: ({ type, checked }) => (
     <input
