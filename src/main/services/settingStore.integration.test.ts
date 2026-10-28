@@ -53,15 +53,36 @@ describe("setting files", () => {
     ),
   )
 
-  it.effect("fails with the file's path when it is not valid JSON, and leaves it alone", () =>
+  it.effect("starts from defaults when a hand edit broke the file, and refuses to overwrite it", () =>
     withDataDir((dir) =>
       Effect.gen(function* () {
         const path = join(dir, "settings.json")
         writeFileSync(path, "{ archive: ")
         const settings = yield* Settings.Settings
-        expect((yield* Effect.flip(settings.get)).message).toContain(path)
+        expect(yield* settings.get).toEqual(defaultSettings)
         expect((yield* Effect.flip(settings.set({ defaultProvider: "codex" }))).message).toContain(path)
         expect(readFileSync(path, "utf8")).toBe("{ archive: ")
+      }),
+    ),
+  )
+
+  it.effect("keeps the rest of the settings when one value has the wrong type", () =>
+    withDataDir((dir) =>
+      Effect.gen(function* () {
+        writeFileSync(
+          join(dir, "settings.json"),
+          JSON.stringify({ defaultProvider: 42, textGenerationModel: "claude-opus-5-5" }),
+        )
+        writeFileSync(join(dir, "client-settings.json"), JSON.stringify({ locale: "ja" }))
+        writeFileSync(join(dir, "keybindings.json"), "{ oops")
+        expect(yield* Settings.Settings.use((settings) => settings.get)).toEqual({
+          ...defaultSettings,
+          textGenerationModel: "claude-opus-5-5",
+        })
+        expect(yield* ClientSettings.ClientSettings.use((client) => client.get)).toEqual({
+          ...defaultClientSettings,
+          locale: "ja",
+        })
       }),
     ),
   )
