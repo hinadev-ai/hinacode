@@ -1,6 +1,7 @@
 import { describe, expect, test } from "@effect/vitest"
-import { githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
+import { attachmentUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
 import {
+  attachmentRequest,
   BROWSER_PARTITION,
   externalUrl,
   githubAssetId,
@@ -183,6 +184,20 @@ describe("projectFileRequest", () => {
     expect(projectFileRequest("hinacode-file://other/%2Frepo/a.png")).toBe(null)
     expect(projectFileRequest("hinacode-file://root/%E0%A4%A/a.png")).toBe(null)
     expect(projectFileRequest("hinacode-file://root/")).toBe(null)
+  })
+})
+
+describe("attachmentRequest", () => {
+  test("round-trips a path with spaces and non-ASCII names, on this machine or a cloud", () => {
+    const path = "/Users/me/Library/Application Support/kkcode/attachments/t/画面 #1.png"
+    expect(attachmentRequest(attachmentUrl(path))).toEqual({ path, environment: null })
+    expect(attachmentRequest(attachmentUrl(path, "env-1"))).toEqual({ path, environment: "env-1" })
+  })
+
+  test("refuses other schemes, other hosts and malformed escapes", () => {
+    expect(attachmentRequest("file:///etc/passwd")).toBe(null)
+    expect(attachmentRequest("hinacode-attachment://other/%2Fetc%2Fpasswd")).toBe(null)
+    expect(attachmentRequest("hinacode-attachment://file/%E0%A4%A")).toBe(null)
   })
 })
 

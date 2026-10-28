@@ -47,7 +47,6 @@ function AppSettings() {
         <Field orientation="horizontal">
           <FieldContent>
             <FieldLabel htmlFor="settings-locale">{m.settings_language()}</FieldLabel>
-            <FieldDescription>{m.settings_language_hint()}</FieldDescription>
             {error && <FieldError>{error}</FieldError>}
           </FieldContent>
           <Select items={locales} value={locale} onValueChange={changeLocale}>

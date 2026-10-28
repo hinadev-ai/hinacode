@@ -10,6 +10,7 @@ const message = (parts: Message["parts"]): Message => ({
   createdAt: "2026-10-18T00:00:00.000Z",
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 
 describe("compactMessage", () => {

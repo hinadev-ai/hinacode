@@ -50,6 +50,7 @@ Given(
       createdAt,
       completedAt: state === "running" ? null : completedAt,
       usage: null,
+      forkPoint: null,
     }
     responses.set(app, response)
     const db = new DatabaseSync(app.dbPath)

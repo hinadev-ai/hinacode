@@ -13,6 +13,7 @@ const message = (
   createdAt: "2026-10-12T00:00:00.000Z",
   completedAt,
   usage: null,
+  forkPoint: null,
 })
 
 const tool: MessagePart = {

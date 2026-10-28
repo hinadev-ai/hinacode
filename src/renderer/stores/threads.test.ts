@@ -20,6 +20,7 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   accessMode: "auto",
   accountId: null,
   providerSessionId: null,
+  forkedFrom: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,

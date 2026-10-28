@@ -10,6 +10,7 @@ const message = (id: string, parts: ReadonlyArray<MessagePart>, completedAt: str
   createdAt: "2026-10-12T00:00:00.000Z",
   completedAt,
   usage: null,
+  forkPoint: null,
 })
 
 test("finds every case-insensitive occurrence in reading order", () => {

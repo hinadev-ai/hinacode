@@ -28,6 +28,7 @@ A cell says yes when the provider maps the capability today. A cell says no when
 | Turns the agent starts by itself | `wakes`                                                     | yes                | no                       | yes                | A reply with no user message before it         |
 | Access mode                      | `accessMode`, `setAccessMode`                               | yes, live          | yes, next turn           | yes, live          | Access picker in the composer controls         |
 | Session copy between accounts    | `copySession`                                               | yes                | yes                      | no                 | Account switch on a started thread             |
+| Fork from a turn                 | `turn_completed.forkPoint`, `RunTurnInput.forkAt`           | yes                | yes                      | no                 | Fork button under a reply                      |
 
 ### Notes on the rows that differ
 
@@ -52,6 +53,8 @@ A cell says yes when the provider maps the capability today. A cell says no when
 **Access mode.** Every turn carries an `accessMode` (`src/shared/agent.ts`). Claude maps it to a permission mode (`src/main/agents/claude/access.ts`). Codex maps it to an approval policy and a sandbox (`src/main/agents/codex/access.ts`). Muse maps it to an approval mode (`src/main/agents/muse/index.ts`). Claude and Muse apply a change to the live session in `setAccessMode`. Codex returns void and picks the mode up on the next turn (`src/main/agents/codex/index.ts`). The contract allows that (`src/main/agents/provider.ts`).
 
 **Session copy between accounts.** `copySession` copies transcripts between agent homes so a resumed turn keeps its history (`src/main/agents/provider.ts`). Claude implements it at `src/main/agents/claude/index.ts`. Codex implements it at `src/main/agents/codex/index.ts`. Muse has no agent home and leaves it out. `AccountProviderId` therefore lists only `claude` and `codex` (`src/shared/agent.ts`). The runner refuses an account switch when `copySession` is missing (`src/main/services/AgentRunner.ts`).
+
+**Fork from a turn.** A provider that can fork its session puts a `forkPoint` on `turn_completed`: its session id and its own id for the end of that turn (`src/shared/agent.ts`). The runner stamps it with the agent and account that ran the turn and stores it on the turn's last message, and the fork button shows only there. A fork starts in that account, and switching its account before it sends copies the source session along. A fork's first turn gets the source session as `resumeSessionId` and the checkpoint as `forkAt`. Claude resumes with `forkSession` and `resumeSessionAt` set to the turn's last assistant message uuid (`src/main/agents/claude/index.ts`). Codex calls `thread/fork` with `lastTurnId` (`src/main/agents/codex/index.ts`). Muse has no fork and sends no `forkPoint`.
 
 ## Adding a provider
 
@@ -87,6 +90,7 @@ Map each row or leave it out on purpose. Prove each mapped row with a test again
 - Wakes. Expose `wakes` only when the agent starts turns by itself. Make `discard` safe after the turn ended. Test adoption and discard.
 - Access mode. Map every `AccessMode` to the native policy. Apply `setAccessMode` live or return void for next turn. Test the mapping table, like `src/main/agents/codex/access.test.ts`.
 - Session copy. Implement `copySession` only with added accounts. Overwrite older copies in the target home. Test a copy then a resume in the new home.
+- Fork. Send `forkPoint` on `turn_completed` only when a turn started with `forkAt` set to it can fork the session there. Test that `forkAt` starts a new session, like the `Codex fork` test in `src/main/agents/codex/index.integration.test.ts`.
 
 ### Optional fields
 
