@@ -8,6 +8,9 @@ const CALL_TIMEOUT = Duration.seconds(30)
 /** A relay call that failed, worded so the developer knows what to do next. */
 export class RelayError extends Schema.TaggedError<RelayError>()("RelayError", { message: Schema.String }) {}
 
+/** Why a machine notifies the owner's phone about a thread. */
+export type PushReason = "completed" | "approval" | "question" | "secret" | "failed" | "limited"
+
 export type Fetch = (input: URL, init: RequestInit) => Promise<Response>
 
 /** A sign-in the developer approves in a browser. */
@@ -132,6 +135,13 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           if (answer.status >= 300) return Effect.fail(failed("publish this machine's pairing", answer))
           return Effect.void
         }),
+      ),
+    /** Asks the relay to notify every phone of the owner that registered for push. */
+    push: (credential: string, push: { threadId: string; reason: PushReason }) =>
+      call("notify your phone", "POST", "/v1/host/push", { body: push, credential }).pipe(
+        Effect.flatMap((answer) =>
+          answer.status === 401 ? Effect.fail(forgotten()) : succeeded("notify your phone")(answer),
+        ),
       ),
     /** The machines the owner shows on their devices, with the pairing each one published. */
     machines: (ownerToken: string) =>
