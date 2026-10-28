@@ -248,7 +248,8 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e
+      # The config's CI default of 2 workers fits ubuntu-latest. This runner has 6 vCPUs.
+      - run: pnpm test:e2e --workers 4
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
