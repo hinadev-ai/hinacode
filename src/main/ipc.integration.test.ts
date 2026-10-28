@@ -854,6 +854,51 @@ describe("forking over rpc", () => {
     result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
     await expect.poll(() => turnResumes.at(-1)).toStrictEqual({ resumeSessionId: boundSession, forkAt: null })
   })
+
+  test("takes the session it forks from to the account an unsent fork switches to", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Fork spare")))
+    const spareHome = { dir: join(dir, "homes", "fork spare"), binary: "claude" }
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const fork = result(
+      await invoke("threads.fork", { threadId: source.id, messageId: (await transcript(source.id)).at(-1)!.id }),
+    )
+
+    copiedSessions.length = 0
+    turnHomes.length = 0
+    turnResumes.length = 0
+    result(await invoke("threads.switchAccount", { id: fork.id, accountId: spare.id }))
+    expect(copiedSessions).toStrictEqual([{ sessionId: "source-session", from: null, to: spareHome }])
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnHomes).toStrictEqual([spareHome])
+    expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
+
+  test("forks a copied turn in the account whose session ran it", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Later account")))
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const sourceReply = (await transcript(source.id)).at(-1)!
+    const middle = result(await invoke("threads.fork", { threadId: source.id, messageId: sourceReply.id }))
+    result(await invoke("threads.send", { threadId: middle.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await transcript(middle.id)).at(-1)?.completedAt ?? null).not.toBeNull()
+    result(await invoke("threads.switchAccount", { id: middle.id, accountId: spare.id }))
+
+    const copiedReply = (await transcript(middle.id)).find((message) => message.forkPoint !== null)!
+    const fork = result(await invoke("threads.fork", { threadId: middle.id, messageId: copiedReply.id }))
+    expect(fork.accountId).toBeNull()
+    turnHomes.length = 0
+    turnResumes.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnHomes).toStrictEqual([null])
+    expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
 })
 
 describe("token usage over rpc", () => {
