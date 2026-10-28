@@ -527,6 +527,36 @@ describe("Codex background terminals", () => {
   )
 })
 
+describe("Codex closed sessions", () => {
+  it.live("terminates the background terminals of a session the thread leaves, and empties the set", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))
+        const changes = yield* Queue.unbounded<BackgroundTasksChange>()
+        yield* backgroundTasks.changes.pipe(
+          Stream.runForEach((change) => Queue.offer(changes, change)),
+          Effect.forkChild,
+        )
+        setControl({ backgroundTerminal: true })
+        const turn = yield* startTurn("leaving-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(yield* Queue.take(changes)).toMatchObject({ threadId: "leaving-thread", tasks: [{ id: "1001" }] })
+
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-thread")
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toMatchObject(
+          [{ params: { threadId: "codex-thread", processId: "1001" } }],
+        )
+        expect(yield* Queue.take(changes)).toStrictEqual({ threadId: "leaving-thread", tasks: [] })
+        yield* backgroundTasks.stop("leaving-thread", "1001")
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toHaveLength(
+          1,
+        )
+      }),
+    ),
+  )
+})
+
 describe("Codex questions", () => {
   it.live("maps blocking questions and returns option and typed answers on the request id", () =>
     withProvider(
