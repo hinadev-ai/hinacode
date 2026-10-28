@@ -18,7 +18,6 @@ import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
-import { BrowserView } from "./BrowserView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 
@@ -28,6 +27,7 @@ const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ d
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
 // The tiny VM is an experiment few turn on, and its view brings motion along.
 const TinyVmView = lazy(() => import("./TinyVmView.tsx").then((module) => ({ default: module.TinyVmView })))
+const BrowserView = lazy(() => import("./BrowserView.tsx").then((module) => ({ default: module.BrowserView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
