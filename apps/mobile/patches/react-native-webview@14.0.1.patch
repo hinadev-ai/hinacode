@@ -1,0 +1,59 @@
+diff --git a/index.d.ts b/index.d.ts
+index 10b9c145b920a6a2ba1fb09bd72150328fafe211..626a67a3d6aca587ee9e74a52b799a2c50b4c52b 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -5,7 +5,7 @@ export { FileDownload, WebViewMessageEvent, WebViewNavigation } from './lib/WebV
+ 
+ export type WebViewProps = IOSWebViewProps & AndroidWebViewProps & WindowsWebViewProps;
+ 
+-declare class WebView<P = undefined> extends Component<WebViewProps & P> {
++declare class WebView<P = {}> extends Component<WebViewProps & P> {
+   /**
+    * Go back one page in the webview's history.
+    */
+diff --git a/lib/RNCWebViewNativeComponent.d.ts b/lib/RNCWebViewNativeComponent.d.ts
+index 6b789f988382b14e4c615d2289fb77a424270430..835d355fa2c8c2af54baa09258e144602e4f751d 100644
+--- a/lib/RNCWebViewNativeComponent.d.ts
++++ b/lib/RNCWebViewNativeComponent.d.ts
+@@ -1,5 +1,9 @@
+ import type { HostComponent, ViewProps } from 'react-native';
+-import { DirectEventHandler, Double, Int32, WithDefault } from 'react-native/Libraries/Types/CodegenTypes';
++import type { CodegenTypes } from 'react-native';
++type DirectEventHandler<T> = CodegenTypes.DirectEventHandler<T>;
++type Double = CodegenTypes.Double;
++type Int32 = CodegenTypes.Int32;
++type WithDefault<T extends number | boolean | string | ReadonlyArray<string>, V extends T | string | null | undefined> = CodegenTypes.WithDefault<T, V>;
+ export type WebViewNativeEvent = Readonly<{
+     url: string;
+     loading: boolean;
+diff --git a/lib/WebViewTypes.d.ts b/lib/WebViewTypes.d.ts
+index f666e8142adcf0e976d60024065291fb291ec012..287dbe5cc4caeac4b25436fd0f8754a626dc40ca 100644
+--- a/lib/WebViewTypes.d.ts
++++ b/lib/WebViewTypes.d.ts
+@@ -1,9 +1,9 @@
+ import { ReactElement, Component, ComponentProps } from 'react';
+-import { NativeSyntheticEvent, ViewProps, StyleProp, ViewStyle, NativeMethodsMixin, UIManagerStatic, NativeScrollEvent } from 'react-native';
++import { NativeSyntheticEvent, ViewProps, StyleProp, ViewStyle, HostInstance, UIManager, NativeScrollEvent } from 'react-native';
+ import type NativeWebViewComponent from './RNCWebViewNativeComponent';
+ type WebViewCommands = 'goForward' | 'goBack' | 'reload' | 'stopLoading' | 'postMessage' | 'injectJavaScript' | 'loadUrl' | 'requestFocus' | 'clearCache';
+ type AndroidWebViewCommands = 'clearHistory' | 'clearFormData';
+-interface RNCWebViewUIManager<Commands extends string> extends UIManagerStatic {
++interface RNCWebViewUIManager<Commands extends string> extends Omit<typeof UIManager, 'getViewManagerConfig'> {
+     getViewManagerConfig: (name: string) => {
+         Commands: {
+             [key in Commands]: number;
+@@ -30,12 +30,12 @@ export type State = NormalState | ErrorState;
+ type Constructor<T> = new (...args: any[]) => T;
+ declare class NativeWebViewMacOSComponent extends Component<MacOSNativeWebViewProps> {
+ }
+-declare const NativeWebViewMacOSBase: Constructor<NativeMethodsMixin> & typeof NativeWebViewMacOSComponent;
++declare const NativeWebViewMacOSBase: Constructor<HostInstance> & typeof NativeWebViewMacOSComponent;
+ export declare class NativeWebViewMacOS extends NativeWebViewMacOSBase {
+ }
+ declare class NativeWebViewWindowsComponent extends Component<WindowsNativeWebViewProps> {
+ }
+-declare const NativeWebViewWindowsBase: Constructor<NativeMethodsMixin> & typeof NativeWebViewWindowsComponent;
++declare const NativeWebViewWindowsBase: Constructor<HostInstance> & typeof NativeWebViewWindowsComponent;
+ export declare class NativeWebViewWindows extends NativeWebViewWindowsBase {
+ }
+ export interface ContentInsetProp {

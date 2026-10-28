@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications"
+import { AndroidImportance, IosAuthorizationStatus } from "expo-notifications"
 import { Platform } from "react-native"
 import { copy } from "@/lib/copy"
 
@@ -28,14 +29,14 @@ const ensureChannel = () => {
   if (Platform.OS !== "android") return Promise.resolve()
   channel ??= Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: copy("mobile_notify_channel"),
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: AndroidImportance.HIGH,
   })
   return channel
 }
 
 /** iOS provisional delivery reaches Notification Center quietly, which is enough to count as on. */
 const toPermission = (status: Notifications.NotificationPermissionsStatus): NotificationPermission => {
-  if (status.granted || status.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) return "granted"
+  if (status.granted || status.ios?.status === IosAuthorizationStatus.PROVISIONAL) return "granted"
   return status.status === "denied" ? "denied" : "undetermined"
 }
 
