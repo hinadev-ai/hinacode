@@ -1,6 +1,6 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
-import { createElement, type RefObject, useEffect, useRef } from "react"
+import { createElement, type RefObject, Suspense, useEffect, useRef } from "react"
 import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
@@ -104,7 +104,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
         {header ?? <h2 className="truncate text-sm font-medium">{view.title()}</h2>}
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
       </header>
-      {content}
+      <Suspense>{content}</Suspense>
     </section>
   )
 }
