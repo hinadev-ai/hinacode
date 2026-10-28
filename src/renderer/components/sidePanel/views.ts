@@ -21,7 +21,6 @@ import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { BrowserView } from "./BrowserView.tsx"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
-import { DevicesView } from "./devices/DevicesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 import { TinyVmView } from "./TinyVmView.tsx"
@@ -30,6 +29,8 @@ import { TinyVmView } from "./TinyVmView.tsx"
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
+// Experimental and off by default, so the device stream and frame load only once the view opens.
+const DevicesView = lazy(() => import("./devices/DevicesView.tsx").then((module) => ({ default: module.DevicesView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
