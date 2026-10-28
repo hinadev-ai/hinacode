@@ -109,16 +109,16 @@ const withPreparingThread = async (
     Messages.layer,
   ).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(
-        Git.layer,
-        GitHub.layer,
-        Layer.succeed(Events, {
-          publish: (event) =>
-            Effect.sync(() => {
-              if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
-              if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
-            }),
-        }),
+      Layer.mergeAll(Git.layer, GitHub.layer).pipe(
+        Layer.provideMerge(
+          Layer.succeed(Events, {
+            publish: (event) =>
+              Effect.sync(() => {
+                if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
+                if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
+              }),
+          }),
+        ),
       ),
     ),
     Layer.provideMerge(Db.layer(join(dir, "hinacode.sqlite"))),

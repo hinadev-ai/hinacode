@@ -132,6 +132,17 @@ export const GitHubAuth = Schema.Union([
 ])
 export type GitHubAuth = typeof GitHubAuth.Type
 
+/** GitHub's `x-ratelimit-*` headers: what is left of one resource's hourly budget, shared by everything the user runs. */
+export const GitHubRateLimit = Schema.Struct({
+  resource: Schema.String,
+  limit: Schema.Number,
+  remaining: Schema.Number,
+  used: Schema.Number,
+  /** Epoch milliseconds. */
+  resetsAt: Schema.Number,
+})
+export type GitHubRateLimit = typeof GitHubRateLimit.Type
+
 /** Where the updater is. A development build never checks, so it stays `unsupported`. */
 export const UpdateState = Schema.Union([
   Schema.Struct({ type: Schema.Literal("unsupported") }),

@@ -5,7 +5,10 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, test } from "@effect/vitest"
 import { Effect, Layer } from "effect"
+import { Events } from "./Events.ts"
 import { GitHub, layer } from "./GitHub.ts"
+
+const noEvents = Layer.succeed(Events, { publish: () => Effect.void })
 
 const dirs: Array<string> = []
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })))
@@ -25,7 +28,9 @@ const repoWithOrigin = (origin: string | null) => {
 
 const repository = (cwd: string) =>
   Effect.runPromise(
-    GitHub.use((github) => github.repository(cwd)).pipe(Effect.provide(layer.pipe(Layer.provide(NodeServices.layer)))),
+    GitHub.use((github) => github.repository(cwd)).pipe(
+      Effect.provide(layer.pipe(Layer.provide(NodeServices.layer), Layer.provide(noEvents))),
+    ),
   )
 
 describe("GitHub.repository", () => {
@@ -65,7 +70,7 @@ describe("GitHub.clone", () => {
     try {
       await Effect.runPromise(
         GitHub.use((github) => github.clone({ owner: "octocat", name: "Hello-World" }, dest)).pipe(
-          Effect.provide(layer.pipe(Layer.provide(NodeServices.layer))),
+          Effect.provide(layer.pipe(Layer.provide(NodeServices.layer), Layer.provide(noEvents))),
         ),
       )
     } finally {
