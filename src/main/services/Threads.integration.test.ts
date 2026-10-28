@@ -81,6 +81,36 @@ describe("Threads", () => {
     }).pipe(Effect.provide(threadsLayer)),
   )
 
+  it.effect("refuses to fork a turn another agent ran", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const messages = yield* Messages
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const at = "2026-01-01T00:00:00.000Z"
+      const reply = {
+        id: randomUUID(),
+        threadId,
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "from codex" }],
+        createdAt: at,
+        completedAt: at,
+        usage: null,
+        forkPoint: {
+          sessionId: "codex-thread",
+          checkpoint: "turn-1",
+          owner: { provider: "codex" as const, accountId: null },
+        },
+      }
+      yield* messages.insert(reply)
+      const before = (yield* threads.list).length
+
+      const error = yield* threads.fork(threadId, reply.id).pipe(Effect.flip)
+
+      expect(error._tag).toBe("NotFoundError")
+      expect((yield* threads.list).length).toBe(before)
+    }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
   it.effect("list skips threads whose provider this build does not know", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient

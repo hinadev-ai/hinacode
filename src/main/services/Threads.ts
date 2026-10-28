@@ -304,7 +304,6 @@ const make = Effect.gen(function* () {
       if (Option.isNone(found)) return yield* new NotFoundError({ entity: "fork point", id: messageId })
       const { owner, ...forkedFrom } = found.value.forkPoint
       const { provider, accountId } = owner ?? source
-      // The thread's model belongs to its current agent, and a session cannot move to another agent.
       if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
       if (accountId !== null) yield* accounts.get(accountId)
       const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
@@ -396,7 +395,6 @@ const make = Effect.gen(function* () {
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
         providerSessionId: input.providerSessionId ?? current.providerSessionId,
-        // A fork's first session replaces the point it started from, and another agent cannot start from it.
         forkedFrom:
           input.providerSessionId !== undefined || (input.provider ?? current.provider) !== current.provider
             ? null
