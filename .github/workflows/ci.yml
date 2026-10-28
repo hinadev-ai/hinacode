@@ -147,6 +147,8 @@ jobs:
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/trace.json
     strategy:
       fail-fast: false
       matrix:
@@ -163,8 +165,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4 --reporter=json,list'
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/4'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: trace-linux-${{ matrix.shard }}
+          path: trace.json
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -193,7 +199,14 @@ jobs:
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e
+      - run: pnpm test:e2e --reporter=json,list
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/trace.json
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trace-macos
+          path: trace.json
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
