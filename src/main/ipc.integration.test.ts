@@ -1575,6 +1575,33 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
+  test("a quiet phone hears only the turns that end or wait on it, until it is loud again", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await paired.ready()).features).toContain("quiet")
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-quiet"))
+    const thread = result(await paired.call("threads.create", { projectId: project.id }))
+    const turnEvent = (type: string) =>
+      paired.event(
+        (event) => event.type === "thread.event" && event.threadId === thread.id && event.event.type === type,
+      )
+
+    await paired.send({ type: "quiet", quiet: true })
+    const quietFrom = paired.frames.length
+    result(await paired.call("threads.send", { threadId: thread.id, prompt: "simulate a tool call" }))
+    await turnEvent("turn_completed")
+    const heard = paired.frames
+      .slice(quietFrom)
+      .flatMap((frame) => (frame.type === "event" ? [frame.event as PushEvent] : []))
+      .map((event) => (event.type === "thread.event" ? event.event.type : event.type))
+    expect(new Set(heard)).toStrictEqual(new Set(["thread.updated", "turn_completed"]))
+
+    await paired.send({ type: "quiet", quiet: false })
+    result(await paired.call("threads.send", { threadId: thread.id, prompt: "simulate a tool call" }))
+    await turnEvent("text_delta")
+    paired.socket.close()
+  })
+
   test("a paired phone reads Linear issues, empty on a machine without a Linear key", async () => {
     const paired = phone(port)
     await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })

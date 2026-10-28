@@ -79,6 +79,7 @@ const MUTATIONS = new Set(["threads.send", "approvals.respond"])
 let sockets: FakeSocket[]
 let statuses: TransportStatus[]
 let ready: number
+let missed: number
 let keys: number
 let plan: readonly Dial[] = []
 
@@ -89,6 +90,7 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
   sockets = []
   statuses = []
   ready = 0
+  missed = 0
   keys = 0
   plan = dials
   const transport = new Transport({
@@ -97,6 +99,7 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
+    onMissed: () => missed++,
     onEvent: () => {},
     createSocket: (url) => {
       const socket = new FakeSocket(url)
@@ -333,6 +336,7 @@ describe("Transport", () => {
         isMutation: () => false,
         onStatus: () => {},
         onReady: () => {},
+        onMissed: () => {},
         onEvent: () => {},
         createSocket: (url) => {
           const socket = new FakeSocket(url)
@@ -418,6 +422,62 @@ describe("Transport", () => {
       latest().receive({ type: "pong", at: 0 })
       await vi.advanceTimersByTimeAsync(10_000)
       expect(latest().closed).toBe(false)
+    })
+  })
+
+  describe("quiet in the background", () => {
+    const quietFrames = () => latest().sent.filter((frame) => frame.type === "quiet")
+
+    it("asks a desktop that offers it to hold back pushes until the app returns", () => {
+      const transport = setup()
+      handshake(["heartbeat", "quiet"])
+      transport.setForeground(false)
+      expect(quietFrames()).toEqual([{ type: "quiet", quiet: true }])
+      transport.setForeground(true)
+      expect(quietFrames()).toEqual([
+        { type: "quiet", quiet: true },
+        { type: "quiet", quiet: false },
+      ])
+    })
+
+    it("reports the pushes it missed once the desktop answers after the return", () => {
+      const transport = setup()
+      handshake(["heartbeat", "quiet"])
+      transport.setForeground(false)
+      transport.setForeground(true)
+      expect(missed).toBe(0)
+      latest().receive({ type: "pong", at: 0 })
+      expect(missed).toBe(1)
+    })
+
+    it("leaves the reload to the handshake when the socket died in the background", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "quiet"])
+      transport.setForeground(false)
+      transport.setForeground(true)
+      await vi.advanceTimersByTimeAsync(5_000 + 1_000)
+      expect(sockets).toHaveLength(2)
+      handshake(["heartbeat", "quiet"])
+      latest().receive({ type: "pong", at: 0 })
+      expect(missed).toBe(0)
+      expect(ready).toBe(2)
+    })
+
+    it("goes quiet right after a handshake made in the background", () => {
+      const transport = setup()
+      transport.setForeground(false)
+      handshake(["heartbeat", "quiet"])
+      expect(quietFrames()).toEqual([{ type: "quiet", quiet: true }])
+    })
+
+    it("sends nothing new to a desktop without it", () => {
+      const transport = setup()
+      handshake(["heartbeat"])
+      transport.setForeground(false)
+      transport.setForeground(true)
+      latest().receive({ type: "pong", at: 0 })
+      expect(quietFrames()).toEqual([])
+      expect(missed).toBe(0)
     })
   })
 
