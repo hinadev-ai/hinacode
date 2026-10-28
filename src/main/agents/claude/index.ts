@@ -767,12 +767,15 @@ export const layer = Layer.effect(
     /** The CLI started work by itself, such as resuming a sub-agent whose background shell finished. */
     const wake = (session: Session) =>
       Effect.gen(function* () {
+        const { sessionId } = session
+        if (sessionId === null) return
         const turn: TurnQueue = yield* Queue.unbounded<AgentEvent, AgentError | Cause.Done>()
         session.reportsState = true
         openTurn(session, turn)
         const events = Stream.fromQueue(turn).pipe(Stream.ensuring(Effect.suspend(() => abandon(session, turn))))
         yield* Queue.offer(wakes, {
           threadId: session.threadId,
+          sessionId,
           events,
           discard: Effect.suspend(() => abandon(session, turn)),
         })
@@ -932,6 +935,12 @@ export const layer = Layer.effect(
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
+      closeSession: (threadId) =>
+        Effect.sync(() => {
+          resumable.delete(threadId)
+          const session = sessions.get(threadId)
+          if (session !== undefined) closeSessionUnsafe(session)
+        }),
       contextBreakdown: (threadId) =>
         Effect.suspend(() => {
           const session = sessions.get(threadId)

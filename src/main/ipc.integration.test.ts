@@ -144,6 +144,7 @@ const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 /** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
+const turnPrompts: Array<string> = []
 
 /** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
@@ -173,6 +174,7 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
     Stream.suspend(() => {
       turnHomes.push(input.home)
       turnResumes.push({ resumeSessionId: input.resumeSessionId, forkAt: input.forkAt })
+      turnPrompts.push(input.prompt)
       if (input.prompt === "simulate a held sub-agent") {
         return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
           Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
@@ -501,7 +503,7 @@ describe("projects, threads and settings over rpc", () => {
     expect(stored?.userSkills).toBe(false)
   })
 
-  test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
+  test("a thread switches agent, back to that agent's defaults, and marks a switch after its first message", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
     result(await invoke("threads.update", { id: thread.id, effort: "max", fastMode: true }))
@@ -527,9 +529,12 @@ describe("projects, threads and settings over rpc", () => {
         }),
       ),
     )
-    expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
-      "ThreadStartedError",
-    )
+    expect(result(await invoke("threads.update", { id: thread.id, provider: "claude" }))).toMatchObject({
+      provider: "claude",
+      providerSessionId: null,
+    } satisfies Partial<Thread>)
+    const { messages } = result(await invoke("threads.transcript", { threadId: thread.id }))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "codex", to: "claude" }])
   })
 
   test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
@@ -849,8 +854,10 @@ describe("forking over rpc", () => {
     )
 
     turnResumes.length = 0
+    turnPrompts.length = 0
     result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
     await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+    expect(turnPrompts).toStrictEqual(["simulate a session"])
     await expect.poll(async () => (await transcript(fork.id)).at(-1)?.completedAt).not.toBeNull()
     result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
     await expect.poll(() => turnResumes.at(-1)).toStrictEqual({ resumeSessionId: boundSession, forkAt: null })
@@ -876,6 +883,27 @@ describe("forking over rpc", () => {
     result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
     await expect.poll(() => turnHomes).toStrictEqual([spareHome])
     expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
+
+  test("drops an unsent fork's source session when the fork switches agents", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const fork = result(
+      await invoke("threads.fork", { threadId: source.id, messageId: (await transcript(source.id)).at(-1)!.id }),
+    )
+
+    expect(result(await invoke("threads.update", { id: fork.id, provider: "codex" })).forkedFrom).toBeNull()
+    expect(result(await invoke("threads.update", { id: fork.id, provider: "claude" })).forkedFrom).toBeNull()
+    turnResumes.length = 0
+    turnPrompts.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: null, forkAt: null }])
+    expect(turnPrompts).toStrictEqual([
+      expect.stringMatching(/^<conversation_handoff>\n[\s\S]*\n\nsimulate a session$/),
+    ])
   })
 
   test("forks a copied turn in the account whose session ran it", async () => {
@@ -1134,6 +1162,7 @@ const wake = (threadId: string, text: string) =>
   Effect.runSync(
     Queue.offer(claudeWakes, {
       threadId,
+      sessionId: boundSession,
       events: Stream.make({ type: "text_delta", text }, { type: "turn_completed" }),
       discard: Effect.void,
     }),
@@ -1165,6 +1194,7 @@ describe("turns the agent starts over rpc", () => {
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         events: Stream.never,
         discard: Effect.sync(discard),
       }),
@@ -1197,6 +1227,7 @@ describe("turns the agent starts over rpc", () => {
       Effect.runSync(
         Queue.offer(claudeWakes, {
           threadId: thread.id,
+          sessionId: boundSession,
           events: Stream.empty,
           discard: Effect.sync(discard),
         }),
@@ -1218,9 +1249,12 @@ describe("turns the agent starts over rpc", () => {
     const held = Promise.withResolvers<void>()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         discard: Effect.void,
         events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
           Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
@@ -1232,7 +1266,7 @@ describe("turns the agent starts over rpc", () => {
     expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual(["then the docs"])
 
     held.resolve()
-    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["then the docs"])
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["simulate a session", "then the docs"])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 
@@ -1240,15 +1274,17 @@ describe("turns the agent starts over rpc", () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
     wake(thread.id, "The sub-agent finished.")
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
-    expect(await assistantTexts(thread.id)).toStrictEqual([""])
+    expect(await assistantTexts(thread.id)).toStrictEqual(["", ""])
 
     heldTurn.resolve()
     await expect
       .poll(() => assistantTexts(thread.id))
-      .toStrictEqual(["Spawned one sub-agent.", "The sub-agent finished."])
+      .toStrictEqual(["", "Spawned one sub-agent.", "The sub-agent finished."])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 })

@@ -27,7 +27,7 @@ export interface MuseHost {
   readonly subscribe: (listener: (message: Incoming) => void) => Effect.Effect<void, never, Scope.Scope>
 }
 
-const REQUEST_TIMEOUT = Duration.seconds(60)
+export const REQUEST_TIMEOUT = Duration.seconds(60)
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 

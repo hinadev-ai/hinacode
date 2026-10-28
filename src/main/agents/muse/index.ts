@@ -1,6 +1,20 @@
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
+import {
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import type {
   AccountHome,
   AgentEvent,
@@ -19,7 +33,7 @@ import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake }
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
-import { type Incoming, makeMuseHost, type MuseHost, toAgentError } from "./host.ts"
+import { type Incoming, makeMuseHost, type MuseHost, REQUEST_TIMEOUT, toAgentError } from "./host.ts"
 import { editedPath, toolInput, toolName, toolResult } from "./items.ts"
 import { toPlanLimits } from "./limits.ts"
 import {
@@ -46,6 +60,8 @@ import {
   type TurnStartResult,
   type UserInputRequestParams,
   type UserInputSettledParams,
+  SessionLeaveAck,
+  SessionLeaveCompleted,
   ViewPage,
 } from "./protocol.ts"
 import { toAnswers, toQuestion } from "./questions.ts"
@@ -241,6 +257,39 @@ const interruptTurn = (host: MuseHost, sessionId: string, turnId: string) =>
       : Effect.void,
   )
 
+const decodeLeaveCompleted = Schema.decodeUnknownOption(SessionLeaveCompleted)
+
+/**
+ * `session/leave` with `stop` cancels the session's turns and background shells and unloads it from the host. Its
+ * answer only admits the leave, and `session/leaveCompleted` reports when the host let go. A host that exits
+ * takes its sessions with it.
+ */
+const leaveSession = (host: MuseHost, sessionId: string) =>
+  Effect.gen(function* () {
+    const inbox = yield* Queue.unbounded<Incoming>()
+    yield* host.subscribe((message) => Queue.offerUnsafe(inbox, message))
+    const ack = yield* host.command("session/leave", { sessionId, stop: true }).pipe(Effect.mapError(toAgentError))
+    const { commandId } = yield* Schema.decodeUnknownEffect(SessionLeaveAck)(ack).pipe(
+      Effect.mapError(() => museError("session/leave: invalid response")),
+    )
+    while (true) {
+      const message = yield* Queue.take(inbox)
+      if (message.kind === "exit") return
+      if (message.kind !== "notification" || message.method !== "session/leaveCompleted") continue
+      const completed = decodeLeaveCompleted(message.params)
+      if (Option.isNone(completed) || completed.value.commandId !== commandId) continue
+      const { outcome, reason } = completed.value
+      if (outcome === "released") return
+      return yield* museError(`session/leave: ${outcome}${reason === undefined ? "" : ` (${reason})`}`)
+    }
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: REQUEST_TIMEOUT,
+      orElse: () => Effect.fail(museError(`session/leave did not complete within ${Duration.format(REQUEST_TIMEOUT)}`)),
+    }),
+    Effect.scoped,
+  )
+
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
   const hostLock = yield* Semaphore.make(1)
@@ -388,6 +437,7 @@ const make = Effect.gen(function* () {
     )
     Queue.offerUnsafe(wakes, {
       threadId,
+      sessionId,
       events: events.pipe(Stream.ensuring(release)),
       discard: release.pipe(Effect.andThen(interruptTurn(entry.host, sessionId, turnId)), Effect.ignore),
     })
@@ -1033,6 +1083,20 @@ const make = Effect.gen(function* () {
         : stop
     }).pipe(Effect.asVoid)
 
+  const closeSession = (threadId: string) =>
+    Effect.gen(function* () {
+      const sessionId = threadSessions.get(threadId)
+      if (sessionId === undefined) return
+      const entry = current
+      if (entry?.host.isAlive()) yield* leaveSession(entry.host, sessionId)
+      if (entry !== undefined) {
+        setBackgroundTasks(entry, sessionId, [])
+        entry.sessions.delete(sessionId)
+      }
+      threadSessions.delete(threadId)
+      grants.delete(threadId)
+    })
+
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
@@ -1110,6 +1174,7 @@ const make = Effect.gen(function* () {
     steer,
     wakes: Stream.fromQueue(wakes),
     interrupt,
+    closeSession,
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     stopSubagent,
     respondApproval,

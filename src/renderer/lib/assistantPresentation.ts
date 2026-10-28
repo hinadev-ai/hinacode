@@ -17,7 +17,13 @@ export type AssistantPresentation =
 
 export function assistantPresentation(message: Message, showElapsedTime = true): AssistantPresentation {
   const parts = message.parts.flatMap((part, index) => (isOwnPart(part) ? [{ part, index }] : []))
-  if (message.role === "user" || message.completedAt === null || !showElapsedTime) return { kind: "inline", parts }
+  if (
+    message.role === "user" ||
+    message.completedAt === null ||
+    !showElapsedTime ||
+    parts.every(({ part }) => part.type === "agent_switch")
+  )
+    return { kind: "inline", parts }
   const durationMs = Date.parse(message.completedAt) - Date.parse(message.createdAt)
   if (!(durationMs >= 0)) return { kind: "inline", parts }
   return { kind: "completed", durationMs, parts }

@@ -325,6 +325,15 @@ function PartView({ part }: { part: MessagePart }) {
           {copy(compactionCopy[part.compaction.status])}
         </Text>
       )
+    case "agent_switch":
+      return (
+        <Text style={{ color: theme.textMuted }}>
+          {copy("mobile_chat_agent_switched", {
+            from: copy(`mobile_provider_${part.from}`),
+            to: copy(`mobile_provider_${part.to}`),
+          })}
+        </Text>
+      )
   }
 }
 

@@ -16,7 +16,7 @@ import {
   RiTerminalBoxLine,
   RiToolsLine,
 } from "react-icons/ri"
-import type { Compaction } from "../../shared/agent.ts"
+import type { Compaction, ProviderId } from "../../shared/agent.ts"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
@@ -32,7 +32,7 @@ import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
@@ -51,6 +51,8 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <AttachmentView attachment={part.attachment} />
     case "compaction":
       return <CompactionPart compaction={part.compaction} />
+    case "agent_switch":
+      return <AgentSwitchPart from={part.from} to={part.to} />
   }
 }
 
@@ -438,6 +440,19 @@ function CompactionPart({ compaction }: { compaction: Compaction }) {
     <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
       <span aria-hidden className="h-px flex-1 bg-border" />
       <CompactionLabel compaction={compaction} />
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+function AgentSwitchPart({ from, to }: { from: ProviderId; to: ProviderId }) {
+  return (
+    <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+      <span aria-hidden className="h-px flex-1 bg-border" />
+      <span className="flex items-center gap-1.5">
+        <ProviderIcon provider={to} />
+        {m.agent_switched({ from: providerLabel[from](), to: providerLabel[to]() })}
+      </span>
       <span aria-hidden className="h-px flex-1 bg-border" />
     </div>
   )

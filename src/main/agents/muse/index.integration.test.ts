@@ -145,6 +145,15 @@ const withProvider = <A, E>(effect: Effect.Effect<A, E, MuseProvider>) =>
 
 const TURN_TIMEOUT = 60_000
 
+const processesRunning = (commandLine: string) => {
+  try {
+    execFileSync("pgrep", ["-f", commandLine])
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Muse moves a shell to the background once it outlives `yield_time_ms`. */
 const backgroundShell = (command: string) => (marker: string) =>
   endpoint.script({
@@ -435,6 +444,32 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(events.filter(ofType("approval_requested"))).toHaveLength(1)
           expect(events.filter(ofType("tool_call_finished"))).toMatchObject([{ isError: false }])
           expect(events.at(-1)?.type).toBe("turn_completed")
+        }).pipe(Effect.scoped),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "leaves the session a thread moves off, and its background shell is gone once that returns",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
+          const tasks = yield* watchBackgroundTasks
+          let shell = ""
+          const turn = yield* startTurn("full", (marker) => {
+            shell = `sleep 30 && echo left-${marker}`
+            backgroundShell(shell)(marker)
+          })
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length > 0)
+          yield* Fiber.join(turn.fiber)
+          expect(processesRunning(shell)).toBe(true)
+
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(turn.threadId, null)
+          expect(processesRunning(shell)).toBe(false)
+          expect(tasks.changes.filter((change) => change.threadId === turn.threadId).at(-1)?.tasks).toStrictEqual([])
+          expect(yield* Queue.size(wakes)).toBe(0)
         }).pipe(Effect.scoped),
       ),
     TURN_TIMEOUT,

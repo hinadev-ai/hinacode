@@ -461,6 +461,8 @@ export const MessagePart = Schema.Union([
   /** Questions the agent posted without waiting; `text` is how they read once answered. */
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
+  /** The thread moved to another agent. The turn after it starts a new session that gets the transcript above. */
+  Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
 ])
 export type MessagePart = typeof MessagePart.Type
 
