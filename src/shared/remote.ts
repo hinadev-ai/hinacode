@@ -11,7 +11,7 @@ export const REMOTE_PROTOCOL_VERSION = 1
 /** The listener closes a socket whose unsent output grows past this, so no single answer may be larger. */
 export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 
-export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "quiet", "watch"] as const
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 
 /** The calls a cloud may `ask` a desktop for, to read and drive threads on the user's other machines. */
@@ -54,8 +54,6 @@ export const ClientFrame = Schema.Union([
   /** Sent by a desktop after a `ready` that lists `asks`: it answers `ask` frames from then on. */
   Schema.Struct({ type: Schema.Literal("hub") }),
   Schema.Struct({ type: Schema.Literal("answer"), id: Schema.Int, envelope: Envelope }),
-  /** Sent by a phone going to the background (true) and coming back (false), after a `ready` that lists `quiet`. */
-  Schema.Struct({ type: Schema.Literal("quiet"), quiet: Schema.Boolean }),
   /** The threads whose transcripts a phone shows, after a `ready` that lists `watch`. Sent again whenever they change. */
   Schema.Struct({ type: Schema.Literal("watch"), threadIds: Schema.Array(Schema.String) }),
 ])
@@ -104,12 +102,6 @@ const noticeEvents: ReadonlySet<string> = new Set([
   "secret_requested",
 ])
 
-/** What a phone asked to hear. `watching` is null for a phone that never said, which hears every transcript. */
-export interface PhoneView {
-  readonly quiet: boolean
-  readonly watching: ReadonlySet<string> | null
-}
-
 const transcriptThreadId = (event: typeof PushEvent.Encoded) =>
   event.type === "thread.event"
     ? event.threadId
@@ -117,18 +109,11 @@ const transcriptThreadId = (event: typeof PushEvent.Encoded) =>
       ? event.message.threadId
       : undefined
 
-/**
- * Whether a phone gets `event`. Every phone hears thread.updated and the agent events that raise a notification.
- * A quiet one, out of sight, hears nothing else until it returns and reloads what it shows. A phone in hand hears
- * the rest, but transcripts only for the threads it watches, since streaming every reply token by token keeps its
- * radio and CPU awake for text nobody reads.
- */
-export const reachesPhone = (event: typeof PushEvent.Encoded, view: PhoneView) => {
-  if (event.type === "thread.updated" || (event.type === "thread.event" && noticeEvents.has(event.event.type)))
-    return true
-  if (view.quiet) return false
+/** Null preserves every transcript for clients that have not sent a watch frame. */
+export const reachesPhone = (event: typeof PushEvent.Encoded, watching: ReadonlySet<string> | null) => {
+  if (event.type === "thread.event" && noticeEvents.has(event.event.type)) return true
   const threadId = transcriptThreadId(event)
-  return threadId === undefined || view.watching === null || view.watching.has(threadId)
+  return threadId === undefined || watching === null || watching.has(threadId)
 }
 
 /**

@@ -79,7 +79,6 @@ const MUTATIONS = new Set(["threads.send", "approvals.respond"])
 let sockets: FakeSocket[]
 let statuses: TransportStatus[]
 let ready: number
-let missed: number
 let received: number
 let keys: number
 let plan: readonly Dial[] = []
@@ -91,7 +90,6 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
   sockets = []
   statuses = []
   ready = 0
-  missed = 0
   received = 0
   keys = 0
   plan = dials
@@ -101,7 +99,6 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
-    onMissed: () => missed++,
     onEvent: () => received++,
     createSocket: (url) => {
       const socket = new FakeSocket(url)
@@ -338,7 +335,6 @@ describe("Transport", () => {
         isMutation: () => false,
         onStatus: () => {},
         onReady: () => {},
-        onMissed: () => {},
         onEvent: () => {},
         createSocket: (url) => {
           const socket = new FakeSocket(url)
@@ -399,37 +395,9 @@ describe("Transport", () => {
       await vi.advanceTimersByTimeAsync(1)
       expect(latest().closed).toBe(true)
     })
-
-    it("pauses in the background and probes for 5 s on return", async () => {
-      const transport = setup()
-      handshake()
-      transport.setForeground(false)
-      await vi.advanceTimersByTimeAsync(120_000)
-      expect(latest().closed).toBe(false)
-      expect(latest().pings()).toHaveLength(0)
-
-      transport.setForeground(true)
-      expect(latest().pings()).toHaveLength(1)
-      await vi.advanceTimersByTimeAsync(4_999)
-      expect(latest().closed).toBe(false)
-      await vi.advanceTimersByTimeAsync(1)
-      expect(latest().closed).toBe(true)
-    })
-
-    it("keeps a socket whose probe is answered", async () => {
-      const transport = setup()
-      handshake()
-      transport.setForeground(false)
-      transport.setForeground(true)
-      latest().receive({ type: "pong", at: 0 })
-      await vi.advanceTimersByTimeAsync(10_000)
-      expect(latest().closed).toBe(false)
-    })
   })
 
-  describe("quiet in the background", () => {
-    const quietFrames = () => latest().sent.filter((frame) => frame.type === "quiet")
-
+  describe("background cutoff", () => {
     it("closes a healthy socket and does no socket work until the foreground", async () => {
       const transport = setup()
       handshake()
@@ -491,7 +459,7 @@ describe("Transport", () => {
 
     it("makes no connection attempts for a minute after its background socket drops", async () => {
       const transport = setup()
-      handshake(["heartbeat", "quiet"])
+      handshake(["heartbeat"])
       transport.setForeground(false)
       latest().drop()
       await vi.advanceTimersByTimeAsync(60_000)
@@ -520,13 +488,13 @@ describe("Transport", () => {
       expect(sockets[0]!.closed).toBe(true)
       transport.setForeground(true)
       expect(sockets).toHaveLength(2)
-      handshake(["heartbeat", "quiet"])
+      handshake(["heartbeat"])
       expect(statuses.at(-1)).toBe("connected")
     })
 
     it("defers network changes and queued calls until the foreground", async () => {
       const transport = setup()
-      handshake(["heartbeat", "quiet", "call-keys"])
+      handshake(["heartbeat", "call-keys"])
       transport.setForeground(false)
       transport.networkChanged()
       const send = track(transport.call("threads.send", { prompt: "hi" }))
@@ -537,7 +505,7 @@ describe("Transport", () => {
       expect(send.error).toBeUndefined()
       transport.setForeground(true)
       expect(sockets).toHaveLength(2)
-      handshake(["heartbeat", "quiet", "call-keys"])
+      handshake(["heartbeat", "call-keys"])
       expect(latest().calls()).toEqual([
         { type: "call", id: 1, method: "threads.send", payload: { prompt: "hi" }, key: "key-1" },
       ])
@@ -548,7 +516,7 @@ describe("Transport", () => {
 
     it("still expires an offline call while background retries are paused", async () => {
       const transport = setup()
-      handshake(["heartbeat", "quiet", "call-keys"])
+      handshake(["heartbeat", "call-keys"])
       const send = track(transport.call("threads.send", { prompt: "hi" }))
       transport.setForeground(false)
       latest().drop()
@@ -557,57 +525,12 @@ describe("Transport", () => {
       expect(sockets).toHaveLength(1)
     })
 
-    it("asks a desktop that offers it to hold back pushes until the app returns", () => {
-      const transport = setup()
-      handshake(["heartbeat", "quiet"])
-      transport.setForeground(false)
-      expect(quietFrames()).toEqual([{ type: "quiet", quiet: true }])
-      transport.setForeground(true)
-      expect(quietFrames()).toEqual([
-        { type: "quiet", quiet: true },
-        { type: "quiet", quiet: false },
-      ])
-    })
-
-    it("reports the pushes it missed once the desktop answers after the return", () => {
-      const transport = setup()
-      handshake(["heartbeat", "quiet"])
-      transport.setForeground(false)
-      transport.setForeground(true)
-      expect(missed).toBe(0)
-      latest().receive({ type: "pong", at: 0 })
-      expect(missed).toBe(1)
-    })
-
-    it("leaves the reload to the handshake when the socket died in the background", async () => {
-      const transport = setup()
-      handshake(["heartbeat", "quiet"])
-      transport.setForeground(false)
-      transport.setForeground(true)
-      await vi.advanceTimersByTimeAsync(5_000 + 1_000)
-      expect(sockets).toHaveLength(2)
-      handshake(["heartbeat", "quiet"])
-      latest().receive({ type: "pong", at: 0 })
-      expect(missed).toBe(0)
-      expect(ready).toBe(2)
-    })
-
     it("ignores a handshake from a connection canceled when the app left", () => {
       const transport = setup()
       transport.setForeground(false)
-      handshake(["heartbeat", "quiet"])
-      expect(quietFrames()).toEqual([])
-      expect(statuses.at(-1)).toBe("offline")
-    })
-
-    it("sends nothing new to a desktop without it", () => {
-      const transport = setup()
       handshake(["heartbeat"])
-      transport.setForeground(false)
-      transport.setForeground(true)
-      latest().receive({ type: "pong", at: 0 })
-      expect(quietFrames()).toEqual([])
-      expect(missed).toBe(0)
+      expect(ready).toBe(0)
+      expect(statuses.at(-1)).toBe("offline")
     })
   })
 
@@ -873,12 +796,14 @@ describe("Transport", () => {
       expect(urls()).toEqual([LAN])
     })
 
-    it("checks nothing in the background and checks at once on return", async () => {
+    it("closes the relay in the background and races direct addresses on return", async () => {
       const transport = await connectOverRelay()
+      const relaySocket = socketAt(RELAY)
       const before = sockets.length
       transport.setForeground(false)
       await vi.advanceTimersByTimeAsync(5 * DIRECT_CHECK_INTERVAL_MS)
       expect(sockets).toHaveLength(before)
+      expect(relaySocket.closed).toBe(true)
 
       transport.setForeground(true)
       expect(sockets).toHaveLength(before + 1)
