@@ -33,6 +33,15 @@ export function assistantPresentation(message: Message, showElapsedTime = true):
 export const isActivity = (part: MessagePart) =>
   part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
 
+/**
+ * What a finished response shows with its activity folded: no activity, and none of the text written before the
+ * last of it, which narrated the work rather than answering.
+ */
+export function collapsedParts(parts: ReadonlyArray<IndexedMessagePart>): ReadonlyArray<IndexedMessagePart> {
+  const lastActivity = parts.findLastIndex(({ part }) => isActivity(part))
+  return parts.filter(({ part }, position) => !isActivity(part) && !(part.type === "text" && position < lastActivity))
+}
+
 export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
   let start = 0
