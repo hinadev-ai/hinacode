@@ -62,7 +62,7 @@ Check these native iOS cases after a cold launch:
 
 The iPhone Duo simulator needs Xcode 27.1 and the iOS 27.1 runtime (`xcodebuild -downloadPlatform iOS -buildVersion 27.1`), then `xcrun simctl create "iPhone Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-1`. Open and close it with the controls in Device Hub; `simctl` cannot fold it.
 
-The iOS 27.1 SDK refuses to launch an app without the UIScene life cycle, so `plugins/with-scene-lifecycle.ts` registers Expo's `ExpoAppSceneDelegate` at prebuild. On the closed phone the status bar, and the header buttons with it, sit in a column on the right. Check that rows, the composer, sheets and banners stay to the left of it.
+On the closed phone the status bar, and the header buttons with it, sit in a column on the right. Check that rows, the composer, sheets and banners stay to the left of it.
 
 ### Run on a phone over USB
 

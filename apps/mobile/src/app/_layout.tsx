@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router"
+import { DarkTheme, DefaultTheme, enableLegacyHeaderAppearance, Stack, ThemeProvider } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import { type ReactNode, useEffect } from "react"
 import { Appearance, Platform, StyleSheet, View } from "react-native"
@@ -14,7 +14,11 @@ import { copy } from "@/lib/copy"
 import { usePreferences } from "@/stores/preferences"
 
 // A deep link or a notification opens a thread with the list under it, so back has somewhere to go.
-export const unstable_settings = { initialRouteName: "index" }
+export const unstable_settings = { anchor: "index" }
+
+// Expo Router 58 lays iOS 26 screens under a translucent header. The thread, file and pull request screens put fixed
+// content at the top, which would slide under it, so keep the opaque header until they are designed for that.
+enableLegacyHeaderAppearance()
 
 export default function RootLayout() {
   const scheme = useScheme()

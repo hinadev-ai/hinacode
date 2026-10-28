@@ -1,4 +1,5 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
+import { useHeaderHeight } from "expo-router/react-navigation"
 import { useCallback, useState } from "react"
 import { AppState, KeyboardAvoidingView, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -38,6 +39,8 @@ export default function ThreadScreen() {
   const thread = useThreads((state) => state.byId[id])
   const loaded = useThreads((state) => state.status === "ready")
   const status = useThreadConnection(id)
+  // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
+  const headerHeight = useHeaderHeight()
   const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
   // Files and the shell keep their state across tab switches once opened, and end with this screen.
@@ -133,7 +136,7 @@ export default function ThreadScreen() {
         </View>
       ) : (
         // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
-        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
           <View style={[styles.flex, styles.readable, tab !== "chat" && styles.hidden]}>
             <Chat thread={thread} />
           </View>

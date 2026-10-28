@@ -97,7 +97,7 @@ export function Chat({ thread }: { thread: Thread }) {
                 color={theme.textMuted}
                 accessibilityLabel={copy("mobile_chat_loading")}
               />
-            ) : null
+            ) : undefined
           }
           ListEmptyComponent={
             <Text style={[styles.empty, { color: theme.textMuted }]}>{copy("mobile_chat_empty")}</Text>
