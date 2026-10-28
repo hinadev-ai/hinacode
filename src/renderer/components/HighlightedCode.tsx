@@ -51,13 +51,16 @@ interface TokensProps {
 
 function Tokens({ code, language, theme, scheme }: TokensProps) {
   const loaded = use(highlighterFor(theme, scheme, language))
-  const pattern = useFindPattern()
-  const part = use(FindPartContext)
   if (loaded === null) return <Highlighted text={code} />
   const { tokens } = loaded.highlighter.codeToTokens(code, { lang: language, theme: loaded.theme })
   const runs = tokens.flatMap((line, index): Array<Run> => [
     ...(index === 0 ? [] : [{ text: "\n" }]),
     ...line.map((token) => ({ text: token.content, color: token.color })),
   ])
-  return highlightRuns(runs, pattern, part)
+  return <HighlightedRuns runs={runs} />
+}
+
+// Find changes only update marks, so keep these subscriptions below syntax tokenization.
+function HighlightedRuns({ runs }: { runs: ReadonlyArray<Run> }) {
+  return highlightRuns(runs, useFindPattern(), use(FindPartContext))
 }
