@@ -1,6 +1,7 @@
 import { expect, test } from "@effect/vitest"
 import type { Thread } from "../../shared/domain.ts"
 import {
+  selectAwakeThreads,
   selectInboxThreads,
   selectPinnedThreads,
   selectSnoozedThreads,
@@ -72,4 +73,14 @@ test("pinned threads are listed in the order they were pinned, without archived 
 
 test("a project's unpinned threads leave out the pinned ones", () => {
   expect(ids(selectUnpinnedProjectThreads("p1")(state))).toStrictEqual(["old", "wakesLater", "wakesSoon", "woke"])
+})
+
+test("awake threads are the active ones not snoozed, pinned or not, which the Dock badge counts", () => {
+  expect(ids(selectAwakeThreads(now)(state)).toSorted()).toStrictEqual([
+    "new",
+    "old",
+    "pinnedFirst",
+    "pinnedLater",
+    "woke",
+  ])
 })

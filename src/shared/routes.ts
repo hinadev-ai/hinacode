@@ -41,6 +41,7 @@ export const routes: Record<RpcMethod, Route> = {
   "device.pick": thread,
   "app.ready": client,
   "app.focus": client,
+  "app.setBadgeCount": client,
   "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,

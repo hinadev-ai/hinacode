@@ -88,7 +88,7 @@ The Tiny VM rule, per device, except that the user's first pointer or key input 
 
 ### UI
 
-`DevicesView` in the side panel registry, with `DeviceTabStrip` as its header. The selected tab is renderer state, so a restart opens the first device. The screen is a canvas inside the `DeviceFrame` from the device-frames branch, laid exactly over its screen rect. Until that lands, `PlainDeviceFrame` takes the same props and draws a rounded rect.
+`DevicesView` in the side panel registry, with `DeviceTabStrip` as its header. The selected tab is renderer state, so a restart opens the first device. The screen is a canvas laid exactly over the screen rect of `DeviceFrame`, a CSS phone body with side buttons and the island or punch hole, sized from the screen's points and turned as a whole for landscape. An earlier three.js body cost a 148 KB gzipped chunk and a WebGL context per device, for a frame the developer looks past, so it was dropped.
 
 A stalled stream (no frame for 5 s while the device is booted and the screen is changing) shows "Reconnecting" over the last frame and restarts the producer. A crashed device moves to `failed` with Retry.
 

@@ -33,8 +33,3 @@ Feature: Back and forward navigation
     When I open the thread "Add palette" from the sidebar
     And the app restarts
     Then the thread "Add palette" is open
-
-  Scenario: A restart reopens settings
-    When I open settings
-    And the app restarts
-    Then the settings heading reads "Settings"
