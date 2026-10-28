@@ -1848,5 +1848,16 @@
   "resources_sampling": "取樣中…",
   "resources_loading": "正在讀取資源…",
   "resources_update_cloud": "請更新 {name} 上的 HinaCode 才能查看它的資源。",
-  "resources_failed": "無法讀取資源：{message}"
+  "resources_failed": "無法讀取資源：{message}",
+  "linear_title": "Linear 工單",
+  "linear_refresh": "重新整理",
+  "linear_empty": "沒有指派給你的未完成工單",
+  "linear_not_connected": "加入 Linear API 金鑰即可看到你的工單。",
+  "linear_connect": "開啟整合設定",
+  "linear_failed": "無法載入 Linear 工單：{message}",
+  "linear_start_thread": "開始對話串",
+  "linear_priority_1": "緊急",
+  "linear_priority_2": "高",
+  "linear_priority_3": "中",
+  "linear_priority_4": "低"
 }

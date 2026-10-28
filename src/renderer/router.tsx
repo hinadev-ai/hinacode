@@ -3,6 +3,7 @@ import { AppShell } from "./components/AppShell.tsx"
 import { registry } from "./lib/registry.ts"
 import { settingsAtom } from "./lib/rpc.ts"
 import { HomeRoute } from "./routes/home.tsx"
+import { LinearRoute } from "./routes/linear.tsx"
 import { SettingsRoute } from "./routes/settings.tsx"
 import { ThreadRoute } from "./routes/thread.tsx"
 
@@ -18,6 +19,8 @@ export const threadRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { agent?: string } =>
     typeof search.agent === "string" ? { agent: search.agent } : {},
 })
+
+const linearRoute = createRoute({ getParentRoute: () => rootRoute, path: "/linear", component: LinearRoute })
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -36,7 +39,7 @@ const LOCATION_KEY = "hinacode.location"
 
 // Electron has no address bar, and memory history keeps working under file:// in production.
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([homeRoute, threadRoute, settingsRoute]),
+  routeTree: rootRoute.addChildren([homeRoute, threadRoute, linearRoute, settingsRoute]),
   history: createMemoryHistory({ initialEntries: [localStorage.getItem(LOCATION_KEY) ?? "/"] }),
 })
 

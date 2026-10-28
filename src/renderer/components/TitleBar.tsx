@@ -1,7 +1,7 @@
 import { detectPlatform } from "@tanstack/react-hotkeys"
 import { Link } from "@tanstack/react-router"
 import type { RefObject } from "react"
-import { RiSettings3Line, RiSideBarFill, RiSideBarLine } from "react-icons/ri"
+import { RiSettings3Line, RiSideBarFill, RiSideBarLine, RiTaskLine } from "react-icons/ri"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
@@ -55,6 +55,9 @@ export function TitleBar({
       </Tooltip>
       <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
         <RiSettings3Line aria-hidden />
+      </Button>
+      <Button variant="ghost" size="icon-sm" render={<Link to="/linear" />} aria-label={m.linear_title()}>
+        <RiTaskLine aria-hidden />
       </Button>
       <MachineResourcesButton />
     </header>

@@ -21,11 +21,15 @@ async function pickRememberedWorkspace(thread: Thread) {
   useDrafts.getState().setWorkspace(thread.id, { mode: "worktree", ref })
 }
 
-/** Creates an empty thread and opens it with the composer focused, where its agent and workspace are picked. */
-export async function startThread(projectId: string, navigate: ReturnType<typeof useNavigate>) {
+/**
+ * Creates a thread and opens it with the composer focused, where its agent and workspace are picked. `text` starts
+ * the composer's draft.
+ */
+export async function startThread(projectId: string, navigate: ReturnType<typeof useNavigate>, text = "") {
   try {
     const thread = await callPromise("threads.create", { projectId })
     useThreads.getState().upsert(thread)
+    useDrafts.getState().setText(thread.id, text)
     await pickRememberedWorkspace(thread)
     await navigate({ to: "/thread/$threadId", params: { threadId: thread.id } })
     useUi.getState().requestComposerFocus()
