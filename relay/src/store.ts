@@ -28,6 +28,18 @@ export type Host = typeof Host.Type
 
 const HostOfUser = Schema.Struct({ id: Schema.String, userId: Schema.String })
 
+export const Alert = Schema.Literals(["completed", "needsInput", "failed"])
+export type Alert = typeof Alert.Type
+
+/** A phone that receives pushes for the owner it signed in as. */
+const Device = Schema.Struct({
+  token: Schema.String,
+  userId: Schema.String,
+  alerts: Schema.fromJsonString(Schema.Array(Alert)),
+  seenAt: Schema.Number,
+})
+export type Device = typeof Device.Type
+
 const makeStore = Effect.gen(function* () {
   const sql = yield* D1Client.D1Client
 
@@ -106,11 +118,33 @@ const makeStore = Effect.gen(function* () {
       Result: Schema.Struct({ tokenHash: Schema.String }),
       execute: () => sql`SELECT token_hash FROM owner WHERE id = 1`,
     }),
+    /** Rotating the owner token also drops every device, which registers again after signing in. */
     setOwnerTokenHash: (tokenHash: string) =>
+      sql.batch([
+        sql`
+          INSERT INTO owner ${sql.insert({ id: 1, tokenHash })}
+          ON CONFLICT (id) DO UPDATE SET token_hash = excluded.token_hash
+        `,
+        sql`DELETE FROM device`,
+      ]),
+
+    putDevice: (device: Device) =>
       sql`
-        INSERT INTO owner ${sql.insert({ id: 1, tokenHash })}
-        ON CONFLICT (id) DO UPDATE SET token_hash = excluded.token_hash
+        INSERT INTO device ${sql.insert({ ...device, alerts: JSON.stringify(device.alerts) })}
+        ON CONFLICT (token) DO UPDATE SET user_id = excluded.user_id, alerts = excluded.alerts, seen_at = excluded.seen_at
       `.pipe(Effect.asVoid),
+    deleteDevice: (token: string, userId: string) =>
+      sql`DELETE FROM device WHERE token = ${token} AND user_id = ${userId}`.pipe(Effect.asVoid),
+    /** The user's devices registered since `seenSince`, after dropping the older ones in the same batch. */
+    devicesOfUser: (userId: string, seenSince: number) =>
+      sql
+        .batch([
+          sql`DELETE FROM device WHERE user_id = ${userId} AND seen_at < ${seenSince}`,
+          sql`SELECT * FROM device WHERE user_id = ${userId} ORDER BY token`,
+        ])
+        .pipe(Effect.flatMap(([, rows]) => Schema.decodeUnknownEffect(Schema.Array(Device))(rows))),
+    deleteDevices: (tokens: ReadonlyArray<string>) =>
+      sql`DELETE FROM device WHERE ${sql.in("token", tokens)}`.pipe(Effect.asVoid),
   }
 })
 

@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { makeApp } from "../src/app"
 import { verifyOwner } from "../src/owner"
 import { FakeCloudflare } from "./fake-cloudflare"
+import { FakeExpo } from "./fake-expo"
 
 const SESSIONS: Record<string, string> = { "alice-session": "user_alice", "bob-session": "user_bob" }
 const ORIGIN = "http://127.0.0.1:48081"
 
 let clock: number
 let cloudflare: FakeCloudflare
+let expo: FakeExpo
 let app: ReturnType<typeof makeApp>
 
 beforeEach(async () => {
@@ -16,12 +18,15 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM link"),
     env.DB.prepare("DELETE FROM host"),
     env.DB.prepare("DELETE FROM owner"),
+    env.DB.prepare("DELETE FROM device"),
   ])
   clock = Date.UTC(2026, 9, 24)
   cloudflare = new FakeCloudflare()
+  expo = new FakeExpo()
   app = makeApp({
     verifyUser: async (request) => SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
     cloudflare: cloudflare.fetch,
+    expo: expo.fetch,
     now: () => clock,
     random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
   })
@@ -435,6 +440,7 @@ describe("POST /v1/owner/token", () => {
     app = makeApp({
       verifyUser: verifyOwner,
       cloudflare: cloudflare.fetch,
+      expo: expo.fetch,
       now: () => clock,
       random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
     })
@@ -459,8 +465,178 @@ describe("POST /v1/owner/token", () => {
     expect((await call("GET", "/v1/hosts", { bearer: next })).status).toBe(200)
   })
 
+  it("deletes every device, so the old token stops getting pushes", async () => {
+    const register = (token: string) =>
+      call("PUT", "/v1/devices", { bearer: env.OWNER_TOKEN, body: { token, alerts: ["completed"] } })
+    expect((await register("ExponentPushToken[a]")).status).toBe(204)
+    expect((await register("ExponentPushToken[b]")).status).toBe(204)
+    expect((await call("POST", "/v1/owner/token", { bearer: env.OWNER_TOKEN })).status).toBe(200)
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM device").first("count")).toBe(0)
+  })
+
   it("needs the current owner token", async () => {
     expect((await call("POST", "/v1/owner/token")).status).toBe(401)
     expect((await call("POST", "/v1/owner/token", { bearer: "guess" })).status).toBe(401)
+  })
+})
+
+const PHONE = "ExponentPushToken[phone]"
+const TABLET = "ExponentPushToken[tablet]"
+const ALL_ALERTS = ["completed", "needsInput", "failed"]
+
+const register = (token: string, alerts: unknown = ALL_ALERTS, session = "alice-session") =>
+  call("PUT", "/v1/devices", { bearer: session, body: { token, alerts } })
+
+const push = (credential: string, reason: string, threadId = "thread-1") =>
+  call("POST", "/v1/host/push", { bearer: credential, body: { threadId, reason } })
+
+const devices = async () =>
+  (await env.DB.prepare("SELECT token, user_id, alerts, seen_at FROM device ORDER BY token").all()).results
+
+describe("push notifications", () => {
+  it("registers a device only with the owner token", async () => {
+    const refused = await register(PHONE, ALL_ALERTS, "forged")
+    expect(refused.status).toBe(401)
+    expect(await refused.json()).toEqual({ error: "Enter the owner token first." })
+    expect((await call("PUT", "/v1/devices", { body: { token: PHONE, alerts: [] } })).status).toBe(401)
+    expect(await devices()).toEqual([])
+  })
+
+  it("refuses a malformed registration", async () => {
+    for (const body of [
+      { token: "not-a-token", alerts: [] },
+      { token: "ExponentPushToken[]", alerts: [] },
+      { token: "ExponentPushToken[a b]", alerts: [] },
+      { token: `ExponentPushToken[${"x".repeat(201)}]`, alerts: [] },
+      { token: PHONE, alerts: ["everything"] },
+      { token: PHONE, alerts: [...ALL_ALERTS, "completed"] },
+      { token: PHONE },
+    ]) {
+      const response = await call("PUT", "/v1/devices", { bearer: "alice-session", body })
+      expect(response.status, JSON.stringify(body)).toBe(400)
+      expect(await response.json()).toHaveProperty("error")
+    }
+    expect((await register("ExpoPushToken[short-form]", [])).status).toBe(204)
+  })
+
+  it("refreshes a re-registered device instead of duplicating it", async () => {
+    expect((await register(PHONE, ["completed"])).status).toBe(204)
+    clock += 1000
+    expect((await register(PHONE, ["failed"])).status).toBe(204)
+    expect(await devices()).toEqual([{ token: PHONE, user_id: "user_alice", alerts: '["failed"]', seen_at: clock }])
+  })
+
+  it("removes a device, and answers the same when it is already gone", async () => {
+    await register(PHONE)
+    await register(TABLET)
+    expect((await call("DELETE", "/v1/devices", { bearer: "alice-session", body: { token: PHONE } })).status).toBe(204)
+    expect((await call("DELETE", "/v1/devices", { bearer: "alice-session", body: { token: PHONE } })).status).toBe(204)
+    expect((await devices()).map((device) => device.token)).toEqual([TABLET])
+    expect((await call("DELETE", "/v1/devices", { body: { token: TABLET } })).status).toBe(401)
+    expect((await call("DELETE", "/v1/devices", { bearer: "bob-session", body: { token: TABLET } })).status).toBe(204)
+    expect(await devices()).toHaveLength(1)
+  })
+
+  it("takes a push only from a linked machine, with a known reason", async () => {
+    await register(PHONE)
+    const credential = await linkMachine()
+    expect((await call("POST", "/v1/host/push", { body: { threadId: "t", reason: "completed" } })).status).toBe(401)
+    expect((await push("alice-session", "completed")).status).toBe(401)
+    for (const body of [
+      { threadId: "t", reason: "finished, and here is your prompt" },
+      { threadId: "", reason: "completed" },
+      { threadId: "t".repeat(65), reason: "completed" },
+      { reason: "completed" },
+    ]) {
+      const response = await call("POST", "/v1/host/push", { bearer: credential, body })
+      expect(response.status, JSON.stringify(body)).toBe(400)
+      expect(await response.json()).toHaveProperty("error")
+    }
+    expect(expo.requests).toEqual([])
+  })
+
+  it("sends the machine name, the body and the ids, and nothing else", async () => {
+    await register(PHONE)
+    const credential = await linkMachine()
+    expect((await push(credential, "approval")).status).toBe(204)
+    expect(expo.requests).toEqual([
+      [
+        {
+          to: PHONE,
+          title: "home-mac",
+          body: "A thread is waiting for your approval",
+          data: { threadId: "thread-1", environmentId: "env-1" },
+          sound: "default",
+          priority: "high",
+          channelId: "threads",
+        },
+      ],
+    ])
+  })
+
+  it("maps each reason to its body and reaches only devices that keep its kind", async () => {
+    await register("ExponentPushToken[completed]", ["completed"])
+    await register("ExponentPushToken[needsInput]", ["needsInput"])
+    await register("ExponentPushToken[failed]", ["failed"])
+    await register("ExponentPushToken[quiet]", [])
+    await register("ExponentPushToken[bob]", ALL_ALERTS, "bob-session")
+    const credential = await linkMachine()
+    const sent = []
+    for (const reason of ["completed", "approval", "question", "secret", "failed", "limited"]) {
+      expect((await push(credential, reason)).status).toBe(204)
+      const [message] = expo.requests.at(-1) as { to: string; body: string }[]
+      sent.push([reason, message?.to, message?.body])
+    }
+    expect(expo.requests.every((messages) => messages.length === 1)).toBe(true)
+    expect(sent).toEqual([
+      ["completed", "ExponentPushToken[completed]", "A thread finished"],
+      ["approval", "ExponentPushToken[needsInput]", "A thread is waiting for your approval"],
+      ["question", "ExponentPushToken[needsInput]", "A thread is waiting for your answer"],
+      ["secret", "ExponentPushToken[needsInput]", "A thread is waiting for a secret"],
+      ["failed", "ExponentPushToken[failed]", "A thread failed"],
+      ["limited", "ExponentPushToken[failed]", "A thread stopped at the usage limit"],
+    ])
+  })
+
+  it("sends every matching device in one request", async () => {
+    await register(PHONE)
+    await register(TABLET)
+    expect((await push(await linkMachine(), "completed")).status).toBe(204)
+    expect(expo.requests).toHaveLength(1)
+    expect(expo.messages.map((message) => (message as { to: string }).to).toSorted()).toEqual([PHONE, TABLET])
+  })
+
+  it("does not call Expo when no device keeps the kind", async () => {
+    const credential = await linkMachine()
+    expect((await push(credential, "completed")).status).toBe(204)
+    await register(PHONE, ["failed"])
+    expect((await push(credential, "completed")).status).toBe(204)
+    expect(expo.requests).toEqual([])
+  })
+
+  it("deletes a device Expo no longer knows and keeps the others", async () => {
+    await register(PHONE)
+    await register(TABLET)
+    expo.unregistered.add(PHONE)
+    expect((await push(await linkMachine(), "completed")).status).toBe(204)
+    expect((await devices()).map((device) => device.token)).toEqual([TABLET])
+  })
+
+  it("sweeps a device not registered for 90 days before pushing", async () => {
+    await register(PHONE)
+    clock += 91 * 24 * 60 * 60 * 1000
+    await register(TABLET)
+    expect((await push(await linkMachine(), "completed")).status).toBe(204)
+    expect(expo.messages).toMatchObject([{ to: TABLET }])
+    expect((await devices()).map((device) => device.token)).toEqual([TABLET])
+  })
+
+  it("answers 502 when Expo fails, so the machine can log it", async () => {
+    await register(PHONE)
+    expo.failing = true
+    const response = await push(await linkMachine(), "completed")
+    expect(response.status).toBe(502)
+    expect(await response.json()).toHaveProperty("error")
+    expect(await devices()).toHaveLength(1)
   })
 })

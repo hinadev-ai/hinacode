@@ -6,6 +6,8 @@ A Cloudflare Worker at `relay.hinacode.app`. It links machines to its owner with
 
 A linked machine publishes the pairing its QR code carries with `PUT /v1/host/pairing`. `GET /v1/machines` hands the owner's devices every machine that published one and is shown, so they can add it without scanning. The desktop's **Show on my devices** switch calls `PATCH /v1/hosts/:id` with `{ enabled }`; a hidden machine's pairing never leaves the relay, and its tunnel keeps running. The design is in `docs/features/2026-10-24-relay-machines.md`.
 
+A phone signed in with the owner token registers for push with `PUT /v1/devices` and `{ token, alerts }`, and forgets itself with `DELETE /v1/devices`. A linked machine calls `POST /v1/host/push` with `{ threadId, reason }`, and the relay sends one request to the Expo push service for every device that keeps that kind of notice on. The reason is a closed set, so the push carries the machine's name, a fixed sentence and two ids, never the thread's text. Expo's `DeviceNotRegistered`, 90 days without a registration and rotating the owner token each delete devices. The design is in `docs/features/2026-10-28-push-notifications.md`.
+
 ## One-time setup
 
 1. Create the database with `pnpm exec wrangler d1 create hinacode-relay`. Put its id in `database_id` in `wrangler.jsonc`, then run `pnpm db:migrate`.
