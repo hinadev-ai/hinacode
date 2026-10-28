@@ -334,6 +334,24 @@ const make = Effect.gen(function* () {
         .pipe(Effect.andThen(refreshTerminals(threadId, terminals)), Effect.asVoid)
     })
 
+  /** Background terminals are the only work Codex keeps running for a thread between turns. */
+  const closeSession = (threadId: string) =>
+    Effect.gen(function* () {
+      const terminals = terminalsByThread.get(threadId)
+      if (terminals === undefined) return
+      if (terminals.poll) yield* Fiber.interrupt(terminals.poll)
+      const listed = yield* listTerminals(terminals).pipe(Effect.orElseSucceed(() => []))
+      yield* Effect.forEach(
+        listed,
+        ({ processId }) => {
+          const params: ThreadBackgroundTerminalsTerminateParams = { threadId: terminals.codexThreadId, processId }
+          return terminals.client.request("thread/backgroundTerminals/terminate", params).pipe(Effect.ignore)
+        },
+        { discard: true },
+      )
+      yield* refreshTerminals(threadId, terminals)
+    })
+
   const listModels = Effect.gen(function* () {
     const client = yield* getClient(null)
     const models: Array<ModelInfo> = []
@@ -909,6 +927,7 @@ const make = Effect.gen(function* () {
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     steer,
     interrupt,
+    closeSession,
     stopSubagent,
     respondApproval,
     respondQuestion,
