@@ -144,3 +144,25 @@ The [Release phone harness](../../scripts/perf/README.md#profile-the-phone-app) 
 It should next capture a long-thread open, streaming with Chat hidden, reconnecting after 25 visits, and reconnecting
 one of two paired servers. The local detailed audits and probes are in `.context/perf/mobile-audit.md` and
 `.context/perf/remote-audit.md`.
+
+## Verification record
+
+The production build, typecheck, lint and unit/integration/mobile tests pass. The build size checks pass the new
+startup budgets. Packaged installer sizes were not measured locally; CI runs the full package comparison.
+
+All Electron scenarios passed across the verification runs. The initial run passed the 138 parallel cases.
+Inherited 2x desktop scaling put browser tests into a compact overlay, so desktop cases were rerun with
+`GDK_SCALE=1`, `ELECTRON_OZONE_PLATFORM_HINT=x11`, `XDG_SESSION_TYPE=x11` and `WAYLAND_DISPLAY` unset.
+Twelve desktop cases passed there. The notification minimize/restore case needs a window manager, as CI provides,
+and passed separately with Openbox on private Xvfb display `:157`. That display and window manager were cleaned up.
+The verification launcher now explicitly selects X11 and scale 1 to keep its promised isolated display.
+
+Manual checks in the production app opened lazy settings, changed English to Japanese and Traditional Chinese,
+confirmed each font family loaded after its locale was selected, and returned to English.
+The first terminal loaded its engine and executed `printf audit-terminal-ready` through the real PTY.
+The browser and enabled empty VM view loaded. Highlighted code in the 200-turn thread retained syntax colors.
+The running/floating VM screen was not exercised because this audit did not create a sandbox.
+Screenshots are in `.context/shots/performance-*.png`; logs are in `.context/` and `.context/e2e-notification-wm/`.
+
+An independent source review found and corrected a packaged-profiler artifact hash error. No open correctness
+findings remain. The review also removed eight lines that narrated lazy imports and component structure.
