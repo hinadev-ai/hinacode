@@ -7,11 +7,9 @@ import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderI
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
-  accountsAtom,
   createAccountAtom,
   deleteAccountAtom,
   renameAccountAtom,
-  type EnvironmentId,
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
 import { useDefaultAccountName, useProviderAccounts } from "../../lib/accounts.ts"
