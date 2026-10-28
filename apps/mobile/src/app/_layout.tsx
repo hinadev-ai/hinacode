@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar"
 import { useEffect } from "react"
 import { Appearance, Platform, StyleSheet, View } from "react-native"
 import { ConnectionProvider } from "@/components/connection-provider"
+import { isIOS } from "@/components/glass"
 import { Notifier } from "@/components/notifier"
 import { ThreadSidebar } from "@/components/thread-sidebar"
 import { useSplitLayout } from "@/hooks/use-split-layout"
@@ -58,20 +59,32 @@ function Routes() {
       <View style={styles.detail}>
         <Stack screenOptions={{ headerShadowVisible: false }}>
           <Stack.Protected guard={paired}>
-            <Stack.Screen name="index" options={{ title: copy("mobile_home_title") }} />
+            <Stack.Screen
+              name="index"
+              options={{ title: copy("mobile_home_title"), headerLargeTitleEnabled: isIOS }}
+            />
             {/* Picking a thread in the sidebar swaps the detail, as Mail does, instead of sliding a page in. */}
             <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
             <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
-            <Stack.Screen name="overview" options={{ title: copy("mobile_overview_title") }} />
-            <Stack.Screen name="settings" options={{ title: copy("mobile_settings_title") }} />
+            <Stack.Screen
+              name="overview"
+              options={{ title: copy("mobile_overview_title"), headerLargeTitleEnabled: isIOS }}
+            />
+            <Stack.Screen
+              name="settings"
+              options={{ title: copy("mobile_settings_title"), headerLargeTitleEnabled: isIOS }}
+            />
             <Stack.Screen
               name="project/new"
               options={{ title: copy("mobile_project_new_title"), presentation: "modal" }}
             />
           </Stack.Protected>
           <Stack.Protected guard={!paired}>
-            <Stack.Screen name="connect" options={{ title: copy("mobile_connect_title") }} />
+            <Stack.Screen
+              name="connect"
+              options={{ title: copy("mobile_connect_title"), headerLargeTitleEnabled: isIOS }}
+            />
           </Stack.Protected>
         </Stack>
       </View>

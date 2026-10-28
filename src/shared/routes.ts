@@ -42,6 +42,7 @@ export const routes: Record<RpcMethod, Route> = {
   "clientSettings.get": client,
   "clientSettings.set": client,
   "environments.list": client,
+  "machines.list": all,
   "environments.add": client,
   "environments.remove": client,
   "environments.reconnect": client,

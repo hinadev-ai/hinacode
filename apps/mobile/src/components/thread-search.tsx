@@ -1,5 +1,5 @@
 import type { Thread, ThreadSearchHit } from "@shared/domain.ts"
-import { useEffect, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
 import { Reveal, Spinner } from "@/components/motion"
@@ -73,7 +73,16 @@ function searchItems(threads: readonly Thread[], messages: MessageSearch): Searc
 }
 
 /** Thread titles that match as the developer types, then messages from every thread. */
-export function SearchResults({ query }: { query: string }) {
+export function SearchResults({
+  query,
+  nativeHeader = false,
+  header,
+}: {
+  query: string
+  nativeHeader?: boolean
+  header?: ReactNode
+}) {
+  const theme = useTheme()
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const threads = matchThreads(Object.values(byId), projects, query).slice(0, THREAD_LIMIT)
@@ -84,12 +93,15 @@ export function SearchResults({ query }: { query: string }) {
     <LayoutAnimationConfig skipEntering>
       <Animated.FlatList
         testID="search-results"
+        style={nativeHeader ? { backgroundColor: theme.background } : undefined}
+        contentInsetAdjustmentBehavior={nativeHeader ? "automatic" : "never"}
         data={items}
         keyExtractor={(item) => item.key}
         itemLayoutAnimation={LinearTransition.duration(duration.fast)}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
+        ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => <SearchRow item={item} query={query} />}
         ListFooterComponent={<SearchFooter messages={messages} empty={items.length === 0} />}
       />

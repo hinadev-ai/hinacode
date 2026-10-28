@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
+import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { IconSwap } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
@@ -162,7 +163,13 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   return (
-    <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.background }]}>
+    <View
+      style={[
+        styles.composer,
+        liquidGlass ? styles.dock : { borderColor: theme.border, backgroundColor: theme.background },
+      ]}
+    >
+      <GlassFill />
       {sending?.map((prompt) => (
         <View key={prompt.id} testID="composer-sending" style={styles.sending}>
           <Text style={[styles.sendingLabel, { color: theme.textMuted }]}>
@@ -185,7 +192,13 @@ export function Composer({ thread }: { thread: Thread }) {
         }}
       />
       <View
-        style={[styles.bar, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : theme.border }]}
+        style={[
+          styles.bar,
+          {
+            backgroundColor: liquidGlass ? "transparent" : theme.surface,
+            borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
+          },
+        ]}
       >
         <ComposerInput
           ref={inputRef}
@@ -267,8 +280,8 @@ function Suggestions({
         styles.suggestions,
         {
           maxHeight: SUGGESTION_HEIGHT * VISIBLE_SUGGESTIONS,
-          backgroundColor: theme.surface,
-          borderColor: theme.border,
+          backgroundColor: liquidGlass ? "transparent" : theme.surface,
+          borderColor: liquidGlass ? "transparent" : theme.border,
         },
       ]}
     >
@@ -630,6 +643,13 @@ function SettingsSheet({
 
 const styles = StyleSheet.create({
   composer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 6 },
+  dock: {
+    borderTopWidth: 0,
+    borderRadius: radius.xl,
+    overflow: "hidden",
+    marginHorizontal: 12,
+    marginBottom: 12,
+  },
   bar: { borderRadius: radius.xl, borderWidth: StyleSheet.hairlineWidth, padding: 10, gap: 6 },
   input: {
     minHeight: LINE_HEIGHT + INPUT_PADDING * 2,

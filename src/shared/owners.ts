@@ -126,6 +126,10 @@ const stamp = (result: unknown, environmentId: string): unknown =>
       ? { ...result, environmentId }
       : result
 
+/** A cloud's answer to `machines.list`, with the name the user gave the cloud on this desktop. */
+export const nameMachines = (method: RpcMethod, result: unknown, name: string) =>
+  method === "machines.list" && Array.isArray(result) ? result.map((machine) => ({ ...machine, name })) : result
+
 /** `result` with each project in an answer to `method` marked as `environmentId`'s, for the client to show where it lives. */
 export const stampProjects = (method: RpcMethod, result: unknown, environmentId: string) =>
   projectAnswers.has(method) ? stamp(result, environmentId) : result

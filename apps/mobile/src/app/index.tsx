@@ -2,9 +2,10 @@ import { Stack } from "expo-router"
 import { useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { HomeActions, HomeContent } from "@/components/home"
+import { isIOS } from "@/components/glass"
+import { HomeActions, HomeContent, HomeToolbars } from "@/components/home"
 import { NewThreadSheet } from "@/components/new-thread-sheet"
-import { SidebarButton } from "@/components/thread-sidebar"
+import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
 import { Button, ConnectionBadge, EmptyState } from "@/components/ui"
 import { useSidebar, useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
@@ -16,16 +17,26 @@ export default function HomeScreen() {
   const split = useSplitLayout()
   const connection = useConnection((state) => state.status)
   const [newThreadOpen, setNewThreadOpen] = useState(false)
+  const [query, setQuery] = useState("")
   const sidebar = useSidebar()
 
   // In a wide window the list is the sidebar, so this route is the detail side with nothing open yet.
   if (split)
     return (
-      <SafeAreaView edges={["top"]} style={[styles.screen, { backgroundColor: theme.background }]}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.header}>
-          <SidebarButton />
-        </View>
+      <SafeAreaView edges={isIOS ? [] : ["top"]} style={[styles.screen, { backgroundColor: theme.background }]}>
+        {isIOS ? (
+          <>
+            <Stack.Screen options={{ headerShown: true, title: "", headerBackVisible: false }} />
+            <SidebarToolbarButton />
+          </>
+        ) : (
+          <>
+            <Stack.Screen options={{ headerShown: false }} />
+            <View style={styles.header}>
+              <SidebarButton />
+            </View>
+          </>
+        )}
         <View style={styles.center}>
           <EmptyState
             icon="RiChat1Line"
@@ -54,10 +65,19 @@ export default function HomeScreen() {
                     <ConnectionBadge status={connection} />
                   </View>
                 ),
-          headerRight: () => <HomeActions onNewThread={() => setNewThreadOpen(true)} />,
+          headerRight: isIOS ? undefined : () => <HomeActions onNewThread={() => setNewThreadOpen(true)} />,
         }}
       />
-      <HomeContent />
+      {isIOS && (
+        <Stack.SearchBar
+          placeholder={copy("mobile_search_placeholder")}
+          autoCapitalize="none"
+          onChangeText={(event) => setQuery(event.nativeEvent.text)}
+          onCancelButtonPress={() => setQuery("")}
+        />
+      )}
+      {isIOS && <HomeToolbars onNewThread={() => setNewThreadOpen(true)} />}
+      <HomeContent search={isIOS ? { query, onChange: setQuery } : undefined} />
       <NewThreadSheet open={newThreadOpen} onClose={() => setNewThreadOpen(false)} />
     </>
   )

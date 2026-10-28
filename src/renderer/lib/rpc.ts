@@ -343,16 +343,19 @@ export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, u
   call("github.pullRequest", { url }, { environment }),
 )
 
+/** The statuses of several pull requests, undefined for each one still loading or failed. */
+export const pullRequestStatusesAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
+  Atom.make((get) =>
+    urls.map((url) => {
+      const lookup = get(pullRequestStatusAtom(environment, url))
+      return AsyncResult.isSuccess(lookup) ? lookup.value : undefined
+    }),
+  ),
+)
+
 /** Why any of a thread's linked pull requests waits on the developer, or undefined while none does. */
 export const pullRequestAttentionAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
-  Atom.make((get) =>
-    pullRequestAttention(
-      urls.map((url) => {
-        const lookup = get(pullRequestStatusAtom(environment, url))
-        return AsyncResult.isSuccess(lookup) ? lookup.value : undefined
-      }),
-    ),
-  ),
+  Atom.make((get) => pullRequestAttention(get(pullRequestStatusesAtom(environment, urls)))),
 )
 
 /** Everything the PR tab shows about one pull request. */
