@@ -25,7 +25,6 @@ import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
-// The tiny VM is an experiment few turn on, and its view brings motion along.
 const TinyVmView = lazy(() => import("./TinyVmView.tsx").then((module) => ({ default: module.TinyVmView })))
 const BrowserView = lazy(() => import("./BrowserView.tsx").then((module) => ({ default: module.BrowserView })))
 

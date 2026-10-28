@@ -12,7 +12,6 @@ interface Loaded {
 /** Null when shiki has no grammar for the language, which then renders as plain text. */
 const highlighters = new Map<string, Promise<Loaded | null>>()
 
-// Shiki and its grammars load with the first code block, not with the app.
 const highlighterFor = (theme: string | undefined, scheme: "dark" | "light", language: string) => {
   const key = `${theme ?? scheme}\0${language}`
   let loaded = highlighters.get(key)
@@ -60,7 +59,6 @@ function Tokens({ code, language, theme, scheme }: TokensProps) {
   return <HighlightedRuns runs={runs} />
 }
 
-// Find changes only update marks, so keep these subscriptions below syntax tokenization.
 function HighlightedRuns({ runs }: { runs: ReadonlyArray<Run> }) {
   return highlightRuns(runs, useFindPattern(), use(FindPartContext))
 }

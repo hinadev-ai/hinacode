@@ -68,7 +68,6 @@ const screenFor = (id: string) => {
 const ignore = () => {}
 
 const start = async (id: string, screen: Screen) => {
-  // The terminal engine loads with the first terminal, not with the app.
   const [{ WTerm }, { GhosttyCore }] = await Promise.all([import("@wterm/dom"), import("@wterm/ghostty")])
   const core = await GhosttyCore.load({ wasmPath: wasmUrl, scrollbackLimit: SCROLLBACK_BYTES })
   const { element } = screen

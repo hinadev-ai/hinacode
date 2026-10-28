@@ -27,7 +27,6 @@ export const threadRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
-  // Settings pages and their dependencies stay out of the startup bundle until the page opens.
   component: lazyRouteComponent(() => import("./routes/settings.tsx"), "SettingsRoute"),
   /** `page` opens one settings page, such as `environments`. `environment` picks the cloud the Environment pages edit. */
   validateSearch: (search: Record<string, unknown>): { page?: string; environment?: string } => ({

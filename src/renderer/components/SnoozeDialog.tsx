@@ -11,7 +11,6 @@ import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
 
-// The picker parses typed times with chrono-node, which loads when the dialog first opens.
 const SnoozePicker = lazy(() => import("./SnoozePicker.tsx"))
 
 /** Sets or clears a thread's snooze, and offers to put the old one back. */
