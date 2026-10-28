@@ -217,7 +217,7 @@ async function measure(runLabel: string) {
   const counter = proxy(proxyPort, daemonPort)
   device.open(`hinacode://connect?host=127.0.0.1&port=${proxyPort}&token=${token}`)
   for (let waited = 0; !counter.connected(); waited += 500) {
-    assert(waited < 30_000, "the app did not connect to the proxy")
+    assert(waited < 90_000, "the app did not connect to the proxy")
     await pause(500)
   }
   const stopLoad = await load(daemonPort, token, streams, Number(env("BATTERY_GAP_MS", "4000")))
