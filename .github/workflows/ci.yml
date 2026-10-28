@@ -176,8 +176,8 @@ jobs:
         working-directory: head
         # size-limit exits 1 over budget. The last step fails the job after the comment is posted.
         run: |
-          cp .size-limit.json ../base/
-          pnpm exec size-limit --json --config ../base/.size-limit.json > ../base.json || true
+          cp .size-limit.ts ../base/
+          pnpm exec size-limit --json --config ../base/.size-limit.ts > ../base.json || true
           pnpm exec size-limit --json > ../head.json || true
           node scripts/bundle-size.ts ../base.json ../head.json | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
       # A fork's pull request gets a read-only token, so it only has the job summary.

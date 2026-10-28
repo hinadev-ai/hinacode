@@ -55,4 +55,4 @@ console.log(`<!-- bundle-size -->
 | --- | --: | --: | --: | --: | --: | --: |
 ${rows.join("\n")}
 
-Measured from a Linux build of both commits. Budgets apply to the raw size and live in \`.size-limit.json\`.`)
+Measured from a Linux build of both commits. Budgets apply to the raw size and live in \`.size-limit.ts\`.`)
