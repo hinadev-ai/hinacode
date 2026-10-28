@@ -19,6 +19,7 @@ mac:
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{win32,linux,darwin-x64}*/**"
+    - "!**/node_modules/electron-liquid-glass/{js,src,prebuilds/darwin-x64}/**"
   target:
     - target: dmg
       arch: arm64

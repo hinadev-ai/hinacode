@@ -101,7 +101,7 @@ export function Sidebar({
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
-          : "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+          : "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground"
       }
     >
       <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
@@ -111,7 +111,7 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
           aria-label={m.sidebar_filter_label()}
           placeholder={m.sidebar_filter_placeholder()}
-          className="mr-1 h-7 min-w-0 flex-1 text-sm"
+          className="mr-1 h-7 min-w-0 flex-1 text-sm glass:glass-field"
         />
         <ProjectFilterMenu />
         <NewChatButton />

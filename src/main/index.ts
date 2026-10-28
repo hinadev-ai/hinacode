@@ -14,7 +14,12 @@ import {
   lockDownWebview,
   projectFileRequest,
 } from "./security.ts"
-import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
+import {
+  ATTACHMENT_PROTOCOL,
+  GITHUB_ASSET_PROTOCOL,
+  LIQUID_GLASS_ARGUMENT,
+  PROJECT_FILE_PROTOCOL,
+} from "../shared/channels.ts"
 import { RpcMethods } from "../shared/contract.ts"
 import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
@@ -22,6 +27,7 @@ import * as GitHub from "./services/GitHub.ts"
 import { Keyring } from "./services/Secrets.ts"
 import { startResourceMonitor } from "./resourceMonitor.ts"
 import { hydratePath } from "./shellPath.ts"
+import { liquidGlass } from "./liquidGlass.ts"
 import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
 import releaseIcon from "../../assets/icon.png?asset"
@@ -180,7 +186,8 @@ const createWindow = () => {
     minWidth: 720,
     minHeight: 480,
     show: false,
-    backgroundColor: "#0a0a0a",
+    // The glass draws behind the web contents, so the window itself must be clear.
+    ...(liquidGlass ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: "#0a0a0a" }),
     title: "HinaCode",
     icon,
     // The renderer draws its own title bar around the traffic lights (see TitleBar.tsx).
@@ -190,8 +197,10 @@ const createWindow = () => {
       sandbox: true,
       contextIsolation: true,
       webviewTag: true,
+      additionalArguments: liquidGlass ? [LIQUID_GLASS_ARGUMENT] : [],
     },
   })
+  liquidGlass?.addView(window.getNativeWindowHandle())
   window.webContents.setWindowOpenHandler(({ url }) => {
     const external = externalUrl(url)
     if (external) void shell.openExternal(external)

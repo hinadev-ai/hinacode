@@ -116,6 +116,7 @@
     "zustand": "5.0.15"
   },
   "optionalDependencies": {
+    "electron-liquid-glass": "1.1.1",
     "node-mac-permissions": "github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37"
   },
   "engines": {

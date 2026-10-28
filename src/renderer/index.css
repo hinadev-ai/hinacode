@@ -21,6 +21,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* macOS glass sits behind the page (src/main/liquidGlass.ts). The chrome lets it through unless transparency is reduced. */
+@custom-variant glass {
+  @media (prefers-reduced-transparency: no-preference) {
+    &:is([data-glass] *) {
+      @slot;
+    }
+  }
+}
+
 /* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
 @custom-variant hover {
   @media (hover: hover) and (pointer: fine) {
@@ -492,7 +501,7 @@
     scrollbar-color: var(--input) transparent;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground glass:bg-transparent;
   }
   html {
     @apply font-sans;
@@ -500,6 +509,29 @@
   /* In the base layer, so `font-mono` on the same element still wins. */
   .tabular-nums {
     font-family: var(--app-font-sans-tabular);
+  }
+}
+
+/* A field raised off the glass chrome, the capsule macOS 26 draws for search fields. */
+@utility glass-field {
+  border-radius: calc(infinity * 1px);
+  background-color: rgb(255 255 255 / 0.75);
+  /* Focus keeps the input's own border and ring. */
+  &:not(:focus-visible) {
+    border-color: transparent;
+    box-shadow:
+      0 1px 4px rgb(0 0 0 / 0.12),
+      0 0 0 0.5px rgb(0 0 0 / 0.1),
+      inset 0 1px 0 rgb(255 255 255);
+  }
+  &:is(.dark *) {
+    background-color: rgb(255 255 255 / 0.07);
+  }
+  &:is(.dark *):not(:focus-visible) {
+    box-shadow:
+      0 1px 3px rgb(0 0 0 / 0.35),
+      inset 0 0 0 0.5px rgb(255 255 255 / 0.12),
+      inset 0 1px 0 rgb(255 255 255 / 0.1);
   }
 }
 
