@@ -2,7 +2,7 @@ import { Option, Schema } from "effect"
 import { Hono, type Context } from "hono"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
 import { ExpoError, sendPushes } from "./expo"
-import { linkPage } from "./page"
+import { linkPage, openOnPhonePage } from "./page"
 import { Alert, type Host, runStore } from "./store"
 
 export type { Fetch } from "./cloudflare"
@@ -86,6 +86,18 @@ const hostnameOf = (env: Env, host: Pick<Host, "id">) => `${host.id}.${env.TUNNE
 
 const fail = (c: Context, status: 400 | 401 | 404 | 409 | 410, error: string) => c.json({ error }, status)
 
+/** A framed Approve button could be clicked through an overlay, linking someone else's machine. */
+const refuseFraming = (c: Context) => {
+  c.header("Content-Security-Policy", "frame-ancestors 'none'")
+  c.header("X-Frame-Options", "DENY")
+}
+
+const fingerprints = (list: string) =>
+  list
+    .split(",")
+    .map((fingerprint) => fingerprint.trim())
+    .filter(Boolean)
+
 const body = async <A>(c: Context, schema: Schema.Decoder<A>) =>
   Schema.decodeUnknownOption(schema)(await c.req.json().catch(() => undefined))
 
@@ -147,11 +159,34 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/link", (c) => {
-    // A framed Approve button could be clicked through an overlay, linking someone else's machine.
-    c.header("Content-Security-Policy", "frame-ancestors 'none'")
-    c.header("X-Frame-Options", "DENY")
+    refuseFraming(c)
     return c.html(linkPage)
   })
+
+  app.get("/.well-known/apple-app-site-association", (c) => {
+    if (!c.env.APPLE_APP_ID) return c.notFound()
+    const components = [{ "/": "/t/*" }, { "/": "/connect" }]
+    return c.json({ applinks: { details: [{ appIDs: [c.env.APPLE_APP_ID], components }] } })
+  })
+
+  app.get("/.well-known/assetlinks.json", (c) => {
+    const sha256_cert_fingerprints = fingerprints(c.env.ANDROID_CERT_SHA256)
+    if (!c.env.ANDROID_PACKAGE || sha256_cert_fingerprints.length === 0) return c.notFound()
+    return c.json([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: { namespace: "android_app", package_name: c.env.ANDROID_PACKAGE, sha256_cert_fingerprints },
+      },
+    ])
+  })
+
+  for (const path of ["/connect", "/t/:environmentId/:threadId"]) {
+    app.get(path, (c) => {
+      refuseFraming(c)
+      c.header("Referrer-Policy", "no-referrer")
+      return c.html(openOnPhonePage)
+    })
+  }
 
   app.post("/v1/links/claim", async (c) => {
     const input = await body(c, Claim)

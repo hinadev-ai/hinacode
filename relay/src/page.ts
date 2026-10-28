@@ -135,3 +135,24 @@ export const linkPage = `<!doctype html>
 </body>
 </html>
 `
+
+/** What a universal link shows in a browser. It never echoes the URL, which may carry a pairing token. */
+export const openOnPhonePage = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Open in HinaCode</title>
+<style>${style}</style>
+</head>
+<body>
+<main>
+<section>
+<h1>Open this link on a phone with HinaCode installed</h1>
+<p>The HinaCode app opens it on its own. If it did not, install the app and tap the link again.</p>
+</section>
+</main>
+</body>
+</html>
+`

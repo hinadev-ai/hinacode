@@ -16,6 +16,15 @@
     "CLOUDFLARE_ACCOUNT_ID": "e71bb8465534552f8ddc37c7962f98ae",
     "TUNNEL_ZONE_ID": "ef8f9d3e89546eb63bfda9d19191f642",
     "TUNNEL_ZONE_NAME": "hinacode.app",
+    // iOS universal links. `<Team ID>.com.hinadev.hinacode`; the Team ID is on developer.apple.com > Membership.
+    // Empty serves no apple-app-site-association.
+    "APPLE_APP_ID": "",
+    // Android App Links. The `android.package` in apps/mobile/app.json.
+    "ANDROID_PACKAGE": "com.hinadev.hinacode",
+    // The release signing certificate's SHA-256 as colon-separated hex, comma between several.
+    // Play Console > App integrity > App signing key certificate, or `keytool -list -v -keystore <release keystore>`.
+    // Empty serves no assetlinks.json.
+    "ANDROID_CERT_SHA256": "",
   },
   "secrets": { "required": ["CLOUDFLARE_API_TOKEN", "OWNER_TOKEN"] },
 }
