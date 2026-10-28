@@ -5,12 +5,9 @@ import { m } from "../../../paraglide/messages.js"
 import { DeviceFrame } from "../../deviceFrame/DeviceFrame.tsx"
 import type { DeviceSession, FrameShape } from "./deviceSession.ts"
 
-/** How long the frame takes to turn, during which a pointer would land somewhere the user did not aim. */
-const TURN_MS = 700
-
 const fraction = (value: number) => Math.min(1, Math.max(0, value))
 
-/** Where the pointer is, as fractions of the canvas. Offsets are in its own untransformed box, so they hold while the frame turns. */
+/** Where the pointer is, as fractions of the canvas. */
 const pointOf = (event: Pick<MouseEvent, "offsetX" | "offsetY">, canvas: HTMLCanvasElement) => ({
   x: fraction(event.offsetX / Math.max(1, canvas.offsetWidth)),
   y: fraction(event.offsetY / Math.max(1, canvas.offsetHeight)),
@@ -56,16 +53,8 @@ export function DeviceScreen({
   const pointerDown = useRef(false)
   const composing = useRef(false)
   const pressed = useRef(new Set<string>())
-  const turnedAt = useRef(0)
   const orientation = shape?.orientation ?? "portrait"
   const send = (command: DeviceCommand) => sessionRef.current?.command(command)
-
-  const lastOrientation = useRef(orientation)
-  useEffect(() => {
-    if (lastOrientation.current === orientation) return
-    lastOrientation.current = orientation
-    turnedAt.current = performance.now()
-  }, [orientation])
 
   // On the region, which is always mounted, since the canvas comes and goes with the frame's measuring.
   useEffect(() => {
@@ -76,7 +65,6 @@ export function DeviceScreen({
       if (!canvas || event.target !== canvas) return
       event.preventDefault()
       event.stopPropagation()
-      if (performance.now() - turnedAt.current < TURN_MS) return
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1
       sessionRef.current?.command({
         kind: "scroll",
@@ -89,13 +77,10 @@ export function DeviceScreen({
     return () => region.removeEventListener("wheel", onWheel)
   }, [canvasRef, sessionRef, picking])
 
-  const turning = () => performance.now() - turnedAt.current < TURN_MS
-
   const onPointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 || shape === null) return
     event.preventDefault()
     inputRef.current?.focus({ preventScroll: true })
-    if (turning()) return
     event.currentTarget.setPointerCapture(event.pointerId)
     pointerDown.current = true
     if (!picking) send({ kind: "touch", phase: "down", ...pointOf(event.nativeEvent, event.currentTarget) })

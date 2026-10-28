@@ -24,12 +24,6 @@ export interface SideButton {
   readonly length: number
 }
 
-export interface Finish {
-  readonly color: number
-  readonly metalness: number
-  readonly roughness: number
-}
-
 /** Every dimension of one device in screen points, in portrait. */
 export interface DeviceSpec {
   readonly model: DeviceModel
@@ -38,14 +32,14 @@ export interface DeviceSpec {
   readonly bezel: number
   readonly screenRadius: number
   readonly bodyRadius: number
-  readonly depth: number
   /** Radius of the rounded edge where the frame meets the glass. */
   readonly edge: number
   readonly cutout: Cutout | null
   /** A front camera in the bezel, for tablets whose display has no cutout. */
   readonly bezelCamera: number | null
   readonly buttons: ReadonlyArray<SideButton>
-  readonly finish: Record<ColorScheme, Finish>
+  /** The frame's metal, as a CSS color. */
+  readonly finish: Record<ColorScheme, string>
 }
 
 // Phones are taller than 2:1, iPads and foldables are 1.1:1 to 1.5:1.
@@ -68,14 +62,13 @@ export function deviceSpec(model: DeviceModel, screen: Size): DeviceSpec {
   }
 }
 
-type Shape = Pick<DeviceSpec, "bezel" | "screenRadius" | "depth" | "edge" | "cutout" | "bezelCamera">
+type Shape = Pick<DeviceSpec, "bezel" | "screenRadius" | "edge" | "cutout" | "bezelCamera">
 
 const iphoneShape = (w: number): Shape => {
   const u = w / 402
   return {
     bezel: 11 * u,
     screenRadius: 56 * u,
-    depth: 34 * u,
     edge: 5 * u,
     cutout: { kind: "island", width: 125 * u, height: 37 * u, top: 11 * u },
     bezelCamera: null,
@@ -87,7 +80,6 @@ const pixelShape = (w: number): Shape => {
   return {
     bezel: 13 * u,
     screenRadius: 44 * u,
-    depth: 36 * u,
     edge: 7 * u,
     cutout: { kind: "hole", diameter: 13 * u, top: 15 * u },
     bezelCamera: null,
@@ -96,7 +88,7 @@ const pixelShape = (w: number): Shape => {
 
 const tabletShape = (w: number): Shape => {
   const u = w / 820
-  return { bezel: 22 * u, screenRadius: 18 * u, depth: 26 * u, edge: 6 * u, cutout: null, bezelCamera: 6 * u }
+  return { bezel: 22 * u, screenRadius: 18 * u, edge: 6 * u, cutout: null, bezelCamera: 6 * u }
 }
 
 const iphoneButtons = ({ height }: Size): ReadonlyArray<SideButton> => [
@@ -117,15 +109,9 @@ const tabletButtons = ({ width, height }: Size): ReadonlyArray<SideButton> => [
   { side: "right", offset: height * 0.115, length: height * 0.045 },
 ]
 
-const finishes: Record<DeviceModel, Record<ColorScheme, Finish>> = {
-  iphone: {
-    light: { color: 0xc2bdb3, metalness: 1, roughness: 0.3 },
-    dark: { color: 0x6b675f, metalness: 1, roughness: 0.32 },
-  },
-  pixel: {
-    light: { color: 0xe4e0d8, metalness: 0.85, roughness: 0.42 },
-    dark: { color: 0x555a61, metalness: 0.85, roughness: 0.4 },
-  },
+const finishes: Record<DeviceModel, Record<ColorScheme, string>> = {
+  iphone: { light: "#c2bdb3", dark: "#6b675f" },
+  pixel: { light: "#e4e0d8", dark: "#555a61" },
 }
 
 /** Room around the body for the side buttons and the shadow, in CSS pixels. */
