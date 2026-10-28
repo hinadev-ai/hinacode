@@ -146,8 +146,9 @@ export class AgentRunner extends Context.Service<
       options: { readonly resend: boolean },
     ) => Effect.Effect<Thread, SendError>
     /**
-     * Updates the thread and moves it to `provider`. A started thread marks the switch in its transcript, and its
-     * next turn starts a new session that gets the conversation so far. Refused while a turn runs.
+     * Updates the thread and moves it to `provider`, closing the session of the agent it leaves. A started thread
+     * marks the switch in its transcript, and its next turn starts a new session that gets the conversation so far.
+     * Refused while a turn runs.
      */
     readonly switchAgent: (input: UpdateThread & { readonly provider: ProviderId }) => Effect.Effect<Thread, SendError>
     /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
@@ -836,7 +837,10 @@ const make = Effect.gen(function* () {
       const current = yield* threads.get(input.id)
       const started = yield* threads.started(input.id)
       const thread = yield* threads.update(input)
-      if (started && thread.provider !== current.provider) {
+      if (thread.provider === current.provider) return thread
+      const closeSession = providers[current.provider].closeSession
+      if (closeSession !== undefined) yield* closeSession(thread.id)
+      if (started) {
         const now = yield* nowIso
         yield* insertMessage({
           id: randomUUID(),
@@ -859,9 +863,10 @@ const make = Effect.gen(function* () {
 
   /**
    * A turn the agent started by itself, with no user message before its reply. It waits for a turn that
-   * was already starting, which the provider turns away since this one holds the session.
+   * was already starting, which the provider turns away since this one holds the session. A wake from a
+   * session the thread has left, by switching agents, is discarded.
    */
-  const startWake = ({ threadId, events, discard }: Wake) =>
+  const startWake = (source: AgentProvider, { threadId, sessionId, events, discard }: Wake) =>
     Effect.suspend(() => {
       let claimed = false
       let adopted = false
@@ -872,13 +877,13 @@ const make = Effect.gen(function* () {
         const turn = yield* Effect.gen(function* () {
           const thread = yield* threads.get(threadId)
           if (thread.status === "archived") return null
-          const provider = yield* providerFor(thread.provider)
+          if (thread.provider !== source.id || thread.providerSessionId !== sessionId) return null
           const home = yield* accounts.home(thread.accountId)
           const { cwd } = yield* activeWorkspace(threadId)
           const assistant = openAssistantMessage(threadId, yield* nowIso)
           yield* insertMessage(assistant)
           yield* updateThread({ id: threadId, status: "running" })
-          return makeTurn(thread, provider, cwd, home, assistant, Deferred.makeUnsafe<void>())
+          return makeTurn(thread, source, cwd, home, assistant, Deferred.makeUnsafe<void>())
         }).pipe(worktrees.exclusive, exclusive(threadId))
         if (turn === null) return
         activeTurns.set(threadId, turn)
@@ -900,7 +905,9 @@ const make = Effect.gen(function* () {
     yield* Effect.forkIn(
       Stream.runForEach(provider.wakes, (wake) =>
         Effect.forkIn(
-          startWake(wake).pipe(Effect.catch((error) => Effect.logWarning("agent-started turn did not open", error))),
+          startWake(provider, wake).pipe(
+            Effect.catch((error) => Effect.logWarning("agent-started turn did not open", error)),
+          ),
           scope,
         ),
       ),

@@ -50,13 +50,15 @@ interface Probe {
   /** Sessions the runner closed and turns it interrupted, by the agent it asked. */
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
   /** Has `provider` start a turn by itself in `sessionId`. Resolves when the runner discards it. */
-  readonly wake: (provider: ProviderId, sessionId: string) => Promise<void>
+  readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
   readonly release: () => void
   readonly deliver: () => void
   readonly snapshot: () => void
   readonly pauseSnapshot: () => void
   readonly turnBase: () => Promise<string | null>
 }
+
+const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
 
 const withPreparingThread = async (
   run: (probe: Probe) => Promise<void>,
@@ -94,7 +96,6 @@ const withPreparingThread = async (
   const turns: Probe["turns"] = []
   const decisions: Probe["decisions"] = []
   const calls: Probe["calls"] = []
-  const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
   const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -293,9 +294,9 @@ const withPreparingThread = async (
         turns,
         decisions,
         calls,
-        wake: (provider, sessionId) => {
+        wake: (agent, sessionId) => {
           const discarded = Promise.withResolvers<void>()
-          Queue.offerUnsafe(wakes[provider], {
+          Queue.offerUnsafe(wakes[agent], {
             threadId: thread.id,
             sessionId,
             events: Stream.never,

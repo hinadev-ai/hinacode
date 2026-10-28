@@ -388,6 +388,7 @@ const make = Effect.gen(function* () {
     )
     Queue.offerUnsafe(wakes, {
       threadId,
+      sessionId,
       events: events.pipe(Stream.ensuring(release)),
       discard: release.pipe(Effect.andThen(interruptTurn(entry.host, sessionId, turnId)), Effect.ignore),
     })
@@ -1033,6 +1034,22 @@ const make = Effect.gen(function* () {
         : stop
     }).pipe(Effect.asVoid)
 
+  /** `session/leave` with `stop` cancels the session's turns and background shells and unloads it from the host. */
+  const closeSession = (threadId: string) =>
+    Effect.gen(function* () {
+      const sessionId = threadSessions.get(threadId)
+      if (sessionId === undefined) return
+      const entry = current
+      if (entry !== undefined) setBackgroundTasks(entry, sessionId, [])
+      threadSessions.delete(threadId)
+      grants.delete(threadId)
+      if (!entry?.host.isAlive()) return
+      entry.sessions.delete(sessionId)
+      yield* entry.host
+        .command("session/leave", { sessionId, stop: true })
+        .pipe(Effect.catch((error) => Effect.logWarning("session/leave failed", error.message)))
+    })
+
   const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
     Effect.gen(function* () {
       const run = runs.get(threadId)
@@ -1110,6 +1127,7 @@ const make = Effect.gen(function* () {
     steer,
     wakes: Stream.fromQueue(wakes),
     interrupt,
+    closeSession,
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },
     stopSubagent,
     respondApproval,

@@ -24,6 +24,8 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
 /** A turn the agent started by itself on a thread with no turn running. */
 export interface Wake {
   readonly threadId: string
+  /** The session the agent started it in. The runner turns it away once the thread has left that session. */
+  readonly sessionId: string
   /** Ends after turn_completed, turn_failed or turn_limited, like runTurn's stream. */
   readonly events: Stream.Stream<AgentEvent, AgentError>
   /** Stops this turn if the runner cannot adopt its stream. Safe after it has ended or been replaced. */
@@ -84,6 +86,12 @@ export interface AgentProvider {
     attachments: ReadonlyArray<Attachment>,
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
+  /**
+   * Stops the thread's live session, with its background work and any turn it started by itself, and forgets it,
+   * so the thread's next turn starts a new session. Called when the thread moves to another agent. A provider that
+   * keeps nothing running between turns, and resumes only `RunTurnInput.resumeSessionId`, leaves it out.
+   */
+  readonly closeSession?: (threadId: string) => Effect.Effect<void>
   /**
    * Work the agent keeps running between tool calls and turns, such as Claude's `run_in_background` shells. A
    * provider whose agent cannot list and stop them leaves it out.

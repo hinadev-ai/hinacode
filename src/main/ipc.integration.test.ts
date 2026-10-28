@@ -1043,10 +1043,12 @@ const assistantTexts = async (threadId: string) =>
     .messages.filter((message) => message.role === "assistant")
     .map((message) => message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(""))
 
+/** A wake in the session "simulate a session" binds. */
 const wake = (threadId: string, text: string) =>
   Effect.runSync(
     Queue.offer(claudeWakes, {
       threadId,
+      sessionId: boundSession,
       events: Stream.make({ type: "text_delta", text }, { type: "turn_completed" }),
       discard: Effect.void,
     }),
@@ -1078,6 +1080,7 @@ describe("turns the agent starts over rpc", () => {
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         events: Stream.never,
         discard: Effect.sync(discard),
       }),
@@ -1110,6 +1113,7 @@ describe("turns the agent starts over rpc", () => {
       Effect.runSync(
         Queue.offer(claudeWakes, {
           threadId: thread.id,
+          sessionId: boundSession,
           events: Stream.empty,
           discard: Effect.sync(discard),
         }),
@@ -1131,9 +1135,12 @@ describe("turns the agent starts over rpc", () => {
     const held = Promise.withResolvers<void>()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         discard: Effect.void,
         events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
           Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
@@ -1145,7 +1152,7 @@ describe("turns the agent starts over rpc", () => {
     expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual(["then the docs"])
 
     held.resolve()
-    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["then the docs"])
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["simulate a session", "then the docs"])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 
@@ -1153,15 +1160,17 @@ describe("turns the agent starts over rpc", () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
     wake(thread.id, "The sub-agent finished.")
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
-    expect(await assistantTexts(thread.id)).toStrictEqual([""])
+    expect(await assistantTexts(thread.id)).toStrictEqual(["", ""])
 
     heldTurn.resolve()
     await expect
       .poll(() => assistantTexts(thread.id))
-      .toStrictEqual(["Spawned one sub-agent.", "The sub-agent finished."])
+      .toStrictEqual(["", "Spawned one sub-agent.", "The sub-agent finished."])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 })
