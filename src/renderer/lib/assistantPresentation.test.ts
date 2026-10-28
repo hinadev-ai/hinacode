@@ -151,6 +151,17 @@ test("collapsed responses hide the progress notes written between tool calls and
   expect(collapsedParts(indexed)).toEqual([indexed[4], indexed[7], indexed[8]])
 })
 
+test("a collapsed response cut off by a steer keeps the last thing the agent said", () => {
+  const parts = [
+    { type: "text", text: "Checks passed. Merging the rest of the stack." },
+    tool,
+    { type: "text", text: "#211 merged. Merging #212 next." },
+    tool,
+  ] satisfies ReadonlyArray<MessagePart>
+  const indexed = parts.map((part, index) => ({ part, index }))
+  expect(collapsedParts(indexed)).toEqual([indexed[2]])
+})
+
 test("collapsing a response without activity keeps all of it", () => {
   const indexed = [{ part: { type: "text", text: "Hello." } satisfies MessagePart, index: 0 }]
   expect(collapsedParts(indexed)).toEqual(indexed)
