@@ -12,14 +12,6 @@ const progress = "Checking the repository."
 const responseArticle = (page: Page) => page.locator("article[aria-busy]")
 const workRow = (page: Page) => responseArticle(page).locator('[data-slot="worked-for"]')
 
-Given("worked-for uses the {string} appearance", async ({ app }, appearance: string) => {
-  if (appearance !== "light" && appearance !== "dark") throw new Error(`Unknown appearance ${appearance}`)
-  const settings = await rpc(app.page, "clientSettings.get", undefined)
-  await rpc(app.page, "clientSettings.set", {
-    appearance: { ...settings.appearance, theme: appearance === "light" ? "light" : "default" },
-  })
-})
-
 Given(
   "the thread {string} has a {word} response that took {int} seconds",
   async ({ app, threadIds }, title: string, state: string, seconds: number) => {

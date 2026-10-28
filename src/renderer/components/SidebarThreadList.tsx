@@ -63,6 +63,7 @@ import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
+import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
@@ -655,6 +656,7 @@ const awaiting = toIcon(rowStatusIndicator.awaiting_approval)
 
 const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconType; className: string }>> = {
   running: { label: m.thread_status_running, ...toIcon(rowStatusIndicator.running) },
+  background: { label: m.thread_status_background, ...toIcon(rowStatusIndicator.background) },
   // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
@@ -678,6 +680,7 @@ export function useThreadRowState(thread: Thread): RowState {
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
   return rowState(
     thread.status,
+    useBackgroundTasks((state) => (state.byThreadId[thread.id]?.length ?? 0) > 0),
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     useAtomValue(
       pullRequestAttentionAtom(
