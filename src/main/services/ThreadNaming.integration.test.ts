@@ -91,7 +91,7 @@ const github = Layer.effect(
       repository: () => Effect.succeed({ owner: "acme", name: "repo" }),
     })
   }),
-).pipe(Layer.provide(GitHub.layer))
+).pipe(Layer.provide(GitHub.layer.pipe(Layer.provide(Layer.succeed(Events, { publish: () => Effect.void })))))
 
 const observedNaming = (named: Deferred.Deferred<void>) =>
   Layer.effect(

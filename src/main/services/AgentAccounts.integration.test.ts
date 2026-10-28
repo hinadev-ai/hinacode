@@ -21,7 +21,11 @@ const testLayer = threadsLayer.pipe(
   Layer.provideMerge(projectsLayer),
   Layer.provideMerge(accountsLayer),
   Layer.provideMerge(settingsLayer),
-  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, { publish: () => Effect.void }))),
+  Layer.provide(
+    Layer.mergeAll(Git.layer, GitHub.layer).pipe(
+      Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
+    ),
+  ),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
 )

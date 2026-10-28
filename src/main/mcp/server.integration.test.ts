@@ -132,7 +132,7 @@ const domain = Layer.mergeAll(
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
   Layer.provide(Layer.mergeAll(stubs, Git.layer)),
-  Layer.provideMerge(GitHub.layer),
+  Layer.provideMerge(GitHub.layer.pipe(Layer.provide(stubs))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
 )

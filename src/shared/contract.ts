@@ -52,6 +52,7 @@ import {
   OpenerId,
   Project,
   GitHubAuth,
+  GitHubRateLimit,
   PullRequest,
   PullRequestDetail,
   PullRequestFile,
@@ -954,6 +955,12 @@ export const PushEvent = Schema.Union([
     links: Schema.Array(PullRequestLink),
   }),
   Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
+  /** The GitHub budget dropped below a fifth (`low`) or ran out (`exhausted`). Sent once per level per window. */
+  Schema.Struct({
+    type: Schema.Literal("github.rateLimit"),
+    level: Schema.Literals(["low", "exhausted"]),
+    rateLimit: GitHubRateLimit,
+  }),
   /** Every sub-agent of the thread, newest first, sent whenever one of them changes. */
   Schema.Struct({
     type: Schema.Literal("thread.subagents"),

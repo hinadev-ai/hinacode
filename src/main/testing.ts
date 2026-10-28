@@ -113,8 +113,8 @@ export const makeTestAppLayer = (
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),
-    Layer.provideMerge(events),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
+    Layer.provideMerge(events),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provide(Layer.mergeAll(NodeServices.layer, Secrets.noKeyring)),
   )
