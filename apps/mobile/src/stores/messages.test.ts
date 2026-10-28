@@ -171,6 +171,46 @@ describe("reload", () => {
 })
 
 describe("threads on screen", () => {
+  it.each(["snapshot", "error"])("replaces an initial load across a watch gap and ignores its stale %s", async (outcome) => {
+    const leave = useMessages.getState().watch("t1")
+    void useMessages.getState().load("t1")
+    const stale = calls.shift()!
+    leave()
+    const leaveAgain = useMessages.getState().watch("t1")
+    try {
+      expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
+      const fresh = calls.shift()!
+      useMessages.getState().receive(created(3, "included"))
+      useMessages.getState().receive(created(4, "live"))
+      if (outcome === "snapshot") stale.resolve(snapshot(0, []))
+      else stale.reject(new Error("old request failed"))
+      await flush()
+      expect(history()?.status).toBe("loading")
+      fresh.resolve(snapshot(3, ["hidden", "included"]))
+      await flush()
+      expect(ids()).toEqual(["hidden", "included", "live"])
+    } finally {
+      leaveAgain()
+    }
+  })
+
+  it("keeps an initial load current while another screen still watches it", async () => {
+    const leaveFirst = useMessages.getState().watch("t1")
+    const leaveSecond = useMessages.getState().watch("t1")
+    const loading = useMessages.getState().load("t1")
+    const initial = calls.shift()!
+    leaveFirst()
+    try {
+      useMessages.getState().receive(created(2, "live"))
+      initial.resolve(snapshot(1, ["initial"]))
+      await loading
+      expect(ids()).toEqual(["initial", "live"])
+      expect(calls).toHaveLength(0)
+    } finally {
+      leaveSecond()
+    }
+  })
+
   it("reads a thread again when it is opened after being left, showing the old messages meanwhile", async () => {
     const leave = useMessages.getState().watch("t1")
     await loadReady(1, ["a"])
