@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
@@ -10,12 +10,14 @@ import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
 const SHEET_PADDING = 8
+const SHEET_MAX_WIDTH = 640
 
 const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
 
 /**
  * A sheet with a title and a close button, full height by default or as tall as its content with `fit`. The scrim
- * fades while the sheet rises; both fade out together, which is quicker than the way in.
+ * fades while the sheet rises; both fade out together, which is quicker than the way in. A full height sheet on an
+ * Android phone covers the whole screen, as Material's full-screen dialog does.
  */
 export function Sheet({
   title,
@@ -36,43 +38,57 @@ export function Sheet({
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const { width, height } = useWindowDimensions()
+  const fullScreen = Platform.OS === "android" && !fit && width < SHEET_MAX_WIDTH
   return (
-    <Modal transparent animationType="fade" visible={open} onRequestClose={onClose}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy("mobile_sheet_close")}
-        onPress={onClose}
-        style={[StyleSheet.absoluteFill, styles.backdrop]}
-      />
-      <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />
-      <Animated.View
-        entering={rise}
-        accessibilityViewIsModal
-        style={[
-          styles.sheet,
-          fit ? styles.fitSheet : styles.fill,
-          {
-            paddingBottom: SHEET_PADDING + insets.bottom,
-            backgroundColor: theme.background,
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        <View style={styles.sheetHeader}>
-          <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
-            {title}
-          </Text>
-          <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
-        </View>
-        {header}
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          style={fit && styles.fitScroll}
-          contentContainerStyle={styles.sections}
+    <Modal
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      animationType="fade"
+      visible={open}
+      onRequestClose={onClose}
+    >
+      {/* Android lays a Modal out without the system bars first, then corrects it while the entering animation owns
+          the sheet's frame, which drops the correction. The window's size holds from the first frame. */}
+      <View style={{ height }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy("mobile_sheet_close")}
+          onPress={onClose}
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
+        />
+        {!fullScreen && <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />}
+        <Animated.View
+          entering={rise}
+          accessibilityViewIsModal
+          style={[
+            styles.sheet,
+            fit ? styles.fitSheet : styles.fill,
+            fullScreen && { ...styles.fullScreen, paddingTop: insets.top },
+            {
+              paddingBottom: SHEET_PADDING + insets.bottom,
+              backgroundColor: theme.background,
+              borderColor: theme.border,
+            },
+          ]}
         >
-          {children}
-        </ScrollView>
-      </Animated.View>
+          <View style={styles.sheetHeader}>
+            <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
+              {title}
+            </Text>
+            <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
+          </View>
+          {header}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            style={fit && styles.fitScroll}
+            contentContainerStyle={styles.sections}
+          >
+            {children}
+          </ScrollView>
+        </Animated.View>
+      </View>
     </Modal>
   )
 }
@@ -163,13 +179,14 @@ const styles = StyleSheet.create({
   // A tablet keeps the sheet to a column, with the scrim on both sides; every phone is narrower.
   sheet: {
     width: "100%",
-    maxWidth: 640,
+    maxWidth: SHEET_MAX_WIDTH,
     alignSelf: "center",
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     padding: SHEET_PADDING,
   },
+  fullScreen: { borderTopLeftRadius: 0, borderTopRightRadius: 0, borderTopWidth: 0 },
   sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: 12 },
   sheetTitle: { fontSize: 16, fontWeight: "600" },
   sections: { gap: 16, paddingTop: 4 },

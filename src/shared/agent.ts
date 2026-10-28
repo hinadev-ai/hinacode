@@ -93,6 +93,19 @@ export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
 })
 
 /**
+ * The agent's preset models, plus `keep`, such as the thread's own. A preset none of whose models the agent still
+ * lists falls back to every model, so an agent never vanishes from the picker.
+ */
+export const presetModels = (
+  listed: ReadonlyArray<ModelInfo>,
+  preset: ReadonlyArray<string>,
+  keep: string | null,
+): ReadonlyArray<ModelInfo> => {
+  const picked = listed.filter((model) => preset.includes(model.id) || model.id === keep)
+  return preset.length === 0 || !picked.some((model) => model.id !== keep) ? listed : picked
+}
+
+/**
  * Something the composer can complete: a Claude slash command or skill typed as `/name`, or a Codex
  * skill typed as `$name`.
  */

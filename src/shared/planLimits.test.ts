@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import type { LimitWindow } from "../../shared/limits.ts"
+import type { LimitWindow } from "./limits.ts"
 import { formatResetIn, spentWindow } from "./planLimits.ts"
 
 const now = Date.parse("2026-10-12T12:00:00.000Z")
