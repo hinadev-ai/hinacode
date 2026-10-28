@@ -440,6 +440,37 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "leaves the session a thread moves off, so its finished background shell wakes nothing",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
+          const tasks = yield* watchBackgroundTasks
+          const left = yield* startTurn("full", (marker) => {
+            backgroundShell(`sleep 3 && echo woken-$(echo ${marker})`)(marker)
+            endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
+          })
+          yield* tasks.until(left.threadId, (change) => change.tasks.length > 0)
+          yield* Fiber.join(left.fiber)
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(left.threadId)
+          yield* tasks.until(left.threadId, (change) => change.tasks.length === 0)
+
+          // A later shell's wake arrives after the left session's would have.
+          const stays = yield* startTurn("full", (marker) => {
+            backgroundShell(`sleep 4 && echo woken-$(echo ${marker})`)(marker)
+            endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
+          })
+          yield* Fiber.join(stays.fiber)
+          const wake = yield* Queue.take(wakes)
+          expect(wake.threadId).toBe(stays.threadId)
+          yield* wake.discard
+        }).pipe(Effect.scoped),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "empties a thread's background tasks when the host dies",
     () =>
       withProvider(
