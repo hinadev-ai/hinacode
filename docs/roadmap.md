@@ -20,7 +20,7 @@ We've added a lot of features. Now we reduce and refine them.
 - Remote mode with the phone app, and clouds
 - Automations from webhooks, GitHub, Linear and Slack
 - Command palette, search and notifications
-- Usage limits, token usage and context window in the status bar
+- Context window and plan limits in the composer
 - Auto update
 - English, Traditional Chinese and Japanese
 

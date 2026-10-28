@@ -493,6 +493,7 @@ export const ThemeId = Schema.Literals([
   "one-dark-pro",
   "dracula",
   "material-theme",
+  "pinky",
 ])
 export type ThemeId = typeof ThemeId.Type
 
@@ -721,6 +722,15 @@ export const defaultSettings: Settings = {
  * `environment.<id>.token`. `relay` is its tunnel hostname, dialed when `host` does not answer. `source` says whether it was
  * paired by URL or listed by the relay the desktop signed in to.
  */
+/** A HinaCode install: the desktop or a cloud. `id` is the same on every machine that knows it. */
+export const Machine = Schema.Struct({
+  id: Schema.String,
+  /** The name the desktop gave a cloud when it paired, else the machine's hostname. */
+  name: Schema.String,
+  projectIds: Schema.Array(Schema.String),
+})
+export type Machine = typeof Machine.Type
+
 export const Environment = Schema.Struct({
   id: Schema.String,
   name: Schema.String,

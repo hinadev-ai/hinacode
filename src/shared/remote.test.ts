@@ -34,10 +34,10 @@ describe("remote frames", () => {
     expect(Schema.decodeUnknownSync(ServerFrame)({ type: "ready", version: 1 })).toEqual({ type: "ready", version: 1 })
   })
 
-  it("lets a cloud ask a desktop for thread reads and nothing else", () => {
+  it("lets a cloud ask a desktop for the thread tools' calls and nothing else", () => {
     const ask = { type: "ask", id: 1, method: "threads.transcript", payload: { threadId: "t" } }
     expect(Schema.decodeUnknownSync(ServerFrame)(ask)).toEqual(ask)
-    expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "threads.send" })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "threads.delete" })._tag).toBe("None")
     expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "fs.write" })._tag).toBe("None")
   })
 

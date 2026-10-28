@@ -38,7 +38,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Projects and threads](./projects-and-threads.md): fully automated except pointer-drag reorder and the native folder picker.
 - [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, restore and resume after relaunch. Real turns only.
 - [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for hinacode tools. Real turns only.
-- [Chat with Muse Code](./chat-muse.md): the same on Muse Code, with staged command approvals, token usage and plan limits. Real turns only.
+- [Chat with Muse Code](./chat-muse.md): the same on Muse Code, with staged command approvals. Real turns only.
 - [Worktrees](./worktrees.md): setup services and panels automated; composer creation and branch naming need a real first turn, and the `PR <state>` badge needs a GitHub remote.
 - [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments. Real turns only.
 - [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; `link_pull_request` from inside a turn, `gh` status, creating a pull request, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand; the thread controls are automated.

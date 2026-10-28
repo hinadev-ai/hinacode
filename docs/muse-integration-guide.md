@@ -125,7 +125,7 @@ MSP has no event for a change in a session's task set, so `backgroundTasks.ts` f
 
 Thread tokens come from `view/page`, which reads a session's durable view events without loading it, so it works for any thread, idle or not. Each `session/tokenUsage` carries the model and the counts of one completion. `promptTokens` counts cached input once, whatever the provider's convention. Sub-agents and Muse's reminder agents run in child sessions, named by `childSessionId` on `subagent` and `reminderChild` items, and hinacode pages them the same way. A child without a durable log answers `sessionNotFound`, and hinacode skips it. hinacode keeps each session's sum with its last view cursor, so the status bar's refresh pages only new events.
 
-Plan limits come from `usage/changed`, which Muse pushes after a model call with the provider's percentages verbatim and a 300-minute window. `usage/read` only returns what the same host process has seen, so it is empty on a fresh host, and the provider keeps the last push instead. The status bar shows Muse's group after the first turn since hinacode started, within the runner's one-minute cache.
+Plan limits come from `usage/changed`, which Muse pushes after a model call with the provider's percentages verbatim and a 300-minute window. `usage/read` only returns what the same host process has seen, so it is empty on a fresh host, and the provider keeps the last push instead.
 
 ## Accounts
 
