@@ -531,11 +531,12 @@ describe("Transport", () => {
       expect(ready).toBe(2)
     })
 
-    it("goes quiet right after a handshake made in the background", () => {
+    it("ignores a handshake from a connection canceled when the app left", () => {
       const transport = setup()
       transport.setForeground(false)
       handshake(["heartbeat", "quiet"])
-      expect(quietFrames()).toEqual([{ type: "quiet", quiet: true }])
+      expect(quietFrames()).toEqual([])
+      expect(statuses.at(-1)).toBe("offline")
     })
 
     it("sends nothing new to a desktop without it", () => {

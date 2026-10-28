@@ -77,6 +77,7 @@ const updateServer = (id: string, patch: Partial<Server> | ((server: Server) => 
   )
 
 const transports = new Map<string, Transport>()
+let foreground = true
 let watching: readonly string[] = []
 const owners = makeOwners()
 /** A server's last answer to each `all` method, by method, with the payload it answered. */
@@ -153,6 +154,7 @@ function open(server: StoredServer) {
     },
   })
   transports.set(server.id, transport)
+  transport.setForeground(foreground)
   transport.setWatching(watching)
   transport.start()
 }
@@ -195,7 +197,14 @@ export function setServers(servers: readonly StoredServer[]) {
       return { ...existing, ...stored }
     }
     if (existing !== undefined) close(server.id)
-    return { ...stored, status: "connecting", error: null, features: new Set(), generation: 0, listed: false }
+    return {
+      ...stored,
+      status: foreground ? "connecting" : "offline",
+      error: null,
+      features: new Set(),
+      generation: 0,
+      listed: false,
+    }
   })
   useConnection.setState(summarize(next))
   for (const server of next) if (!transports.has(server.id)) open(server)
@@ -209,8 +218,10 @@ export function reconnectNow(id?: string) {
 /** The device switched networks, so the current sockets are probably dead even if they look open. */
 export const networkChanged = () => transports.forEach((transport) => transport.networkChanged())
 
-export const setForeground = (foreground: boolean) =>
-  transports.forEach((transport) => transport.setForeground(foreground))
+export function setForeground(active: boolean) {
+  foreground = active
+  transports.forEach((transport) => transport.setForeground(active))
+}
 
 /** The threads on screen, whose transcripts every server should stream. */
 export function setWatching(threadIds: readonly string[]) {

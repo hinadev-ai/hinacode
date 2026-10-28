@@ -86,6 +86,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [url, restored])
 
   useEffect(() => {
+    setForeground(AppState.currentState !== "background")
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active" || state === "background") setForeground(state === "active")
       if (state === "active") void useRelayAccount.getState().sync()

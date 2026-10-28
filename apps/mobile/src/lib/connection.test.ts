@@ -46,7 +46,8 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, onRemembered, reconnectNow, restoreAnswers, setForeground, setServers, useConnection } = await import("./connection")
+const { call, onRemembered, reconnectNow, restoreAnswers, setForeground, setServers, useConnection } =
+  await import("./connection")
 
 const server = (id: string, port: number): StoredServer => ({
   id,

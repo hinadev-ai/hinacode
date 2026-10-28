@@ -220,6 +220,7 @@ export class Transport {
   /** The network changed: the old TCP connection is likely dead even if it looks open, so start over now. */
   networkChanged() {
     if (this.stopped || this.status === "unauthorized") return
+    if (!this.foreground) return this.onLinkLost()
     this.redial()
   }
 
@@ -237,6 +238,9 @@ export class Transport {
     if (!foreground) {
       this.stopHeartbeat()
       this.stopDirectChecks()
+      clearTimeout(this.retryTimer)
+      this.retryTimer = undefined
+      if (this.status === "connecting") this.onLinkLost()
       return
     }
     if (this.stopped || this.status === "unauthorized") return
@@ -271,14 +275,14 @@ export class Transport {
 
   /** Skips the remaining backoff. */
   reconnectNow() {
-    if (this.status !== "offline" || this.retryTimer === undefined) return
+    if (this.stopped || !this.foreground || this.status !== "offline") return
     clearTimeout(this.retryTimer)
     this.retryTimer = undefined
     this.open()
   }
 
   private open(round: Round = "both") {
-    if (this.stopped) return
+    if (this.stopped || !this.foreground) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
     this.round = round
@@ -532,10 +536,12 @@ export class Transport {
     }
     this.expireOfflineCalls()
     this.setStatus("offline", null)
+    clearTimeout(this.retryTimer)
+    this.retryTimer = undefined
+    if (this.stopped || !this.foreground) return
     const base = Math.min(MAX_RETRY_MS, MIN_RETRY_MS * 2 ** this.attempt)
     const random = this.options.random ?? Math.random
     this.attempt++
-    clearTimeout(this.retryTimer)
     this.retryTimer = setTimeout(() => this.open(), base * (1 + (random() * 2 - 1) * JITTER))
   }
 
