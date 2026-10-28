@@ -144,6 +144,15 @@ const withProvider = <A, E>(effect: Effect.Effect<A, E, MuseProvider>) =>
 
 const TURN_TIMEOUT = 60_000
 
+const processesRunning = (commandLine: string) => {
+  try {
+    execFileSync("pgrep", ["-f", commandLine])
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Muse moves a shell to the background once it outlives `yield_time_ms`. */
 const backgroundShell = (command: string) => (marker: string) =>
   endpoint.script({
@@ -440,31 +449,26 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
-    "leaves the session a thread moves off, so its finished background shell wakes nothing",
+    "leaves the session a thread moves off, and its background shell is gone once that returns",
     () =>
       withProvider(
         Effect.gen(function* () {
           const provider = yield* MuseProvider
           const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
           const tasks = yield* watchBackgroundTasks
-          const left = yield* startTurn("full", (marker) => {
-            backgroundShell(`sleep 3 && echo woken-$(echo ${marker})`)(marker)
-            endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
+          let shell = ""
+          const turn = yield* startTurn("full", (marker) => {
+            shell = `sleep 30 && echo left-${marker}`
+            backgroundShell(shell)(marker)
           })
-          yield* tasks.until(left.threadId, (change) => change.tasks.length > 0)
-          yield* Fiber.join(left.fiber)
-          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(left.threadId)
-          yield* tasks.until(left.threadId, (change) => change.tasks.length === 0)
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length > 0)
+          yield* Fiber.join(turn.fiber)
+          expect(processesRunning(shell)).toBe(true)
 
-          // A later shell's wake arrives after the left session's would have.
-          const stays = yield* startTurn("full", (marker) => {
-            backgroundShell(`sleep 4 && echo woken-$(echo ${marker})`)(marker)
-            endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
-          })
-          yield* Fiber.join(stays.fiber)
-          const wake = yield* Queue.take(wakes)
-          expect(wake.threadId).toBe(stays.threadId)
-          yield* wake.discard
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(turn.threadId)
+          expect(processesRunning(shell)).toBe(false)
+          expect(tasks.changes.filter((change) => change.threadId === turn.threadId).at(-1)?.tasks).toStrictEqual([])
+          expect(yield* Queue.size(wakes)).toBe(0)
         }).pipe(Effect.scoped),
       ),
     TURN_TIMEOUT,
