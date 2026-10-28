@@ -56,21 +56,13 @@ function App() {
 
 /** Threads and worktrees of every environment, which main merges into one list each. */
 async function loadLists() {
-  const [threads, worktrees] = await Promise.all([
-    callPromise("threads.list", undefined),
-    callPromise("worktrees.list", undefined),
+  // Each list replaces its store as soon as it answers, so a push that arrives after it is not undone by a later answer.
+  await Promise.all([
+    callPromise("threads.list", undefined).then(useThreads.getState().replaceAll),
+    callPromise("worktrees.list", undefined).then(useWorktrees.getState().replaceAll),
   ])
-  useThreads.getState().replaceAll(threads)
-  useWorktrees.getState().replaceAll(worktrees)
 }
 
-const [settings] = await Promise.all([
-  Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
-  loadLists(),
-  Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
-])
-useLocale.getState().apply(settings.locale)
-applyAppearance(settings.appearance)
 onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
@@ -84,8 +76,8 @@ onPushEvent((event) => {
     case "thread.event": {
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)
-      const { notifications } = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => settings)
-      return notifyThreadEvent(event.threadId, event.event, notifications)
+      const settings = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => null)
+      return settings && notifyThreadEvent(event.threadId, event.event, settings.notifications)
     }
     case "worktree.updated":
       return useWorktrees.getState().upsert(event.worktree)
@@ -150,6 +142,15 @@ const reattachTerminals = (environmentId: string) => {
   }
 }
 
+// Subscribed above before anything loads: a push sent while a list is on its way, such as a setup script ending
+// during a reload, would otherwise be lost and leave the store stale.
+const [settings] = await Promise.all([
+  Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
+  loadLists(),
+  Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
+])
+useLocale.getState().apply(settings.locale)
+applyAppearance(settings.appearance)
 const root = document.getElementById("root")
 if (!root) throw new Error("#root is missing from index.html")
 

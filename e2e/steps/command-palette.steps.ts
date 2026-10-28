@@ -19,6 +19,11 @@ Then("the first palette result reads {string}", async ({ app }, text: string) =>
   await expect(app.page.getByRole("option").first()).toContainText(text)
 })
 
+Then("the new thread picker lists the projects", async ({ app }) => {
+  await expect(paletteInput(app.page)).toHaveAttribute("placeholder", "Pick a project for the new thread")
+  await expect(app.page.getByRole("option").first()).toBeVisible()
+})
+
 Then("the palette is closed", async ({ app }) => {
   await expect(app.page.getByRole("dialog")).toBeHidden()
 })
