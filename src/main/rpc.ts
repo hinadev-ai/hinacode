@@ -97,7 +97,6 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
-  readonly copyImage: (url: string) => Effect.Effect<void, HandlerError>
   /** Opens an http(s) URL in the default browser. Anything else is ignored. */
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
@@ -272,7 +271,6 @@ const handlers: Handlers = {
   "shell.reveal": ({ path }, desktop) => desktop?.reveal(path) ?? Effect.void,
   "shell.openers": (_, desktop) => desktop?.openers ?? Effect.succeed([]),
   "shell.openWith": ({ path, opener }, desktop) => desktop?.openWith(path, opener) ?? Effect.void,
-  "clipboard.copyImage": ({ url }, desktop) => desktop?.copyImage(url) ?? Effect.void,
 
   "settings.get": () => Settings.use((settings) => settings.get),
   "settings.set": (patch) => Settings.use((settings) => settings.set(patch)),
