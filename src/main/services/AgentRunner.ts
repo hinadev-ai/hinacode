@@ -579,10 +579,7 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
   }
 
-  /**
-   * A started thread without a session hands its transcript to the new one, after a switch or a turn that never bound
-   * one. A fork's first turn needs no handoff, since the session it forks already holds the conversation.
-   */
+  /** A started thread without a session hands its transcript to the new one, after a switch or a turn that never bound one. */
   const promptForSession = (thread: Thread, prompt: string) =>
     Effect.gen(function* () {
       if (thread.providerSessionId !== null || thread.forkedFrom !== null) return prompt

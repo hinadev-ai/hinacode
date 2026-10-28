@@ -1083,7 +1083,6 @@ const make = Effect.gen(function* () {
         : stop
     }).pipe(Effect.asVoid)
 
-  /** Forgets the session only once it left, so a failed leave keeps it on the thread. */
   const closeSession = (threadId: string) =>
     Effect.gen(function* () {
       const sessionId = threadSessions.get(threadId)

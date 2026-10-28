@@ -336,7 +336,6 @@ const make = Effect.gen(function* () {
         .pipe(Effect.andThen(refreshTerminals(threadId, terminals)), Effect.asVoid)
     })
 
-  /** Sub-agents only report through their parent's turn, so one that outlived it is stopped by its last turn id. */
   const stopSubagents = (threadId: string, home: AccountHome | null) =>
     Effect.gen(function* () {
       const subagents = subagentsByThread.get(threadId)
