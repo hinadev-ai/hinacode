@@ -66,6 +66,8 @@ const [settings] = await Promise.all([
   Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
   loadLists(),
   Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
+  // Mod+N right after launch would otherwise see no projects yet and open Add project.
+  Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, projectsAtom))),
 ])
 useLocale.getState().apply(settings.locale)
 applyAppearance(settings.appearance)
