@@ -7,7 +7,7 @@ interface LiquidGlass {
 }
 
 /**
- * macOS glass behind the window, which the title bar, sidebar and status bar let through.
+ * macOS glass behind the window, which the title bar and sidebar let through.
  * `electron-liquid-glass` is an optional dependency that only installs on macOS, so elsewhere this is undefined.
  */
 export const liquidGlass: LiquidGlass | undefined = (() => {
