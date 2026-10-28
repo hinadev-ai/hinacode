@@ -1,6 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useId, useState, useTransition } from "react"
+import { lazy, type ReactNode, Suspense, useId, useState, useTransition } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowDownSLine,
@@ -45,7 +45,6 @@ import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts
 import { type PullRequestSection, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Markdown } from "./Markdown.tsx"
-import { PullRequestCode } from "./PullRequestCode.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +68,11 @@ import {
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { Textarea } from "./ui/textarea.tsx"
+
+// The code tab renders with @pierre/diffs, which stays out of the startup bundle until it opens.
+const PullRequestCode = lazy(() =>
+  import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
+)
 
 /** "owner/repo#123" for a canonical GitHub pull request URL. */
 const shortName = (url: string) => {
@@ -234,7 +238,13 @@ function SelectedPullRequest({ tab, onTabChange, ...detail }: SelectedPullReques
           <TabsTrigger value="code">{m.pr_tab_code()}</TabsTrigger>
         </TabsList>
       </Tabs>
-      {tab === "info" ? <PullRequestDetailView {...detail} /> : <PullRequestCode url={detail.url} />}
+      {tab === "info" ? (
+        <PullRequestDetailView {...detail} />
+      ) : (
+        <Suspense>
+          <PullRequestCode url={detail.url} />
+        </Suspense>
+      )}
     </div>
   )
 }

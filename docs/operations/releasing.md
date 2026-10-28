@@ -2,7 +2,7 @@
 
 Use this to publish HinaCode for macOS (arm64), Windows (x64) and Linux (x64) as a GitHub release of this repository, where installed apps pick it up as an update.
 
-The `Build` workflow builds macOS on the home Mac runner, and Linux and Windows on `ubuntu-latest` in the `electronuserland/builder:24-wine` image. A pull request that changes packaging gets unsigned builds as workflow artifacts. A `v*` tag gets a signed, notarized macOS build and a release.
+The `Build` workflow builds macOS on a Blacksmith macOS runner, and Linux and Windows on `ubuntu-latest` in the `electronuserland/builder:24-wine` image. A pull request that changes packaging gets unsigned builds as workflow artifacts. A `v*` tag gets a signed, notarized macOS build and a release.
 
 ## Steps
 

@@ -141,6 +141,67 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx expo lint
 
+  bundle-size:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Sibling checkouts, because Tailwind scans every file under the project for class names.
+      - uses: actions/checkout@v7
+        with:
+          path: head
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: head/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: head/pnpm-lock.yaml
+      # The base builds with this pull request's commands and budgets, so both sides measure the same files.
+      - name: Build both commits
+        run: |
+          for dir in base head; do
+            (cd "$dir" && pnpm install --frozen-lockfile && pnpm build && pnpm exec electron-builder --linux AppImage --publish never)
+          done
+      - name: Measure
+        working-directory: head
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        # size-limit exits 1 over budget. The last step fails the job after the comment is posted.
+        run: |
+          cp .size-limit.ts ../base/
+          pnpm exec size-limit --json --config ../base/.size-limit.ts > ../base.json || true
+          pnpm exec size-limit --json > ../head.json || true
+          node scripts/bundle-size.ts ../base.json ../head.json "$BASE_SHA" "$HEAD_SHA" | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
+      # A fork's pull request gets a read-only token, so it only has the job summary.
+      # The marker finds this job's own comment, since React Doctor posts as the same bot.
+      - if: github.event.pull_request.head.repo.full_name == github.repository
+        name: Post the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- bundle-size -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
+      - name: Check the budgets
+        working-directory: head
+        run: pnpm exec size-limit
+
   e2e-linux:
     name: e2e (linux ${{ matrix.shard }}/4)
     needs: changes
@@ -176,9 +237,9 @@ jobs:
   e2e-macos:
     name: e2e (macos)
     needs: changes
-    # The home runner must never run code from a fork's pull request.
+    # Fork pull requests skip macOS, where a minute costs twenty Linux ones.
     if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, home]
+    runs-on: blacksmith-6vcpu-macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -186,14 +247,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Check the screen is unlocked
-        run: |
-          if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
-            echo "::error::Unlock the runner's screen. Electron never reports a window as shown while it is locked."
-            exit 1
-          fi
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e
+      # The config's CI default of 2 workers fits ubuntu-latest. This runner has 6 vCPUs.
+      - run: pnpm test:e2e --workers 4
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -224,9 +280,9 @@ jobs:
   resource-monitor-macos:
     name: resource monitor (macos)
     needs: changes
-    # The home runner must never run code from a fork's pull request.
+    # Fork pull requests skip macOS, where a minute costs twenty Linux ones.
     if: needs.changes.outputs.resource-monitor == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, home]
+    runs-on: blacksmith-6vcpu-macos-latest
     defaults:
       run:
         working-directory: tools/resource-monitor
