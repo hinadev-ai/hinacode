@@ -6,9 +6,21 @@ import type {
   SDKTaskProgressMessage,
   SDKTaskStartedMessage,
 } from "@anthropic-ai/claude-agent-sdk"
+import { Option, Schema } from "effect"
 import type { AgentEvent, BackgroundTask, BackgroundTaskKind, Subagent, TokenUsage } from "../../../shared/agent.ts"
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
+
+const RateLimitInfo = Schema.Struct({
+  status: Schema.Literals(["allowed", "allowed_warning", "rejected"]),
+  resetsAt: Schema.optional(Schema.Number),
+  overageStatus: Schema.optional(Schema.Literals(["allowed", "allowed_warning", "rejected"])),
+  isUsingOverage: Schema.optional(Schema.Boolean),
+  overageInUse: Schema.optional(Schema.Boolean),
+})
+const decodeAssistantLimit = Schema.decodeUnknownOption(
+  Schema.Struct({ api_error_params: Schema.Struct({ rate_limit_info: RateLimitInfo }) }),
+)
 
 /**
  * Per-session state the mapper needs across messages: edit tool calls whose result has not arrived
@@ -29,6 +41,20 @@ export const isTerminal = (event: AgentEvent) =>
 export function resetTurnLimits(state: MapState): void {
   state.limitMessage = null
   state.limitResetAt = null
+}
+
+function recordRejection(info: typeof RateLimitInfo.Type, state: MapState): void {
+  if (
+    info.status !== "rejected" ||
+    info.overageStatus === "allowed" ||
+    info.overageStatus === "allowed_warning" ||
+    info.isUsingOverage ||
+    info.overageInUse
+  )
+    return
+  state.limitMessage = "Claude usage limit reached"
+  const resetMs = (info.resetsAt ?? Number.NaN) * 1000
+  state.limitResetAt = Number.isFinite(resetMs) && Math.abs(resetMs) <= 8.64e15 ? new Date(resetMs).toISOString() : null
 }
 
 export function mapMessage(message: SDKMessage, state: MapState, now: string): ReadonlyArray<AgentEvent> {
@@ -83,19 +109,7 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
     }
 
     case "rate_limit_event": {
-      const info = message.rate_limit_info
-      if (
-        info.status === "rejected" &&
-        info.overageStatus !== "allowed" &&
-        info.overageStatus !== "allowed_warning" &&
-        !info.isUsingOverage &&
-        !info.overageInUse
-      ) {
-        state.limitMessage = "Claude usage limit reached"
-        const resetMs = (info.resetsAt ?? Number.NaN) * 1000
-        state.limitResetAt =
-          Number.isFinite(resetMs) && Math.abs(resetMs) <= 8.64e15 ? new Date(resetMs).toISOString() : null
-      }
+      recordRejection(message.rate_limit_info, state)
       return []
     }
 
@@ -112,6 +126,9 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
         }
       }
       if (message.parent_tool_use_id === null && message.error === "rate_limit") {
+        // Unchanged quotas emit no new rate_limit_event, but each refusal carries its own structured reset.
+        const limit = Option.getOrUndefined(decodeAssistantLimit(message))
+        if (limit !== undefined) recordRejection(limit.api_error_params.rate_limit_info, state)
         state.limitMessage =
           message.message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n") ||
           "Claude usage limit reached"
