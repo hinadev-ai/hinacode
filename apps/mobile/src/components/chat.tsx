@@ -42,6 +42,7 @@ export function Chat({ thread }: { thread: Thread }) {
   const history = useMessages((state) => state.byThread[thread.id])
   const root = useThreadRoot(thread)
 
+  useEffect(() => useMessages.getState().watch(thread.id), [thread.id])
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
   }, [connected, history, thread.id])

@@ -77,6 +77,7 @@ const updateServer = (id: string, patch: Partial<Server> | ((server: Server) => 
   )
 
 const transports = new Map<string, Transport>()
+let watching: readonly string[] = []
 const owners = makeOwners()
 /** A server's last answer to each `all` method, by method, with the payload it answered. */
 export type RememberedAnswers = Readonly<Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>>
@@ -152,6 +153,7 @@ function open(server: StoredServer) {
     },
   })
   transports.set(server.id, transport)
+  transport.setWatching(watching)
   transport.start()
 }
 
@@ -209,6 +211,12 @@ export const networkChanged = () => transports.forEach((transport) => transport.
 
 export const setForeground = (foreground: boolean) =>
   transports.forEach((transport) => transport.setForeground(foreground))
+
+/** The threads on screen, whose transcripts every server should stream. */
+export function setWatching(threadIds: readonly string[]) {
+  watching = threadIds
+  transports.forEach((transport) => transport.setWatching(threadIds))
+}
 
 export function onEvent(listener: (event: PushEvent) => void) {
   listeners.add(listener)

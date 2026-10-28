@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Message } from "@shared/domain.ts"
 import { flush, message, type PendingCall } from "./testing"
 
@@ -52,6 +52,13 @@ beforeEach(() => {
   useMessages.getState().reset()
 })
 
+/** Puts t1 on screen for each test in the describe that calls it, as the tests that reconnect need. */
+const onScreen = () => {
+  let leave = () => {}
+  beforeEach(() => (leave = useMessages.getState().watch("t1")))
+  afterEach(() => leave())
+}
+
 describe("load", () => {
   it("applies pushes that arrive before the snapshot only when they are newer", async () => {
     const loading = useMessages.getState().load("t1")
@@ -91,6 +98,8 @@ describe("load", () => {
 })
 
 describe("reload", () => {
+  onScreen()
+
   it("keeps the last known history on screen until the new snapshot swaps in", async () => {
     await loadReady(1, ["a"])
     const before = history()
@@ -166,12 +175,13 @@ describe("threads on screen", () => {
     const leave = useMessages.getState().watch("t1")
     await loadReady(1, ["a"])
     leave()
-    useMessages.getState().watch("t1")
+    const leaveAgain = useMessages.getState().watch("t1")
     expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
     expect(ids()).toEqual(["a"])
     calls.shift()!.resolve(snapshot(3, ["a", "b"]))
     await flush()
     expect(ids()).toEqual(["a", "b"])
+    leaveAgain()
   })
 
   it("reads only the threads on screen again after a reconnect", async () => {
@@ -198,6 +208,8 @@ describe("threads on screen", () => {
 })
 
 describe("earlier pages", () => {
+  onScreen()
+
   const page = (ids: readonly string[], hasEarlier: boolean) => ({ ...snapshot(1, ids), hasEarlier })
 
   it("asks for the newest page, then prepends the page before the oldest message", async () => {

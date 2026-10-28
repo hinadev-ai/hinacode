@@ -153,6 +153,7 @@ export class Transport {
   private attempt = 0
   private nextCallId = 1
   private foreground = true
+  private watching: readonly string[] = []
   /** Back from a quiet stretch on this socket; the next frame proves the desktop is sending everything again. */
   private missedPushes = false
   private stopped = false
@@ -251,6 +252,16 @@ export class Transport {
     } else if (this.status === "offline") {
       this.reconnectNow()
     }
+  }
+
+  /** Asks the desktop for the transcripts of `threadIds` only, from now and after every handshake. */
+  setWatching(threadIds: readonly string[]) {
+    this.watching = threadIds
+    if (this.status === "connected") this.sendWatching()
+  }
+
+  private sendWatching() {
+    if (this.features.has("watch")) this.sendFrame({ type: "watch", threadIds: this.watching })
   }
 
   /** Dials `dials` from the next round on, keeping the current socket and every pending call. */
@@ -419,6 +430,7 @@ export class Transport {
     }
     if (this.checksDirect() && this.foreground) this.startDirectChecks()
     if (this.features.has("quiet") && !this.foreground) this.sendFrame({ type: "quiet", quiet: true })
+    this.sendWatching()
     this.options.onReady(this.features, environment, relay)
   }
 
