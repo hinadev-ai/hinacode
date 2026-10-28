@@ -8,9 +8,14 @@ export type NotificationPermission = "granted" | "denied" | "undetermined" | "un
 
 export interface ThreadNotification {
   readonly threadId: string
+  /** The machine that runs the thread, null before its first handshake. */
+  readonly environmentId: string | null
   readonly title: string
   readonly body: string
 }
+
+/** What a tapped notification opens. */
+export type OpenedThread = Pick<ThreadNotification, "threadId" | "environmentId">
 
 const CHANNEL_ID = "threads"
 
@@ -68,33 +73,34 @@ export async function getPushToken(): Promise<string | null> {
 }
 
 /** Shows a system notification right away. A newer one for the same thread replaces the older. */
-export async function presentNotification({ threadId, title, body }: ThreadNotification) {
+export async function presentNotification({ threadId, environmentId, title, body }: ThreadNotification) {
   await ensureChannel()
   await Notifications.scheduleNotificationAsync({
     identifier: threadId,
-    content: { title, body, data: { threadId } },
+    content: { title, body, data: { threadId, environmentId } },
     trigger: Platform.OS === "android" ? { channelId: CHANNEL_ID } : null,
   })
 }
 
 /**
- * Reports the thread of each notification the developer taps, including the one that launched the app.
- * Returns the unsubscribe function.
+ * Reports the thread of each notification the developer taps, including the one that launched the app. Both a push
+ * and a local notification carry `threadId` and `environmentId` in their data. Returns the unsubscribe function.
  */
-export function onNotificationOpened(listener: (threadId: string) => void): () => void {
+export function onNotificationOpened(listener: (opened: OpenedThread) => void): () => void {
   let active = true
   let opened: string | null = null
   const open = (response: Notifications.NotificationResponse | null) => {
     if (!active || response === null) return
     const { request, date } = response.notification
     const threadId = request.content.data?.threadId
+    const environmentId = request.content.data?.environmentId
     // A tap that launches the app can arrive through both the listener and the last response.
     const key = `${request.identifier}:${date}`
     if (typeof threadId !== "string" || key === opened) return
     opened = key
     // The launch response stays readable until cleared, so a remount would open the thread again.
     Notifications.clearLastNotificationResponse()
-    listener(threadId)
+    listener({ threadId, environmentId: typeof environmentId === "string" ? environmentId : null })
   }
   const subscription = Notifications.addNotificationResponseReceivedListener(open)
   void Notifications.getLastNotificationResponseAsync().then(open)

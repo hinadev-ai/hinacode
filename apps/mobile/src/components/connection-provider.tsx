@@ -1,8 +1,7 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo"
-import { useURL } from "expo-linking"
 import { type ReactNode, useEffect, useState } from "react"
 import { AppState } from "react-native"
-import { parsePairingUrl, type PairingTarget } from "@shared/remote.ts"
+import type { PairingTarget } from "@shared/remote.ts"
 import {
   networkChanged,
   onEvent,
@@ -38,14 +37,13 @@ export function forgetServer(id: string) {
 
 /**
  * Restores the paired servers and preferences, syncs with the relay account at launch and on every return to the
- * foreground, saves the server list whenever it changes, accepts `hinacode://connect` links, and keeps the thread,
- * message and pull request stores in step with every server's socket. Renders nothing until storage has been read.
+ * foreground, saves the server list whenever it changes, and keeps the thread, message and pull request stores in
+ * step with every server's socket. Renders nothing until storage has been read.
  */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
   const generation = useConnection((state) => state.generation)
   const paired = useConnection((state) => state.paired)
-  const url = useURL()
 
   useEffect(() => {
     let cancelled = false
@@ -77,11 +75,6 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       unsubscribe()
     }
   }, [])
-
-  useEffect(() => {
-    const target = url === null ? null : parsePairingUrl(url)
-    if (target !== null && restored) pair(target)
-  }, [url, restored])
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -137,6 +130,8 @@ async function showLastLists(serverIds: readonly string[]) {
 }
 
 const networkIdentity = (state: NetInfoState) =>
-  [state.type, state.isConnected, state.details !== null && "ipAddress" in state.details ? state.details.ipAddress : ""].join(
-    "|",
-  )
+  [
+    state.type,
+    state.isConnected,
+    state.details !== null && "ipAddress" in state.details ? state.details.ipAddress : "",
+  ].join("|")

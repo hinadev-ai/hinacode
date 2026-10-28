@@ -12,19 +12,22 @@ import { useTheme } from "@/hooks/use-theme"
 
 /**
  * Scan or paste a pairing URL. The first pairing needs no `onPaired`: the protected stack swaps this screen for
- * the thread list once a server is stored. `footer` goes below the form, inside its scroll view.
+ * the thread list once a server is stored. `footer` goes below the form, inside its scroll view. `initial` fills in
+ * the field, as a pairing link does, and still waits for the developer to tap Connect.
  */
 export function PairingForm({
   refused = null,
   onPaired,
   footer,
+  initial = "",
 }: {
   refused?: string | null
   onPaired?: () => void
   footer?: ReactNode
+  initial?: string
 }) {
   const theme = useTheme()
-  const [text, setText] = useState("")
+  const [text, setText] = useState(initial)
   const [invalid, setInvalid] = useState(false)
   const [scanning, setScanning] = useState(false)
 
@@ -52,8 +55,8 @@ export function PairingForm({
         <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
       </View>
       <Text style={[styles.lead, { color: theme.textMuted }]}>
-        On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
-        the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.
+        On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste the
+        pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.
       </Text>
       {refused !== null && <Notice text={refused} tone="danger" />}
       {native && (
@@ -78,7 +81,7 @@ export function PairingForm({
             setText(value)
             setInvalid(false)
           }}
-          placeholder="hinacode://connect?host=...&port=...&token=..."
+          placeholder="https://relay.hinacode.app/connect#host=...&port=...&token=..."
           placeholderTextColor={theme.textMuted}
           autoCapitalize="none"
           autoCorrect={false}

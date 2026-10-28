@@ -87,7 +87,11 @@ The bundle runs on Hermes, which has none of the ES2023 array methods such as `t
 ## Pair
 
 1. On the desktop, open Settings, Remote, and turn on Allow remote control.
-2. In the app, tap Scan QR code and point it at the QR code, or paste the `hinacode://connect?host=...&port=...&token=...` URL (it repeats `host` for each address the app may try) into Pairing URL and tap Connect. Opening that URL on the phone also pairs, since the app registers the `hinacode` scheme.
+2. In the app, tap Scan QR code and point it at the QR code, or paste the `https://relay.hinacode.app/connect#host=...&port=...&token=...` URL (it repeats `host` for each address the app may try) into Pairing URL and tap Connect. The older `hinacode://connect?...` form still works.
+
+## Universal links
+
+`https://relay.hinacode.app/connect#...` and `https://relay.hinacode.app/t/<environmentId>/<threadId>` open the app: a connect link fills in the pairing form, which still waits for a tap on Connect, and a thread link opens that thread on a phone paired with its machine. Notification taps go through the same route (`src/lib/links.ts`, called from `src/app/+native-intent.tsx`). The system camera opens the app from the desktop's QR code only once the relay serves the association files, which need the values in the config table of `docs/features/2026-10-28-universal-links.md`. A debug-signed APK fails Android's verification; approve the domain by hand with `adb shell pm set-app-links-user-selection --user cur --package com.hinadev.hinacode true relay.hinacode.app`.
 
 The phone retains the thread while reconnecting and queues actions for up to a minute offline. Supported desktops deduplicate retried mutations and let the terminal attach to its existing shell and retained output.
 
