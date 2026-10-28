@@ -234,6 +234,31 @@ describe("Codex auto-compact", () => {
     ),
   )
 
+  it.live("compacts the thread when the prompt is /compact", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const commands = yield* provider.listCommands({ threadId: "manual-compact", cwd: tmpdir(), home: null })
+        expect(commands.map((command) => command.trigger + command.name)).toContain("/compact")
+
+        const events = yield* provider
+          .runTurn({ ...input("manual-compact"), prompt: "/compact" })
+          .pipe(Stream.runCollect)
+        expect(countOf("turn/start")).toBe(0)
+        expect(countOf("thread/compact/start")).toBe(1)
+        expect(events.filter((event) => event.type === "compaction_updated")).toStrictEqual([
+          { type: "compaction_updated", compaction: { status: "running" } },
+          {
+            type: "compaction_updated",
+            compaction: { status: "done", trigger: "manual", preTokens: null, postTokens: null },
+          },
+        ])
+        expect(events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
   it.live("leaves Codex's own threshold alone by default", () =>
     withProvider(
       Effect.gen(function* () {

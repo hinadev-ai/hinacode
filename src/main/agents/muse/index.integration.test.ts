@@ -668,6 +668,32 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "compacts the session when the prompt is /compact",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const first = yield* startTurn("supervised")
+          yield* Fiber.join(first.fiber)
+          const commands = yield* provider.listCommands({ threadId: first.threadId, cwd: first.input.cwd, home: null })
+          expect(commands.map((command) => command.trigger + command.name)).toContain("/compact")
+
+          const compact = yield* forkTurn({
+            ...first.input,
+            prompt: "/compact",
+            resumeSessionId: eventsOf(first, "session_bound")[0]!.providerSessionId,
+          })
+          yield* Fiber.join(compact.fiber)
+
+          expect(compactionsOf(compact)).toStrictEqual([{ status: "running" }, { ...compactedAuto, trigger: "manual" }])
+          expect(replyOf(compact)).toBe("")
+          expect(compact.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "leaves the context alone without a threshold",
     () =>
       withProvider(
