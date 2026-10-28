@@ -132,3 +132,11 @@ test("reasoning, tools and file changes are activity, while text, questions and 
   expect(reply.map(isActivity)).toEqual([false, false])
   expect(activity.map(isActivity)).toEqual([true, true, true])
 })
+
+test("an agent switch stays inline without a Worked for row", () => {
+  const parts: ReadonlyArray<MessagePart> = [{ type: "agent_switch", from: "claude", to: "codex" }]
+  expect(assistantPresentation(message(parts, "2026-10-12T00:00:00.000Z"))).toEqual({
+    kind: "inline",
+    parts: [{ part: parts[0], index: 0 }],
+  })
+})

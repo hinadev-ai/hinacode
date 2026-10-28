@@ -42,6 +42,7 @@ export function searchableText(part: MessagePart): string {
     case "reasoning":
     case "attachment":
     case "compaction":
+    case "agent_switch":
       return ""
   }
 }

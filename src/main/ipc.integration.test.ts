@@ -487,7 +487,7 @@ describe("projects, threads and settings over rpc", () => {
     expect(stored?.userSkills).toBe(false)
   })
 
-  test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
+  test("a thread switches agent, back to that agent's defaults, and marks a switch after its first message", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
     result(await invoke("threads.update", { id: thread.id, effort: "max", fastMode: true }))
@@ -512,9 +512,12 @@ describe("projects, threads and settings over rpc", () => {
         }),
       ),
     )
-    expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
-      "ThreadStartedError",
-    )
+    expect(result(await invoke("threads.update", { id: thread.id, provider: "claude" }))).toMatchObject({
+      provider: "claude",
+      providerSessionId: null,
+    } satisfies Partial<Thread>)
+    const { messages } = result(await invoke("threads.transcript", { threadId: thread.id }))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "codex", to: "claude" }])
   })
 
   test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {

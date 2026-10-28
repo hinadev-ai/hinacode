@@ -71,7 +71,10 @@ export interface CreateThread {
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
-  /** Refused once the thread has a message. Moves the thread to the new agent's default account unless `accountId` is given. */
+  /**
+   * Moves the thread to the new agent's default account unless `accountId` is given, and drops the session.
+   * A started thread must go through `AgentRunner.switchAgent`, which marks the switch in the transcript.
+   */
   readonly provider?: ProviderId | undefined
   /** Sets the account only. A started session must be copied to the new home first, as `AgentRunner.switchAccount` does. */
   readonly accountId?: string | null | undefined
@@ -105,9 +108,7 @@ export class Threads extends Context.Service<
     readonly create: (
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
-    readonly update: (
-      input: UpdateThread,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadStartedError>
+    readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     /** Files in the thread's working directory that git tracks or would track, for `@` mentions. */
     readonly listFiles: (
       id: string,
@@ -287,9 +288,6 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const current = yield* get(input.id)
       const switchesAgent = input.provider !== undefined && input.provider !== current.provider
-      if (switchesAgent && (yield* started(input.id))) {
-        return yield* new ThreadStartedError({ id: input.id })
-      }
       const provider = input.provider ?? current.provider
       const accountId =
         input.accountId !== undefined
@@ -305,7 +303,12 @@ const make = Effect.gen(function* () {
       ) {
         return yield* new NotFoundError({ entity: "account", id: accountId })
       }
-      return yield* write(current, { ...input, accountId: accountId === current.accountId ? undefined : accountId })
+      return yield* write(current, {
+        ...input,
+        accountId: accountId === current.accountId ? undefined : accountId,
+        // The usage limit belonged to the agent the thread leaves.
+        ...(switchesAgent && current.status === "limited" && { status: "idle" }),
+      })
     })
 
   const write = (current: Thread, input: UpdateThread) =>
@@ -332,7 +335,11 @@ const make = Effect.gen(function* () {
         sortIndex: input.sortIndex ?? current.sortIndex,
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
-        providerSessionId: input.providerSessionId ?? current.providerSessionId,
+        // A session id belongs to one agent.
+        providerSessionId:
+          input.provider !== undefined && input.provider !== current.provider
+            ? null
+            : (input.providerSessionId ?? current.providerSessionId),
         queue: input.queue ?? current.queue,
         updatedAt: arranges ? current.updatedAt : now,
       }

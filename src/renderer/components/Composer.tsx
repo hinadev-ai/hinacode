@@ -16,7 +16,7 @@ import {
 } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { type Thread, toCheckoutTarget } from "../../shared/domain.ts"
+import { isThreadBusy, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
@@ -99,7 +99,7 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 /** `children` are the notices and pending requests stacked above the input. */
 export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
   const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
-  // Agent and workspace stay open to change until the first message.
+  // The workspace stays open to change until the first message.
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
@@ -126,7 +126,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   )
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
-  const busy = thread.status === "running" || thread.status === "awaiting_approval"
+  const busy = isThreadBusy(thread.status)
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
 
@@ -282,7 +282,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             <ComposerToolbar className="shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
                 <AttachButton onClick={pickFiles} disabled={isStaging} />
-                <ModelPicker thread={thread} canSwitchAgent={unstarted} onError={setError} />
+                <ModelPicker thread={thread} canSwitchAgent={!busy} onError={setError} />
                 <ThreadOptions thread={thread} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />

@@ -29,6 +29,8 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[attachment ${part.attachment.name}]`
     case "compaction":
       return `[context compaction: ${part.compaction.status}]`
+    case "agent_switch":
+      return `[agent switched: ${part.from} → ${part.to}]`
   }
 }
 

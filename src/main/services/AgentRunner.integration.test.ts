@@ -127,7 +127,10 @@ const withPreparingThread = async (
       Stream.suspend((): Stream.Stream<AgentEvent> => {
         turns.push({ provider: id, input })
         const completed: AgentEvent = { type: "turn_completed" }
-        if (input.prompt === "accepted input") return Stream.make(completed)
+        // A turn on a switched thread gets the handoff ahead of the prompt.
+        if (input.prompt.endsWith("accepted input")) {
+          return Stream.make({ type: "session_bound", providerSessionId: `${id}-session` }, completed)
+        }
         if (input.prompt !== "needs approval") return Stream.never
         const requested: AgentEvent = {
           type: "approval_requested",
@@ -595,5 +598,44 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
     )
     await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
+  })
+})
+
+it("moves a started thread to another agent, which gets the conversation so far", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, turns }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBe("claude-session")
+
+    const switched = await Effect.runPromise(
+      runner.switchAgent({ id: thread.id, provider: "codex", model: "codex-model" }),
+    )
+    expect(switched).toMatchObject({ provider: "codex", model: "codex-model", providerSessionId: null })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "claude", to: "codex" }])
+
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBe("codex-session"),
+    )
+    const handoff = turns[1]!
+    expect(handoff.provider).toBe("codex")
+    expect(handoff.input.resumeSessionId).toBeNull()
+    expect(handoff.input.prompt).toMatch(
+      /^<conversation_handoff>\nThis conversation started with Claude Code and continues with you\./,
+    )
+    expect(handoff.input.prompt).toContain("## user\naccepted input\n\n## assistant\n[the conversation moved")
+    expect(handoff.input.prompt).toMatch(/<\/conversation_handoff>\n\naccepted input$/)
+  })
+})
+
+it("refuses to switch agents while a turn runs", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    const exit = await Effect.runPromiseExit(runner.switchAgent({ id: thread.id, provider: "codex", model: "m" }))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect((await Effect.runPromise(threads.get(thread.id))).provider).toBe("claude")
   })
 })

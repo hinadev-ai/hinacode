@@ -44,6 +44,7 @@ import { isThreadBusy } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { handoffPrompt } from "../agents/handoff.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
@@ -65,7 +66,7 @@ import { PullRequests } from "./PullRequests.ts"
 import { Secrets } from "./Secrets.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
-import { Threads } from "./Threads.ts"
+import { Threads, type UpdateThread } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
@@ -144,6 +145,11 @@ export class AgentRunner extends Context.Service<
       accountId: string | null,
       options: { readonly resend: boolean },
     ) => Effect.Effect<Thread, SendError>
+    /**
+     * Updates the thread and moves it to `provider`. A started thread marks the switch in its transcript, and its
+     * next turn starts a new session that gets the conversation so far. Refused while a turn runs.
+     */
+    readonly switchAgent: (input: UpdateThread & { readonly provider: ProviderId }) => Effect.Effect<Thread, SendError>
     /** Reaches a running turn where the agent supports it; otherwise the next turn starts in the new mode. */
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
@@ -562,6 +568,17 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
   }
 
+  /** A started thread without a session hands its transcript to the new one, after a switch or a turn that never bound one. */
+  const promptForSession = (thread: Thread, prompt: string) =>
+    Effect.gen(function* () {
+      if (thread.providerSessionId !== null) return prompt
+      const history = yield* messages.list(thread.id)
+      if (history.length === 0) return prompt
+      const lastSwitch = history.flatMap((message) => message.parts).findLast((part) => part.type === "agent_switch")
+      const from = lastSwitch?.type === "agent_switch" ? lastSwitch.from : thread.provider
+      return handoffPrompt({ messages: history, from, to: thread.provider, prompt })
+    })
+
   const nameThreadWithPullRequestScope = (thread: Thread, prompt: string) =>
     pullRequests.list(thread.id).pipe(
       Effect.flatMap((links) => naming.nameFromPrompt(thread, prompt, links.length === 0 ? "titleAndBranch" : "title")),
@@ -628,19 +645,20 @@ const make = Effect.gen(function* () {
             yield* checkStopped
             if (!(yield* when)) return null
             yield* threads.recordTurnBase({ threadId, tree })
+            const agentPrompt = yield* promptForSession(thread, prompt)
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
             yield* insertMessage(userMessage(threadId, prompt, attachments, now))
             yield* insertMessage(assistant)
             yield* updateThread({ id: threadId, status: "running" })
-            return { thread, environment, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
+            return { thread, environment, agentPrompt, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
           }),
         )
         if (admitted === null) return false
-        const { thread: currentThread, environment, turn } = admitted
+        const { thread: currentThread, environment, agentPrompt, turn } = admitted
         activeTurns.set(threadId, turn)
         pendingSends.delete(threadId)
-        yield* FiberMap.run(turns, threadId, turn.run(prompt, attachments, environment))
+        yield* FiberMap.run(turns, threadId, turn.run(agentPrompt, attachments, environment))
         if (pending.first && currentThread.createdBy === "user" && prompt.trim() !== "")
           yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
         return true
@@ -810,6 +828,29 @@ const make = Effect.gen(function* () {
       return switched.thread
     })
 
+  const switchAgent: typeof AgentRunner.Service.switchAgent = (input) =>
+    Effect.gen(function* () {
+      if (busyThreads.has(input.id)) {
+        return yield* new AgentError({ provider: "hinacode", message: "Wait for the turn to end to switch agents" })
+      }
+      const current = yield* threads.get(input.id)
+      const started = yield* threads.started(input.id)
+      const thread = yield* threads.update(input)
+      if (started && thread.provider !== current.provider) {
+        const now = yield* nowIso
+        yield* insertMessage({
+          id: randomUUID(),
+          threadId: thread.id,
+          role: "assistant",
+          parts: [{ type: "agent_switch", from: current.provider, to: thread.provider }],
+          createdAt: now,
+          completedAt: now,
+          usage: null,
+        })
+      }
+      return thread
+    }).pipe(exclusive(input.id))
+
   yield* resumeDue.pipe(
     Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
     Effect.repeat(Schedule.spaced("1 second")),
@@ -920,6 +961,7 @@ const make = Effect.gen(function* () {
     unqueue,
     resumeAtReset,
     switchAccount,
+    switchAgent,
     steer: (threadId, text, attachments) =>
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,

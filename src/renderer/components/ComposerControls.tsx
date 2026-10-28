@@ -146,8 +146,8 @@ function usePickerOpen(picker: ComposerPicker | undefined) {
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
 /**
- * The thread's model, listed under its agent. Until the first message every agent is listed, so picking
- * another agent's model switches the agent in the same step.
+ * The thread's model, listed under its agent. Every agent is listed unless a turn runs, and picking another agent's
+ * model switches the agent; a started thread continues on it with the conversation handed over.
  */
 export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const environment = useThreadEnvironment(thread.id)
