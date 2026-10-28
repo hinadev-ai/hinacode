@@ -105,7 +105,9 @@ export const makeTestAppLayer = (
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
-  const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
+  const logins = AgentLogins.layer(join(dirname(dbPath), "cache")).pipe(
+    Layer.provide(Layer.mergeAll(providers, agents)),
+  )
   const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )

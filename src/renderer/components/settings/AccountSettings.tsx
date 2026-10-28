@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type ReactNode, useId, useState, useTransition } from "react"
-import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine, RiRefreshLine } from "react-icons/ri"
 import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
@@ -10,6 +10,7 @@ import {
   accountsAtom,
   createAccountAtom,
   deleteAccountAtom,
+  refreshAccountAtom,
   renameAccountAtom,
   type EnvironmentId,
   updateSettingsAtom,
@@ -137,14 +138,7 @@ function AccountActions({
   return (
     <DropdownMenu onOpenChangeComplete={onMenuOpenChangeComplete}>
       <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="ml-auto"
-            aria-label={m.settings_account_actions({ name })}
-          />
-        }
+        render={<Button variant="ghost" size="icon-sm" aria-label={m.settings_account_actions({ name })} />}
       >
         <RiMoreFill aria-hidden />
       </DropdownMenuTrigger>
@@ -241,25 +235,54 @@ function AccountRow({ account }: { account: AgentProfile }) {
   )
 }
 
-/** `account` null is the CLI's own login. */
-export function AccountStatus({ provider, account }: { provider: ProviderId; account: AgentProfile | null }) {
+/** Who the account is signed in as, and a button that asks its CLI again. `account` null is the CLI's own login. */
+function AccountStatus({ provider, account }: { provider: ProviderId; account: AgentProfile | null }) {
   const environment = useSettingsEnvironment()
-  const status = useAtomValue(accountAtom(environment, provider, account?.id ?? null))
+  const accountId = account?.id ?? null
+  const status = useAtomValue(accountAtom(environment, provider, accountId))
+  const refreshAccount = useAtomSet(refreshAccountAtom, { mode: "promise" })
+  const [refreshFailure, setRefreshFailure] = useState<string | null>(null)
+  const defaultName = useDefaultAccountName(environment, provider)
+  const name = account?.name ?? defaultName
+
+  const refresh = async () => {
+    setRefreshFailure(null)
+    try {
+      await refreshAccount({ environment, provider, accountId })
+    } catch (cause) {
+      setRefreshFailure(errorMessage(cause))
+    }
+  }
+
   return (
-    <output
-      aria-label={
-        account === null
-          ? m.settings_account_label({ provider: providerLabel[provider]() })
-          : m.settings_account_named_label({ name: account.name })
-      }
-      className="flex min-w-0 flex-wrap gap-x-1.5 text-sm text-muted-foreground"
-    >
-      {AsyncResult.builder(status)
-        .onInitial(() => m.settings_account_loading())
-        .onSuccess((current) => describeAccount(provider, current, account === null))
-        .onError((cause) => m.settings_account_failed({ message: errorMessage(cause) }))
-        .orElse(() => null)}
-    </output>
+    <>
+      <output
+        aria-label={
+          account === null
+            ? m.settings_account_label({ provider: providerLabel[provider]() })
+            : m.settings_account_named_label({ name: account.name })
+        }
+        className="flex min-w-0 flex-wrap gap-x-1.5 text-sm text-muted-foreground"
+      >
+        {refreshFailure !== null
+          ? m.settings_account_failed({ message: refreshFailure })
+          : AsyncResult.builder(status)
+              .onInitial(() => m.settings_account_loading())
+              .onSuccess((current) => describeAccount(provider, current, account === null))
+              .onError((cause) => m.settings_account_failed({ message: errorMessage(cause) }))
+              .orElse(() => null)}
+      </output>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="ml-auto"
+        aria-label={m.settings_account_refresh({ name })}
+        title={m.settings_account_refresh({ name })}
+        action={refresh}
+      >
+        <RiRefreshLine aria-hidden className="group-aria-busy/button:animate-spin" />
+      </Button>
+    </>
   )
 }
 

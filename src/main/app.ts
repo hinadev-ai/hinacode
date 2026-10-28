@@ -139,7 +139,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     mockClaude === undefined ? PullRequestGuides.layer : PullRequestGuides.idleLayer,
     updates,
     Mcp.serverLayer,
-    AgentLogins.layer,
+    AgentLogins.layer(join(userData, "cache")),
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
