@@ -111,6 +111,8 @@ The native window starts hidden. The renderer loads settings, applies appearance
 
 The main process is one Effect layer graph, built by `src/main/app.ts` before the window can call in. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph.
 
+Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hinacode` (`~/.hinacode-dev` unpackaged) for the desktop and `~/.hinacode-cloud` for the daemon. The database, `chats/`, `attachments/`, `accounts/`, `tiny-vm/` and `cloudflared/` sit at its top. The desktop points Electron's `userData` at `<dataDir>/chromium`, so Chromium's profile and its `SingletonLock` stay in there. On the first launch without the override, `dataDir.ts` moves the old `<appData>/kkcode` (or `kkcode-dev`) profile into this layout and rewrites the paths the database stored under it.
+
 ```mermaid
 flowchart BT
   node["NodeServices"]
@@ -456,7 +458,7 @@ erDiagram
 - `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
-- `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<userData>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
+- `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
 ## Lifecycles

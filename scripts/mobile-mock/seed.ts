@@ -15,11 +15,7 @@ const data = process.argv[2] ? resolve(process.argv[2]) : undefined
 if (!data) throw new Error("Usage: node scripts/mobile-mock/seed.ts <user-data-dir> [source.sqlite]")
 if (data.startsWith(homedir()))
   throw new Error("Keep the profile outside your home directory; its paths would read as leaks")
-const profile = join(
-  process.platform === "darwin" ? join(homedir(), "Library", "Application Support") : join(homedir(), ".config"),
-  "kkcode",
-)
-const source = new DatabaseSync(process.argv[3] ?? join(profile, "hinacode.sqlite"), { readOnly: true })
+const source = new DatabaseSync(process.argv[3] ?? join(homedir(), ".hinacode", "hinacode.sqlite"), { readOnly: true })
 const target = new DatabaseSync(join(data, "hinacode.sqlite"))
 const repo = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
   cwd: import.meta.dirname,
