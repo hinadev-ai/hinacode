@@ -15,10 +15,14 @@ import { unavailableDriver } from "./unavailable.ts"
 const USERS_DEVICE: DeviceId = "ios:11111111-1111-1111-1111-111111111111"
 const SECOND_DEVICE: DeviceId = "ios:33333333-3333-3333-3333-333333333333"
 const SPARE_DEVICE: DeviceId = "ios:44444444-4444-4444-4444-444444444444"
+const RACE_DEVICE: DeviceId = "ios:55555555-5555-5555-5555-555555555555"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
 let failingRemovals = 0
+let removalGate: Promise<void> | undefined
+let removalStarted = false
+const launched: Array<DeviceId> = []
 const sent: Array<{ readonly deviceId: DeviceId; readonly command: DeviceCommand }> = []
 const devices = new Map<DeviceId, Device>([
   [
@@ -38,6 +42,8 @@ const devices = new Map<DeviceId, Device>([
 devices.set(SECOND_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SECOND_DEVICE, name: "Someone's iPad" })
 devices.set(SPARE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SPARE_DEVICE, name: "Someone's spare iPhone" })
 
+devices.set(RACE_DEVICE, { ...devices.get(USERS_DEVICE)!, id: RACE_DEVICE, name: "Race fixture" })
+
 const ios: DevicePlatformDriver = {
   ...unavailableDriver({ kind: "ready" }),
   list: () => Promise.resolve([...devices.values()]),
@@ -47,7 +53,9 @@ const ios: DevicePlatformDriver = {
     await onCreated(CREATED_DEVICE)
     return CREATED_DEVICE
   },
-  remove: (id) => {
+  remove: async (id) => {
+    removalStarted = true
+    await removalGate
     if (failingRemovals > 0) {
       failingRemovals -= 1
       return Promise.reject(new Error("simctl delete failed"))
@@ -56,6 +64,7 @@ const ios: DevicePlatformDriver = {
     devices.delete(id)
     return Promise.resolve()
   },
+  launch: (id) => Promise.resolve(void launched.push(id)),
   connect: (id, onFrame) => {
     onFrame({ mime: "image/jpeg", data: Buffer.from("frame"), width: 2, height: 4, orientation: "portrait" })
     return Promise.resolve({
@@ -174,6 +183,73 @@ describe("Devices", () => {
         sent.length = 0
         expect(yield* service.act(threadId, "someone's ipad", [touch])).toBe("done")
         expect(sent).toEqual([{ deviceId: SECOND_DEVICE, command: touch }])
+      }),
+    )
+
+    it.effect("holds every thread's agent input while a shared device is under user control", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const first = yield* seedThread({ rootPath: "/tmp/kk-devices-shared-first" })
+        const second = yield* seedThread({ rootPath: "/tmp/kk-devices-shared-second" })
+        yield* service.attach(first.threadId, USERS_DEVICE)
+        yield* service.attach(second.threadId, USERS_DEVICE)
+        yield* service.command({ threadId: first.threadId, deviceId: USERS_DEVICE, commands: [touch] })
+        sent.length = 0
+        let outcome: string | undefined
+        const agent = yield* Effect.forkChild(
+          service.act(second.threadId, undefined, [touch]).pipe(Effect.tap((value) => Effect.sync(() => (outcome = value)))),
+        )
+        yield* eventually(() => outcome !== undefined || sent.length > 0)
+        expect(sent).toEqual([])
+        const [state] = yield* service.get(second.threadId)
+        expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toBe(true)
+        yield* service.control(first.threadId, USERS_DEVICE, "agent")
+        expect(yield* Fiber.join(agent)).toBe("handedBack")
+        yield* service.detach(first.threadId, USERS_DEVICE)
+        yield* service.detach(second.threadId, USERS_DEVICE)
+      }),
+    )
+
+    it.effect("holds an app launch while the user has control and skips it on hand back", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-launch" })
+        yield* service.attach(threadId, USERS_DEVICE)
+        yield* service.command({ threadId, deviceId: USERS_DEVICE, commands: [touch] })
+        launched.length = 0
+        let finished = false
+        const agent = yield* Effect.forkChild(
+          service.launch(threadId, undefined, "com.example.app").pipe(Effect.tap(() => Effect.sync(() => (finished = true)))),
+        )
+        yield* eventually(() => finished || launched.length > 0)
+        expect(launched).toEqual([])
+        yield* service.control(threadId, USERS_DEVICE, "agent")
+        yield* Fiber.join(agent)
+        expect(launched).toEqual([])
+        yield* service.detach(threadId, USERS_DEVICE)
+      }),
+    )
+
+    it.effect("refuses an attach while deletion is in progress", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const deleting = yield* seedThread({ rootPath: "/tmp/kk-devices-delete-race" })
+        const attaching = yield* seedThread({ rootPath: "/tmp/kk-devices-attach-race" })
+        const gate = Promise.withResolvers<void>()
+        removalGate = gate.promise
+        removalStarted = false
+        const deletion = yield* Effect.forkChild(service.delete(deleting.threadId, RACE_DEVICE))
+        yield* eventually(() => removalStarted)
+        expect(removalStarted).toBe(true)
+        try {
+          const result = yield* Effect.result(service.attach(attaching.threadId, RACE_DEVICE))
+          expect(result._tag).toBe("Failure")
+          expect(yield* service.get(attaching.threadId)).toEqual([])
+        } finally {
+          gate.resolve()
+          removalGate = undefined
+        }
+        yield* Fiber.join(deletion)
       }),
     )
 
