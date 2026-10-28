@@ -193,6 +193,41 @@ Top costs, largest first:
 5. **Typing** costs two commits per key. One re-renders `InternalTextInput`, the other `Composer` and `Suggestions`
    (`src/components/composer.tsx`). That is about 1 ms per key, the smallest cost here.
 
+## Battery
+
+`battery.ts` measures what the phone app spends while agents stream on the desktop, on an Android emulator or an iOS
+simulator, in a Release build. It sits between the app and an isolated `hinacode serve` as a TCP proxy that counts
+the bytes on the socket, keeps several mocked Claude threads streaming, and reads the app's CPU time: `/proc/<pid>/stat`
+on Android, `ps` for the simulator's process on iOS. It measures 60 s on Home in the foreground, then 120 s after the
+app went to the background.
+
+```sh
+DATA=/tmp/kk-battery PORT=48190
+HINACODE_USER_DATA=$DATA HINACODE_MOCK_CLAUDE=stream HINACODE_SERVE_RELAY=off HINACODE_SERVE_AUTO_UPDATE=0 \
+  node out/main/daemon.js serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
+
+export BATTERY_DAEMON_PORT=$PORT BATTERY_TOKEN=<token>
+BATTERY_PLATFORM=android BATTERY_SERIAL=emulator-5580 node scripts/perf/battery.ts run android-base-1
+BATTERY_PLATFORM=ios BATTERY_UDID=<simulator udid> node scripts/perf/battery.ts run ios-base-1
+node scripts/perf/battery.ts compare android-base android-after
+```
+
+Install the Release build first: the APK from `pnpm install:android`, or the `.app` from the `xcodebuild` line in
+"Profile the phone app" with `simctl install`. The first run pairs the app through a `hinacode://connect` link to the
+proxy, so launch the iOS app once by hand before it. `BATTERY_STREAMS` (3) sets how many threads stream and
+`BATTERY_GAP_MS` (4000) the pause between their turns. `compare` pools every `<label>-<n>` run and prints medians per
+minute.
+
+| Measurement   | What it stands for                                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| cpuMs         | The app's CPU time. On the simulator the app is suspended in the background, so it reads 0 there     |
+| bytesDown     | What the desktop sent. Each packet wakes a phone's radio, and a suspended iPhone still receives them |
+| activeSeconds | Seconds with any traffic, a rough count of how long the radio could not rest                         |
+
+Read these as relative numbers. The emulator and the simulator run on the Mac's CPU, and a phone's power draw also
+depends on its radio and screen, which neither models. A real device under `adb shell dumpsys batterystats` or
+Xcode's Energy Organizer gives absolute numbers.
+
 ## Measure streaming Markdown
 
 Use an instance you launched through `verify-hinacode`, with a main inspector as well as renderer CDP.
