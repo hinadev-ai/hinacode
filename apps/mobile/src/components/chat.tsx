@@ -9,7 +9,8 @@ import type {
 import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
-import { type ReactNode, useEffect, useMemo, useState } from "react"
+import { useFocusEffect } from "expo-router"
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
@@ -36,13 +37,17 @@ type CopyKey = Parameters<typeof copy>[0]
 // An inverted list flips each cell with `scaleY: -1`, so a message rises from a negative `y`.
 const risesInFlippedCell = { ...rise.initial, y: -rise.initial.y }
 
-export function Chat({ thread }: { thread: Thread }) {
+export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
   const history = useMessages((state) => state.byThread[thread.id])
   const root = useThreadRoot(thread)
 
-  useEffect(() => useMessages.getState().watch(thread.id), [thread.id])
+  useFocusEffect(
+    useCallback(() => {
+      if (active) return useMessages.getState().watch(thread.id)
+    }, [active, thread.id]),
+  )
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
   }, [connected, history, thread.id])
