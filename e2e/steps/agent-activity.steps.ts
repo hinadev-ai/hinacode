@@ -2,6 +2,7 @@ import { expect } from "@playwright/test"
 import { Given, Then, When } from "../support/fixtures.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { rpc } from "../support/rpc.ts"
+import { sidebar } from "../support/ui.ts"
 
 const tray = (app: HinacodeApp) => app.page.getByRole("region", { name: "Agent activity", exact: true })
 const backgroundTasks = (app: HinacodeApp) => tray(app).getByRole("list", { name: "Background tasks", exact: true })
@@ -58,12 +59,7 @@ Then("the background task {string} is still running", async ({ activityApp: app 
 })
 
 Then("the sidebar shows the thread working in the background", async ({ activityApp: app }) => {
-  await expect(
-    app.page
-      .getByRole("navigation", { name: "Projects and threads" })
-      .getByRole("listitem")
-      .filter({ hasText: "Shells" }),
-  ).toContainText("Working in the background")
+  await expect(sidebar(app.page).getByRole("link", { name: "Shells" })).toContainText("Working in the background")
 })
 
 When("I type {string} in the activity thread's message", async ({ activityApp: app }, text: string) => {
