@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "@effect/vitest"
 import { Effect, Layer, Sink, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { ChildProcessSpawner } from "effect/process"
 import {
   GitHub,
@@ -191,31 +192,39 @@ describe("parseGitHubPullRequestUrl", () => {
   })
 })
 
-const ghFails = (stderr: string) =>
-  layer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        ChildProcessSpawner.ChildProcessSpawner,
-        ChildProcessSpawner.make(() =>
-          Effect.succeed(
-            ChildProcessSpawner.makeHandle({
-              pid: ChildProcessSpawner.ProcessId(1),
-              exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
-              isRunning: Effect.succeed(false),
-              kill: () => Effect.void,
-              stdin: Sink.drain,
-              stdout: Stream.empty,
-              stderr: Stream.make(new TextEncoder().encode(stderr)),
-              all: Stream.empty,
-              getInputFd: () => Sink.drain,
-              getOutputFd: () => Stream.empty,
-              unref: Effect.succeed(Effect.void),
-            }),
-          ),
-        ),
-      ),
-    ),
-  )
+interface GhReply {
+  readonly stdout?: string
+  readonly stderr?: string
+  readonly exitCode?: number
+}
+
+/** A `gh` that answers each command with `reply`, and records the arguments of every run. */
+const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
+  const runs: Array<ReadonlyArray<string>> = []
+  const spawner = ChildProcessSpawner.make((command) => {
+    const args = command._tag === "StandardCommand" ? command.args : []
+    runs.push(args)
+    const { stdout = "", stderr = "", exitCode = 0 } = reply(args)
+    return Effect.succeed(
+      ChildProcessSpawner.makeHandle({
+        pid: ChildProcessSpawner.ProcessId(1),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        stdin: Sink.drain,
+        stdout: Stream.make(new TextEncoder().encode(stdout)),
+        stderr: Stream.make(new TextEncoder().encode(stderr)),
+        all: Stream.empty,
+        getInputFd: () => Sink.drain,
+        getOutputFd: () => Stream.empty,
+        unref: Effect.succeed(Effect.void),
+      }),
+    )
+  })
+  return { runs, layer: layer.pipe(Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner))) }
+}
+
+const ghFails = (stderr: string) => fakeGh(() => ({ stderr, exitCode: 1 })).layer
 
 describe("pull request actions", () => {
   const ghMustNotRun = Layer.succeed(
@@ -358,4 +367,130 @@ describe("pullRequestFiles", () => {
       expect(yield* pullRequestFiles("")).toStrictEqual([])
     }),
   )
+})
+
+const PR_URL = "https://github.com/o/r/pull/7"
+
+const prJson = (title: string, state = "OPEN") =>
+  JSON.stringify({
+    url: PR_URL,
+    number: 7,
+    title,
+    state,
+    isDraft: false,
+    reviewDecision: "",
+    statusCheckRollup: [],
+    mergeable: "MERGEABLE",
+    author: { login: "octocat" },
+    headRefName: "feat/x",
+    baseRefName: "main",
+    additions: 1,
+    deletions: 0,
+    body: "",
+    headRefOid: "abc",
+    changedFiles: 1,
+  })
+
+const PRIMARY_LIMIT_HIT = "GraphQL: API rate limit already exceeded for user ID 1.\n"
+const SECONDARY_LIMIT_HIT =
+  "HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.\n"
+
+/** `gh api rate_limit` with the GraphQL budget used up until `reset`, in epoch seconds. */
+const graphqlUsedUp = (reset: number) =>
+  JSON.stringify({ resources: { core: { remaining: 4000, reset }, graphql: { remaining: 0, reset } } })
+
+const budgetLeft = JSON.stringify({
+  resources: { core: { remaining: 4000, reset: 0 }, graphql: { remaining: 10, reset: 0 } },
+})
+
+const isPrView = (args: ReadonlyArray<string>) => args[0] === "pr" && args[1] === "view"
+
+describe("rate limits", () => {
+  it.effect("does not run gh again until a used-up rate limit resets", () => {
+    const gh = fakeGh((args) =>
+      args[0] === "api" ? { stdout: graphqlUsedUp(3600) } : { stderr: PRIMARY_LIMIT_HIT, exitCode: 1 },
+    )
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      expect((yield* Effect.flip(github.pullRequest(PR_URL)))._tag).toBe("GitHubRateLimitedError")
+      yield* TestClock.adjust("59 minutes")
+      expect((yield* Effect.flip(github.pullRequestDetail(PR_URL)))._tag).toBe("GitHubRateLimitedError")
+      expect((yield* Effect.flip(github.merge(PR_URL, "squash")))._tag).toBe("GitHubRateLimitedError")
+      expect(gh.runs.filter(isPrView)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 minute")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isPrView)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("waits a minute after a secondary rate limit, then twice as long when it hits again", () => {
+    const gh = fakeGh((args) =>
+      args[0] === "api" ? { stdout: budgetLeft } : { stderr: SECONDARY_LIMIT_HIT, exitCode: 1 },
+    )
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      yield* TestClock.adjust("59 seconds")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isPrView)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 second")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isPrView)).toHaveLength(2)
+
+      yield* TestClock.adjust("119 seconds")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isPrView)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("keeps answering with the last read while GitHub is rate limited", () => {
+    let limited = false
+    const gh = fakeGh((args) => {
+      if (args[0] === "api") return { stdout: graphqlUsedUp(3600) }
+      return limited ? { stderr: PRIMARY_LIMIT_HIT, exitCode: 1 } : { stdout: prJson("Before the limit") }
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      limited = true
+      yield* TestClock.adjust("5 minutes")
+      expect((yield* github.pullRequest(PR_URL)).title).toBe("Before the limit")
+      expect((yield* github.pullRequestDetail(PR_URL)).title).toBe("Before the limit")
+    }).pipe(Effect.provide(gh.layer))
+  })
+})
+
+describe("pull request reads", () => {
+  it.effect("everyone asking about the same pull request shares one gh run while it is fresh", () => {
+    const gh = fakeGh(() => ({ stdout: prJson("Shared") }))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.all([github.pullRequest(PR_URL), github.pullRequest(PR_URL), github.pullRequestDetail(PR_URL)], {
+        concurrency: "unbounded",
+      })
+      yield* TestClock.adjust("29 seconds")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.runs.filter(isPrView)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 second")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.runs.filter(isPrView)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a merge through HinaCode shows on the next read", () => {
+    let state = "OPEN"
+    const gh = fakeGh((args) => {
+      if (args[1] === "merge") state = "MERGED"
+      return { stdout: prJson("Merging", state) }
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      yield* github.merge(PR_URL, "squash")
+      expect((yield* github.pullRequest(PR_URL)).status).toBe("merged")
+    }).pipe(Effect.provide(gh.layer))
+  })
 })
