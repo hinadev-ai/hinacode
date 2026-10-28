@@ -583,7 +583,17 @@ const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = fals
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
 
-const VM_TOOLS = ["vm_screenshot", "vm_click", "vm_move", "vm_drag", "vm_scroll", "vm_type", "vm_key", "vm_exec"]
+const VM_TOOLS = [
+  "vm_screenshot",
+  "vm_click",
+  "vm_move",
+  "vm_drag",
+  "vm_scroll",
+  "vm_type",
+  "vm_key",
+  "vm_exec",
+  "vm_pull_file",
+]
 
 layer(testLayer)("tiny vm tools while the toggle is off", (it) => {
   it.effect("are not listed and cannot be called", () =>
@@ -818,6 +828,53 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(first.text).toContain("The user dropped files into the VM: ~/Downloads/notes")
       const second = yield* callAs(connection, "vm_exec", { command: "ls ~/Downloads" })
       expect(second.text).not.toContain("dropped files")
+    }),
+  )
+
+  it.effect("vm_pull_file copies a VM folder into a new folder on this machine", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const started = yield* vm.start(a)
+      if (started.status !== "running") throw new Error(`VM is ${started.status}`)
+      fake.seedFile(
+        started.sandboxId,
+        "Downloads/report",
+        encodeTar([
+          { type: "dir", path: "report", mode: 0o755, mtime: 1700000000 },
+          { type: "file", path: "report/q3.csv", data: new TextEncoder().encode("a,b\n"), mode: 0o755, mtime: 0 },
+          { type: "symlink", path: "report/home", target: "/home/user", mode: 0o777, mtime: 0 },
+        ]),
+      )
+      const connection = yield* mcp.connectionFor(a)
+
+      const result = yield* callAs(connection, "vm_pull_file", { path: "~/Downloads/report" })
+      expect(result.isError).toBe(false)
+      const landed = /to (\S+) \(1 file, 0\.0 MB\)/.exec(result.text)?.[1]
+      expect(landed).toMatch(new RegExp(`^${join(vmProfileDir, "pulled", a)}/[0-9a-f-]{36}/report$`))
+      expect(yield* Effect.promise(() => readFile(join(landed!, "q3.csv"), "utf8"))).toBe("a,b\n")
+      expect(result.text).toContain("Skipped symlinks: report/home")
+
+      const again = yield* callAs(connection, "vm_pull_file", { path: "~/Downloads/report" })
+      expect(again.text).not.toContain(landed!)
+    }),
+  )
+
+  it.effect("vm_pull_file on a missing path says so and keeps the VM", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      const started = yield* vm.start(a)
+
+      const result = yield* callAs(yield* mcp.connectionFor(a), "vm_pull_file", { path: "~/nope.txt" })
+      expect(result.isError).toBe(true)
+      expect(result.text).toContain("Nothing exists at ~/nope.txt in the VM.")
+      expect(yield* vm.get(a)).toStrictEqual(started)
     }),
   )
 
