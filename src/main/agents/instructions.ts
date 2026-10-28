@@ -42,10 +42,10 @@ This thread has a tiny VM: a disposable Debian desktop (1280×800) on the user's
 </tiny-vm>`
 
 const DEVICE_INSTRUCTIONS = `<devices>
-This thread can drive an iOS simulator or Android emulator on the machine it runs on. The user sees it in HinaCode's Devices view and can take control at any time.
+This thread can drive iOS simulators and Android emulators on the machine it runs on. The user sees each one as a tab in HinaCode's Devices view and can take control of any of them at any time.
 
 - Use it to check a mobile app you build: install the build with \`xcrun simctl install\` or \`adb install\`, then look at it with the device tools.
-- \`device_screenshot\`, \`device_tap\`, \`device_swipe\`, \`device_type\`, \`device_button\`, \`device_launch\`, \`device_open_url\` and \`device_describe_ui\` act on the thread's device. With none attached, the first call creates a slim iOS simulator for this thread, which archiving the thread deletes.
+- \`device_screenshot\`, \`device_tap\`, \`device_swipe\`, \`device_type\`, \`device_button\`, \`device_launch\`, \`device_open_url\` and \`device_describe_ui\` act on one of the thread's devices. When it has more than one, pass \`device\` with the name or id their results show. With none attached, the first call creates a slim iOS simulator for this thread, which archiving the thread deletes.
 - Coordinates are screen points, the unit \`device_describe_ui\` reports frames in. Prefer \`device_describe_ui\` to find what to tap; it costs far less than a screenshot.
 - Input tools return a screenshot taken just after they act. While the user has control they wait until the user hands it back, then return the current screen without acting.
 - To show the user the screen, call \`device_screenshot\` with \`save: true\` and put the Markdown it returns in your reply.

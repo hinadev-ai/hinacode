@@ -13,10 +13,11 @@ import type { DevicePlatformDriver } from "./platform.ts"
 import { unavailableDriver } from "./unavailable.ts"
 
 const USERS_DEVICE: DeviceId = "ios:11111111-1111-1111-1111-111111111111"
+const SECOND_DEVICE: DeviceId = "ios:33333333-3333-3333-3333-333333333333"
 const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
-const sent: Array<DeviceCommand> = []
+const sent: Array<{ readonly deviceId: DeviceId; readonly command: DeviceCommand }> = []
 const devices = new Map<DeviceId, Device>([
   [
     USERS_DEVICE,
@@ -32,6 +33,7 @@ const devices = new Map<DeviceId, Device>([
     },
   ],
 ])
+devices.set(SECOND_DEVICE, { ...devices.get(USERS_DEVICE)!, id: SECOND_DEVICE, name: "Someone's iPad" })
 
 const ios: DevicePlatformDriver = {
   ...unavailableDriver({ kind: "ready" }),
@@ -46,11 +48,11 @@ const ios: DevicePlatformDriver = {
     devices.delete(id)
     return Promise.resolve()
   },
-  connect: (_id, onFrame) => {
+  connect: (id, onFrame) => {
     onFrame({ mime: "image/jpeg", data: Buffer.from("frame"), width: 2, height: 4, orientation: "portrait" })
     return Promise.resolve({
       screen: { width: 1, height: 2, scale: 2 },
-      send: (commands) => Promise.resolve(void sent.push(...commands)),
+      send: (commands) => Promise.resolve(void sent.push(...commands.map((command) => ({ deviceId: id, command })))),
       ended: new Promise<string>(() => {}),
       close: () => Promise.resolve(),
     })
@@ -91,7 +93,7 @@ describe("Devices", () => {
 
         expect((yield* service.create(created.threadId)).phase).toBe("ready")
         expect((yield* service.attach(attached.threadId, USERS_DEVICE)).phase).toBe("ready")
-        yield* service.detach(attached.threadId)
+        yield* service.detach(attached.threadId, USERS_DEVICE)
         yield* TestClock.adjust("6 seconds")
         expect(removed).toEqual([])
 
@@ -101,7 +103,7 @@ describe("Devices", () => {
         yield* TestClock.adjust("6 seconds")
         yield* eventually(() => removed.length > 0)
         expect(removed).toEqual([CREATED_DEVICE])
-        expect(yield* service.get(created.threadId)).toEqual({ phase: "none" })
+        expect(yield* service.get(created.threadId)).toEqual([])
       }),
     )
 
@@ -110,20 +112,42 @@ describe("Devices", () => {
         const service = yield* Devices
         const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-control" })
         yield* service.attach(threadId, USERS_DEVICE)
-        yield* service.command({ threadId, commands: [touch] })
+        yield* service.command({ threadId, deviceId: USERS_DEVICE, commands: [touch] })
         sent.length = 0
 
-        const agent = yield* Effect.forkChild(service.act(threadId, [touch]))
-        let waiting = yield* service.get(threadId)
-        for (let turn = 0; turn < 1000 && !(waiting.phase === "ready" && waiting.agentWaiting); turn++) {
+        const agent = yield* Effect.forkChild(service.act(threadId, undefined, [touch]))
+        let [state] = yield* service.get(threadId)
+        for (let turn = 0; turn < 1000 && !(state?.phase === "ready" && state.agentWaiting); turn++) {
           yield* Effect.yieldNow
-          waiting = yield* service.get(threadId)
+          ;[state] = yield* service.get(threadId)
         }
-        expect(waiting.phase === "ready" && waiting.control === "user" && waiting.agentWaiting).toBe(true)
+        expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toBe(true)
 
-        yield* service.control(threadId, "agent")
+        yield* service.control(threadId, USERS_DEVICE, "agent")
         expect(yield* Fiber.join(agent)).toBe("handedBack")
         expect(sent).toEqual([])
+      }),
+    )
+
+    it.effect("makes the agent name a device once the thread has two, and holds only the one the user took", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-two" })
+        yield* service.attach(threadId, USERS_DEVICE)
+        yield* service.attach(threadId, SECOND_DEVICE)
+        expect((yield* service.get(threadId)).map((state) => state.phase === "ready" && state.device.id)).toEqual([
+          USERS_DEVICE,
+          SECOND_DEVICE,
+        ])
+
+        const unnamed = yield* Effect.flip(service.act(threadId, undefined, [touch]))
+        expect(unnamed.message).toContain("Someone's iPhone")
+        expect(unnamed.message).toContain("Someone's iPad")
+
+        yield* service.command({ threadId, deviceId: USERS_DEVICE, commands: [touch] })
+        sent.length = 0
+        expect(yield* service.act(threadId, "someone's ipad", [touch])).toBe("done")
+        expect(sent).toEqual([{ deviceId: SECOND_DEVICE, command: touch }])
       }),
     )
   })

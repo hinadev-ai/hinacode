@@ -428,10 +428,10 @@ export const threadVmAtom = Atom.family((threadId: string) =>
   ),
 )
 
-export const threadDeviceAtom = Atom.family((threadId: string) =>
+export const threadDevicesAtom = Atom.family((threadId: string) =>
   Atom.make(
     pushFirst(
-      (event) => (event.type === "device.updated" && event.threadId === threadId ? event.device : undefined),
+      (event) => (event.type === "device.updated" && event.threadId === threadId ? event.devices : undefined),
       call("device.get", { threadId }),
     ),
   ),

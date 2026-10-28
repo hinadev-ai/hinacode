@@ -51,12 +51,16 @@ export const PrepareStep = Schema.Literals(["creating", "slimming", "booting", "
 export type PrepareStep = typeof PrepareStep.Type
 
 /**
- * The device a thread drives, as a state machine.
- * none -> preparing -> ready | failed; ready -> none on detach, ready -> failed when the device goes away.
+ * One device a thread drives, as a state machine: preparing -> ready | failed, and ready -> failed when the device
+ * goes away. Detaching removes it. `deviceId` is null only while a new simulator is being created, or if that failed.
  */
 export const ThreadDevice = Schema.Union([
-  Schema.Struct({ phase: Schema.Literal("none") }),
-  Schema.Struct({ phase: Schema.Literal("preparing"), deviceId: Schema.NullOr(DeviceId), step: PrepareStep }),
+  Schema.Struct({
+    phase: Schema.Literal("preparing"),
+    deviceId: Schema.NullOr(DeviceId),
+    name: Schema.String,
+    step: PrepareStep,
+  }),
   Schema.Struct({
     phase: Schema.Literal("ready"),
     device: Device,
@@ -65,9 +69,23 @@ export const ThreadDevice = Schema.Union([
     /** An agent input tool is waiting for the user to hand back. */
     agentWaiting: Schema.Boolean,
   }),
-  Schema.Struct({ phase: Schema.Literal("failed"), deviceId: Schema.NullOr(DeviceId), message: Schema.String }),
+  Schema.Struct({
+    phase: Schema.Literal("failed"),
+    deviceId: Schema.NullOr(DeviceId),
+    name: Schema.String,
+    message: Schema.String,
+  }),
 ])
 export type ThreadDevice = typeof ThreadDevice.Type
+
+export const threadDeviceId = (entry: ThreadDevice): DeviceId | null =>
+  entry.phase === "ready" ? entry.device.id : entry.deviceId
+
+export const threadDeviceName = (entry: ThreadDevice) => (entry.phase === "ready" ? entry.device.name : entry.name)
+
+/** A thread's devices in the order they were attached. At most one has a null id. */
+export const ThreadDevices = Schema.Array(ThreadDevice)
+export type ThreadDevices = typeof ThreadDevices.Type
 
 /** A fraction of the screen's width or height, so input maps the same at any frame scale. */
 const Fraction = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
@@ -77,7 +95,12 @@ export const DeviceButton = Schema.Literals(["home", "lock", "volumeUp", "volume
 export type DeviceButton = typeof DeviceButton.Type
 
 export const DeviceCommand = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("touch"), phase: Schema.Literals(["down", "move", "up"]), x: Fraction, y: Fraction }),
+  Schema.Struct({
+    kind: Schema.Literal("touch"),
+    phase: Schema.Literals(["down", "move", "up"]),
+    x: Fraction,
+    y: Fraction,
+  }),
   /** Wheel deltas in CSS pixels of the displayed screen. */
   Schema.Struct({ kind: Schema.Literal("scroll"), x: Fraction, y: Fraction, deltaX: Delta, deltaY: Delta }),
   /** A DOM `KeyboardEvent.code`, so layouts map to the device's physical keys. */

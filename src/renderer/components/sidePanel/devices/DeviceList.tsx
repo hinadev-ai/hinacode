@@ -3,12 +3,19 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
 import { RiAddLine, RiRefreshLine } from "react-icons/ri"
-import type { Device, DeviceHost, DevicePlatform, PlatformSupport } from "../../../../shared/device.ts"
+import {
+  type Device,
+  type DeviceHost,
+  type DevicePlatform,
+  type PlatformSupport,
+  threadDeviceId,
+} from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { callPromise, deviceHostAtom } from "../../../lib/rpc.ts"
+import { callPromise, deviceHostAtom, threadDevicesAtom } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
 import { getLocale } from "../../../paraglide/runtime.js"
+import { useDeviceTabs } from "../../../stores/deviceTabs.ts"
 import { CopyButton } from "../../CopyButton.tsx"
 import { Badge } from "../../ui/badge.tsx"
 import { Button } from "../../ui/button.tsx"
@@ -33,18 +40,29 @@ export function DeviceList({ thread }: { thread: Thread }) {
   const { pending, error, run } = useVmAction()
   const loaded = AsyncResult.isSuccess(host) ? host.value : null
   const iosReady = loaded?.ios.kind === "ready"
-  const attach = (device: Device) =>
-    run(() => callPromise("device.attach", { threadId: thread.id, deviceId: device.id }))
+  const threadDevices = useAtomValue(threadDevicesAtom(thread.id))
+  const attached = new Set(
+    AsyncResult.isSuccess(threadDevices) ? threadDevices.value.map(threadDeviceId).filter((id) => id !== null) : [],
+  )
+  const select = (tab: string) => useDeviceTabs.getState().select(thread.id, tab)
+  const attach = (device: Device) => {
+    select(device.id)
+    if (!attached.has(device.id)) run(() => callPromise("device.attach", { threadId: thread.id, deviceId: device.id }))
+  }
+  const create = () => {
+    select("new")
+    run(async () => {
+      const created = await callPromise("device.create", { threadId: thread.id })
+      const deviceId = threadDeviceId(created)
+      if (deviceId && useDeviceTabs.getState().selected[thread.id] === "new") select(deviceId)
+    })
+  }
 
   return (
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-y-auto motion-reduce:animate-none">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         {iosReady && (
-          <Button
-            size="sm"
-            disabled={pending}
-            onClick={() => run(() => callPromise("device.create", { threadId: thread.id }))}
-          >
+          <Button size="sm" disabled={pending} onClick={create}>
             <RiAddLine aria-hidden />
             {m.devices_new_simulator()}
           </Button>
@@ -62,8 +80,22 @@ export function DeviceList({ thread }: { thread: Thread }) {
         .onInitial(() => <SkeletonList label={m.devices_loading()} rows={3} rowClassName="h-10" className="p-3" />)
         .onSuccess((value) => (
           <>
-            <PlatformSection platform="ios" host={value} threadId={thread.id} pending={pending} onAttach={attach} />
-            <PlatformSection platform="android" host={value} threadId={thread.id} pending={pending} onAttach={attach} />
+            <PlatformSection
+              platform="ios"
+              host={value}
+              threadId={thread.id}
+              attached={attached}
+              pending={pending}
+              onAttach={attach}
+            />
+            <PlatformSection
+              platform="android"
+              host={value}
+              threadId={thread.id}
+              attached={attached}
+              pending={pending}
+              onAttach={attach}
+            />
           </>
         ))
         .onError((cause) => (
@@ -106,11 +138,13 @@ interface PlatformSectionProps {
   readonly platform: DevicePlatform
   readonly host: DeviceHost
   readonly threadId: string
+  /** The devices this thread already has a tab for. */
+  readonly attached: ReadonlySet<string>
   readonly pending: boolean
   readonly onAttach: (device: Device) => void
 }
 
-function PlatformSection({ platform, host, threadId, pending, onAttach }: PlatformSectionProps) {
+function PlatformSection({ platform, host, threadId, attached, pending, onAttach }: PlatformSectionProps) {
   const support = host[platform]
   const unavailable = supportMessage(support)
   const devices = host.devices.filter((device) => device.platform === platform).toSorted(byState)
@@ -139,6 +173,7 @@ function PlatformSection({ platform, host, threadId, pending, onAttach }: Platfo
                 key={device.id}
                 device={device}
                 threadId={threadId}
+                attached={attached.has(device.id)}
                 pending={pending}
                 onAttach={() => onAttach(device)}
               />
@@ -170,11 +205,12 @@ const stateLabel: Record<Device["state"], () => string> = {
 interface DeviceRowProps {
   readonly device: Device
   readonly threadId: string
+  readonly attached: boolean
   readonly pending: boolean
   readonly onAttach: () => void
 }
 
-function DeviceRow({ device, threadId, pending, onAttach }: DeviceRowProps) {
+function DeviceRow({ device, threadId, attached, pending, onAttach }: DeviceRowProps) {
   const { slim } = device
   const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
   return (
@@ -216,10 +252,12 @@ function DeviceRow({ device, threadId, pending, onAttach }: DeviceRowProps) {
         variant="outline"
         size="xs"
         disabled={pending}
-        aria-label={m.devices_attach_label({ name: device.name })}
+        aria-label={
+          attached ? m.devices_show_label({ name: device.name }) : m.devices_attach_label({ name: device.name })
+        }
         onClick={onAttach}
       >
-        {m.devices_attach()}
+        {attached ? m.devices_show() : m.devices_attach()}
       </Button>
     </li>
   )

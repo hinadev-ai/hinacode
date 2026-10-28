@@ -22,6 +22,7 @@ import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { BrowserView } from "./BrowserView.tsx"
 import { ChangesView } from "./ChangesView.tsx"
+import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DevicesView } from "./devices/DevicesView.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { FilesView } from "./FilesView.tsx"
@@ -92,6 +93,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     title: m.panel_tab_devices,
     commandId: "view.devices",
     component: DevicesView,
+    header: DeviceTabStrip,
     experiment: "devices",
   },
 ]

@@ -14,11 +14,12 @@ Running many agents in parallel makes it worse. Every agent that needs a simulat
 1. Turn on Settings > Experimental > Devices. A Devices view joins the side panel, and its agent tools join the thread's MCP server.
 2. The Devices view lists the thread machine's iOS simulators and Android emulators. They are grouped by platform, with booted devices first. Each row shows the OS version, boot state, slim state and measured memory. A platform the machine cannot run shows why and how to fix it, such as "iOS simulators need a Mac with Xcode. This machine runs Linux." or "Install the Android SDK, or set ANDROID_HOME."
 3. **New simulator for this thread** creates `hinacode-<thread>` from the newest iPhone and iOS runtime, slims it with simslim and boots it. The view shows each step. Without simslim it says "Install simslim to fit about twice as many simulators: `brew install mobai-app/tap/simslim`" and boots the device stock.
-4. **Attach** on any listed device streams it into the panel instead. Attaching a shut-down device boots it. Detaching stops the stream and leaves the device running. HinaCode never shuts down, slims or deletes a device it did not create.
-5. The screen is live. Clicking and dragging becomes touch, the wheel scrolls, typing reaches the focused field, and pasting types the clipboard. The toolbar has Home, Lock, Volume, Rotate, Light/Dark and Open link, plus Back and Recents on Android.
-6. **Pick element** turns the cursor into a crosshair. Clicking attaches a crop of the screen and the accessibility element under the pointer (label, identifier, role and frame) to the composer.
-7. The agent calls `device_screenshot`, `device_tap` and the rest. The first user input takes control, and the view says "You have control" with Hand back. While the user has control, the agent's input tools wait, and the view turns amber when one is waiting. Handing back returns the current screen to the waiting tool without acting.
-8. Archiving the thread deletes the simulator HinaCode created for it.
+4. **Attach** on any listed device streams it into the panel. Attaching a shut-down device boots it. Detaching stops the stream and leaves the device running.
+5. Each device the thread drives is a tab in the panel header, so a thread can drive an iPhone and a Pixel side by side. **+** goes back to the list to add another. Only the shown tab streams. Closing a tab detaches the device, and asks first when it is a simulator HinaCode created, because that deletes it. HinaCode never shuts down, slims or deletes a device it did not create.
+6. The screen is live. Clicking and dragging becomes touch, the wheel scrolls, typing reaches the focused field, and pasting types the clipboard. The toolbar has Home, Lock, Volume, Rotate, Light/Dark and Open link, plus Back and Recents on Android.
+7. **Pick element** turns the cursor into a crosshair. Clicking attaches a crop of the screen and the accessibility element under the pointer (label, identifier, role and frame) to the composer.
+8. The agent calls `device_screenshot`, `device_tap` and the rest, naming the device once the thread has more than one. Control is per device. The first user input takes control, and the view says "You have control" with Hand back. While the user has control, the agent's input tools wait, and the view turns amber when one is waiting. Handing back returns the current screen to the waiting tool without acting.
+9. Archiving the thread deletes the simulators HinaCode created for it.
 
 Everything above works the same when the thread lives on a paired `hinacode serve` daemon. Devices are listed, booted, streamed and driven on that machine.
 
@@ -26,14 +27,14 @@ Everything above works the same when the thread lives on a paired `hinacode serv
 
 Measured on the Mac mini M4 (16 GB) with six other simulators booted, against `hinacode-verify-*` devices.
 
-| Producer | fps under motion | Tap to first changed frame | Idle cost | Frame size |
-|---|---|---|---|---|
-| iOS, AXe `stream-video` (screenshot per frame) | 15 to 20 at 30 requested | 1.2 to 1.8 s per `axe tap` process | Constant capture | 177 KB JPEG, 1206×2622 |
-| iOS, SimulatorKit IOSurface + frame callback (our helper) | 39 at full size, 80 to 86 at 600 px wide | 74 to 194 ms | 0 frames | 136 KB JPEG q0.5 full size, about 45 KB at 600 px |
-| Android, gRPC `streamScreenshot` PNG 540×1200, host GPU | 33 to 59 | 75 to 194 ms, about 650 ms when the tap opens an activity | 0 frames | 76 to 124 KB PNG |
-| Android, gRPC RGB888 full size | 23 | | 0 frames | 7.6 MB raw |
-| Android, `adb screenrecord` H.264 540×1200 | 28 | | Continuous stream | 1.6 Mbit/s |
-| Android, `adb screencap` polling | 3.7 | | | |
+| Producer                                                  | fps under motion                         | Tap to first changed frame                                | Idle cost         | Frame size                                        |
+| --------------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------- | ----------------- | ------------------------------------------------- |
+| iOS, AXe `stream-video` (screenshot per frame)            | 15 to 20 at 30 requested                 | 1.2 to 1.8 s per `axe tap` process                        | Constant capture  | 177 KB JPEG, 1206×2622                            |
+| iOS, SimulatorKit IOSurface + frame callback (our helper) | 39 at full size, 80 to 86 at 600 px wide | 74 to 194 ms                                              | 0 frames          | 136 KB JPEG q0.5 full size, about 45 KB at 600 px |
+| Android, gRPC `streamScreenshot` PNG 540×1200, host GPU   | 33 to 59                                 | 75 to 194 ms, about 650 ms when the tap opens an activity | 0 frames          | 76 to 124 KB PNG                                  |
+| Android, gRPC RGB888 full size                            | 23                                       |                                                           | 0 frames          | 7.6 MB raw                                        |
+| Android, `adb screenrecord` H.264 540×1200                | 28                                       |                                                           | Continuous stream | 1.6 Mbit/s                                        |
+| Android, `adb screencap` polling                          | 3.7                                      |                                                           |                   |                                                   |
 
 In the real app the renderer drew about 41 fps from the iOS simulator and 36 to 45 fps from the emulator during drags, and about 40 fps from a simulator on a paired daemon over its remote connection. Those runs drove the pointer one CDP call per step, so they are a floor. The latency includes the app's own response, so a tap that opens an activity measures app time, not transport. AXe batches read stdin to EOF and probe accessibility on every step (about 0.5 s), so no AXe mode can carry interactive input. simslim brought the clone from 2.79 GB and 260 processes to 1.43 GB and 116 processes. Its own profile estimate says 2.1 GB, so the UI shows the measured footprint instead of an estimate.
 
@@ -46,25 +47,27 @@ In the real app the renderer drew about 41 fps from the iOS simulator and 36 to 
 - `DeviceId` is `ios:<UDID>` or `android:<AVD name>`. AVD names are stable across boots, and adb serials are not.
 - `Device` is a listed device: id, platform, name, OS version, `state` (`shutdown`, `booting` or `booted`), `slim` (disabled and total services, or null), `memoryBytes`, and `ownerThreadId` when HinaCode created it.
 - `PlatformSupport` is `ready`, `unsupported` with a reason (`notMac`), or `missing` with the tool (`xcode`, `androidSdk`). The view renders the copy, so main sends no prose.
-- `ThreadDevice` is the per-thread state machine, pushed as `device.updated`:
+- `ThreadDevice` is the state machine of one device a thread drives. `device.updated` pushes the thread's whole list, in attach order:
 
 ```
-none ──attach/create──▶ preparing { step: creating | slimming | booting | connecting }
-                             └──▶ ready { device, screen, control: agent | user, agentWaiting }
-                             └──▶ failed { message } ──attach/create──▶ preparing
-ready ──detach──▶ none           ready ──device crashed or deleted──▶ failed
+attach/create ──▶ preparing { name, step: creating | slimming | booting | connecting }
+                       └──▶ ready { device, screen, control: agent | user, agentWaiting }
+                       └──▶ failed { name, message } ──retry──▶ preparing
+ready ──device crashed or deleted──▶ failed          any ──detach──▶ removed from the list
 ```
+
+A simulator being created has no id until `simctl create` returns, so it is the one entry whose `deviceId` is null.
 
 - `DeviceCommand` is a closed union: `touch` (down, move, up), `scroll`, `key` (DOM `code`, down or up), `text`, `button` (home, lock, volumeUp, volumeDown, back, recents), `rotate`, `appearance` (light or dark) and `openUrl` (any URL with a scheme, since deep links are the point). Coordinates are fractions of the screen, from 0 to 1. Input mapping stays a flat rect whatever scale the frame was encoded at.
 - `DeviceFrame` is `{ sequence, mime, data, width, height }`. `mime` is `image/jpeg` for iOS and `image/png` for Android, because the emulator already encodes PNG and the daemon has no image encoder.
 
-The `thread_devices` table holds one row per thread: `thread_id` (primary key), `device_id` and `owned`. One device per thread, so "which device do the agent tools drive" has one answer. `owned` decides whether archiving deletes it. The row survives restarts, so a thread archived after a crash still cleans up.
+The `thread_device` table holds one row per device a thread drives: `thread_id` and `device_id` (together the primary key) and `owned`. `owned` decides whether archiving deletes it. The row survives restarts, so a thread archived after a crash still cleans up.
 
 ### RPC and routing
 
 `devices.list`, `device.get`, `device.attach`, `device.create`, `device.detach`, `device.frame`, `device.command`, `device.control` and `device.pick` all take a `threadId` and route to the thread's owner (ADR 0017). The list is the thread machine's list, so a laptop paired to a Mac mini lists and drives the Mac mini's simulators. A Linux daemon reports iOS as `unsupported: notMac` and still lists its Android emulators.
 
-`device.frame({ threadId, after, visible })` follows the remote browser. It returns the newest frame newer than `after`, waits up to one second for one, and returns `null` when nothing changed. Each viewer keeps one request in flight, so the frame rate adapts to the link and a slow viewer never queues stale frames. A frame request is the stream's lease. The producer stops ten seconds after the last one, and a hidden view asks with `visible: false`, which renews nothing.
+Every method after `device.detach` also takes the `deviceId` it acts on. `device.frame({ threadId, deviceId, after, visible })` follows the remote browser. It returns the newest frame newer than `after`, waits up to one second for one, and returns `null` when nothing changed. Each viewer keeps one request in flight, so the frame rate adapts to the link and a slow viewer never queues stale frames. A frame request is the stream's lease. The producer stops ten seconds after the last one, and a hidden view asks with `visible: false`, which renews nothing.
 
 ### Producers
 
@@ -76,15 +79,15 @@ The `thread_devices` table holds one row per thread: `thread_id` (primary key), 
 
 ### Control
 
-The Tiny VM rule, except that the user's first pointer or key input takes control instead of a button, because a developer who touches a phone screen means to use it. Agent input tools wait while the user has control, and return the current screen without acting on hand back. Closing the view while the user has control hands it back.
+The Tiny VM rule, per device, except that the user's first pointer or key input takes control instead of a button, because a developer who touches a phone screen means to use it. Agent input tools wait while the user has control, and return the current screen without acting on hand back. Closing the view while the user has control hands it back.
 
 ### MCP tools
 
-`device_screenshot`, `device_tap`, `device_swipe`, `device_type`, `device_button`, `device_launch`, `device_open_url` and `device_describe_ui`, hidden with `McpSchema.EnabledWhen` while the experiment is off. They act on the thread's device and create a slim one on first use when none is attached. Input tools return a screenshot 500 ms after acting. `device_describe_ui` returns the accessibility tree flattened to one line per element with its frame, which costs the agent far fewer tokens than a screenshot.
+`device_screenshot`, `device_tap`, `device_swipe`, `device_type`, `device_button`, `device_launch`, `device_open_url` and `device_describe_ui`, hidden with `McpSchema.EnabledWhen` while the experiment is off. Each takes an optional `device`, a name or id as their results show it. They act on the thread's only device, refuse with the list of devices when the thread has more than one and none is named, and create a slim simulator on first use when none is attached. Input tools return a screenshot a second after acting. `device_describe_ui` returns the accessibility tree flattened to one line per element with its frame, which costs the agent far fewer tokens than a screenshot.
 
 ### UI
 
-`DevicesView` in the side panel registry. The screen is a canvas inside the `DeviceFrame` from the device-frames branch, laid exactly over its screen rect. Until that lands, `PlainDeviceFrame` takes the same props and draws a rounded rect.
+`DevicesView` in the side panel registry, with `DeviceTabStrip` as its header. The selected tab is renderer state, so a restart opens the first device. The screen is a canvas inside the `DeviceFrame` from the device-frames branch, laid exactly over its screen rect. Until that lands, `PlainDeviceFrame` takes the same props and draws a rounded rect.
 
 A stalled stream (no frame for 5 s while the device is booted and the screen is changing) shows "Reconnecting" over the last frame and restarts the producer. A crashed device moves to `failed` with Retry.
 
@@ -112,9 +115,8 @@ A stalled stream (no frame for 5 s while the device is booted and the screen is 
 
 ## Verification
 
-Tests cover the contract decoding, the command mapping to Indigo and gRPC calls, and the `thread_devices` cleanup on archive against a real SQLite database. The streams and HID only run on real devices, so the slices above are checked in the real app with `verify-hinacode`, including the remote path.
+Tests cover the contract decoding, the command mapping to Indigo and gRPC calls, and the `thread_device` cleanup on archive, and choosing between two devices against a real SQLite database. The streams and HID only run on real devices, so the slices above are checked in the real app with `verify-hinacode`, including the remote path.
 
 Verified with an isolated Electron instance driven over CDP, and with that instance paired to a plain Node `hinacode serve` daemon on the same Mac. Locally, a slim iOS 27 simulator and an Android 16 emulator streamed inside their device frames. Taps, drags, Home, Back, dark appearance and rotation reached them, and a picked Settings row arrived in the composer with its crop. Over MCP, `device_launch`, `device_describe_ui` and `device_tap` drove Settings. A `device_tap` sent while the user had control waited with the amber notice and returned without acting on hand back. Archiving a thread deleted the simulator HinaCode had created for it within one sweep, about 6 s, and left every other device running. Through the daemon, the list was the daemon's, the screen helper ran as the daemon's child, compiled into its own data directory, and the desktop drove the simulator at 25 to 40 fps on loopback. Any panel input takes control, the toolbar buttons included, because the user is acting on the device either way.
 
 Not verified yet: a Linux daemon's `notMac` state, a cold Android boot from HinaCode, and an emulator started without gRPC.
-

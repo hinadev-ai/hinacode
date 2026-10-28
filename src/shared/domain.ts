@@ -715,7 +715,13 @@ export const defaultSettings: Settings = {
   pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
-  experimental: { tinyVm: false, tinyVmTemplate: "default", tinyVmProfile: false, tinyVmPasskeys: false, devices: false },
+  experimental: {
+    tinyVm: false,
+    tinyVmTemplate: "default",
+    tinyVmProfile: false,
+    tinyVmPasskeys: false,
+    devices: false,
+  },
   worktreeRoot: null,
 }
 

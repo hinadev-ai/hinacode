@@ -90,6 +90,7 @@ import {
   DeviceId,
   PickedDeviceElement,
   ThreadDevice,
+  ThreadDevices,
 } from "./device.ts"
 
 const AutomationInput = Schema.Struct({
@@ -112,17 +113,21 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 /** Every renderer -> main call. Both sides decode what they receive with these schemas. */
 export const RpcMethods = {
   "devices.list": rpc(Schema.Struct({ threadId: Schema.String }), DeviceHost),
-  "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevice),
-  /** Streams an existing device in the thread, booting it when it is shut down. */
+  "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevices),
+  /** Streams an existing device in the thread next to its others, booting it when it is shut down. */
   "device.attach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), ThreadDevice),
   /** Creates a simulator for the thread, slims it when simslim is installed, and boots it. Archiving deletes it. */
   "device.create": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevice),
-  /** Stops streaming. Deletes the device only when HinaCode created it for this thread. */
-  "device.detach": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  /**
+   * Stops streaming a device. Deletes it only when HinaCode created it for this thread.
+   * A null id dismisses a simulator that failed before it was created.
+   */
+  "device.detach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: Schema.NullOr(DeviceId) }), Schema.Void),
   /** The newest frame after `after`, waiting up to a second for one. Each call renews the stream's lease. */
   "device.frame": rpc(
     Schema.Struct({
       threadId: Schema.String,
+      deviceId: DeviceId,
       after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
       visible: Schema.Boolean,
     }),
@@ -131,15 +136,20 @@ export const RpcMethods = {
   "device.command": rpc(
     Schema.Struct({
       threadId: Schema.String,
+      deviceId: DeviceId,
       commands: Schema.Array(DeviceCommand).check(Schema.isMinLength(1), Schema.isMaxLength(128)),
     }),
     Schema.Void,
   ),
-  "device.control": rpc(Schema.Struct({ threadId: Schema.String, control: DeviceControl }), ThreadDevice),
+  "device.control": rpc(
+    Schema.Struct({ threadId: Schema.String, deviceId: DeviceId, control: DeviceControl }),
+    ThreadDevice,
+  ),
   /** The smallest accessibility element at the point, given as fractions of the screen. The view crops it from its own frame. */
   "device.pick": rpc(
     Schema.Struct({
       threadId: Schema.String,
+      deviceId: DeviceId,
       x: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
       y: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     }),
@@ -957,7 +967,7 @@ export const PushEvent = Schema.Union([
   /** A relay sync added, renamed or dropped clouds; ask environments.list again. */
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
-  Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, device: ThreadDevice }),
+  Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
   Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   /** VNC server bytes for an open screen stream, batched to about one push per frame. */
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),

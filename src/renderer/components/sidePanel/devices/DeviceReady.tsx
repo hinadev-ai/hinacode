@@ -28,29 +28,20 @@ import { callPromise } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
 import { useDrafts } from "../../../stores/drafts.ts"
 import { useUi } from "../../../stores/ui.ts"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../ui/alert-dialog.tsx"
 import { Button } from "../../ui/button.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../ui/dropdown-menu.tsx"
 import { Input } from "../../ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverTrigger } from "../../ui/popover.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
+import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
 
 type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 type Appearance = "light" | "dark"
 
-const appearanceKey = (threadId: string) => `hinacode.deviceAppearance.${threadId}`
+const appearanceKey = (deviceId: string) => `hinacode.deviceAppearance.${deviceId}`
 
 const isCommand = Schema.is(DeviceCommand)
 
@@ -83,7 +74,14 @@ function cropScreen(canvas: HTMLCanvasElement, screen: Screen, shape: FrameShape
 }
 
 /** The live device: its toolbar, its screen, and who has control. */
-export function DeviceReady({ threadId, device: ready }: { threadId: string; device: ReadyDevice }) {
+interface DeviceReadyProps {
+  readonly threadId: string
+  readonly device: ReadyDevice
+  /** Called as the user detaches or deletes the device, to show another tab. */
+  readonly onDetach: () => void
+}
+
+export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyProps) {
   const { device, screen, control, agentWaiting } = ready
   const { pending, error, run } = useVmAction()
   const [commandError, setCommandError] = useState<string | null>(null)
@@ -93,16 +91,17 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
   const [announcement, setAnnouncement] = useState("")
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [appearance, setAppearance] = useState<Appearance>(() =>
-    localStorage.getItem(appearanceKey(threadId)) === "dark" ? "dark" : "light",
+    localStorage.getItem(appearanceKey(device.id)) === "dark" ? "dark" : "light",
   )
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sessionRef = useRef<DeviceSession | null>(null)
   const controlRef = useRef(control)
   const hintId = useId()
   const owned = device.ownerThreadId === threadId
+  const deviceId = device.id
 
   useEffect(() => {
-    const session = new DeviceSession(threadId, {
+    const session = new DeviceSession(threadId, deviceId, {
       onShape: setShape,
       onStalled: setStalled,
       onCommandError: setCommandError,
@@ -117,7 +116,7 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
       session.dispose()
       sessionRef.current = null
     }
-  }, [threadId])
+  }, [threadId, deviceId])
 
   useEffect(() => {
     controlRef.current = control
@@ -127,10 +126,10 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
   useEffect(
     () => () => {
       if (controlRef.current === "user") {
-        void callPromise("device.control", { threadId, control: "agent" }).catch(() => {})
+        void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
       }
     },
-    [threadId],
+    [threadId, deviceId],
   )
 
   const onCanvas = (canvas: HTMLCanvasElement | null) => {
@@ -147,14 +146,14 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
   const toggleAppearance = () => {
     const next: Appearance = appearance === "dark" ? "light" : "dark"
     setAppearance(next)
-    localStorage.setItem(appearanceKey(threadId), next)
+    localStorage.setItem(appearanceKey(device.id), next)
     send({ kind: "appearance", mode: next })
   }
 
   const pick = (x: number, y: number) =>
     run(async () => {
       try {
-        const picked = await callPromise("device.pick", { threadId, x, y })
+        const picked = await callPromise("device.pick", { threadId, deviceId, x, y })
         const canvas = canvasRef.current
         if (!canvas || !shape) return
         const label = picked ? deviceElementLabel(picked.element) : m.devices_pick_screen({ device: device.name })
@@ -170,7 +169,10 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
       }
     })
 
-  const detach = () => run(() => callPromise("device.detach", { threadId }))
+  const detach = () => {
+    onDetach()
+    run(() => callPromise("device.detach", { threadId, deviceId }))
+  }
   const waiting = control === "user" && agentWaiting
   const status = waiting
     ? m.devices_agent_waiting()
@@ -236,11 +238,12 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
             <TooltipContent>{m.devices_more()}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={detach}>{m.devices_detach()}</DropdownMenuItem>
-            {owned && (
+            {owned ? (
               <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
                 {m.devices_delete()}
               </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={detach}>{m.devices_detach()}</DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -289,7 +292,7 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
             variant="outline"
             size="xs"
             disabled={pending}
-            onClick={() => run(() => callPromise("device.control", { threadId, control: "agent" }))}
+            onClick={() => run(() => callPromise("device.control", { threadId, deviceId, control: "agent" }))}
           >
             {m.devices_hand_back()}
           </Button>
@@ -301,27 +304,14 @@ export function DeviceReady({ threadId, device: ready }: { threadId: string; dev
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{m.devices_delete_title({ name: device.name })}</AlertDialogTitle>
-            <AlertDialogDescription>{m.devices_delete_body()}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={pending}
-              onClick={() => {
-                setConfirmingDelete(false)
-                detach()
-              }}
-            >
-              {m.devices_delete_confirm()}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteDeviceDialog
+        name={confirmingDelete ? device.name : null}
+        onCancel={() => setConfirmingDelete(false)}
+        onDelete={() => {
+          setConfirmingDelete(false)
+          detach()
+        }}
+      />
     </div>
   )
 }

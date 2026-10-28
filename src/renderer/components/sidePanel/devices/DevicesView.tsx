@@ -2,25 +2,27 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useState } from "react"
 import { RiCheckLine, RiCircleLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri"
-import type { PrepareStep, ThreadDevice } from "../../../../shared/device.ts"
+import { type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { callPromise, threadDeviceAtom } from "../../../lib/rpc.ts"
+import { callPromise, threadDevicesAtom } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
+import { DEVICE_LIST_TAB, deviceTabKey, selectAfterClosing, useShownDeviceTab } from "../../../stores/deviceTabs.ts"
 import { Button } from "../../ui/button.tsx"
 import { useVmAction } from "../TinyVmView.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
+import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
 
-/** The device the thread drives: the list to pick one from, its preparation, its live screen, or why it failed. */
+/** The thread's devices, one tab each, plus the list to add one from. Only the shown tab streams. */
 export function DevicesView({ thread }: { thread: Thread }) {
-  const device = useAtomValue(threadDeviceAtom(thread.id))
-  const refresh = useAtomRefresh(threadDeviceAtom(thread.id))
+  const devices = useAtomValue(threadDevicesAtom(thread.id))
+  const refresh = useAtomRefresh(threadDevicesAtom(thread.id))
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {AsyncResult.builder(device)
+      {AsyncResult.builder(devices)
         .onInitial(() => null)
-        .onSuccess((state) => <DeviceState thread={thread} device={state} />)
+        .onSuccess((entries) => <ShownTab thread={thread} devices={entries} />)
         .onError((cause) => (
           <Failure message={errorMessage(cause)}>
             <Button variant="outline" size="sm" onClick={refresh}>
@@ -33,16 +35,42 @@ export function DevicesView({ thread }: { thread: Thread }) {
   )
 }
 
-function DeviceState({ thread, device }: { thread: Thread; device: ThreadDevice }) {
+function ShownTab({ thread, devices }: { thread: Thread; devices: ThreadDevices }) {
+  const shown = useShownDeviceTab(thread.id, devices)
+  const entry = devices.find((each) => deviceTabKey(each) === shown)
+  if (shown === DEVICE_LIST_TAB || !entry) return <DeviceList thread={thread} />
+  return (
+    <div
+      role="tabpanel"
+      id={devicePanelId(thread.id, shown)}
+      aria-labelledby={deviceTabId(thread.id, shown)}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DeviceState
+        key={shown}
+        threadId={thread.id}
+        device={entry}
+        onDetach={() => selectAfterClosing(thread.id, devices, shown)}
+      />
+    </div>
+  )
+}
+
+interface DeviceStateProps {
+  readonly threadId: string
+  readonly device: ThreadDevice
+  /** Called as the user detaches the device, to show another tab. */
+  readonly onDetach: () => void
+}
+
+function DeviceState({ threadId, device, onDetach }: DeviceStateProps) {
   switch (device.phase) {
-    case "none":
-      return <DeviceList thread={thread} />
     case "preparing":
       return <Preparing step={device.step} />
     case "ready":
-      return <DeviceReady key={device.device.id} threadId={thread.id} device={device} />
+      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} />
     case "failed":
-      return <Failed threadId={thread.id} device={device} />
+      return <Failed threadId={threadId} device={device} onDetach={onDetach} />
   }
 }
 
@@ -97,7 +125,13 @@ function Preparing({ step }: { step: PrepareStep }) {
   )
 }
 
-function Failed({ threadId, device }: { threadId: string; device: Extract<ThreadDevice, { phase: "failed" }> }) {
+interface FailedProps {
+  readonly threadId: string
+  readonly device: Extract<ThreadDevice, { phase: "failed" }>
+  readonly onDetach: () => void
+}
+
+function Failed({ threadId, device, onDetach }: FailedProps) {
   const { pending, error, run } = useVmAction()
   const { deviceId } = device
   const retry = () =>
@@ -116,9 +150,12 @@ function Failed({ threadId, device }: { threadId: string; device: Extract<Thread
           variant="ghost"
           size="sm"
           disabled={pending}
-          onClick={() => run(() => callPromise("device.detach", { threadId }))}
+          onClick={() => {
+            onDetach()
+            run(() => callPromise("device.detach", { threadId, deviceId }))
+          }}
         >
-          {m.devices_back_to_list()}
+          {m.devices_remove()}
         </Button>
       </div>
     </Failure>

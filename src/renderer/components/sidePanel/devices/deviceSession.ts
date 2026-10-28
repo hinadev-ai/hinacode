@@ -1,4 +1,4 @@
-import type { DeviceCommand, DeviceFrame } from "../../../../shared/device.ts"
+import type { DeviceCommand, DeviceFrame, DeviceId } from "../../../../shared/device.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
 import { callPromise } from "../../../lib/rpc.ts"
 
@@ -17,11 +17,12 @@ const STALL_MS = 5000
 const MAX_BATCH = 128
 
 /**
- * Streams a thread's device into a canvas and sends its input. One `device.frame` request is in flight at a time,
+ * Streams one of a thread's devices into a canvas and sends its input. One `device.frame` request is in flight at a time,
  * so the frame rate follows the link, and one `device.command` batch, so input queued meanwhile goes out together.
  */
 export class DeviceSession {
   private readonly threadId: string
+  private readonly deviceId: DeviceId
   private canvas: HTMLCanvasElement | null = null
   private readonly callbacks: DeviceCallbacks
   private timer: number | undefined
@@ -37,8 +38,9 @@ export class DeviceSession {
   private queue: DeviceCommand[] = []
   private sending = false
 
-  constructor(threadId: string, callbacks: DeviceCallbacks) {
+  constructor(threadId: string, deviceId: DeviceId, callbacks: DeviceCallbacks) {
     this.threadId = threadId
+    this.deviceId = deviceId
     this.callbacks = callbacks
     // A request that never settles fails no catch, so the stall is judged by the clock.
     this.watchdog = window.setInterval(() => this.checkStall(), 1000)
@@ -99,7 +101,7 @@ export class DeviceSession {
     try {
       while (!this.disposed && this.queue.length > 0) {
         const commands = this.queue.splice(0, MAX_BATCH)
-        await callPromise("device.command", { threadId: this.threadId, commands })
+        await callPromise("device.command", { threadId: this.threadId, deviceId: this.deviceId, commands })
       }
     } catch (cause) {
       this.queue = []
@@ -116,6 +118,7 @@ export class DeviceSession {
     try {
       const { frame } = await callPromise("device.frame", {
         threadId: this.threadId,
+        deviceId: this.deviceId,
         after: this.sequence,
         visible: this.visible,
       })

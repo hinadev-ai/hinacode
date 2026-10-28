@@ -392,10 +392,11 @@ const handlers: Handlers = {
   "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
   "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
   "device.create": ({ threadId }) => Devices.use((devices) => devices.create(threadId)),
-  "device.detach": ({ threadId }) => Devices.use((devices) => devices.detach(threadId)),
+  "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
   "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
   "device.command": (input) => Devices.use((devices) => devices.command(input)),
-  "device.control": ({ threadId, control }) => Devices.use((devices) => devices.control(threadId, control)),
+  "device.control": ({ threadId, deviceId, control }) =>
+    Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
