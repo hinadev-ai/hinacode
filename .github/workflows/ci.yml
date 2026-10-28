@@ -193,7 +193,8 @@ jobs:
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e
+      - run: sysctl -n hw.ncpu hw.memsize machdep.cpu.brand_string
+      - run: pnpm test:e2e --workers=4
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
