@@ -116,6 +116,13 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - if: needs.changes.outputs.app == 'true'
         run: pnpm test
+      - if: needs.changes.outputs.app == 'true'
+        name: Verify the server package
+        run: |
+          node --test scripts/server-package.test.ts
+          pnpm build:server
+          pnpm stage:server
+          pnpm verify:server
 
   mobile:
     needs: changes
