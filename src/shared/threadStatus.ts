@@ -75,6 +75,8 @@ export const rowEmphasis = {
   running: "working",
 } as const satisfies Record<RowState, "attention" | "resting" | "working">
 
+export const needsAttention = (state: RowState) => rowEmphasis[state] === "attention"
+
 export type IndicatorTone = "muted" | "attention" | "success" | "danger" | "prOpen" | "prMerged"
 
 /** Idle and archived rows show no icon. A thread that starts waiting for approval also rings a few times. */

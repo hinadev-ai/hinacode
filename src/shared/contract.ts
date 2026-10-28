@@ -106,6 +106,8 @@ const rpc = <Req extends Schema.Top, Res extends Schema.Top>(request: Req, respo
 export const RpcMethods = {
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  /** The number on the Dock icon. Zero clears it. */
+  "app.setBadgeCount": rpc(Schema.Struct({ count: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) }), Schema.Void),
   "browser.open": rpc(
     Schema.Struct({ threadId: Schema.String, url: BrowserUrl, ...BrowserViewport.fields }),
     Schema.Struct({ sessionId: Schema.String }),
@@ -630,6 +632,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "browser.close": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "app.setBadgeCount": "mutation",
   "projects.list": "read",
   "projects.create": "mutation",
   "projects.clone": "mutation",
@@ -795,6 +798,7 @@ export const mutations: ReadonlySet<string> = new Set(
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "app.setBadgeCount",
   "dialog.pickFolder",
   "dialog.pickFiles",
   "shell.reveal",

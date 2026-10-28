@@ -6,6 +6,7 @@ import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { MotionConfig } from "motion/react"
 import { StrictMode, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
+import { DockBadge } from "./components/DockBadge.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, useTheme } from "./lib/appearance.ts"
@@ -39,6 +40,7 @@ function App() {
     <MotionConfig reducedMotion="user">
       <TooltipProvider key={locale}>
         <RouterProvider router={router} />
+        <DockBadge />
         {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
         <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
       </TooltipProvider>

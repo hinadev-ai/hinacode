@@ -25,6 +25,7 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
   focus: Effect.sync(() => {
     if (window) bringToFront(window)
   }),
+  setBadgeCount: (count) => Effect.sync(() => app.setBadgeCount(count)),
   reveal: (path) => Effect.sync(() => shell.showItemInFolder(path)),
   openExternal: (url) => {
     const allowed = externalUrl(url)
