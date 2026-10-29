@@ -1,12 +1,13 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { RiCloudLine, RiGitBranchLine, RiMacbookLine } from "react-icons/ri"
+import { RiCloudLine, RiGitBranchLine, RiMacbookLine, RiStackLine } from "react-icons/ri"
 import type { PullRequest, PullRequestStatus, Thread } from "../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { currentBranchAtom, pullRequestStatusesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { usePullRequests } from "../stores/pullRequests.ts"
+import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 
@@ -47,9 +48,22 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
             <span className="truncate font-mono">{branch}</span>
           </span>
         )}
-        {urls.map((url, index) => (
-          <PullRequestSummary key={url} threadId={thread.id} url={url} pullRequest={pullRequests[index]} />
-        ))}
+        {urls.length === 1 ? (
+          <PullRequestSummary threadId={thread.id} url={urls[0]!} pullRequest={pullRequests[0]} />
+        ) : (
+          urls.length > 1 && (
+            // Several summaries would crowd the line, so the stack points to the side panel that lists them.
+            <button
+              type="button"
+              onClick={() => useUi.getState().showView(thread.id, "pullRequests", { focus: true })}
+              className="flex shrink-0 items-center gap-1 rounded-sm tabular-nums outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RiStackLine aria-hidden className="size-3.5" />
+              <span aria-hidden>{urls.length}</span>
+              <span className="sr-only">{m.sidebar_pull_request_stack({ count: String(urls.length) })}</span>
+            </button>
+          )
+        )}
       </div>
     </div>
   )
