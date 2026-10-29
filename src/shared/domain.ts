@@ -675,6 +675,14 @@ const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
  * The `default*` keys are what a new thread starts with. Picking an option on a thread before its first message
  * saves it here, so the next new thread starts the way the last one was set up.
  */
+/**
+ * One address a listener binds. Never 0.0.0.0 or ::, which would listen on every network this machine joins, such
+ * as a café's Wi-Fi.
+ */
+export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|::|::0|\[::\])$)\S+$/))
+
+const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
+
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
   defaultModel: Schema.Struct({
@@ -718,17 +726,16 @@ export const Settings = Schema.Struct({
     codex: Schema.NullOr(AutoCompactTokens),
     muse: Schema.NullOr(AutoCompactTokens),
   }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
-  /** Where the automation webhook listener binds. 0.0.0.0 exposes it on the LAN and Tailscale. */
-  automations: Schema.Struct({
-    bindHost: Schema.String,
-    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
-  }),
-  /** The remote control listener phones connect to. Off by default; 0.0.0.0 exposes it on the LAN and Tailscale. */
-  remote: Schema.Struct({
-    enabled: Schema.Boolean,
-    bindHost: Schema.String,
-    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
-  }),
+  /** Where the automation webhook listener binds. */
+  automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
+  /**
+   * The remote control listener phones connect to. Off by default. It listens only once the user picked an
+   * interface, so `bindHost` is null only while it is off.
+   */
+  remote: Schema.Union([
+    Schema.Struct({ enabled: Schema.Literal(false), bindHost: Schema.NullOr(BindHost), port: ListenPort }),
+    Schema.Struct({ enabled: Schema.Literal(true), bindHost: BindHost, port: ListenPort }),
+  ]),
   /** Claude model that names a thread and its branch from the first message. */
   textGenerationModel: Schema.String,
   /** The Claude model and reasoning effort that write pull request guides. */
@@ -753,7 +760,7 @@ export const defaultSettings: Settings = {
   defaultAccountName: { claude: null, codex: null, muse: null },
   autoCompactTokens: { claude: null, codex: null, muse: null },
   automations: { bindHost: "127.0.0.1", port: 48080 },
-  remote: { enabled: false, bindHost: "0.0.0.0", port: 48081 },
+  remote: { enabled: false, bindHost: null, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",

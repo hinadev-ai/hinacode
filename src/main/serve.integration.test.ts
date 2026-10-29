@@ -47,4 +47,22 @@ describe("serve mode boot", () => {
       expect(yield* Secrets.use((service) => service.has("remote.token"))).toBe(true)
     }).pipe(Effect.provide(testLayer)),
   )
+
+  it.effect("without --host, listens on the Tailscale address and then keeps it", () =>
+    Effect.gen(function* () {
+      yield* applyServeConfig({ rotateToken: false }, () => "100.64.0.2")
+      expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe("100.64.0.2")
+      yield* applyServeConfig({ rotateToken: false }, () => "100.64.0.9")
+      expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe("100.64.0.2")
+    }).pipe(Effect.provide(testLayer)),
+  )
+
+  it.effect("refuses to start without --host on a machine with no Tailscale address", () =>
+    Effect.gen(function* () {
+      const error = yield* applyServeConfig({ rotateToken: false }, () => null).pipe(Effect.flip)
+      expect(error._tag).toBe("ServeHostRequired")
+      expect(error.message).toContain("--host")
+      expect((yield* Settings.use((service) => service.get)).remote.enabled).toBe(false)
+    }).pipe(Effect.provide(testLayer)),
+  )
 })

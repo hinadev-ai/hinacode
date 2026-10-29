@@ -26,6 +26,7 @@ import threadSnooze from "./migrations/0025_thread_snooze.ts"
 import fork from "./migrations/0026_fork.ts"
 import settingsFiles from "./migrations/0027_settings_files.ts"
 import threadDevice from "./migrations/0028_thread_device.ts"
+import listenersPickInterface from "./migrations/0029_listeners_pick_interface.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 
 const run = Migrator.make({})
@@ -63,6 +64,7 @@ export const runMigrations = run({
     "26_fork": fork,
     "27_settings_files": settingsFiles,
     "28_thread_device": threadDevice,
+    "29_listeners_pick_interface": listenersPickInterface,
   }),
 }).pipe(
   Effect.tap((ran) =>

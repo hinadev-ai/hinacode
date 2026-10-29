@@ -5,30 +5,29 @@ import { m } from "../../paraglide/messages.js"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 
 export const LOOPBACK = "127.0.0.1"
-export const ALL_INTERFACES = "0.0.0.0"
 
 interface BindHostSelectProps {
   readonly id: string
   readonly environment: EnvironmentId
-  readonly value: string
+  /** Null until the user picks an interface. */
+  readonly value: string | null
   readonly onChange: (bindHost: string) => void
 }
 
-/** Loopback, every interface, or one address of the environment's own network interfaces. */
+/** Loopback or one address of the environment's own network interfaces, never all of them. */
 export function BindHostSelect({ id, environment, value, onChange }: BindHostSelectProps) {
   const addresses = AsyncResult.getOrElse(useAtomValue(networkAddressesAtom(environment)), () => [])
   const items = [
-    { value: LOOPBACK, label: m.settings_bind_loopback() },
-    { value: ALL_INTERFACES, label: m.settings_bind_all() },
     ...addresses.map(({ name, address }) => ({ value: address, label: `${name} (${address})` })),
+    { value: LOOPBACK, label: m.settings_bind_loopback() },
   ]
-  if (!items.some((item) => item.value === value))
+  if (value !== null && !items.some((item) => item.value === value))
     items.push({ value, label: m.settings_bind_address_gone({ address: value }) })
 
   return (
     <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
       <SelectTrigger id={id} className="w-full">
-        <SelectValue />
+        <SelectValue placeholder={m.settings_bind_placeholder()} />
       </SelectTrigger>
       <SelectContent>
         {items.map((item) => (

@@ -1,4 +1,6 @@
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
+import { BindHost } from "../shared/domain.ts"
+import { tailscaleAddress } from "./network.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import { Relay } from "./remote/relay.ts"
 import type { RelayError, RelayLink } from "./remote/relayService.ts"
@@ -13,7 +15,8 @@ Commands:
 
 serve options:
   --port <n>        Port to listen on, or HINACODE_SERVE_PORT.
-  --host <host>     Address to bind, or HINACODE_SERVE_HOST. 0.0.0.0 for every interface.
+  --host <host>     Address to bind, or HINACODE_SERVE_HOST. Defaults to this machine's Tailscale address.
+                    Use 127.0.0.1 to reach the cloud only through the relay.
   --rotate-token    Replace the token, which unpairs every client, or HINACODE_SERVE_ROTATE_TOKEN=1.
   --relay on|off    Reach the cloud from any network through the HinaCode relay, or HINACODE_SERVE_RELAY.
                     on links it to your HinaCode account once, and needs cloudflared on PATH. off unlinks it.
@@ -135,6 +138,9 @@ export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv)
         : undefined
   const bindHost = flagValue(argv, "host") ?? env["HINACODE_SERVE_HOST"]
   if (bindHost !== undefined && bindHost.trim() === "") throw new Error("serve host must not be empty")
+  if (bindHost !== undefined && !Schema.is(BindHost)(bindHost)) {
+    throw new UsageError(`--host ${bindHost} would listen on every network this machine joins. Pass one address.`)
+  }
   const relayFlag = flagValue(argv, "relay")
   const relay = relayFlag ?? env["HINACODE_SERVE_RELAY"]
   if (relay !== undefined && relay !== "on" && relay !== "off") {
@@ -149,20 +155,32 @@ export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv)
   }
 }
 
+/** A cloud with no address to listen on: no `--host`, none stored, and no Tailscale address. */
+export class ServeHostRequired extends Schema.TaggedError<ServeHostRequired>()("ServeHostRequired", {
+  message: Schema.String,
+}) {}
+
 /**
  * Writes this boot's listener address into `settings.remote` and rotates the token when asked. It
  * runs while the app layer is built, before the remote listener first reads its settings, so the
  * listener starts once on this address and no client can pair with a token about to be replaced.
+ * Without `--host` it keeps the stored address, or takes the Tailscale one.
  */
-export const applyServeConfig = (config: ServeConfig): Effect.Effect<void, PersistenceError, Settings | RemoteAccess> =>
+export const applyServeConfig = (
+  config: ServeConfig,
+  tailscale: () => string | null = tailscaleAddress,
+): Effect.Effect<void, PersistenceError | ServeHostRequired, Settings | RemoteAccess> =>
   Effect.gen(function* () {
     const settings = yield* Settings
     const current = (yield* settings.get).remote
-    const next = {
-      enabled: true,
-      bindHost: config.bindHost ?? current.bindHost,
-      port: config.port ?? current.port,
+    const bindHost = config.bindHost ?? current.bindHost ?? tailscale()
+    if (bindHost === null) {
+      return yield* new ServeHostRequired({
+        message:
+          "this machine has no Tailscale address to listen on. Pass --host <address>, or --host 127.0.0.1 --relay on to reach it only through the relay.",
+      })
     }
+    const next = { enabled: true as const, bindHost, port: config.port ?? current.port }
     if (next.enabled !== current.enabled || next.bindHost !== current.bindHost || next.port !== current.port) {
       yield* settings.set({ remote: next })
     }

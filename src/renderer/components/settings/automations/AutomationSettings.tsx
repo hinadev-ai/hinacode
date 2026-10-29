@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
 import { Switch } from "../../ui/switch.tsx"
-import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
+import { BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
 import { SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
 import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
@@ -128,11 +128,9 @@ function ListenerSettings() {
         </form>
       </div>
       <FieldDescription>
-        {listener.bindHost === ALL_INTERFACES
-          ? m.automations_bind_all_hint()
-          : listener.bindHost === LOOPBACK
-            ? m.automations_bind_loopback_hint()
-            : m.automations_bind_address_hint({ address: listener.bindHost })}
+        {listener.bindHost === LOOPBACK
+          ? m.automations_bind_loopback_hint()
+          : m.automations_bind_address_hint({ address: listener.bindHost })}
       </FieldDescription>
       {error && <FieldError>{errorMessage(error)}</FieldError>}
     </div>

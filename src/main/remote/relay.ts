@@ -41,9 +41,12 @@ const PUBLISH_EVERY = Duration.minutes(10)
 
 const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "run"]
 
-/** Where `cloudflared` forwards to: the listener's own address, or loopback when it binds every interface. */
+/**
+ * Where `cloudflared` forwards to: the listener's own address. A listener that is off may have none yet; the tunnel
+ * follows it once it turns on, since `routed` compares origins.
+ */
 export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "bindHost" | "port">) => {
-  const host = bindHost === "0.0.0.0" || bindHost === "::" ? "127.0.0.1" : bindHost
+  const host = bindHost ?? "127.0.0.1"
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
 

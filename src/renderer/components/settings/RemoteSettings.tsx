@@ -23,7 +23,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
+import { BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./automations/shared.tsx"
 import { SettingsGroup, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 
@@ -35,11 +35,11 @@ export function RemoteSettings() {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
-  const save = (patch: Partial<RemoteSettingsValue>) =>
+  const save = (next: RemoteSettingsValue) =>
     startTransition(async () => {
       setError(null)
       try {
-        await updateSettings({ remote: { ...remote, ...patch } })
+        await updateSettings({ remote: next })
       } catch (cause) {
         setError(errorMessage(cause))
       }
@@ -57,8 +57,10 @@ export function RemoteSettings() {
             <Switch
               id="remote-enabled"
               checked={remote.enabled}
-              disabled={pending}
-              onCheckedChange={(enabled) => save({ enabled })}
+              disabled={pending || remote.bindHost === null}
+              onCheckedChange={(enabled) =>
+                remote.bindHost !== null && save({ ...remote, enabled, bindHost: remote.bindHost })
+              }
             />
           </Field>
           <RemoteStatusLine remote={remote} />
@@ -126,7 +128,7 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
 interface ListenerSettingsProps {
   readonly remote: RemoteSettingsValue
   readonly pending: boolean
-  readonly onSave: (patch: Partial<RemoteSettingsValue>) => void
+  readonly onSave: (next: RemoteSettingsValue) => void
 }
 
 function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
@@ -134,7 +136,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSave({ port: Number(port) })
+    onSave({ ...remote, port: Number(port) })
   }
 
   return (
@@ -146,7 +148,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             id="remote-bind-host"
             environment={null}
             value={remote.bindHost}
-            onChange={(bindHost) => onSave({ bindHost })}
+            onChange={(bindHost) => onSave({ ...remote, bindHost })}
           />
         </Field>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
@@ -169,8 +171,8 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
         </form>
       </div>
       <FieldDescription>
-        {remote.bindHost === ALL_INTERFACES
-          ? m.remote_bind_all_hint()
+        {remote.bindHost === null
+          ? m.remote_bind_required_hint()
           : remote.bindHost === LOOPBACK
             ? m.remote_bind_loopback_hint()
             : m.remote_bind_address_hint({ address: remote.bindHost })}

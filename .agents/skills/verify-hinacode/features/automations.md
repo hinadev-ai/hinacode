@@ -46,4 +46,4 @@ Preconditions:
 - Without `X-GitHub-Delivery`, dedup keys on the body hash: resending the same body is skipped even with a new signature.
 - The secret is only returned once. Losing it means creating a new automation.
 - The first poll only sets the cursor; existing issues never start threads.
-- `0.0.0.0` exposes the listener on the LAN and Tailscale. Keep `127.0.0.1` for verification.
+- The listener binds one address, never every interface. Keep `127.0.0.1` for verification.

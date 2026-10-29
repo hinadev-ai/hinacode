@@ -17,7 +17,7 @@ Replies render through `react-native-enriched-markdown`, a native Fabric compone
 
 `pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting.
 
-The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and keep the remote listener on its default `0.0.0.0` bind.
+The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and set Settings > Remote > Remote listener to the desktop's Tailscale address.
 
 ### Run on an iOS simulator with Xcode 27
 
