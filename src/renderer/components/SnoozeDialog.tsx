@@ -11,7 +11,7 @@ import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
-import { useUi } from "../stores/ui.ts"
+import { returnFocus, useUi } from "../stores/ui.ts"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
 
 interface Choice {
@@ -54,8 +54,7 @@ export async function snoozeThread(thread: Thread, until: Date | null) {
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 const close = () => useUi.getState().setSnoozeThreadId(null)
 
-// Checked once the popup has unmounted and again once the snoozed row has moved to its new list, since either
-// can take the element focus went back to.
+// The snoozed row moves to another list, which can take the element focus went back to.
 const keepFocus = () => {
   if (document.activeElement === document.body) useUi.getState().requestComposerFocus()
 }
@@ -170,17 +169,14 @@ export function SnoozeDialog() {
   const thread = useThreads((state) => (threadId === null ? undefined : state.byId[threadId]))
 
   return (
-    <Dialog
-      open={thread !== undefined}
-      onOpenChange={(open) => (open ? undefined : close())}
-      onOpenChangeComplete={(open) => {
-        if (!open) requestAnimationFrame(keepFocus)
-      }}
-    >
+    <Dialog open={thread !== undefined} onOpenChange={(open) => (open ? undefined : close())}>
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12dvh]">
-          <DialogPrimitive.Popup className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0">
+          <DialogPrimitive.Popup
+            finalFocus={returnFocus}
+            className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
+          >
             {thread && (
               <SnoozePicker
                 key={thread.id}

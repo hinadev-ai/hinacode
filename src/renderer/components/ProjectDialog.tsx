@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, startTransition, useActionState, useState } from "react"
+import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
 import { RiFolderOpenLine, RiGithubFill } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
@@ -39,12 +39,13 @@ interface ProjectDialogProps {
   readonly project?: Project
   /** Where a new project starts out. */
   readonly environment?: EnvironmentId
+  readonly finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"]
 }
 
-export function ProjectDialog({ open, onOpenChange, project, environment = null }: ProjectDialogProps) {
+export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>{project ? m.project_edit_title() : m.project_dialog_title()}</DialogTitle>
           <DialogDescription>
