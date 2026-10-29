@@ -283,12 +283,14 @@ await evaluate(`(() => {
       if (!link) throw new Error("no sidebar link for " + id)
       const t0 = performance.now()
       link.click()
-      // painted = the transcript exists and two frames passed with the same article count
+      // painted = the transcript is visible (LegendList holds it at opacity 0 until its first layout) and two frames kept the same article count
       let last = -1, stable = 0
       while (stable < 2) {
         await frame()
-        const n = document.querySelectorAll("main article").length
-        if (n > 0 && n === last) stable++; else stable = 0
+        const articles = document.querySelectorAll("main article")
+        const n = articles.length
+        const shown = n > 0 && articles[n - 1].checkVisibility({ opacityProperty: true })
+        if (shown && n === last) stable++; else stable = 0
         last = n
         if (performance.now() - t0 > 20000) throw new Error("timeout opening " + id + ": " + JSON.stringify({ articles: n, shown: document.querySelector("main")?.innerText.slice(0, 200) }))
       }

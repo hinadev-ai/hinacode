@@ -21,6 +21,7 @@ export const mockScenarios = [
   "stream",
   "activity",
   "approvals",
+  "long-turn",
 ] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
@@ -135,6 +136,18 @@ const activityTurn = (): Array<AgentEvent> => [
   ),
 ]
 
+const longTurn = (): Array<AgentEvent> =>
+  Array.from({ length: 400 }, (_, index): Array<AgentEvent> => [
+    { type: "reasoning_delta", text: `Step ${index}. ${markdownFixture.slice(0, 400)}` },
+    ...toolCall(
+      `long-bash-${index}`,
+      "Bash",
+      { command: `pnpm vitest run step-${index}.test.ts`, description: `Run step ${index}` },
+      markdownFixture.repeat(3).slice(0, 4000),
+    ),
+    ...(index % 16 === 0 ? [{ type: "text_delta", text: `Step ${index} passes.\n\n` } satisfies AgentEvent] : []),
+  ]).flat()
+
 const activityShells = (): Array<BackgroundTask> => [
   { id: "shell-1", kind: "shell", label: "Start the dev server", startedAt: new Date().toISOString() },
   { id: "shell-2", kind: "shell", label: "Watch the unit tests", startedAt: new Date().toISOString() },
@@ -206,6 +219,16 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
                 Stream.fromIterable(activityTurn()),
                 Stream.fromEffect(Deferred.await(interrupted).pipe(Effect.as(ended))),
               )
+            }
+            if (scenario === "long-turn") {
+              const interrupted = Deferred.makeUnsafe<void>()
+              heldTurns.set(input.threadId, interrupted)
+              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
+              const streaming = Stream.tick("100 millis").pipe(
+                Stream.map((): AgentEvent => ({ type: "text_delta", text: "streaming " })),
+                Stream.interruptWhen(Deferred.await(interrupted)),
+              )
+              return Stream.fromIterable(longTurn()).pipe(Stream.concat(streaming), Stream.concat(Stream.make(ended)))
             }
             if (scenario === "approvals") {
               const approval = (title: string, command: string) => {
