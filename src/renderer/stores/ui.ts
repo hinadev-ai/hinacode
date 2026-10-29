@@ -27,7 +27,7 @@ export type VmPlacement = "panel" | "floating"
 /** Composer pickers a shortcut can open. */
 export type ComposerPicker = "model" | "effort"
 
-const pullRequestSections = ["links", "checks", "description"] as const
+const pullRequestSections = ["links", "checks", "description", "comments"] as const
 export type PullRequestSection = (typeof pullRequestSections)[number]
 
 let findRevealRequests = 0

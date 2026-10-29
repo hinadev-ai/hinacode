@@ -19,6 +19,7 @@ import type {
   OpenPullRequest,
   PullRequestMatch,
 } from "../../shared/domain.ts"
+import { PullRequestComment } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
@@ -138,6 +139,7 @@ const PullRequestDetailFields = Schema.Struct({
   body: Schema.String,
   headRefOid: Schema.String,
   changedFiles: Schema.Number,
+  comments: Schema.Array(PullRequestComment),
 })
 type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 
@@ -152,8 +154,15 @@ const PULL_REQUEST_QUERY = `query PullRequest($owner: String!, $name: String!, $
         ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
         ... on StatusContext { __typename context state targetUrl }
       } } } } } }
+      comments(last: 50) { nodes { ...Comment url } }
+      reviews(last: 50) { nodes { ...Comment url } }
+      reviewThreads(last: 50) { nodes { isResolved comments(first: 20) { nodes { ...Comment url path line } } } }
     }
   }
+}
+
+fragment Comment on Comment {
+  id body createdAt viewerDidAuthor author { __typename login }
 }`
 
 const GraphQLCheck = Schema.Union([
@@ -177,11 +186,39 @@ const GraphQLCheck = Schema.Union([
   }),
 ])
 
+// Null for a deleted account, which GitHub shows as ghost.
+const GraphQLAuthor = Schema.NullOr(Schema.Struct({ login: Schema.String }))
+
+const GraphQLComment = Schema.Struct({
+  id: Schema.String,
+  body: Schema.String,
+  createdAt: Schema.String,
+  url: Schema.String,
+  viewerDidAuthor: Schema.Boolean,
+  author: Schema.NullOr(Schema.Struct({ __typename: Schema.String, login: Schema.String })),
+})
+
+const GraphQLReviewComment = Schema.Struct({
+  ...GraphQLComment.fields,
+  path: Schema.String,
+  line: Schema.NullOr(Schema.Number),
+})
+
 const GraphQLPullRequest = Schema.Struct({
-  ...PullRequestDetailFields.mapFields(Struct.omit(["reviewDecision", "author", "statusCheckRollup"])).fields,
+  ...PullRequestDetailFields.mapFields(Struct.omit(["reviewDecision", "author", "statusCheckRollup", "comments"]))
+    .fields,
   reviewDecision: Schema.NullOr(Schema.String),
-  // Null for a deleted account, which GitHub shows as ghost.
-  author: Schema.NullOr(Schema.Struct({ login: Schema.String })),
+  author: GraphQLAuthor,
+  comments: Schema.Struct({ nodes: Schema.Array(GraphQLComment) }),
+  reviews: Schema.Struct({ nodes: Schema.Array(GraphQLComment) }),
+  reviewThreads: Schema.Struct({
+    nodes: Schema.Array(
+      Schema.Struct({
+        isResolved: Schema.Boolean,
+        comments: Schema.Struct({ nodes: Schema.Array(GraphQLReviewComment) }),
+      }),
+    ),
+  }),
   commits: Schema.Struct({
     nodes: Schema.Array(
       Schema.Struct({
@@ -215,17 +252,51 @@ const toRollupEntry = (check: typeof GraphQLCheck.Type): RollupEntry => {
   }
 }
 
+const toComment = (
+  { id, body, createdAt, url, author, viewerDidAuthor }: typeof GraphQLComment.Type,
+  location: PullRequestComment["location"] = null,
+): PullRequestComment => ({
+  id,
+  author: author?.login ?? "ghost",
+  authorKind: viewerDidAuthor ? "you" : author?.__typename === "Bot" ? "bot" : "human",
+  body,
+  createdAt,
+  url,
+  location,
+})
+
+/** Conversation comments, review summaries and unresolved inline comments, oldest first. */
+const toComments = ({
+  comments,
+  reviews,
+  reviewThreads,
+}: Pick<typeof GraphQLPullRequest.Type, "comments" | "reviews" | "reviewThreads">) =>
+  [
+    ...comments.nodes.map((comment) => toComment(comment)),
+    // An approval without words has no comment to show.
+    ...reviews.nodes.filter((review) => review.body.trim() !== "").map((review) => toComment(review)),
+    ...reviewThreads.nodes
+      .filter((thread) => !thread.isResolved)
+      .flatMap((thread) =>
+        thread.comments.nodes.map((comment) => toComment(comment, { path: comment.path, line: comment.line })),
+      ),
+  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
+
 /** The GraphQL answer in the shape `gh pr view --json` gives, so both feed the same mapping. */
 const fromGraphQL = ({
   commits,
   reviewDecision,
   author,
+  comments,
+  reviews,
+  reviewThreads,
   ...fields
 }: typeof GraphQLPullRequest.Type): PullRequestDetailFields => ({
   ...fields,
   reviewDecision: reviewDecision ?? "",
   author: author ?? { login: "ghost" },
   statusCheckRollup: (commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []).map(toRollupEntry),
+  comments: toComments({ comments, reviews, reviewThreads }),
 })
 
 const FAILED = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"])
@@ -300,6 +371,7 @@ export const toPullRequestDetail = (json: PullRequestDetailFields): PullRequestD
   headRef: json.headRefName,
   head: json.headRefOid,
   changedFiles: json.changedFiles,
+  comments: json.comments,
   checkRuns: json.statusCheckRollup
     .map(toCheckRun)
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
@@ -462,6 +534,7 @@ export class GitHub extends Context.Service<
     /** Never deletes the branch: it is usually checked out in a local worktree. */
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
+    readonly comment: (url: string, body: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     /** The newest pull request whose head is `branch` in the repository at `cwd`, or null when there is none. */
     readonly branchPullRequest: (
       cwd: string,
@@ -746,6 +819,7 @@ const make = Effect.gen(function* () {
       ),
     merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`]),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
+    comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
     branchPullRequest,
     pullRequestHead: (cwd, selector) =>
       gh(cwd, ["pr", "view", selector, "--json", "url,number,headRefName,baseRefName,isCrossRepository"]).pipe(
