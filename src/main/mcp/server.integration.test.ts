@@ -578,7 +578,13 @@ const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = fals
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
     yield* settings.set({
-      experimental: { ...defaultSettings.experimental, tinyVm: on, tinyVmTemplate, tinyVmProfile },
+      experimental: {
+        ...defaultSettings.experimental,
+        tinyVm: on,
+        tinyVmProvider: "sbx",
+        tinyVmTemplate,
+        tinyVmProfile,
+      },
     })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })

@@ -614,7 +614,7 @@ export const defaultSettings: Settings = {
   archive: { whenMerged: false, removeWorktree: false },
   experimental: {
     tinyVm: false,
-    tinyVmProvider: "sbx",
+    tinyVmProvider: "boat",
     tinyVmBoatSize: "default",
     tinyVmTemplate: "default",
     tinyVmProfile: false,

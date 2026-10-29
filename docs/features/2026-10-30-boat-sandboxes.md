@@ -17,7 +17,7 @@ Tried on 2026-10-30 in a browser and against the live API. The dashboard asks fo
 
 ## User flow
 
-1. Open Settings > Experimental. Turn on Tiny VM and pick the Boat provider, or turn on Devices. Either one shows the Boat API key field.
+1. Open Settings > Experimental. Turn on Tiny VM, or turn on Devices. Either one shows the Boat API key field. Boat is the default VM provider on a fresh install. An install that already stored experimental settings before boat existed keeps sbx: the first run stamps `tinyVmProvider: "sbx"` into its `settings.json`, so nobody's working host moves under them. Switching is one select either way.
 2. Paste a `boat_` key. The status line reports the account state from `GET /limits`: connected with the sandbox counts, or the exact refusal (no key, key rejected, billing required).
 3. In a thread, Start VM creates a boat sandbox for the thread, or resumes the one it stopped earlier. The view shows the boat desktop stream. Agent `vm_*` tools act on the same machine. Take control and hand back work as they do on sbx.
 4. Stop VM snapshots the sandbox and stops billing. The disk survives. The next start on that thread resumes it, logins included. Quitting HinaCode stops every boat VM the same way.
@@ -28,11 +28,11 @@ Tried on 2026-10-30 in a browser and against the live API. The dashboard asks fo
 
 ### Data shapes
 
-Settings gain two fields. There is no migration, because the settings store merges over defaults.
+Settings gain two fields. The settings store merges over defaults, so the size needs no migration. The provider gets one stamp in `services/Settings.ts`: a stored `experimental` object without `tinyVmProvider` predates boat, so the first run writes `"sbx"` into it before the store reads the file. Without the stamp, the merge would hand every existing sbx user the new `"boat"` default. A broken or missing file skips the stamp and falls back to defaults, as the store already does.
 
 | Field                         | Shape                                         | Default     |
 | ----------------------------- | --------------------------------------------- | ----------- |
-| `experimental.tinyVmProvider` | `"sbx" \| "boat"`                             | `"sbx"`     |
+| `experimental.tinyVmProvider` | `"sbx" \| "boat"`                             | `"boat"`    |
 | `experimental.tinyVmBoatSize` | `"small" \| "default" \| "large" \| "xlarge"` | `"default"` |
 
 The API key is a secret named `boat.apiKey` in `Secrets`, never a setting. The `BOAT_API_KEY` environment variable wins over the stored secret, mirroring `SBX_URL`/`SBX_TOKEN`. `BOAT_API_BASE` overrides the API base URL for tests and local fakes.
@@ -105,7 +105,7 @@ Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7
 - Deleting a thread's boat VM sandbox from the UI, and forking sandboxes.
 - `boat prompt` (agents inside the sandbox), hosted port URLs in the ports panel, and boat environments.
 - Passkey relay, Chromium profile tars, and CDP into the guest on boat.
-- More than one cloud Android device, and iOS in the cloud (boat guests are Linux).
+- More than one cloud Android device, and iOS in the cloud. Boat has no macOS machines. Its docs and homepage (checked 2026-10-30) list one guest kind, an x86_64 Ubuntu VM, in four sizes, and the `machineTypes` in `GET /limits` is a size list, not an OS list. The iOS simulator needs macOS and Xcode, so it cannot run in a boat sandbox. Cloud iOS needs a Mac backend behind the same device seam: the developer's own Mac running HinaCode, or a rented Mac (MacStadium, EC2 Mac, Scaleway) driven over SSH with `simctl`. That backend is a follow-up. Running macOS in QEMU inside a boat Linux sandbox was rejected: it breaks Apple's EULA on non-Apple hardware, and the simulator inside it is too slow and flaky to debug in.
 - Touch fidelity beyond `input motionevent`, and any frame-rate promise.
 - The Mod+Escape hand-back chord while the boat desktop webview has focus. The stream is a separate web contents, so the chord goes to the guest. The Hand back button is the path.
 - File drops onto the boat screen while the developer has control, for the same web-contents reason. Drops land while the agent has control and the shield is up.
