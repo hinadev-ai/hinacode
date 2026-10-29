@@ -642,7 +642,7 @@ layer(testLayer)("tiny vm tools", (it) => {
         },
       )
       expect(first.isError).toBe(false)
-      expect(first.text).toContain("1280×800")
+      expect(first.text).toContain("Screen.")
       expect(first.images).toStrictEqual([FAKE_PNG.toString("base64")])
       expect(second.images).toStrictEqual([FAKE_PNG.toString("base64")])
       expect(fake.created() - before).toBe(1)

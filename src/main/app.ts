@@ -18,6 +18,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
+import * as Boat from "./services/boat/Boat.ts"
 import * as AutoArchive from "./services/AutoArchive.ts"
 import * as Browser from "./services/Browser.ts"
 import * as Automations from "./services/automations/Automations.ts"
@@ -108,7 +109,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const relay = Relay.layer({ serviceUrl: relayServiceUrl, cloudflaredDir: join(userData, "cloudflared") }).pipe(
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
-  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"))
+  const boat = Boat.layer(process.env).pipe(Layer.provide(Secrets.layer))
+  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm")).pipe(
+    Layer.provide(boat),
+  )
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
@@ -120,7 +124,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
       android: makeAndroidDriver(),
     },
     simslimAvailable: () => simslimAvailable(),
-  })
+  }).pipe(Layer.provide(boat))
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,

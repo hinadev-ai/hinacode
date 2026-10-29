@@ -20,7 +20,7 @@ const tail = (label: string, bytes: Uint8Array) => {
 const execReport = (result: ExecResult, timeoutSeconds: number, background: boolean) => {
   if (background) {
     return result.exitCode === 0 && result.pid !== undefined
-      ? `Started in the background as pid ${result.pid}. Output goes to ${result.log ?? "the sbx log"}.`
+      ? `Started in the background as pid ${result.pid}. Output goes to ${result.log ?? "its log file in the VM"}.`
       : `Could not start it in the background (exit code ${result.exitCode}). ${result.error ?? ""}`.trim()
   }
   const status =
@@ -54,7 +54,7 @@ const HANDED_BACK =
 
 export const VmTools = Toolkit.make(
   McpTool.make("vm_screenshot", {
-    description: `Take a screenshot of the tiny VM's 1280×800 desktop. ${STARTS}`,
+    description: `Take a screenshot of the tiny VM's desktop. ${STARTS}`,
     parameters: Schema.Struct({
       save: Schema.optionalKey(
         Schema.Boolean.annotate({
@@ -173,7 +173,7 @@ export const vmToolsLayer = VmTools.toLayer(
           dataUrl: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
           name: "vm-screenshot.png",
         })
-        return shown(data, `Screen 1280×800, saved to ${path}. Embed it with: ![VM screenshot](<${path}>)`)
+        return shown(data, `Screen, saved to ${path}. Embed it with: ![VM screenshot](<${path}>)`)
       })
 
     const actAndLook = (action: VmAction, done: string) =>
@@ -186,7 +186,7 @@ export const vmToolsLayer = VmTools.toLayer(
 
     return VmTools.of({
       vm_screenshot: ({ save = false }) =>
-        McpTool.CallingThread.use((threadId) => (save ? saveScreen(threadId) : screen(threadId, "Screen 1280×800."))),
+        McpTool.CallingThread.use((threadId) => (save ? saveScreen(threadId) : screen(threadId, "Screen."))),
       vm_click: ({ x, y, button = "left", clicks = 1 }) =>
         actAndLook(
           { type: "click", x, y, button, clicks },
