@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schedule, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Option, Schedule, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import type { RpcRequest } from "../../../shared/contract.ts"
 import {
@@ -18,8 +18,10 @@ import {
   type ThreadDevice,
   type ThreadDevices,
 } from "../../../shared/device.ts"
+import { Boat } from "../boat/Boat.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
+import { boatDeviceRunner, makeBoatAndroidDriver, withBoatAndroid } from "./boatAndroid.ts"
 import type { DeviceLink, DevicePlatformDriver, Frame } from "./platform.ts"
 
 export class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
@@ -101,6 +103,14 @@ const make = (options: DevicesOptions) =>
     const sql = yield* SqlClient.SqlClient
     const events = yield* Events
     const settings = yield* Settings
+    const boat = yield* Effect.serviceOption(Boat)
+    const drivers: Record<DevicePlatform, DevicePlatformDriver> = Option.match(boat, {
+      onNone: () => options.drivers,
+      onSome: (service) => ({
+        ...options.drivers,
+        android: withBoatAndroid(options.drivers.android, makeBoatAndroidDriver(boatDeviceRunner(service))),
+      }),
+    })
     const scope = yield* Effect.scope
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
 
@@ -141,7 +151,7 @@ const make = (options: DevicesOptions) =>
     const ownedRows = () =>
       run(sql<{ threadId: string; deviceId: string }>`SELECT thread_id, device_id FROM thread_device WHERE owned = 1`)
 
-    const driverOf = (deviceId: DeviceId) => options.drivers[devicePlatformOf(deviceId)]
+    const driverOf = (deviceId: DeviceId) => drivers[devicePlatformOf(deviceId)]
 
     const listOf = (threadId: string): ThreadDevices => [...(states.get(threadId)?.values() ?? [])]
     const current = (threadId: string, slot: Slot) => states.get(threadId)?.get(slot) ?? null
@@ -504,16 +514,16 @@ const make = (options: DevicesOptions) =>
     const list = () =>
       attempt(async (): Promise<DeviceHost> => {
         const [ios, android, simslim, rows] = await Promise.all([
-          options.drivers.ios.support(),
-          options.drivers.android.support(),
+          drivers.ios.support(),
+          drivers.android.support(),
           options.simslimAvailable(),
           ownedRows(),
         ])
         const owners = new Map(rows.map((row) => [row.deviceId, row.threadId]))
         const [iosDevices, androidDevices, models] = await Promise.all([
-          ios.kind === "ready" ? options.drivers.ios.list() : [],
-          android.kind === "ready" ? options.drivers.android.list() : [],
-          ios.kind === "ready" ? options.drivers.ios.models() : [],
+          ios.kind === "ready" ? drivers.ios.list() : [],
+          android.kind === "ready" ? drivers.android.list() : [],
+          ios.kind === "ready" ? drivers.ios.models() : [],
         ])
         return {
           ios,
