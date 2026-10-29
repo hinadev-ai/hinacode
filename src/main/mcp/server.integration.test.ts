@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events"
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
-import { readFile } from "node:fs/promises"
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { readFile, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, layer } from "@effect/vitest"
@@ -30,7 +30,7 @@ import * as Messages from "../services/Messages.ts"
 import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { layer as linearLayer } from "../services/Linear.ts"
-import { noKeyring, Secrets, layer as secretsLayer } from "../services/Secrets.ts"
+import { noKeyring, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
@@ -185,6 +185,12 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
 
+const secretPath = (threadId: string, name: string) =>
+  Effect.gen(function* () {
+    const thread = yield* (yield* Threads).get(threadId)
+    return join(yield* (yield* Scratch.Scratch).ensure(thread), "secrets", name)
+  })
+
 const pendingSecretRequest = (threadId: string) =>
   Effect.gen(function* () {
     const runner = yield* AgentRunner
@@ -283,10 +289,9 @@ layer(testLayer)("mcp server credentials", (it) => {
 layer(testLayer)("request_secret", (it) => {
   const VALUE = "sk-live-never-in-the-transcript"
 
-  it.effect("stores what the user enters and returns only the name", () =>
+  it.effect("writes what the user enters to a private file in the scratch directory and returns its path", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
-      const secrets = yield* Secrets
       const mcp = yield* McpCredentials
       const { a } = yield* Seeded
       pushes.length = 0
@@ -300,10 +305,12 @@ layer(testLayer)("request_secret", (it) => {
 
       yield* runner.respondSecret(request.id, VALUE)
       const result = yield* Fiber.join(call)
+      const path = yield* secretPath(a, "demo.token")
       expect(result.isError).toBe(false)
-      expect(result.text).toContain('Stored secret "demo.token"')
+      expect(result.text).toContain(path)
       expect(result.text).not.toContain(VALUE)
-      expect(yield* secrets.get("demo.token")).toStrictEqual(Option.some(VALUE))
+      expect(yield* Effect.promise(() => readFile(path, "utf8"))).toBe(VALUE)
+      expect((yield* Effect.promise(() => stat(path))).mode & 0o777).toBe(0o600)
 
       expect(yield* runner.transcript(a).pipe(Effect.map((t) => t.secretRequests))).toHaveLength(0)
       const transcript = yield* runner.transcript(a)
@@ -315,10 +322,9 @@ layer(testLayer)("request_secret", (it) => {
     }),
   )
 
-  it.effect("a declined request is an error result and stores nothing", () =>
+  it.effect("a declined request is an error result and writes nothing", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
-      const secrets = yield* Secrets
       const mcp = yield* McpCredentials
       const { a } = yield* Seeded
       yield* runner.send(a, "hi", [])
@@ -330,7 +336,7 @@ layer(testLayer)("request_secret", (it) => {
       const result = yield* Fiber.join(call)
       expect(result.isError).toBe(true)
       expect(result.text).toContain("declined")
-      expect(yield* secrets.has("declined.token")).toBe(false)
+      expect(existsSync(yield* secretPath(a, "declined.token"))).toBe(false)
       yield* runner.interrupt(a)
     }),
   )
