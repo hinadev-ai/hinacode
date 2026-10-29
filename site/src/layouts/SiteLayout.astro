@@ -1,4 +1,9 @@
 ---
+import "@fontsource-variable/archivo/wdth.css"
+import "@fontsource-variable/archivo/wdth-italic.css"
+import "@fontsource-variable/martian-mono/wdth.css"
+import "@fontsource-variable/noto-sans-jp"
+import "@fontsource-variable/noto-sans-tc"
 import "../styles/global.css"
 import Nav from "../components/Nav.astro"
 import Footer from "../components/Footer.astro"
@@ -11,12 +16,6 @@ interface Props {
 }
 const { title, description, page, locale } = Astro.props
 const t = messages(locale)
-const cjkFont =
-  locale === "zh-TW"
-    ? "&family=Noto+Sans+TC:wght@400..700"
-    : locale === "ja"
-      ? "&family=Noto+Sans+JP:wght@400..700"
-      : ""
 ---
 
 <!doctype html>
@@ -26,20 +25,15 @@ const cjkFont =
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#09090b" />
-    <link rel="icon" href="/favicon.svg" />
+    <meta name="theme-color" content="#ecedea" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     {Astro.site && <link rel="canonical" href={new URL(localizedPath(locale, page), Astro.site)} />}
     {Astro.site &&
       locales.map((language) => (
         <link rel="alternate" hreflang={language} href={new URL(localizedPath(language, page), Astro.site)} />
       ))}
     {Astro.site && <link rel="alternate" hreflang="x-default" href={new URL(localizedPath("en", page), Astro.site)} />}
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href={`https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&family=Instrument+Serif:ital@1${cjkFont}&display=swap`}
-    />
     <script is:inline>
       document.documentElement.classList.replace("no-js", "js")
     </script>
@@ -48,16 +42,11 @@ const cjkFont =
     <a class="skip" href="#content">
       {t.site_skip}
     </a>
-    <p class="experimental" role="note">
-      {t.site_experimental}
-    </p>
     <Nav page={page} locale={locale} />
-    <div class="frame" id="top">
-      <main id="content">
-        <slot />
-      </main>
-      <Footer locale={locale} />
-    </div>
+    <main id="content">
+      <slot />
+    </main>
+    <Footer locale={locale} />
     <script src="../scripts/platform.ts"></script>
   </body>
 </html>

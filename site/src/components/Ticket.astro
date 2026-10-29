@@ -1,0 +1,36 @@
+---
+interface Props {
+  number: string
+  agent: string
+  title: string
+  branch: string
+  state: "working" | "needs" | "done" | "failed"
+  stateLabel: string
+  live?: boolean
+}
+const { number, agent, title, branch, state, stateLabel, live = false } = Astro.props
+const hasLines = Astro.slots.has("default")
+---
+
+<li class="ticket" data-state={state} data-live={live ? "" : undefined}>
+  <article class="slip">
+    <header>
+      <span class="number">No. {number}</span>
+      <span>{agent}</span>
+    </header>
+    <h3>{title}</h3>
+    <p class="branch">{branch}</p>
+    {
+      hasLines && (
+        <ul class="lines" data-lines>
+          <slot />
+        </ul>
+      )
+    }
+    <p class="stamp" data-stamp>
+      <span class="stamp-mark" aria-hidden="true"></span>
+      <span data-stamp-label>{stateLabel}</span>
+    </p>
+  </article>
+  <slot name="after" />
+</li>

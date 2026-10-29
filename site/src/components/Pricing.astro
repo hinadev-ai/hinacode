@@ -10,152 +10,99 @@ interface Props {
 }
 const { locale } = Astro.props
 const t = messages(locale)
+
+const items = [
+  [t.site_threads, t.site_receipt_unlimited],
+  [t.site_receipt_worktrees, t.site_receipt_unlimited],
+  [t.site_receipt_agents, "2 · $0.00"],
+  [t.site_receipt_approvals, t.site_receipt_any],
+  [t.site_receipt_pr, t.site_receipt_all],
+  [t.site_receipt_taste, t.site_receipt_included],
+  [t.site_receipt_focus, t.site_receipt_included],
+]
 ---
 
 <SiteLayout title={t.site_pricing_title} description={t.site_pricing_description} page="pricing" locale={locale}>
-  <div class="pricing-hero">
-    <p class="eyebrow rise" style="--i: 0">
-      {t.site_pricing}
-    </p>
-    <h1 class="rise" style="--i: 1">
-      <Text text={t.site_pricing_heading}>
-        <span slot="all" class="taste">
-          {t.site_pricing_all}
-        </span>
-      </Text>
-    </h1>
-    <p class="lede rise" style="--i: 2">
-      {t.site_pricing_lede}
-    </p>
-  </div>
+  <section class="pass pass-pricing" aria-labelledby="headline">
+    <div class="rail-bar" aria-hidden="true"></div>
+    <div class="pass-inner">
+      <div class="hero">
+        <h1 id="headline">
+          <Text text={t.site_pricing_heading}>
+            <span slot="all" class="focus">{t.site_pricing_all}</span>
+          </Text>
+        </h1>
+        <p class="lede">{t.site_pricing_lede}</p>
+        <div class="ctas">
+          <Download locale={locale} />
+        </div>
+        <p class="fineprint">
+          {t.site_plan_note}
+          <br />
+          {t.site_experimental}
+        </p>
+      </div>
 
-  <div class="pricing">
-    <div class="plan rise" style="--i: 3">
-      <div class="plan-head">
-        <span>{t.site_plan_everything}</span>
-        <span class="plan-badge">{t.site_plan_only}</span>
-      </div>
-      <div class="price">
-        <b>$0</b>
-        <span>{t.site_plan_forever}</span>
-      </div>
-      <p class="plan-note">{t.site_plan_note}</p>
-      <Download locale={locale} />
-      <ul class="included" aria-label={t.site_included}>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_unlimited}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_agents}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_feature_worktree_title}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_approvals}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_steer}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_mcp}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_pr}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_ports}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_automations}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_shortcuts}
-        </li>
-      </ul>
+      <figure class="ticket receipt" aria-label={t.site_receipt_label}>
+        <div class="slip">
+          <header>
+            <span class="number">{t.site_receipt_number}</span>
+            <Mark class="mark" />
+          </header>
+          <dl>
+            {
+              items.map(([name, value]) => (
+                <div>
+                  <dt>{name}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))
+            }
+          </dl>
+          <p class="total">
+            <span>{t.site_receipt_total}</span>
+            <span>$0.00</span>
+          </p>
+          <p class="stamp" data-state="done">
+            <span class="stamp-mark" aria-hidden="true"></span>
+            {t.site_receipt_paid}
+          </p>
+          <p class="receipt-thanks">{t.site_receipt_thanks}</p>
+        </div>
+      </figure>
     </div>
+  </section>
 
-    <figure class="receipt" aria-label={t.site_receipt_label}>
-      <header>
-        <Mark />
-        <b>HINACODE</b>
-        {t.site_receipt_number}
-      </header>
-      <dl>
-        <div>
-          <dt>{t.site_threads}</dt>
-          <dd>{t.site_receipt_unlimited}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_worktrees}</dt>
-          <dd>{t.site_receipt_unlimited}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_agents}</dt>
-          <dd>2 · $0.00</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_approvals}</dt>
-          <dd>{t.site_receipt_any}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_pr}</dt>
-          <dd>{t.site_receipt_all}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_taste}</dt>
-          <dd>{t.site_receipt_included}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_focus}</dt>
-          <dd>{t.site_receipt_included}</dd>
-        </div>
-      </dl>
-      <div class="total">
-        <span>{t.site_receipt_total}</span>
-        <span>$0.00</span>
-      </div>
-      <footer>
-        {t.site_receipt_paid}
-        <br />
-        {t.site_receipt_thanks}
-      </footer>
-    </figure>
-  </div>
-
-  <section class="rule">
-    <p class="eyebrow">{t.site_costs_eyebrow}</p>
-    <h2>
-      <Text text={t.site_costs_heading}>
-        <em slot="agents">{t.site_costs_agents}</em>
-      </Text>
-    </h2>
-    <p class="section-lede">
-      <Text text={t.site_costs_description}>
-        <code slot="claude">claude</code>
-        <code slot="codex">codex</code>
-      </Text>
-    </p>
-    <div class="costs">
+  <section class="section costs-section" aria-labelledby="costs-heading">
+    <div class="section-head">
+      <h2 id="costs-heading">
+        <Text text={t.site_costs_heading}>
+          <span slot="agents">{t.site_costs_agents}</span>
+        </Text>
+      </h2>
+      <p class="section-lede">
+        <Text text={t.site_costs_description}>
+          <code slot="claude">claude</code>
+          <code slot="codex">codex</code>
+        </Text>
+      </p>
+    </div>
+    <dl class="menu costs">
       <div>
-        <b>HinaCode</b>
-        <p>{t.site_costs_hinacode}</p>
+        <dt>
+          <span>HinaCode</span>
+          <code>$0.00</code>
+        </dt>
+        <dd>{t.site_costs_hinacode}</dd>
       </div>
       <div>
-        <b>{t.site_agents}</b>
-        <p>{t.site_costs_plans}</p>
+        <dt>
+          <span>{t.site_agents}</span>
+          <code>{t.site_costs_your_plan}</code>
+        </dt>
+        <dd>{t.site_costs_plans}</dd>
       </div>
-    </div>
+    </dl>
   </section>
 
   <Closing locale={locale} />

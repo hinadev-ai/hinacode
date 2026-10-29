@@ -1,5 +1,6 @@
 ---
 import Download from "./Download.astro"
+import Mark from "./Mark.astro"
 import { messages, type Locale } from "../i18n"
 interface Props {
   locale: Locale
@@ -8,17 +9,20 @@ const { locale } = Astro.props
 const t = messages(locale)
 ---
 
-<section class="rule closing">
-  <h2>
-    {t.site_closing_lead}
-    <br />
-    <em>{t.site_closing_emphasis}</em>
-  </h2>
-  <p class="section-lede">{t.site_closing_description}</p>
-  <div class="ctas">
-    <Download locale={locale} />
-    <a class="btn" href="https://github.com/hinadev-ai/hinacode">
-      {t.site_view_github}
-    </a>
+<section class="closing" aria-labelledby="closing-heading">
+  <div class="closing-inner">
+    <h2 id="closing-heading">
+      {t.site_closing_lead}
+      <br />
+      <span>{t.site_closing_emphasis}</span>
+    </h2>
+    <p>{t.site_closing_description}</p>
+    <div class="ctas">
+      <Download locale={locale} />
+      <a class="link" href="https://github.com/hinadev-ai/hinacode">
+        {t.site_view_github}
+      </a>
+    </div>
+    <Mark class="closing-mark" />
   </div>
 </section>

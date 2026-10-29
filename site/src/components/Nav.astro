@@ -17,17 +17,13 @@ const home = page === "pricing" ? localizedPath(locale, "home") : ""
       HinaCode
     </a>
     <nav class="nav-links" aria-label={t.site_sections}>
-      <a href={`${home}#quiet`}>{t.site_nav_quiet}</a>
       <a href={`${home}#features`}>{t.site_nav_features}</a>
-      <a href={`${home}#keyboard`}>{t.site_nav_keyboard}</a>
       <a href={`${home}#faq`}>{t.site_nav_faq}</a>
       <a href={localizedPath(locale, "pricing")} aria-current={page === "pricing" ? "page" : undefined}>
         {t.site_pricing}
       </a>
+      <a href="https://github.com/hinadev-ai/hinacode">GitHub</a>
     </nav>
-    <a class="btn btn-primary btn-sm nav-cta" href="https://github.com/hinadev-ai/hinacode/releases/latest">
-      {t.site_download}
-    </a>
     <details class="language-menu">
       <summary aria-label={`${t.site_language} ${languageNames[locale]}`}>
         {languageNames[locale]}
@@ -55,5 +51,8 @@ const home = page === "pricing" ? localizedPath(locale, "home") : ""
         ))}
       </nav>
     </details>
+    <a class="btn btn-sm" href="https://github.com/hinadev-ai/hinacode/releases/latest">
+      {t.site_download}
+    </a>
   </div>
 </header>

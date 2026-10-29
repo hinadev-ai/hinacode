@@ -1,4 +1,5 @@
 ---
+import Mark from "./Mark.astro"
 import { messages, localizedPath, type Locale } from "../i18n"
 interface Props {
   locale: Locale
@@ -7,8 +8,11 @@ const { locale } = Astro.props
 const t = messages(locale)
 ---
 
-<footer class="rule">
-  <span>{t.site_footer_credit}</span>
+<footer class="footer">
+  <span class="footer-credit">
+    <Mark class="mark" />
+    {t.site_footer_credit}
+  </span>
   <nav aria-label={t.site_footer_nav}>
     <a href="https://github.com/hinadev-ai/hinacode">GitHub</a>
     <a href={localizedPath(locale, "pricing")}>{t.site_pricing}</a>
