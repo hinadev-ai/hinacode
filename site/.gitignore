@@ -1,2 +1,4 @@
 .astro/
 .wrangler/
+.impeccable/review/
+.impeccable/hook.cache.json
