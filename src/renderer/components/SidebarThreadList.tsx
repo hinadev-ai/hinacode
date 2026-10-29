@@ -322,14 +322,15 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-show-project={meta.project !== null}
       // Room the title and meta leave for the action buttons: archive or unarchive, delete and the menu, plus a
       // focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
-        <div className="flex min-w-0 items-center gap-2 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
-          <ProjectIcon projectId={thread.projectId} className="size-3.5" />
+        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground/75">
+          <ProjectIcon projectId={thread.projectId} className="size-3 text-current" />
           <span className="truncate" title={meta.project}>
             {meta.project}
           </span>
+          <ActivityTime {...meta} />
         </div>
       )}
       {mode === "renaming" ? (
@@ -348,7 +349,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           data-reorderable={reorderable}
           className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
-          <ProviderIcon provider={thread.provider} />
           <span dir="auto" className="min-w-0 flex-1 truncate text-left text-[0.9375rem]" title={thread.title}>
             {thread.title}
           </span>
@@ -531,7 +531,6 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5 group-data-[show-project=true]/thread:pt-0.5">
-        <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
             ref={focusOnMount}
@@ -716,6 +715,7 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     removed: worktree?.status === "removed",
     links,
     threadId: thread.id,
+    provider: thread.provider,
     updatedAt: lastActivity(thread),
     snoozedUntil: useSnoozedUntil(thread),
   }
@@ -731,20 +731,22 @@ const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({
+  project,
   branch,
   removed,
   links,
   threadId,
+  provider,
   updatedAt,
   snoozedUntil,
   cloud,
   environment,
 }: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
   const watching = links.some((link) => link.watch !== null)
-  // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
+  // The minimum height is one line plus padding. Without a branch everything on the line hides on hover, and a
   // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground/75 group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {branch !== null && (
         <span
@@ -763,9 +765,17 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      {snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />}
+      <span className="ml-auto flex shrink-0 items-center gap-2 group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
+        {project === null && <ActivityTime updatedAt={updatedAt} snoozedUntil={snoozedUntil} />}
+        <ProviderIcon provider={provider} className="size-3" />
+      </span>
     </div>
   )
+}
+
+/** On the project line when the row has one, so the branch line keeps its width for the branch and pull requests. */
+function ActivityTime({ updatedAt, snoozedUntil }: { updatedAt: string; snoozedUntil: string | null }) {
+  return snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />
 }
 
 /** Hidden while the row's actions are showing, so it does not sit under the reorder and menu buttons. */

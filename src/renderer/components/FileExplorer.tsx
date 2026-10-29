@@ -155,7 +155,12 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     requestAnimationFrame(() => treeRef.current?.focus())
   }, [focusRequested, loaded])
 
+  // Only follow a selection that changes after mount. Scrolling a freshly mounted list moves LegendList's rendered
+  // rows before the scroller has its height, the scroll clamps to 0, and the top of the tree stays blank.
+  const scrolledIndex = useRef(selectedIndex)
   useEffect(() => {
+    if (selectedIndex === scrolledIndex.current) return
+    scrolledIndex.current = selectedIndex
     if (selectedIndex >= 0) void listRef.current?.scrollIndexIntoView({ index: selectedIndex, animated: false })
   }, [selectedIndex])
 
