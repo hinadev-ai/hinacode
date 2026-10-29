@@ -1872,6 +1872,7 @@
   "settings_devices": "デバイス",
   "settings_devices_hint": "スレッドのマシン上にある iOS シミュレータと Android エミュレータをサイドパネルにストリーミングします。エージェントは device ツールで操作し、画面に触れるとユーザーが操作を引き継ぎます。",
   "devices_new_simulator": "このスレッド用のシミュレータを作成",
+  "devices_model_os": "iOS {version}",
   "devices_refresh": "デバイスを再読み込み",
   "devices_loading": "デバイスを読み込み中",
   "devices_list_failed": "デバイスを一覧表示できませんでした: {message}",

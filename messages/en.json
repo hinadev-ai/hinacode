@@ -1917,6 +1917,7 @@
   "settings_devices": "Devices",
   "settings_devices_hint": "Streams the thread machine's iOS simulators and Android emulators into the side panel. Agents drive them with the device tools, and you take over by using the screen.",
   "devices_new_simulator": "New simulator for this thread",
+  "devices_model_os": "iOS {version}",
   "devices_refresh": "Refresh devices",
   "devices_loading": "Loading devices",
   "devices_list_failed": "Could not list devices: {message}",

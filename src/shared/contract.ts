@@ -87,6 +87,7 @@ import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
   DeviceCommand,
+  SimulatorModelId,
   DeviceControl,
   DeviceFrame,
   DeviceHost,
@@ -119,8 +120,14 @@ export const RpcMethods = {
   "device.get": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevices),
   /** Streams an existing device in the thread next to its others, booting it when it is shut down. */
   "device.attach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), ThreadDevice),
-  /** Creates a simulator for the thread, slims it when simslim is installed, and boots it. Archiving deletes it. */
-  "device.create": rpc(Schema.Struct({ threadId: Schema.String }), ThreadDevice),
+  /**
+   * Creates a simulator for the thread, slims it when simslim is installed, and boots it. Archiving deletes it.
+   * Without `model` it picks the newest plain iPhone.
+   */
+  "device.create": rpc(
+    Schema.Struct({ threadId: Schema.String, model: Schema.optional(SimulatorModelId) }),
+    ThreadDevice,
+  ),
   /**
    * Stops streaming a device. Deletes it only when HinaCode created it for this thread.
    * A null id dismisses a simulator that failed before it was created.

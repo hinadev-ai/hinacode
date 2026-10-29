@@ -655,5 +655,16 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     await rm(join(avdHome(), `${name}.ini`), { force: true })
   }
 
-  return { support, list, boot, create: refuseCreate, remove, connect, screenshot, describe, launch }
+  return {
+    support,
+    list,
+    models: async () => [],
+    boot,
+    create: refuseCreate,
+    remove,
+    connect,
+    screenshot,
+    describe,
+    launch,
+  }
 }

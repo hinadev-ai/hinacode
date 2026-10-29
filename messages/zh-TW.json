@@ -1890,6 +1890,7 @@
   "settings_devices": "裝置",
   "settings_devices_hint": "把執行緒所在機器上的 iOS 模擬器和 Android 模擬器串流到側邊面板。代理用 device 工具操作它們，你直接操作畫面就能接手。",
   "devices_new_simulator": "為此執行緒建立模擬器",
+  "devices_model_os": "iOS {version}",
   "devices_refresh": "重新整理裝置",
   "devices_loading": "正在載入裝置",
   "devices_list_failed": "無法列出裝置：{message}",

@@ -32,11 +32,29 @@ export const PlatformSupport = Schema.Union([
 ])
 export type PlatformSupport = typeof PlatformSupport.Type
 
+const SimctlIdentifier = Schema.String.check(Schema.isMaxLength(300))
+
+/** Which simulator to create: a device type and the runtime to run it on, as `simctl create` takes them. */
+export const SimulatorModelId = Schema.Struct({ deviceType: SimctlIdentifier, runtime: SimctlIdentifier })
+export type SimulatorModelId = typeof SimulatorModelId.Type
+
+/** A model HinaCode can create, on the newest installed runtime that runs it. */
+export const SimulatorModel = Schema.Struct({
+  ...SimulatorModelId.fields,
+  name: Schema.String,
+  /** `iPhone` or `iPad`, as the runtime reports it. */
+  family: Schema.String,
+  osVersion: Schema.String,
+})
+export type SimulatorModel = typeof SimulatorModel.Type
+
 export const DeviceHost = Schema.Struct({
   ios: PlatformSupport,
   android: PlatformSupport,
   simslim: Schema.Boolean,
   devices: Schema.Array(Device),
+  /** Empty unless iOS is ready. */
+  models: Schema.Array(SimulatorModel),
 })
 export type DeviceHost = typeof DeviceHost.Type
 

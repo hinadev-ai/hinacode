@@ -7,6 +7,8 @@ import type {
   DeviceScreen,
   PlatformSupport,
   PrepareStep,
+  SimulatorModel,
+  SimulatorModelId,
 } from "../../../shared/device.ts"
 
 export class DeviceError extends Error {}
@@ -28,14 +30,18 @@ export interface DevicePlatformDriver {
   readonly support: () => Promise<PlatformSupport>
   /** Every device on this machine. `ownerThreadId` is null; the Devices service fills it in. */
   readonly list: () => Promise<ReadonlyArray<Device>>
+  /** The models `create` can make. Empty for platforms without per-thread devices. */
+  readonly models: () => Promise<ReadonlyArray<SimulatorModel>>
   /** Boots a shut-down device and resolves once it can take input. Resolves at once for a booted one. */
   readonly boot: (id: DeviceId, onStep: (step: PrepareStep) => void) => Promise<void>
   /**
    * Creates, slims when it can, and boots a device for a thread. Platforms without per-thread devices reject.
-   * `onCreated` runs once the device exists, before the slow steps, so the caller can record it for cleanup.
+   * A null `model` picks a default. `onCreated` runs once the device exists, before the slow steps, so the caller
+   * can record it for cleanup.
    */
   readonly create: (
     name: string,
+    model: SimulatorModelId | null,
     onStep: (step: PrepareStep) => void,
     onCreated: (id: DeviceId) => Promise<void>,
   ) => Promise<DeviceId>

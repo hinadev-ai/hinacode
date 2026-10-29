@@ -11,6 +11,7 @@ import type {
   DeviceElement,
   DeviceId,
   DeviceScreen,
+  SimulatorModel,
 } from "../../../shared/device.ts"
 import { findBinary } from "../../agents/binary.ts"
 import { hidUsage, keystrokesFor } from "./hidUsage.ts"
@@ -118,7 +119,13 @@ const SimctlRuntimes = Schema.fromJsonString(
         isAvailable: Schema.Boolean,
         platform: Schema.optional(Schema.String),
         supportedDeviceTypes: Schema.optional(
-          Schema.Array(Schema.Struct({ identifier: Schema.String, name: Schema.String })),
+          Schema.Array(
+            Schema.Struct({
+              identifier: Schema.String,
+              name: Schema.String,
+              productFamily: Schema.optional(Schema.String),
+            }),
+          ),
         ),
       }),
     ),
@@ -173,14 +180,35 @@ const compareVersions = (a: string, b: string) => {
   return 0
 }
 
-/** The newest plain "iPhone NN", which boots lighter than a Pro, else the first iPhone the runtime lists. */
-const pickIphone = (types: ReadonlyArray<{ identifier: string; name: string }>) => {
-  const iphones = types.filter((type) => type.name.startsWith("iPhone"))
+/** The newest plain "iPhone NN", which boots lighter than a Pro, else the first iPhone listed. */
+const pickIphone = (models: ReadonlyArray<SimulatorModel>) => {
+  const iphones = models.filter((model) => model.name.startsWith("iPhone"))
   const numbered = iphones
-    .map((type) => ({ type, number: Number(/^iPhone (\d+)$/.exec(type.name)?.[1]) }))
+    .map((model) => ({ model, number: Number(/^iPhone (\d+)$/.exec(model.name)?.[1]) }))
     .filter(({ number }) => Number.isFinite(number))
     .toSorted((a, b) => b.number - a.number)
-  return numbered[0]?.type ?? iphones[0]
+  return numbered[0]?.model ?? iphones[0]
+}
+
+/** Every device type an installed iOS runtime runs, each on the newest runtime that runs it, newest first. */
+const models = async (): Promise<ReadonlyArray<SimulatorModel>> => {
+  const { runtimes } = decode(SimctlRuntimes, await simctl(["list", "runtimes", "--json"]), "simctl list runtimes")
+  const byDeviceType = new Map<string, SimulatorModel>()
+  for (const runtime of runtimes
+    .filter((candidate) => candidate.isAvailable && candidate.platform === "iOS")
+    .toSorted((a, b) => compareVersions(b.version, a.version))) {
+    for (const type of runtime.supportedDeviceTypes ?? []) {
+      if (byDeviceType.has(type.identifier)) continue
+      byDeviceType.set(type.identifier, {
+        deviceType: type.identifier,
+        runtime: runtime.identifier,
+        name: type.name,
+        family: type.productFamily ?? "",
+        osVersion: runtime.version,
+      })
+    }
+  }
+  return [...byDeviceType.values()]
 }
 
 const truncate = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text)
@@ -482,15 +510,24 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       await simctl(["bootstatus", udidOf(id), "-b"], 600_000)
     },
 
-    create: async (name, onStep, onCreated) => {
+    models,
+
+    create: async (name, wanted, onStep, onCreated) => {
       onStep("creating")
-      const { runtimes } = decode(SimctlRuntimes, await simctl(["list", "runtimes", "--json"]), "simctl list runtimes")
-      const runtime = runtimes
-        .filter((candidate) => candidate.isAvailable && candidate.platform === "iOS")
-        .toSorted((a, b) => compareVersions(b.version, a.version))[0]
-      const deviceType = runtime && pickIphone(runtime.supportedDeviceTypes ?? [])
-      if (!runtime || !deviceType) throw new DeviceError("No iOS simulator runtime is installed. Add one in Xcode.")
-      const udid = (await simctl(["create", name, deviceType.identifier, runtime.identifier])).toString().trim()
+      const available = await models()
+      const model = wanted
+        ? available.find(
+            (candidate) => candidate.deviceType === wanted.deviceType && candidate.runtime === wanted.runtime,
+          )
+        : pickIphone(available)
+      if (!model) {
+        throw new DeviceError(
+          wanted
+            ? "This simulator model is no longer installed. Refresh the device list."
+            : "No iOS simulator runtime is installed. Add one in Xcode.",
+        )
+      }
+      const udid = (await simctl(["create", name, model.deviceType, model.runtime])).toString().trim()
       const id: DeviceId = `ios:${udid}`
       await onCreated(id)
       const simslim = await findSimslim(options.simslimPath)

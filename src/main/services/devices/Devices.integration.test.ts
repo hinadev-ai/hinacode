@@ -50,7 +50,7 @@ const ios: DevicePlatformDriver = {
   ...unavailableDriver({ kind: "ready" }),
   list: () => Promise.resolve([...devices.values()]),
   boot: () => Promise.resolve(),
-  create: async (name, _onStep, onCreated) => {
+  create: async (name, _model, _onStep, onCreated) => {
     devices.set(CREATED_DEVICE, { ...devices.get(USERS_DEVICE)!, id: CREATED_DEVICE, name })
     await onCreated(CREATED_DEVICE)
     return CREATED_DEVICE

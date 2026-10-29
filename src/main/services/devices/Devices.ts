@@ -13,6 +13,7 @@ import {
   type DevicePlatform,
   type PickedDeviceElement,
   type PrepareStep,
+  type SimulatorModelId,
   threadDeviceId,
   type ThreadDevice,
   type ThreadDevices,
@@ -36,7 +37,7 @@ export class Devices extends Context.Service<
     /** The thread's devices, reconnecting the ones it had before a restart. */
     readonly get: (threadId: string) => Effect.Effect<ThreadDevices, DevicesError>
     readonly attach: (threadId: string, deviceId: DeviceId) => Effect.Effect<ThreadDevice, DevicesError>
-    readonly create: (threadId: string) => Effect.Effect<ThreadDevice, DevicesError>
+    readonly create: (threadId: string, model?: SimulatorModelId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
     /** Deletes any device on the machine, the user's own included, unless another thread has it attached. */
     readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
@@ -358,7 +359,7 @@ const make = (options: DevicesOptions) =>
       return name
     }
 
-    const createFor = async (threadId: string) => {
+    const createFor = async (threadId: string, model: SimulatorModelId | null = null) => {
       const running = preparing.get(keyOf(threadId, NEW))
       if (running) return running
       const name = await nameFor(threadId)
@@ -366,7 +367,7 @@ const make = (options: DevicesOptions) =>
         onStep("creating")
         let created: DeviceId | null = null
         try {
-          return await options.drivers.ios.create(name, onStep, async (deviceId) => {
+          return await options.drivers.ios.create(name, model, onStep, async (deviceId) => {
             // Recorded before it slims and boots, so a failure or a quit midway still leaves it to clean up.
             created = deviceId
             await writeRow(threadId, { deviceId, owned: true })
@@ -540,17 +541,20 @@ const make = (options: DevicesOptions) =>
           ownedRows(),
         ])
         const owners = new Map(rows.map((row) => [row.deviceId, row.threadId]))
-        const devices = (
-          await Promise.all([
-            ios.kind === "ready" ? options.drivers.ios.list() : [],
-            android.kind === "ready" ? options.drivers.android.list() : [],
-          ])
-        ).flat()
+        const [iosDevices, androidDevices, models] = await Promise.all([
+          ios.kind === "ready" ? options.drivers.ios.list() : [],
+          android.kind === "ready" ? options.drivers.android.list() : [],
+          ios.kind === "ready" ? options.drivers.ios.models() : [],
+        ])
         return {
           ios,
           android,
           simslim,
-          devices: devices.map((device) => ({ ...device, ownerThreadId: owners.get(device.id) ?? null })),
+          devices: [...iosDevices, ...androidDevices].map((device) => ({
+            ...device,
+            ownerThreadId: owners.get(device.id) ?? null,
+          })),
+          models,
         }
       })
 
@@ -678,10 +682,10 @@ const make = (options: DevicesOptions) =>
             else attaching.set(deviceId, count)
           }
         }),
-      create: (threadId) =>
+      create: (threadId, model) =>
         attempt(async () => {
           if (current(threadId, NEW)?.phase === "failed") removeState(threadId, NEW)
-          return createFor(threadId)
+          return createFor(threadId, model ?? null)
         }),
       detach: (threadId, deviceId) => attempt(() => detachNow(threadId, deviceId)),
       delete: (threadId, deviceId) =>
