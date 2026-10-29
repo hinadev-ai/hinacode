@@ -22,7 +22,7 @@ An agent can read, steer and stop threads on the user's other machines (`2026-10
 - `threads.create` joins the closed list of methods a cloud may `ask` the desktop. The desktop routes it to the machine that owns the project, and learns the new thread's owner from the answer, so the `threads.steer` that follows reaches the same machine.
 - The caller must have a GitHub `origin`. A project without one only starts threads on its own machine, as it only sees its own machine's threads.
 
-A machine on an older version drops the new `threads.create` fields, so the thread gets a random name and that machine's default agent and model. The prompt still arrives.
+A target machine on an older version drops the new `threads.create` fields, so the thread gets a random name and that machine's default agent and model. When the agent asked for a worktree and the thread came back without one, the tool does not start it and asks the user to update that machine, so a task meant for its own branch never runs in the main checkout. An older desktop does not know the method, so a cloud asking it waits out the 15 second ask timeout.
 
 ## Out of scope
 

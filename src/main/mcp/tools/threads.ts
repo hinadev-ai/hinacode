@@ -273,6 +273,11 @@ export const threadToolsLayer = ThreadTools.toLayer(
               })
             }
             const thread = yield* peers.ask("threads.create", { projectId, ...options })
+            if (worktree !== undefined && thread.worktreeId === null) {
+              return yield* Effect.fail({
+                message: `${target.name} runs an older HinaCode that ignores \`worktree\`, so thread ${thread.id} was created there without one and not started. Ask the user to update HinaCode on ${target.name}.`,
+              })
+            }
             yield* peers.ask("threads.steer", { threadId: thread.id, text: prompt }).pipe(
               Effect.mapError((error) => ({
                 message: `Created thread ${thread.id} on ${target.name} but could not start its first turn: ${error.message}`,
