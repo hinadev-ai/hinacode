@@ -310,8 +310,18 @@ export const RpcMethods = {
   "relayAccount.approveLink": rpc(Schema.Struct({ userCode: Schema.String }), Schema.Array(RelayHost)),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
-  /** Who the account is signed in as. `accountId` null is the CLI's own login. */
-  "agents.account": rpc(Schema.Struct({ provider: ProviderId, accountId: Schema.NullOr(Schema.String) }), AgentAccount),
+  /**
+   * Who the account is signed in as. `accountId` null is the CLI's own login. Answers from the cache unless
+   * `refresh` asks the CLI again.
+   */
+  "agents.account": rpc(
+    Schema.Struct({
+      provider: ProviderId,
+      accountId: Schema.NullOr(Schema.String),
+      refresh: Schema.optional(Schema.Boolean),
+    }),
+    AgentAccount,
+  ),
   /** Agent CLIs on this desktop's PATH with a newer release, checked now. */
   "agents.updates": rpc(Schema.Void, Schema.Array(AgentUpdate)),
   /** Runs the agent CLI's own `update` and returns the version it installed. */

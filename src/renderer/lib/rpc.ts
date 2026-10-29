@@ -170,11 +170,27 @@ export const modelsAtom = familyOf((environment: EnvironmentId, provider: Provid
 )
 
 /**
- * Who an account is signed in as. `accountId` null is the CLI's own login. Not kept alive, so reopening the
- * Models tab picks up a sign-in made in a terminal meanwhile.
+ * Who an account is signed in as, as main last cached it. `accountId` null is the CLI's own login. Not kept
+ * alive, so reopening the Models tab picks up a sign-in made in a terminal meanwhile.
  */
 export const accountAtom = familyOf((environment: EnvironmentId, provider: ProviderId, accountId: string | null) =>
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
+)
+
+/** Asks the account's CLI again instead of the cache. */
+export const refreshAccountAtom = Atom.fn(
+  ({
+    environment,
+    provider,
+    accountId,
+  }: {
+    environment: EnvironmentId
+    provider: ProviderId
+    accountId: string | null
+  }) =>
+    call("agents.account", { provider, accountId, refresh: true }, { environment }).pipe(
+      Effect.tap(() => Atom.refresh(accountAtom(environment, provider, accountId))),
+    ),
 )
 
 /** Accounts added in hinacode, of every agent. */

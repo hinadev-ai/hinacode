@@ -307,15 +307,22 @@ const handlers: Handlers = {
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
-  "agents.account": ({ provider, accountId }) => AgentLogins.use((logins) => logins.account(provider, accountId)),
+  "agents.account": ({ provider, accountId, refresh }) =>
+    AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   // e2e runs on machines with real, possibly outdated CLIs, whose update toast would cover the UI under test.
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
-  "accounts.delete": ({ id }) => AgentAccounts.use((accounts) => accounts.remove(id)),
+  "accounts.rename": ({ id, name }) =>
+    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
+      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
+    ),
+  "accounts.delete": ({ id }) =>
+    AgentAccounts.use((accounts) => accounts.remove(id)).pipe(
+      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
+    ),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),

@@ -1,4 +1,7 @@
+import { mkdtempSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
@@ -29,6 +32,7 @@ import * as ThreadNaming from "../ThreadNaming.ts"
 import * as Threads from "../Threads.ts"
 import * as Worktrees from "../Worktrees.ts"
 import * as Terminals from "../Terminals.ts"
+import * as Scratch from "../Scratch.ts"
 import { Automations, layer as automationsLayer } from "./Automations.ts"
 import type { LinearIssueFilter, LinearIssueNode } from "./pollers.ts"
 
@@ -75,14 +79,17 @@ const unusedPort = Effect.promise(async () => {
 })
 
 const makeLayer = (pushes: Array<PushEvent>, port: number) => {
+  const dataDir = mkdtempSync(join(tmpdir(), "kk-automations-"))
+  writeFileSync(join(dataDir, "settings.json"), JSON.stringify({ automations: { bindHost: "127.0.0.1", port } }))
   const secrets = Secrets.layer.pipe(Layer.provide(Secrets.noKeyring))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-automations-scratch-")))),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dataDir)),
     ),
     Messages.layer,
     secrets,
@@ -94,12 +101,6 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
     Layer.provideMerge(PullRequests.layer.pipe(Layer.provide(domain))),
     Layer.provideMerge(domain),
   )
-  const database = Layer.effectDiscard(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient
-      yield* sql`INSERT INTO setting (key, value) VALUES ('automations', ${JSON.stringify({ bindHost: "127.0.0.1", port })})`
-    }),
-  ).pipe(Layer.provideMerge(Db.layer(":memory:")))
   return automationsLayer.pipe(
     Layer.provideMerge(agents),
     Layer.provide(
@@ -113,7 +114,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
         Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),
     ),
-    Layer.provideMerge(database),
+    Layer.provideMerge(Db.layer(":memory:")),
     Layer.provide(NodeServices.layer),
   )
 }

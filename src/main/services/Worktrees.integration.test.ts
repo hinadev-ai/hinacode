@@ -22,6 +22,7 @@ import * as SettingsLayer from "./Settings.ts"
 import * as ThreadsLayer from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import * as WorktreesLayer from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
 
@@ -36,11 +37,12 @@ const makeLayer = (
   events: Events["Service"] = Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
 ) =>
   ThreadsLayer.layer.pipe(
+    Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
     Layer.provideMerge(WorktreesLayer.layer),
     Layer.provideMerge(ProjectsLayer.layer),
     Layer.provide(AgentAccounts.layer),
-    Layer.provideMerge(SettingsLayer.layer),
+    Layer.provideMerge(SettingsLayer.layer(dirname(dbPath))),
     Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer).pipe(Layer.provideMerge(Layer.succeed(Events, events)))),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provideMerge(Layer.succeed(Pushes, pushes)),
