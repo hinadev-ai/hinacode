@@ -12,14 +12,14 @@ npx hinacode serve
 
 From a checkout, `pnpm serve` builds and runs the same daemon.
 
-The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL with every reachable address (Tailscale first, then LAN) and a QR code to scan in the mobile app, then one URL per address to add under Settings > Environments on the desktop. Container and VM bridges such as `docker0` and `br-*` are left out. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds.
+The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Environments on the desktop. It listens on one address, never every interface: `--host`, else the one it used last, else its Tailscale address. A machine without Tailscale needs `--host`, such as a LAN address, or `--host 127.0.0.1 --relay on` to be reached only through the relay. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds.
 
 Options, flags first, then environment, then stored settings:
 
 | Flag              | Environment                     | Meaning                                                       |
 | ----------------- | ------------------------------- | ------------------------------------------------------------- |
 | `--port <n>`      | `HINACODE_SERVE_PORT`           | Listener port, default 48081                                  |
-| `--host <host>`   | `HINACODE_SERVE_HOST`           | Bind host, default `0.0.0.0`                                  |
+| `--host <host>`   | `HINACODE_SERVE_HOST`           | Bind address, default the Tailscale address                   |
 | `--rotate-token`  | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
 | `--relay on\|off` | `HINACODE_SERVE_RELAY`          | Link the cloud to the HinaCode relay, or unlink it            |
 |                   | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |
