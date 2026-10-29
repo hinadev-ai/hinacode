@@ -253,6 +253,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
+  const hasMeta = cloud !== undefined || meta.links.length > 0
   const state = useThreadRowState(thread)
 
   // The row leaves this tab's list; once it is gone, keep focus in the sidebar without scrolling to the first row.
@@ -312,6 +313,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-archived={archived}
       data-stale={isStale(cloud)}
       data-show-project={meta.project !== null}
+      data-meta={hasMeta}
+      onPointerEnter={(event) => scrollTitle(event.currentTarget)}
+      onPointerLeave={(event) => stopTitle(event.currentTarget)}
       // Room the title and meta leave for the action buttons: archive or unarchive, delete and the menu, plus a
       // focused reorder handle.
       className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
@@ -322,7 +326,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           <span className="truncate" title={meta.project}>
             {meta.project}
           </span>
-          <ActivityTime {...meta} />
         </div>
       )}
       {mode === "renaming" ? (
@@ -339,15 +342,26 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           }}
           // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
-          <span dir="auto" className="min-w-0 flex-1 truncate text-left text-[0.9375rem]" title={thread.title}>
-            {thread.title}
+          <span
+            dir="auto"
+            className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
+            title={thread.title}
+          >
+            <span data-title-text className="group-hover/thread:inline-block">
+              {thread.title}
+            </span>
           </span>
           <StatusIndicator state={state} />
+          {/* Hidden while the row's actions are showing, so it does not sit under them. */}
+          <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground/75 group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
+            <ActivityTime {...meta} />
+            <ProviderIcon provider={meta.provider} className="size-3" />
+          </span>
         </Link>
       )}
-      <ThreadMeta {...meta} cloud={cloud} environment={environment} />
+      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100">
@@ -716,21 +730,21 @@ function useSnoozedUntil(thread: Thread) {
 const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
+/** The row's second line, for where it runs and the pull requests it opened. */
 function ThreadMeta({
-  project,
   links,
   threadId,
-  provider,
-  updatedAt,
-  snoozedUntil,
   cloud,
   environment,
-}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
+}: {
+  links: ReadonlyArray<PullRequestLink>
+  threadId: string
+  cloud: Cloud | undefined
+  environment: EnvironmentId
+}) {
   const watching = links.some((link) => link.watch !== null)
-  // The minimum height is one line plus padding. Everything on the line can hide on hover, and a collapsing row
-  // would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground/75 group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground/75 group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
@@ -739,20 +753,47 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      <span className="ml-auto flex shrink-0 items-center gap-2 group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
-        {project === null && <ActivityTime updatedAt={updatedAt} snoozedUntil={snoozedUntil} />}
-        <ProviderIcon provider={provider} className="size-3" />
-      </span>
     </div>
   )
 }
 
-/** On the project line when the row has one, so the meta line keeps its width for pull requests. */
+const TITLE_SCROLL_DELAY_MS = 400
+const TITLE_SCROLL_PX_PER_S = 60
+
+const titleText = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-title-text]")
+
+/**
+ * Slides a cut-off title along so its end can be read, after a pause so a pointer passing over the list leaves
+ * the rows still. Hover makes the text an inline block, which a transform can move, and stops the ellipsis.
+ */
+function scrollTitle(row: HTMLElement) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return
+  // Measured a frame later, once hover has hidden the time and widened the title.
+  requestAnimationFrame(() => {
+    const text = titleText(row)
+    const box = text?.parentElement
+    if (!text || !box || !row.matches(":hover")) return
+    const overflow = text.offsetWidth - box.clientWidth
+    if (overflow <= 0) return
+    // A right-to-left title overflows past its left edge, so it moves the other way.
+    const distance = getComputedStyle(box).direction === "rtl" ? overflow : -overflow
+    text.animate([{ transform: "translateX(0)" }, { transform: `translateX(${distance}px)` }], {
+      duration: (overflow / TITLE_SCROLL_PX_PER_S) * 1000,
+      delay: TITLE_SCROLL_DELAY_MS,
+      easing: "linear",
+      fill: "forwards",
+    })
+  })
+}
+
+function stopTitle(row: HTMLElement) {
+  for (const animation of titleText(row)?.getAnimations() ?? []) animation.cancel()
+}
+
 function ActivityTime({ updatedAt, snoozedUntil }: { updatedAt: string; snoozedUntil: string | null }) {
   return snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />
 }
 
-/** Hidden while the row's actions are showing, so it does not sit under the reorder and menu buttons. */
 function LastActive({ updatedAt }: { updatedAt: string }) {
   const now = useNow()
   const locale = getLocale()
@@ -760,7 +801,7 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
     <time
       dateTime={updatedAt}
       title={new Date(updatedAt).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" })}
-      className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+      className="tabular-nums"
     >
       {formatRelativeTime(updatedAt, now, locale)}
     </time>
@@ -776,7 +817,7 @@ function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
     <time
       dateTime={snoozedUntil}
       title={m.sidebar_snoozed_until({ time })}
-      className="ml-auto flex shrink-0 items-center gap-1 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+      className="flex items-center gap-1 tabular-nums"
     >
       <RiAlarmSnoozeLine aria-hidden className="size-3" />
       <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
