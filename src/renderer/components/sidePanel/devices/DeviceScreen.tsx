@@ -25,6 +25,8 @@ interface DeviceScreenProps {
   readonly screen: Screen
   readonly shape: FrameShape | null
   readonly control: DeviceControl
+  /** Every key goes to the device as a physical key, with the host's input method off, and typing needs no click. */
+  readonly hardwareKeyboard: boolean
   readonly stalled: boolean
   readonly picking: boolean
   readonly hintId: string
@@ -42,6 +44,7 @@ export function DeviceScreen({
   screen,
   shape,
   control,
+  hardwareKeyboard,
   stalled,
   picking,
   hintId,
@@ -49,12 +52,16 @@ export function DeviceScreen({
   onCancelPick,
 }: DeviceScreenProps) {
   const regionRef = useRef<HTMLDivElement | null>(null)
-  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const pointerDown = useRef(false)
   const composing = useRef(false)
   const pressed = useRef(new Set<string>())
   const orientation = shape?.orientation ?? "portrait"
   const send = (command: DeviceCommand) => sessionRef.current?.command(command)
+
+  useEffect(() => {
+    if (hardwareKeyboard) inputRef.current?.focus({ preventScroll: true })
+  }, [hardwareKeyboard])
 
   // On the region, which is always mounted, since the canvas comes and goes with the frame's measuring.
   useEffect(() => {
@@ -102,7 +109,7 @@ export function DeviceScreen({
     else send({ kind: "touch", phase: "up", ...point })
   }
 
-  const onKey = (event: KeyboardEvent<HTMLTextAreaElement>, phase: "down" | "up") => {
+  const onKey = (event: KeyboardEvent<HTMLInputElement>, phase: "down" | "up") => {
     event.stopPropagation()
     if (event.nativeEvent.isComposing || event.keyCode === 229 || composing.current) return
     // Tab leaves the screen, so the keyboard is never trapped in it.
@@ -166,8 +173,11 @@ export function DeviceScreen({
           </output>
         )}
       </DeviceFrame>
-      <textarea
+      {/* Chromium turns off non-Latin input methods in a password field, so each key arrives with its own code. */}
+      <input
         ref={inputRef}
+        type={hardwareKeyboard ? "password" : "text"}
+        autoComplete="off"
         data-device-keyboard
         aria-label={m.devices_input({ name })}
         aria-describedby={hintId}
@@ -198,7 +208,7 @@ export function DeviceScreen({
           for (const code of pressed.current) send({ kind: "key", phase: "up", code })
           pressed.current.clear()
         }}
-        className="pointer-events-none absolute top-0 left-0 size-px resize-none overflow-hidden opacity-0"
+        className="pointer-events-none absolute top-0 left-0 size-px overflow-hidden opacity-0"
       />
     </div>
   )

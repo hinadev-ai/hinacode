@@ -1930,6 +1930,8 @@
   "devices_remove": "關閉",
   "devices_toolbar": "{name} 控制項",
   "devices_home": "主畫面",
+  "devices_hardware_keyboard": "硬體鍵盤",
+  "devices_hardware_keyboard_hint": "硬體鍵盤：關閉輸入法，把每個按鍵直接送到裝置",
   "devices_lock": "鎖定",
   "devices_volume_down": "降低音量",
   "devices_volume_up": "提高音量",

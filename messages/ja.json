@@ -1912,6 +1912,8 @@
   "devices_remove": "閉じる",
   "devices_toolbar": "{name} の操作",
   "devices_home": "ホーム",
+  "devices_hardware_keyboard": "ハードウェアキーボード",
+  "devices_hardware_keyboard_hint": "ハードウェアキーボード：入力メソッドをオフにして、すべてのキーをデバイスに送ります",
   "devices_lock": "ロック",
   "devices_volume_down": "音量を下げる",
   "devices_volume_up": "音量を上げる",

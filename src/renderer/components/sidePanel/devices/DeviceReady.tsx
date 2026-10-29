@@ -6,6 +6,7 @@ import {
   RiCursorLine,
   RiErrorWarningLine,
   RiHome5Line,
+  RiKeyboardBoxLine,
   RiLinkM,
   RiLockLine,
   RiMoonLine,
@@ -42,6 +43,7 @@ type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 type Appearance = "light" | "dark"
 
 const appearanceKey = (deviceId: string) => `hinacode.deviceAppearance.${deviceId}`
+const hardwareKeyboardKey = "hinacode.deviceHardwareKeyboard"
 
 const isCommand = Schema.is(DeviceCommand)
 
@@ -94,6 +96,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const [appearance, setAppearance] = useState<Appearance>(() =>
     localStorage.getItem(appearanceKey(device.id)) === "dark" ? "dark" : "light",
   )
+  const [hardwareKeyboard, setHardwareKeyboard] = useState(() => localStorage.getItem(hardwareKeyboardKey) === "on")
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sessionRef = useRef<DeviceSession | null>(null)
   const controlRef = useRef(control)
@@ -150,6 +153,12 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
     setAppearance(next)
     localStorage.setItem(appearanceKey(device.id), next)
     send({ kind: "appearance", mode: next })
+  }
+
+  const toggleHardwareKeyboard = () => {
+    const next = !hardwareKeyboard
+    setHardwareKeyboard(next)
+    localStorage.setItem(hardwareKeyboardKey, next ? "on" : "off")
   }
 
   const pick = (x: number, y: number) =>
@@ -232,6 +241,23 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
           </TooltipTrigger>
           <TooltipContent>{picking ? m.devices_pick_cancel() : m.devices_pick()}</TooltipContent>
         </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={hardwareKeyboard ? "secondary" : "ghost"}
+                size="icon-xs"
+                aria-label={m.devices_hardware_keyboard()}
+                aria-pressed={hardwareKeyboard}
+                action={toggleHardwareKeyboard}
+                className={cn(hardwareKeyboard && "text-primary")}
+              />
+            }
+          >
+            <RiKeyboardBoxLine aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent>{m.devices_hardware_keyboard_hint()}</TooltipContent>
+        </Tooltip>
         <div className="flex-1" />
         <DropdownMenu>
           <Tooltip>
@@ -269,6 +295,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
           screen={screen}
           shape={shape}
           control={control}
+          hardwareKeyboard={hardwareKeyboard}
           stalled={stalled}
           picking={picking}
           hintId={hintId}

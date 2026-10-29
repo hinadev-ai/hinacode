@@ -1957,6 +1957,8 @@
   "devices_remove": "Close",
   "devices_toolbar": "{name} controls",
   "devices_home": "Home",
+  "devices_hardware_keyboard": "Hardware keyboard",
+  "devices_hardware_keyboard_hint": "Hardware keyboard: send every key to the device, with your input method off",
   "devices_lock": "Lock",
   "devices_volume_down": "Volume down",
   "devices_volume_up": "Volume up",
