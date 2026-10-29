@@ -177,12 +177,12 @@ const handlers: Handlers = {
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {
-      const threads = yield* Threads.use((service) => service.list)
-      yield* Effect.forEach(
-        threads.filter((thread) => thread.projectId === id),
-        (thread) => closeTerminals(thread.id),
-      )
+      const threads = (yield* Threads.use((service) => service.list)).filter((thread) => thread.projectId === id)
+      yield* Effect.forEach(threads, (thread) => closeTerminals(thread.id))
       yield* Projects.use((projects) => projects.remove(id))
+      yield* Effect.forEach(threads, (thread) =>
+        Events.use((events) => events.publish({ type: "thread.removed", id: thread.id })),
+      )
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
