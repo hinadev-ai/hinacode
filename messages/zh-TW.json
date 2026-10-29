@@ -36,6 +36,7 @@
   "provider_claude": "Claude Code",
   "provider_codex": "Codex",
   "provider_muse": "Muse Code",
+  "thread_breadcrumb": "導覽路徑",
   "thread_status_idle": "閒置",
   "thread_status_running": "執行中",
   "thread_status_background": "在背景執行中",

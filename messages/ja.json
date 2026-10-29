@@ -36,6 +36,7 @@
   "provider_claude": "Claude Code",
   "provider_codex": "Codex",
   "provider_muse": "Muse Code",
+  "thread_breadcrumb": "パンくずリスト",
   "thread_status_idle": "待機中",
   "thread_status_running": "実行中",
   "thread_status_background": "バックグラウンドで作業中",

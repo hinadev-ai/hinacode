@@ -36,6 +36,7 @@
   "provider_claude": "Claude Code",
   "provider_codex": "Codex",
   "provider_muse": "Muse Code",
+  "thread_breadcrumb": "Breadcrumb",
   "thread_status_idle": "Idle",
   "thread_status_running": "Running",
   "thread_status_background": "Working in the background",
