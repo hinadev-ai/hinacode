@@ -45,6 +45,7 @@ import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
+import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
@@ -80,6 +81,7 @@ export type AppServices =
   | Events
   | TinyVm
   | VmPasskeyRelay
+  | Devices
 
 export interface HandlerError {
   readonly _tag: string
@@ -410,6 +412,17 @@ const handlers: Handlers = {
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
+  "devices.list": () => Devices.use((devices) => devices.list()),
+  "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
+  "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
+  "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
+  "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
+  "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
+  "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
+  "device.command": (input) => Devices.use((devices) => devices.command(input)),
+  "device.control": ({ threadId, deviceId, control }) =>
+    Devices.use((devices) => devices.control(threadId, deviceId, control)),
+  "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),

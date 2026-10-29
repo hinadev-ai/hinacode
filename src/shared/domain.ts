@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 import { EntrySource } from "./relayMachines.ts"
@@ -418,6 +419,8 @@ export const Attachment = Schema.Struct({
   bytes: Schema.Number,
   /** Set when the image is a screenshot of an element picked in the in-app browser. */
   element: Schema.optional(PickedElement),
+  /** Set when the image is a crop of a device screen the user picked an element on. */
+  deviceElement: Schema.optional(PickedDeviceElement),
 })
 export type Attachment = typeof Attachment.Type
 
@@ -597,6 +600,8 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   /** A bash script each new tiny VM runs before any tool reaches it. A failing script fails the start. */
   tinyVmSetupScript: Schema.String,
+  /** The Devices side panel view and the `device_*` MCP tools: stream and drive iOS simulators and Android emulators. */
+  devices: Schema.Boolean,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -758,6 +763,7 @@ export const defaultSettings: Settings = {
     tinyVmTemplate: "default",
     tinyVmProfile: false,
     tinyVmPasskeys: false,
+    devices: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },

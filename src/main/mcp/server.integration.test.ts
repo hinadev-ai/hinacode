@@ -35,6 +35,7 @@ import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
+import { unavailableDevicesLayer } from "../services/devices/unavailable.ts"
 import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
@@ -127,6 +128,7 @@ const domain = Layer.mergeAll(
   core,
   PullRequests.layer.pipe(Layer.provide(core)),
   tinyVm.pipe(Layer.provide(core)),
+  unavailableDevicesLayer.pipe(Layer.provide(core)),
   linearLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))

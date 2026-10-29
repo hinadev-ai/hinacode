@@ -453,6 +453,18 @@ export const threadVmAtom = Atom.family((threadId: string) =>
   ),
 )
 
+export const threadDevicesAtom = Atom.family((threadId: string) =>
+  Atom.make(
+    pushFirst(
+      (event) => (event.type === "device.updated" && event.threadId === threadId ? event.devices : undefined),
+      call("device.get", { threadId }),
+    ),
+  ),
+)
+
+/** The thread machine's simulators and emulators. Not kept alive, so opening the list again asks again. */
+export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
+
 /** Whether hinacode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),

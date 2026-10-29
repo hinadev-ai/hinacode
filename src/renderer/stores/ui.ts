@@ -15,7 +15,16 @@ import {
   type SizeBounds,
 } from "../lib/panelSize.ts"
 
-export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser" | "tinyVm"
+export type SidePanelViewId =
+  | "details"
+  | "files"
+  | "changes"
+  | "git"
+  | "pullRequests"
+  | "agents"
+  | "browser"
+  | "tinyVm"
+  | "devices"
 export type SidePanelSize = "normal" | "wide"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]

@@ -9,6 +9,7 @@ import {
   RiFileEditLine,
   RiGlobalLine,
   RiComputerLine,
+  RiSmartphoneLine,
 } from "react-icons/ri"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
@@ -19,6 +20,7 @@ import type { SidePanelViewId } from "../../stores/ui.ts"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { BrowserView } from "./BrowserView.tsx"
+import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 import { TinyVmView } from "./TinyVmView.tsx"
@@ -27,6 +29,8 @@ import { TinyVmView } from "./TinyVmView.tsx"
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
+// Experimental and off by default, so the device stream and frame load only once the view opens.
+const DevicesView = lazy(() => import("./devices/DevicesView.tsx").then((module) => ({ default: module.DevicesView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
@@ -85,6 +89,15 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     commandId: "view.tinyVm",
     component: TinyVmView,
     experiment: "tinyVm",
+  },
+  {
+    id: "devices",
+    icon: RiSmartphoneLine,
+    title: m.panel_tab_devices,
+    commandId: "view.devices",
+    component: DevicesView,
+    header: DeviceTabStrip,
+    experiment: "devices",
   },
 ]
 

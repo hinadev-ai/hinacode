@@ -91,6 +91,17 @@ export function ExperimentalSettings() {
         {experimental.tinyVm && (
           <VmEnvField value={experimental.tinyVmEnv} onChange={(tinyVmEnv) => void setExperimental({ tinyVmEnv })} />
         )}
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor="settings-experimental-devices">{m.settings_devices()}</FieldLabel>
+            <FieldDescription>{m.settings_devices_hint()}</FieldDescription>
+          </FieldContent>
+          <Switch
+            id="settings-experimental-devices"
+            checked={experimental.devices}
+            onCheckedChange={(checked) => void setExperimental({ devices: checked })}
+          />
+        </Field>
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
