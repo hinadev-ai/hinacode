@@ -443,12 +443,22 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(thread.id))
 
     let next: QueuedMessage | undefined
+    const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
-      for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
-      for (const [id, request] of questions) if (request.threadId === thread.id) questions.delete(id)
+      for (const [id, request] of approvals) {
+        if (request.threadId !== thread.id) continue
+        approvals.delete(id)
+        yield* withdraw({ type: "approval_resolved", requestId: id })
+      }
+      for (const [id, request] of questions) {
+        if (request.threadId !== thread.id) continue
+        questions.delete(id)
+        yield* withdraw({ type: "question_resolved", requestId: id })
+      }
       for (const [id, { request, answer }] of secretRequests) {
         if (request.threadId !== thread.id) continue
         secretRequests.delete(id)
+        yield* withdraw({ type: "secret_resolved", requestId: id })
         yield* Deferred.fail(
           answer,
           new AgentError({ provider: "hinacode", message: "The turn ended before the user answered." }),
