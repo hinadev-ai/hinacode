@@ -4,7 +4,6 @@ export type Identifier = Extract<ESTree.Node, { type: "Identifier" }>
 
 type Reference = { api: string; node: Identifier | ESTree.MemberExpression }
 
-/** Every place the file reads a React export, through a named, default or namespace import. */
 export function reactReferences(context: Context, declaration: ESTree.ImportDeclaration): Reference[] {
   if (declaration.source.value !== "react") return []
   return declaration.specifiers.flatMap((specifier) =>
