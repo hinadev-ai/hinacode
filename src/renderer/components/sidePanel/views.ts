@@ -19,16 +19,16 @@ import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
-import { BrowserView } from "./BrowserView.tsx"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
-import { TinyVmView } from "./TinyVmView.tsx"
 
 // These views render with @pierre/diffs, which stays out of the startup bundle until one of them opens.
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
+const TinyVmView = lazy(() => import("./TinyVmView.tsx").then((module) => ({ default: module.TinyVmView })))
+const BrowserView = lazy(() => import("./BrowserView.tsx").then((module) => ({ default: module.BrowserView })))
 // Experimental and off by default, so the device stream and frame load only once the view opens.
 const DevicesView = lazy(() => import("./devices/DevicesView.tsx").then((module) => ({ default: module.DevicesView })))
 

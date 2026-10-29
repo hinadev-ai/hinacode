@@ -38,10 +38,20 @@ const Envelope = Schema.Union([
 /**
  * Phone -> desktop. The first frame on a socket must be `auth`: proof of the token for the server's `challenge`
  * (see `proof.ts`), or the token itself from clients that predate the challenge.
+ * `compactEvents` keeps tool summaries and statuses but omits payloads the phone does not display.
  */
 export const ClientFrame = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("auth"), nonce: Schema.String, proof: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("auth"), token: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("auth"),
+    nonce: Schema.String,
+    proof: Schema.String,
+    compactEvents: Schema.optionalKey(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("auth"),
+    token: Schema.String,
+    compactEvents: Schema.optionalKey(Schema.Boolean),
+  }),
   /** `payload` is absent for methods that take nothing, since JSON has no undefined. */
   Schema.Struct({
     type: Schema.Literal("call"),

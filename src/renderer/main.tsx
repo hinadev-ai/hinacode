@@ -3,7 +3,6 @@ import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
-import { MotionConfig } from "motion/react"
 import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { DockBadge } from "./components/DockBadge.tsx"
@@ -43,14 +42,12 @@ function App() {
   }, [])
   // Remount on locale change so every message function runs again; router and atoms live outside.
   return (
-    <MotionConfig reducedMotion="user">
-      <TooltipProvider key={locale}>
-        <RouterProvider router={router} />
-        <DockBadge />
-        {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
-        <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
-      </TooltipProvider>
-    </MotionConfig>
+    <TooltipProvider key={locale}>
+      <RouterProvider router={router} />
+      <DockBadge />
+      {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
+      <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
+    </TooltipProvider>
   )
 }
 

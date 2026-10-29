@@ -1,5 +1,4 @@
-import { WTerm } from "@wterm/dom"
-import { GhosttyCore } from "@wterm/ghostty"
+import type { WTerm } from "@wterm/dom"
 import wasmUrl from "@wterm/ghostty/ghostty-vt.wasm?url"
 import { m } from "../paraglide/messages.js"
 import { callPromise } from "./rpc.ts"
@@ -69,6 +68,7 @@ const screenFor = (id: string) => {
 const ignore = () => {}
 
 const start = async (id: string, screen: Screen) => {
+  const [{ WTerm }, { GhosttyCore }] = await Promise.all([import("@wterm/dom"), import("@wterm/ghostty")])
   const core = await GhosttyCore.load({ wasmPath: wasmUrl, scrollbackLimit: SCROLLBACK_BYTES })
   const { element } = screen
   // wterm checks whether the view sits at the bottom only after the element has already shrunk, so a

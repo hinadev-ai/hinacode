@@ -5,8 +5,6 @@
 @import "@fontsource-variable/dm-sans/opsz-italic.css";
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist-mono/wght-italic.css";
-@import "@fontsource-variable/noto-sans-tc";
-@import "@fontsource-variable/noto-sans-jp";
 @import "@wterm/dom/css";
 @import "tw-shimmer";
 @plugin "@tailwindcss/typography";

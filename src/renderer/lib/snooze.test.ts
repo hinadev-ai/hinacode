@@ -1,5 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
-import { formatSnoozeTime, parseSnoozeTime, snoozePresets } from "./snooze.ts"
+import { parseSnoozeTime } from "./parseSnoozeTime.ts"
+import { formatSnoozeTime, snoozePresets } from "./snooze.ts"
 
 // Local times, so the expectations hold in any time zone. 2026-10-26 is a Monday.
 const local = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute)

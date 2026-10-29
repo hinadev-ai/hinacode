@@ -27,10 +27,12 @@ type Results = {
   packagedApp: string | undefined
   packagedAsarSha256: string | null
   revision: string
+  rendererIndexSha256: string | null
   diffSha256: string
   samples: Sample[]
   ownership?: unknown
   startup?: unknown
+  viewport?: unknown
   workload?: unknown
   switches?: unknown[]
   mainSnapshot?: string
@@ -103,6 +105,11 @@ const results: Results = {
         .digest("hex")
     : null,
   revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  rendererIndexSha256: packagedApp
+    ? null
+    : createHash("sha256")
+        .update(readFileSync(join(root, "out/renderer/index.html")))
+        .digest("hex"),
   diffSha256: createHash("sha256")
     .update(execFileSync("git", ["diff", "HEAD"]))
     .digest("hex"),
@@ -112,6 +119,8 @@ const save = () =>
   writeFileSync(join(root, ".context/perf", `${label}-${scenario}-memory.json`), JSON.stringify(results, null, 2))
 try {
   const page = await app.firstWindow()
+  await page.setViewportSize({ width: 1280, height: 820 })
+  results.viewport = page.viewportSize()
   await page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)
   if (
     !page
@@ -204,14 +213,16 @@ try {
       name,
       elapsedMs: performance.now() - startedAt,
       rendererHeapBytes: metric("JSHeapUsedSize")!,
+      rendererTaskSeconds: metric("TaskDuration"),
+      rendererScriptSeconds: metric("ScriptDuration"),
       domNodes: metric("Nodes"),
       listeners: metric("JSEventListeners"),
       rssBytes: owned.reduce((n, p) => n + p.rssBytes, 0),
       appRssBytes: owned
-        .filter((p) => p.executable.startsWith(packagedApp ? "hinacode" : "Electron"))
+        .filter((p) => p.executable.toLowerCase().startsWith(packagedApp ? "hinacode" : "electron"))
         .reduce((n, p) => n + p.rssBytes, 0),
       cliRssBytes: owned
-        .filter((p) => !p.executable.startsWith(packagedApp ? "hinacode" : "Electron"))
+        .filter((p) => !p.executable.toLowerCase().startsWith(packagedApp ? "hinacode" : "electron"))
         .reduce((n, p) => n + p.rssBytes, 0),
       processes: owned,
       detachedDescendants,

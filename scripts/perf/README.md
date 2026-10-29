@@ -13,6 +13,7 @@ node scripts/perf/measure.ts <port> <label> archive <threadId>  # turns on workt
 node scripts/perf/measure.ts <port> <label> typing <threadId>   # composer key-to-paint latency
 node scripts/perf/measure.ts <port> <label> reply <threadId>    # needs HINACODE_MOCK_CLAUDE=stream
 node scripts/perf/measure.ts <port> <label> typing-reply <threadId>  # typing while that reply streams
+node scripts/perf/measure.ts <port> <label> find <threadId>          # twelve settled no-match queries
 node scripts/perf/analyze-profile.ts .context/perf/<label>-scroll.cpuprofile
 node scripts/perf/compare.ts <before-label> <after-label>
 ```
@@ -23,8 +24,10 @@ Results land in `.context/perf/`. Reload the renderer after seeding: the sidebar
 
 `measure.ts` reloads the renderer with `react-commits.js` installed where React DevTools would hook in, so
 `typing`, `switch`, `reply` and `typing-reply` report which components rendered in every commit, next to the
-renderer's script, style and layout time from `Performance.getMetrics`. The renderer bundle is not minified, so
-component names survive the production build.
+renderer's script, style and layout time from `Performance.getMetrics`. Build both versions with
+`HINACODE_KEEP_NAMES=1` to retain component names while keeping production minification enabled.
+The harness fixes the viewport at 1280 by 820 CSS pixels and starts each capture at the home route.
+The first switch must open a transcript rather than time a click on an already open thread.
 
 | Scenario                  | What it does                                           | Read first                                    |
 | ------------------------- | ------------------------------------------------------ | --------------------------------------------- |
@@ -45,8 +48,8 @@ this machine closer to a low-end laptop.
 S=.agents/skills/verify-hinacode/scripts
 HINACODE_MOCK_CLAUDE=stream $S/launch.sh 9473 /tmp/kk-perf-ab
 $S/seed-repo.sh /tmp/kk-perf-ab/repo && node scripts/perf/seed.ts /tmp/kk-perf-ab /tmp/kk-perf-ab/repo
-pnpm build && cp -r out .context/perf/before-out   # on the base commit
-pnpm build && cp -r out .context/perf/after-out    # on the change
+HINACODE_KEEP_NAMES=1 pnpm build && cp -r out .context/perf/before-out   # on the base commit
+HINACODE_KEEP_NAMES=1 pnpm build && cp -r out .context/perf/after-out    # on the change
 scripts/perf/suite.sh 9473 /tmp/kk-perf-ab 5 before=.context/perf/before-out after=.context/perf/after-out
 node scripts/perf/suite-compare.ts before after
 ```
@@ -59,6 +62,11 @@ Every capture also writes `<label>-<name>.commits.json`. `commits.ts` groups its
 rendered, so a commit that repeats with more components than it needs stands out. `PROFILE=1` adds a CPU profile
 for `analyze-profile.ts`. `TRACE=1` adds a trace that the DevTools Performance panel opens, and `trace-summary.ts`
 totals its style, layout and paint work. Both add overhead, so compare only runs captured the same way.
+
+Use total task duration and frame gaps when code moves into Promise continuations. CDP's script duration counter
+can omit microtask work, so a lower script duration alone does not establish lower CPU use.
+`find` changes twelve queries and waits for each debounced search to settle. Compare its task time and the
+tokenization component's render count when changing find subscriptions.
 
 ### 2026-10-22 capture
 
@@ -85,6 +93,29 @@ warm switch from 49 to 45 ms. Raw captures use the `before3` and `after3` labels
 Deferring transcript updates with `useDeferredValue` was measured and left out. It did not move typing mid-reply,
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
+
+## Measure remote payload and transcript costs
+
+```sh
+node --expose-gc scripts/perf/remote.ts .context/perf/remote.json
+```
+
+This standalone probe uses synthetic data and the production schemas, `compactPush`, `compactMessage`, Events
+layer, and Messages service. It creates an in-memory SQLite database with production migrations, so it needs no
+running app or user profile. It reports raw JSON bytes, an independent per-frame deflate estimate, parse and
+decode time, and publication plus serialization time for zero, one, and three clients. Full and compact fanout
+workloads alternate for nine measured runs after warmup. The stream has 20 tool calls with 12 KiB inputs,
+64 KiB outputs, 8 KiB diffs, and 100 text deltas.
+
+Histories contain 200 and 2,000 messages. Each report separates complete database reads and their retained heap
+increase from compacting, paging, encoding, and decoding the returned page. `--expose-gc` makes the retained heap
+comparison collect garbage before and after a read. Read time includes SQL and JSON schema decoding. The current
+handler reads the entire transcript before selecting its 64 KiB page, so a small response can still cost a large
+allocation. The report also measures proof CPU cost and records an oversized single-message page.
+
+These are Node CPU and byte measurements. They exclude transport, relay, TLS, compression context takeover,
+Hermes, phone memory, and React rendering. Raw bytes are stable for the deterministic stream. Timing and heap
+results depend on the machine. The report records CPU, Node version, load average, and sample counts.
 
 ## Profile the phone app
 

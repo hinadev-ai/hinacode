@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http"
 import { Cause, Clock, Duration, Effect, Fiber, FiberHandle, Layer, Option, Schedule, Schema, Stream } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
+import { compactPush } from "../../shared/compactTranscript.ts"
 import {
   desktopOnlyMethods,
   desktopOnlyPushes,
@@ -99,7 +100,10 @@ const make = Effect.gen(function* () {
   const countConnected = () => runFork(access.report({ connected: sockets.size }))
 
   /** `proof` answers a client that proved its token; one that sent the token itself gets none. */
-  const attach = (socket: WebSocket, proof: string | undefined) => {
+  const attach = (
+    socket: WebSocket,
+    { proof, compactEvents }: { readonly proof: string | undefined; readonly compactEvents: boolean },
+  ) => {
     const peer: PhonePeer = { awaitingPong: false, watching: null }
     sockets.set(socket, peer)
     socket.on("pong", () => {
@@ -111,7 +115,7 @@ const make = Effect.gen(function* () {
         broadcast
           .subscribe((event) => {
             if (desktopOnlyPushes.has(event.type) || !reachesPhone(event, peer.watching)) return
-            send(socket, { type: "event", event })
+            send(socket, { type: "event", event: compactEvents ? compactPush(event) : event })
           })
           .pipe(Effect.andThen(Effect.never)),
       ),
@@ -208,7 +212,7 @@ const make = Effect.gen(function* () {
         if (proof === null) return socket.close(CLOSE_UNAUTHORIZED, "unauthorized")
         generation = access.generation()
         runFork(Fiber.interrupt(deadline))
-        return attach(socket, proof)
+        return attach(socket, { proof, compactEvents: frame.compactEvents ?? false })
       }
       if (access.generation() !== generation) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
       if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })

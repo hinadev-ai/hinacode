@@ -145,14 +145,14 @@ afterEach(() => {
 })
 
 describe("Transport", () => {
-  it("answers the challenge with a proof instead of the token and connects on a ready that proves it back", () => {
+  it("requests compact events with its proof and connects on a ready that proves the token back", () => {
     setup()
     expect(statuses).toEqual(["connecting"])
     latest().open()
     expect(latest().sent).toEqual([])
     latest().challenge("server-nonce")
     const [auth] = latest().sent
-    expect(auth).toEqual({ type: "auth", nonce: expect.any(String), proof: expect.any(String) })
+    expect(auth).toEqual({ type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true })
     expect(auth!.proof).toBe(clientProof(TOKEN, "server-nonce", auth!.nonce as string))
     expect(JSON.stringify(latest().sent)).not.toContain(TOKEN)
     expect(statuses.at(-1)).toBe("connecting")
@@ -693,7 +693,9 @@ describe("Transport", () => {
       socketAt(RELAY).open()
       socketAt(TAILSCALE).open()
       socketAt(LAN).challenge()
-      expect(socketAt(LAN).sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+      expect(socketAt(LAN).sent).toEqual([
+        { type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true },
+      ])
       for (const url of [TAILSCALE, RELAY]) {
         expect(socketAt(url).closed).toBe(true)
         expect(socketAt(url).sent).toEqual([])
@@ -709,7 +711,9 @@ describe("Transport", () => {
       socketAt(RELAY).challenge()
       expect(socketAt(LAN).closed).toBe(true)
       expect(socketAt(LAN).sent).toEqual([])
-      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+      expect(socketAt(RELAY).sent).toEqual([
+        { type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true },
+      ])
     })
 
     it("waits for the relay when a direct address closes first", async () => {
@@ -817,7 +821,9 @@ describe("Transport", () => {
       expect(latest().url).toBe(LAN)
       latest().open()
       latest().challenge()
-      expect(latest().sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+      expect(latest().sent).toEqual([
+        { type: "auth", nonce: expect.any(String), proof: expect.any(String), compactEvents: true },
+      ])
     })
 
     it("races the relay alone when a direct address refuses the token, until the network changes", async () => {
@@ -951,7 +957,7 @@ describe("Transport", () => {
       await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
       expect(socketAt(RELAY).sent).toEqual([])
       await vi.advanceTimersByTimeAsync(1)
-      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: TOKEN }])
+      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: TOKEN, compactEvents: true }])
       socketAt(RELAY).ready()
       expect(statuses.at(-1)).toBe("connected")
     })
@@ -962,7 +968,7 @@ describe("Transport", () => {
       await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
       expect(latest().sent).toEqual([])
       await vi.advanceTimersByTimeAsync(1)
-      expect(latest().sent).toEqual([{ type: "auth", token: TOKEN }])
+      expect(latest().sent).toEqual([{ type: "auth", token: TOKEN, compactEvents: true }])
       latest().ready()
       expect(statuses.at(-1)).toBe("connected")
     })
