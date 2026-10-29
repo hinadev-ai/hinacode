@@ -1,10 +1,12 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { RiCheckboxCircleFill } from "react-icons/ri"
 import type {
+  BoatVmSize,
   ExperimentalSettings as ExperimentalSettingsValue,
   VmHostStatus,
+  VmProvider,
   VmTemplate,
 } from "../../../shared/domain.ts"
 import { formatEnvLines, parseEnvLines } from "../../lib/envLines.ts"
@@ -18,7 +20,13 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from ".
 import { Switch } from "../ui/switch.tsx"
 import { Textarea } from "../ui/textarea.tsx"
 import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
+import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+
+const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
+const isBoatSize = (value: string): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)
+const isVmProvider = (value: string): value is VmProvider => value === "sbx" || value === "boat"
 
 export function ExperimentalSettings() {
   const environment = useSettingsEnvironment()
@@ -49,14 +57,42 @@ export function ExperimentalSettings() {
             onCheckedChange={(checked) => void setExperimental({ tinyVm: checked })}
           />
         </Field>
-        {experimental.tinyVm && <VmHost />}
         {experimental.tinyVm && (
+          <VmProviderField
+            value={experimental.tinyVmProvider}
+            onChange={(tinyVmProvider) => void setExperimental({ tinyVmProvider })}
+          />
+        )}
+        {experimental.tinyVm && <VmHost provider={experimental.tinyVmProvider} />}
+        {experimental.tinyVm && experimental.tinyVmProvider === "boat" && (
+          <SecretField
+            name="boat.apiKey"
+            label={m.settings_boat_key_label()}
+            placeholder={m.settings_boat_key_placeholder()}
+            hint={m.settings_boat_key_hint()}
+          />
+        )}
+        {experimental.tinyVm && experimental.tinyVmProvider === "sbx" && (
           <VmTemplateField
+            id="settings-experimental-tiny-vm-template"
+            label={m.settings_tiny_vm_template()}
+            hint={m.settings_tiny_vm_template_hint()}
+            provider="sbx"
             value={experimental.tinyVmTemplate}
             onChange={(name) => void setExperimental({ tinyVmTemplate: name })}
           />
         )}
-        {experimental.tinyVm && (
+        {experimental.tinyVm && experimental.tinyVmProvider === "boat" && (
+          <VmTemplateField
+            id="settings-experimental-tiny-vm-boat-size"
+            label={m.settings_tiny_vm_boat_size()}
+            hint={m.settings_tiny_vm_boat_size_hint()}
+            provider="boat"
+            value={experimental.tinyVmBoatSize}
+            onChange={(name) => isBoatSize(name) && void setExperimental({ tinyVmBoatSize: name })}
+          />
+        )}
+        {experimental.tinyVm && experimental.tinyVmProvider === "sbx" && (
           <Field orientation="horizontal">
             <FieldContent>
               <FieldLabel htmlFor="settings-experimental-tiny-vm-profile">{m.settings_tiny_vm_profile()}</FieldLabel>
@@ -69,7 +105,7 @@ export function ExperimentalSettings() {
             />
           </Field>
         )}
-        {experimental.tinyVm && (
+        {experimental.tinyVm && experimental.tinyVmProvider === "sbx" && (
           <Field orientation="horizontal">
             <FieldContent>
               <FieldLabel htmlFor="settings-experimental-tiny-vm-passkeys">{m.settings_tiny_vm_passkeys()}</FieldLabel>
@@ -102,30 +138,80 @@ export function ExperimentalSettings() {
             onCheckedChange={(checked) => void setExperimental({ devices: checked })}
           />
         </Field>
+        {experimental.devices && !(experimental.tinyVm && experimental.tinyVmProvider === "boat") && (
+          <SecretField
+            name="boat.apiKey"
+            label={m.settings_boat_key_label()}
+            placeholder={m.settings_boat_key_placeholder()}
+            hint={m.settings_boat_key_hint()}
+          />
+        )}
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
   )
 }
 
-function VmTemplateField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+function VmProviderField({ value, onChange }: { value: VmProvider; onChange: (provider: VmProvider) => void }) {
+  const items = [
+    { value: "sbx", label: m.settings_tiny_vm_provider_sbx() },
+    { value: "boat", label: m.settings_tiny_vm_provider_boat() },
+  ]
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor="settings-experimental-tiny-vm-provider">{m.settings_tiny_vm_provider()}</FieldLabel>
+        <FieldDescription>{m.settings_tiny_vm_provider_hint()}</FieldDescription>
+      </FieldContent>
+      <Select
+        items={items}
+        value={value}
+        onValueChange={(next) => typeof next === "string" && isVmProvider(next) && onChange(next)}
+      >
+        <SelectTrigger id="settings-experimental-tiny-vm-provider" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  )
+}
+
+function VmTemplateField({
+  id,
+  label,
+  hint,
+  provider,
+  value,
+  onChange,
+}: {
+  id: string
+  label: string
+  hint: string
+  provider: VmProvider
+  value: string
+  onChange: (name: string) => void
+}) {
   const environment = useSettingsEnvironment()
   const host = useAtomValue(vmHostAtom(environment))
   const templates: ReadonlyArray<VmTemplate> =
-    AsyncResult.isSuccess(host) && host.value.status === "connected" ? host.value.templates : []
+    AsyncResult.isSuccess(host) && host.value.status === "connected" && host.value.provider === provider
+      ? host.value.templates
+      : []
   if (templates.length === 0) return null
   return (
     <Field orientation="horizontal">
       <FieldContent>
-        <FieldLabel htmlFor="settings-experimental-tiny-vm-template">{m.settings_tiny_vm_template()}</FieldLabel>
-        <FieldDescription>{m.settings_tiny_vm_template_hint()}</FieldDescription>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <FieldDescription>{hint}</FieldDescription>
       </FieldContent>
-      <VmTemplateSelect
-        id="settings-experimental-tiny-vm-template"
-        templates={templates}
-        value={value}
-        onChange={onChange}
-      />
+      <VmTemplateSelect id={id} templates={templates} value={value} onChange={onChange} />
     </Field>
   )
 }
@@ -186,10 +272,16 @@ function VmEnvField({
   )
 }
 
-function VmHost() {
+function VmHost({ provider }: { provider: VmProvider }) {
   const environment = useSettingsEnvironment()
   const host = useAtomValue(vmHostAtom(environment))
   const refresh = useAtomRefresh(vmHostAtom(environment))
+  const stale = AsyncResult.isSuccess(host) && host.value.provider !== provider
+
+  useEffect(() => {
+    if (stale) refresh()
+  }, [stale, refresh])
+
   const checkAgain = (
     <Button variant="ghost" size="xs" disabled={host.waiting} onClick={refresh}>
       {m.settings_tiny_vm_check_again()}
@@ -201,11 +293,17 @@ function VmHost() {
       <p aria-live="polite" className="flex items-center gap-1.5 text-sm">
         {AsyncResult.builder(host)
           .onInitial(() => <span className="text-muted-foreground">{m.settings_tiny_vm_checking()}</span>)
-          .onSuccess((status) => <HostStatus status={status} />)
+          .onSuccess((status) =>
+            status.provider === provider ? (
+              <HostStatus status={status} />
+            ) : (
+              <span className="text-muted-foreground">{m.settings_tiny_vm_checking()}</span>
+            ),
+          )
           .onError((cause) => <span className="text-destructive">{errorMessage(cause)}</span>)
           .orElse(() => null)}
       </p>
-      {AsyncResult.isSuccess(host) && host.value.status === "connected" ? null : checkAgain}
+      {AsyncResult.isSuccess(host) && !stale && host.value.status === "connected" ? null : checkAgain}
     </div>
   )
 }
@@ -228,15 +326,26 @@ function HostStatus({ status }: { status: VmHostStatus }) {
       return (
         <>
           <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
-          {m.settings_tiny_vm_connected({
-            host: hostOf(status.url),
-            sandboxes: String(status.sandboxes),
-            max: String(status.maxSandboxes),
-          })}
+          {status.provider === "boat"
+            ? m.settings_tiny_vm_boat_connected({
+                sandboxes: String(status.sandboxes),
+                max: String(status.maxSandboxes),
+              })
+            : m.settings_tiny_vm_connected({
+                host: hostOf(status.url),
+                sandboxes: String(status.sandboxes),
+                max: String(status.maxSandboxes),
+              })}
         </>
       )
     case "notConfigured":
-      return <span className="text-muted-foreground">{withCode(m.settings_tiny_vm_not_configured())}</span>
+      return (
+        <span className="text-muted-foreground">
+          {withCode(
+            status.provider === "boat" ? m.settings_tiny_vm_boat_not_configured() : m.settings_tiny_vm_not_configured(),
+          )}
+        </span>
+      )
     case "unreachable":
       return (
         <span className="text-destructive">
