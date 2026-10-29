@@ -3,6 +3,10 @@
 Status: Building
 Date: 2026-10-29
 
+The measurements below compare `ce4565c4` with `0708258a`, before integration with main at `6d3f309c`.
+Main now includes [mobile background traffic improvements](2026-10-29-mobile-battery.md), so the mobile findings
+below distinguish the original observations from the merged behavior.
+
 ## Problem
 
 The renderer loads settings, terminal, syntax highlighting and experimental VM dependencies before the developer uses them.
@@ -47,11 +51,15 @@ All renderer JavaScript totals 14,757,747 bytes. Baseline gzip startup JavaScrip
 Selecting the CJK stylesheet by locale reduces startup CSS to 184,242 bytes, a reduction of 209,710 bytes.
 Both font stylesheets remain packaged. English uses the existing system fallback for CJK text.
 
-The final production build includes the find change and totals 1,987,281 bytes of startup JavaScript, down 31.7%.
+The pre-integration production build includes the find change and totals 1,987,281 bytes of startup JavaScript, down 31.7%.
 Startup CSS remains 184,242 bytes, down 53.2%. Default gzip sizes are 663,304 and 30,643 bytes.
 All renderer JavaScript grows from 14,757,747 to 14,881,523 bytes, up 0.84%, because the features remain in deferred
 chunks. All CSS is 394,322 bytes. This work reduces startup size rather than installed application size.
 CI now limits startup JavaScript to 2.1 MB and startup CSS to 200 kB.
+
+After merging main at `6d3f309c`, the production build has 2,024,524 bytes of startup JavaScript and 192,296 bytes
+of startup CSS. All renderer JavaScript totals 14,978,096 bytes and all CSS totals 402,376 bytes. The build size
+budgets pass. The runtime comparisons below retain their original captures; they were not repeated for this merge.
 
 ## Out of scope
 
@@ -119,36 +127,42 @@ a 98.37% reduction. Nine alternating Node runs measure publication and serializa
 one client and 1.267 versus 0.361 ms for three. These are schema and service measurements, not phone or network latency.
 Run `node --expose-gc scripts/perf/remote.ts .context/perf/remote.json` to reproduce them.
 
-The remaining priorities are supported by these measurements and current source:
+The original audit identified these priorities:
 
 1. `Messages.list` decodes an entire history before `threads.transcript` selects its page. Reading 2,000 synthetic
    messages totaling 88.83 MB takes a median 111.5 ms and retains about 89.3 MB of decoded heap, even though the
    compact response is 64.4 kB. Database-level paging is the next long-thread improvement to investigate.
-2. Mobile retains every visited history and reloads them all on a connection generation change. A Node probe of
-   the current store retained 1,655,076 serialized bytes across 25 synthetic pages and issued 25 transcript reads
-   on one reload. Reconnecting one paired server can refresh histories belonging to other servers too.
-3. A Chat hidden behind Files or Terminal remains mounted and subscribed. The home list also subscribes to the
-   whole thread map, while every row reads the shared clock. Measure a current native capture before changing
-   screen visibility or list subscriptions.
+2. Before integration, mobile retained every visited history and reloaded them all on a connection generation
+   change. The Node probe retained 1,655,076 serialized bytes across 25 synthetic pages and issued 25 reads on
+   one reload. Main now reloads watched histories only. Cache retention remains a separate memory-policy question.
+3. Before integration, a Chat hidden behind Files or Terminal continued receiving streamed updates. Main now
+   watches only the focused Chat tab and closes connections while backgrounded. The home list's broad thread-map
+   subscription and shared row clock still merit a native render capture before changing list subscriptions.
 4. Native Markdown replaced the old React Markdown tree after the October 24 simulator baseline. Completion still
    mounts the whole native Markdown view, so a new capture needs native parse/layout costs as well as React commits.
-5. All connected clients still receive all threads' events. Compact projection reduces bytes but leaves event count
-   and subscription scope unchanged. A single message may also exceed the nominal 64 KiB page budget.
+5. Main now negotiates transcript watches and filters events before compact projection. Legacy clients that
+   never send a watch retain complete event delivery. A single message may still exceed the 64 KiB page budget.
 
 Challenge/proof/ready total 506 synthetic JSON bytes. Four HMAC calculations cost about 0.031 ms in Node.
-The transport already races direct addresses with a relay delayed by 500 ms, probes on foreground and backs off
-retries. Those policies need packet-loss and multi-server workloads before further changes.
+The transport races direct addresses with a relay delayed by 500 ms and backs off retries. Main now closes sockets
+and cancels reconnect attempts in the background, then reconnects on foreground. Packet-loss and multi-server
+workloads remain useful before further transport changes.
 
-Current native mobile startup, CPU, RSS and React commit times remain unmeasured on this Linux host.
+Main includes Release mobile background-CPU and traffic captures in the linked battery report. This audit did not
+capture native mobile startup, RSS or React commit times on its Linux host.
 The [Release phone harness](../../scripts/perf/README.md#profile-the-phone-app) requires a Mac, Xcode and a simulator.
-It should next capture a long-thread open, streaming with Chat hidden, reconnecting after 25 visits, and reconnecting
-one of two paired servers. The local detailed audits and probes are in `.context/perf/mobile-audit.md` and
+It should next capture long-thread parse/layout, retained memory after 25 visits, and reconnecting one of two paired
+servers. The local detailed audits and probes are in `.context/perf/mobile-audit.md` and
 `.context/perf/remote-audit.md`.
 
 ## Verification record
 
 The production build, typecheck, lint and unit/integration/mobile tests pass. The build size checks pass the new
 startup budgets. Packaged installer sizes were not measured locally; CI runs the full package comparison.
+
+After integrating main at `6d3f309c`, the build, typecheck, lint, all 1,541 tests and build size budgets pass again.
+Twenty-nine targeted Electron scenarios cover account settings, find, locale changes, snoozing, shortcut focus
+restoration and the lazy browser panel. Source review confirms transcript-watch filtering precedes compact projection.
 
 All Electron scenarios passed across the verification runs. The initial run passed the 138 parallel cases.
 Inherited 2x desktop scaling put browser tests into a compact overlay, so desktop cases were rerun with

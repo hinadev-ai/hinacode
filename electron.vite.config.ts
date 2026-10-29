@@ -21,8 +21,8 @@ export default defineConfig({
   main: {
     plugins: [paraglide()],
     build: {
-      // `daemon` is `hinacode serve`, the same services as plain Node with no Electron (see `bin/hinacode.mjs`).
-      rollupOptions: { input: { index: "src/main/index.ts", daemon: "src/main/daemon.ts" } },
+      // The daemon (`hinacode serve`) has its own plain Vite build. See `vite.server.config.ts`.
+      rollupOptions: { input: { index: "src/main/index.ts" } },
       // Optional dependencies are bundled by default, which breaks these native modules' binding lookup.
       externalizeDeps: {
         include: ["node-mac-permissions", "electron-liquid-glass"],

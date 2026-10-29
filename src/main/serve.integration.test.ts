@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
@@ -12,7 +15,7 @@ import { applyServeConfig } from "./serve.ts"
 
 const testLayer = RemoteAccessModule.layer.pipe(
   Layer.provideMerge(SecretsModule.layer),
-  Layer.provideMerge(SettingsModule.layer),
+  Layer.provideMerge(Layer.suspend(() => SettingsModule.layer(mkdtempSync(join(tmpdir(), "kk-serve-settings-"))))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
 )

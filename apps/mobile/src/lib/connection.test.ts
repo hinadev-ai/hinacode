@@ -46,7 +46,8 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, onRemembered, reconnectNow, restoreAnswers, setServers, useConnection } = await import("./connection")
+const { call, onRemembered, reconnectNow, restoreAnswers, setForeground, setServers, useConnection } =
+  await import("./connection")
 
 const server = (id: string, port: number): StoredServer => ({
   id,
@@ -236,6 +237,23 @@ describe("call", () => {
 })
 
 describe("servers", () => {
+  it("keeps restored servers offline during a background launch until the app returns", () => {
+    setServers([])
+    FakeSocket.all = []
+    setForeground(false)
+    try {
+      setServers([server("a", 1001)])
+      expect(FakeSocket.all).toHaveLength(0)
+      expect(useConnection.getState().status).toBe("offline")
+      setForeground(true)
+      expect(FakeSocket.all).toHaveLength(1)
+      socketOf(1001).ready({ id: "env-a", name: "studio" })
+      expect(useConnection.getState().status).toBe("connected")
+    } finally {
+      setForeground(true)
+    }
+  })
+
   it("names each server after its first handshake", () => {
     expect(useConnection.getState().servers.map((entry) => [entry.name, entry.environmentId])).toEqual([
       ["studio", "env-a"],

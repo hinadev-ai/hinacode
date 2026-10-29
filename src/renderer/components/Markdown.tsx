@@ -37,7 +37,7 @@ function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
       src={src === undefined ? undefined : imageSource(src, { environment, baseUrl, root })}
       alt={alt}
       loading="lazy"
-      className="inline-block max-w-full rounded-md"
+      className="inline-block max-h-[min(32rem,60vh)] w-auto max-w-[min(100%,40rem)] rounded-md object-contain"
     />
   )
 }

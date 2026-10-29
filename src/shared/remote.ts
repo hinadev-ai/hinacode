@@ -11,7 +11,7 @@ export const REMOTE_PROTOCOL_VERSION = 1
 /** The listener closes a socket whose unsent output grows past this, so no single answer may be larger. */
 export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
 
-export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks"] as const
+export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 
 /** The calls a cloud may `ask` a desktop for, to read and drive threads on the user's other machines. */
@@ -64,6 +64,8 @@ export const ClientFrame = Schema.Union([
   /** Sent by a desktop after a `ready` that lists `asks`: it answers `ask` frames from then on. */
   Schema.Struct({ type: Schema.Literal("hub") }),
   Schema.Struct({ type: Schema.Literal("answer"), id: Schema.Int, envelope: Envelope }),
+  /** The threads whose transcripts a phone shows, after a `ready` that lists `watch`. Sent again whenever they change. */
+  Schema.Struct({ type: Schema.Literal("watch"), threadIds: Schema.Array(Schema.String) }),
 ])
 export type ClientFrame = typeof ClientFrame.Type
 
@@ -99,6 +101,29 @@ export const ServerFrame = Schema.Union([
   }),
 ])
 export type ServerFrame = typeof ServerFrame.Type
+
+const noticeEvents: ReadonlySet<string> = new Set([
+  "turn_completed",
+  "turn_failed",
+  "turn_limited",
+  "approval_requested",
+  "question_requested",
+  "secret_requested",
+])
+
+const transcriptThreadId = (event: typeof PushEvent.Encoded) =>
+  event.type === "thread.event"
+    ? event.threadId
+    : event.type === "message.created" || event.type === "message.updated"
+      ? event.message.threadId
+      : undefined
+
+/** Null preserves every transcript for clients that have not sent a watch frame. */
+export const reachesPhone = (event: typeof PushEvent.Encoded, watching: ReadonlySet<string> | null) => {
+  if (event.type === "thread.event" && noticeEvents.has(event.event.type)) return true
+  const threadId = transcriptThreadId(event)
+  return threadId === undefined || watching === null || watching.has(threadId)
+}
 
 /**
  * A pairing reaches one desktop on any of `hosts`, tried in order, or from any network through `relay`, the

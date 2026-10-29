@@ -19,6 +19,8 @@ Add optional `compactEvents` to both `ClientFrame` auth variants. The mobile tra
 
 Project events only in the remote subscription. `message.created` and `message.updated` reuse the part projection from `compactMessage`. Tool starts keep their summary input, tool completions keep `callId` and `isError` with an empty output, and file changes keep their path with an empty diff. Preserve event order, sequence numbers, and all other events. Reuse the compact transcript input summary logic.
 
+Main's separate [mobile background traffic change](2026-10-29-mobile-battery.md) filters events by negotiated transcript watches first. Compact projection applies to the events that remain. Clients that never send a watch preserve full delivery, and clients that omit `compactEvents` preserve full payloads.
+
 Desktop window publication and desktop peers retain complete tool output. Authentication proofs, token rotation, mutation deduplication, and protocol version stay the same because the option is additive.
 
 ## Out of scope

@@ -48,7 +48,7 @@ It checks before npm starts, not after, and restarts as soon as npm finishes. Wa
 
 `src/main/cloudUpdater.ts` provides `Updates` for `hinacode serve`.
 
-- The package root is two levels above `out/main/daemon.js`. A global npm install keeps it at `<prefix>/lib/node_modules/hinacode`, so the updater installs into that `<prefix>` and no other. Any other layout is `unsupported`, so the updater never writes into a checkout or the `npx` cache.
+- The package root is two levels above `out/server/daemon.js`. A global npm install keeps it at `<prefix>/lib/node_modules/hinacode`, so the updater installs into that `<prefix>` and no other. Any other layout is `unsupported`, so the updater never writes into a checkout or the `npx` cache.
 - The check and the install use one registry, `npm_config_registry` or `https://registry.npmjs.org`. The registry's answer is decoded with a schema.
 - `npm` runs with this `node`'s directory first on `PATH`, so it installs with the Node that runs the cloud, not whichever `node` comes first in the login shell. It passes `--allow-scripts=node-pty`, since npm 11 skips install scripts it was not told to run.
 - `install` answers at once and installs in the background, so the call never spans the restart.

@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
-import { homedir, hostname } from "node:os"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
@@ -9,6 +9,7 @@ import type { RemotePairing } from "../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
+import { chromiumDir, desktopPid, isAlive } from "./dataDir.ts"
 import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
 import { storedTunnel } from "./remote/relay.ts"
@@ -21,7 +22,7 @@ import { hydratePath } from "./shellPath.ts"
 const QUIT_TIMEOUT_MS = 5000
 const LISTEN_TIMEOUT_MS = 5000
 
-// Bundled to out/main/daemon.js, and run from source in tests; package.json is two levels up from both.
+// Bundled to out/server/daemon.js, and run from source in tests; package.json is two levels up from both.
 const { version } = createRequire(import.meta.url)("../../package.json") as { version: string }
 const packageRoot = fileURLToPath(new URL("../..", import.meta.url))
 
@@ -33,29 +34,13 @@ const appData = () =>
       ? (process.env["APPDATA"] ?? join(homedir(), "AppData", "Roaming"))
       : (process.env["XDG_CONFIG_HOME"] ?? join(homedir(), ".config"))
 
-const isAlive = (pid: number) => {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM"
-  }
-}
-
 /**
  * One process per data directory: a second would run the same pollers and agents on one database. The desktop
- * app holds Chromium's `SingletonLock`, a symlink to `<host>-<pid>`; a daemon holds `daemon.pid`.
+ * app holds the `SingletonLock` of its Chromium profile; a daemon holds `daemon.pid`.
  */
 const lockDataDir = (dir: string) => {
-  const desktop = (() => {
-    try {
-      return readlinkSync(join(dir, "SingletonLock"))
-    } catch {
-      return undefined
-    }
-  })()
-  const desktopPid = desktop?.startsWith(`${hostname()}-`) ? Number(desktop.slice(hostname().length + 1)) : NaN
-  if (isAlive(desktopPid)) throw new Error(`the HinaCode app (pid ${desktopPid}) uses ${dir}`)
+  const desktop = desktopPid(chromiumDir(dir))
+  if (desktop !== undefined) throw new Error(`the HinaCode app (pid ${desktop}) uses ${dir}`)
 
   const path = join(dir, "daemon.pid")
   for (;;) {
@@ -182,7 +167,7 @@ const pair = async (userData: string) => {
   if (!existsSync(database)) return noCloud()
   const runtime = ManagedRuntime.make(
     RemoteAccessLayer.pipe(
-      Layer.provideMerge(Layer.mergeAll(SettingsLayer, SecretsLayer)),
+      Layer.provideMerge(Layer.mergeAll(SettingsLayer(userData), SecretsLayer)),
       Layer.provideMerge(Layer.mergeAll(Db.layer(database), noKeyring)),
       Layer.provide(Layer.succeed(References.MinimumLogLevel, "Warn")),
     ),

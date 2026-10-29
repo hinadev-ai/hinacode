@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -965,6 +965,8 @@ const newAccount = (provider: "claude" | "codex", name: string) => ({
   binary: provider,
 })
 
+const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
+
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
   execFileSync("git", ["-C", history(), "-c", "user.email=t@t", "-c", "user.name=Kalan", ...args], {
@@ -1433,6 +1435,20 @@ describe("agent accounts over rpc", () => {
       expect.objectContaining({ id: account.id }),
     )
   })
+
+  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+    const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("billing_codex")).toBe(true)
+
+    result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
+    expect(cachedLogin("billing_codex")).toBe(false)
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(true)
+
+    result(await invoke("accounts.delete", { id: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(false)
+  })
 })
 
 /** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
@@ -1572,6 +1588,30 @@ describe("remote mode", () => {
 
     expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
     expect(await paired.call("threads.interrupt", { threadId: thread.id })).toStrictEqual({})
+    paired.socket.close()
+  })
+
+  test("a phone that watches threads hears their replies stream, and only how the others end", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await paired.ready()).features).toContain("watch")
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-watch"))
+    const shown = result(await paired.call("threads.create", { projectId: project.id }))
+    const hidden = result(await paired.call("threads.create", { projectId: project.id }))
+    const heard = (threadId: string) =>
+      paired.frames.flatMap((frame) =>
+        frame.type === "event" && frame.event.type === "thread.event" && frame.event.threadId === threadId
+          ? [frame.event.event.type]
+          : [],
+      )
+
+    await paired.send({ type: "watch", threadIds: [shown.id] })
+    result(await paired.call("threads.send", { threadId: hidden.id, prompt: "simulate a tool call" }))
+    result(await paired.call("threads.send", { threadId: shown.id, prompt: "simulate a tool call" }))
+    await vi.waitFor(() => expect(heard(hidden.id)).toContain("turn_completed"))
+    await vi.waitFor(() => expect(heard(shown.id)).toContain("turn_completed"))
+    expect(heard(hidden.id)).toStrictEqual(["turn_completed"])
+    expect(heard(shown.id)).toEqual(expect.arrayContaining(["tool_call_started", "text_delta"]))
     paired.socket.close()
   })
 

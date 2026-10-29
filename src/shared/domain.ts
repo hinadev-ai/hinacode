@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
+import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
 import { EntrySource } from "./relayMachines.ts"
@@ -204,6 +205,23 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
+/** Who wrote a comment. `you` is the account gh is signed in as, which is also the account the agent posts as. */
+export const CommentAuthorKind = Schema.Literals(["you", "human", "bot"])
+export type CommentAuthorKind = typeof CommentAuthorKind.Type
+
+/** A comment on a pull request: on the conversation, a review's summary, or inline on a line of the diff. */
+export const PullRequestComment = Schema.Struct({
+  id: Schema.String,
+  author: Schema.String,
+  authorKind: CommentAuthorKind.pipe(Schema.withDecodingDefaultKey(Effect.succeed("human" as const))),
+  body: Schema.String,
+  createdAt: Schema.String,
+  url: Schema.String,
+  /** Where an inline comment sits. `line` is null once the line is gone from the diff. */
+  location: Schema.NullOr(Schema.Struct({ path: Schema.String, line: Schema.NullOr(Schema.Number) })),
+})
+export type PullRequestComment = typeof PullRequestComment.Type
+
 /** Everything the PR tab shows. Fetched only while the tab is open, since the body can be large. */
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -215,6 +233,8 @@ export const PullRequestDetail = Schema.Struct({
   checkRuns: Schema.Array(CheckRun),
   /** Defaults for a desktop or cloud from before the Code tab read it. */
   changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
+  /** Oldest first, without resolved review threads. Defaults for a desktop or cloud from before the tab showed them. */
+  comments: Schema.Array(PullRequestComment).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 
@@ -399,6 +419,8 @@ export const Attachment = Schema.Struct({
   bytes: Schema.Number,
   /** Set when the image is a screenshot of an element picked in the in-app browser. */
   element: Schema.optional(PickedElement),
+  /** Set when the image is a crop of a device screen the user picked an element on. */
+  deviceElement: Schema.optional(PickedDeviceElement),
 })
 export type Attachment = typeof Attachment.Type
 
@@ -578,6 +600,8 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   /** A bash script each new tiny VM runs before any tool reaches it. A failing script fails the start. */
   tinyVmSetupScript: Schema.String,
+  /** The Devices side panel view and the `device_*` MCP tools: stream and drive iOS simulators and Android emulators. */
+  devices: Schema.Boolean,
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -739,6 +763,7 @@ export const defaultSettings: Settings = {
     tinyVmTemplate: "default",
     tinyVmProfile: false,
     tinyVmPasskeys: false,
+    devices: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
@@ -900,6 +925,7 @@ export const WatchEventKind = Schema.Literals([
   "reviewChanged",
   "conflicting",
   "mergedOrClosed",
+  "commented",
 ])
 export type WatchEventKind = typeof WatchEventKind.Type
 
@@ -909,6 +935,7 @@ export const allWatchEventKinds: ReadonlyArray<WatchEventKind> = [
   "reviewChanged",
   "conflicting",
   "mergedOrClosed",
+  "commented",
 ]
 
 /** The last state of a watched pull request that its thread was told about. */
@@ -921,6 +948,11 @@ export const PullRequestWatchSnapshot = Schema.Struct({
   head: Schema.String,
   /** Names of the failing checks, so a second failure still fires while checks stay failing. */
   failingChecks: Schema.Array(Schema.String),
+  /**
+   * Ids of the comments the thread was told about, without its own. Null in a snapshot from before
+   * comments were watched, which the next poll takes as the baseline instead of reporting every comment.
+   */
+  comments: Schema.NullOr(Schema.Array(Schema.String)).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type PullRequestWatchSnapshot = typeof PullRequestWatchSnapshot.Type
 

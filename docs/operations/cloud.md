@@ -12,7 +12,7 @@ npx hinacode serve
 
 From a checkout, `pnpm serve` builds and runs the same daemon.
 
-The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL with every reachable address (Tailscale first, then LAN) and a QR code to scan in the mobile app, then one URL per address to add under Settings > Environments on the desktop. Container and VM bridges such as `docker0` and `br-*` are left out. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds.
+The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL with every reachable address (Tailscale first, then LAN) and a QR code to scan in the mobile app, then one URL per address to add under Settings > Environments on the desktop. Container and VM bridges such as `docker0` and `br-*` are left out. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
 
 Options, flags first, then environment, then stored settings:
 

@@ -35,6 +35,7 @@ import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
+import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -46,6 +47,10 @@ import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
+import { makeAndroidDriver } from "./services/devices/android.ts"
+import { devicesLayer } from "./services/devices/Devices.ts"
+import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
+import { simhelperSources } from "./services/devices/simhelperSources.ts"
 
 /** Where the app keeps its database, attachments and VM state, and what differs between the desktop and a cloud. */
 export interface AppOptions {
@@ -87,13 +92,14 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(chats),
+      Layer.provideMerge(Scratch.layer(join(userData, "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(userData)),
     ),
-    ClientSettings.layer,
+    ClientSettings.layer(userData),
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
     Search.layer,
@@ -115,6 +121,13 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
+  const devices = devicesLayer({
+    drivers: {
+      ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
+      android: makeAndroidDriver(),
+    },
+    simslimAvailable: () => simslimAvailable(),
+  })
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -126,6 +139,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     tinyVm,
     passkeys,
     peers,
+    devices,
     linearLayer(process.env),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
@@ -137,7 +151,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     mockClaude === undefined ? PullRequestGuides.layer : PullRequestGuides.idleLayer,
     updates,
     Mcp.serverLayer,
-    AgentLogins.layer,
+    AgentLogins.layer(join(userData, "cache")),
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.

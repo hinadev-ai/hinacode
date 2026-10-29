@@ -151,6 +151,7 @@ export class Transport {
   private attempt = 0
   private nextCallId = 1
   private foreground = true
+  private watching: readonly string[] = []
   private stopped = false
   private route: Dial["route"] | null = null
   private sentAuth: SentAuth = null
@@ -215,31 +216,32 @@ export class Transport {
   /** The network changed: the old TCP connection is likely dead even if it looks open, so start over now. */
   networkChanged() {
     if (this.stopped || this.status === "unauthorized") return
+    if (!this.foreground) return this.onLinkLost()
     this.redial()
   }
 
-  /** The app moved to or from the foreground. Timers do not run reliably in the background, so they stop. */
+  /** Closes the background socket; foregrounding reconnects and reloads through the normal handshake. */
   setForeground(foreground: boolean) {
     if (this.foreground === foreground) return
     this.foreground = foreground
     if (!foreground) {
-      this.stopHeartbeat()
-      this.stopDirectChecks()
+      clearTimeout(this.retryTimer)
+      this.retryTimer = undefined
+      if (this.status === "connecting" || this.status === "connected") this.onLinkLost()
       return
     }
     if (this.stopped || this.status === "unauthorized") return
-    if (this.status === "connected") {
-      if (this.checksDirect()) {
-        this.checkDirect()
-        this.startDirectChecks()
-      }
-      if (!this.features.has("heartbeat")) return
-      this.ping()
-      this.startPings()
-      this.closeIfSilentFor(PROBE_TIMEOUT_MS)
-    } else if (this.status === "offline") {
-      this.reconnectNow()
-    }
+    if (this.status === "offline") this.reconnectNow()
+  }
+
+  /** Asks the desktop for the transcripts of `threadIds` only, from now and after every handshake. */
+  setWatching(threadIds: readonly string[]) {
+    this.watching = threadIds
+    if (this.status === "connected") this.sendWatching()
+  }
+
+  private sendWatching() {
+    if (this.features.has("watch")) this.sendFrame({ type: "watch", threadIds: this.watching })
   }
 
   /** Dials `dials` from the next round on, keeping the current socket and every pending call. */
@@ -249,14 +251,14 @@ export class Transport {
 
   /** Skips the remaining backoff. */
   reconnectNow() {
-    if (this.status !== "offline" || this.retryTimer === undefined) return
+    if (this.stopped || !this.foreground || this.status !== "offline") return
     clearTimeout(this.retryTimer)
     this.retryTimer = undefined
     this.open()
   }
 
   private open(round: Round = "both") {
-    if (this.stopped) return
+    if (this.stopped || !this.foreground) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
     this.round = round
@@ -408,6 +410,7 @@ export class Transport {
       this.closeIfSilentFor(IDLE_TIMEOUT_MS)
     }
     if (this.checksDirect() && this.foreground) this.startDirectChecks()
+    this.sendWatching()
     this.options.onReady(this.features, environment, relay)
   }
 
@@ -509,10 +512,12 @@ export class Transport {
     }
     this.expireOfflineCalls()
     this.setStatus("offline", null)
+    clearTimeout(this.retryTimer)
+    this.retryTimer = undefined
+    if (this.stopped || !this.foreground) return
     const base = Math.min(MAX_RETRY_MS, MIN_RETRY_MS * 2 ** this.attempt)
     const random = this.options.random ?? Math.random
     this.attempt++
-    clearTimeout(this.retryTimer)
     this.retryTimer = setTimeout(() => this.open(), base * (1 + (random() * 2 - 1) * JITTER))
   }
 

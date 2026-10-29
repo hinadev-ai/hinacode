@@ -170,11 +170,27 @@ export const modelsAtom = familyOf((environment: EnvironmentId, provider: Provid
 )
 
 /**
- * Who an account is signed in as. `accountId` null is the CLI's own login. Not kept alive, so reopening the
- * Models tab picks up a sign-in made in a terminal meanwhile.
+ * Who an account is signed in as, as main last cached it. `accountId` null is the CLI's own login. Not kept
+ * alive, so reopening the Models tab picks up a sign-in made in a terminal meanwhile.
  */
 export const accountAtom = familyOf((environment: EnvironmentId, provider: ProviderId, accountId: string | null) =>
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
+)
+
+/** Asks the account's CLI again instead of the cache. */
+export const refreshAccountAtom = Atom.fn(
+  ({
+    environment,
+    provider,
+    accountId,
+  }: {
+    environment: EnvironmentId
+    provider: ProviderId
+    accountId: string | null
+  }) =>
+    call("agents.account", { provider, accountId, refresh: true }, { environment }).pipe(
+      Effect.tap(() => Atom.refresh(accountAtom(environment, provider, accountId))),
+    ),
 )
 
 /** Accounts added in hinacode, of every agent. */
@@ -436,6 +452,18 @@ export const threadVmAtom = Atom.family((threadId: string) =>
     ),
   ),
 )
+
+export const threadDevicesAtom = Atom.family((threadId: string) =>
+  Atom.make(
+    pushFirst(
+      (event) => (event.type === "device.updated" && event.threadId === threadId ? event.devices : undefined),
+      call("device.get", { threadId }),
+    ),
+  ),
+)
+
+/** The thread machine's simulators and emulators. Not kept alive, so opening the list again asks again. */
+export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
 
 /** Whether hinacode reaches the sbx host. Not kept alive, so opening Settings again asks again. */
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>

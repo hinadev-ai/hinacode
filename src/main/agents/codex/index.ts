@@ -37,7 +37,7 @@ import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
-import { elementContext } from "../elementContext.ts"
+import { attachmentContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import {
   GetAccountRateLimitsResponse,
@@ -122,7 +122,8 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<
   ...attachments.flatMap((attachment): Array<UserInput> => {
     if (attachment.kind !== "image") return [textInput(`Attached file: ${attachment.path}`)]
     const image: UserInput = { type: "localImage", path: attachment.path }
-    return attachment.element ? [image, textInput(elementContext(attachment.element))] : [image]
+    const context = attachmentContext(attachment)
+    return context === null ? [image] : [image, textInput(context)]
   }),
 ]
 

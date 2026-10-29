@@ -35,12 +35,14 @@ import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
+import { unavailableDevicesLayer } from "../services/devices/unavailable.ts"
 import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
+import * as Scratch from "../services/Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
@@ -103,11 +105,12 @@ const stubs = Layer.mergeAll(
 
 const core = Layer.mergeAll(
   threadsLayer.pipe(
+    Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
-    Layer.provideMerge(Settings.layer),
+    Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
@@ -125,6 +128,7 @@ const domain = Layer.mergeAll(
   core,
   PullRequests.layer.pipe(Layer.provide(core)),
   tinyVm.pipe(Layer.provide(core)),
+  unavailableDevicesLayer.pipe(Layer.provide(core)),
   linearLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
