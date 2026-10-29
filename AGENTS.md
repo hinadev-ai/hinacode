@@ -23,7 +23,7 @@ pnpm test         # node --test, *.test.ts next to source
 pnpm check:specs  # TLC over specs/*.cfg, needs Java 11+ (see specs/README.md)
 ```
 
-Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on `ubuntu-latest`, and on the self-hosted home Mac for branches in this repo (never for forks), and React Doctor comments on the ones that touch React code.
+Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on `ubuntu-latest`, and on a Blacksmith macOS runner for branches in this repo (never for forks), and React Doctor comments on the ones that touch React code.
 
 ## Architecture
 

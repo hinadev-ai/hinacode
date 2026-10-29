@@ -16,6 +16,7 @@ const cliInput = async (mcpServers: Record<string, McpServerConfig>) => {
     options: {
       mcpServers,
       abortController: abort,
+      pathToClaudeCodeExecutable: "claude",
       spawnClaudeCodeProcess: (options) => {
         args = options.args
         const input = new PassThrough().on("data", (chunk) => {

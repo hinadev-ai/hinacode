@@ -18,6 +18,7 @@ pnpm dev
 
 ```sh
 pnpm build        # bundles main, preload and renderer into out/
+pnpm build:server # bundles only the headless daemon into out/server/
 pnpm typecheck
 pnpm lint
 pnpm format
