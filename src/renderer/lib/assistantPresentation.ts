@@ -1,3 +1,4 @@
+import { collapsedParts } from "../../shared/activityFold.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { isOwnPart } from "./subagents.ts"
 import { groupToolCalls, type TranscriptBlock } from "./toolCall.ts"
@@ -27,6 +28,14 @@ export function assistantPresentation(message: Message, showElapsedTime = true):
   const durationMs = Date.parse(message.completedAt) - Date.parse(message.createdAt)
   if (!(durationMs >= 0)) return { kind: "inline", parts }
   return { kind: "completed", durationMs, parts }
+}
+
+export const INLINE_TAIL_PARTS = 50
+
+export function foldedParts(presentation: AssistantPresentation): ReadonlyArray<IndexedMessagePart> {
+  return presentation.kind === "completed"
+    ? collapsedParts(presentation.parts)
+    : presentation.parts.slice(-INLINE_TAIL_PARTS)
 }
 
 export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {

@@ -27,6 +27,13 @@ Feature: Worked for
     Then the worked-for row shows "08:05" with its activity hidden
     And the finished answer stays visible
 
+  Scenario: A long running response folds all but its latest steps
+    Given the thread "Timed response" has a running response with 53 steps
+    When I open the thread "Timed response" from the sidebar
+    Then the response folds "3 earlier steps" above "Step 3"
+    When I unfold "3 earlier steps"
+    Then the response shows "Step 0"
+
   Scenario: Activity revealed by Find stays available after closing Find
     Given the thread "Timed response" has a finished response that took 485 seconds
     When I open the thread "Timed response" from the sidebar

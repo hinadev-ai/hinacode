@@ -635,6 +635,16 @@
   "message_worked_for": "Worked for {duration}",
   "message_show_activity": "Show tool activity",
   "message_hide_activity": "Hide tool activity",
+  "message_earlier_activity": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} earlier step",
+        "countPlural=other": "{count} earlier steps"
+      }
+    }
+  ],
   "message_copy": "Copy message",
   "message_fork": "Fork into a new thread from here",
   "sidebar_pull_request": "Open pull request #{number}",

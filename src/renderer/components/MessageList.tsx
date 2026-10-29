@@ -5,8 +5,12 @@ import { createContext, type ReactElement, use, type Ref, useState } from "react
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
-import { collapsedParts } from "../../shared/activityFold.ts"
-import { assistantPresentation, type IndexedMessagePart, presentationBlocks } from "../lib/assistantPresentation.ts"
+import {
+  assistantPresentation,
+  foldedParts,
+  type IndexedMessagePart,
+  presentationBlocks,
+} from "../lib/assistantPresentation.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
@@ -20,7 +24,7 @@ import { MessageActions } from "./MessageActions.tsx"
 import { MessagePartView, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
-import { WorkedFor } from "./WorkedFor.tsx"
+import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
 
 const keyExtractor = (message: Message) => message.id
 const ESTIMATED_MESSAGE_SIZE = 500
@@ -181,32 +185,36 @@ function MessageBody({ message }: { message: Message }) {
 function AssistantBody({ message, showElapsedTime }: { message: Message; showElapsedTime: boolean }) {
   const presentation = assistantPresentation(message, showElapsedTime)
   const { parts } = presentation
-  const collapsed = collapsedParts(parts)
+  const folded = foldedParts(presentation)
   const reveal = useUi((state) => state.findReveal)
   const revealsHidden =
     reveal !== null &&
     reveal.match.messageId === message.id &&
     parts.some(({ index }) => index === reveal.match.partIndex) &&
-    !collapsed.some(({ index }) => index === reveal.match.partIndex)
+    !folded.some(({ index }) => index === reveal.match.partIndex)
   const [activityShown, setActivityShown] = useFindDisclosure(revealsHidden ? reveal : null)
   const streaming = message.completedAt === null
   if (!streaming && parts.length === 0) return null
   const last = parts.at(-1)
   const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
-  const hasActivity = collapsed.length < parts.length
-  const shownParts = presentation.kind === "completed" && !activityShown ? collapsed : parts
+  const foldedCount = parts.length - folded.length
+  const shownParts = activityShown ? parts : folded
   return (
     <article
       aria-busy={streaming}
       data-message-id={message.id}
       className="group/message mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
     >
-      {presentation.kind === "completed" && (
+      {presentation.kind === "completed" ? (
         <WorkedFor
           durationMs={presentation.durationMs}
           expanded={activityShown}
-          onExpandedChange={hasActivity ? setActivityShown : undefined}
+          onExpandedChange={foldedCount > 0 ? setActivityShown : undefined}
         />
+      ) : (
+        foldedCount > 0 && (
+          <EarlierActivity count={foldedCount} expanded={activityShown} onExpandedChange={setActivityShown} />
+        )
       )}
       <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (

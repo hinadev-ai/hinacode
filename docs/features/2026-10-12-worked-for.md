@@ -9,11 +9,11 @@ Developers returning to a finished response cannot see how long it took. Its too
 
 ## User flow
 
-While the agent runs, its activity stays visible. When an assistant response completes, a quiet `Worked for 08:05` row appears above it, and the response's reasoning, tool calls, and file changes fold away. So do the progress notes the agent wrote before its last tool call, which narrate the work rather than answer. Questions, attachments, and the answer stay visible in their original order. A response the user steered or stopped mid-work keeps its last text, because that is what the user's next message answers. Selecting the row, or pressing Enter or Space on it, shows the activity again in place.
+While the agent runs, its activity stays visible. Once a running response has more than 50 parts, only the latest 50 render, under an `N earlier steps` row that opens the rest in place, so a long turn costs the same to open as a short one. When an assistant response completes, a quiet `Worked for 08:05` row appears above it, and the response's reasoning, tool calls, and file changes fold away. So do the progress notes the agent wrote before its last tool call, which narrate the work rather than answer. Questions, attachments, and the answer stay visible in their original order. A response the user steered or stopped mid-work keeps its last text, because that is what the user's next message answers. Selecting the row, or pressing Enter or Space on it, shows the activity again in place.
 
 Back-to-back tool calls of any kind fold into one line that names what they did, such as `Ran 2 commands, read 2 files, and searched once`. The line opens into a list capped at 24rem that scrolls, and each row opens into its input and output. Sub-agent calls never fold, because their row opens the sub-agent's own view.
 
-Text-only responses show the elapsed time with no disclosure. Find in thread searches the hidden activity too. A match there opens the Worked for row and the tool group that holds it. Closing Find leaves them open until the reader closes them.
+Text-only responses show the elapsed time with no disclosure. Find in thread searches the hidden activity too. A match there opens the Worked for row, or the earlier steps row of a running response, and the tool group that holds it. Closing Find leaves them open until the reader closes them.
 
 ## Design
 
