@@ -22,6 +22,8 @@ interface FakeBoat {
   readonly resumes: () => number
   readonly stops: () => number
   readonly commands: ReadonlyArray<string>
+  readonly setFailStop: (fail: boolean) => void
+  readonly expireNextResume: () => void
 }
 
 const readBody = (request: IncomingMessage) =>
@@ -34,11 +36,14 @@ const readBody = (request: IncomingMessage) =>
 const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(function* () {
   const files = new Map<string, Buffer>()
   const commands: Array<string> = []
-  let state = "ready"
+  const states = new Map<string, string>()
   let created = 0
   let resumes = 0
   let stops = 0
+  let failStop = false
+  let expiredResume = false
   let base = ""
+  const stateOf = (id: string) => states.get(id) ?? "ready"
 
   const sendJson = (response: ServerResponse, status: number, body: unknown) => {
     response.writeHead(status, { "content-type": "application/json" })
@@ -117,18 +122,24 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
       const body = bodyText === "" ? {} : (JSON.parse(bodyText) as Record<string, unknown>)
       if (request.method === "POST" && route === "/sandboxes") {
         created += 1
-        state = "ready"
+        const id = `bx_fake${String(created).padStart(4, "0")}`
+        states.set(id, "ready")
         return sendJson(response, 202, {
           ok: true,
           type: "sandbox.created",
-          sandbox: { id: "bx_fake0001", name: String(body["name"] ?? ""), state: "provisioning" },
+          sandbox: { id, name: String(body["name"] ?? ""), state: "provisioning" },
         })
       }
       if (request.method === "GET" && route === "/sandboxes") {
         return sendJson(response, 200, {
           ok: true,
           type: "sandbox.list",
-          sandboxes: [{ id: "bx_fake0001", name: "hinacode-vm-test", state, labels: { hinacode: "1" } }],
+          sandboxes: [...states.entries()].map(([id, state]) => ({
+            id,
+            name: "hinacode-vm-test",
+            state,
+            labels: { hinacode: "1" },
+          })),
         })
       }
       if (request.method === "GET" && route === "/limits") {
@@ -141,23 +152,56 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
       }
       const sandbox = /^\/sandboxes\/([^/]+)(\/.*)?$/.exec(route)
       if (!sandbox) return sendJson(response, 404, { ok: false, type: "sandbox.error", message: "not found" })
+      const sandboxId = sandbox[1] ?? ""
       const suffix = sandbox[2] ?? ""
       if (request.method === "GET" && suffix === "") {
+        if (!states.has(sandboxId))
+          return sendJson(response, 404, {
+            ok: false,
+            type: "sandbox.error",
+            status: 404,
+            code: "not_found",
+            message: "sandbox not found",
+            error: { code: "not_found", message: "sandbox not found", status: 404 },
+            requestId: "req_test4040",
+          })
         return sendJson(response, 200, {
           ok: true,
           type: "sandbox.info",
-          sandbox: { id: "bx_fake0001", name: "hinacode-vm-test", state, labels: { hinacode: "1" } },
+          sandbox: { id: sandboxId, name: "hinacode-vm-test", state: stateOf(sandboxId), labels: { hinacode: "1" } },
         })
       }
       if (request.method === "POST" && suffix === "/stop") {
+        if (failStop)
+          return sendJson(response, 500, {
+            ok: false,
+            type: "sandbox.error",
+            status: 500,
+            code: "internal",
+            message: "stop exploded",
+            error: { code: "internal", message: "stop exploded", status: 500 },
+            requestId: "req_test5000",
+          })
         stops += 1
-        state = "archived"
-        return sendJson(response, 202, { ok: true, type: "sandbox.stopping", id: "bx_fake0001", status: "archiving" })
+        states.set(sandboxId, "archived")
+        return sendJson(response, 202, { ok: true, type: "sandbox.stopping", id: sandboxId, status: "archiving" })
       }
       if (request.method === "POST" && suffix === "/resume") {
+        if (expiredResume) {
+          expiredResume = false
+          return sendJson(response, 409, {
+            ok: false,
+            type: "sandbox.error",
+            status: 409,
+            code: "snapshot_data_expired",
+            message: "snapshot data has expired",
+            error: { code: "snapshot_data_expired", message: "snapshot data has expired", status: 409 },
+            requestId: "req_test4090",
+          })
+        }
         resumes += 1
-        state = "ready"
-        return sendJson(response, 202, { ok: true, type: "sandbox.resuming", id: "bx_fake0001", status: "resuming" })
+        states.set(sandboxId, "ready")
+        return sendJson(response, 202, { ok: true, type: "sandbox.resuming", id: sandboxId, status: "resuming" })
       }
       if (request.method === "POST" && suffix === "/commands")
         return handleCommand(response, String(body["command"] ?? ""))
@@ -218,6 +262,12 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
     resumes: () => resumes,
     stops: () => stops,
     commands,
+    setFailStop: (fail) => {
+      failStop = fail
+    },
+    expireNextResume: () => {
+      expiredResume = true
+    },
   }
 })
 
@@ -257,7 +307,7 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
 
       const host = yield* run(TinyVm.use((vm) => vm.host))
-      expect(host).toMatchObject({ status: "connected", provider: "boat", sandboxes: 1, maxSandboxes: 100 })
+      expect(host).toMatchObject({ status: "connected", provider: "boat", sandboxes: 0, maxSandboxes: 100 })
 
       const started = yield* run(TinyVm.use((vm) => vm.start("thread-1")))
       expect(started).toMatchObject({
@@ -287,8 +337,14 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       expect(fake.commands.some((command) => command.includes("xdotool mousemove 10 20"))).toBe(true)
 
       const url = yield* run(TinyVm.use((vm) => vm.desktopUrl("thread-1")))
-      expect(url).toContain("overlay=0")
-      expect(url.endsWith("#token=sekret")).toBe(true)
+      expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/desktop\/[0-9a-f-]{36}$/)
+      expect(url).not.toContain("sekret")
+      const redirect = yield* Effect.promise(() => fetch(url, { redirect: "manual" }))
+      expect(redirect.status).toBe(302)
+      expect(redirect.headers.get("location")).toContain("overlay=0")
+      expect(redirect.headers.get("location")?.endsWith("#token=sekret")).toBe(true)
+      const replay = yield* Effect.promise(() => fetch(url, { redirect: "manual" }))
+      expect(replay.status).toBe(404)
 
       const tunnelError = yield* run(
         TinyVm.use((vm) => vm.openTunnel("thread-1", 9222)).pipe(
@@ -305,6 +361,53 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       expect(resumed).toMatchObject({ status: "running", provider: "boat", sandboxId: "bx_fake0001" })
       expect(fake.created()).toBe(1)
       expect(fake.resumes()).toBe(1)
+    }),
+  ),
+)
+
+it.effect("concurrent starts keep every mapping, a failed stop keeps the VM, an expired snapshot is replaced", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fake = yield* startFakeBoat
+      const dir = mkdtempSync(join(tmpdir(), "hinacode-boat-vm-race-"))
+      const runtime = yield* Effect.acquireRelease(
+        Effect.sync(() => makeRuntime(fake, dir)),
+        (value) => Effect.promise(() => value.dispose()),
+      )
+      const run = <A, E>(effect: Effect.Effect<A, E, TinyVm>) => Effect.promise(() => runtime.runPromise(effect))
+
+      const [first, second] = yield* Effect.promise(() =>
+        Promise.all([
+          runtime.runPromise(TinyVm.use((vm) => vm.start("thread-1"))),
+          runtime.runPromise(TinyVm.use((vm) => vm.start("thread-2"))),
+        ]),
+      )
+      expect(first).toMatchObject({ status: "running" })
+      expect(second).toMatchObject({ status: "running" })
+      const firstId = first.status === "running" ? first.sandboxId : ""
+      const secondId = second.status === "running" ? second.sandboxId : ""
+      expect(new Set([firstId, secondId])).toEqual(new Set(["bx_fake0001", "bx_fake0002"]))
+      const map = JSON.parse(yield* Effect.promise(() => readFile(join(dir, "boat-sandboxes.json"), "utf8"))) as Record<
+        string,
+        string
+      >
+      expect(map).toEqual({ "thread-1": firstId, "thread-2": secondId })
+
+      fake.setFailStop(true)
+      yield* run(TinyVm.use((vm) => vm.stop("thread-1")))
+      expect(yield* run(TinyVm.use((vm) => vm.get("thread-1")))).toMatchObject({ status: "running" })
+      fake.setFailStop(false)
+      yield* run(TinyVm.use((vm) => vm.stop("thread-1")))
+      expect(yield* run(TinyVm.use((vm) => vm.get("thread-1")))).toEqual({ status: "none" })
+
+      fake.expireNextResume()
+      const replaced = yield* run(TinyVm.use((vm) => vm.start("thread-1")))
+      expect(replaced).toMatchObject({ status: "running", sandboxId: "bx_fake0003" })
+      expect(fake.created()).toBe(3)
+      const nextMap = JSON.parse(
+        yield* Effect.promise(() => readFile(join(dir, "boat-sandboxes.json"), "utf8")),
+      ) as Record<string, string>
+      expect(nextMap["thread-1"]).toBe("bx_fake0003")
     }),
   ),
 )

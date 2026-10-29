@@ -110,9 +110,9 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
   const boat = Boat.layer(process.env).pipe(Layer.provide(Secrets.layer))
-  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm")).pipe(
-    Layer.provide(boat),
-  )
+  const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"), {
+    desktopRedirect: serve === undefined,
+  }).pipe(Layer.provide(boat))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),

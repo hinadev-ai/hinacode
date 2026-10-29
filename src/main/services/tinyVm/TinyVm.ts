@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { createServer, type Server } from "node:http"
 import type { Socket } from "node:net"
 import { join } from "node:path"
 import { Context, Deferred, Effect, Exit, Layer, Option, Schema, Semaphore, Stream } from "effect"
@@ -13,7 +14,7 @@ import {
   type VmProfile,
   type VmProvider,
 } from "../../../shared/domain.ts"
-import { Boat, type BoatClient, BoatError } from "../boat/Boat.ts"
+import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError } from "../boat/Boat.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
@@ -30,7 +31,7 @@ import {
 import { decodeTar, encodeTar, readTree, type WrittenTree, writeTree } from "./tar.ts"
 import { xdotoolScript } from "./xdotool.ts"
 
-type SandboxClientError = SandboxGoneError | SbxError | BoatError
+type SandboxClientError = SandboxGoneError | SbxError | BoatError | BoatSnapshotExpiredError
 
 interface SandboxClient {
   readonly url: string
@@ -194,7 +195,7 @@ const writeStoredProfile = (dataDir: string, bytes: Uint8Array, template: string
     ),
   )
 
-const make = (source: LoginSource, dataDir: string) =>
+const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const events = yield* Events
@@ -222,6 +223,7 @@ const make = (source: LoginSource, dataDir: string) =>
     let profileEnabled = experimental.tinyVmProfile
     let profileOwner: string | undefined
     const profileSaves = yield* Semaphore.make(1)
+    const boatMapLock = yield* Semaphore.make(1)
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
@@ -399,17 +401,22 @@ const make = (source: LoginSource, dataDir: string) =>
       Effect.tryPromise({
         try: async () => {
           await mkdir(dataDir, { recursive: true })
-          await writeFile(join(dataDir, BOAT_SANDBOXES_FILE), JSON.stringify(map), { mode: 0o600 })
+          const target = join(dataDir, BOAT_SANDBOXES_FILE)
+          const temporary = `${target}.${randomUUID()}.tmp`
+          await writeFile(temporary, JSON.stringify(map), { mode: 0o600 })
+          await rename(temporary, target)
         },
         catch: (cause) => cause,
       }).pipe(Effect.catch((cause) => Effect.logWarning("tiny vm: cannot store the boat sandbox map", String(cause))))
 
     const updateBoatMap = (threadId: string, sandboxId: string | undefined) =>
-      Effect.flatMap(readBoatMap, (map) => {
-        if (sandboxId === undefined) delete map[threadId]
-        else map[threadId] = sandboxId
-        return writeBoatMap(map)
-      })
+      boatMapLock.withPermits(1)(
+        Effect.flatMap(readBoatMap, (map) => {
+          if (sandboxId === undefined) delete map[threadId]
+          else map[threadId] = sandboxId
+          return writeBoatMap(map)
+        }),
+      )
 
     const runBoatPrepare = (boat: BoatClient, sandboxId: string) =>
       Effect.gen(function* () {
@@ -438,6 +445,7 @@ const make = (source: LoginSource, dataDir: string) =>
               return Effect.as(boat.waitReady(existing), { id: existing, fresh: false })
             }),
             Effect.catchTag("SandboxGoneError", () => Effect.succeed(undefined)),
+            Effect.catchTag("BoatSnapshotExpiredError", () => Effect.succeed(undefined)),
             Effect.mapError(toVmError),
           )
           if (adopted !== undefined) return adopted
@@ -567,20 +575,21 @@ const make = (source: LoginSource, dataDir: string) =>
             Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
           )
         }
+        if (vm.status === "running" && vm.provider === "boat") {
+          const stopped = yield* boatClientEffect.pipe(
+            Effect.flatMap((boat) => boat.stop(vm.sandboxId)),
+            Effect.as(true),
+            Effect.catchTag("SandboxGoneError", () => Effect.succeed(true)),
+            Effect.catch((error) =>
+              Effect.andThen(Effect.logWarning("tiny vm: boat stop failed", error.message), Effect.succeed(false)),
+            ),
+          )
+          if (!stopped) return
+        }
         releaseProfileOwner(threadId)
         yield* setVm(threadId, NONE)
         if (vm.status !== "running") return
-        if (vm.provider === "boat") {
-          yield* boatClientEffect.pipe(
-            Effect.flatMap((boat) => boat.stop(vm.sandboxId)),
-            Effect.catch((error) =>
-              error._tag === "SandboxGoneError"
-                ? Effect.void
-                : Effect.logWarning("tiny vm: boat stop failed", error.message),
-            ),
-          )
-          return
-        }
+        if (vm.provider === "boat") return
         yield* sbxClientEffect.pipe(
           Effect.flatMap((sbx) => sbx.remove(vm.sandboxId)),
           Effect.catch((error) =>
@@ -808,12 +817,68 @@ const make = (source: LoginSource, dataDir: string) =>
         return yield* guardGone(threadId, vm.sandboxId, sbx.tunnel(vm.sandboxId, port))
       })
 
-    const desktopUrl = (threadId: string) =>
+    const fetchDesktopUrl = (threadId: string) =>
       Effect.gen(function* () {
         const vm = yield* ensureRunning(threadId)
         if (vm.provider !== "boat") return yield* new VmError({ message: "Only a boat VM has a desktop stream url." })
         const boat = yield* boatClientEffect
         return yield* guardGone(threadId, vm.sandboxId, boat.desktopUrl(vm.sandboxId))
+      })
+
+    const desktopNonces = new Map<string, { readonly threadId: string; readonly expiresAt: number }>()
+    let desktopServer: Server | undefined
+    let desktopStarting: Promise<number> | undefined
+
+    const startDesktopServer = (): Promise<number> => {
+      desktopStarting ??= new Promise<number>((resolve, reject) => {
+        const server = createServer((request, response) => {
+          const nonce = /^\/desktop\/([0-9a-f-]{36})$/.exec(request.url ?? "")?.[1]
+          const entry = nonce === undefined ? undefined : desktopNonces.get(nonce)
+          if (nonce !== undefined) desktopNonces.delete(nonce)
+          if (entry === undefined || entry.expiresAt < Date.now()) {
+            response.writeHead(404)
+            response.end()
+            return
+          }
+          Effect.runPromise(fetchDesktopUrl(entry.threadId)).then(
+            (url) => {
+              response.writeHead(302, { location: url })
+              response.end()
+            },
+            () => {
+              response.writeHead(502)
+              response.end()
+            },
+          )
+        })
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address()
+          if (address === null || typeof address === "string") {
+            reject(new Error("desktop redirect server has no port"))
+            return
+          }
+          desktopServer = server
+          resolve(address.port)
+        })
+      })
+      return desktopStarting
+    }
+
+    const desktopUrl = (threadId: string) =>
+      Effect.gen(function* () {
+        const vm = yield* ensureRunning(threadId)
+        if (vm.provider !== "boat") return yield* new VmError({ message: "Only a boat VM has a desktop stream url." })
+        if (!desktopRedirect) return yield* fetchDesktopUrl(threadId)
+        const port = yield* Effect.tryPromise({
+          try: () => startDesktopServer(),
+          catch: (cause) => new VmError({ message: `Cannot open the desktop stream: ${String(cause)}` }),
+        })
+        const now = Date.now()
+        for (const [nonce, entry] of desktopNonces) if (entry.expiresAt < now) desktopNonces.delete(nonce)
+        const nonce = randomUUID()
+        desktopNonces.set(nonce, { threadId, expiresAt: now + 60_000 })
+        return `http://127.0.0.1:${port}/desktop/${nonce}`
       })
 
     const sbxHost: Effect.Effect<VmHostStatus> = readLogin(source).pipe(
@@ -1021,6 +1086,7 @@ const make = (source: LoginSource, dataDir: string) =>
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         screens.forEach((screen) => screen.socket.destroy())
+        desktopServer?.close()
         yield* stopAll
       }).pipe(Effect.ignore, Effect.timeoutOrElse({ duration: "3 seconds", orElse: () => Effect.void })),
     )
@@ -1048,4 +1114,5 @@ const make = (source: LoginSource, dataDir: string) =>
     })
   })
 
-export const layer = (source: LoginSource, dataDir: string) => Layer.effect(TinyVm, make(source, dataDir))
+export const layer = (source: LoginSource, dataDir: string, options?: { readonly desktopRedirect?: boolean }) =>
+  Layer.effect(TinyVm, make(source, dataDir, options?.desktopRedirect ?? true))
