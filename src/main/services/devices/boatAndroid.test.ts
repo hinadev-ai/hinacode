@@ -204,6 +204,38 @@ describe("boat Android driver", () => {
     await link.close()
   })
 
+  it("propagates a sandbox lookup failure on remove instead of reporting success", async () => {
+    const runner = makeFakeRunner()
+    const failing: BoatDeviceRunner = {
+      ...runner,
+      list: async () => {
+        throw new Error("network down")
+      },
+    }
+    const driver = makeBoatAndroidDriver(failing)
+    await expect(driver.remove(BOAT_DEVICE_ID)).rejects.toThrow("network down")
+  })
+
+  it("recreates the sandbox when its snapshot has expired", async () => {
+    const runner = makeFakeRunner()
+    runner.state.sandbox = {
+      id: "bx_old00001",
+      name: "hinacode-android",
+      state: "archived",
+      labels: { "hinacode-kind": "android-device" },
+    }
+    const expired: BoatDeviceRunner = {
+      ...runner,
+      resume: async () => {
+        throw Object.assign(new Error("The stored boat snapshot has expired."), { _tag: "BoatSnapshotExpiredError" })
+      },
+    }
+    const driver = makeBoatAndroidDriver(expired)
+    await driver.boot(BOAT_DEVICE_ID, () => undefined)
+    expect(runner.state.sandbox?.id).toBe("bx_dev00001")
+    expect(runner.detached).toHaveLength(1)
+  })
+
   it("composite keeps local devices and dispatches boat ids to the boat driver", async () => {
     const runner = makeFakeRunner()
     const boat = makeBoatAndroidDriver(runner)

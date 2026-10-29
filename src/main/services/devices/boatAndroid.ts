@@ -95,6 +95,8 @@ const messageOf = (cause: unknown) =>
       : String(cause)
 const text = (bytes: Uint8Array) => Buffer.from(bytes).toString()
 const tail = (value: string) => value.trim().slice(-500)
+const isExpired = (cause: unknown) =>
+  typeof cause === "object" && cause !== null && "_tag" in cause && cause._tag === "BoatSnapshotExpiredError"
 
 const INSTALL_STAGES: ReadonlyArray<string> = [
   [
@@ -198,16 +200,24 @@ export const makeBoatAndroidDriver = (runner: BoatDeviceRunner): DevicePlatformD
   }
 
   const bootOnce = async (onStep: (step: PrepareStep) => void) => {
-    const existing = await findSandbox()
+    let existing = await findSandbox()
+    if (existing !== undefined && (existing.state === "archived" || existing.state === "archiving")) {
+      onStep("creating")
+      try {
+        await runner.resume(existing.id)
+      } catch (cause) {
+        if (!isExpired(cause)) throw cause instanceof DeviceError ? cause : new DeviceError(messageOf(cause))
+        await runner.remove(existing.id).catch(() => undefined)
+        sandboxId = undefined
+        existing = undefined
+      }
+    }
     if (existing === undefined) {
       onStep("creating")
       const created = await attempt(() =>
         runner.create({ type: "large", name: SANDBOX_NAME, labels: { "hinacode-kind": DEVICE_LABEL } }),
       )
       sandboxId = created.id
-    } else if (existing.state === "archived" || existing.state === "archiving") {
-      onStep("creating")
-      await attempt(() => runner.resume(existing.id))
     } else if (existing.state !== "ready" && existing.state !== "idle" && existing.state !== "running") {
       onStep("creating")
       await attempt(() => runner.waitReady(existing.id))
@@ -281,9 +291,10 @@ export const makeBoatAndroidDriver = (runner: BoatDeviceRunner): DevicePlatformD
     boot,
     create: () => Promise.reject(new DeviceError(CREATE_UNSUPPORTED)),
     remove: async () => {
-      const found = await findSandbox().catch(() => undefined)
+      const id = sandboxId ?? (await findSandbox())?.id
+      if (id === undefined) return
+      await attempt(() => runner.remove(id))
       sandboxId = undefined
-      if (found) await attempt(() => runner.remove(found.id))
     },
     connect: async (_id, onFrame) => {
       await requireSandboxId()
