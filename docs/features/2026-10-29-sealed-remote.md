@@ -37,6 +37,7 @@ sealed frames                         <->       sealed frames
 
 ## Verification
 
+- `specs/SealedHandshake.tla` (`pnpm check:specs`): against an attacker that replays, rewrites and forges frames, a connected client always shares its channel with the machine, frames stay unreadable even after the token leaks, the machine runs each call once, and an older machine never gets a call. `SealedHandshake.Downgrade.cfg` pins the one gap: a forged plain `ready` makes the client report an outdated machine.
 - `src/shared/handshake.test.ts`: frames open only with the same token and in order, replays and tampering fail, the client refuses a stranger, a skipped challenge and a stripped `ready`, and hears an older machine's version.
 - `src/main/ipc.integration.test.ts`: the listener seals every frame after the challenge, so a known string never appears on the wire, closes plain frames after `auth`, and tells an older client its version.
 - `src/main/services/Environments.integration.test.ts` and `apps/mobile/src/lib/transport.test.ts`: both clients connect sealed, never send the token, mark an older machine incompatible, and redial after a frame that does not open.
