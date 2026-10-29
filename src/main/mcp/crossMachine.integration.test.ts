@@ -175,6 +175,7 @@ let desktopMachine = { id: "", name: "" }
 let desktopThread = ""
 let cloudThread = ""
 let otherRepoThread = ""
+let noOriginThread = ""
 let desktopProject = ""
 let cloudProject = ""
 
@@ -184,9 +185,12 @@ beforeAll(async () => {
   const desktopRepo = join(dir, "desktop-repo")
   const otherRepo = join(dir, "other-repo")
   const cloudRepo = join(dir, "cloud-repo")
+  const desktopScratch = join(dir, "desktop-scratch")
+  const cloudScratch = join(dir, "cloud-scratch")
   gitRepo(desktopRepo, "git@github.com:Acme/Web.git")
   gitRepo(otherRepo, "git@github.com:Acme/Other.git")
   gitRepo(cloudRepo, "git@github.com:Acme/Web.git")
+  for (const scratch of [desktopScratch, cloudScratch]) execFileSync("git", ["init", "-q", scratch])
   mkdirSync(join(dir, "cloud"))
   mkdirSync(join(dir, "desktop"))
 
@@ -218,6 +222,11 @@ beforeAll(async () => {
   cloudProject = cloudWeb.id
   desktopThread = result(await invoke("threads.create", { projectId: web.id })).id
   otherRepoThread = result(await invoke("threads.create", { projectId: other.id })).id
+  const scratch = result(
+    await invoke("projects.create", { name: "scratch", rootPath: desktopScratch, setupScript: null }),
+  )
+  result(await invoke("projects.create", { name: "scratch", rootPath: cloudScratch, setupScript: null }, cloudId))
+  noOriginThread = result(await invoke("threads.create", { projectId: scratch.id })).id
   cloudThread = result(await invoke("threads.create", { projectId: cloudWeb.id })).id
   await seedMessage(desktop, desktopThread, "hello from the desktop")
   await seedMessage(cloud, cloudThread, "hello from the cloud")
@@ -315,6 +324,11 @@ describe("thread tools across machines", () => {
     ])
     const other = await callAs(desktop, otherRepoThread, "list_machines")
     expect(JSON.parse(other.text)).toStrictEqual([
+      { ...desktopMachine, self: true, hasProject: true },
+      { id: cloudId, name: "cloud", hasProject: false },
+    ])
+    const scratch = await callAs(desktop, noOriginThread, "list_machines")
+    expect(JSON.parse(scratch.text)).toStrictEqual([
       { ...desktopMachine, self: true, hasProject: true },
       { id: cloudId, name: "cloud", hasProject: false },
     ])
