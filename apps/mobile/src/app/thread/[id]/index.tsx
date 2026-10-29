@@ -138,7 +138,7 @@ export default function ThreadScreen() {
         // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
         <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
           <View style={[styles.flex, styles.readable, tab !== "chat" && styles.hidden]}>
-            <Chat thread={thread} />
+            <Chat thread={thread} active={tab === "chat"} />
           </View>
           {opened.has("files") && (
             <View style={[styles.flex, tab !== "files" && styles.hidden]}>

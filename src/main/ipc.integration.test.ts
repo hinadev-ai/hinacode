@@ -1591,6 +1591,30 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
+  test("a phone that watches threads hears their replies stream, and only how the others end", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await paired.ready()).features).toContain("watch")
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-watch"))
+    const shown = result(await paired.call("threads.create", { projectId: project.id }))
+    const hidden = result(await paired.call("threads.create", { projectId: project.id }))
+    const heard = (threadId: string) =>
+      paired.frames.flatMap((frame) =>
+        frame.type === "event" && frame.event.type === "thread.event" && frame.event.threadId === threadId
+          ? [frame.event.event.type]
+          : [],
+      )
+
+    await paired.send({ type: "watch", threadIds: [shown.id] })
+    result(await paired.call("threads.send", { threadId: hidden.id, prompt: "simulate a tool call" }))
+    result(await paired.call("threads.send", { threadId: shown.id, prompt: "simulate a tool call" }))
+    await vi.waitFor(() => expect(heard(hidden.id)).toContain("turn_completed"))
+    await vi.waitFor(() => expect(heard(shown.id)).toContain("turn_completed"))
+    expect(heard(hidden.id)).toStrictEqual(["turn_completed"])
+    expect(heard(shown.id)).toEqual(expect.arrayContaining(["tool_call_started", "text_delta"]))
+    paired.socket.close()
+  })
+
   test("a paired phone reads Linear issues, empty on a machine without a Linear key", async () => {
     const paired = phone(port)
     await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })

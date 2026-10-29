@@ -79,6 +79,7 @@ const MUTATIONS = new Set(["threads.send", "approvals.respond"])
 let sockets: FakeSocket[]
 let statuses: TransportStatus[]
 let ready: number
+let received: number
 let keys: number
 let plan: readonly Dial[] = []
 
@@ -89,6 +90,7 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
   sockets = []
   statuses = []
   ready = 0
+  received = 0
   keys = 0
   plan = dials
   const transport = new Transport({
@@ -97,7 +99,7 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
-    onEvent: () => {},
+    onEvent: () => received++,
     createSocket: (url) => {
       const socket = new FakeSocket(url)
       sockets.push(socket)
@@ -393,31 +395,164 @@ describe("Transport", () => {
       await vi.advanceTimersByTimeAsync(1)
       expect(latest().closed).toBe(true)
     })
+  })
 
-    it("pauses in the background and probes for 5 s on return", async () => {
+  describe("background cutoff", () => {
+    it("closes a healthy socket and does no socket work until the foreground", async () => {
       const transport = setup()
       handshake()
+      const backgroundSocket = latest()
+      backgroundSocket.receive({ type: "event", event: { type: "thread.removed", id: "visible" } })
+      expect(received).toBe(1)
+      const sent = backgroundSocket.sent.length
       transport.setForeground(false)
-      await vi.advanceTimersByTimeAsync(120_000)
-      expect(latest().closed).toBe(false)
-      expect(latest().pings()).toHaveLength(0)
-
+      expect(backgroundSocket.closed).toBe(true)
+      expect(statuses.at(-1)).toBe("offline")
+      expect(vi.getTimerCount()).toBe(0)
+      backgroundSocket.receive({ type: "event", event: { type: "thread.removed", id: "hidden" } })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(received).toBe(1)
+      expect(backgroundSocket.sent).toHaveLength(sent)
+      expect(sockets).toHaveLength(1)
+      expect(vi.getTimerCount()).toBe(0)
       transport.setForeground(true)
-      expect(latest().pings()).toHaveLength(1)
-      await vi.advanceTimersByTimeAsync(4_999)
-      expect(latest().closed).toBe(false)
-      await vi.advanceTimersByTimeAsync(1)
-      expect(latest().closed).toBe(true)
+      expect(sockets).toHaveLength(2)
+      handshake()
+      expect(ready).toBe(2)
+      latest().receive({ type: "event", event: { type: "thread.removed", id: "visible-again" } })
+      expect(received).toBe(2)
     })
 
-    it("keeps a socket whose probe is answered", async () => {
+    it("replays a pending mutation once with the same call key after returning", async () => {
       const transport = setup()
-      handshake()
+      handshake(["heartbeat", "call-keys"])
+      const sending = track(transport.call("threads.send", { prompt: "hi" }))
+      const backgroundSocket = latest()
       transport.setForeground(false)
+      backgroundSocket.result(1, "late")
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(sending.value).toBeUndefined()
+      expect(sending.error).toBeUndefined()
+      expect(sockets).toHaveLength(1)
       transport.setForeground(true)
-      latest().receive({ type: "pong", at: 0 })
-      await vi.advanceTimersByTimeAsync(10_000)
-      expect(latest().closed).toBe(false)
+      handshake(["heartbeat", "call-keys"])
+      expect(backgroundSocket.calls()).toEqual([
+        { type: "call", id: 1, method: "threads.send", payload: { prompt: "hi" }, key: "key-1" },
+      ])
+      expect(latest().calls()).toEqual(backgroundSocket.calls())
+      latest().result(1, "finished")
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sending.value).toEqual({ result: "finished" })
+    })
+
+    it("fails an unkeyed pending mutation on background cutoff instead of replaying it", async () => {
+      const transport = setup()
+      handshake([])
+      const sending = track(transport.call("threads.send", { prompt: "hi" }))
+      transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sending.error).toMatchObject({ tag: "Offline", message: LOST_REPLY_MESSAGE })
+      transport.setForeground(true)
+      handshake([])
+      expect(latest().calls()).toEqual([])
+    })
+
+    it("makes no connection attempts for a minute after its background socket drops", async () => {
+      const transport = setup()
+      handshake(["heartbeat"])
+      transport.setForeground(false)
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      expect(statuses.at(-1)).toBe("offline")
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      expect(statuses.at(-1)).toBe("connecting")
+    })
+
+    it("cancels a scheduled retry when the app leaves", async () => {
+      const transport = setup()
+      latest().drop()
+      transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+    })
+
+    it("ends a connection race when the app leaves and resumes it once on return", async () => {
+      const transport = setup([direct("ws://desktop/remote"), relay("wss://relay/remote")])
+      transport.setForeground(false)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(sockets).toHaveLength(1)
+      expect(sockets[0]!.closed).toBe(true)
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      handshake(["heartbeat"])
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("defers network changes and queued calls until the foreground", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "call-keys"])
+      transport.setForeground(false)
+      transport.networkChanged()
+      const send = track(transport.call("threads.send", { prompt: "hi" }))
+      transport.networkChanged()
+      transport.reconnectNow()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(sockets).toHaveLength(1)
+      expect(send.error).toBeUndefined()
+      transport.setForeground(true)
+      expect(sockets).toHaveLength(2)
+      handshake(["heartbeat", "call-keys"])
+      expect(latest().calls()).toEqual([
+        { type: "call", id: 1, method: "threads.send", payload: { prompt: "hi" }, key: "key-1" },
+      ])
+      latest().result(1)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(send.value).toEqual({ result: null })
+    })
+
+    it("still expires an offline call while background retries are paused", async () => {
+      const transport = setup()
+      handshake(["heartbeat", "call-keys"])
+      const send = track(transport.call("threads.send", { prompt: "hi" }))
+      transport.setForeground(false)
+      latest().drop()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MAY_HAVE_RUN_MESSAGE })
+      expect(sockets).toHaveLength(1)
+    })
+
+    it("ignores a handshake from a connection canceled when the app left", () => {
+      const transport = setup()
+      transport.setForeground(false)
+      handshake(["heartbeat"])
+      expect(ready).toBe(0)
+      expect(statuses.at(-1)).toBe("offline")
+    })
+  })
+
+  describe("watched threads", () => {
+    const watchFrames = () => latest().sent.filter((frame) => frame.type === "watch")
+
+    it("tells a desktop that offers it which transcripts to send, again after each handshake", () => {
+      const transport = setup()
+      handshake(["heartbeat", "watch"])
+      expect(watchFrames()).toEqual([{ type: "watch", threadIds: [] }])
+      transport.setWatching(["t1"])
+      expect(watchFrames().at(-1)).toEqual({ type: "watch", threadIds: ["t1"] })
+      transport.networkChanged()
+      handshake(["heartbeat", "watch"])
+      expect(watchFrames()).toEqual([{ type: "watch", threadIds: ["t1"] }])
+    })
+
+    it("sends nothing new to a desktop without it", () => {
+      const transport = setup()
+      handshake(["heartbeat"])
+      transport.setWatching(["t1"])
+      expect(watchFrames()).toEqual([])
     })
   })
 
@@ -661,12 +796,14 @@ describe("Transport", () => {
       expect(urls()).toEqual([LAN])
     })
 
-    it("checks nothing in the background and checks at once on return", async () => {
+    it("closes the relay in the background and races direct addresses on return", async () => {
       const transport = await connectOverRelay()
+      const relaySocket = socketAt(RELAY)
       const before = sockets.length
       transport.setForeground(false)
       await vi.advanceTimersByTimeAsync(5 * DIRECT_CHECK_INTERVAL_MS)
       expect(sockets).toHaveLength(before)
+      expect(relaySocket.closed).toBe(true)
 
       transport.setForeground(true)
       expect(sockets).toHaveLength(before + 1)
