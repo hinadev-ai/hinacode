@@ -6,6 +6,7 @@ import {
   type DeviceModel,
   type DeviceSpec,
   deviceSpec,
+  type Fold,
   type FrameLayout,
   frameLayout,
   type Orientation,
@@ -17,39 +18,45 @@ export interface DeviceFrameProps {
   /** The device screen in points, in either orientation. */
   readonly screen: Size
   readonly orientation: Orientation
+  /** For a foldable. Open, the screen is its inner screen; folded, its cover screen. */
+  readonly fold?: Fold
   /** Laid exactly over the screen opening. It fills its box and gets clipped to the screen's corners. */
   readonly children: ReactNode
   readonly className?: string
 }
 
 /** A phone around `children`, scaled to fit its own box. Give it a sized parent. */
-export function DeviceFrame({ model, screen, orientation, children, className }: DeviceFrameProps) {
+export function DeviceFrame({ model, screen, orientation, fold, children, className }: DeviceFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const container = useElementSize(containerRef)
   const dpr = useSyncExternalStore(subscribeDevicePixelRatio, () => window.devicePixelRatio)
   const scheme = useSyncExternalStore(subscribeColorScheme, colorScheme)
 
   const spec = deviceSpec(model, screen)
-  const layout = frameLayout(spec, orientation, container, dpr)
+  const unfolded = fold && { spec: deviceSpec(model, fold.unfolded), posture: fold.posture }
+  const layout = frameLayout(spec, orientation, container, dpr, unfolded)
   const measured = container.width > 0 && container.height > 0
+  const pinch = hingePinch(fold, spec, layout.scale)
 
   return (
     <div ref={containerRef} className={cn("relative size-full overflow-hidden", className)}>
       {measured && (
         <>
-          <Body spec={spec} layout={layout} scheme={scheme} />
+          <Body spec={spec} layout={layout} scheme={scheme} pinch={pinch?.body} />
           <div
-            className="absolute overflow-hidden bg-black"
+            className="absolute overflow-hidden bg-black transition-[clip-path] duration-500 ease-out motion-reduce:transition-none"
             style={{
               left: layout.screen.x,
               top: layout.screen.y,
               width: layout.screen.width,
               height: layout.screen.height,
               borderRadius: layout.screenRadius,
+              clipPath: pinch ? hingeClip(layout.screen.width > layout.screen.height, pinch.screen) : undefined,
             }}
           >
             {children}
             {spec.cutout && <CutoutMark cutout={spec.cutout} layout={layout} />}
+            {fold?.posture === "halfOpen" && <Crease across={layout.screen.width > layout.screen.height} />}
           </div>
         </>
       )}
@@ -76,11 +83,67 @@ function CutoutMark({ cutout, layout }: { cutout: Cutout; layout: FrameLayout })
   )
 }
 
+interface Pinch {
+  /** How far the two edges that cross the hinge dip toward it, in CSS pixels. */
+  readonly depth: number
+  /** How much of each half of those edges the dip spans, from 0 to 1. */
+  readonly reach: number
+}
+
+/**
+ * How an open foldable's outline shows its hinge, as Xcode's DeviceHub draws it. Half open, both halves lean back, so
+ * the edges dip toward the hinge along their whole length. Flat, only a small notch marks it on the body.
+ */
+function hingePinch(fold: Fold | undefined, spec: DeviceSpec, scale: number) {
+  if (!fold || fold.posture === "closed") return null
+  const short = Math.min(spec.body.width, spec.body.height) * scale
+  const none: Pinch = { depth: 0, reach: 1 }
+  return fold.posture === "halfOpen"
+    ? { body: { depth: short * 0.016, reach: 1 }, screen: { depth: short * 0.016, reach: 1 } }
+    : { body: { depth: short * 0.006, reach: 0.04 }, screen: none }
+}
+
+/**
+ * Clips a box so the edges that cross its middle dip toward it. `across` is true when the hinge runs top to bottom.
+ * The point count never changes, so a posture change animates.
+ */
+function hingeClip(across: boolean, { depth, reach }: Pinch) {
+  const from = `${50 - reach * 50}%`
+  const to = `${50 + reach * 50}%`
+  return across
+    ? `polygon(0 0, ${from} 0, 50% ${depth}px, ${to} 0, 100% 0, 100% 100%, ${to} 100%, 50% calc(100% - ${depth}px), ${from} 100%, 0 100%)`
+    : `polygon(0 0, 100% 0, 100% ${from}, calc(100% - ${depth}px) 50%, 100% ${to}, 100% 100%, 0 100%, 0 ${to}, ${depth}px 50%, 0 ${from})`
+}
+
+/** The fold line of a half-open screen, darker where the glass turns away. */
+function Crease({ across }: { across: boolean }) {
+  const direction = across ? "to right" : "to bottom"
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0"
+      style={{
+        background: `linear-gradient(${direction}, transparent 44%, rgb(0 0 0 / 0.14) 49.6%, rgb(255 255 255 / 0.08) 50.2%, transparent 56%)`,
+      }}
+    />
+  )
+}
+
 /**
  * The body in portrait, centered on the screen and turned with it, so its side buttons follow. Landscape turns the
  * top to the left, as the device reports it.
  */
-function Body({ spec, layout, scheme }: { spec: DeviceSpec; layout: FrameLayout; scheme: ColorScheme }) {
+function Body({
+  spec,
+  layout,
+  scheme,
+  pinch,
+}: {
+  spec: DeviceSpec
+  layout: FrameLayout
+  scheme: ColorScheme
+  pinch: Pinch | undefined
+}) {
   const { scale, screen, angle } = layout
   const width = spec.body.width * scale
   const height = spec.body.height * scale
@@ -111,15 +174,19 @@ function Body({ spec, layout, scheme }: { spec: DeviceSpec; layout: FrameLayout;
           }}
         />
       ))}
-      <div
-        className="absolute inset-0 shadow-[0_12px_24px_rgb(0_0_0/0.22)] dark:shadow-[0_12px_28px_rgb(0_0_0/0.5)]"
-        style={{
-          borderRadius: spec.bodyRadius * scale,
-          background: shade,
-          padding: Math.max(1.5, spec.edge * scale * 0.5),
-        }}
-      >
-        <div className="size-full bg-black" style={{ borderRadius: spec.bodyRadius * scale }} />
+      {/* A drop shadow on the wrapper follows the clipped outline, where a box shadow on the body would be cut off. */}
+      <div className="absolute inset-0 drop-shadow-[0_12px_12px_rgb(0_0_0/0.22)] dark:drop-shadow-[0_12px_14px_rgb(0_0_0/0.5)]">
+        <div
+          className="size-full transition-[clip-path] duration-500 ease-out motion-reduce:transition-none"
+          style={{
+            borderRadius: spec.bodyRadius * scale,
+            background: shade,
+            padding: Math.max(1.5, spec.edge * scale * 0.5),
+            clipPath: pinch && hingeClip(spec.body.width > spec.body.height, pinch),
+          }}
+        >
+          <div className="size-full bg-black" style={{ borderRadius: spec.bodyRadius * scale }} />
+        </div>
       </div>
       {spec.bezelCamera !== null && (
         <div

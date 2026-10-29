@@ -1,6 +1,16 @@
 export type DeviceModel = "iphone" | "pixel"
 export type Orientation = "portrait" | "landscape"
 export type ColorScheme = "light" | "dark"
+export type Posture = "closed" | "halfOpen" | "flat"
+
+/**
+ * A foldable's posture and its inner screen in points. Its cover screen opens sideways into the inner one, as a book
+ * does, so the open device is turned a quarter from the folded one.
+ */
+export interface Fold {
+  readonly posture: Posture
+  readonly unfolded: Size
+}
 
 export interface Size {
   readonly width: number
@@ -136,11 +146,22 @@ export function fitScale({ body }: DeviceSpec, container: Size, angle: number) {
   return Math.max(Math.min((container.width - PADDING * 2) / width, (container.height - PADDING * 2) / height), 0)
 }
 
-/** Fits the oriented device into `container` and snaps the screen opening to device pixels. */
-export function frameLayout(spec: DeviceSpec, orientation: Orientation, container: Size, dpr: number): FrameLayout {
+/**
+ * Fits the oriented device into `container` and snaps the screen opening to device pixels. A foldable fits as it is
+ * open in every posture, so folding it halves its width rather than filling the box again.
+ */
+export function frameLayout(
+  spec: DeviceSpec,
+  orientation: Orientation,
+  container: Size,
+  dpr: number,
+  unfolded?: { readonly spec: DeviceSpec; readonly posture: Posture },
+): FrameLayout {
   const landscape = orientation === "landscape"
   const angle = landscape ? Math.PI / 2 : 0
-  const fit = fitScale(spec, container, angle)
+  const fit = unfolded
+    ? fitScale(unfolded.spec, container, unfolded.posture === "closed" ? angle + Math.PI / 2 : angle)
+    : fitScale(spec, container, angle)
   const snap = (value: number) => Math.round(value * dpr) / dpr
   const width = snap((landscape ? spec.screen.height : spec.screen.width) * fit)
   const height = snap((landscape ? spec.screen.width : spec.screen.height) * fit)

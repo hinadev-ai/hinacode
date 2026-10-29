@@ -420,15 +420,16 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
   )
 }
 
-const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconType; label: () => string }> = [
+const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconType; label: () => string; turned?: boolean }> = [
   { posture: "closed", icon: RiSmartphoneLine, label: m.devices_posture_closed },
   { posture: "halfOpen", icon: RiBookOpenLine, label: m.devices_posture_half_open },
-  { posture: "flat", icon: RiTabletLine, label: m.devices_posture_flat },
+  // A foldable opens sideways, as a book does, so open it is a landscape tablet.
+  { posture: "flat", icon: RiTabletLine, label: m.devices_posture_flat, turned: true },
 ]
 
 /** Folds or opens a foldable. The pressed one is the posture its frames report. */
 function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (posture: DevicePosture) => void }) {
-  return postures.map(({ posture, icon: Icon, label }) => (
+  return postures.map(({ posture, icon: Icon, label, turned }) => (
     <Tooltip key={posture}>
       <TooltipTrigger
         render={
@@ -442,7 +443,7 @@ function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (
           />
         }
       >
-        <Icon aria-hidden />
+        <Icon aria-hidden className={cn(turned && "rotate-90")} />
       </TooltipTrigger>
       <TooltipContent>{label()}</TooltipContent>
     </Tooltip>

@@ -4,7 +4,8 @@
 // stderr: first `ready <widthPoints> <heightPoints> <scale>`, then errors.
 // stdout: frames, each a big-endian u32 length of what follows, then width u16, height u16, orientation u8
 // (UIDeviceOrientation, 1 to 4), posture u8 (0 not foldable, 1 closed, 2 half open, 3 flat), the screen's
-// portrait width and height in points u16 each, then a JPEG already rotated to what the screen shows.
+// portrait width and height in points u16 each, the inner screen's the same way (0 when not foldable), then a JPEG
+// already rotated to what the screen shows.
 // stdin, one command per line, fractions of the screen as shown:
 //   touch down|move|up <fx> <fy>, key <usage> down|up, consumer <usage> down|up, rotate <1-4>, hinge <degrees>
 import CoreImage
@@ -197,15 +198,17 @@ func emit() {
   let image = full.transformed(by: CGAffineTransform(scaleX: scale, y: scale)).oriented(imageOrientation(shown))
   let options = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: quality]
   guard let jpeg = ci.jpegRepresentation(of: image, colorSpace: sRGB, options: options) else { return }
-  var header = Data(capacity: 14)
+  var header = Data(capacity: 18)
   func append<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.bigEndian) { header.append(contentsOf: $0) } }
-  append(UInt32(jpeg.count + 10))
+  append(UInt32(jpeg.count + 14))
   append(UInt16(image.extent.width.rounded()))
   append(UInt16(image.extent.height.rounded()))
   append(shownOrientation(shown))
   append(posture)
   append(UInt16(active.points.width.rounded()))
   append(UInt16(active.points.height.rounded()))
+  append(UInt16(foldable ? screens[1].points.width.rounded() : 0))
+  append(UInt16(foldable ? screens[1].points.height.rounded() : 0))
   do {
     try out.write(contentsOf: header + jpeg)
   } catch {

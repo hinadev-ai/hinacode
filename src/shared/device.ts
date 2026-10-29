@@ -169,6 +169,8 @@ export const DeviceFrame = Schema.Struct({
   posture: Schema.optionalKey(DevicePosture),
   /** The screen this frame shows, in points and before rotation, when it is not the device's main screen size. */
   screen: Schema.optionalKey(Schema.Struct({ width: Schema.Number, height: Schema.Number })),
+  /** A foldable's inner screen, in points and before rotation, so a folded device keeps the scale it has open. */
+  unfolded: Schema.optionalKey(Schema.Struct({ width: Schema.Number, height: Schema.Number })),
 })
 export type DeviceFrame = typeof DeviceFrame.Type
 

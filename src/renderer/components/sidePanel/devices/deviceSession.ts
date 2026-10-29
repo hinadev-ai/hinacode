@@ -2,7 +2,7 @@ import type { DeviceCommand, DeviceFrame, DeviceId } from "../../../../shared/de
 import { errorMessage } from "../../../lib/errorMessage.ts"
 import { callPromise } from "../../../lib/rpc.ts"
 
-export type FrameShape = Pick<DeviceFrame, "width" | "height" | "orientation" | "posture" | "screen">
+export type FrameShape = Pick<DeviceFrame, "width" | "height" | "orientation" | "posture" | "screen" | "unfolded">
 
 interface DeviceCallbacks {
   /** The first frame, and every frame whose size, orientation, posture or screen differs from the last. */
@@ -155,11 +155,18 @@ export class DeviceSession {
       if (canvas.width !== frame.width) canvas.width = frame.width
       if (canvas.height !== frame.height) canvas.height = frame.height
       canvas.getContext("2d")?.drawImage(bitmap, 0, 0, frame.width, frame.height)
-      const { width, height, orientation, posture, screen } = frame
+      const { width, height, orientation, posture, screen, unfolded } = frame
       const shape = `${width}x${height}:${orientation}:${posture}:${screen?.width}x${screen?.height}`
       if (shape !== this.shape) {
         this.shape = shape
-        this.callbacks.onShape({ width, height, orientation, ...(posture && { posture }), ...(screen && { screen }) })
+        this.callbacks.onShape({
+          width,
+          height,
+          orientation,
+          ...(posture && { posture }),
+          ...(screen && { screen }),
+          ...(unfolded && { unfolded }),
+        })
       }
     } finally {
       bitmap.close()

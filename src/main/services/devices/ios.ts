@@ -244,7 +244,7 @@ const HINGE_DEGREES: Record<DevicePosture, number> = { closed: 0, halfOpen: 90, 
 
 /**
  * Splits the helper's stdout into frames: a u32 length, then width u16, height u16, orientation u8, posture u8,
- * the screen's width and height in points u16, and the JPEG.
+ * the screen's width and height in points u16, a foldable's inner screen the same way, and the JPEG.
  * Calls `onCorrupt` once and stops reading when a length cannot be a frame.
  */
 const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => {
@@ -255,7 +255,7 @@ const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => 
     pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk])
     while (pending.length >= 4) {
       const length = pending.readUInt32BE(0)
-      if (length < 10 || length > MAX_FRAME_BYTES) {
+      if (length < 14 || length > MAX_FRAME_BYTES) {
         corrupt = true
         pending = Buffer.alloc(0)
         return onCorrupt()
@@ -268,9 +268,12 @@ const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => 
         width: pending.readUInt16BE(4),
         height: pending.readUInt16BE(6),
         orientation: orientation >= 3 ? "landscape" : "portrait",
-        ...(posture && { posture }),
+        ...(posture && {
+          posture,
+          unfolded: { width: pending.readUInt16BE(14), height: pending.readUInt16BE(16) },
+        }),
         screen: { width: pending.readUInt16BE(10), height: pending.readUInt16BE(12) },
-        data: pending.subarray(14, 4 + length),
+        data: pending.subarray(18, 4 + length),
       })
       pending = pending.subarray(4 + length)
     }
