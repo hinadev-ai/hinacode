@@ -84,6 +84,7 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       const command = typeof body["command"] === "string" ? body["command"] : ""
       commands.push(command)
       if (body["detached"] === true) {
+        if (command.includes("empty-detached")) return sendJson(response, 200, {})
         return sendJson(response, 200, { success: true, pid: 4321, logPath: "/tmp/detached.log" })
       }
       if (command.includes("bash -lc ") && command.includes(".hinacode-")) {
@@ -173,10 +174,15 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       }
 
       if (request.method === "GET" && route === "/sandboxes") {
+        const all = [...sandboxes.values()]
+        const cursor = Number(requestUrl.searchParams.get("cursor") ?? "0")
+        const page = all.slice(cursor, cursor + 2)
+        const hasMore = cursor + 2 < all.length
         return sendJson(response, 200, {
           ok: true,
           type: "sandbox.list",
-          sandboxes: [...sandboxes.values()].map(({ id, name, state }) => ({ id, name, state })),
+          sandboxes: page.map(({ id, name, state }) => ({ id, name, state })),
+          pageInfo: { hasMore, nextCursor: hasMore ? String(cursor + 2) : null },
         })
       }
 
@@ -192,6 +198,12 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       }
 
       if (suffix === "" && request.method === "GET") {
+        if (record.state === "secret")
+          return sendJson(
+            response,
+            400,
+            errorEnvelope(400, "bad_request", "key boat_leaked12345 see https://x.example/d#token=leaked", "req_leak"),
+          )
         record.getCount += 1
         if (record.state === "provisioning" && record.getCount >= 2) record.state = "ready"
         return sendJson(response, 200, {
@@ -219,6 +231,12 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       }
 
       if (suffix === "/resume" && request.method === "POST") {
+        if (record.state === "expired")
+          return sendJson(
+            response,
+            409,
+            errorEnvelope(409, "snapshot_data_expired", "snapshot data has expired", "req_expired1"),
+          )
         resumed.push(jsonBody)
         record.state = "provisioning"
         record.getCount = 0
@@ -320,6 +338,49 @@ describe("boatClient", () => {
       expect(error.message).toContain("boat rejected the API key")
       expect(error.message).toContain("Settings > Experimental")
       expect(error.message).not.toContain(wrongKey)
+    })
+  })
+
+  it("never echoes upstream error text that could carry secrets", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-secret", "secret")
+      const client = makeClient(fake)
+      const error = await runFlip(client.getSandbox("sb-secret"))
+      expect(error._tag).toBe("BoatError")
+      expect(error.message).toContain("request failed (HTTP 400")
+      expect(error.message).not.toContain("boat_leaked12345")
+      expect(error.message).not.toContain("token=leaked")
+      expect(error.message).not.toContain("req_leak")
+    })
+  })
+
+  it("follows list pagination", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-a", "ready")
+      fake.seedSandbox("sb-b", "ready")
+      fake.seedSandbox("sb-c", "archived")
+      const client = makeClient(fake)
+      const all = await runEffect(client.listAll())
+      expect(all.map((sandbox) => sandbox.id)).toEqual(["sb-a", "sb-b", "sb-c"])
+    })
+  })
+
+  it("fails a detached exec that answers without a process id", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const client = makeClient(fake)
+      const error = await runFlip(client.exec("sb-1", { script: "empty-detached", timeoutSeconds: 30, detach: true }))
+      expect(error._tag).toBe("BoatError")
+      expect(error.message).toContain("without a process id")
+    })
+  })
+
+  it("tags an expired snapshot on resume", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-old", "expired")
+      const client = makeClient(fake)
+      const error = await runFlip(client.resume("sb-old"))
+      expect(error._tag).toBe("BoatSnapshotExpiredError")
     })
   })
 

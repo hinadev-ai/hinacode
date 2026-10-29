@@ -13,6 +13,15 @@ export class BoatNotConfiguredError extends Schema.TaggedError<BoatNotConfigured
   }
 }
 
+export class BoatSnapshotExpiredError extends Schema.TaggedError<BoatSnapshotExpiredError>()(
+  "BoatSnapshotExpiredError",
+  {},
+) {
+  override get message(): string {
+    return "The stored boat snapshot has expired."
+  }
+}
+
 export { SandboxGoneError }
 
 export interface BoatSandbox {
@@ -52,12 +61,20 @@ const GetSandboxResponse = Schema.Struct({
   labels: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
 })
 
-const ListResponse = Schema.Struct({ sandboxes: Schema.Array(SandboxObject) })
+const ListResponse = Schema.Struct({
+  sandboxes: Schema.Array(SandboxObject),
+  pageInfo: Schema.optional(
+    Schema.Struct({
+      hasMore: Schema.optional(Schema.Boolean),
+      nextCursor: Schema.optional(Schema.NullOr(Schema.String)),
+    }),
+  ),
+})
 
 const CommandResponse = Schema.Struct({
   success: Schema.optional(Schema.Boolean),
-  exitCode: Schema.optional(Schema.NullOr(Schema.Number)),
-  timedOut: Schema.optional(Schema.Boolean),
+  exitCode: Schema.NullOr(Schema.Number),
+  timedOut: Schema.Boolean,
   stdout: Schema.optional(Schema.String),
   stderr: Schema.optional(Schema.String),
   output: Schema.optional(Schema.String),
@@ -66,6 +83,7 @@ const CommandResponse = Schema.Struct({
 const CommandStartedResponse = Schema.Struct({
   success: Schema.optional(Schema.Boolean),
   pid: Schema.optional(Schema.Number),
+  processId: Schema.optional(Schema.Number),
   logPath: Schema.optional(Schema.String),
 })
 
@@ -144,22 +162,45 @@ const clampTimeout = (seconds: number) => Math.min(600, Math.max(1, Math.round(s
 
 const sandboxPath = (id: string, suffix = "") => `/sandboxes/${encodeURIComponent(id)}${suffix}`
 
+const safeCode = (code: string | undefined) => (code !== undefined && /^[a-z0-9_]{1,64}$/.test(code) ? code : "unknown")
+
+const safeRequestId = (requestId: string | undefined) =>
+  requestId !== undefined && /^req_[A-Za-z0-9]{8,64}$/.test(requestId) ? requestId : undefined
+
+const BILLING_CODES = new Set([
+  "trial_billing_required",
+  "billing_required",
+  "payment_required",
+  "insufficient_credits",
+  "account_frozen",
+  "subscription_required",
+])
+
 const errorOf = (status: number, body: string, sandboxId: string | undefined) => {
   const decoded = decodeErrorEnvelope(body)
   const envelope = decoded._tag === "Some" ? decoded.value : undefined
-  const code = envelope?.code ?? envelope?.error?.code
-  const serverMessage = envelope?.error?.message ?? envelope?.message
-  const requestId = envelope?.requestId ?? "unknown"
+  const rawCode = envelope?.code ?? envelope?.error?.code
+  const code = safeCode(rawCode)
+  const requestId = safeRequestId(envelope?.requestId)
+  const suffix = requestId === undefined ? "" : ` (request ${requestId})`
   if (status === 404 && sandboxId !== undefined) return new SandboxGoneError({ id: sandboxId })
+  if (status === 409 && rawCode === "snapshot_data_expired") return new BoatSnapshotExpiredError()
   if (status === 401)
     return new BoatError({ message: "boat rejected the API key. Replace it in Settings > Experimental." })
-  if (status === 402)
+  if (status === 402 || (rawCode !== undefined && BILLING_CODES.has(rawCode)))
     return new BoatError({
-      message: `boat billing: ${serverMessage ?? "payment required"} (request ${requestId})`,
+      message: `boat billing needs attention before it starts sandboxes. Add a payment method or top up at boat.dev, then try again.${suffix}`,
     })
-  if (status === 409 && sandboxId !== undefined && (code === "machine_not_running" || code === "sandbox_not_ready"))
+  if (
+    status === 409 &&
+    sandboxId !== undefined &&
+    (rawCode === "machine_not_running" || rawCode === "sandbox_not_ready")
+  )
     return new SandboxGoneError({ id: sandboxId })
-  return new BoatError({ message: `boat: ${serverMessage ?? `HTTP ${status}`} (request ${requestId})` })
+  if (status === 429)
+    return new BoatError({ message: `boat rate limited the request. Wait a moment and try again.${suffix}` })
+  if (status >= 500) return new BoatError({ message: `boat is unavailable right now (HTTP ${status}).${suffix}` })
+  return new BoatError({ message: `boat: request failed (HTTP ${status}, code ${code}).${suffix}` })
 }
 
 export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: Redacted.Redacted<string> }) => {
@@ -252,7 +293,9 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     )
 
   const waitReady = (id: string) => {
-    const poll = (attempt: number): Effect.Effect<{ readonly id: string }, BoatError | SandboxGoneError> =>
+    const poll = (
+      attempt: number,
+    ): Effect.Effect<{ readonly id: string }, BoatError | SandboxGoneError | BoatSnapshotExpiredError> =>
       Effect.flatMap(getSandbox(id), (sandbox) => {
         if ((BOAT_READY_STATES as ReadonlyArray<string>).includes(sandbox.state)) return Effect.succeed({ id })
         if (sandbox.state === "cancelled") return Effect.fail(new SandboxGoneError({ id }))
@@ -397,16 +440,20 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       body: { command: `DISPLAY=:0 bash -lc ${shellQuote(execInput.script)}`, detached: true },
     }).pipe(
       within(REQUEST_TIMEOUT_SECONDS),
-      Effect.map(
-        (response) =>
-          ({
-            stdout: Buffer.alloc(0),
-            stderr: Buffer.alloc(0),
-            exitCode: response.success === false ? -1 : 0,
-            pid: response.pid,
-            log: response.logPath,
-          }) satisfies ExecResult,
-      ),
+      Effect.flatMap((response) => {
+        const pid = response.pid ?? response.processId
+        if (pid === undefined)
+          return Effect.fail(
+            new BoatError({ message: "boat: POST /sandboxes/{id}/commands answered without a process id" }),
+          )
+        return Effect.succeed({
+          stdout: Buffer.alloc(0),
+          stderr: Buffer.alloc(0),
+          exitCode: response.success === false ? -1 : 0,
+          pid,
+          log: response.logPath,
+        } satisfies ExecResult)
+      }),
     )
 
   const execSync = (id: string, execInput: ExecInput) =>
@@ -426,7 +473,10 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       } satisfies ExecResult
     })
 
-  const exec = (id: string, execInput: ExecInput): Effect.Effect<ExecResult, BoatError | SandboxGoneError> =>
+  const exec = (
+    id: string,
+    execInput: ExecInput,
+  ): Effect.Effect<ExecResult, BoatError | SandboxGoneError | BoatSnapshotExpiredError> =>
     execInput.detach ? execDetached(id, execInput) : execSync(id, execInput)
 
   const putFiles = (id: string, guestPath: string, tar: Uint8Array) =>
@@ -483,7 +533,9 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     })
 
   const desktopUrl = (id: string) => {
-    const attempt = (remaining: number): Effect.Effect<string, BoatError | SandboxGoneError> =>
+    const attempt = (
+      remaining: number,
+    ): Effect.Effect<string, BoatError | SandboxGoneError | BoatSnapshotExpiredError> =>
       jsonRequest(DesktopResponse, "POST /sandboxes/{id}/desktop", "POST", sandboxPath(id, "/desktop"), {
         sandboxId: id,
         body: {},
@@ -493,7 +545,7 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
           const candidate = response.desktopUrl ?? ""
           if (response.provisioning !== true && candidate.length > 0) return Effect.succeed(withOverlayZero(candidate))
           if (remaining <= 1)
-            return Effect.fail(new BoatError({ message: response.message ?? "boat desktop is still provisioning" }))
+            return Effect.fail(new BoatError({ message: "boat desktop is still provisioning. Try again in a moment." }))
           return Effect.sleep(`${WAIT_READY_POLL_SECONDS} seconds`).pipe(Effect.andThen(attempt(remaining - 1)))
         }),
       )
@@ -519,10 +571,21 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     )
 
   const listAll = () =>
-    jsonRequest(ListResponse, "GET /sandboxes", "GET", "/sandboxes?limit=200").pipe(
-      within(REQUEST_TIMEOUT_SECONDS),
-      Effect.map((response) => response.sandboxes.map(toBoatSandbox)),
-    )
+    Effect.gen(function* () {
+      const all: Array<BoatSandbox> = []
+      let cursor: string | undefined
+      for (let page = 0; page < 10; page++) {
+        const query = cursor === undefined ? "limit=200" : `limit=200&cursor=${encodeURIComponent(cursor)}`
+        const response = yield* jsonRequest(ListResponse, "GET /sandboxes", "GET", `/sandboxes?${query}`).pipe(
+          within(REQUEST_TIMEOUT_SECONDS),
+        )
+        all.push(...response.sandboxes.map(toBoatSandbox))
+        const next = response.pageInfo?.nextCursor ?? undefined
+        if (response.pageInfo?.hasMore !== true || next === undefined || next === "") break
+        cursor = next
+      }
+      return all
+    })
 
   const status = Effect.gen(function* () {
     const lim = yield* limits()
