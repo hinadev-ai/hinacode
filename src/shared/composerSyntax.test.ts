@@ -45,6 +45,15 @@ describe("highlight", () => {
       expect(highlight(text, known).map(segmentText).join("")).toBe(text)
   })
 
+  test("marks every known command, also before punctuation and Japanese text", () => {
+    const text = "/kalan-mode first, then $verify-hinacode. Again /kalan-mode、and /kalan-modeで。Not /kalan-modes"
+    const segments = highlight(text, known)
+    expect(segments.map(segmentText).join("")).toBe(text)
+    expect(
+      segments.filter((segment) => segment.kind === "command").map((segment) => segmentText(segment)),
+    ).toStrictEqual(["/kalan-mode", "$verify-hinacode", "/kalan-mode", "/kalan-mode"])
+  })
+
   test("marks mentions of known threads only", () => {
     expect(
       highlight("ask @thread:t-1. and @thread:t-2", known).filter((segment) => segment.kind !== "text"),
