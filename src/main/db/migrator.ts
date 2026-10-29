@@ -25,6 +25,7 @@ import environmentSource from "./migrations/0023_environment_source.ts"
 import threadSnooze from "./migrations/0025_thread_snooze.ts"
 import fork from "./migrations/0026_fork.ts"
 import threadDevice from "./migrations/0027_thread_device.ts"
+import settingsFiles from "./migrations/0027_settings_files.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 
 const run = Migrator.make({})
@@ -61,6 +62,7 @@ export const runMigrations = run({
     "24_archive_shared_chats": archiveSharedChats,
     "26_fork": fork,
     "27_thread_device": threadDevice,
+    "27_settings_files": settingsFiles,
   }),
 }).pipe(
   Effect.tap((ran) =>

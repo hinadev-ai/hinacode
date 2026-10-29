@@ -806,6 +806,7 @@
   "settings_account_signed_out": "尚未登入",
   "settings_account_sign_in_terminal": "請在終端機登入：",
   "settings_account_check_again": "重新檢查",
+  "settings_account_refresh": "重新檢查「{name}」",
   "settings_default_account": "新對話串使用的帳號",
   "settings_default_account_hint": "對話串開始後，帳號就固定了。",
   "account_dialog_add_title": "新增 {provider} 帳號",

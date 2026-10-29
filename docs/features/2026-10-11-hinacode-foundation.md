@@ -33,7 +33,7 @@ The system map is in [`../arch.md`](../arch.md), and decisions that are costly t
 - **Worktrees** live in `<parent>/.hinacode-worktrees/<project>/` with an id suffix. A branch has one live worktree, and removal is refused while it's in use ([0006](../adr/0006-worktree-ownership.md)).
 - **Built-in MCP server** on loopback, authenticated per thread ([0007](../adr/0007-per-thread-mcp-credentials.md)).
 - **Trust.** Importing a project trusts it, and there is no trust setting ([0008](../adr/0008-import-trusts-the-project.md)). Session approvals cover only what the card showed ([0009](../adr/0009-scoped-session-approvals.md)).
-- **Attachments** are copied to `<userData>/attachments/<thread>/`.
+- **Attachments** are copied to `<dataDir>/attachments/<thread>/` (`~/.hinacode`).
   - Images go to the model: base64 for Claude (5 MB cap) and `localImage` for Codex.
   - Other files are passed by absolute path, and the agent reads them with its own tools.
   - Thumbnails are served by `hinacode-attachment://`, which refuses paths outside that directory.

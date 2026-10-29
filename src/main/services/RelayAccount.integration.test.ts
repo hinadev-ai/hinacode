@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Option } from "effect"
@@ -123,7 +126,7 @@ const withAccount = <A, E>(
     | Environments.Environments
     | RemoteAccess.RemoteAccess
     | Secrets.Secrets
-    | Effect.Services<typeof Settings.layer>
+    | Settings.Settings
   >,
 ) =>
   effect.pipe(
@@ -132,7 +135,7 @@ const withAccount = <A, E>(
         Layer.provideMerge(Environments.layer),
         Layer.provideMerge(RemoteAccess.layer),
         Layer.provideMerge(Secrets.layer),
-        Layer.provideMerge(Settings.layer),
+        Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-relay-account-")))),
         Layer.provideMerge(makeEventsLayer(() => {})),
         Layer.provideMerge(Db.layer(":memory:")),
         Layer.provide(Layer.mergeAll(NodeServices.layer, Secrets.noKeyring)),

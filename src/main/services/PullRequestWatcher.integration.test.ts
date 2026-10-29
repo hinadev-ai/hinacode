@@ -21,6 +21,7 @@ import { layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const wakes: Array<{ readonly threadId: string; readonly text: string }> = []
@@ -56,11 +57,12 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-pr-watcher-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-watcher-settings-")))),
 )
 const testLayer = watcherLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),

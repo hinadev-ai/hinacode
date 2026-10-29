@@ -41,7 +41,7 @@ import {
   type ThreadsState,
   useThreads,
 } from "../stores/threads.ts"
-import { type SidebarTab, useUi } from "../stores/ui.ts"
+import { returnFocus, type SidebarTab, useUi } from "../stores/ui.ts"
 import { CloudMark } from "./CloudMark.tsx"
 import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
@@ -165,6 +165,7 @@ export function Sidebar({
         open={addProjectOpen}
         onOpenChange={(open) => setAddProjectOpen(open)}
         environment={addProjectEnvironment}
+        finalFocus={returnFocus}
       />
       {!compact && sidebarOpen && (
         <ResizeHandle

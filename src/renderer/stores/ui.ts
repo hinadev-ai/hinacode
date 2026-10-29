@@ -191,6 +191,24 @@ const showPanel = () =>
 
 const hidePanel = () => (getPanelLayout() === "wide" ? { sidePanelOpen: false } : { sidePanelOverlayOpen: false })
 
+let opener: Element | null = null
+
+/** Remembers what has focus as a popup without a trigger opens, before the popup takes it. */
+export const rememberOpener = () => {
+  opener = document.activeElement
+}
+
+/**
+ * `finalFocus` for a popup opened after `rememberOpener`: back where focus was, or else to the open thread's message
+ * box. Base UI's own fallback, when the page itself had focus, is whatever an earlier popup was opened from, often a
+ * long-closed popover's button.
+ */
+export const returnFocus = () => {
+  if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) return opener
+  useUi.getState().requestComposerFocus()
+  return false
+}
+
 /** App-wide UI state driven by keybindings and shared across components without prop drilling. */
 export const useUi = create<UiState>()((set, get) => ({
   sidebarOpen: true,
@@ -295,11 +313,19 @@ export const useUi = create<UiState>()((set, get) => ({
   setChangesPath: (changesPath) => set({ changesPath }),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
-  requestPicker: (picker) => set({ pickerRequest: { picker } }),
-  setAddProjectOpen: (addProjectOpen, environment = null) =>
-    set({ addProjectOpen, addProjectEnvironment: environment }),
+  requestPicker: (picker) => {
+    rememberOpener()
+    set({ pickerRequest: { picker } })
+  },
+  setAddProjectOpen: (addProjectOpen, environment = null) => {
+    if (addProjectOpen) rememberOpener()
+    set({ addProjectOpen, addProjectEnvironment: environment })
+  },
   setResourcesOpen: (resourcesOpen) => set({ resourcesOpen }),
-  setSnoozeThreadId: (snoozeThreadId) => set({ snoozeThreadId }),
+  setSnoozeThreadId: (snoozeThreadId) => {
+    if (snoozeThreadId !== null) rememberOpener()
+    set({ snoozeThreadId })
+  },
   openFind: (threadId, query, messageId) =>
     set((state) => ({
       findThreadId: threadId,

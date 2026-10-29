@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { defaultClientSettings } from "../../src/shared/domain.ts"
+
+const writeJson = (path: string, value: unknown) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
 
 export const SEEDED_AT = "2026-01-01T00:00:00.000Z"
 
@@ -18,7 +23,8 @@ export interface SeedThread {
 }
 
 /**
- * Writes rows straight into the app's SQLite file for preconditions that are not under test.
+ * Writes rows straight into the app's SQLite file, and settings into the files beside it, for preconditions that are
+ * not under test.
  * The renderer only notices them after `app.reload()` or `app.restart()`.
  */
 export class Seed {
@@ -64,14 +70,12 @@ export class Seed {
     return id
   }
 
-  /** Stores one settings key the way `Settings.set` does: as JSON. */
+  /** Stores one settings key in the file `Settings.set` or `ClientSettings.set` keeps it in. */
   setting(key: string, value: unknown): void {
-    this.#with((db) =>
-      db
-        .prepare(
-          `INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
-        )
-        .run(key, JSON.stringify(value)),
-    )
+    const dir = dirname(this.#dbPath)
+    if (key === "keybindings") return writeJson(join(dir, "keybindings.json"), value)
+    const path = join(dir, key in defaultClientSettings ? "client-settings.json" : "settings.json")
+    const stored = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>) : {}
+    writeJson(path, { ...stored, [key]: value })
   }
 }

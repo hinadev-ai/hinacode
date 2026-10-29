@@ -22,6 +22,7 @@ import { Settings, layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 interface Query {
   readonly prompt: string
@@ -104,15 +105,16 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-guides-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(base)),
 )
 const testLayer = guidesLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
-  Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer)),
+  Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer(base))),
   Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),

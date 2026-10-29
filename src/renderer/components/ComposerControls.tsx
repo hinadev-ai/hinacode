@@ -41,7 +41,7 @@ import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
-import { type ComposerPicker, useUi } from "../stores/ui.ts"
+import { type ComposerPicker, returnFocus, useUi } from "../stores/ui.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { switchAccount, useAccountHint, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
@@ -123,23 +123,23 @@ const composerPopup = {
  */
 function usePickerOpen(picker: ComposerPicker | undefined) {
   const [open, setOpen] = useState(false)
-  const returnFocus = useRef<HTMLElement | null>(null)
+  const openedByShortcut = useRef(false)
   useEffect(
     () =>
       useUi.subscribe((state, previous) => {
         if (state.pickerRequest === previous.pickerRequest || state.pickerRequest?.picker !== picker) return
-        returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        openedByShortcut.current = true
         setOpen(true)
       }),
     [picker],
   )
   const onOpenChange = (next: boolean) => {
-    if (next) returnFocus.current = null
+    if (next) openedByShortcut.current = false
     setOpen(next)
   }
   return {
     root: { open, onOpenChange },
-    popup: { finalFocus: () => returnFocus.current ?? true },
+    popup: { finalFocus: () => (openedByShortcut.current ? returnFocus() : true) },
   }
 }
 

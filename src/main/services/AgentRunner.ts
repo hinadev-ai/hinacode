@@ -63,6 +63,7 @@ import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
+import { Scratch } from "./Scratch.ts"
 import { Secrets } from "./Secrets.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -274,6 +275,7 @@ const make = Effect.gen(function* () {
   const scope = yield* Effect.scope
   const threads = yield* Threads
   const worktrees = yield* Worktrees
+  const scratch = yield* Scratch
   const git = yield* Git
   const pullRequests = yield* PullRequests
   const messages = yield* Messages
@@ -379,22 +381,24 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => null),
     )
 
-  const readEnvironment = ({ cwd, rootPath }: ActiveWorkspace) =>
+  const readEnvironment = (thread: Thread, { cwd, rootPath }: ActiveWorkspace) =>
     Effect.all(
       [
         gitOutput(cwd, ["rev-parse", "--is-inside-work-tree"]),
         gitOutput(cwd, ["branch", "--show-current"]),
         gitOutput(cwd, ["remote", "get-url", "origin"]),
+        scratch.ensure(thread),
       ],
       { concurrency: "unbounded" },
     ).pipe(
-      Effect.map(([insideWorkTree, branch, remote]): AgentEnvironment => ({
+      Effect.map(([insideWorkTree, branch, remote, scratchDirectory]): AgentEnvironment => ({
         gitRepository: insideWorkTree === "true",
         branch,
         cwd,
         rootPath,
         remote,
         platform: process.platform,
+        scratchDirectory,
       })),
     )
 
@@ -650,9 +654,12 @@ const make = Effect.gen(function* () {
                 message: "This thread's worktree was removed before the turn started",
               })
             }
-            const [tree, environment] = yield* Effect.all([threads.captureTurnBase(cwd), readEnvironment(workspace)], {
-              concurrency: "unbounded",
-            })
+            const [tree, environment] = yield* Effect.all(
+              [threads.captureTurnBase(cwd), readEnvironment(thread, workspace)],
+              {
+                concurrency: "unbounded",
+              },
+            )
             yield* checkStopped
             if (!(yield* when)) return null
             yield* threads.recordTurnBase({ threadId, tree })

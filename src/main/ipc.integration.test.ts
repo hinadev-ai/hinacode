@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -965,6 +965,8 @@ const newAccount = (provider: "claude" | "codex", name: string) => ({
   binary: provider,
 })
 
+const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
+
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
   execFileSync("git", ["-C", history(), "-c", "user.email=t@t", "-c", "user.name=Kalan", ...args], {
@@ -1432,6 +1434,20 @@ describe("agent accounts over rpc", () => {
     expect(result(await invoke("accounts.list", undefined))).not.toContainEqual(
       expect.objectContaining({ id: account.id }),
     )
+  })
+
+  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+    const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("billing_codex")).toBe(true)
+
+    result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
+    expect(cachedLogin("billing_codex")).toBe(false)
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(true)
+
+    result(await invoke("accounts.delete", { id: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(false)
   })
 })
 

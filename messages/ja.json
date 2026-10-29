@@ -833,6 +833,7 @@
   "settings_account_signed_out": "ログインしていません",
   "settings_account_sign_in_terminal": "ターミナルからログイン：",
   "settings_account_check_again": "ステータスを再確認",
+  "settings_account_refresh": "{name} を再確認",
   "settings_default_account": "新規スレッドで使用するアカウント",
   "settings_default_account_hint": "作成されたスレッドは、開始時に選択されたアカウントを引き続き使用します。",
   "account_dialog_add_title": "{provider} アカウントを追加",

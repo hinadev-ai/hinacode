@@ -833,6 +833,7 @@
   "settings_account_signed_out": "Not signed in",
   "settings_account_sign_in_terminal": "Sign in from a terminal:",
   "settings_account_check_again": "Check again",
+  "settings_account_refresh": "Check {name} again",
   "settings_default_account": "Account for new threads",
   "settings_default_account_hint": "A thread keeps its account once it has started.",
   "account_dialog_add_title": "Add a {provider} account",

@@ -33,6 +33,7 @@ import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
+import { Scratch } from "./Scratch.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 import { Settings } from "./Settings.ts"
 import { Terminals } from "./Terminals.ts"
@@ -144,8 +145,8 @@ export class Threads extends Context.Service<
     >
     /**
      * Marks the thread archived and ends its terminals. With `Settings.archive.removeWorktree` on, it first
-     * removes the thread's worktree, deleting the branch only if it is merged. A chat's folder is deleted.
-     * Refuses while a turn runs.
+     * removes the thread's worktree, deleting the branch only if it is merged. A chat's folder and the thread's
+     * scratch folder are deleted. Refuses while a turn runs.
      */
     readonly archive: (
       id: string,
@@ -184,6 +185,7 @@ const make = Effect.gen(function* () {
   const settings = yield* Settings
   const accounts = yield* AgentAccounts
   const terminals = yield* Terminals
+  const scratch = yield* Scratch
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
   const fs = yield* FileSystem.FileSystem
@@ -540,6 +542,7 @@ const make = Effect.gen(function* () {
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
         `.pipe(Effect.mapError(persistence("threads.archive")))
         yield* syncChatFolder(thread, false)
+        yield* scratch.remove(id)
         return yield* get(id)
       }),
     )
@@ -557,6 +560,7 @@ const make = Effect.gen(function* () {
       if (options?.removeWorktree) yield* removeOwnWorktree(thread)
       yield* sql`DELETE FROM thread WHERE id = ${id}`.pipe(Effect.mapError(persistence("threads.delete")))
       yield* syncChatFolder(thread, false)
+      yield* scratch.remove(id)
     })
 
   return Threads.of({
