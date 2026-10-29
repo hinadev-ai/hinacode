@@ -1,6 +1,3 @@
-// Copies the real HinaCode database into a stopped cloud's profile with personal data scrubbed, so the phone app
-// can be tested against real-shaped threads. Only the public `hinacode` project keeps its transcripts.
-// Usage: node scripts/mobile-mock/seed.ts <user-data-dir> [source.sqlite]   (launch.sh next to this file runs it)
 import { execFileSync, spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -65,7 +62,6 @@ const entropy = (text: string) => {
 const privateIps = new Map<string, string>()
 const user = userInfo().username
 
-// Specific credentials first, then identities, then anything that merely looks random.
 const rules: ReadonlyArray<Rule> = [
   ...paths,
   [/data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/g, "data:image/png;base64,"],
@@ -74,7 +70,6 @@ const rules: ReadonlyArray<Rule> = [
     /\b(gh[pousr]_\w{20,}|github_pat_\w{20,}|sk-[\w-]{20,}|xox[abpr]-[\w-]+|lin_(api|oauth)_\w+|AKIA[0-9A-Z]{16})/g,
     "[redacted-key]",
   ],
-  // A value with a digit, or any password, so code such as `token: string` keeps reading as code.
   [
     /((token|secret|password|passwd|api[_-]?key|credential)["']?\s*[:=]\s*["']?)([^\s"'&,`\\]{6,})/gi,
     (match, prefix, key, value) => (/\d/.test(value) || /pass/i.test(key) ? `${prefix}[redacted]` : match),
@@ -110,7 +105,6 @@ const scrubColumn = (value: SQLInputValue | undefined) =>
 
 const placeholderIcon = join(import.meta.dirname, "..", "..", "assets", "icon.png")
 type Attachment = { id: string; name: string; path: string; kind: "image" | "file" }
-// The real files are screenshots and dumps of the user's screen, so every attachment points at a stand-in.
 const stageAttachment = (attachment: Attachment) => {
   const path = join(data, "attachments", `${attachment.id}${extname(attachment.name) || ".txt"}`)
   if (attachment.kind === "image") copyFileSync(placeholderIcon, path)
@@ -278,7 +272,6 @@ const seedSettings = (remotePort: number) => {
 
 const hours = (offset: number) => new Date(Date.now() + offset * 3_600_000).toISOString()
 
-// The real database rarely holds these at rest, so two idle threads carry them.
 const seedMissingStates = () => {
   const idle = target
     .prepare("SELECT id FROM thread WHERE status = 'idle' AND project_id = ? ORDER BY updated_at DESC LIMIT 3")
@@ -295,7 +288,6 @@ const seedMissingStates = () => {
   if (idle[2]) update("UPDATE thread SET snoozed_until = ? WHERE id = ?", hours(-1), idle[2].id)
 }
 
-// Strings that identify this machine or its user. None may survive the scrub.
 const assertNoLeaks = () => {
   const known = [
     homedir(),

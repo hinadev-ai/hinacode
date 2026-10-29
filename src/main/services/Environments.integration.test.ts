@@ -54,7 +54,6 @@ interface Frame {
   readonly parent: Frame | null
 }
 
-/** Only the desktop runtime has windows; what it sends them is recorded here. */
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<PushEvent>,
@@ -108,7 +107,6 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, provider("muse")),
 )
 
-/** A headless cloud has no windows: its pushes reach only the remote listener's sinks. */
 const makeCloudEvents = () => {
   const sinks = new Set<(event: typeof PushEvent.Encoded) => void>()
   const encode = Schema.encodeSync(PushEvent)
@@ -145,7 +143,6 @@ let cloudRepo = ""
 let cloudPort = 0
 let cloud: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeCloud>>, unknown>
 let desktop: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeDesktop>>, unknown>
-/** What a phone paired with the desktop would receive. */
 const phonePushes: Array<typeof PushEvent.Encoded> = []
 
 const invoke = <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>, environment?: string) =>
@@ -164,7 +161,6 @@ const failure = (envelope: RpcEnvelope<unknown>) => {
   return envelope.error
 }
 
-/** Resolves as soon as the window got a push matching `predicate`, including one it got already. */
 const pushedEventually = (predicate: (event: PushEvent) => boolean) =>
   new Promise<void>((resolve) => {
     const check = () => {
@@ -184,7 +180,6 @@ const setCloudRemote = (enabled: boolean) =>
     Settings.use((settings) => settings.set({ remote: { enabled, bindHost: "127.0.0.1", port: cloudPort } })),
   )
 
-/** The second host is unroutable, so a pairing that waits for it hangs. */
 const cloudPairing = async (options: { token?: string; hosts?: [string, ...Array<string>] } = {}) => {
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))
   return pairingUrl({
@@ -424,19 +419,13 @@ interface ScriptedOptions {
   readonly host?: string
   readonly port?: number
   readonly relay?: string
-  /** Serves wss, as a relay does. Its `ready` names `127.0.0.1:<port>` as the relay, unless `relay` says otherwise. */
   readonly tls?: { readonly key: string; readonly cert: string }
-  /** Accepts the connection but answers the WebSocket upgrade only on `answerHeld`, like an address that hangs. */
   readonly holdUpgrades?: boolean
-  /** Answers this many WebSocket upgrades and drops the rest, like an address that stopped answering. */
   readonly answeredUpgrades?: number
-  /** Closes with `CLOSE_UNAUTHORIZED` instead of answering `auth`, like someone else's HinaCode. */
   readonly refuse?: boolean
-  /** Sends no `challenge`, like a server that predates it. */
   readonly noChallenge?: boolean
 }
 
-/** The token every scripted cloud's pairing URL carries. */
 const SCRIPTED_TOKEN = "token"
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
@@ -459,11 +448,10 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     if (!options.holdUpgrades) return answer()
     held.push(socket)
     waiting.push(answer)
-    // An upgraded socket has left the HTTP parser, so a client hanging up only ends its half.
+    // FIXME: an upgraded socket has left Node's HTTP parser, so a client hang-up only ends its half
     socket.on("end", () => socket.destroy())
   })
   const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
-  /** The token each `auth` carried or proved, or `"wrong proof"`. */
   const auths: Array<string> = []
   const received: Array<unknown> = []
   let connections = 0
@@ -508,19 +496,15 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   const { port } = http.address() as AddressInfo
   return {
     port,
-    /** This cloud's address as a relay hostname, for one served with `tls`. */
     relay: `127.0.0.1:${port}`,
     pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: SCRIPTED_TOKEN, relay: null }),
     calls,
     auths,
-    /** Every frame a client sent, as it arrived. */
     received,
     connections: () => connections,
     upgrades: () => upgrades,
-    /** Sockets that reached this cloud, counted before TLS or the WebSocket upgrade. */
     dials: () => dials,
     held,
-    /** Answers every held upgrade whose client still waits. */
     answerHeld: () => {
       for (const answer of waiting.splice(0)) answer()
     },
@@ -528,7 +512,6 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
       holdReady = true
     },
     hasHeldReady: () => heldReady !== undefined,
-    /** Makes every later `ready` carry a proof of another token, like a stranger guessing. */
     forgeProof: () => {
       forgeProof = true
     },
@@ -549,7 +532,6 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   }
 }
 
-/** A certificate for 127.0.0.1 that this process trusts, so a scripted cloud can stand in for a wss relay. */
 const trustedLoopbackCertificate = () => {
   const key = join(dir, "relay-key.pem")
   const cert = join(dir, "relay-cert.pem")
@@ -809,7 +791,6 @@ describe("desktop environments over a flaky link", () => {
 
   test("a pairing whose relay refuses still connects over its host and keeps the relay", async () => {
     const scripted = await scriptedCloud("relay-down", { relay: "127.0.0.1" })
-    // Nothing listens on loopback 443, so the relay's wss URL is refused at once without leaving the machine.
     const url = pairingUrl({ hosts: ["127.0.0.1"], port: scripted.port, token: "token", relay: "127.0.0.1" })
     try {
       expect(await add(url)).toMatchObject({ id: "relay-down", host: "127.0.0.1", relay: "127.0.0.1" })
@@ -896,7 +877,6 @@ describe("desktop environments over a flaky link", () => {
     direct.stop()
   })
 
-  /** Pairs over the direct address, which names `relay` in its `ready`, then stops answering there. */
   const pairThenLoseDirect = async (id: string, relay: string) => {
     const direct = await pair(id, { relay })
     await vi.waitFor(async () => expect(await listed(id)).toMatchObject({ relay }))
@@ -911,7 +891,6 @@ describe("desktop environments over a flaky link", () => {
       expect(electron.pushes.filter(statusOf(id, "connected"))).toHaveLength(times)
     })
 
-  /** Advances the clock in 10-second steps, waiting for the cloud's pong each time so the link never goes silent. */
   const passHeard = async (id: string, ms: number) => {
     for (let passed = 0; passed < ms; passed += 10_000) {
       const before = await testTime()
@@ -954,7 +933,6 @@ describe("desktop environments over a flaky link", () => {
 
       await adjust("10 seconds")
       await vi.waitFor(() => expect(direct.auths).toStrictEqual(["token"]))
-      // The check, the race and the session each opened one, and only the session sent the token.
       expect(direct.connections()).toBe(3)
       await vi.waitFor(() => expect(relaySession.readyState).toBe(WebSocket.CLOSED))
       const read = forward("to-direct", { method: "settings.get", payload: undefined })
@@ -979,7 +957,6 @@ describe("desktop environments over a flaky link", () => {
       expect(stranger.received).toHaveLength(1)
       expect(stranger.received).not.toContainEqual(expect.objectContaining({ token: expect.anything() }))
       expect(JSON.stringify(stranger.received)).not.toContain(SCRIPTED_TOKEN)
-      // The race and the refused session each opened one.
       expect(stranger.connections()).toBe(2)
       await passHeard("stranger", 2 * DIRECT_CHECK_INTERVAL_MS)
       expect(stranger.connections()).toBe(2)
@@ -1004,7 +981,6 @@ describe("desktop environments over a flaky link", () => {
     try {
       await connectedTimes("silent-direct", 2)
       expect(relay.auths).toStrictEqual(["token"])
-      // The race and the session that waited for a challenge each opened one.
       expect(old.connections()).toBe(2)
       expect(old.received).toStrictEqual([])
       expect(electron.pushes.some(statusOf("silent-direct", "unauthorized"))).toBe(false)
@@ -1084,7 +1060,6 @@ describe("desktop environments over a flaky link", () => {
       direct.answerHeld()
       await vi.waitFor(() => expect(relaySession.readyState).toBe(WebSocket.CLOSED))
       await vi.waitFor(() => expect(direct.upgrades()).toBe(raced + 2))
-      // Long enough for a relay in this round to win, and short of the round's timeout.
       await adjust("1 second")
       await vi.waitFor(() => {
         direct.answerHeld()
@@ -1107,7 +1082,6 @@ describe("desktop environments over a flaky link", () => {
     try {
       await passHeard("gone-direct", DIRECT_CHECK_INTERVAL_MS - 10_000)
       await adjust("10 seconds")
-      // The check, the direct round and the race after it, with no time passing for a backoff.
       await vi.waitFor(() => expect(direct.upgrades()).toBe(3))
       await adjust(RELAY_DELAY_MS)
       await vi.waitFor(() => expect(relay.auths).toStrictEqual(["token", "token"]))
@@ -1140,7 +1114,6 @@ const listedClouds = async () =>
   (await desktop.runPromise(Environments.use((environments) => environments.list))).clouds
 const tokenOf = async (id: string) =>
   Option.getOrNull(await desktop.runPromise(Secrets.use((secrets) => secrets.get(`environment.${id}.token`))))
-/** 192.0.2.1 never answers, so a sync that probed a machine before saving it would never add it. */
 const machine = (environmentId: string, pairing: Partial<RelayMachine["pairing"]> = {}): RelayMachine => ({
   environmentId,
   name: `${environmentId} on the relay`,
@@ -1180,7 +1153,6 @@ describe("desktop environments from the relay", () => {
       Environments.use((environments) => environments.add({ name: "my laptop", pairingUrl: scripted.pairingUrl })),
     )
     await pushedEventually(statusOf("paired-laptop", "connected"))
-    // Stopped, so no ready frame rewrites the relay this sync saves.
     scripted.stop()
     await pushedEventually(statusOf("paired-laptop", "offline"))
 

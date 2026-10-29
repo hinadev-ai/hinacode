@@ -1,7 +1,3 @@
-/**
- * The shape of the published `hinacode` npm package. Everything except the externals below is bundled
- * into `out/server`, so the manifest lists only what the bundle still loads from `node_modules` at runtime.
- */
 export const SERVER_EXTERNALS = ["node-pty", "playwright-core"] as const
 
 export const isServerExternal = (id: string): boolean =>

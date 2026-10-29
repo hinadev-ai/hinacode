@@ -43,7 +43,6 @@ const formatMemory = (bytes: number) =>
     bytes / 1024 ** 3,
   )
 
-/** The thread machine's simulators and emulators, and the button that makes one for this thread. */
 export function DeviceList({ thread }: { thread: Thread }) {
   const host = useAtomValue(deviceHostAtom(thread.id))
   const refresh = useAtomRefresh(deviceHostAtom(thread.id))
@@ -139,7 +138,6 @@ export function DeviceList({ thread }: { thread: Thread }) {
   )
 }
 
-/** Every model the machine can run, grouped by family as the runtime lists them, newest first. */
 function NewSimulatorMenu({
   models,
   disabled,
@@ -207,7 +205,6 @@ interface PlatformSectionProps {
   readonly platform: DevicePlatform
   readonly host: DeviceHost
   readonly threadId: string
-  /** The devices this thread already has a tab for. */
   readonly attached: ReadonlySet<string>
   readonly pending: boolean
   readonly onAttach: (device: Device) => void
@@ -284,7 +281,6 @@ interface DeviceRowProps {
 
 function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: DeviceRowProps) {
   const { slim } = device
-  // Archiving the thread that created it deletes it, so another thread cannot lean on it.
   const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
   const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
   return (

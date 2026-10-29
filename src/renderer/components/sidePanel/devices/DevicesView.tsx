@@ -15,7 +15,6 @@ import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
 
-/** The thread's devices, one tab each, plus the list to add one from. Only the shown tab streams. */
 export function DevicesView({ thread }: { thread: Thread }) {
   const devices = useAtomValue(threadDevicesAtom(thread.id))
   const refresh = useAtomRefresh(threadDevicesAtom(thread.id))
@@ -60,7 +59,6 @@ function ShownTab({ thread, devices }: { thread: Thread; devices: ThreadDevices 
 interface DeviceStateProps {
   readonly threadId: string
   readonly device: ThreadDevice
-  /** Called once the user detached the device, to show another tab. */
   readonly onDetach: () => void
 }
 
@@ -92,7 +90,6 @@ const stepIcon: Record<StepState, ReactNode> = {
   pending: <RiCircleLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
 }
 
-/** Booting and connecting happen on every run. Creating and slimming only show once the run has reached them. */
 function Preparing({ step }: { step: PrepareStep }) {
   const [seen, setSeen] = useState<ReadonlyArray<PrepareStep>>([step])
   if (!seen.includes(step)) setSeen([...seen, step])
@@ -136,7 +133,6 @@ function Failed({ threadId, device, onDetach }: FailedProps) {
   const { pending, error, run } = useVmAction()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const { deviceId } = device
-  // A simulator that failed before it was created has nothing to delete.
   const deletes = device.owned && deviceId !== null
   const detach = () =>
     run(async () => {

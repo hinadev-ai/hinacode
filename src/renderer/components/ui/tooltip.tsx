@@ -1,7 +1,6 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "cn"
 
-// The first tooltip waits so a passing cursor does not trigger it; Base UI opens the next ones instantly.
 function TooltipProvider({ delay = 500, ...props }: TooltipPrimitive.Provider.Props) {
   return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} {...props} />
 }

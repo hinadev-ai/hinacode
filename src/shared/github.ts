@@ -9,7 +9,6 @@ export const GitHubRepository = Schema.Struct({
 })
 export type GitHubRepository = typeof GitHubRepository.Type
 
-/** A pasted `git clone <url>` or `gh repo clone <repo>` command: only its argument matters. */
 const CLONE_COMMAND = /^(?:git\s+clone|gh\s+repo\s+clone)\s+/
 const URL_FORMS = [
   /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+)\/([^/]+)(?:\/.*)?$/,
@@ -18,10 +17,6 @@ const URL_FORMS = [
   /^([^/]+)\/([^/]+)$/,
 ]
 
-/**
- * The GitHub repository `input` names, as `owner/repo`, a github.com URL (https, ssh, or a link into
- * the repository), or a pasted clone command. Null for local paths and anything else.
- */
 export function parseGitHubRepository(input: string): GitHubRepository | null {
   const text = input.trim().replace(CLONE_COMMAND, "")
   for (const form of URL_FORMS) {
@@ -34,7 +29,6 @@ export function parseGitHubRepository(input: string): GitHubRepository | null {
   return null
 }
 
-/** Canonical `https://github.com/<owner>/<repo>/pull/<n>`, dropping sub-pages like `/files` and any query or hash. */
 export const parseGitHubPullRequestUrl = (raw: string): string | undefined => {
   if (!URL.canParse(raw)) return undefined
   const url = new URL(raw)
@@ -46,10 +40,6 @@ export const parseGitHubPullRequestUrl = (raw: string): string | undefined => {
   return `https://github.com/${owner}/${repo}/pull/${number}`
 }
 
-/**
- * A pull request the user typed: its number (`123` or `#123`) or its URL, as an argument `gh pr view` accepts.
- * Undefined for anything else, such as a branch name.
- */
 export function parsePullRequestSelector(input: string): string | undefined {
   const text = input.trim()
   const number = /^#?([1-9]\d*)$/.exec(text)?.[1]
@@ -62,5 +52,4 @@ export const PullRequestSelector = Schema.String.check(
 
 const GITHUB_PULL_REQUEST = /^https:\/\/github\.com\/(?=[^/]+\/[^/]+\/pull\/\d+)/i
 
-/** A GitHub pull request url on linear.review, which serves the same paths. Any other url is returned as is. */
 export const linearReviewUrl = (url: string) => url.replace(GITHUB_PULL_REQUEST, "https://linear.review/")

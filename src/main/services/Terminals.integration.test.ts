@@ -29,10 +29,6 @@ const gitRepo = (name: string) => {
   return path
 }
 
-/**
- * Subscribes to one session's `terminal.data` pushes, then runs `write` and collects output until it
- * contains `expected`. Pick text that only the command prints, not the shell's echo of what was typed.
- */
 const outputUntil = (id: string, expected: string) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(yield* Pushes)

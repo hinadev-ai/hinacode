@@ -7,7 +7,6 @@ import type { DeviceSession, FrameShape } from "./deviceSession.ts"
 
 const fraction = (value: number) => Math.min(1, Math.max(0, value))
 
-/** Where the pointer is, as fractions of the canvas. */
 const pointOf = (event: Pick<MouseEvent, "offsetX" | "offsetY">, canvas: HTMLCanvasElement) => ({
   x: fraction(event.offsetX / Math.max(1, canvas.offsetWidth)),
   y: fraction(event.offsetY / Math.max(1, canvas.offsetHeight)),
@@ -17,7 +16,6 @@ const delta = (value: number) => Math.min(10000, Math.max(-10000, value))
 
 interface DeviceScreenProps {
   readonly canvasRef: RefObject<HTMLCanvasElement | null>
-  /** The canvas's ref callback. `DeviceFrame` mounts it only once it has measured itself. */
   readonly onCanvas: (canvas: HTMLCanvasElement | null) => void
   readonly sessionRef: RefObject<DeviceSession | null>
   readonly name: string
@@ -25,7 +23,6 @@ interface DeviceScreenProps {
   readonly screen: Screen
   readonly shape: FrameShape | null
   readonly control: DeviceControl
-  /** Every key goes to the device as a physical key, with the host's input method off, and typing needs no click. */
   readonly hardwareKeyboard: boolean
   readonly stalled: boolean
   readonly picking: boolean
@@ -34,7 +31,6 @@ interface DeviceScreenProps {
   readonly onCancelPick: () => void
 }
 
-/** The live device in its frame. Pointer, wheel and keyboard on it become device input. */
 export function DeviceScreen({
   canvasRef,
   onCanvas,
@@ -63,7 +59,6 @@ export function DeviceScreen({
     if (hardwareKeyboard) inputRef.current?.focus({ preventScroll: true })
   }, [hardwareKeyboard])
 
-  // On the region, which is always mounted, since the canvas comes and goes with the frame's measuring.
   useEffect(() => {
     const region = regionRef.current
     if (!region || picking) return
@@ -112,14 +107,12 @@ export function DeviceScreen({
   const onKey = (event: KeyboardEvent<HTMLInputElement>, phase: "down" | "up") => {
     event.stopPropagation()
     if (event.nativeEvent.isComposing || event.keyCode === 229 || composing.current) return
-    // Tab leaves the screen, so the keyboard is never trapped in it.
     if (event.key === "Tab") return
     if (event.key === "Escape" && picking) {
       event.preventDefault()
       if (phase === "down") onCancelPick()
       return
     }
-    // Paste arrives as its own event and types the clipboard.
     if (event.code === "KeyV" && (event.metaKey || event.ctrlKey)) return
     if (event.code === "" || event.code.length > 40) return
     event.preventDefault()
@@ -174,7 +167,7 @@ export function DeviceScreen({
           </output>
         )}
       </DeviceFrame>
-      {/* Chromium turns off non-Latin input methods in a password field, so each key arrives with its own code. */}
+      {/* FIXME: Chromium turns off non-Latin input methods in a password field */}
       <input
         ref={inputRef}
         type={hardwareKeyboard ? "password" : "text"}

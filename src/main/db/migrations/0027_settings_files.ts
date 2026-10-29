@@ -26,9 +26,7 @@ const CLIENT_SETTINGS_KEYS = ["locale", "openWith", "appearance", "notifications
 
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
-  // The settings files sit next to the database, whose path is the only place a migration can learn that directory from.
   const [main] = yield* sql<{ readonly file: string }>`SELECT file FROM pragma_database_list WHERE name = 'main'`
-  // An in-memory database is new, so it has no setting rows to move.
   if (!main?.file) return
   const dir = dirname(main.file)
 

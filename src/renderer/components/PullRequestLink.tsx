@@ -20,10 +20,6 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.t
 import { WithLinkIcon } from "./LinkIcon.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 
-/**
- * A link to a GitHub pull request. Hovering or focusing it shows the pull request at a glance; `gh` is
- * only asked once the card opens.
- */
 export function PullRequestLink({
   href,
   pullRequest,
@@ -36,7 +32,6 @@ export function PullRequestLink({
   const environment = useOpenThreadEnvironment()
   return (
     <HoverCard>
-      {/* target=_blank routes the click through the main process, which opens it in the system browser. */}
       <HoverCardTrigger
         href={href}
         target="_blank"
@@ -59,11 +54,9 @@ export function PullRequestCard({
   environment,
 }: {
   pullRequest: PullRequestRef
-  /** Where the number links to, from `usePullRequestHref`, so it follows the project's linear.review setting. */
   href: string
   environment: EnvironmentId
 }) {
-  // The canonical url, so links to a pull request's files or comments share one lookup.
   const status = useAtomValue(pullRequestStatusAtom(environment, `https://github.com/${owner}/${name}/pull/${number}`))
   return (
     <div className="flex flex-col gap-1.5 text-xs">

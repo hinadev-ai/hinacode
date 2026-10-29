@@ -4,7 +4,6 @@ import { Effect, Schema } from "effect"
 export type MouseButton = "left" | "middle" | "right"
 export type ScrollDirection = "up" | "down" | "left" | "right"
 
-/** One thing the agent does with the VM's pointer or keyboard. Coordinates are screen pixels from the top left. */
 export type VmAction =
   | { readonly type: "move"; readonly x: number; readonly y: number }
   | {
@@ -25,7 +24,6 @@ export type VmAction =
   | { readonly type: "type"; readonly text: string }
   | { readonly type: "key"; readonly keys: string }
 
-/** RFB message bytes to write, or a pause between them. */
 export type RfbStep = Uint8Array | { readonly pauseMs: number }
 
 export interface ScreenSize {
@@ -33,7 +31,6 @@ export interface ScreenSize {
   readonly height: number
 }
 
-/** The action cannot be performed as given, for example a point off the screen or an unknown key name. */
 export class VmInputError extends Schema.TaggedError<VmInputError>()("VmInputError", { message: Schema.String }) {}
 
 export class RfbError extends Schema.TaggedError<RfbError>()("RfbError", { message: Schema.String }) {}
@@ -114,7 +111,7 @@ const NAMED_KEYS: Record<string, number> = {
   ...MODIFIERS,
 }
 
-/** Latin-1 characters are their own keysym; Xvnc adds any other Unicode keysym to its keymap itself. */
+// FIXME: Latin-1 characters are their own keysym; Xvnc adds any other Unicode keysym to its keymap
 const characterKeysym = (character: string) => {
   const codePoint = character.codePointAt(0)!
   return (codePoint >= 0x20 && codePoint <= 0x7e) || (codePoint >= 0xa0 && codePoint <= 0xff)
@@ -128,7 +125,6 @@ const unknownKey = (name: string, chord: string) =>
   })
 
 const chordSteps = (chord: string): Array<Uint8Array> => {
-  // "ctrl++" and "+" name the plus key itself.
   const parts =
     chord === "+" ? ["+"] : chord.endsWith("++") ? [...chord.slice(0, -2).split("+"), "+"] : chord.split("+")
   const name = parts.at(-1)!
@@ -139,7 +135,7 @@ const chordSteps = (chord: string): Array<Uint8Array> => {
   })
   let keysym: number | undefined
   if ([...name].length === 1) {
-    // Xvnc fakes Shift to match a keysym's case, which would undo an explicit shift or add an unwanted one.
+    // FIXME: Xvnc fakes Shift to match a keysym's case
     const shifted = modifiers.includes(MODIFIERS["shift"]!)
     const letter = modifiers.length === 0 ? name : shifted ? name.toUpperCase() : name.toLowerCase()
     keysym = characterKeysym(letter)
@@ -176,10 +172,6 @@ const checkPoint = (screen: ScreenSize, names: readonly [string, string], x: num
   checkCoordinate(names[1], y, screen.height)
 }
 
-/**
- * The RFB messages that perform `action` on a screen of `screen` size. Throws `VmInputError` for a point
- * off the screen or a key it cannot name.
- */
 export const encodeAction = (action: VmAction, screen: ScreenSize): ReadonlyArray<RfbStep> => {
   switch (action.type) {
     case "move":
@@ -239,7 +231,6 @@ export const encodeAction = (action: VmAction, screen: ScreenSize): ReadonlyArra
   }
 }
 
-/** Reads exact byte counts from a socket, starting with bytes that arrived before it was handed over. */
 const makeReader = (socket: Socket, head: Uint8Array) => {
   let buffer = Buffer.from(head)
   let wake: (() => void) | undefined
@@ -277,10 +268,6 @@ export interface RfbConnection extends ScreenSize {
   readonly socket: Socket
 }
 
-/**
- * Performs the RFB 3.8 client handshake (no security, shared session) on a connected socket. Afterwards
- * the server sends nothing unless asked, so the caller only writes input events.
- */
 export const handshake = (socket: Socket, head: Uint8Array): Effect.Effect<RfbConnection, RfbError> =>
   Effect.tryPromise({
     try: async () => {
@@ -307,7 +294,7 @@ export const handshake = (socket: Socket, head: Uint8Array): Effect.Effect<RfbCo
         return { socket, width: init.readUInt16BE(0), height: init.readUInt16BE(2) }
       } finally {
         reader.release()
-        // Keeps the socket flowing so unrequested server messages (bell, clipboard) never back up.
+        // FIXME: a paused socket backs up on unrequested server messages such as bell and clipboard
         socket.resume()
       }
     },
@@ -315,7 +302,6 @@ export const handshake = (socket: Socket, head: Uint8Array): Effect.Effect<RfbCo
       new RfbError({ message: `VNC handshake failed: ${cause instanceof Error ? cause.message : String(cause)}` }),
   })
 
-/** Writes the steps in order, pausing where they say. */
 export const writeSteps = (socket: Socket, steps: ReadonlyArray<RfbStep>): Effect.Effect<void> =>
   Effect.forEach(
     steps,

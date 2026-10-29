@@ -22,11 +22,6 @@ function setup() {
   const ask = (toolName: string, input: Record<string, unknown>) =>
     approvals.ask(session, toolName, input, callOptions())
 
-  /**
-   * Calls the tool, answers the approval card with `decision` if one appears, and returns the result.
-   * A card is raised synchronously inside `ask`, and a call that needs none settles on its own, so one of
-   * the two always resolves `prompted` without any waiting.
-   */
   const call = async (toolName: string, input: Record<string, unknown>, decision: ApprovalDecision = "deny") => {
     const prompted = new Promise<ApprovalRequest | null>((resolve) => {
       raised = resolve

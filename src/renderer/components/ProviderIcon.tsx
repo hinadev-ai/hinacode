@@ -15,7 +15,6 @@ export const providerLabel = {
   muse: m.provider_muse,
 } satisfies Record<ProviderId, () => string>
 
-/** In the agent's brand color, or muted where it marks a tool call, which recedes like the rest of the call. */
 export function ProviderIcon({
   provider,
   muted = false,

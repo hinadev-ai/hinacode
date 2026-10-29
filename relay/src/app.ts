@@ -7,9 +7,7 @@ import { type Host, runStore } from "./store"
 export type { Fetch } from "./cloudflare"
 
 export interface Deps {
-  /** The user id behind the request's bearer, or null when it has none or an invalid one. */
   verifyUser(request: Request, env: Env): Promise<string | null>
-  /** Reaches the Cloudflare API. */
   cloudflare: Fetch
   now(): number
   random(bytes: number): Uint8Array
@@ -52,7 +50,6 @@ const toBase64Url = (bytes: Uint8Array) =>
 export const sha256 = async (value: string) =>
   toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
 
-/** Accepts a code as typed, in any case and with or without the dash. */
 const normalizeUserCode = (code: string) => {
   const plain = code.toUpperCase().replace(/[^A-Z0-9]/g, "")
   return `${plain.slice(0, 4)}-${plain.slice(4)}`
@@ -119,7 +116,6 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/link", (c) => {
-    // A framed Approve button could be clicked through an overlay, linking someone else's machine.
     c.header("Content-Security-Policy", "frame-ancestors 'none'")
     c.header("X-Frame-Options", "DENY")
     return c.html(linkPage)
@@ -138,7 +134,6 @@ export const makeApp = (deps: Deps) => {
     const { userId, environmentId, name } = found.value
     if (!userId) return c.json({ pending: true }, 202)
 
-    // Deleting first lets only one of two concurrent claims through, so neither revokes the other's credential.
     const taken = await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
     if (!taken) return fail(c, 410, "The link code was already used. Start linking again.")
 

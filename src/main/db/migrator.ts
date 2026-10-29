@@ -31,10 +31,6 @@ import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 
 const run = Migrator.make({})
 
-/**
- * Keys are `<id>_<name>`; the id orders them. Append new migrations, never edit shipped ones.
- * Id 3 belonged to a removed migration that some databases already recorded, so the next one is 4.
- */
 export const runMigrations = run({
   loader: Migrator.fromRecord({
     "1_init": init,

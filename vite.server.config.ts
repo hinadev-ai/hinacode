@@ -14,16 +14,13 @@ export default defineConfig({
         format: "es",
         entryFileNames: "[name].js",
         chunkFileNames: "chunks/[name]-[hash].js",
-        // Bundled CommonJS such as protobufjs loads `fs` with a bare `require` in a try/catch, and without one
-        // it falls back to its browser path. A module-scope `const require` gets renamed by the build, so the
-        // daemon sets a global instead.
+        // FIXME: bundled CommonJS like protobufjs needs a global `require`, a module-scope one gets renamed
         banner:
           'import { createRequire as __createRequire } from "node:module"\nglobalThis.require ??= __createRequire(import.meta.url)',
       },
     },
   },
-  // ws loads `bufferutil` and `utf-8-validate` in a try/catch, but Vite replaces a missing optional peer
-  // dependency with an empty object instead of throwing, so ws would call methods that don't exist.
+  // FIXME: Vite stubs ws optional peers with an empty object instead of throwing
   define: {
     "process.env.WS_NO_BUFFER_UTIL": JSON.stringify("1"),
     "process.env.WS_NO_UTF_8_VALIDATE": JSON.stringify("1"),

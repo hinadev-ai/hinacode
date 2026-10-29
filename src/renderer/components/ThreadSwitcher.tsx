@@ -12,7 +12,6 @@ import { useUi } from "../stores/ui.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 
-/** The Ctrl+Tab overlay. Letting go of the modifier opens the highlighted thread. */
 export function ThreadSwitcher() {
   const switcher = useUi((state) => state.threadSwitcher)
   return switcher && <SwitcherList switcher={switcher} />
@@ -28,7 +27,6 @@ function SwitcherList({ switcher }: { switcher: Switcher }) {
   const choose = (threadId: string | undefined) => {
     useUi.getState().closeThreadSwitcher()
     if (!threadId || threadId === openThreadId) return
-    // Switching is a keyboard path, so the user lands ready to type.
     void navigate({ to: "/thread/$threadId", params: { threadId } }).then(() => useUi.getState().requestComposerFocus())
   }
 
@@ -42,7 +40,7 @@ function SwitcherList({ switcher }: { switcher: Switcher }) {
     event.stopPropagation()
     choose(event.key === "Enter" ? highlighted : undefined)
   })
-  // Leaving the window loses the modifier's keyup, so the switcher closes rather than wait for it.
+  // FIXME: leaving the window loses the modifier's keyup
   const cancel = useEffectEvent(() => choose(undefined))
   useEffect(() => {
     const listener = (event: KeyboardEvent) => onKey(event)
@@ -59,7 +57,6 @@ function SwitcherList({ switcher }: { switcher: Switcher }) {
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12dvh]">
-      {/* A quick tap opens the previous thread before the list shows, so it never flashes. */}
       <ul
         aria-label={m.thread_switcher_label()}
         className="pointer-events-auto w-full max-w-md animate-reveal rounded-xl bg-popover p-1.5 text-popover-foreground shadow-lg ring-1 ring-foreground/10"

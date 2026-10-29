@@ -6,12 +6,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
-/** A client-to-server RFB input message, decoded. */
 export type RfbEvent =
   | { readonly type: "pointer"; readonly x: number; readonly y: number; readonly mask: number }
   | { readonly type: "key"; readonly keysym: number; readonly down: boolean }
 
-/** Byte length of each client message type the fake server understands, given the bytes so far. */
 const messageLength = (buffer: Buffer): number | undefined => {
   switch (buffer[0]) {
     case 0:
@@ -31,7 +29,6 @@ const messageLength = (buffer: Buffer): number | undefined => {
   }
 }
 
-/** Splits complete client messages off `buffer`; returns the input events and the incomplete tail. */
 const takeMessages = (buffer: Buffer): { readonly events: Array<RfbEvent>; readonly rest: Buffer } => {
   const events: Array<RfbEvent> = []
   let rest = buffer
@@ -53,7 +50,6 @@ export const decodeClientMessages = (bytes: Uint8Array): Array<RfbEvent> => {
   return events
 }
 
-/** The smallest valid PNG: one transparent pixel. */
 export const FAKE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
   "base64",
@@ -72,7 +68,6 @@ const frame = (type: number, payload: Uint8Array) => {
   return Buffer.concat([header, payload])
 }
 
-/** Speaks the server half of an RFB 3.8 handshake with a 1280x800 screen, then records input. */
 const serveRfb = (socket: Socket, head: Buffer, onEvent: (event: RfbEvent) => void) => {
   let buffer = head
   let stage: "version" | "security" | "init" | "messages" = "version"
@@ -108,7 +103,6 @@ const serveRfb = (socket: Socket, head: Buffer, onEvent: (event: RfbEvent) => vo
     step()
   })
   socket.on("error", () => {})
-  // Upgraded sockets are half-open; a VNC server closes its side when the client does.
   socket.on("end", () => socket.end())
   socket.write("RFB 003.008\n")
   step()
@@ -117,26 +111,16 @@ const serveRfb = (socket: Socket, head: Buffer, onEvent: (event: RfbEvent) => vo
 export interface FakeSbx {
   readonly url: string
   readonly token: string
-  /** A `config.json` like the one `sbx login` writes, pointing at this server. */
   readonly configPath: string
   readonly sandboxes: Set<string>
-  /** How many sandboxes were ever created. */
   readonly created: () => number
-  /** The template each sandbox creation asked for, in order. */
   readonly createdTemplates: Array<string>
-  /** The environment each sandbox creation asked for, in order. */
   readonly createdEnvs: Array<Readonly<Record<string, string>>>
-  /** Scripts run and echo themselves on stdout, except `exit N`, which prints to stderr and exits with N. */
   readonly execs: Array<{ readonly sandboxId: string; readonly script: string; readonly detach: boolean }>
-  /** Every file archive uploaded through the `/files` endpoints, in arrival order. */
   readonly uploads: Array<{ readonly sandboxId: string; readonly path: string; readonly bytes: Buffer }>
-  /** Stands in for a file already inside a sandbox, so a later `/files` GET returns it. */
   readonly seedFile: (sandboxId: string, path: string, bytes: Uint8Array) => void
-  /** The latest archive a `/files` GET would return for the path: an upload or a seeded file. */
   readonly fileAt: (sandboxId: string, path: string) => Buffer | undefined
-  /** Every input event any VNC connection sent, in arrival order. */
   readonly inputs: Array<{ readonly sandboxId: string; readonly event: RfbEvent }>
-  /** Drops a sandbox the way sbx's idle timeout does, so later calls get 404. */
   readonly expire: (id: string) => void
 }
 
@@ -155,7 +139,6 @@ const json = (response: ServerResponse, status: number, body: unknown) => {
   response.end(JSON.stringify(body))
 }
 
-/** A real HTTP server that implements the sbxd endpoints hinacode uses. Close it by closing the scope. */
 export const startFakeSbx = Effect.acquireRelease(
   Effect.callback<{ readonly fake: FakeSbx; readonly close: () => void }>((resume) => {
     const token = `token-${randomUUID()}`

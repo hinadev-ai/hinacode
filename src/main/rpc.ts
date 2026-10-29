@@ -89,10 +89,6 @@ export interface HandlerError {
   readonly message: string
 }
 
-/**
- * What only the desktop window can do, bound to the window that called. `ipc.ts` builds it; remote callers
- * pass null, and the remote listener refuses these methods before they reach a handler.
- */
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
@@ -101,7 +97,6 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
-  /** Opens an http(s) URL in the default browser. Anything else is ignored. */
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
@@ -117,7 +112,6 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
-/** What a new thread of `provider` starts with: the options last picked for one, else the agent's first model. */
 const newThreadOptions = (provider: ProviderId) =>
   Effect.gen(function* () {
     const settings = yield* Settings.use((service) => service.get)
@@ -126,7 +120,6 @@ const newThreadOptions = (provider: ProviderId) =>
     return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
   })
 
-/** A thread's options become the next new thread's defaults while it is still being set up, before its first message. */
 const rememberNewThreadOptions = (thread: Thread) =>
   Effect.gen(function* () {
     if (yield* Threads.use((threads) => threads.started(thread.id))) return
@@ -144,7 +137,6 @@ const rememberNewThreadOptions = (thread: Thread) =>
     )
   })
 
-/** Where a repository thread's first turn runs becomes where the next new one starts. Returns the save to run once it sent. */
 const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) =>
   Effect.gen(function* () {
     const thread = yield* Threads.use((threads) => threads.get(threadId))
@@ -155,7 +147,6 @@ const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) 
       : Effect.void
   })
 
-/** Git history is only read from a checkout hinacode recorded, never from a path the renderer made up. */
 const knownRoot = (root: string) =>
   Effect.gen(function* () {
     const projects = yield* Projects.use((service) => service.list)
@@ -167,7 +158,6 @@ const knownRoot = (root: string) =>
     return root
   })
 
-/** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
@@ -196,7 +186,6 @@ const handlers: Handlers = {
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  // Thread changes are pushed as well as returned, so a phone and the desktop window stay in step.
   "threads.create": ({ projectId }) =>
     Effect.gen(function* () {
       const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
@@ -207,7 +196,6 @@ const handlers: Handlers = {
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
     }),
-  // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
       const { provider: switchTo } = input
@@ -312,7 +300,6 @@ const handlers: Handlers = {
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "agents.account": ({ provider, accountId, refresh }) =>
     AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
-  // e2e runs on machines with real, possibly outdated CLIs, whose update toast would cover the UI under test.
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
@@ -513,10 +500,6 @@ const call = <M extends RpcMethod>(method: M, payload: unknown, desktop: Desktop
   )
 }
 
-/**
- * Decodes one `{ method, payload }` call, runs its handler and encodes the answer. Shared by the Electron
- * `rpc` channel and the remote listener, which passes null for `desktop`.
- */
 export const dispatch = (
   raw: unknown,
   desktop: DesktopCalls | null,

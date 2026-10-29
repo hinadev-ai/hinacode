@@ -9,7 +9,6 @@ const STREAM_PUBLICATION_INTERVAL_MS = 100
 
 type ReadyHistory = {
   readonly status: "ready"
-  /** Pushes up to this `seq` are already in the snapshot. The rpc reply can overtake them, so they may still arrive. */
   readonly snapshotSeq: number
   readonly messages: ReadonlyArray<Message>
   readonly approvals: ReadonlyArray<ApprovalRequest>
@@ -18,24 +17,17 @@ type ReadyHistory = {
 }
 
 export type ThreadHistory =
-  /** `pending` holds pushes that arrive before the snapshot, which may or may not contain them. */
   | { readonly status: "loading"; readonly loadId: symbol; readonly pending: ReadonlyArray<TranscriptPush> }
   | { readonly status: "error"; readonly message: string }
   | ReadyHistory
 
 interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
-  /** Loads a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
-  /** Drops a thread's history so the next `load` reads the persisted copy again. */
   readonly unload: (threadId: string) => void
   readonly receive: (push: TranscriptPush) => void
 }
 
-/**
- * Transcript, pending approvals, questions and secret requests per thread. Threads that were never opened ignore pushes: their
- * first `load` reads a snapshot instead.
- */
 export const useMessages = create<MessagesState>()((set, get) => {
   const pendingDeltas = new Map<
     string,
@@ -99,7 +91,6 @@ export const useMessages = create<MessagesState>()((set, get) => {
           return
         }
         if (pending === undefined) {
-          // Start once per group; later deltas never postpone publication.
           pendingDeltas.set(threadId, {
             pushes: [push],
             timer: setTimeout(() => {

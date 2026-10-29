@@ -1,7 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import { toPlanLimits } from "./limits.ts"
 
-// A `usage/changed` notification from muse 1.4.7 on a Meta login.
 const observed = {
   observedAtMs: 1791877430725,
   tier: "27681631238169137",

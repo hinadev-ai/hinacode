@@ -4,12 +4,10 @@ import { expect, test } from "@effect/vitest"
 import { type McpServerConfig, query } from "@anthropic-ai/claude-agent-sdk"
 import { hinacodeMcpServer } from "./mcp.ts"
 
-/** What the SDK hands the CLI: its argv and what it writes to stdin at startup. No CLI is started. */
 const cliInput = async (mcpServers: Record<string, McpServerConfig>) => {
   const abort = new AbortController()
   let args: ReadonlyArray<string> = []
   let stdin = ""
-  // The SDK writes its MCP configuration to stdin right after spawning; that write is the signal to stop.
   const { promise: configured, resolve } = Promise.withResolvers<void>()
   const handle = query({
     prompt: (async function* () {})(),

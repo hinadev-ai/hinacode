@@ -38,12 +38,10 @@ const statusLabel = {
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 
-/** `agent` is the `callId` of the sub-agent to show instead of the thread's own transcript. */
 interface ThreadViewProps {
   readonly thread: Thread
   readonly agent?: string
   readonly actions?: ReactNode
-  /** Floats over the top of the transcript, below the header. */
   readonly overlay?: ReactNode
 }
 
@@ -62,7 +60,6 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
         >
           <ProviderIcon provider={thread.provider} />
-          {/* A narrow column keeps its width for the title; the icon still names the agent. */}
           <span className="sr-only @md:not-sr-only">{providerLabel[thread.provider]()}</span>
         </span>
         <span
@@ -160,7 +157,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
     return () => unload(thread.id)
   }, [load, unload, thread.id])
 
-  // The Retry button disappears into the loading state, so focus moves on before it does.
   const retry = () => {
     useUi.getState().requestComposerFocus()
     void load(thread.id)
@@ -208,10 +204,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   )
 }
 
-/**
- * The composer dock floats over the transcript so messages scroll behind its blur. Its height goes
- * into `--dock-height`, which the transcript pads its end with so the last message can clear it.
- */
 function useDockHeight(regionRef: RefObject<HTMLDivElement | null>, dockRef: RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const region = regionRef.current

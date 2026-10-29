@@ -2,12 +2,7 @@ import type { PickedDeviceElement } from "../../shared/device.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
 import { fenceFor } from "../../shared/fence.ts"
 
-/**
- * What an agent reads about an element the user picked in the in-app browser, next to its screenshot. Every page
- * field is quoted or fenced, so none of them can start a line that reads like the user.
- */
 export const elementContext = (element: PickedElement): string => {
-  // Page markup cannot close the fence and pose as the user.
   const fence = fenceFor(element.html)
   return [
     `The attached screenshot shows an element the user picked on ${JSON.stringify(element.url)}.`,
@@ -24,7 +19,6 @@ export const elementContext = (element: PickedElement): string => {
   ].join("\n")
 }
 
-/** What an agent reads about an element the user picked on a device screen. Every field came from the app on it. */
 export const deviceElementContext = ({ device, platform, element }: PickedDeviceElement): string => {
   const { x, y, width, height } = element.frame
   return [
@@ -38,7 +32,6 @@ export const deviceElementContext = ({ device, platform, element }: PickedDevice
   ].join("\n")
 }
 
-/** The text that goes next to an attachment's image, when it shows something the user picked. */
 export const attachmentContext = (attachment: Attachment): string | null => {
   if (attachment.element) return elementContext(attachment.element)
   if (attachment.deviceElement) return deviceElementContext(attachment.deviceElement)

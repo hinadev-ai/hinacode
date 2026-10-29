@@ -73,7 +73,6 @@ function android(serial: string, port: number): Device {
     },
     cpuMs() {
       const pid = adb("shell", "pidof", app).trim()
-      // Fields after the command name, which sits in parentheses: utime and stime are the 12th and 13th.
       const fields = adb("shell", "cat", `/proc/${pid}/stat`).split(") ")[1]!.split(" ")
       const ticksPerSecond = 100
       return ((Number(fields[11]) + Number(fields[12])) * 1000) / ticksPerSecond
@@ -104,10 +103,6 @@ function ios(udid: string, bundleId: string): Device {
   }
 }
 
-/**
- * Counts the WebSocket frames in a server's byte stream after its upgrade response. Server frames are unmasked, and
- * their headers stay readable when permessage-deflate compresses the payload.
- */
 function frameCounter(onFrame: () => void) {
   let buffer = Buffer.alloc(0)
   let upgraded = false

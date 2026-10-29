@@ -38,7 +38,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   },
 }))
 
-// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
 vi.mock("../agents/binary.ts", async () => {
   const { succeed } = await import("effect/Effect")
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
@@ -185,7 +184,7 @@ const nameAfter = <E>(
 ) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
-      // macOS links the temp dir through /private, and git reports worktree paths fully resolved.
+      // FIXME: macOS links the temp dir through /private, and git reports resolved worktree paths
       Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "kk-naming-test-")))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )

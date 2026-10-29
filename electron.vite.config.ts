@@ -5,11 +5,9 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
 
-// Electron 44 no longer downloads its binary on install. It downloads on the first `require("electron")`, which
-// electron-vite 5 never calls, so `pnpm dev` failed with "Electron uninstall". See docs/operations/electron-binary.md.
+// FIXME: Electron 44 downloads its binary on the first require("electron"), which electron-vite 5 never calls
 process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
 
-// Main builds first and labels native menus with the same catalogs, so it compiles them too.
 const paraglide = () =>
   paraglideVitePlugin({
     project: resolve(import.meta.dirname, "project.inlang"),
@@ -21,9 +19,8 @@ export default defineConfig({
   main: {
     plugins: [paraglide()],
     build: {
-      // The daemon (`hinacode serve`) has its own plain Vite build. See `vite.server.config.ts`.
       rollupOptions: { input: { index: "src/main/index.ts" } },
-      // Optional dependencies are bundled by default, which breaks these native modules' binding lookup.
+      // FIXME: electron-vite bundles optional dependencies, which breaks these native modules' binding lookup
       externalizeDeps: {
         include: ["node-mac-permissions", "electron-liquid-glass"],
         exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node"],
@@ -32,14 +29,13 @@ export default defineConfig({
   },
   preload: {
     build: {
-      // Sandboxed preload scripts cannot be ES modules.
+      // FIXME: Electron's sandboxed preload scripts cannot be ES modules
       rollupOptions: { output: { format: "cjs", entryFileNames: "[name].cjs" } },
     },
   },
   renderer: {
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
     build: { minify: true },
-    // The perf harness reads component names from React fibers, which minification would rename.
     esbuild: process.env.HINACODE_KEEP_NAMES ? { keepNames: true } : undefined,
     plugins: [react({ babel: { plugins: ["babel-plugin-react-compiler"] } }), tailwindcss(), paraglide()],
   },

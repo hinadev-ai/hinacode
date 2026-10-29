@@ -98,7 +98,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: vi.fn(),
 }))
 
-// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
 vi.mock("../binary.ts", async () => {
   const { succeed } = await import("effect/Effect")
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
@@ -160,7 +159,6 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   ...overrides,
 })
 
-/** Lets promise callbacks and forked fibers run; TestClock only moves Effect's own clock. */
 const tick = Effect.yieldNow
 const settle = Effect.gen(function* () {
   for (let i = 0; i < 5; i++) yield* tick
@@ -960,7 +958,6 @@ describe("Claude background tasks", () => {
 
 const sessionState = (state: "idle" | "running") => ({ type: "system", subtype: "session_state_changed", state })
 
-/** What a turn showed, in order: sub-agent statuses, text and its end. */
 const reported = (events: ReadonlyArray<AgentEvent>) =>
   events.flatMap((event) =>
     event.type === "subagent_updated"

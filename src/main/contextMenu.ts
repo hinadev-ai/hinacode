@@ -19,7 +19,6 @@ import { Environments } from "./services/Environments.ts"
 
 type MenuRuntime = ManagedRuntime.ManagedRuntime<ClientSettings | Environments, unknown>
 
-/** What an image of the window shows, as the user would name it: a file on some machine, or a web address. */
 type ImageOrigin =
   | { readonly kind: "file"; readonly path: string; readonly local: boolean }
   | { readonly kind: "web"; readonly address: string }
@@ -41,10 +40,8 @@ interface MenuContext {
   readonly window: BrowserWindow
   readonly params: ContextMenuParams
   readonly locale: Locale
-  /** The app document. A link relative to it, like `docs/notes.md` in a message, leads nowhere. */
   readonly appUrl: string
   readonly image: ImageOrigin | null
-  /** Apps that open a single file, for an image on this machine. */
   readonly openers: ReadonlyArray<Opener>
   readonly open: (path: string, opener: Opener) => void
 }
@@ -109,22 +106,16 @@ const textItems = ({ window, params, locale }: MenuContext): MenuItemConstructor
   return selectionText.trim() === "" ? [] : [copy]
 }
 
-/** The native menu for a right-click, in sections like a browser's. Empty when the point has nothing to act on. */
 const contextMenuTemplate = (context: MenuContext): MenuItemConstructorOptions[] =>
   [linkItems(context), imageItems(context), textItems(context)]
     .filter((section) => section.length > 0)
     .flatMap((section, index) => (index === 0 ? section : [{ type: "separator" as const }, ...section]))
 
-/**
- * Shows a native menu for links, images, selections and inputs anywhere in the window. A page that handles
- * `contextmenu` itself, like the file explorer, cancels the event, and then Chromium never asks for this one.
- */
 export const handleContextMenu = (window: BrowserWindow, runtime: MenuRuntime, appUrl: string) =>
   window.webContents.on("context-menu", (_event, params) => {
     const show = Effect.gen(function* () {
       const { locale } = yield* (yield* ClientSettings).get
       const environments = yield* Environments
-      // A data URL is the app's own icon, like a link's favicon, never an image of the conversation.
       const image =
         params.mediaType === "image" && params.srcURL !== "" && !params.srcURL.startsWith("data:")
           ? imageOrigin(params.srcURL, (root) => environments.owner("root", root))

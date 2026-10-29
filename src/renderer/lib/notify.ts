@@ -3,7 +3,6 @@ import type { ThreadAlert } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { callPromise } from "./rpc.ts"
 
-/** Hz per note. Rising for done, repeated for a request, falling for a failure, so the kind is audible. */
 const chimes: Record<ThreadAlert, ReadonlyArray<number>> = {
   completed: [660, 880],
   needsInput: [880, 880],
@@ -32,16 +31,13 @@ const playChime = (alert: ThreadAlert) => {
   })
 }
 
-/** `desktop` when the user is in another app, `toast` when they are in hinacode looking at something else. */
 export type Surface = "desktop" | "toast"
 
-/** Status shows as the icon only: amber when it needs the user, red when it failed. */
 const showToast: Record<ThreadAlert, typeof toast.warning> = {
   completed: toast,
   needsInput: toast.warning,
   failed: toast.error,
 }
-/** A request or failure waits for the user, so it outlasts a plain "finished". */
 const LINGERING_TOAST_MS = 10_000
 
 interface Notice {
@@ -49,12 +45,10 @@ interface Notice {
   readonly title: string
   readonly body: string
   readonly sound: boolean
-  /** A newer notice with the same tag replaces the older one. */
   readonly tag?: string
   readonly onClick?: () => void
 }
 
-/** Shows a notice with its chime. Desktop notifications keep the system sound off, since the chime is ours. */
 export const notify = (surface: Surface, { alert, title, body, sound, tag, onClick }: Notice) => {
   if (surface === "desktop") {
     const notification = new Notification(title, { body, silent: true, ...(tag === undefined ? {} : { tag }) })

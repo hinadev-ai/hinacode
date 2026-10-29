@@ -13,7 +13,6 @@ import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 
-/** The provider's name for a sub-agent, else the description Claude spawned it with. */
 export function useSubagentLabel(threadId: string, callId: string) {
   const reported = useSubagentByCallId(threadId, callId)?.label
   const described = useMessages((state) => {
@@ -25,10 +24,6 @@ export function useSubagentLabel(threadId: string, callId: string) {
   return reported ?? described ?? m.agents_untitled()
 }
 
-/**
- * One sub-agent's prompt, tool calls and result, opened in place of the thread's transcript.
- * Key it by `callId` so each sub-agent opens with focus on its heading.
- */
 export function SubagentTranscript({
   thread,
   messages,

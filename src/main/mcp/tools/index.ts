@@ -11,7 +11,6 @@ import { ThreadTools, threadToolsLayer } from "./threads.ts"
 import { VmTools, vmToolsLayer } from "./tinyVm.ts"
 import * as McpTool from "./tool.ts"
 
-/** Every tool of the built-in MCP server. The tiny VM and device tools exist only while their experimental toggles are on. */
 export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tinyVm = yield* TinyVm

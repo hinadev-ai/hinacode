@@ -2,8 +2,6 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { isServerExternal, parseRootManifest, serverManifest, type RootManifest } from "./server-package.ts"
 
-// Run with `node --test scripts/server-package.test.ts`. Vitest only collects tests under src/.
-
 const root: RootManifest = {
   version: "1.2.3",
   description: "desc",

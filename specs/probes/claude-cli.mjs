@@ -1,5 +1,3 @@
-// Usage: node specs/probes/claude-cli.mjs <after-generation|while-streaming|two-steers|interrupt-queued>
-// Each run makes a few Haiku requests.
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"

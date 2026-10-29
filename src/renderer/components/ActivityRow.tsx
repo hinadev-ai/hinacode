@@ -3,10 +3,6 @@ import { cn } from "../lib/utils.ts"
 
 const rowClassName = "flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left text-muted-foreground"
 
-/**
- * One line of the indicator. With `onClick` the line is a button that recedes like a tool row until the user
- * reaches for it. `actions` stay outside it, so they can be buttons of their own.
- */
 export function ActivityRow({
   children,
   actions,
@@ -17,7 +13,6 @@ export function ActivityRow({
   children: ReactNode
   actions?: ReactNode
   onClick?: () => void
-  /** Set when the row opens and closes a list below it. */
   expanded?: boolean
   label?: string
 }) {

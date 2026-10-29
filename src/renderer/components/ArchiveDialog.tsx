@@ -15,7 +15,6 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx"
 
-/** The thread's worktree while it still exists on disk. */
 export const useActiveWorktree = (thread: Thread) =>
   useWorktrees((state) => {
     const worktree = thread.worktreeId ? state.byId[thread.worktreeId] : undefined
@@ -24,14 +23,12 @@ export const useActiveWorktree = (thread: Thread) =>
 
 interface ArchiveDialogProps {
   readonly thread: Thread
-  /** The worktree that archiving deletes. */
   readonly worktree: Worktree
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly onArchived: (thread: Thread) => void
 }
 
-/** Confirms archiving a thread when that also deletes its worktree folder, the one part that cannot be undone. */
 export function ArchiveDialog({ thread, worktree, open, onOpenChange, onArchived }: ArchiveDialogProps) {
   const [error, archive, isPending] = useActionState(async () => {
     try {

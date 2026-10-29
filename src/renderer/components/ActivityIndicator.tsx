@@ -6,16 +6,8 @@ import { BackgroundTaskActivity } from "./BackgroundTaskActivity.tsx"
 import { SubagentActivity } from "./SubagentActivity.tsx"
 import { TodoActivity } from "./TodoActivity.tsx"
 
-/**
- * Long-running work of the thread's agent, docked on top of the composer. The plan comes first, then the
- * sub-agents in flight, then background tasks, which outlive the turn and sit nearest the input with their stop
- * buttons. `children`, the queued messages, come last because they are sent next. A section with nothing to show
- * renders nothing, and the tray hides once every section does.
- */
 export function ActivityIndicator({ thread, children }: { thread: Thread; children?: ReactNode }) {
   return (
-    // Inset by the composer's 24px corner radius plus the flare, so each flare lands on the composer's straight top
-    // border. The tray overlaps that border by 1px and shares the composer's frosted fill, so the two read as one shape.
     <section
       aria-label={m.activity_label()}
       className="relative z-10 mx-9 -mb-px flex min-h-0 animate-fade-in flex-col [--tray:color-mix(in_oklab,var(--background)_60%,transparent)] has-[>div:empty]:hidden dark:[--tray:color-mix(in_oklab,var(--popover)_60%,transparent)]"
@@ -32,14 +24,11 @@ export function ActivityIndicator({ thread, children }: { thread: Thread; childr
   )
 }
 
-/** The concave corner where the tray's left side curves out into the composer's top border. Mirror it for the right. */
 function Flare({ className }: { className: string }) {
-  // Coordinates sit on pixel centers: the tray's border runs down x = 12.5 and the composer's along y = 11.5.
   const arc = "M12.5 -0.5 A12 12 0 0 1 0.5 11.5"
   return (
     <div aria-hidden className={cn("pointer-events-none absolute bottom-0 size-3", className)}>
-      {/* An SVG fill can't blur what is behind it, so the fill is a masked box with the tray's backdrop. It is 1px
-          wider than the flare to fill the side border the tray cuts away. */}
+      {/* FIXME: an SVG fill cannot backdrop-blur, so the fill is a masked box 1px wider than the flare */}
       <div className="absolute inset-y-0 left-0 w-[13px] bg-(--tray) mask-[radial-gradient(circle_at_0.5px_-0.5px,transparent_12px,#000_12px)] backdrop-blur-md" />
       <svg width={12} height={12} className="absolute inset-0 overflow-visible">
         <path d={arc} className="fill-none stroke-(--composer-edge)" />

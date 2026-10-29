@@ -47,7 +47,6 @@ import * as Scratch from "../services/Scratch.ts"
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
 
-/** Two threads that exist in the database the server checks credentials against. */
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
 const seeded = Layer.effect(
@@ -59,7 +58,6 @@ const seeded = Layer.effect(
   }),
 )
 
-/** A provider whose turn stays open until it is interrupted, so tools can be called during it. */
 const fakeProvider = (id: ProviderId): AgentProvider => {
   const turns = new Map<string, Deferred.Deferred<void>>()
   return {
@@ -142,7 +140,6 @@ const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(a
 interface ToolResult {
   readonly text: string
   readonly isError: boolean
-  /** Base64 data of each image block. */
   readonly images: ReadonlyArray<string>
 }
 
@@ -157,7 +154,6 @@ const withClient = <A>({ url, headers }: McpConnection, use: (client: Client) =>
     }
   })
 
-/** Calls one tool the way an agent does and returns its text. */
 const callAs = (connection: McpConnection, name: string, args: Record<string, unknown> = {}) =>
   withClient(connection, async (client): Promise<ToolResult> => {
     const result = await client.callTool({ name, arguments: args })
@@ -172,7 +168,6 @@ const callAs = (connection: McpConnection, name: string, args: Record<string, un
 const toolNames = (connection: McpConnection) =>
   withClient(connection, async (client) => (await client.listTools()).tools.map((listed) => listed.name))
 
-/** Passes only when the server turns the connection away. */
 const rejects = (connection: McpConnection) => Effect.flip(callAs(connection, "list_thread_pull_requests"))
 
 const withAuthorization = (connection: McpConnection, authorization: string) => ({
@@ -180,7 +175,6 @@ const withAuthorization = (connection: McpConnection, authorization: string) => 
   headers: { authorization },
 })
 
-/** Polls on the live clock until `check` returns a value. */
 const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
   Effect.flatMap(check, (found) =>
     Option.isSome(found)
@@ -188,7 +182,6 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
       : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
 
-/** Moves the test clock on by `step` until `check` passes, since the fiber that sleeps may not have started yet. */
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
 

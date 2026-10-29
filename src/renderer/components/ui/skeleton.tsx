@@ -14,9 +14,6 @@ function Skeleton({ className, ...props }: ComponentProps<"div">) {
 
 const rowKeys = ["a", "b", "c", "d", "e"] as const
 
-/**
- * Placeholder rows for a list that usually loads in well under a second. `label` is what assistive tech announces while it shows.
- */
 function SkeletonList({
   label,
   rows = 3,

@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Usage: compare.ts <before-label> <after-label>
-// Prints before/after for every scenario both labels have in .context/perf/.
 import assert from "node:assert/strict"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"

@@ -37,7 +37,6 @@ const renderPart = (part: Message["parts"][number]): string | null => {
 const renderMessage = (message: Message) =>
   [`## ${message.role} (${message.createdAt})`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
 
-/** Facts about a thread, in a tagged block so the agent can tell them from the transcript. */
 const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) =>
   [
     "<metadata>",
@@ -56,7 +55,6 @@ const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) 
     "</metadata>",
   ].join("\n")
 
-/** Where a thread runs: this machine, or another one, unnamed when it predates `machines.list`. */
 type Place = { readonly here: true } | { readonly here: false; readonly machine: MachineRef | undefined }
 type MachineRef = Pick<Machine, "id" | "name">
 const HERE: Place = { here: true }
@@ -143,7 +141,6 @@ export const threadToolsLayer = ThreadTools.toLayer(
     const projects = yield* Projects
     const peers = yield* Peers
 
-    /** A thread of the caller's project, so an agent cannot reach into another project's threads. */
     const projectThread = (targetId: string) =>
       Effect.gen(function* () {
         const caller = yield* threads.get(yield* McpTool.CallingThread)
@@ -158,11 +155,9 @@ export const threadToolsLayer = ThreadTools.toLayer(
         return target
       })
 
-    /** Project ids are per machine, so a project on another machine is this one when it checks out the same repository. */
     const repositoryOf = (projectId: string) =>
       Effect.map(projects.listWithRepositories, (all) => all.find((project) => project.id === projectId)?.repository)
 
-    /** Threads of `repository` on the user's other machines, which can repeat this machine's own. */
     const elsewhere = (repository: string) =>
       Effect.gen(function* () {
         const [known, all, machines] = yield* Effect.all(
@@ -182,7 +177,6 @@ export const threadToolsLayer = ThreadTools.toLayer(
           .map((thread) => ({ thread, machine: machineOf.get(thread.projectId) }))
       })
 
-    /** A thread of the caller's project on this machine, else one of its repository on another machine. */
     const locate = (targetId: string) =>
       Effect.gen(function* () {
         const here = yield* threads

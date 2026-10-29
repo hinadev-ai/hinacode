@@ -1,10 +1,4 @@
 #!/usr/bin/env node
-// Usage: measure.ts <cdp-port> <label> <scenario> [args...]
-//   switch <threadId...>        click each sidebar thread link in turn, 3 rounds; time to painted transcript + heap
-//   scroll <threadId>           open the thread, scroll bottom->top->bottom one step per frame; frame times + heap
-//   archive <threadId>          turn on worktree removal, time the threads.archive rpc, and the latency of a cheap rpc while it runs
-//   find <threadId>             change a no-match query 12 times; script work and component renders
-// Writes results/<label>-<scenario>.json under .context/perf/.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -241,7 +235,6 @@ const heap = async () => {
   }
 }
 
-// Installed once per page: long task observer + helpers the scenarios call.
 await evaluate(`(() => {
   if (window.__perf) return
   const lt = []

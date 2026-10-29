@@ -12,7 +12,6 @@ import { Button } from "./ui/button.tsx"
 
 const CHECK_EVERY_MS = 4 * 60 * 60_000
 
-/** Checks the agent CLIs for a newer release at launch and every four hours, like the app's own updater. */
 export function useAgentUpdateNotices() {
   const navigate = useNavigate()
   useEffect(() => {
@@ -23,7 +22,6 @@ export function useAgentUpdateNotices() {
           const dismissed = useDismissedUpdates.getState().byProvider
           for (const update of updates) {
             if (dismissed[update.provider] === update.latest) continue
-            // The same id replaces a notice still on screen from the last check instead of stacking another.
             toast.custom((id) => <AgentUpdateNotice update={update} toastId={id} onSettings={openSettings} />, {
               id: `agent-update:${update.provider}`,
               duration: Infinity,

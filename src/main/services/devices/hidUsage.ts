@@ -5,7 +5,6 @@ const digits = Object.fromEntries(
   Array.from({ length: 9 }, (_, index) => [`Digit${index + 1}`, 0x1e + index]).concat([["Digit0", 0x27]]),
 )
 
-/** DOM `KeyboardEvent.code` to its HID Keyboard page (0x07) usage. Codes name physical keys, as HID usages do. */
 const usages: ReadonlyMap<string, number> = new Map(
   Object.entries({
     ...letters,
@@ -54,7 +53,6 @@ export interface Keystroke {
   readonly shift: boolean
 }
 
-/** Each printable key of a US layout: its code, the character it types, and the one it types with Shift. */
 const printableKeys: ReadonlyArray<readonly [code: string, plain: string, shifted: string]> = [
   ...Array.from({ length: 26 }, (_, index) => {
     const letter = String.fromCharCode(97 + index)
@@ -87,7 +85,6 @@ const keystrokes: ReadonlyMap<string, Keystroke> = new Map<string, Keystroke>([
   }),
 ])
 
-/** The keys that type `text` on a US layout, or undefined when a character has no key. */
 export const keystrokesFor = (text: string): ReadonlyArray<Keystroke> | undefined => {
   const strokes: Array<Keystroke> = []
   for (const character of text) {

@@ -6,7 +6,6 @@ import { Given, Then, When } from "../support/fixtures.ts"
 import { servePageFrom } from "../support/listener.ts"
 import { threadView } from "../support/ui.ts"
 
-// The hero fills the page, so the first arrow key lands on it; the button sits above it at a known spot.
 const SHOP_PAGE = `<!doctype html>
 <title>Shop</title>
 <body style="margin:0">
@@ -18,7 +17,6 @@ const SHOP_PAGE = `<!doctype html>
 
 const webview = (page: Page) => page.locator("webview")
 
-/** Runs `code` in the browsed page, or resolves null while the page cannot run scripts yet. */
 const inPage = (page: Page, code: string) =>
   webview(page).evaluate((view, script) => (view as WebviewElement).executeJavaScript(script).catch(() => null), code)
 

@@ -1,5 +1,3 @@
-// Usage: electron --no-sandbox specs/probes/electron-ipc/main.cjs
-// Counts invoke replies that overtake an earlier push. TranscriptSync.tla's IpcOrdered = FALSE rests on this.
 const { app, BrowserWindow, ipcMain } = require("electron")
 const path = require("node:path")
 

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import { toAccount, toModelInfo } from "./catalog.ts"
 
-// A `model/list` row from muse 1.4.7.
 const wonder = {
   contextLimit: 1007997,
   cost: null,

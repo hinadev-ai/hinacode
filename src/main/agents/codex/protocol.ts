@@ -1,10 +1,6 @@
 import { Schema } from "effect"
 
-/**
- * Subset of the Codex app-server v2 protocol used by hinacode.
- * Copied from `codex app-server generate-ts` (codex-cli 0.161.0), trimmed to the fields we read or send.
- * Regenerate with that command when bumping Codex and re-copy the shapes below.
- */
+// FIXME: hand-trimmed from `codex app-server generate-ts` (codex-cli 0.161.0); regenerate when bumping Codex
 
 export type RequestId = string | number
 
@@ -42,12 +38,10 @@ export type ThreadResumeParams = ThreadStartParams & {
 }
 
 export type ThreadForkParams = ThreadResumeParams & {
-  /** The last turn the fork keeps. */
   lastTurnId?: string | null
 }
 
 export type Thread = { id: string; sessionId: string }
-/** `sandbox` is the policy in effect, including the user's config. */
 export type ThreadStartResponse = { thread: Thread; sandbox: SandboxPolicy }
 export type ThreadResumeResponse = ThreadStartResponse
 export type ThreadForkResponse = ThreadStartResponse
@@ -62,11 +56,8 @@ export type TurnStartParams = {
   input: Array<UserInput>
   cwd?: string | null
   model?: string | null
-  /** Omitted keeps the thread's effort. */
   effort?: string | null
-  /** Omitted keeps the thread's tier; null goes back to the standard one. */
   serviceTier?: string | null
-  /** Applies to this turn and the ones after it. */
   approvalPolicy?: AskForApproval | null
   sandboxPolicy?: SandboxPolicy | null
 }
@@ -76,7 +67,6 @@ export type TurnError = { message: string; additionalDetails: string | null }
 export type Turn = { id: string; status: TurnStatus; error: TurnError | null }
 export type TurnStartResponse = { turn: Turn }
 export type TurnInterruptParams = { threadId: string; turnId: string }
-/** Fails unless `expectedTurnId` is the thread's active turn. */
 export type TurnSteerParams = { threadId: string; input: Array<UserInput>; expectedTurnId: string }
 export type ThreadCompactStartParams = { threadId: string }
 
@@ -143,7 +133,6 @@ export type ThreadItem =
       status: CommandExecutionStatus
       aggregatedOutput: string | null
       exitCode: number | null
-      /** Set when the command runs in a unified-exec process, which can outlive the turn as a background terminal. */
       processId: string | null
     }
   | { type: "fileChange"; id: string; changes: Array<FileUpdateChange>; status: PatchApplyStatus }
@@ -163,7 +152,6 @@ export type ThreadItem =
       tool: CollabAgentTool
       status: CollabAgentToolCallStatus
       senderThreadId: string
-      /** For spawnAgent, the newly spawned agent's thread. */
       receiverThreadIds: Array<string>
       prompt: string | null
       model: string | null
@@ -181,7 +169,6 @@ export type ThreadItem =
       type: "agentMessage"
       id: string
       text: string
-      /** Set by `request_user_input_async`: the user answers with their next message, and the item has no deltas. */
       questions?: Array<AsyncUserInputQuestion> | null
     }
   | { type: "reasoning" | "userMessage" | "plan" | "webSearch" | "contextCompaction"; id: string }
@@ -201,7 +188,6 @@ export type ThreadTokenUsage = {
   modelContextWindow: number | null
 }
 
-/** Params of the server notifications hinacode handles, keyed by method. */
 export type ServerNotificationParams = {
   "item/agentMessage/delta": { threadId: string; turnId: string; itemId: string; delta: string }
   "item/reasoning/summaryTextDelta": { threadId: string; turnId: string; itemId: string; delta: string }
@@ -210,7 +196,6 @@ export type ServerNotificationParams = {
   "item/started": { threadId: string; turnId: string; item: ThreadItem }
   "item/completed": { threadId: string; turnId: string; item: ThreadItem }
   "thread/tokenUsage/updated": { threadId: string; turnId: string; tokenUsage: ThreadTokenUsage }
-  /** The whole plan after an `update_plan` call, not a patch. Statuses arrive already camelCased. */
   "turn/plan/updated": {
     threadId: string
     turnId: string
@@ -238,7 +223,6 @@ export type FileChangeRequestApprovalParams = {
   grantRoot?: string | null
 }
 
-/** Shared by CommandExecutionApprovalDecision and FileChangeApprovalDecision for the variants hinacode sends. */
 export type ApprovalDecisionWire = "accept" | "acceptForSession" | "decline" | "cancel"
 
 export type ServerRequestParams = {
@@ -248,7 +232,6 @@ export type ServerRequestParams = {
   "item/tool/requestUserInput": ToolRequestUserInputParams
 }
 
-/** EXPERIMENTAL in Codex. `isOther` lets the user type an answer; `options` is null for a free-text question. */
 export type ToolRequestUserInputQuestion = {
   id: string
   header: string
@@ -263,10 +246,8 @@ export type ToolRequestUserInputParams = {
   itemId: string
   questions: Array<ToolRequestUserInputQuestion>
 }
-/** Answers keyed by question id. */
 export type ToolRequestUserInputResponse = { answers: { [id in string]?: { answers: Array<string> } } }
 
-/** Codex asks before every MCP tool call through an elicitation tagged `codex_approval_kind: "mcp_tool_call"`. */
 export interface McpServerElicitationRequestParams {
   threadId: string
   turnId: string | null
@@ -311,7 +292,6 @@ export type GetAccountResponse = typeof GetAccountResponse.Type
 export const RateLimitWindow = Schema.Struct({
   usedPercent: Schema.Number,
   windowDurationMins: Schema.NullOr(Schema.Number),
-  /** Unix seconds. */
   resetsAt: Schema.NullOr(Schema.Number),
 })
 export type RateLimitWindow = typeof RateLimitWindow.Type

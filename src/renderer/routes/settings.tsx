@@ -118,7 +118,6 @@ export function SettingsRoute() {
   const clouds = useClouds()
   const shown = pages.filter((candidate) => !(environment !== null && candidate.localOnly))
   const requested = pages.find((candidate) => candidate.id === pageId)
-  // A page hidden for the picked environment falls back to the first page of its group, not of the whole list.
   const page =
     shown.find((candidate) => candidate.id === pageId) ??
     shown.find((candidate) => candidate.scope === requested?.scope) ??
@@ -131,8 +130,7 @@ export function SettingsRoute() {
       if (history.canGoBack()) history.back()
       else void navigate({ to: "/" })
     },
-    // A field keeps Escape, so a draft is never thrown away by leaving the page. Popups close on a document
-    // listener, and window hears the key after it, so an Escape that closed a popup arrives defaultPrevented.
+    // FIXME: Base UI popups close on a document Escape listener, so an Escape that closed one arrives defaultPrevented
     { target: window, ignoreInputs: true, preventDefault: false, stopPropagation: false },
   )
 
@@ -192,7 +190,6 @@ export function SettingsRoute() {
         <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="w-full max-w-2xl px-8 py-6">
             {page?.scope === "environment" ? (
-              // Keyed by environment so drafts in the page's fields never carry over to another machine.
               <EnvironmentPage key={environment ?? ""} environment={environment} page={page} />
             ) : (
               page && <page.component />
@@ -243,7 +240,6 @@ function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPick
   )
 }
 
-/** An environment's page, once that environment's settings answered, so its fields never start from defaults. */
 function EnvironmentPage({ environment, page }: { environment: EnvironmentId; page: SettingsPage }) {
   const settings = useAtomValue(settingsAtom(environment))
   const refresh = useAtomRefresh(settingsAtom(environment))

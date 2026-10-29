@@ -28,7 +28,6 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 
 const NO_DEVICES: ThreadDevices = []
 
-/** A simulator still being created has no id yet, and HinaCode only creates iOS simulators. */
 const platformOf = (entry: ThreadDevice) => {
   const id = threadDeviceId(entry)
   return id === null ? "ios" : devicePlatformOf(id)
@@ -37,10 +36,6 @@ const platformOf = (entry: ThreadDevice) => {
 export const deviceTabId = (threadId: string, tab: string) => `device-tab-${threadId}-${tab}`
 export const devicePanelId = (threadId: string, tab: string) => `device-panel-${threadId}-${tab}`
 
-/**
- * The Devices view's header: a tab per device the thread drives, and a button that lists the machine's devices to
- * add one. Arrow keys switch tabs and Delete closes the focused one, as in the Browser view.
- */
 export function DeviceTabStrip({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const result = useAtomValue(threadDevicesAtom(threadId))
@@ -110,7 +105,6 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
               threadId={threadId}
               entry={entry}
               selected={deviceTabKey(entry) === shown}
-              // While the list shows, no tab is selected, and the first still takes Tab into the row.
               focusable={deviceTabKey(entry) === shown || (shown === DEVICE_LIST_TAB && index === 0)}
               onSelect={() => select(deviceTabKey(entry))}
               onClose={() => close(entry)}

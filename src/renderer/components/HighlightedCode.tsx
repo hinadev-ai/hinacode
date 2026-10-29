@@ -9,7 +9,6 @@ interface Loaded {
   readonly theme: string
 }
 
-/** Null when shiki has no grammar for the language, which then renders as plain text. */
 const highlighters = new Map<string, Promise<Loaded | null>>()
 
 const highlighterFor = (theme: string | undefined, scheme: "dark" | "light", language: string) => {
@@ -27,10 +26,6 @@ const highlighterFor = (theme: string | undefined, scheme: "dark" | "light", lan
   return loaded
 }
 
-/**
- * `code` colored by the app theme's syntax colors, with the find bar's matches marked. Only colors change, never
- * font or spacing, so it can sit under a textarea. Without a known `language` it is plain text.
- */
 export function HighlightedCode({ code, language }: { code: string; language: string | undefined }) {
   const { codeTheme, scheme } = useTheme(useClientSettings().appearance.theme)
   if (language === undefined || language === "") return <Highlighted text={code} />

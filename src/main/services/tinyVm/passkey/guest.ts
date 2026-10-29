@@ -57,10 +57,7 @@ const routeMessage = (handlers: GuestHandlers) => (params: unknown) => {
   }
 }
 
-/**
- * Connects to the guest Chromium through the sbx tunnel, wakes the proxy extension worker, and arms it.
- * Chromium keeps the worker alive while a DevTools session is attached to it.
- */
+// FIXME: Chromium keeps the extension worker alive only while a DevTools session is attached
 export const connectGuest = (args: {
   readonly openTunnel: () => Effect.Effect<TunnelSocket, PasskeyError>
   readonly handlers: GuestHandlers

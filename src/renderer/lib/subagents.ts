@@ -4,19 +4,17 @@ import type { Message, MessagePart, ToolCallStatus } from "../../shared/domain.t
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
-/** A sub-agent's status read off its spawning tool call, for when the provider has not reported it. */
 export const statusOfCall = {
   running: "running",
   done: "completed",
   error: "failed",
 } satisfies Record<ToolCallStatus, SubagentStatus>
 
-/** Claude's tool for spawning a sub-agent, named Task before it became Agent. */
+// FIXME: Claude Code named its sub-agent tool Task before it became Agent
 export const spawnsSubagent = (part: ToolCall) => part.name === "Agent" || part.name === "Task"
 
 export const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
-/** Opens a sub-agent's transcript by its `callId`, or the thread's own transcript when undefined. */
 export function useOpenSubagent(threadId: string) {
   const navigate = useNavigate()
   return (callId: string | undefined) =>
@@ -27,10 +25,6 @@ export function useOpenSubagent(threadId: string) {
     })
 }
 
-/**
- * What the transcript holds about one sub-agent: the tool call that spawned it (Claude only) and,
- * in order, the calls it made. The calls lose `parentCallId` so they render as the view's own.
- */
 export function findSubagentWork(messages: ReadonlyArray<Message>, callId: string) {
   let spawn: ToolCall | undefined
   let startedAt: string | undefined
@@ -49,17 +43,13 @@ export function findSubagentWork(messages: ReadonlyArray<Message>, callId: strin
   return { spawn, calls, startedAt }
 }
 
-/** A string field of a tool call's input, such as the Agent tool's `description` or `prompt`. */
 export const inputField = (part: ToolCall | undefined, key: string): string | undefined => {
   const value: unknown =
     typeof part?.input === "object" && part.input !== null ? Reflect.get(part.input, key) : undefined
   return typeof value === "string" ? value : undefined
 }
 
-/**
- * The report inside the text Claude's Agent tool hands back. Claude frames it, indents every report
- * line by two spaces so a forged frame line stands out, and appends the agent id and usage.
- */
+// FIXME: Claude frames the Agent tool's report, indents it by two spaces and appends the agent id
 export function subagentReport(text: string): string {
   const [first = "", ...rest] = text.split("\n")
   if (!first.startsWith("[Subagent hand-back]")) return text.replace(/\nagentId: [\s\S]*$/, "").trim()

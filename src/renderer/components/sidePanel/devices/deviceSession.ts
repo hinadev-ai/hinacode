@@ -5,12 +5,9 @@ import { callPromise } from "../../../lib/rpc.ts"
 export type FrameShape = Pick<DeviceFrame, "width" | "height" | "orientation" | "posture" | "screen" | "unfolded">
 
 interface DeviceCallbacks {
-  /** The first frame, and every frame whose size, orientation, posture or screen differs from the last. */
   readonly onShape: (shape: FrameShape) => void
-  /** No frame request has succeeded for a while, or one has again after that. */
   readonly onStalled: (stalled: boolean) => void
   readonly onCommandError: (message: string) => void
-  /** Why frames keep failing, after a few in a row, or null once one arrives again. */
   readonly onFrameError: (message: string | null) => void
 }
 
@@ -19,10 +16,6 @@ const STALL_MS = 5000
 const MAX_BATCH = 128
 const FAILURES_SHOWN_AFTER = 3
 
-/**
- * Streams one of a thread's devices into a canvas and sends its input. One `device.frame` request is in flight at a time,
- * so the frame rate follows the link, and one `device.command` batch, so input queued meanwhile goes out together.
- */
 export class DeviceSession {
   private readonly threadId: string
   private readonly deviceId: DeviceId
@@ -45,16 +38,13 @@ export class DeviceSession {
     this.threadId = threadId
     this.deviceId = deviceId
     this.callbacks = callbacks
-    // A request that never settles fails no catch, so the stall is judged by the clock.
     this.watchdog = window.setInterval(() => this.checkStall(), 1000)
     void this.poll()
   }
 
-  /** `DeviceFrame` mounts the canvas once it has measured itself, so it can arrive after the stream starts. */
   setCanvas(canvas: HTMLCanvasElement | null) {
     if (this.canvas === canvas) return
     this.canvas = canvas
-    // A still screen sends no new frame, so ask again for the newest one to fill the new canvas.
     this.sequence = 0
     if (canvas && !this.polling) this.schedule(0)
   }
@@ -151,7 +141,6 @@ export class DeviceSession {
     const bitmap = await createImageBitmap(new Blob([bytes], { type: frame.mime }))
     try {
       if (this.disposed) return
-      // The backing store is the frame's own pixels, never the element's box, so the image stays sharp.
       if (canvas.width !== frame.width) canvas.width = frame.width
       if (canvas.height !== frame.height) canvas.height = frame.height
       canvas.getContext("2d")?.drawImage(bitmap, 0, 0, frame.width, frame.height)

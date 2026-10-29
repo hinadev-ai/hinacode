@@ -1,17 +1,13 @@
 import type { DeviceElement } from "../../../shared/device.ts"
 
-/** An emulator process as its `avd/running/pid_<pid>.ini` discovery file describes it. */
 export interface RunningEmulator {
   readonly pid: number
   readonly avdName: string
-  /** `emulator-<serialPort>` is its adb serial. */
   readonly serialPort: number
-  /** Null when the emulator was started without its gRPC endpoint. */
   readonly grpcPort: number | null
   readonly grpcToken: string | null
 }
 
-/** `ImageFormat.rotation` from the emulator's proto, which follows the device's rotation sensor. */
 export type SkinRotation = "PORTRAIT" | "LANDSCAPE" | "REVERSE_PORTRAIT" | "REVERSE_LANDSCAPE"
 
 export const parseIni = (text: string): ReadonlyMap<string, string> =>
@@ -51,7 +47,6 @@ const RELEASES: Readonly<Record<number, string>> = {
   36: "16",
 }
 
-/** The OS version from an AVD's `image.sysdir.1`, such as `system-images/android-36/google_apis/arm64-v8a/`. */
 export const androidVersionOf = (systemImageDir: string | undefined): string => {
   const platform = /android-([^/]+)/.exec(systemImageDir ?? "")?.[1]
   if (!platform) return "Android"
@@ -75,10 +70,6 @@ const attributesOf = (tag: string): ReadonlyMap<string, string> =>
 const MAX_TEXT = 500
 const clip = (value: string) => value.slice(0, MAX_TEXT)
 
-/**
- * Flattens a `uiautomator dump` into elements in document order, keeping the ones an agent can name or act on.
- * Bounds are in display pixels of the current rotation; `scale` is the density over 160, so frames come out in points.
- */
 export const parseUiHierarchy = (xml: string, scale: number): ReadonlyArray<DeviceElement> =>
   [...xml.matchAll(/<node\s[^>]*>/g)].flatMap(([tag]) => {
     const node = attributesOf(tag)
@@ -103,10 +94,6 @@ export const parseUiHierarchy = (xml: string, scale: number): ReadonlyArray<Devi
     ]
   })
 
-/**
- * Maps a point given as fractions of the displayed (rotated) screen onto the touch panel, which keeps the
- * portrait axes of `panel` whatever the rotation.
- */
 export const panelPoint = (
   rotation: SkinRotation,
   fraction: { readonly x: number; readonly y: number },
@@ -125,5 +112,4 @@ export const panelPoint = (
   }
 }
 
-/** Quotes one argument for the device's shell, since `adb shell` joins its arguments into a remote command line. */
 export const quoteForRemoteShell = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`

@@ -32,7 +32,6 @@ const draftAnswer = (draft: Draft) => {
   return text === "" ? draft.picked : [...draft.picked, text]
 }
 
-/** A question the agent is blocked on. It disappears when the provider reports `question_resolved`. */
 export function QuestionRequestCard({ request, providerLabel }: { request: QuestionRequest; providerLabel: string }) {
   return (
     <QuestionCard
@@ -43,7 +42,6 @@ export function QuestionRequestCard({ request, providerLabel }: { request: Quest
   )
 }
 
-/** Questions the agent posted without waiting. The answer goes back as the user's next message. */
 export function PostedQuestionsCard({
   threadId,
   questions,
@@ -70,7 +68,6 @@ export const answerText = (questions: ReadonlyArray<Question>, answers: Question
     })
     .join("\n\n")
 
-/** Each question can be answered by picking options or typing; any left blank is skipped. */
 function QuestionCard({
   questions,
   providerLabel,
@@ -153,7 +150,6 @@ function QuestionField({
   onChange: (draft: Draft) => void
 }) {
   const textId = useId()
-  // A single-choice question takes either an option or typed text, never both.
   const onText = (text: string) => onChange({ picked: question.multiSelect ? draft.picked : [], text })
   const onPick = (label: string) => onChange({ picked: [label], text: "" })
   const onToggle = (label: string, checked: boolean) =>

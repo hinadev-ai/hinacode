@@ -8,7 +8,6 @@ import { Settings } from "../services/Settings.ts"
 import * as SettingsModule from "../services/Settings.ts"
 import { migrate } from "./migrations/0029_listeners_pick_interface.ts"
 
-/** A data directory with `settings.json` holding `settings`, and the migration run against the database beside it. */
 const migrated = (settings: unknown, tailscale: string | null) => {
   const dir = mkdtempSync(join(tmpdir(), "kk-pick-interface-"))
   const file = join(dir, "settings.json")

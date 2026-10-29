@@ -13,7 +13,6 @@ interface Choice {
   readonly id: string
   readonly label: string
   readonly hint: string
-  /** Null wakes the thread. */
   readonly until: Date | null
 }
 
@@ -32,7 +31,6 @@ interface SnoozePickerProps {
   readonly onClose: () => void
 }
 
-/** The typed time and the presets a thread can be snoozed until. */
 export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePickerProps) {
   const [text, setText] = useState("")
   const problemId = useId()
@@ -100,10 +98,8 @@ export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePicker
             aria-describedby={problemId}
             placeholder={m.snooze_placeholder()}
             onKeyDown={(event) => {
-              // The always-open list would otherwise take Escape for itself and keep the dialog up.
+              // FIXME: Base UI's always-open list takes Escape for itself and keeps the dialog up
               if (event.key === "Escape") onClose()
-              // With a problem shown, the highlight is left over from before it, and Enter must not quietly pick a
-              // preset the person did not ask for. One they arrowed to after typing is theirs.
               if (event.key === "Enter" && problem !== "" && !browsed.current) event.preventBaseUIHandler()
             }}
             className="h-12 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"

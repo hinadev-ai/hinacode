@@ -64,7 +64,6 @@ import { Input } from "./ui/input.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
-/** Stays mounted while hidden so its dialogs, opened by keybindings, still render. */
 export function Sidebar({
   compact,
   finalFocus,
@@ -72,7 +71,6 @@ export function Sidebar({
   compact: boolean
   finalFocus: RefObject<HTMLButtonElement | null>
 }) {
-  // Loads every thread's pull request links once, for the PR numbers under each row.
   useAtomValue(loadAllPullRequestsAtom)
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const overlayOpen = useUi((state) => state.sidebarOverlayOpen)
@@ -98,7 +96,6 @@ export function Sidebar({
       aria-label={m.sidebar_label()}
       hidden={!compact && !sidebarOpen}
       style={compact ? undefined : { width: sidebarWidth }}
-      // The title bar spans the window, so `before:` carries the right border on up through it.
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
@@ -198,12 +195,10 @@ export function Sidebar({
   )
 }
 
-/** Lowercased and trimmed, or empty for no filter. */
 type Query = string
 
 const includes = (text: string, query: Query) => text.toLocaleLowerCase().includes(query)
 
-/** The projects' unpinned active threads whose title or project name matches the query. */
 const projectThreads = (state: Pick<ThreadsState, "byId">, projects: ReadonlyArray<Project>, query: Query) =>
   selectUnpinnedProjectThreads(...projects.map((project) => project.id))(state).filter(
     (thread) =>
@@ -212,7 +207,6 @@ const projectThreads = (state: Pick<ThreadsState, "byId">, projects: ReadonlyArr
       projects.some((project) => project.id === thread.projectId && includes(project.name, query)),
   )
 
-/** Threads of the filtered projects whose title or project name matches the query. */
 function useMatchingThreads(select: (state: Pick<ThreadsState, "byId">) => ReadonlyArray<Thread>, query: Query) {
   const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
   return useThreads(
@@ -225,7 +219,6 @@ function useMatchingThreads(select: (state: Pick<ThreadsState, "byId">) => Reado
   )
 }
 
-/** Pinned threads of every project, above the tabs so they stay in reach whichever tab is open. */
 function PinnedThreads({ query }: { query: Query }) {
   const threads = useMatchingThreads(selectPinnedThreads, query)
   if (threads.length === 0) return null
@@ -242,7 +235,6 @@ function PinnedThreads({ query }: { query: Query }) {
   )
 }
 
-/** Active threads of every project in one list, the most recently updated on top, then the snoozed ones. */
 function InboxList({ query }: { query: Query }) {
   const now = useNow()
   const threads = useMatchingThreads(selectInboxThreads(now), query)
@@ -272,7 +264,6 @@ function InboxList({ query }: { query: Query }) {
   )
 }
 
-/** Archived threads of every project in one list, the most recently updated on top. */
 function ArchivedList({ query }: { query: Query }) {
   const threads = useMatchingThreads(selectArchivedThreads, query)
   return threads.length === 0 ? (
@@ -284,13 +275,8 @@ function ArchivedList({ query }: { query: Query }) {
   )
 }
 
-/**
- * With no query the Threads tab lists every project and every active thread. Only then does it keep empty
- * projects, for their new thread button, and only then can it be reordered, since a drop saves every row's position.
- */
 const isFullList = (query: Query) => query === ""
 
-/** The projects the filter picks. A filter whose projects are all gone shows every project. */
 function useFilteredProjects(projects: ReadonlyArray<Project>) {
   const ids = useUi((state) => state.sidebarProjectIds)
   const picked = projects.filter((project) => ids.includes(project.id))
@@ -349,7 +335,6 @@ function ProjectFilterMenu() {
 interface ProjectListProps {
   readonly query: Query
   readonly onAddProject: () => void
-  /** Takes focus after a project is deleted. */
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
@@ -357,7 +342,6 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
-  // Grouped before the query narrows anything, so a search never splits a group or changes its header.
   const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
   const shownKeys = useThreads(
     useShallow((state) =>
@@ -386,7 +370,6 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
     }
     return [header, ...rows.map((row) => projectRow(row, true))]
   }
-  // One array, so a row moved between groups keeps its key in the same list and stays mounted with its focus.
   const items = [
     ...grouped
       .filter(({ rows }) => isFullList(query) || rows.length > 0)
@@ -476,7 +459,6 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
   const [state, update] = useSidebarGroups()
   const index = state.groups.findIndex((candidate) => candidate.id === group.id)
   const [renaming, setRenaming] = useState(false)
-  // Rename opens its dialog once the menu has closed and handed focus back to the trigger.
   const [renameQueued, setRenameQueued] = useState(false)
 
   return (
@@ -551,7 +533,6 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
   const [menuOpen, setMenuOpen] = useState(false)
   const [open, setOpen] = useState(true)
   const threads: ReadonlyArray<Thread> = useThreads(useShallow((state) => projectThreads(state, projects, query)))
-  // A project whose active threads are all pinned is not empty, they are listed above the tabs.
   const hasActiveThreads = useThreads(
     (state) => selectProjectThreads(...projects.map((project) => project.id))(state).length > 0,
   )
@@ -560,7 +541,6 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
 
   return (
     <li className={nested ? "pl-2" : undefined}>
-      {/* A query opens every project, so a match is never hidden in a collapsed one. */}
       <Collapsible open={open || query !== ""} onOpenChange={setOpen}>
         <div
           data-menu-open={menuOpen}
@@ -603,7 +583,6 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             />
           )}
         </div>
-        {/* Clips the rows while the height animates, with room left for a row's 2px focus ring. */}
         <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] [overflow-clip-margin:2px] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
           <SidebarThreadList
             group={group.key}
@@ -642,7 +621,6 @@ function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonPr
   )
 }
 
-/** Starts a thread in this machine's chats project, which needs no repository. */
 function NewChatButton() {
   const navigate = useNavigate()
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])

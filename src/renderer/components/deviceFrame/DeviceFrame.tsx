@@ -15,17 +15,13 @@ import {
 
 export interface DeviceFrameProps {
   readonly model: DeviceModel
-  /** The device screen in points, in either orientation. */
   readonly screen: Size
   readonly orientation: Orientation
-  /** For a foldable. Open, the screen is its inner screen; folded, its cover screen. */
   readonly fold?: Fold
-  /** Laid exactly over the screen opening. It fills its box and gets clipped to the screen's corners. */
   readonly children: ReactNode
   readonly className?: string
 }
 
-/** A phone around `children`, scaled to fit its own box. Give it a sized parent. */
 export function DeviceFrame({ model, screen, orientation, fold, children, className }: DeviceFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const container = useElementSize(containerRef)
@@ -84,16 +80,10 @@ function CutoutMark({ cutout, layout }: { cutout: Cutout; layout: FrameLayout })
 }
 
 interface Pinch {
-  /** How far the two edges that cross the hinge dip toward it, in CSS pixels. */
   readonly depth: number
-  /** How much of each half of those edges the dip spans, from 0 to 1. */
   readonly reach: number
 }
 
-/**
- * How an open foldable's outline shows its hinge, as Xcode's DeviceHub draws it. Half open, both halves lean back, so
- * the edges dip toward the hinge along their whole length. Flat, only a small notch marks it on the body.
- */
 function hingePinch(fold: Fold | undefined, spec: DeviceSpec, scale: number) {
   if (!fold || fold.posture === "closed") return null
   const short = Math.min(spec.body.width, spec.body.height) * scale
@@ -103,10 +93,6 @@ function hingePinch(fold: Fold | undefined, spec: DeviceSpec, scale: number) {
     : { body: { depth: short * 0.006, reach: 0.04 }, screen: none }
 }
 
-/**
- * Clips a box so the edges that cross its middle dip toward it. `across` is true when the hinge runs top to bottom.
- * The point count never changes, so a posture change animates.
- */
 function hingeClip(across: boolean, { depth, reach }: Pinch) {
   const from = `${50 - reach * 50}%`
   const to = `${50 + reach * 50}%`
@@ -115,7 +101,6 @@ function hingeClip(across: boolean, { depth, reach }: Pinch) {
     : `polygon(0 0, 100% 0, 100% ${from}, calc(100% - ${depth}px) 50%, 100% ${to}, 100% 100%, 0 100%, 0 ${to}, ${depth}px 50%, 0 ${from})`
 }
 
-/** The fold line of a half-open screen, darker where the glass turns away. */
 function Crease({ across }: { across: boolean }) {
   const direction = across ? "to right" : "to bottom"
   return (
@@ -129,10 +114,6 @@ function Crease({ across }: { across: boolean }) {
   )
 }
 
-/**
- * The body in portrait, centered on the screen and turned with it, so its side buttons follow. Landscape turns the
- * top to the left, as the device reports it.
- */
 function Body({
   spec,
   layout,
@@ -174,7 +155,7 @@ function Body({
           }}
         />
       ))}
-      {/* A drop shadow on the wrapper follows the clipped outline, where a box shadow on the body would be cut off. */}
+      {/* FIXME: clip-path cuts off a box-shadow, so a drop-shadow on the wrapper follows the outline instead */}
       <div className="absolute inset-0 drop-shadow-[0_12px_12px_rgb(0_0_0/0.22)] dark:drop-shadow-[0_12px_14px_rgb(0_0_0/0.5)]">
         <div
           className="size-full transition-[clip-path] duration-500 ease-out motion-reduce:transition-none"

@@ -12,10 +12,6 @@ interface HoldToConfirmButtonProps {
   readonly onConfirm: () => void
 }
 
-/**
- * Fires `onConfirm` once the pointer, Space or Enter has been held for two seconds. Letting go early rewinds the fill.
- * For actions that destroy something the user cannot get back.
- */
 export function HoldToConfirmButton({ children, disabled, onConfirm }: HoldToConfirmButtonProps) {
   const progress = useMotionValue(0)
   const reduceMotion = useReducedMotion()

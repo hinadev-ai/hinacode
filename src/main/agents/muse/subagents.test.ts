@@ -2,7 +2,6 @@ import { describe, expect, test } from "@effect/vitest"
 import type { Item } from "./protocol.ts"
 import { applySubagentItem, type Subagents } from "./subagents.ts"
 
-// Shapes recorded from muse 1.4.13 `muse serve`, a turn that spawned one sub-agent and waited for it.
 const itemId = "01a173d5-470c-7f41-9639-a1f1d96e7e5e"
 const started: Item = {
   agentPath: "main/probe-child/1",
@@ -64,13 +63,11 @@ describe("Muse sub-agents", () => {
       tokens: 10,
       startedAt: "2026-10-25T16:10:23.717Z",
     })
-    // Muse leaves the item `inProgress` once its result is ready; the result is the end of the work.
     expect(applySubagentItem(subagents, ready, "2026-10-25T16:10:26.000Z")).toMatchObject({
       status: "completed",
       summary: "child says done",
       endedAt: "2026-10-25T16:10:26.000Z",
     })
-    // Later revisions that change nothing shown emit nothing.
     expect(applySubagentItem(subagents, drained, "2026-10-25T16:10:27.000Z")).toBeUndefined()
   })
 

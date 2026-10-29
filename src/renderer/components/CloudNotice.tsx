@@ -9,7 +9,6 @@ import { useLocale } from "../stores/locale.ts"
 import { ReconnectButton } from "./ReconnectButton.tsx"
 import { Button } from "./ui/button.tsx"
 
-/** Says above the composer that the thread's cloud cannot take messages right now, and what to do about it. */
 export function CloudNotice({ threadId }: { threadId: string }) {
   const cloud = useCloud(useThreadEnvironment(threadId))
   if (cloud === undefined || cloud.status === "connected") return null

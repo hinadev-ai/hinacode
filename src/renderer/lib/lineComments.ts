@@ -9,7 +9,6 @@ const commentBlock = (comment: LineComment) => {
   return [`${comment.path}:${lineRange(comment)}`, fence, comment.code, fence, comment.body].join("\n")
 }
 
-/** What the agent receives for a draft: the typed text, then every line comment with the code it is about. */
 export const promptWithComments = (text: string, comments: ReadonlyArray<LineComment>) => {
   const typed = text.trim()
   if (comments.length === 0) return typed

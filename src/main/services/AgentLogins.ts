@@ -11,20 +11,14 @@ import { nowIso } from "./clock.ts"
 import type { NotFoundError, PersistenceError } from "./errors.ts"
 import { Settings } from "./Settings.ts"
 
-/**
- * Who each account is signed in as. hinacode never signs in or out; the user does that in a terminal.
- * Answers come from `<cacheDir>/<label>_<provider>.json` once read, except signed out ones.
- */
 export class AgentLogins extends Context.Service<
   AgentLogins,
   {
-    /** `accountId` null is the CLI's own login. `refresh` asks the CLI even when the answer is cached. */
     readonly account: (
       provider: ProviderId,
       accountId: string | null,
       options?: { readonly refresh?: boolean },
     ) => Effect.Effect<AgentAccount, AgentError | PersistenceError | NotFoundError>
-    /** Drops what is cached for an added account, after it is renamed or removed. */
     readonly forget: (accountId: string) => Effect.Effect<void>
   }
 >()("hinacode/AgentLogins") {}
@@ -45,7 +39,6 @@ const slugify = (label: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "account"
 
-/** A missing, unreadable or hand-broken file is no answer, so the next read asks the CLI again. */
 const readCached = (path: string, accountId: string | null) =>
   Effect.tryPromise(() => readFile(path, "utf8")).pipe(
     Effect.flatMap(decodeCached),

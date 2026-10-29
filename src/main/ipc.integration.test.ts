@@ -39,11 +39,9 @@ interface Frame {
   readonly parent: Frame | null
 }
 
-/** The Electron surface `ipc.ts` and the services touch, recording what main would send to windows. */
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<{ channel: string; payload: unknown }>,
-  /** Called after every push, so a test can wait for the one it expects instead of polling. */
   watchers: new Set<() => void>(),
   shown: [] as Array<object>,
   restored: [] as Array<object>,
@@ -110,7 +108,6 @@ const subagent: Subagent = {
   endedAt: null,
 }
 
-/** What the scripted provider answers every turn with: a sub-agent that runs and completes. */
 const scriptedTurn: ReadonlyArray<AgentEvent> = [
   { type: "subagent_updated", subagent },
   { type: "text_delta", text: "Spawned one sub-agent." },
@@ -132,21 +129,16 @@ const claudeLimits: PlanLimits = {
   readAt: "2026-10-12T10:00:00.000Z",
 }
 
-/** A turn prompted with "simulate a held turn" waits for this before it completes. */
 let heldTurn = Promise.withResolvers<void>()
 
-/** Each sub-agent the scripted providers were asked to stop. */
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
 
-/** Turns the scripted Claude starts by itself. */
 const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
-/** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
 const turnPrompts: Array<string> = []
 
-/** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
   readonly sessionId: string
   readonly from: AccountHome | null
@@ -156,7 +148,6 @@ const copiedSessions: Array<{
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
-  // An added account answers with its home's name, so a test can tell which home was read.
   account: (home) =>
     Effect.succeed(
       home === null
@@ -274,7 +265,6 @@ const failure = (envelope: RpcEnvelope<unknown>) => {
 const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
 
-/** Resolves as soon as a push matching `predicate` has been sent, including one sent already. */
 const pushedEventually = (predicate: (event: PushEvent) => boolean) =>
   new Promise<void>((resolve) => {
     const check = () => {
@@ -577,7 +567,6 @@ describe("projects, threads and settings over rpc", () => {
   test("reordering a thread keeps its updatedAt", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const created = result(await invoke("threads.create", { projectId: project.id }))
-    // Last touched at the epoch, so a reorder that bumps updatedAt to the real clock cannot go unnoticed.
     const thread = await runtime.runPromise(
       Threads.Threads.use((threads) => threads.update({ id: created.id, title: "old" })).pipe(
         Effect.provide(TestClock.layer()),
@@ -736,7 +725,6 @@ describe("projects, threads and settings over rpc", () => {
       status: "preparing",
     } satisfies Partial<Worktree>)
 
-    // Setup runs in the background; without a setup script it settles on `ready` almost at once.
     await pushedEventually(
       (event) =>
         event.type === "worktree.updated" && event.worktree.id === worktree.id && event.worktree.status === "ready",
@@ -1451,7 +1439,6 @@ describe("agent accounts over rpc", () => {
   })
 })
 
-/** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
 const phone = (port: number, options?: { autoPong: boolean }) => {
   const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }), options)
   const frames: Array<ServerFrame> = []
@@ -1974,7 +1961,6 @@ describe("remote mode under a test clock", () => {
 
     await adjust("20 seconds")
     await Promise.all([live.pinged, dead.pinged])
-    // The pong to the protocol ping is queued before this frame, so the server has it once this answers.
     await live.send({ type: "ping", at: 1 })
     await live.pong(1)
 

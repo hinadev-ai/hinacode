@@ -4,7 +4,6 @@ import { mentionedThreadId, threadMention } from "./threadMention.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "command" | "mention"
 
-/** Tokens worth coloring: full command tokens such as `/review`, and workspace file paths and thread ids for `@` mentions. */
 export interface KnownTokens {
   readonly commands: ReadonlySet<string>
   readonly files: ReadonlySet<string>
@@ -16,14 +15,11 @@ export interface Span {
   readonly text: string
 }
 
-/** A fenced block, kept whole so its body can be colored by its language and shown without the fence lines. */
 export interface Fence {
   readonly kind: "fence"
-  /** The language word of the opening fence, "" when it names none. */
   readonly language: string
   readonly open: string
   readonly lines: ReadonlyArray<string>
-  /** Null while the block is still unclosed. */
   readonly close: string | null
 }
 
@@ -36,12 +32,9 @@ export const segmentText = (segment: Segment) =>
     ? [segment.open, ...segment.lines, ...(segment.close === null ? [] : [segment.close])].join("\n")
     : segment.text
 
-/** An opening or closing fence, and the language word of an opening one. */
 const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
-/** Inline code, or a `/command`, `$skill` or `@file` token that starts the line or follows whitespace. */
 const INLINE = /`[^`\n]+`|(?<=^|\s)[/$@][^\s]+/g
-/** Prose punctuation right after a mention, as in "see @src/a.ts, then". */
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: string } | null => {
@@ -78,11 +71,6 @@ const merge = (segments: ReadonlyArray<Segment>) =>
     return merged
   }, [])
 
-/**
- * Splits composer text into the spans the composer colors: list markers, inline and fenced code, known
- * commands and mentions of known files. Joining the spans gives back `text`, so the result can sit under
- * the textarea character for character.
- */
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
   const lines = text.split("\n")
@@ -112,11 +100,8 @@ export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segme
 }
 
 export interface CompletionQuery {
-  /** `@` mentions a file or a thread, `#` a pull request; the others are the agent's command triggers. */
   readonly trigger: AgentCommand["trigger"] | "@" | "#"
-  /** What has been typed after the trigger, up to the caret. */
   readonly query: string
-  /** The whole token around the caret, which a picked command replaces. */
   readonly start: number
   readonly end: number
 }
@@ -125,7 +110,6 @@ const isSpace = (char: string | undefined) => char !== undefined && /\s/.test(ch
 
 const isMarkdownHeading = (trigger: string, query: string) => trigger === "#" && query.startsWith("#")
 
-/** The `/command`, `$skill`, `@mention` or `#pull-request` token the caret is in, if it starts the line or follows whitespace. */
 export function completionAt(text: string, caret: number): CompletionQuery | null {
   let start = caret
   while (start > 0 && !isSpace(text[start - 1])) start--
@@ -138,7 +122,6 @@ export function completionAt(text: string, caret: number): CompletionQuery | nul
   return { trigger, query, start, end }
 }
 
-/** The skill `text` starts with, and its `/name ` or `$name ` token including the space that ends it. */
 export function leadingSkill(text: string, commands: ReadonlyArray<AgentCommand>) {
   for (const command of commands) {
     const token = `${command.trigger}${command.name} `
@@ -147,7 +130,6 @@ export function leadingSkill(text: string, commands: ReadonlyArray<AgentCommand>
   return null
 }
 
-/** Commands for `completion`, names starting with the query first, then names containing it. */
 export function matchCommands(
   commands: ReadonlyArray<AgentCommand>,
   completion: CompletionQuery & { readonly trigger: AgentCommand["trigger"] },
@@ -163,7 +145,6 @@ export function matchCommands(
 
 const byLength = (a: string, b: string) => a.length - b.length
 
-/** Files whose name starts with `query`, then whose name contains it, then whose path does; shortest first in each. */
 export function matchFiles(files: ReadonlyArray<string>, query: string) {
   const needle = query.toLowerCase()
   const nameStarts: Array<string> = []
@@ -180,7 +161,6 @@ export function matchFiles(files: ReadonlyArray<string>, query: string) {
   return [...nameStarts.sort(byLength), ...nameContains.sort(byLength), ...pathContains.sort(byLength)]
 }
 
-/** Threads whose title starts with `query`, then whose title contains it, each in the given order. */
 export function matchThreads<T extends Pick<Thread, "title">>(threads: ReadonlyArray<T>, query: string) {
   const needle = query.toLowerCase()
   const titleStarts = threads.filter((thread) => thread.title.toLowerCase().startsWith(needle))
@@ -202,14 +182,12 @@ export function matchPullRequests<T extends Pick<PullRequestMatch, "number" | "t
 
 const MAX_SUGGESTIONS = 50
 
-/** One row of the completion list. `insert` replaces the token at the caret. */
 export type Suggestion =
   | { readonly type: "command"; readonly insert: string; readonly command: AgentCommand }
   | { readonly type: "file"; readonly insert: string; readonly path: string }
   | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
   | { readonly type: "pullRequest"; readonly insert: string; readonly pullRequest: PullRequestMatch }
 
-/** Threads then files for `@`, pull requests for `#`, else the commands of the typed trigger, at most `MAX_SUGGESTIONS`. */
 export const suggestionsFor = (
   completion: CompletionQuery,
   commands: ReadonlyArray<AgentCommand>,

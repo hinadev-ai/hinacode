@@ -9,7 +9,6 @@ import * as Tools from "./tools/index.ts"
 
 const MCP_PATH = "/mcp"
 
-/** Rejects requests without a credential for an existing thread, so other local processes cannot act as a thread. */
 const requireCredential = HttpRouter.middleware(
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
@@ -47,7 +46,6 @@ const httpServer = HttpRouter.serve(
   { disableListenLog: true, disableLogger: true },
 ).pipe(Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 0, host: "127.0.0.1" })))
 
-/** Tells the credential store where the server listens, so turns can be handed a connection. */
 const announce = Layer.effectDiscard(
   Effect.gen(function* () {
     const { address } = yield* HttpServer.HttpServer
@@ -58,9 +56,4 @@ const announce = Layer.effectDiscard(
   }),
 )
 
-/**
- * The built-in MCP server agents call back into. One HTTP listener on 127.0.0.1 for the whole app;
- * each thread gets its own bearer credential from `McpCredentials`, and the credential alone decides
- * which thread a call acts as.
- */
 export const layer = announce.pipe(Layer.provide(httpServer))

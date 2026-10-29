@@ -29,7 +29,6 @@ Set HINACODE_SERVE_AUTO_UPDATE=0 to update it by hand instead.
 
 Data lives in HINACODE_USER_DATA, default ~/.hinacode-cloud.`
 
-/** A command line that does not parse. The CLI prints it with the usage and exits 1. */
 export class UsageError extends Error {}
 
 export type Command = "help" | "version" | "serve" | "pair"
@@ -42,7 +41,6 @@ const OPTIONS: Record<
   pair: { values: [], switches: [] },
 }
 
-/** The command `argv` asks for. An unknown option throws, so a typo never starts a daemon on the wrong port. */
 export const parseCommand = (argv: ReadonlyArray<string>): Command => {
   if (argv.includes("--help") || argv.includes("-h")) return "help"
   const [command, ...rest] = argv
@@ -63,15 +61,10 @@ export const parseCommand = (argv: ReadonlyArray<string>): Command => {
   return command
 }
 
-/**
- * How one `hinacode serve` boot differs from the stored settings. A field left out keeps the stored
- * value, so a plain restart converges on the same listener and the same token.
- */
 export interface ServeConfig {
   readonly bindHost?: string
   readonly port?: number
   readonly rotateToken: boolean
-  /** Turns the relay on or off. Left out keeps whatever relay is stored. */
   readonly relay?: "on" | "off"
 }
 
@@ -90,10 +83,6 @@ const portOf = (raw: string, source: string): number => {
   return port
 }
 
-/**
- * What `process.execve` runs to boot an installed update in place of this process. It drops the token rotation the
- * cloud was started with, which already happened, so an update never unpairs every client.
- */
 export const restartCommand = (process: {
   readonly execPath: string
   readonly execArgv: ReadonlyArray<string>
@@ -108,11 +97,9 @@ export const restartCommand = (process: {
   }
 }
 
-/** Whether a cloud installs new releases on its own once idle. On unless `HINACODE_SERVE_AUTO_UPDATE` is 0 or false. */
 export const autoUpdate = (env: NodeJS.ProcessEnv): boolean =>
   env["HINACODE_SERVE_AUTO_UPDATE"] === undefined || envFlag(env, "HINACODE_SERVE_AUTO_UPDATE")
 
-/** The `--name value` and `--name=value` spellings, or undefined when the flag is absent. */
 const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
   const inline = argv.find((arg) => arg.startsWith(`--${name}=`))
   if (inline !== undefined) return inline.slice(name.length + 3)
@@ -123,10 +110,6 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
   return value
 }
 
-/**
- * The `hinacode serve` configuration from its flags and environment. Flags win over the environment, and an
- * invalid value throws, because a daemon that silently picked another port would strand every paired client.
- */
 export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv): ServeConfig => {
   const portFlag = flagValue(argv, "port")
   const envPort = env["HINACODE_SERVE_PORT"]
@@ -155,17 +138,10 @@ export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv)
   }
 }
 
-/** A cloud with no address to listen on: no `--host`, none stored, and no Tailscale address. */
 export class ServeHostRequired extends Schema.TaggedError<ServeHostRequired>()("ServeHostRequired", {
   message: Schema.String,
 }) {}
 
-/**
- * Writes this boot's listener address into `settings.remote` and rotates the token when asked. It
- * runs while the app layer is built, before the remote listener first reads its settings, so the
- * listener starts once on this address and no client can pair with a token about to be replaced.
- * Without `--host` it keeps the stored address, or takes the Tailscale one.
- */
 export const applyServeConfig = (
   config: ServeConfig,
   tailscale: () => string | null = tailscaleAddress,
@@ -187,10 +163,6 @@ export const applyServeConfig = (
     if (config.rotateToken) yield* RemoteAccess.use((remote) => remote.rotateToken)
   })
 
-/**
- * Turns the relay on or off as `--relay` asks, once the listener is bound. A relay that already has a hostname is
- * left as it is, so a boot needs no call to the relay service. `onLink` shows the sign-in of a first link.
- */
 export const applyServeRelay = (
   relay: ServeConfig["relay"],
   onLink: (link: RelayLink) => Effect.Effect<void>,

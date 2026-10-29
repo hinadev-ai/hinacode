@@ -3,7 +3,6 @@ import { type ChosenModel, Given, Then, When } from "../support/fixtures.ts"
 import type { ProviderId } from "../../src/shared/agent.ts"
 import { rpc } from "../support/rpc.ts"
 
-/** Commands as the keybindings page names them. */
 const COMMAND_IDS: Record<string, string> = {
   "Show or hide sidebar": "sidebar.toggle",
   "New thread": "thread.new",
@@ -15,7 +14,6 @@ const commandId = (title: string) => {
   return id
 }
 
-/** Agents as the models page names them. */
 const PROVIDER_IDS: Record<string, ProviderId> = { "Claude Code": "claude" }
 
 const providerId = (agent: string) => {
@@ -32,7 +30,6 @@ const chosenLabel = ({ label }: ChosenModel) => {
 const shortcutRow = (page: import("@playwright/test").Page, command: string) =>
   page.getByRole("row").filter({ has: page.getByRole("cell", { name: command, exact: true }) })
 
-/** The form around a write-only secret field, which has its own Save and Clear buttons. */
 const secretForm = (page: import("@playwright/test").Page, label: string) =>
   page.getByRole("textbox", { name: label, exact: true }).locator("xpath=ancestor::form")
 
@@ -58,8 +55,6 @@ When("I choose the language {string}", async ({ app }, language: string) => {
   await app.page.getByRole("option", { name: language, exact: true }).click()
 })
 
-// The agent's CLI lists its models live and the list changes between releases, so the scenario picks
-// one from it. Without a default a new thread takes the first listed model, so the last one proves the setting.
 When("I choose the last listed default model for {string}", async ({ app, chosenModel }, agent: string) => {
   const picker = app.page.getByRole("group", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
   await expect(picker).toBeEnabled({ timeout: 30_000 })
@@ -140,7 +135,6 @@ Then(
   },
 )
 
-// The status line sits right above the field's form; the Slack field has an identical one.
 Then("the Linear API key status reads {string}", async ({ app }, text: string) => {
   await expect(secretForm(app.page, "Linear API key").locator("xpath=preceding-sibling::p[1]")).toHaveText(text)
 })

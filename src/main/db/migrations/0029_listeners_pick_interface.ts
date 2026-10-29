@@ -6,11 +6,6 @@ import { tailscaleAddress } from "../../network.ts"
 
 const isWildcard = (host: unknown) => host === "0.0.0.0" || host === "::"
 
-/**
- * Listeners no longer bind every interface. One saved on 0.0.0.0 moves to the Tailscale address. Without one, the
- * webhook listener falls back to loopback and remote control turns off until the user picks an interface, so an
- * update never leaves either listening on whatever Wi-Fi the machine joins.
- */
 export const pickInterface = (key: string, value: Record<string, unknown>, tailscale: string | null) => {
   if (!isWildcard(value["bindHost"])) return value
   if (key === "automations") return { ...value, bindHost: tailscale ?? "127.0.0.1" }
@@ -26,10 +21,6 @@ const readSettings = (path: string) => {
   }
 }
 
-/**
- * Rewrites `settings.json` beside the database, where `27_settings_files` moved the settings. A file a hand edit broke
- * is left alone; the store reads it as defaults, which already means no listener on every interface.
- */
 export const migrate = (tailscale: string | null) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient

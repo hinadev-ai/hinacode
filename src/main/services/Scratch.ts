@@ -6,7 +6,6 @@ import { slugifyBranch } from "./automations/template.ts"
 
 const MAX_SLUG_LENGTH = 40
 
-/** `2026-10-29T08:05:09.123Z` becomes `20261029-080509`. */
 const timestamp = (iso: string) => new Date(iso).toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-")
 
 const slug = (title: string) =>
@@ -15,14 +14,9 @@ const slug = (title: string) =>
     .slice(0, MAX_SLUG_LENGTH)
     .replace(/[-.]+$/, "") || "thread"
 
-/** A folder per thread under `<root>/<YYYYMMDD-HHmmss>-<slug>-<threadId>/` for the agent's throwaway files. */
 export class Scratch extends Context.Service<
   Scratch,
   {
-    /**
-     * The thread's folder, made when it has none. It is found by its `-<threadId>` suffix, so a title change after
-     * the first turn keeps the path, and the agent's instructions, the same.
-     */
     readonly ensure: (thread: Thread) => Effect.Effect<string, PersistenceError>
     readonly remove: (threadId: string) => Effect.Effect<void, PersistenceError>
   }

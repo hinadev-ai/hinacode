@@ -70,7 +70,6 @@ Then("the commands list covers the activity tray", async ({ activityApp: app }) 
   const list = app.page.getByRole("listbox", { name: "Commands", exact: true })
   const box = await list.boundingBox()
   if (box === null) throw new Error("The commands list is not shown")
-  // The list's bottom edge sits over the tray, so a tray painted above the list hides it there.
   const point = { x: box.x + box.width / 2, y: box.y + box.height - 4 }
   const topmost = await app.page.evaluate(
     ({ x, y }) => document.elementFromPoint(x, y)?.closest("[role=listbox]") !== null,

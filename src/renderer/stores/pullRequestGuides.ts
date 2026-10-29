@@ -14,7 +14,6 @@ export const usePullRequestGuides = create<PullRequestGuidesState>()((set) => ({
   replace: (url, state) => set((current) => ({ byUrl: { ...current.byUrl, [url]: state } })),
 }))
 
-/** Loads a guide's state into the store. Subscribe for the loading and error state; read the guide from the store. */
 export const loadPullRequestGuideAtom = familyOf((environment: EnvironmentId, url: string) =>
   Atom.make(
     call("pullRequestGuides.get", { url }, { environment }).pipe(

@@ -6,7 +6,6 @@ export interface McpConnection {
   readonly headers: { readonly authorization: string }
 }
 
-/** Talks to hinacode's built-in MCP server the way an agent does: the credential decides the thread. */
 const asAgent = async <T>(connection: McpConnection, run: (client: Client) => Promise<T>) => {
   const client = new Client({ name: "hinacode-e2e", version: "0" })
   await client.connect(
@@ -29,7 +28,6 @@ export const callTool = (connection: McpConnection, name: string, args: Record<s
     return { isError: result.isError === true, text: content.map((part) => part.text ?? "").join("\n") }
   })
 
-/** A raw request with the given bearer credential, for proving what the server turns away. */
 export const postAs = async (connection: McpConnection, authorization: string) => {
   const response = await fetch(connection.url, {
     method: "POST",

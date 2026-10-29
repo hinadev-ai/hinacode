@@ -22,11 +22,6 @@ export interface SeedThread {
   readonly status?: "idle" | "running"
 }
 
-/**
- * Writes rows straight into the app's SQLite file, and settings into the files beside it, for preconditions that are
- * not under test.
- * The renderer only notices them after `app.reload()` or `app.restart()`.
- */
 export class Seed {
   readonly #dbPath: string
 
@@ -34,7 +29,6 @@ export class Seed {
     this.#dbPath = dbPath
   }
 
-  // Open and close per call so each write commits before the app's own connection reads.
   #with<T>(run: (db: DatabaseSync) => T): T {
     const db = new DatabaseSync(this.#dbPath)
     try {
@@ -70,7 +64,6 @@ export class Seed {
     return id
   }
 
-  /** Stores one settings key in the file `Settings.set` or `ClientSettings.set` keeps it in. */
   setting(key: string, value: unknown): void {
     const dir = dirname(this.#dbPath)
     if (key === "keybindings") return writeJson(join(dir, "keybindings.json"), value)

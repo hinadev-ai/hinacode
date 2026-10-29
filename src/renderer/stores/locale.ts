@@ -8,10 +8,6 @@ interface LocaleState {
   readonly apply: (locale: Locale) => void
 }
 
-/**
- * Paraglide messages read the locale when called, so React needs a state change to re-render.
- * The app root keys its tree by this value.
- */
 export const useLocale = create<LocaleState>()((set) => ({
   locale: getLocale(),
   apply: (locale) => {

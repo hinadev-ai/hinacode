@@ -23,31 +23,24 @@ import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 
-// These views render with @pierre/diffs, which stays out of the startup bundle until one of them opens.
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
 const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => ({ default: module.GitGraphView })))
 const TinyVmView = lazy(() => import("./TinyVmView.tsx").then((module) => ({ default: module.TinyVmView })))
 const BrowserView = lazy(() => import("./BrowserView.tsx").then((module) => ({ default: module.BrowserView })))
-// Experimental and off by default, so the device stream and frame load only once the view opens.
 const DevicesView = lazy(() => import("./devices/DevicesView.tsx").then((module) => ({ default: module.DevicesView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
   readonly icon: IconType
   readonly title: () => string
-  /** The command that shows the view, whose chord the activity bar tooltip shows. */
   readonly commandId: CommandId
   readonly component: ComponentType<{ thread: Thread }>
-  /** Takes the place of the title in the panel header. */
   readonly header?: ComponentType<{ thread: Thread }>
-  /** A hook the activity bar calls on every render. A count above 0 shows on the icon. */
   readonly badge?: (threadId: string) => number
-  /** The experiment the view belongs to. It is hidden while the experiment is off. */
   readonly experiment?: keyof ExperimentalSettings
 }
 
-/** Every side panel view, in activity bar order. The bar and the content area render from this alone. */
 export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   {
     id: "details",
@@ -101,12 +94,10 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   },
 ]
 
-/** The views whose experiment, if any, is turned on. */
 export const useSidePanelViews = (environment: EnvironmentId): ReadonlyArray<SidePanelView> => {
   const { experimental } = useSettings(environment)
   return sidePanelViews.filter((view) => view.experiment === undefined || experimental[view.experiment])
 }
 
-/** The view to show for `id`, or the first one when `id` is not among `views`, such as a view whose experiment was turned off. */
 export const viewById = (views: ReadonlyArray<SidePanelView>, id: SidePanelViewId) =>
   views.find((view) => view.id === id) ?? views[0]!

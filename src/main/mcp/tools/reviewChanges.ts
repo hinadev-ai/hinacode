@@ -30,7 +30,6 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
       }),
   })
 
-// Fixed diff output regardless of the user's git config (mnemonic prefixes, color, external diff tools).
 const DIFF_FLAGS = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"]
 
 const fenced = (language: string, body: string) =>
@@ -43,11 +42,9 @@ const truncate = (report: string) =>
 
 interface ReviewTarget {
   readonly cwd: string
-  /** Set when the thread runs in a worktree: also diff against the merge-base with this ref. */
   readonly baseRef: string | null
 }
 
-/** Markdown report of a workspace's changes: `git status`, the diff against HEAD and, for worktrees, against the base. */
 const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
   Effect.gen(function* () {
     const [status, headDiff] = yield* Effect.all(

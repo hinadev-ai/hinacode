@@ -2,7 +2,6 @@ import type { PlatformSupport } from "../../../shared/device.ts"
 import { devicesLayer } from "./Devices.ts"
 import { DeviceError, type DevicePlatformDriver } from "./platform.ts"
 
-/** A platform this machine cannot run: it lists nothing and refuses every device call. */
 export const unavailableDriver = (support: PlatformSupport): DevicePlatformDriver => {
   const refuse = () => Promise.reject(new DeviceError("This machine cannot run this platform."))
   return {
@@ -19,7 +18,6 @@ export const unavailableDriver = (support: PlatformSupport): DevicePlatformDrive
   }
 }
 
-/** Devices on a machine with neither SDK, for tests that build the whole app. */
 export const unavailableDevicesLayer = devicesLayer({
   drivers: {
     ios: unavailableDriver({ kind: "missing", tool: "xcode" }),

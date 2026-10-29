@@ -30,13 +30,9 @@ interface Spent {
   readonly tokens: Tokens
 }
 
-/** One model request's usage, keyed by message and request id. */
 export type TranscriptUsage = ReadonlyMap<string, Spent>
 
-/**
- * The CLI writes one line per content block, each repeating the message's usage, and the output count
- * keeps growing until the last block. Keeping the largest count per message counts each request once.
- */
+// FIXME: the CLI writes one line per content block, each repeating the message's still-growing usage
 const keepLatest = (into: Map<string, Spent>, key: string, spent: Spent) => {
   const seen = into.get(key)
   if (seen === undefined || spent.tokens.outputTokens > seen.tokens.outputTokens) into.set(key, spent)
@@ -75,10 +71,6 @@ const isDirectory = (path: string) =>
     () => false,
   )
 
-/**
- * The folder under `<home>/projects` holding the session. Scanned instead of derived from the session's
- * cwd, so the CLI's path encoding never has to be copied.
- */
 const findProjectDir = async (home: string, sessionId: string) => {
   const projects = join(home, "projects")
   const dirs = await readdir(projects).catch(() => [])
@@ -87,11 +79,6 @@ const findProjectDir = async (home: string, sessionId: string) => {
   return index === -1 ? null : join(projects, dirs[index] ?? "")
 }
 
-/**
- * Reads a Claude session's tokens from its transcripts under `home`: the main session plus every agent
- * transcript beneath `<sessionId>/`. Workflow agents sit in `subagents/workflows/<run>/`, so the folder is
- * read recursively.
- */
 export const makeTranscriptUsage = (home: string) => {
   const parse = memoizeByFile((path) => parseTranscript(readLines(path)))
   const projectDirs = new Map<string, string>()
@@ -120,10 +107,6 @@ export const makeTranscriptUsage = (home: string) => {
   }
 }
 
-/**
- * Copies a session's transcript and its agent transcripts from one Claude home to another, into the same
- * project folder, overwriting older copies. False when `from` has no transcript for the session.
- */
 export const copyTranscripts = async (sessionId: string, from: string, to: string): Promise<boolean> => {
   if (resolve(from) === resolve(to)) return true
   const projectDir = await findProjectDir(from, sessionId)

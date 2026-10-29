@@ -7,7 +7,6 @@ import { isInside } from "../security.ts"
 
 const MAX_BYTES = 20 * 1024 * 1024
 
-/** Images limited to the formats both Claude and Codex accept; anything else is attached as a file. */
 const MIME_BY_EXTENSION: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -51,7 +50,6 @@ const decodeDataUrl = (dataUrl: string) => {
 const failure = (message: string) => (cause: unknown) =>
   new AttachmentError({ message: `${message}: ${cause instanceof Error ? cause.message : String(cause)}` })
 
-/** Copies user-supplied files into `<root>/<threadId>/` so agents get a stable absolute path. */
 export class Attachments extends Context.Service<
   Attachments,
   {
@@ -119,6 +117,5 @@ const attachment = (id: string, name: string, path: string, mime: string, bytes:
   bytes,
 })
 
-/** `root` is the attachments directory, `<userData>/attachments`. */
 export const layer = (root: string) =>
   Layer.succeed(Attachments, Attachments.of({ stage: stage(root), read: read(root) }))

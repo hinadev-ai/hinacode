@@ -123,8 +123,6 @@ describe("Threads", () => {
       const threads = yield* Threads
       const { projectId, threadId } = yield* seedThread({ rootPath: "/repo" })
       const now = "2026-01-01T00:00:00.000Z"
-      // A database written by a newer build: its thread table allows providers this build has no
-      // agent for. Listing must degrade to the threads it can run, not fail as a whole.
       yield* sql`PRAGMA ignore_check_constraints = ON`
       yield* sql`INSERT INTO thread ${sql.insert({
         id: randomUUID(),

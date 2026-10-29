@@ -2,7 +2,6 @@ import { lstat, mkdir, readdir, readFile, readlink, rm, writeFile } from "node:f
 import { basename, dirname, join } from "node:path"
 import { Effect, Schema } from "effect"
 
-/** One entry of a tar archive. `path` is relative, slash-separated, with no leading slash. */
 export type TarEntry =
   | {
       readonly type: "file"
@@ -37,7 +36,6 @@ const writeText = (header: Buffer, offset: number, text: string, width: number) 
   header.set(bytes, offset)
 }
 
-/** Ustar holds a path of at most 100 bytes, or a prefix of 155 plus a name of 100, split at a slash. */
 const splitPath = (path: string): { readonly name: string; readonly prefix: string } => {
   if (textEncoder.encode(path).length <= 100) return { name: path, prefix: "" }
   for (let index = path.lastIndexOf("/"); index > 0; index = path.lastIndexOf("/", index - 1)) {
@@ -71,11 +69,7 @@ const header = (entry: TarEntry, size: number, typeflag: string) => {
   return bytes
 }
 
-/**
- * Encodes entries as an uncompressed ustar archive: no pax headers and no platform junk entries, so a strict
- * reader sees exactly these entries. System tar on macOS adds AppleDouble `._` entries instead, which is why
- * this writer exists.
- */
+// FIXME: system tar on macOS adds AppleDouble `._` entries
 export const encodeTar = (entries: ReadonlyArray<TarEntry>): Uint8Array => {
   const parts: Array<Uint8Array> = []
   for (const entry of entries) {
@@ -97,10 +91,6 @@ export const encodeTar = (entries: ReadonlyArray<TarEntry>): Uint8Array => {
 const toTarError = (path: string) => (cause: unknown) =>
   new TarError({ message: `Cannot read ${path}: ${cause instanceof Error ? cause.message : String(cause)}` })
 
-/**
- * Reads the file or directory at `topPath` into entries whose first path segment is its base name, refusing
- * once the files would total more than `maxBytes`. Symlinks are stored as links and never followed.
- */
 export const readTree = (topPath: string, maxBytes: number): Effect.Effect<ReadonlyArray<TarEntry>, TarError> =>
   Effect.gen(function* () {
     const entries: Array<TarEntry> = []
@@ -130,12 +120,9 @@ export const readTree = (topPath: string, maxBytes: number): Effect.Effect<Reado
     return entries
   })
 
-/** The pax keys `decodeTar` applies; any other record is skipped. */
 const PAX_KEYS = new Set(["path", "linkpath", "size"])
-/** Go's archive/tar refuses larger pax headers too, which bounds the work an untrusted archive can cause. */
 const MAX_PAX_BYTES = 1024 * 1024
 
-/** Reads the records `decodeTar` uses from a pax extended header of `length key=value\n` records. */
 const paxRecords = (data: Uint8Array) => {
   if (data.length > MAX_PAX_BYTES) throw new TarError({ message: "pax header in tar archive is too large" })
   const records = new Map<string, string>()
@@ -156,10 +143,6 @@ const paxRecords = (data: Uint8Array) => {
   return records
 }
 
-/**
- * Reads back an archive `encodeTar` wrote, and the ustar and pax archives Go's `archive/tar` writes in the
- * guest. Throws on a truncated archive, so a transfer that broke midway never passes for a whole one.
- */
 export const decodeTar = (bytes: Uint8Array): ReadonlyArray<TarEntry> => {
   const readText = (offset: number, width: number) => {
     const slice = bytes.subarray(offset, offset + width)
@@ -212,17 +195,13 @@ export const decodeTar = (bytes: Uint8Array): ReadonlyArray<TarEntry> => {
   throw new TarError({ message: "tar archive is truncated" })
 }
 
-/** What `writeTree` put on disk. */
 export interface WrittenTree {
-  /** Absolute path of the archive's top-level entry. */
   readonly path: string
   readonly files: number
   readonly bytes: number
-  /** Archive paths of the symlinks it skipped. */
   readonly skippedLinks: ReadonlyArray<string>
 }
 
-/** The path's segments, or undefined when one is empty, `.`, `..` or holds a backslash or NUL. */
 const segmentsOf = (path: string) => {
   const segments = path.split("/")
   const safe = segments.every(
@@ -260,12 +239,6 @@ const writeEntries = (dir: string, entries: ReadonlyArray<TarEntry>) =>
     return { files, bytes, skippedLinks: skippedLinks as ReadonlyArray<string> }
   })
 
-/**
- * Writes the files and directories of an archive with one top-level entry into `dir`, which this creates and
- * which must not exist yet. It never writes a symlink and refuses any path that could leave `dir`, so an
- * archive from an untrusted source can only add new files under `dir`. Files are written 0644 and
- * directories 0755, whatever the archive says. If writing fails partway, `dir` is removed again.
- */
 export const writeTree = (dir: string, entries: ReadonlyArray<TarEntry>): Effect.Effect<WrittenTree, TarError> =>
   Effect.gen(function* () {
     const top = entries[0]
