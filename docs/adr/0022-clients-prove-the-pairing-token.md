@@ -1,6 +1,6 @@
 # 0022. Clients prove the pairing token instead of sending it
 
-Status: Accepted
+Status: Accepted. The token fallback and the plain frames are superseded by 0024
 Date: 2026-10-25
 
 ## Context

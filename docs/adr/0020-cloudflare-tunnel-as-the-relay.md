@@ -20,7 +20,7 @@ A HinaCode relay service, a Cloudflare Worker with D1 and Clerk accounts, links 
 - No developer needs a Cloudflare account or a domain. Linking a machine is one sign-in and one approval.
 - HinaCode now runs a service: a Worker, a D1 database, a Clerk application and a tunnel zone. It is small and stateless apart from two tables, and frames never cross it, so its load is one call per machine boot.
 - Clerk holds the accounts, so HinaCode stores no emails or passwords. Leaving Clerk later means migrating its users.
-- Cloudflare terminates TLS and can read frames in transit. End-to-end encryption with a pinned host key remains the named hardening step.
+- Cloudflare terminates TLS, so it carries frames it cannot read only because they are sealed end to end ([ADR 0024](0024-remote-frames-are-sealed-with-the-pairing-token.md)).
 - `cloudflared` becomes a runtime dependency. HinaCode uses the one on `PATH`, or downloads a pinned, checksummed release, so the user installs nothing.
 - The remote protocol does not change, so the relay ships without a version bump, and an app that predates it keeps working over direct addresses.
 - The service URL is configurable, so a developer who does not want HinaCode's service can run the same Worker on their own account.
