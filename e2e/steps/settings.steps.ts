@@ -46,6 +46,11 @@ When("I open settings", async ({ app }) => {
   await expect(app.page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible()
 })
 
+When("I go back to threads", async ({ app }) => {
+  await app.page.getByRole("button", { name: "Back to threads", exact: true }).click()
+  await expect(app.page.getByRole("navigation", { name: "Projects and threads" })).toBeVisible()
+})
+
 When("I open the settings section {string}", async ({ app }, section: string) => {
   await app.page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: section }).click()
 })
@@ -129,7 +134,7 @@ Then(
   "the new thread composer for {string} preselects the chosen model",
   async ({ app, names, chosenModel }, project: string) => {
     await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
-    await expect(app.page.getByLabel("Model", { exact: true })).toHaveText(chosenLabel(chosenModel), {
+    await expect(app.page.getByRole("button", { name: /^Model: / })).toContainText(chosenLabel(chosenModel), {
       timeout: 30_000,
     })
   },

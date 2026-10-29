@@ -737,6 +737,51 @@
   }
 }
 
+/*
+ * Fades a vertical scroller's top or bottom edge only while there is more to scroll that way. The scroll timeline
+ * drives the fade sizes, and a list too short to scroll has no timeline, so it keeps both edges sharp.
+ */
+@property --scroll-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --scroll-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes scroll-fade-y {
+  0% {
+    --scroll-fade-top: 0px;
+    --scroll-fade-bottom: 1.5rem;
+  }
+  10% {
+    --scroll-fade-top: 1.5rem;
+  }
+  90% {
+    --scroll-fade-bottom: 1.5rem;
+  }
+  100% {
+    --scroll-fade-top: 1.5rem;
+    --scroll-fade-bottom: 0px;
+  }
+}
+
+@utility scroll-fade-y {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--scroll-fade-top),
+    #000 calc(100% - var(--scroll-fade-bottom)),
+    transparent
+  );
+  animation: scroll-fade-y linear both;
+  animation-timeline: scroll(self);
+}
+
 /* Cuts the bottom 12px of the activity tray's side borders, where its flares take over the outline. */
 @utility tray-flare-cut {
   mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0), linear-gradient(#000 0 0);
@@ -792,14 +837,17 @@
   }
 }
 
-/* Press feedback for buttons and clickable rows. Menu triggers are left still so their popup anchors to a stable rect. */
+/*
+ * Press feedback for buttons and clickable rows. Menu triggers are left still so their popup anchors to a stable rect.
+ * A wide target sets a gentler `--press-scale`, since the same scale moves its edges further.
+ */
 @utility pressable {
   transition-property: color, background-color, border-color, box-shadow, opacity, scale;
   transition-duration: 160ms;
   transition-timing-function: var(--ease-out);
   @media (prefers-reduced-motion: no-preference) {
     &:active:not([aria-haspopup], :disabled) {
-      scale: 0.97;
+      scale: var(--press-scale, 0.97);
     }
   }
 }

@@ -23,7 +23,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
+import { ArchiveSettings } from "./ArchiveSettings.tsx"
 import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
+import { WorktreeRootField } from "./WorktreeRootField.tsx"
 
 type Blocker = "setup" | "turn"
 
@@ -82,6 +84,15 @@ const badgesOf = ({ worktree, checkout, blocker }: WorktreeRow): ReadonlyArray<B
 ]
 
 export function WorktreeSettings() {
+  return (
+    <div className="flex flex-col gap-12">
+      <Worktrees />
+      <ArchiveSettings />
+    </div>
+  )
+}
+
+function Worktrees() {
   const worktrees = useWorktrees(
     useShallow((state) => Object.values(state.byId).filter((worktree) => worktree.status !== "removed")),
   )
@@ -92,6 +103,7 @@ export function WorktreeSettings() {
 
   return (
     <SettingsSection title={m.settings_worktrees()} description={m.settings_worktrees_description()}>
+      <WorktreeRootField />
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.settings_worktrees_empty()}</p>
       ) : (

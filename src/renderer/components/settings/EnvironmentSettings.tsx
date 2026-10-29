@@ -61,7 +61,7 @@ export function EnvironmentSettings() {
 
   return (
     <SettingsSection
-      title={m.settings_environments()}
+      title={m.settings_connections()}
       description={m.environments_description()}
       action={<UpdateAllButton />}
     >
@@ -69,7 +69,7 @@ export function EnvironmentSettings() {
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>
       ) : (
-        <ul aria-label={m.settings_environments()} className={settingsGroupClass}>
+        <ul aria-label={m.settings_connections()} className={settingsGroupClass}>
           {clouds.map((cloud) => (
             <EnvironmentRow key={cloud.id} cloud={cloud} />
           ))}

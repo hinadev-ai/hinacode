@@ -66,9 +66,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
 export function Sidebar({
   compact,
+  replaced,
   finalFocus,
 }: {
   compact: boolean
+  /** Another nav docks in the sidebar's place, so the docked sidebar hides. The compact overlay still opens. */
+  replaced: boolean
   finalFocus: RefObject<HTMLButtonElement | null>
 }) {
   useAtomValue(loadAllPullRequestsAtom)
@@ -94,12 +97,12 @@ export function Sidebar({
     <nav
       ref={navRef}
       aria-label={m.sidebar_label()}
-      hidden={!compact && !sidebarOpen}
+      hidden={!compact && (!sidebarOpen || replaced)}
       style={compact ? undefined : { width: sidebarWidth }}
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
-          : "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground before:absolute before:-right-px before:bottom-full before:h-titlebar before:w-px before:bg-sidebar-border"
+          : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground before:absolute before:-right-px before:bottom-full before:h-titlebar before:w-px before:bg-sidebar-border"
       }
     >
       <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
@@ -165,7 +168,7 @@ export function Sidebar({
         environment={addProjectEnvironment}
         finalFocus={returnFocus}
       />
-      {!compact && sidebarOpen && (
+      {!compact && sidebarOpen && !replaced && (
         <ResizeHandle
           label={m.sidebar_resize()}
           edge="right"
@@ -590,6 +593,8 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             reorderable={isFullList(query)}
             showEmptyHint={isFullList(query) && !hasActiveThreads}
             newThreadButtonRef={newThreadButtonRef}
+            // Starts the titles under the project's folder icon, so the rows read as its children.
+            className="pl-5.5"
           />
         </CollapsibleContent>
       </Collapsible>

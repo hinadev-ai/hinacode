@@ -1,7 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
-import { createContext, type ReactElement, use, type Ref, useState } from "react"
+import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
@@ -264,11 +264,24 @@ function ReplyText({ text, done }: { text: string; done: boolean }) {
   return <Markdown text={text} className={finishedOnScreen ? "animate-fade-in" : undefined} />
 }
 
-export function EmptyThread({ hint }: { hint: string }) {
+// Placeholders filled with private-use characters, then split on, so each language keeps its own word order.
+const PROJECT = "\uE000"
+const ENVIRONMENT = "\uE001"
+
+/** Asks what to work on, with the project and machine in place, which the caller renders as switches. */
+export function EmptyThread({ project, environment }: { project: ReactNode | null; environment: ReactNode }) {
+  const sentence =
+    project === null
+      ? m.thread_empty_chat_title({ environment: ENVIRONMENT })
+      : m.thread_empty_title({ project: PROJECT, environment: ENVIRONMENT })
   return (
-    <div className="m-auto flex max-w-sm flex-col items-center gap-1 px-4 text-center">
-      <h2 className="text-sm font-semibold">{m.thread_empty_title()}</h2>
-      <p className="text-sm text-muted-foreground">{hint}</p>
+    <div className="m-auto flex max-w-xl flex-col items-center px-4 text-center">
+      <h2 className="text-2xl font-semibold text-balance">
+        {sentence.split(/([\uE000\uE001])/).map((part, index) => (
+          // The text between placeholders is fixed for the language, so its position is a stable key.
+          <Fragment key={index}>{part === PROJECT ? project : part === ENVIRONMENT ? environment : part}</Fragment>
+        ))}
+      </h2>
     </div>
   )
 }
