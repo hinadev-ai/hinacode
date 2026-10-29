@@ -750,6 +750,16 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("terminal.list", { threadId: thread.id }))).toStrictEqual([])
   })
 
+  test("deleting a project tells every window its threads are gone", async () => {
+    const root = join(dir, "removed-with-threads")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "removed", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    electron.pushes.length = 0
+    result(await invoke("projects.delete", { id: project.id }))
+    expect(pushed()).toContainEqual({ type: "thread.removed", id: thread.id })
+  })
+
   test("attaching a terminal refuses offsets that are not character counts", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
