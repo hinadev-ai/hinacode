@@ -456,8 +456,10 @@ const make = Effect.gen(function* () {
       }
       yield* stopSubagents(thread.id, yield* nowIso)
       const last = turnMessages.at(-1)!
-      if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
+      const closed: Message = last.completedAt === null ? { ...last, completedAt: yield* nowIso } : last
+      setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
+      if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
       if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
       if (!completed || (yield* Deferred.isDone(stop))) return
       const [first, ...rest] = (yield* threads.get(thread.id)).queue
