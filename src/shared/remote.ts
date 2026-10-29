@@ -101,15 +101,21 @@ export interface PairingTarget {
   readonly relay: string | null
 }
 
-/** The text the pairing QR code carries, as `hinacode://connect?relay=&host=a&host=b&port=&token=`. */
-export const pairingUrl = ({ hosts, port, token, relay }: PairingTarget) => {
-  const url = new URL("hinacode://connect")
-  if (relay !== null) url.searchParams.set("relay", relay)
-  for (const host of hosts) url.searchParams.append("host", host)
-  url.searchParams.set("port", String(port))
-  url.searchParams.set("token", token)
-  return url.toString()
+/** The origin of every link the app opens, the relay's own domain, which the phone's app is associated with. */
+export const LINK_ORIGIN = "https://relay.hinacode.app"
+
+/** The parameters a pairing link carries, in the order older phones expect: relay, every host, port, token. */
+export const pairingParams = ({ hosts, port, token, relay }: PairingTarget) => {
+  const params = new URLSearchParams()
+  if (relay !== null) params.set("relay", relay)
+  for (const host of hosts) params.append("host", host)
+  params.set("port", String(port))
+  params.set("token", token)
+  return params
 }
+
+/** The text older pairing QR codes carry, as `hinacode://connect?relay=&host=a&host=b&port=&token=`. */
+export const pairingUrl = (target: PairingTarget) => `hinacode://connect?${pairingParams(target)}`
 
 export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; readonly port: number }) =>
   `ws://${host.includes(":") ? `[${host}]` : host}:${port}${REMOTE_PATH}`
@@ -160,19 +166,30 @@ const isAuthorityOnlyHost = (host: string) =>
 
 const isRelayHostname = (relay: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(relay)
 
+const isPairingWord = (word: string) =>
+  /^hinacode:\/\/connect\?/i.test(word) || word.toLowerCase().startsWith(`${LINK_ORIGIN}/connect#`)
+
+/** Where a pairing URL keeps its params: the query of `hinacode://connect`, or the fragment of the https link. */
+const pairingParamsOf = (url: URL) => {
+  if (url.protocol === "hinacode:" && url.host === "connect") return url.searchParams
+  if (url.origin === LINK_ORIGIN && url.pathname === "/connect") return new URLSearchParams(url.hash.slice(1))
+  return null
+}
+
 /**
- * Reads a pairing URL back, keeping the order of repeated `host`s. Accepts it inside other text, such as the
- * lines `hinacode serve` prints around it, by reading the first `hinacode://connect?` word. Null when that
- * word is missing or is not a complete `hinacode://connect` URL.
+ * Reads a pairing URL back, either `hinacode://connect?...` or `https://relay.hinacode.app/connect#...`, keeping the
+ * order of repeated `host`s. Accepts it inside other text, such as the lines `hinacode serve` prints around it, by
+ * reading the first word that starts like one. Null when that word is missing or is not a complete pairing URL.
  */
 export const parsePairingUrl = (text: string): PairingTarget | null => {
-  const word = text.split(/\s+/).find((part) => /^hinacode:\/\/connect\?/i.test(part))
+  const word = text.split(/\s+/).find(isPairingWord)
   const url = word === undefined ? null : URL.parse(word)
-  if (!url || url.protocol !== "hinacode:" || url.host !== "connect") return null
-  const hosts = url.searchParams.getAll("host")
-  const port = Number(url.searchParams.get("port"))
-  const token = url.searchParams.get("token")
-  const relay = url.searchParams.get("relay")
+  const params = url === null ? null : pairingParamsOf(url)
+  if (params === null) return null
+  const hosts = params.getAll("host")
+  const port = Number(params.get("port"))
+  const token = params.get("token")
+  const relay = params.get("relay")
   if (!isArrayNonEmpty(hosts) || !hosts.every(isAuthorityOnlyHost)) return null
   if (!token || !Number.isInteger(port) || port < 1 || port > 65535) return null
   if (relay !== null && !isRelayHostname(relay)) return null

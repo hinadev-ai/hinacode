@@ -8,7 +8,9 @@
     "scheme": "hinacode",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hinadev.hinacode",
+      "associatedDomains": ["applinks:relay.hinacode.app"]
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +20,26 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.hinadev.hinacode"
+      "package": "com.hinadev.hinacode",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "relay.hinacode.app",
+              "pathPrefix": "/t/"
+            },
+            {
+              "scheme": "https",
+              "host": "relay.hinacode.app",
+              "path": "/connect"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "output": "single",

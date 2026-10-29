@@ -15,6 +15,14 @@ export async function loadServers() {
   return servers
 }
 
+/** The paired servers without moving a legacy pairing over, for a reader racing `loadServers` at launch. */
+export const peekServers = async () =>
+  parseStoredServers(
+    await SecureStore.getItemAsync(SERVERS_KEY),
+    await SecureStore.getItemAsync(LEGACY_KEY),
+    newServerId,
+  )
+
 export const saveServers = (servers: readonly StoredServer[]) =>
   SecureStore.setItemAsync(SERVERS_KEY, JSON.stringify(servers))
 

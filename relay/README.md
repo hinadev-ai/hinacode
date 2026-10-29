@@ -8,6 +8,8 @@ A linked machine publishes the pairing its QR code carries with `PUT /v1/host/pa
 
 A phone signed in with the owner token registers for push with `PUT /v1/devices` and `{ token, alerts }`, and forgets itself with `DELETE /v1/devices`. A linked machine calls `POST /v1/host/push` with `{ threadId, reason }`, and the relay sends one request to the Expo push service for every device that keeps that kind of notice on. The reason is a closed set, so the push carries the machine's name, a fixed sentence and two ids, never the thread's text. Expo's `DeviceNotRegistered`, 90 days without a registration and rotating the owner token each delete devices. The design is in `docs/features/2026-10-28-push-notifications.md`.
 
+Universal links open `https://relay.hinacode.app/connect` and `/t/:environmentId/:threadId` in the mobile app. The relay serves `/.well-known/apple-app-site-association` for `APPLE_APP_ID` and `/.well-known/assetlinks.json` for `ANDROID_PACKAGE` and `ANDROID_CERT_SHA256`, each a 404 while its value is empty. In a browser the two paths show a static page that says to open the link on a phone, and never echo the URL, which can carry a pairing token. Before deploying, fill in `APPLE_APP_ID` (`<Team ID>.com.hinadev.hinacode`, the Team ID is on developer.apple.com > Membership) and `ANDROID_CERT_SHA256` (the release signing certificate's SHA-256 from Play Console > App integrity or `keytool -list -v -keystore <release keystore>`, colon-separated hex, comma between several) in `vars` in `wrangler.jsonc`. The design is in `docs/features/2026-10-28-universal-links.md`.
+
 ## One-time setup
 
 1. Create the database with `pnpm exec wrangler d1 create hinacode-relay`. Put its id in `database_id` in `wrangler.jsonc`, then run `pnpm db:migrate`.

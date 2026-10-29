@@ -1,15 +1,18 @@
-import { usePathname } from "expo-router"
+import { router, usePathname } from "expo-router"
 import type { AgentEvent } from "@shared/agent.ts"
+import { threadLink } from "@shared/links.ts"
 import { outcomeOf } from "@shared/threadStatus.ts"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AppState, Platform } from "react-native"
 import { Banner, type BannerNotice } from "@/components/banner"
 import { onEvent, useConnection } from "@/lib/connection"
+import { routeForLink } from "@/lib/links"
 import { copy } from "@/lib/copy"
 import { openThread } from "@/lib/navigation"
 import {
   getNotificationPermission,
   onNotificationOpened,
+  type OpenedThread,
   presentNotification,
   requestNotificationPermission,
 } from "@/lib/notifications"
@@ -40,7 +43,7 @@ export function Notifier() {
     if (AppState.currentState !== "active") {
       const server = useConnection.getState().servers.find((candidate) => candidate.id === serverId)
       if (shouldPresentLocal({ pushRegistered: pushRegistered(), server }))
-        void presentNotification({ threadId, title, body: alert.body })
+        void presentNotification({ threadId, environmentId: server?.environmentId ?? null, title, body: alert.body })
     } else if (!isViewing(pathname, threadId)) {
       noticeCount += 1
       setNotice({ id: noticeCount, threadId, kind: alert.kind, title, body: alert.body })
@@ -56,8 +59,13 @@ export function Notifier() {
     useUnseen.getState().record(threadId, outcome)
   })
 
-  const opened = useEffectEvent((threadId: string) => {
-    if (paired) openThread(threadId)
+  const opened = useEffectEvent(({ threadId, environmentId }: OpenedThread) => {
+    if (!paired) return
+    if (environmentId === null) return openThread(threadId)
+    const environmentIds = useConnection.getState().servers.map((server) => server.environmentId)
+    const href = routeForLink(threadLink(environmentId, threadId), { paired, environmentIds })
+    if (href === "/") router.navigate("/")
+    else openThread(threadId)
   })
 
   useEffect(
@@ -71,7 +79,7 @@ export function Notifier() {
     [],
   )
 
-  useEffect(() => onNotificationOpened((threadId) => opened(threadId)), [])
+  useEffect(() => onNotificationOpened((thread) => opened(thread)), [])
 
   useEffect(() => {
     // Browsers only show the prompt after a tap, so the web asks from Settings instead.

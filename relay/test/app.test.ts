@@ -640,3 +640,58 @@ describe("push notifications", () => {
     expect(await devices()).toHaveLength(1)
   })
 })
+
+const get = (path: string, overrides: Partial<Env> = {}) =>
+  app.request(`https://relay.test${path}`, {}, { ...env, ...overrides })
+
+describe("universal links", () => {
+  it("associates the iOS app with the thread and connect paths", async () => {
+    const response = await get("/.well-known/apple-app-site-association")
+    expect(response.status).toBe(200)
+    expect(response.headers.get("Content-Type")).toMatch(/^application\/json/)
+    expect(await response.json()).toEqual({
+      applinks: {
+        details: [{ appIDs: ["TEAMID1234.com.hinadev.hinacode"], components: [{ "/": "/t/*" }, { "/": "/connect" }] }],
+      },
+    })
+  })
+
+  it("serves no Apple association until the app id is set", async () => {
+    const response = await get("/.well-known/apple-app-site-association", { APPLE_APP_ID: "" })
+    expect(response.status).toBe(404)
+  })
+
+  it("associates the Android app with every listed signing certificate", async () => {
+    const response = await get("/.well-known/assetlinks.json")
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "com.hinadev.hinacode",
+          sha256_cert_fingerprints: ["AA:BB:CC", "DD:EE:FF"],
+        },
+      },
+    ])
+  })
+
+  it("serves no Android association until the package and a fingerprint are set", async () => {
+    expect((await get("/.well-known/assetlinks.json", { ANDROID_CERT_SHA256: " , " })).status).toBe(404)
+    expect((await get("/.well-known/assetlinks.json", { ANDROID_PACKAGE: "" })).status).toBe(404)
+  })
+
+  it("tells a browser to open the link on a phone, without echoing the link back", async () => {
+    for (const path of ["/connect?token=secret-pairing", "/t/env-1/%3Cscript%3Ealert(1)%3C%2Fscript%3E"]) {
+      const response = await get(path)
+      expect(response.status).toBe(200)
+      expect(response.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'none'")
+      expect(response.headers.get("X-Frame-Options")).toBe("DENY")
+      expect(response.headers.get("Referrer-Policy")).toBe("no-referrer")
+      const html = await response.text()
+      expect(html).toContain("Open this link on a phone with HinaCode installed")
+      expect(html).not.toContain("secret-pairing")
+      expect(html).not.toContain("alert(1)")
+    }
+  })
+})
